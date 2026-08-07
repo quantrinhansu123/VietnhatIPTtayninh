@@ -244,125 +244,21 @@ function asFiniteNumber(value: unknown): number | null {
   return null;
 }
 
-function pickMetaNumber(source: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    if (!(key in source)) continue;
-    const num = asFiniteNumber(source[key]);
-    if (num != null) return num;
-  }
-  return null;
-}
-
-function parseWeightRawTokenMap(weightRaw: unknown): Record<string, string> {
-  const text = String(weightRaw ?? '');
-  if (!text) return {};
-  const map: Record<string, string> = {};
-  for (const part of text.split(';')) {
-    const token = part.trim();
-    if (!token || !token.includes('=')) continue;
-    const eq = token.indexOf('=');
-    const key = token.slice(0, eq).trim().toUpperCase();
-    const value = token.slice(eq + 1).trim();
-    if (key) map[key] = value;
-  }
-  return map;
-}
-
-function imageRefKind(ref: unknown): 'core' | 'product' | 'qr' | 'unknown' {
-  const text = String(ref ?? '').toLowerCase();
-  if (!text) return 'unknown';
-  if (text.includes('core-weight') || text.includes('/core/') || text.includes('loi')) return 'core';
-  if (text.includes('product-weight') || text.includes('roll-weight') || text.includes('/product/')) {
-    return 'product';
-  }
-  if (text.includes('qr')) return 'qr';
-  return 'unknown';
-}
-
 /**
- * Cấu trúc thực tế gateway:
- * - Cột weight/net thường = lõi; cuộn nằm trong metadata (PRODUCT_WEIGHT / HUMAN_CONFIRMED_PRODUCT)
- * - image_* và core_image_* có thể cùng trỏ ảnh core-weight — không nhân đôi lên cột Ảnh cuộn
+ * Ý nghĩa cột DB cân tự động:
+ * - tare_weight  = cân lõi
+ * - weight       = cân sản phẩm (còn lõi)
+ * - net_weight   = khối lượng thực (= weight - tare_weight)
+ * - core_image_* = ảnh bước cân lõi
+ * - product_image_* = ảnh bước cân sản phẩm
  */
-function normalizeCanTuDongMetrics(row: Record<string, unknown>): {
-  product_weight: number | null;
-  product_net_weight: number | null;
-  core_weight: number | null;
-  core_tare_weight: number | null;
-  core_net_weight: number | null;
-  image_kind: 'core' | 'product' | 'qr' | 'unknown';
-  core_image_kind: 'core' | 'product' | 'qr' | 'unknown';
-} {
-  const metadata =
-    row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
-      ? (row.metadata as Record<string, unknown>)
-      : {};
-  const tokens = parseWeightRawTokenMap(metadata.weight_raw);
-  const nestedCandidates = [metadata.core, metadata.loi, metadata.product, metadata.weights].filter(
-    item => item && typeof item === 'object' && !Array.isArray(item)
-  ) as Record<string, unknown>[];
-
-  const confirmedCore =
-    asFiniteNumber(tokens.HUMAN_CONFIRMED_CORE) ??
-    pickMetaNumber(metadata, ['human_confirmed_core', 'HUMAN_CONFIRMED_CORE']);
-  const confirmedProduct =
-    asFiniteNumber(tokens.HUMAN_CONFIRMED_PRODUCT) ??
-    pickMetaNumber(metadata, ['human_confirmed_product', 'HUMAN_CONFIRMED_PRODUCT']);
-  const productFromToken =
-    asFiniteNumber(tokens.PRODUCT_WEIGHT) ??
-    asFiniteNumber(String(tokens.PRODUCT_WEIGHT_RAW || '').split(':')[1]?.split('@')[0]);
-
-  const coreFromNamed =
-    pickMetaNumber(metadata, ['core_weight', 'tl_loi', 'loi_weight', 'trong_luong_loi', 'core_gross']) ??
-    nestedCandidates.reduce<number | null>(
-      (found, bag) => found ?? pickMetaNumber(bag, ['core_weight', 'tl_loi', 'loi_weight', 'weight', 'gross']),
-      null
-    );
-
-  const imageKind = imageRefKind(row.image_public_id || row.image_path || row.image_url);
-  const coreImageKind = imageRefKind(
-    row.core_image_public_id || row.core_image_path || row.core_image_url
-  );
-
-  const columnWeight = asFiniteNumber(row.weight);
-  const columnNet = asFiniteNumber(row.net_weight);
-  const columnTare = asFiniteNumber(row.tare_weight);
-
-  // weight cột đang lưu lõi (đối chiếu HUMAN_CONFIRMED_CORE / path core-weight)
-  const columnLooksLikeCore =
-    confirmedCore != null
-      ? columnWeight != null && Math.abs(columnWeight - confirmedCore) < 0.0001
-      : imageKind === 'core' || coreImageKind === 'core';
-
-  const coreWeight = confirmedCore ?? coreFromNamed ?? (columnLooksLikeCore ? columnWeight : null);
-  const coreNet =
-    confirmedCore ??
-    pickMetaNumber(metadata, ['core_net_weight', 'core_net', 'net_loi']) ??
-    (columnLooksLikeCore ? columnNet ?? columnWeight : null);
-  const coreTare =
-    pickMetaNumber(metadata, ['core_tare_weight', 'core_tare', 'tare_loi']) ??
-    (columnLooksLikeCore ? columnTare : null);
-
-  const productWeight =
-    confirmedProduct ??
-    productFromToken ??
-    pickMetaNumber(metadata, ['product_weight', 'roll_weight', 'cuon_weight']) ??
-    (!columnLooksLikeCore ? columnWeight : null);
-  const productNet =
-    confirmedProduct ??
-    productFromToken ??
-    pickMetaNumber(metadata, ['product_net_weight', 'roll_net_weight']) ??
-    (!columnLooksLikeCore ? columnNet ?? columnWeight : null);
-
-  return {
-    product_weight: productWeight,
-    product_net_weight: productNet,
-    core_weight: coreWeight,
-    core_tare_weight: coreTare,
-    core_net_weight: coreNet,
-    image_kind: imageKind,
-    core_image_kind: coreImageKind
-  };
+function resolveCanTuDongNetWeight(row: Record<string, unknown>): number | null {
+  const net = asFiniteNumber(row.net_weight);
+  if (net != null) return net;
+  const weight = asFiniteNumber(row.weight);
+  const tare = asFiniteNumber(row.tare_weight);
+  if (weight == null || tare == null) return null;
+  return Math.round((weight - tare) * 1000) / 1000;
 }
 
 function getSeedReports(): ProductionReport[] {
@@ -8766,9 +8662,8 @@ export function createApp() {
       const records = await Promise.all(
         rows.map(async row => {
           const record = row as Record<string, unknown>;
-          const metrics = normalizeCanTuDongMetrics(record);
 
-          const [productUrl, coreUrl, legacyUrl, qrUrl] = await Promise.all([
+          const [productUrl, coreUrl, qrUrl] = await Promise.all([
             resolveCanTuDongImageUrl(db, record, {
               urlKey: 'product_image_url',
               pathKey: 'product_image_path',
@@ -8780,35 +8675,27 @@ export function createApp() {
               publicIdKey: 'core_image_public_id'
             }),
             resolveCanTuDongImageUrl(db, record, {
-              urlKey: 'image_url',
-              pathKey: 'image_path',
-              publicIdKey: 'image_public_id'
-            }),
-            resolveCanTuDongImageUrl(db, record, {
               urlKey: 'qr_image_url',
               pathKey: 'qr_image_path',
               publicIdKey: 'qr_image_public_id'
             })
           ]);
 
-          // Ảnh cuộn: chỉ lấy product_image_* (không dùng image_* để tránh nhầm ảnh lõi).
-          const productPreviewUrl = productUrl || '';
-          // Ảnh lõi: core_image_*; nếu trống mà image_* là core-weight thì dùng tạm.
-          const legacyIsCore = metrics.image_kind === 'core';
-          const corePreviewUrl = coreUrl || (legacyIsCore ? legacyUrl : '') || '';
+          const netWeight = resolveCanTuDongNetWeight(record);
 
           return {
             ...record,
-            product_weight: metrics.product_weight,
-            product_net_weight: metrics.product_net_weight,
-            core_weight: metrics.core_weight,
-            core_tare_weight: metrics.core_tare_weight,
-            core_net_weight: metrics.core_net_weight,
-            preview_url: productPreviewUrl || null,
-            core_preview_url: corePreviewUrl || null,
+            // Chuẩn hoá net nếu DB để trống nhưng đã có weight + tare
+            net_weight: netWeight ?? record.net_weight ?? null,
+            // Alias đọc UI theo nghĩa nghiệp vụ
+            can_loi: asFiniteNumber(record.tare_weight),
+            can_san_pham: asFiniteNumber(record.weight),
+            khoi_luong_thuc: netWeight,
+            product_preview_url: productUrl || null,
+            core_preview_url: coreUrl || null,
             qr_preview_url: qrUrl || null,
-            image_kind: metrics.image_kind,
-            core_image_kind: metrics.core_image_kind
+            // Giữ tên cũ để client cũ không vỡ — map đúng nguồn
+            preview_url: productUrl || null
           };
         })
       );

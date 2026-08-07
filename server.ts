@@ -95,7 +95,7 @@ const SUPABASE_MACHINE_DOWNTIME_TABLE =
 const SUPABASE_MACHINE_RUN_LOG_TABLE =
   process.env.SUPABASE_MACHINE_RUN_LOG_TABLE || 'nhat_ky_chay_may';
 const SUPABASE_STAFF_DEPARTMENT = process.env.SUPABASE_STAFF_DEPARTMENT || 'Sản xuất';
-const SUPABASE_STAFF_BRANCH = process.env.SUPABASE_STAFF_BRANCH || 'Phú Thọ';
+const SUPABASE_STAFF_BRANCH = process.env.SUPABASE_STAFF_BRANCH || 'Đà Nẵng';
 const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME?.trim();
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY?.trim();
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET?.trim();
@@ -194,18 +194,29 @@ if (supabaseWeighing) {
   });
 } else {
   console.log(
-    `[SUPABASE:${SUPABASE_WEIGHING_DB_LABEL}] Chưa cấu hình riêng — phiếu cân dùng DB ${SUPABASE_MAIN_DB_LABEL}.`
+    `[SUPABASE:${SUPABASE_WEIGHING_DB_LABEL}] Chưa cấu hình riêng — bảng can_tu_dong chưa gắn DB cân tự động.`
   );
 }
 
 async function resolveCanTuDongImageUrl(
   db: SupabaseClient,
-  row: { image_url?: unknown; image_path?: unknown }
+  row: Record<string, unknown>,
+  options?: {
+    urlKey?: 'image_url' | 'core_image_url' | 'qr_image_url' | 'product_image_url';
+    pathKey?: 'image_path' | 'core_image_path' | 'qr_image_path' | 'product_image_path';
+    publicIdKey?: 'image_public_id' | 'core_image_public_id' | 'qr_image_public_id' | 'product_image_public_id';
+  }
 ): Promise<string> {
-  const direct = String(row.image_url ?? '').trim();
+  const urlKey = options?.urlKey || 'image_url';
+  const pathKey = options?.pathKey || 'image_path';
+  const publicIdKey = options?.publicIdKey;
+  const direct = String(row[urlKey] ?? '').trim();
   if (direct) return direct;
 
-  let storagePath = String(row.image_path ?? '').trim().replace(/^\/+/, '');
+  // Ưu tiên path, rồi public_id (gateway thường ghi public_id Cloudinary).
+  let storagePath = String(row[pathKey] ?? (publicIdKey ? row[publicIdKey] : '') ?? '')
+    .trim()
+    .replace(/^\/+/, '');
   if (!storagePath) return '';
   if (storagePath.startsWith(`${SUPABASE_CAN_TU_DONG_STORAGE_BUCKET}/`)) {
     storagePath = storagePath.slice(SUPABASE_CAN_TU_DONG_STORAGE_BUCKET.length + 1);
@@ -220,6 +231,34 @@ async function resolveCanTuDongImageUrl(
   } catch {
     return '';
   }
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(',', '.');
+    if (!normalized) return null;
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
+/**
+ * Ý nghĩa cột DB cân tự động:
+ * - tare_weight  = cân lõi
+ * - weight       = cân sản phẩm (còn lõi)
+ * - net_weight   = khối lượng thực (= weight - tare_weight)
+ * - core_image_* = ảnh bước cân lõi
+ * - product_image_* = ảnh bước cân sản phẩm
+ */
+function resolveCanTuDongNetWeight(row: Record<string, unknown>): number | null {
+  const net = asFiniteNumber(row.net_weight);
+  if (net != null) return net;
+  const weight = asFiniteNumber(row.weight);
+  const tare = asFiniteNumber(row.tare_weight);
+  if (weight == null || tare == null) return null;
+  return Math.round((weight - tare) * 1000) / 1000;
 }
 
 function getSeedReports(): ProductionReport[] {
@@ -8580,14 +8619,15 @@ export function createApp() {
   });
 
   app.get('/api/can-tu-dong', async (req, res) => {
-    const resolved = await resolveSupabaseClientForTable(SUPABASE_CAN_TU_DONG_TABLE);
-    if (!resolved) {
+    // Cố định DB can-tu-dong (njdlkyx…) — không fallback sang he-thong.
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
       return res.status(503).json({
-        error: `Bảng ${SUPABASE_CAN_TU_DONG_TABLE} chưa có trên Supabase mới lẫn cũ.`
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
       });
     }
-    const db = resolved.client;
-    const dbLabel = resolved.label;
+    const db = supabaseWeighing;
+    const dbLabel = SUPABASE_WEIGHING_DB_LABEL;
 
     const limitRaw = Number(req.query.limit ?? 200);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 200;
@@ -8621,8 +8661,42 @@ export function createApp() {
       const rows = Array.isArray(data) ? data : [];
       const records = await Promise.all(
         rows.map(async row => {
-          const previewUrl = await resolveCanTuDongImageUrl(db, row);
-          return { ...row, preview_url: previewUrl || null };
+          const record = row as Record<string, unknown>;
+
+          const [productUrl, coreUrl, qrUrl] = await Promise.all([
+            resolveCanTuDongImageUrl(db, record, {
+              urlKey: 'product_image_url',
+              pathKey: 'product_image_path',
+              publicIdKey: 'product_image_public_id'
+            }),
+            resolveCanTuDongImageUrl(db, record, {
+              urlKey: 'core_image_url',
+              pathKey: 'core_image_path',
+              publicIdKey: 'core_image_public_id'
+            }),
+            resolveCanTuDongImageUrl(db, record, {
+              urlKey: 'qr_image_url',
+              pathKey: 'qr_image_path',
+              publicIdKey: 'qr_image_public_id'
+            })
+          ]);
+
+          const netWeight = resolveCanTuDongNetWeight(record);
+
+          return {
+            ...record,
+            // Chuẩn hoá net nếu DB để trống nhưng đã có weight + tare
+            net_weight: netWeight ?? record.net_weight ?? null,
+            // Alias đọc UI theo nghĩa nghiệp vụ
+            can_loi: asFiniteNumber(record.tare_weight),
+            can_san_pham: asFiniteNumber(record.weight),
+            khoi_luong_thuc: netWeight,
+            product_preview_url: productUrl || null,
+            core_preview_url: coreUrl || null,
+            qr_preview_url: qrUrl || null,
+            // Giữ tên cũ để client cũ không vỡ — map đúng nguồn
+            preview_url: productUrl || null
+          };
         })
       );
 
@@ -8637,6 +8711,64 @@ export function createApp() {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi tải cân tự động.',
         db: dbLabel
+      });
+    }
+  });
+
+  app.post('/api/can-tu-dong/bulk-delete', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const { data, error } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .delete()
+        .in('id', ids)
+        .select('id');
+
+      if (error) {
+        console.error('Supabase can_tu_dong bulk delete error:', error);
+        return res.status(500).json({
+          error: error.message || 'Không thể xóa các dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const deleted = Array.isArray(data) ? data.length : 0;
+      return res.json({
+        success: true,
+        deleted,
+        requested: ids.length,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi xóa nhiều dòng cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
       });
     }
   });

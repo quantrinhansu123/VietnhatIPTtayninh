@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, RefreshCw, Scale } from 'lucide-react';
+import { Loader2, RefreshCw, Scale, Trash2 } from 'lucide-react';
 import { BackButton } from '../../components/layout/NavButtons';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
@@ -19,24 +19,41 @@ import {
   TableEmptyRow
 } from '../../components/shared/table';
 
+/**
+ * Ý nghĩa cột DB:
+ * - tare_weight      = Cân lõi
+ * - weight           = Cân sản phẩm (còn lõi)
+ * - net_weight       = Khối lượng thực (weight − tare_weight)
+ * - core_image_*     = Ảnh cân lõi
+ * - product_image_*  = Ảnh cân sản phẩm
+ */
 export type CanTuDongRecord = {
   id: number | string;
   event_id?: string | null;
   qr_code?: string | null;
+  /** Cân sản phẩm (còn lõi) */
   weight?: number | string | null;
+  /** Cân lõi */
   tare_weight?: number | string | null;
+  /** Khối lượng thực */
   net_weight?: number | string | null;
   unit?: string | null;
   captured_at?: string | null;
-  image_path?: string | null;
-  image_url?: string | null;
+  product_image_path?: string | null;
+  product_image_url?: string | null;
+  product_image_public_id?: string | null;
+  product_preview_url?: string | null;
   preview_url?: string | null;
+  core_image_path?: string | null;
+  core_image_url?: string | null;
+  core_image_public_id?: string | null;
+  core_preview_url?: string | null;
+  can_loi?: number | string | null;
+  can_san_pham?: number | string | null;
+  khoi_luong_thuc?: number | string | null;
   device_id?: string | null;
   weight_source?: string | null;
-  qr_source?: string | null;
-  weight_kind?: string | null;
   status?: string | null;
-  confirmed_at?: string | null;
   created_at?: string | null;
 };
 
@@ -83,8 +100,37 @@ function statusClass(status?: string | null) {
   return 'bg-zinc-50 text-zinc-600 border-zinc-200';
 }
 
-function resolvePreviewUrl(row: CanTuDongRecord) {
-  return String(row.preview_url || row.image_url || '').trim();
+function resolveProductImageUrl(row: CanTuDongRecord) {
+  return String(row.product_preview_url || row.preview_url || row.product_image_url || '').trim();
+}
+
+function resolveCoreImageUrl(row: CanTuDongRecord) {
+  return String(row.core_preview_url || row.core_image_url || '').trim();
+}
+
+function ImageCell({
+  url,
+  title,
+  emptyLabel,
+  onView
+}: {
+  url: string;
+  title: string;
+  emptyLabel: string;
+  onView: () => void;
+}) {
+  if (!url) {
+    return (
+      <span className="inline-flex h-12 w-16 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-bold text-zinc-400">
+        {emptyLabel}
+      </span>
+    );
+  }
+  return <WeighingImageThumbnail url={url} alt={title} title={title} onView={onView} />;
+}
+
+function rowIdKey(id: number | string) {
+  return String(id);
 }
 
 export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
@@ -98,6 +144,8 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -116,10 +164,12 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
       }
       const payload = await res.json();
       setRecords(Array.isArray(payload?.records) ? payload.records : []);
+      setSelectedIds(new Set());
     } catch (err: any) {
       const message = err?.message || 'Không tải được cân tự động.';
       setError(message);
       setRecords([]);
+      setSelectedIds(new Set());
       showAppToast(message, 'error');
     } finally {
       setLoading(false);
@@ -162,12 +212,79 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
       const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
       const matchesSearch =
         !normalizedSearch ||
-        `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''} ${row.qr_source ?? ''}`
+        `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''}`
           .toLowerCase()
           .includes(normalizedSearch);
       return matchesStatus && matchesSearch;
     });
   }, [records, normalizedSearch, selectedStatus]);
+
+  const visibleIds = useMemo(
+    () => filteredRecords.map(row => rowIdKey(row.id)).filter(Boolean),
+    [filteredRecords]
+  );
+
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach(id => next.delete(id));
+      } else {
+        visibleIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelected = (id: string) => {
+    if (!id) return;
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    if (
+      !window.confirm(
+        `Xóa ${ids.length} dòng cân tự động đã chọn?\n\nHành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    try {
+      const res = await fetch('/api/can-tu-dong/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể xóa các dòng đã chọn.');
+      }
+      const deleted = Number(data.deleted) || ids.length;
+      showAppToast(`Đã xóa ${deleted} dòng cân tự động.`);
+      await loadRecords();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể xóa các dòng đã chọn.';
+      showAppToast(message, 'error');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-none space-y-4">
@@ -181,7 +298,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
             <div>
               <h1 className="text-lg font-black text-zinc-900 sm:text-xl">Cân tự động</h1>
               <p className="text-xs font-semibold text-zinc-500">
-                Bảng <span className="font-mono">can_tu_dong</span> · ảnh mở modal khi nhấn
+                Cân lõi · Cân sản phẩm · KL thực (= SP − lõi)
               </p>
             </div>
           </div>
@@ -262,7 +379,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
         <TableSearchInput
           value={searchText}
           onChange={setSearchText}
-          placeholder="Tìm QR, thiết bị, nguồn..."
+          placeholder="Tìm QR, thiết bị..."
           disabled={loading}
         />
         <FilterCombobox
@@ -275,79 +392,125 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
         />
       </TableToolbar>
 
-      <TableShell minWidthClassName="min-w-[1000px]">
+      {selectedCount > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2.5">
+          <p className="mr-auto text-xs font-bold text-rose-800">Đã chọn {selectedCount} dòng</p>
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={isBulkDeleting}
+            className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
+          >
+            Bỏ chọn
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleBulkDelete()}
+            disabled={isBulkDeleting}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
+          >
+            {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {isBulkDeleting ? 'Đang xóa...' : `Xóa đã chọn (${selectedCount})`}
+          </button>
+        </div>
+      ) : null}
+
+      <TableShell minWidthClassName="min-w-[1100px]">
         <TableHead>
-          <TableHeadCell>Ảnh</TableHeadCell>
+          <TableHeadCell className="w-10 text-center">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              disabled={loading || visibleIds.length === 0 || isBulkDeleting}
+              aria-label="Chọn tất cả dòng đang xem"
+              className="h-4 w-4 accent-[#ef1b2d] disabled:opacity-40"
+            />
+          </TableHeadCell>
+          <TableHeadCell>Ảnh lõi</TableHeadCell>
+          <TableHeadCell>Ảnh sản phẩm</TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Thời điểm</TableHeadCell>
           <TableHeadCell>QR</TableHeadCell>
-          <TableHeadCell>Net</TableHeadCell>
-          <TableHeadCell>Gross</TableHeadCell>
-          <TableHeadCell>Tare</TableHeadCell>
+          <TableHeadCell title="tare_weight">Cân lõi</TableHeadCell>
+          <TableHeadCell title="weight — còn lõi">Cân sản phẩm</TableHeadCell>
+          <TableHeadCell title="net_weight = weight − tare_weight">KL thực</TableHeadCell>
           <TableHeadCell>Thiết bị</TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
-          <TableHeadCell>Nguồn</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={9}>
+            <TableEmptyRow colSpan={10}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={9}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={10}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
           ) : (
             filteredRecords.map(row => {
-              const previewUrl = resolvePreviewUrl(row);
-              const title = `Ảnh cân · ${row.qr_code || row.event_id || row.id}`;
+              const idKey = rowIdKey(row.id);
+              const coreUrl = resolveCoreImageUrl(row);
+              const productUrl = resolveProductImageUrl(row);
+              const coreTitle = `Ảnh cân lõi · ${row.qr_code || row.event_id || row.id}`;
+              const productTitle = `Ảnh cân sản phẩm · ${row.qr_code || row.event_id || row.id}`;
+              const canLoi = row.can_loi ?? row.tare_weight;
+              const canSp = row.can_san_pham ?? row.weight;
+              const klThuc = row.khoi_luong_thuc ?? row.net_weight;
               return (
-                <React.Fragment key={String(row.id)}>
-                  <TableRow>
-                    <td className="px-4 py-3 align-middle">
-                      {previewUrl ? (
-                        <WeighingImageThumbnail
-                          url={previewUrl}
-                          alt={title}
-                          title="Xem ảnh cân"
-                          onView={() => setViewingImage({ url: previewUrl, title })}
-                        />
-                      ) : (
-                        <span className="inline-flex h-12 w-16 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-[10px] font-bold text-zinc-400">
-                          Không ảnh
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                      {formatDateTime(row.captured_at || row.created_at)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-900">
-                      {row.qr_code || '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-900">
-                      {formatWeight(row.net_weight, row.unit)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                      {formatWeight(row.weight, row.unit)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-600">
-                      {formatWeight(row.tare_weight, row.unit)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                      {row.device_id || '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusClass(row.status)}`}
-                      >
-                        {row.status || '—'}
-                      </span>
-                    </td>
-                    <td className="max-w-[140px] truncate px-4 py-3 font-semibold text-zinc-500" title={String(row.weight_source || '')}>
-                      {row.weight_source || '—'}
-                    </td>
-                  </TableRow>
-                </React.Fragment>
+                <TableRow key={idKey}>
+                  <td className="px-4 py-3 text-center align-middle">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(idKey)}
+                      onChange={() => toggleSelected(idKey)}
+                      disabled={isBulkDeleting}
+                      aria-label={`Chọn dòng ${idKey}`}
+                      className="h-4 w-4 accent-[#ef1b2d] disabled:opacity-40"
+                    />
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <ImageCell
+                      url={coreUrl}
+                      title={coreTitle}
+                      emptyLabel="Chưa có"
+                      onView={() => setViewingImage({ url: coreUrl, title: coreTitle })}
+                    />
+                  </td>
+                  <td className="px-4 py-3 align-middle">
+                    <ImageCell
+                      url={productUrl}
+                      title={productTitle}
+                      emptyLabel="Chưa có"
+                      onView={() => setViewingImage({ url: productUrl, title: productTitle })}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                    {formatDateTime(row.captured_at || row.created_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-900">
+                    {row.qr_code || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-sky-800">
+                    {formatWeight(canLoi, row.unit)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
+                    {formatWeight(canSp, row.unit)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-black text-emerald-800">
+                    {formatWeight(klThuc, row.unit)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                    {row.device_id || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${statusClass(row.status)}`}
+                    >
+                      {row.status || '—'}
+                    </span>
+                  </td>
+                </TableRow>
               );
             })
           )}

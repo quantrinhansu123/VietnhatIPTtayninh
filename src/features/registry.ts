@@ -83,9 +83,9 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   kiem_kho: {
     table: 'kiem_kho',
     label: 'Báo cáo kiểm kho',
-    sql: ['supabase-kiem-kho.sql'],
+    sql: ['supabase-kiem-kho.sql', 'supabase-kiem-kho-tong-hop.sql'],
     apiPrefix: '/api/kiem-kho',
-    serverLines: 'GET/POST/DELETE /api/kiem-kho + POST /api/kiem-kho/dong-bo-ton-dau',
+    serverLines: 'GET/POST/DELETE /api/kiem-kho + /api/kiem-kho/dot-mo, /dot, /dot-xac-nhan + /api/kiem-kho-tong-hop',
     appTab: 'kiem-kho',
     appLines: 'src/features/kiem-kho/index.tsx',
     components: ['src/components/ProductQrScanner.tsx'],
@@ -116,7 +116,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   san_pham: {
     table: 'san_pham',
     label: 'Danh mục sản phẩm',
-    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql', 'supabase-san-pham-kiem-kho-dong-bo.sql'],
+    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql'],
     apiPrefix: '/api/san-pham',
     serverLines: '3507–3695',
     appTab: 'products',

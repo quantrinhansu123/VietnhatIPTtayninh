@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `san_pham` |
 | **Tab** | `products` → `/san-pham` |
-| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-kiem-kho-dong-bo.sql` |
+| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql` |
 
 ## API (`server.ts`)
 
@@ -14,7 +14,6 @@
 | POST | `/api/san-pham` | 3564 |
 | PATCH | `/api/san-pham/:id` | 3629 |
 | DELETE | `/api/san-pham` | 3592 |
-| POST | `/api/kiem-kho/dong-bo-ton-dau` | Đồng bộ phiếu kiểm kho vào `ton_dau_ky` |
 
 ## Frontend
 
@@ -31,7 +30,7 @@
 
 `ma_sp`, `ten_sp`, `nhom_vthh`, `ton_dau_ky`, `dinh_muc_npl` (JSON NPL).
 
-Đồng bộ kiểm kho dùng `supabase-san-pham-kiem-kho-dong-bo.sql` trên DB chính để bảo đảm mỗi `kiem_kho.id` chỉ cộng một lần.
+> Tính năng "Đồng bộ" (cộng số liệu kiểm kho vào `ton_dau_ky`) đã bị **gỡ bỏ**. File `supabase-san-pham-kiem-kho-dong-bo.sql` giờ chỉ còn migration `DROP` để dọn RPC/bảng so cái cũ trên DB đã từng chạy — không cần chạy lại nếu DB chưa từng có tính năng này.
 
 ### Excel danh mục SP
 

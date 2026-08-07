@@ -22,7 +22,7 @@ import {
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
-import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, RefreshCw, X } from 'lucide-react';
+import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
 import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, excelRowsToProductNplItems, bulkExcelRowsToProductMap, productNplAmountTypeLabel, formatProductNplAmount, roundNplNumber } from './types';
@@ -1227,7 +1227,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   const [printQtyError, setPrintQtyError] = useState('');
   const [bulkPrintQty, setBulkPrintQty] = useState('1');
   const [isDeletingProducts, setIsDeletingProducts] = useState(false);
-  const [isSyncingOpeningStock, setIsSyncingOpeningStock] = useState(false);
   const [productActionMessage, setProductActionMessage] = useState('');
   const [viewingProduct, setViewingProduct] = useState<ProductRow | null>(null);
   const [productViewTab, setProductViewTab] = useState<ProductViewTab>('info');
@@ -1889,40 +1888,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const handleSyncOpeningStock = async () => {
-    setIsSyncingOpeningStock(true);
-    setProductActionMessage('');
-    setProductError('');
-
-    try {
-      const res = await fetch('/api/kiem-kho/dong-bo-ton-dau', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'Không thể đồng bộ dữ liệu kiểm kho vào tồn đầu.');
-      }
-
-      const updated = Number(data.updated) || 0;
-      const unmatched = Number(data.unmatched) || 0;
-      const unmatchedCodes = Array.isArray(data.unmatched_codes) ? data.unmatched_codes.join(', ') : '';
-      const parts = [
-        updated > 0
-          ? `Đã đồng bộ ${updated} sản phẩm kiểm kho vào Tồn đầu.`
-          : 'Không có sản phẩm kiểm kho mới cần đồng bộ.'
-      ];
-      if (unmatched > 0) {
-        parts.push(`Chưa tìm thấy ${unmatched} mã trong danh mục${unmatchedCodes ? `: ${unmatchedCodes}` : ''}.`);
-      }
-      if (data.has_more) parts.push('Vẫn còn dữ liệu; bấm Đồng bộ thêm lần nữa để xử lý tiếp.');
-      if (data.warning) parts.push(String(data.warning));
-      setProductActionMessage(parts.join(' '));
-      await loadProducts();
-    } catch (error: any) {
-      setProductError(error.message || 'Không thể đồng bộ dữ liệu kiểm kho vào tồn đầu.');
-    } finally {
-      setIsSyncingOpeningStock(false);
-    }
-  };
-
   return (
     <div className="w-full space-y-4">
       <section className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
@@ -2008,17 +1973,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => void handleSyncOpeningStock()}
-              disabled={isSyncingOpeningStock}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSyncingOpeningStock ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {isSyncingOpeningStock ? 'Đang đồng bộ...' : 'Đồng bộ'}
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={handleDownloadProductCatalogTemplate}

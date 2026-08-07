@@ -285,7 +285,7 @@ function printVehicleExpenses(
     <main class="sheet">
       <header class="header">
         <img class="logo" src="${escapePrintHtml(vietNhatLogoUrl)}" alt="Việt Nhật">
-        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Chi nhánh Phú Thọ</div>
+        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Chi nhánh Đà Nẵng</div>
       </header>
       <h1>BÁO CÁO – CHI PHÍ – LÁI XE</h1>
       <div class="meta">
@@ -311,7 +311,7 @@ function printVehicleExpenses(
       <div class="section">V. Hóa đơn nợ và chuyển khoản</div>
       <table><thead><tr><th>STT</th><th>Khách hàng</th><th>Số tiền</th><th>Người cho nợ</th></tr></thead><tbody>${[1,2,3].map(i => `<tr><td class="center">${i}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</tbody></table>
       <table class="summary"><tr><td>TỔNG THU</td><td></td></tr><tr><td>CHI PHÍ</td><td class="money">${escapePrintHtml(formatMoney(total))}</td></tr><tr><td>CÒN NỘP</td><td></td></tr></table>
-      <div class="sign-date">Phú Thọ, ngày ...... tháng ...... năm ........</div>
+      <div class="sign-date">Đà Nẵng, ngày ...... tháng ...... năm ........</div>
       <div class="sign-grid">
         <div class="sign-box">
           <div class="sign-title">Lái xe</div>
@@ -388,7 +388,7 @@ function printVehicleKmLogs(
     <main class="sheet">
       <header class="header">
         <img class="logo" src="${escapePrintHtml(vietNhatLogoUrl)}" alt="Việt Nhật">
-        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Đ/c: Chi nhánh Phú Thọ</div>
+        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Đ/c: Chi nhánh Đà Nẵng</div>
       </header>
       <h1>PHIẾU XÁC NHẬN KM LÁI XE</h1>
       <div class="meta">

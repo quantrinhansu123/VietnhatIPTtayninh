@@ -16,6 +16,6 @@
 
 **Gợi ý định mức QC:** Form `/bao-cao-phoi-tron` khi chọn Ngày + Ca sẽ tải `/api/bang-tron-vat-tu-dinh-muc?ngay&ca` và hiện phiếu định mức QC để **Áp dụng** (đổ NVL gộp theo mã vào lần 1).
 
-**Danh sách gộp:** Tab `mixing-report-list` → «Danh sách phiếu phối trộn» hiện cả `bao_cao_phoi_tron` + định mức + thực tế (badge loại), cùng lọc ngày/ca.
+**Danh sách gộp:** Tab `mixing-report-list` → «Danh sách phiếu phối trộn» = **1 dòng / 1 phiếu định mức** (status thực tế trên cùng dòng, join `dinh_muc_id`), cộng phiếu `bao_cao_phoi_tron` (phối trộn máy) nếu có. Không tách badge Định mức / Thực tế thành 2 dòng.
 
 **Update ca:** Form sửa chuẩn hóa `ca` (bỏ `-`), khớp với sổ ca / cài đặt thời gian trước khi PATCH. API từ chối lưu nếu `ca` trống hoặc chỉ là `-`.

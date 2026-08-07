@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `can_tu_dong` |
 | **Tab** | `can-tu-dong` → `/can-tu-dong` |
-| **DB** | Riêng — label `phieu-can` (`SUPABASE_WEIGHING_*`) |
+| **DB** | Riêng — label `can-tu-dong` (`SUPABASE_WEIGHING_*`) |
 | **SQL** | (bảng đã có trên project cân; không migration local) |
 
 ## Env
@@ -18,13 +18,23 @@
 
 | Path | Ghi chú |
 |------|---------|
-| `GET /api/can-tu-dong` | Client `supabaseWeighing`; thêm `preview_url` (Cloudinary hoặc signed storage) |
+| `GET /api/can-tu-dong` | Chuẩn hoá: ảnh `core-weight` → `core_preview_url` (không nhân đôi sang Ảnh cuộn); cuộn từ `PRODUCT_WEIGHT`/`HUMAN_CONFIRMED_PRODUCT`; lõi từ `HUMAN_CONFIRMED_CORE` hoặc cột `weight` khi path lõi |
+| `POST /api/can-tu-dong/bulk-delete` | Body `{ ids: string[]\|number[] }` — xóa nhiều dòng trên DB `can-tu-dong` |
+
+## Cột lõi / cuộn (thực tế gateway)
+
+| Nguồn | UI |
+|------|----|
+| Ảnh cuộn | `product_image_url` / `product_image_path` / `product_image_public_id` → `preview_url` |
+| Ảnh lõi | `core_image_*` (fallback `image_*` nếu path `core-weight`) → `core_preview_url` |
+| Net/Gross cuộn | `HUMAN_CONFIRMED_PRODUCT` / `PRODUCT_WEIGHT` trong `metadata.weight_raw` |
+| TL/Net lõi | `HUMAN_CONFIRMED_CORE` hoặc cột `weight` khi ảnh lõi |
 
 ## Frontend
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | Bảng danh sách + modal ảnh |
+| `src/features/can-tu-dong/index.tsx` | Bảng danh sách + checkbox chọn nhiều + xóa hàng loạt + modal ảnh |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal (không `target="_blank"`) |
 | `src/App.tsx` | Import + route tab |
 

@@ -5,7 +5,7 @@ export function VietNhatLogo({ className = '' }: { className?: string }) {
   return (
     <img
       src={vietNhatLogoUrl}
-      alt="Công ty Việt Nhật - Phú Thọ"
+      alt="Công ty Việt Nhật - Đà Nẵng"
       className={`brand-logo w-auto object-contain ${className}`}
     />
   );

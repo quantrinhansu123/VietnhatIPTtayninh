@@ -74,7 +74,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     label: 'Cân tự động',
     sql: [],
     apiPrefix: '/api/can-tu-dong',
-    serverLines: 'GET /api/can-tu-dong (client supabaseWeighing)',
+    serverLines: 'GET /api/can-tu-dong + POST /api/can-tu-dong/bulk-delete (client supabaseWeighing)',
     appTab: 'can-tu-dong',
     appLines: 'src/features/can-tu-dong/index.tsx',
     components: ['src/components/WeighingImagePreviewModal.tsx'],

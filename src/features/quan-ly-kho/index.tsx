@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, Pencil, Plus, Save, Trash2, Warehouse, X } from 'lucide-react';
+import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import {
@@ -51,6 +52,7 @@ export function normalizeQuanLyKhoRecords(data: unknown): QuanLyKhoRecord[] {
 }
 
 export function QuanLyKhoPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('quan-ly-kho');
   const [records, setRecords] = useState<QuanLyKhoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -194,14 +196,16 @@ export function QuanLyKhoPanel({ onBack }: { onBack: () => void }) {
               </div>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={openCreateForm}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openCreateForm}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -249,22 +253,26 @@ export function QuanLyKhoPanel({ onBack }: { onBack: () => void }) {
                   <td className="px-4 py-3 text-center">
                     <RowActionsMenu label={`Thao tác kho ${row.ten_kho || row.id}`}>
                     <div className="inline-flex items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(row)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#ef1b2d]/40 hover:bg-red-50 hover:text-[#ef1b2d]"
-                        title="Sửa"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(row.id)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                        title="Xóa"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(row)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-[#ef1b2d]/40 hover:bg-red-50 hover:text-[#ef1b2d]"
+                          title="Sửa"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(row.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>

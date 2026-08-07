@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Download, Eye, FileUp, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { useTabAccess } from '../../app/useTabAccess';
 import { pickText } from '../_shared/recordHelpers';
 import { normalizeHrBranches } from '../_shared/hr';
 import { orderFieldClass } from '../_shared/orderHelpers';
 import { showAppToast, showSaveFailure, readApiErrorMessage } from '../../lib/appToast';
-import { downloadCustomerExcel, parseCustomerExcel } from '../../utils/customerExcel';
+import { downloadCustomerExcel, downloadCustomerExcelTemplate, parseCustomerExcel } from '../../utils/customerExcel';
 import {
   FilterCombobox,
   TableToolbar,
@@ -51,7 +52,8 @@ export function normalizeLookupText(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D')
-    .toLowerCase();
+    .toLowerCase()
+    .trim();
 }
 
 export function normalizeStaffOptions(data: unknown): StaffOption[] {
@@ -73,16 +75,13 @@ export function normalizeStaffOptions(data: unknown): StaffOption[] {
 
 export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[] {
   const branches = normalizeHrBranches(data);
-  const staff = branches.flatMap(branch => {
-    const branchText = normalizeLookupText(`${branch.name} ${branch.shortName}`);
-    if (!branchText.includes('da nang')) return [];
-
-    return branch.departments.flatMap(department => {
+  const staff = branches.flatMap(branch =>
+    branch.departments.flatMap(department => {
       const departmentText = normalizeLookupText(department.name);
-      if (!departmentText.includes('kinh doanh')) return [];
+      if (departmentText !== 'phong kinh doanh') return [];
       return department.members.map(member => ({ name: member.name }));
-    });
-  });
+    })
+  );
 
   const seen = new Set<string>();
   return staff
@@ -199,6 +198,7 @@ function emptyForm(code = ''): CustomerForm {
 }
 
 export function CustomersPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('customers');
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedCustomerType, setSelectedCustomerType] = useState('all');
@@ -417,6 +417,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
   }, [customers, normalizedSearch, selectedCustomerType, selectedManagingUnit]);
 
   const openCreate = () => {
+    if (!canCreate) return;
     setEditingId(null);
     setForm(emptyForm(generateNextCustomerCode(customers.map(item => item.code))));
     setAddressLookupMessage('');
@@ -425,6 +426,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openEdit = (customer: CustomerOption) => {
+    if (!canEdit) return;
     setEditingId(customer.dbId || customer.id);
     setForm({
       ma_khach_hang: customer.code,
@@ -512,7 +514,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
   };
 
   const handleExcelImport = async (file?: File | null) => {
-    if (!file) return;
+    if ((!canCreate && !canEdit) || !file) return;
 
     setIsImporting(true);
     setError('');
@@ -520,119 +522,110 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
       const rows = await parseCustomerExcel(file);
       if (rows.length === 0) throw new Error('File Excel không có dòng dữ liệu khách hàng.');
 
-      const invalidRows = rows.filter(row => !row.code.trim() || !row.name.trim());
-      if (invalidRows.length > 0) {
-        throw new Error(
-          `${invalidRows.length} dòng thiếu mã hoặc tên khách hàng. Không có dữ liệu nào bị thay đổi.`
-        );
-      }
-      const codesInFile = new Set<string>();
-      for (const row of rows) {
-        const code = row.code.trim().toUpperCase();
-        if (codesInFile.has(code)) {
-          throw new Error(`Mã khách hàng ${row.code.trim()} bị trùng trong file Excel. Không có dữ liệu nào bị thay đổi.`);
-        }
-        codesInFile.add(code);
-      }
-
-      const confirmed = window.confirm(
-        `Toàn bộ ${customers.length} khách hàng hiện có sẽ bị xóa và thay bằng ${rows.length} dòng từ file Excel. Bạn có chắc chắn không?`
+      const byCode = new Map(
+        customers
+          .map(item => [item.code.trim().toUpperCase(), item] as const)
+          .filter(([code]) => Boolean(code))
       );
-      if (!confirmed) {
-        return;
-      }
+      const generatedCodes = customers.map(item => item.code).filter(Boolean);
 
-      const res = await fetch('/api/khach-hang/replace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customers: rows.map(row => ({
-            ma_khach_hang: row.code.trim(),
-            ten_khach_hang: row.name.trim(),
-            dia_chi: row.address.trim(),
-            dia_chi_moi: row.newAddress.trim(),
-            cong_no: row.debt.trim() ? Number(row.debt.trim()) : 0,
-            ma_so_thue: row.taxCode.trim(),
-            so_dien_thoai: normalizePhoneList(row.phone),
-            dt_di_dong_nlh: normalizePhoneList(row.mobilePhoneNlh),
-            la_doi_tuong_noi_bo: ['true', '1', 'co', 'có', 'x', 'yes'].includes(
-              row.isInternal.trim().toLowerCase()
-            ),
-            don_vi_quan_ly: row.managingUnit.trim(),
-            ghi_chu: row.note.trim()
-          }))
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(readApiErrorMessage(res, data, 'Không thể thay thế danh sách khách hàng.'));
-      }
-
-      await loadCustomers();
-      const total = Number(data.total) || rows.length;
-      const message = `Đã thay thế toàn bộ danh sách bằng ${total} khách hàng từ Excel.`;
-      showAppToast(message);
-      return;
-
-      /* Legacy append-only import kept inactive while the replacement import is in use.
-      if (rows.length === 0) throw new Error('File Excel không có dòng dữ liệu khách hàng.');
-
-      const existingCodes = new Set(customers.map(item => item.code.trim().toUpperCase()).filter(Boolean));
-      const seenFileCodes = new Set<string>();
-      const importRows = rows.filter(row => {
-        const code = row.code.trim().toUpperCase();
-        if (!code) return true;
-        if (existingCodes.has(code) || seenFileCodes.has(code)) return false;
-        seenFileCodes.add(code);
-        return true;
-      });
-      const skipped = rows.length - importRows.length;
-      const invalid = importRows.filter(row => !row.name.trim());
-      const validRows = importRows.filter(row => row.name.trim());
-
-      let imported = 0;
+      let created = 0;
+      let updated = 0;
       const failures: string[] = [];
-      for (const row of validRows) {
-        const res = await fetch('/api/khach-hang', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ma_khach_hang: row.code.trim(),
-            ten_khach_hang: row.name.trim(),
-            dia_chi: row.address.trim(),
-            dia_chi_moi: row.newAddress.trim(),
-            cong_no: row.debt.trim() ? Number(row.debt.trim()) : 0,
-            ma_so_thue: row.taxCode.trim(),
-            so_dien_thoai: normalizePhoneList(row.phone),
-            dt_di_dong_nlh: normalizePhoneList(row.mobilePhoneNlh),
-            la_doi_tuong_noi_bo: ['true', '1', 'co', 'có', 'x', 'yes'].includes(
-              row.isInternal.trim().toLowerCase()
-            ),
-            don_vi_quan_ly: row.managingUnit.trim(),
-            ghi_chu: row.note.trim()
-          })
-        });
+      const seenFileCodes = new Set<string>();
+
+      for (const row of rows) {
+        const name = row.name.trim();
+        if (!name) {
+          failures.push(`dòng ${row.rowNumber}: thiếu tên khách hàng`);
+          continue;
+        }
+
+        let code = row.code.trim();
+        if (!code) {
+          code = generateNextCustomerCode(generatedCodes);
+          generatedCodes.push(code);
+        }
+
+        const codeKey = code.toUpperCase();
+        if (seenFileCodes.has(codeKey)) {
+          failures.push(`dòng ${row.rowNumber}: mã ${code} trùng trong file`);
+          continue;
+        }
+        seenFileCodes.add(codeKey);
+
+        const payload = {
+          ma_khach_hang: code,
+          ten_khach_hang: name,
+          dia_chi: row.address.trim(),
+          dia_chi_moi: row.newAddress.trim(),
+          cong_no: row.debt.trim() ? Number(String(row.debt).trim().replace(',', '.')) || 0 : 0,
+          ma_so_thue: row.taxCode.trim(),
+          so_dien_thoai: normalizePhoneList(row.phone),
+          dt_di_dong_nlh: normalizePhoneList(row.mobilePhoneNlh),
+          la_doi_tuong_noi_bo: ['true', '1', 'co', 'có', 'x', 'yes'].includes(
+            row.isInternal.trim().toLowerCase()
+          ),
+          don_vi_quan_ly: row.managingUnit.trim(),
+          ghi_chu: row.note.trim()
+        };
+
+        const existing = byCode.get(codeKey);
+        const res = existing
+          ? await fetch(`/api/khach-hang/${encodeURIComponent(existing.code || existing.id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+          : await fetch('/api/khach-hang', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          failures.push(`dòng ${row.rowNumber}: ${readApiErrorMessage(res, data, 'Không thể thêm')}`);
+          failures.push(`dòng ${row.rowNumber}: ${readApiErrorMessage(res, data, 'Không lưu được')}`);
+          continue;
+        }
+
+        if (existing) {
+          updated += 1;
         } else {
-          imported += 1;
+          created += 1;
+          byCode.set(codeKey, {
+            id: code,
+            dbId: '',
+            code,
+            name,
+            address: payload.dia_chi,
+            newAddress: payload.dia_chi_moi,
+            debt: Number(payload.cong_no) || 0,
+            taxCode: payload.ma_so_thue,
+            phone: payload.so_dien_thoai,
+            mobilePhoneNlh: payload.dt_di_dong_nlh,
+            isInternal: payload.la_doi_tuong_noi_bo,
+            managingUnit: payload.don_vi_quan_ly,
+            note: payload.ghi_chu
+          });
+          if (!generatedCodes.some(item => item.toUpperCase() === codeKey)) {
+            generatedCodes.push(code);
+          }
         }
       }
 
-      if (imported > 0) await loadCustomers();
-      const details = [
-        `Đã nhập ${imported}/${rows.length} khách hàng.`,
-        skipped ? `Bỏ qua ${skipped} mã trùng.` : '',
-        invalid.length ? `${invalid.length} dòng thiếu tên.` : '',
+      if (created > 0 || updated > 0) {
+        await loadCustomers();
+      }
+
+      const summary = [
+        created || updated ? `Đã nhập Excel: thêm ${created}, cập nhật ${updated}.` : 'Không nhập được dòng nào.',
         failures.length ? `${failures.length} dòng lỗi (${failures.slice(0, 3).join('; ')}).` : ''
       ]
         .filter(Boolean)
         .join(' ');
-      setImportMessage(details);
-      if (imported > 0) showAppToast(`Đã nhập ${imported} khách hàng từ Excel.`);
-      if (imported === 0 && (invalid.length > 0 || failures.length > 0)) setError(details);
-      */
+
+      if (created > 0 || updated > 0) showAppToast(summary);
+      else setError(summary);
     } catch (importError: unknown) {
       setError(showSaveFailure(importError, 'Không thể đọc hoặc nhập file Excel.'));
     } finally {
@@ -647,22 +640,35 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => downloadCustomerExcel(customers)}
-            disabled={isImporting || isLoading || customers.length === 0}
+            onClick={() => downloadCustomerExcelTemplate()}
+            disabled={isImporting || isLoading}
             className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-black text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+            title="Tải file mẫu nhập khách hàng (ô trống vẫn được)"
           >
             <Download className="h-4 w-4" />
             Tải mẫu Excel
           </button>
           <button
             type="button"
-            onClick={() => excelInputRef.current?.click()}
-            disabled={isImporting || isLoading}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+            onClick={() => downloadCustomerExcel(customers)}
+            disabled={isImporting || isLoading || customers.length === 0}
+            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-black text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50"
+            title="Xuất danh sách khách hàng hiện tại"
           >
-            {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-            {isImporting ? 'Đang nhập...' : 'Tải Excel lên'}
+            <Download className="h-4 w-4" />
+            Xuất Excel
           </button>
+          {canCreate || canEdit ? (
+            <button
+              type="button"
+              onClick={() => excelInputRef.current?.click()}
+              disabled={isImporting || isLoading}
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              {isImporting ? 'Đang nhập...' : 'Tải Excel lên'}
+            </button>
+          ) : null}
           <input
             ref={excelInputRef}
             type="file"
@@ -678,14 +684,16 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
           >
             {isLoading ? 'Đang tải...' : 'Tải lại'}
           </button>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c]"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm khách hàng
-          </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm khách hàng
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -799,27 +807,31 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(customer)}
-                        title="Sửa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-700 transition hover:bg-sky-50"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(customer)}
-                        disabled={deletingId === (customer.dbId || customer.id)}
-                        title="Xóa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
-                      >
-                        {deletingId === (customer.dbId || customer.id) ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(customer)}
+                          title="Sửa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-700 transition hover:bg-sky-50"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(customer)}
+                          disabled={deletingId === (customer.dbId || customer.id)}
+                          title="Xóa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          {deletingId === (customer.dbId || customer.id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -1061,18 +1073,20 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => {
-                  const customer = viewingCustomer;
-                  setViewingCustomer(null);
-                  if (customer) openEdit(customer);
-                }}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white"
-              >
-                <Pencil className="h-4 w-4" />
-                Sửa
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const customer = viewingCustomer;
+                    setViewingCustomer(null);
+                    if (customer) openEdit(customer);
+                  }}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Sửa
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

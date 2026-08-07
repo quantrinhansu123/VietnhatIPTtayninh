@@ -1,4 +1,4 @@
-const FACTORY_PLACEHOLDER = 'Nhà máy Đà Nẵng';
+import { FACTORY_PLACEHOLDER } from '../components/layout/constants';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();

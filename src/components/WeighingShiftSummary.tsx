@@ -11,14 +11,15 @@ import {
   Trash2
 } from 'lucide-react';
 import WeighingReportForm from './WeighingReportForm';
-import WeighingSlipSetupModal, { type SlipSetupPayload } from './WeighingSlipSetupModal';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
 } from './WeighingImagePreviewModal';
+import { FACTORY_PLACEHOLDER } from './layout/constants';
 import { WeighingSlipPrintBatch, type WeighingSlipPrintData } from './WeighingSlipPrintSheet';
 import { RowActionsMenu } from './shared/table';
 import { DEFAULT_WEIGHING_SLIP_CONFIG, type WeighingSlipConfig } from '../lib/weighingSlipConfig';
+import { useTabAccess } from '../app/useTabAccess';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import {
   getProductionShiftOptions,
@@ -34,7 +35,6 @@ import {
   formatWeighingRowTotalWeight,
   formatWeighingNetWeight,
   formatWeighingWeightField,
-  generateWeighingDocumentNo,
   getWeighingDataRows,
   isDamagedOtherMaterial,
   normalizeWeighingRecords,
@@ -43,8 +43,6 @@ import {
   type WeighingPendingAdd,
   type WeighingRecord
 } from '../utils/weighingRecords';
-
-const FACTORY_PLACEHOLDER = 'Nhà máy Đà Nẵng';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();
@@ -235,6 +233,9 @@ function ShiftSlipCard({
   splitDamagedPlasticDefectWeights,
   splitPlasticFilmWeights,
   hideProductFields,
+  canCreate,
+  canEdit,
+  canDelete,
   onOpenSlipSetup,
   onPrintSlip,
   onEditSlip,
@@ -253,6 +254,9 @@ function ShiftSlipCard({
   splitDamagedPlasticDefectWeights: boolean;
   splitPlasticFilmWeights: boolean;
   hideProductFields: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onOpenSlipSetup: (options: { productionDate: string; shiftName?: string }) => void;
   onPrintSlip: (slip: WeighingSlip) => void;
   onEditSlip: (slip: WeighingSlip) => void;
@@ -305,42 +309,48 @@ function ShiftSlipCard({
               >
                 <Printer className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={() => onEditSlip(primarySlip)}
-                title="Sửa phiếu"
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDeleteSlip(primarySlip)}
-                disabled={deletingSlipKey === primarySlip.key}
-                title="Xóa phiếu"
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {deletingSlipKey === primarySlip.key ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => onEditSlip(primarySlip)}
+                  title="Sửa phiếu"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              {canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => onDeleteSlip(primarySlip)}
+                  disabled={deletingSlipKey === primarySlip.key}
+                  title="Xóa phiếu"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletingSlipKey === primarySlip.key ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              ) : null}
             </>
           )}
-          <button
-            type="button"
-            onClick={() =>
-              onOpenSlipSetup({
-                productionDate,
-                shiftName: shift.shiftKey
-              })
-            }
-            className="flex h-7 items-center gap-1 rounded-lg bg-red-50 px-2 text-[10px] font-bold text-[#ef1b2d] transition hover:bg-red-100"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Thêm
-          </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={() =>
+                onOpenSlipSetup({
+                  productionDate,
+                  shiftName: shift.shiftKey
+                })
+              }
+              className="flex h-7 items-center gap-1 rounded-lg bg-red-50 px-2 text-[10px] font-bold text-[#ef1b2d] transition hover:bg-red-100"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Thêm
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -554,27 +564,31 @@ function ShiftSlipCard({
                                 >
                                   <Eye className="h-3.5 w-3.5" />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onEditRow(entry.slip, entry.row)}
-                                  title="Sửa"
-                                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDeleteRow(entry.row)}
-                                  disabled={deletingRowId === entry.row.id}
-                                  title="Xóa"
-                                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {deletingRowId === entry.row.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  )}
-                                </button>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditRow(entry.slip, entry.row)}
+                                    title="Sửa"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDeleteRow(entry.row)}
+                                    disabled={deletingRowId === entry.row.id}
+                                    title="Xóa"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {deletingRowId === entry.row.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                ) : null}
                               </div>
                               </RowActionsMenu>
                             </td>
@@ -600,6 +614,9 @@ function DateGroupSection({
   splitDamagedPlasticDefectWeights,
   splitPlasticFilmWeights,
   hideProductFields,
+  canCreate,
+  canEdit,
+  canDelete,
   onOpenSlipSetup,
   onPrintSlip,
   onEditSlip,
@@ -618,6 +635,9 @@ function DateGroupSection({
   splitDamagedPlasticDefectWeights: boolean;
   splitPlasticFilmWeights: boolean;
   hideProductFields: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onOpenSlipSetup: (options: { productionDate: string; shiftName?: string }) => void;
   onPrintSlip: (slip: WeighingSlip) => void;
   onEditSlip: (slip: WeighingSlip) => void;
@@ -647,7 +667,7 @@ function DateGroupSection({
             {group.slipCount} phiếu · {group.totalWeighRounds} lần cân
           </span>
         </div>
-        {shiftOptions.length > 0 && (
+        {canCreate && shiftOptions.length > 0 && (
           <div className="flex shrink-0 items-center gap-1.5">
             <select
               value={addShiftKey}
@@ -681,6 +701,9 @@ function DateGroupSection({
             splitDamagedPlasticDefectWeights={splitDamagedPlasticDefectWeights}
             splitPlasticFilmWeights={splitPlasticFilmWeights}
             hideProductFields={hideProductFields}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
             onOpenSlipSetup={onOpenSlipSetup}
             onPrintSlip={onPrintSlip}
             onEditSlip={onEditSlip}
@@ -714,6 +737,7 @@ export default function WeighingShiftSummary({
   const splitPlasticFilmWeights = Boolean(config.splitPlasticFilmWeights);
   const splitDamagedPlasticDefectWeights = Boolean(config.splitDamagedPlasticDefectWeights);
   const hideProductFields = Boolean(config.hideProductFields);
+  const { canCreate, canEdit, canDelete } = useTabAccess(config.accessTab || 'weighing-summary-list');
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
@@ -727,10 +751,6 @@ export default function WeighingShiftSummary({
   const [actionMessage, setActionMessage] = useState('');
   const [showReportForm, setShowReportForm] = useState(defaultShowForm);
   const [pendingAdd, setPendingAdd] = useState<WeighingPendingAdd | null>(null);
-  const [slipSetupOpen, setSlipSetupOpen] = useState(false);
-  const [slipSetupDefaults, setSlipSetupDefaults] = useState<{ productionDate: string; shiftName?: string }>({
-    productionDate: today
-  });
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [printSlip, setPrintSlip] = useState<WeighingSlipPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
@@ -749,41 +769,18 @@ export default function WeighingShiftSummary({
   }, [initialPendingAdd, onInitialPendingConsumed]);
 
   const handleOpenSlipSetup = (options: { productionDate: string; shiftName?: string }) => {
-    setSlipSetupDefaults(options);
-    setSlipSetupOpen(true);
-  };
-
-  const handleCreateSlipHeader = async (payload: SlipSetupPayload) => {
-    const documentNo = generateWeighingDocumentNo(payload.productionDate);
-    const headerRow = {
-      productionDate: payload.productionDate,
-      shiftName: payload.shiftName,
-      worker1: payload.worker1,
-      worker2: payload.worker2,
-      machineName: payload.machineName
-    };
-
-    const res = await fetch(config.apiBasePath, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        documentNo,
-        reportDate: payload.productionDate,
-        productionDate: payload.productionDate,
-        shiftName: payload.shiftName,
-        worker1: payload.worker1,
-        worker2: payload.worker2,
-        rows: [headerRow]
-      })
+    if (!canCreate) return;
+    handleOpenReportForm({
+      productionDate: options.productionDate || dateTo,
+      shiftName: options.shiftName || '',
+      worker1: '',
+      worker2: '',
+      machineName: '',
+      productCode: '',
+      productName: '',
+      createNewSlip: true,
+      newWeighRound: true
     });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || 'Không thể tạo phiếu mới.');
-    }
-
-    await loadReports();
-    setActionMessage('Đã tạo phiếu mới.');
   };
 
   const handleOpenReportForm = (options: WeighingPendingAdd) => {
@@ -904,6 +901,7 @@ export default function WeighingShiftSummary({
   };
 
   const handleDeleteRow = async (row: WeighingRecord) => {
+    if (!canDelete) return;
     if (!row.id) {
       setActionMessage('Không tìm thấy ID dòng để xóa.');
       return;
@@ -932,6 +930,7 @@ export default function WeighingShiftSummary({
   };
 
   const handleEditRow = (slip: WeighingSlip, row: WeighingRecord) => {
+    if (!canEdit) return;
     handleOpenReportForm({
       productionDate: slip.productionDate,
       shiftName: slip.shiftName,
@@ -946,6 +945,7 @@ export default function WeighingShiftSummary({
   };
 
   const handleEditSlip = (slip: WeighingSlip) => {
+    if (!canEdit) return;
     handleOpenReportForm({
       productionDate: slip.productionDate,
       shiftName: slip.shiftName,
@@ -964,6 +964,7 @@ export default function WeighingShiftSummary({
   };
 
   const handleDeleteSlip = async (slip: WeighingSlip) => {
+    if (!canDelete) return;
     const deletableRows = slip.rows.filter(row => row.id);
     if (deletableRows.length === 0) {
       setActionMessage('Không tìm thấy ID dòng trong phiếu để xóa.');
@@ -1056,6 +1057,7 @@ export default function WeighingShiftSummary({
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Làm mới
             </button>
+            {canCreate ? (
             <button
               type="button"
               onClick={() => handleOpenSlipSetup({ productionDate: dateTo })}
@@ -1064,6 +1066,7 @@ export default function WeighingShiftSummary({
               <Plus className="h-4 w-4" />
               Thêm báo cáo
             </button>
+            ) : null}
           </div>
         </div>
       </section>
@@ -1101,6 +1104,9 @@ export default function WeighingShiftSummary({
                 splitDamagedPlasticDefectWeights={splitDamagedPlasticDefectWeights}
                 splitPlasticFilmWeights={splitPlasticFilmWeights}
                 hideProductFields={hideProductFields}
+                canCreate={canCreate}
+                canEdit={canEdit}
+                canDelete={canDelete}
                 onOpenSlipSetup={handleOpenSlipSetup}
                 onPrintSlip={handlePrintSlip}
                 onEditSlip={handleEditSlip}
@@ -1117,6 +1123,7 @@ export default function WeighingShiftSummary({
         </div>
       )}
 
+      {canCreate ? (
       <button
         type="button"
         onClick={() => handleOpenSlipSetup({ productionDate: dateTo })}
@@ -1125,11 +1132,11 @@ export default function WeighingShiftSummary({
         <Plus className="h-5 w-5" />
         Thêm báo cáo
       </button>
+      ) : null}
 
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
 
-      {viewingRow && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      {viewingRow && (        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="w-full max-w-lg rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
@@ -1304,7 +1311,7 @@ export default function WeighingShiftSummary({
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
-              {viewingRowSlip && (
+              {viewingRowSlip && canEdit ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1316,7 +1323,7 @@ export default function WeighingShiftSummary({
                   <Pencil className="h-3.5 w-3.5" />
                   Sửa
                 </button>
-              )}
+              ) : null}
               <button
                 type="button"
                 onClick={() => setViewingRow(null)}
@@ -1328,14 +1335,6 @@ export default function WeighingShiftSummary({
           </div>
         </div>
       )}
-
-      <WeighingSlipSetupModal
-        open={slipSetupOpen}
-        initialProductionDate={slipSetupDefaults.productionDate}
-        initialShiftName={slipSetupDefaults.shiftName}
-        onClose={() => setSlipSetupOpen(false)}
-        onCreate={handleCreateSlipHeader}
-      />
 
       <WeighingSlipPrintBatch
         slip={printSlip}

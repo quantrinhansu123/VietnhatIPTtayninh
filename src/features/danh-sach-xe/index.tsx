@@ -31,6 +31,7 @@ import {
   fileToOptimizedImageDataUrl,
   uploadImage
 } from '../_shared/recordHelpers';
+import { useTabAccess } from '../../app/useTabAccess';
 import {
   FilterCombobox,
   StatusBadge,
@@ -41,9 +42,9 @@ import {
   TableRow,
   TableSearchInput,
   TableShell,
-    TableToolbar,
-    RowActionsMenu,
-    type StatusBadgeColor
+  TableToolbar,
+  RowActionsMenu,
+  type StatusBadgeColor
 } from '../../components/shared/table';
 import {
   CustomerPaymentsView,
@@ -283,6 +284,7 @@ export function VehiclesPanel({
   onBack: () => void;
   currentUser?: { id: string; name: string } | null;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [activeView, setActiveView] = useState<VehicleView | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [rows, setRows] = useState<DriverReconciliation[]>([]);
@@ -462,7 +464,7 @@ export function VehiclesPanel({
               <p className="text-[11px] font-medium text-slate-500">Danh mục, chi phí, nhật ký và đối chiếu lái xe</p>
             </div>
           </div>
-          {activeView === 'vehicles' && (
+          {activeView === 'vehicles' && canCreate ? (
             <button
               type="button"
               onClick={() => setVehicleModal({ mode: 'create' })}
@@ -471,7 +473,7 @@ export function VehiclesPanel({
               <Plus className="h-4 w-4" />
               Thêm xe
             </button>
-          )}
+          ) : null}
         </div>
         {!activeView && (
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -582,12 +584,16 @@ export function VehiclesPanel({
                           <IconButton label="Xem chi tiết" onClick={() => setViewingVehicle(vehicle)}>
                             <Eye className="h-3.5 w-3.5" />
                           </IconButton>
-                          <IconButton label="Sửa" onClick={() => setVehicleModal({ mode: 'edit', vehicle })}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </IconButton>
-                          <IconButton label="Xóa" danger onClick={() => void deleteVehicle(vehicle)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </IconButton>
+                          {canEdit ? (
+                            <IconButton label="Sửa" onClick={() => setVehicleModal({ mode: 'edit', vehicle })}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </IconButton>
+                          ) : null}
+                          {canDelete ? (
+                            <IconButton label="Xóa" danger onClick={() => void deleteVehicle(vehicle)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </IconButton>
+                          ) : null}
                         </div>
                         </RowActionsMenu>
                       </td>
@@ -710,12 +716,16 @@ export function VehiclesPanel({
                     <td className="px-2.5 py-2.5">
                       <RowActionsMenu label={`Thao tác ${row.ten_tai_xe}`}>
                       <div className="flex justify-center gap-1">
-                        <IconButton label="Sửa" onClick={() => setRowModal({ mode: 'edit', row })}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </IconButton>
-                        <IconButton label="Xóa" danger onClick={() => void deleteRow(row)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </IconButton>
+                        {canEdit ? (
+                          <IconButton label="Sửa" onClick={() => setRowModal({ mode: 'edit', row })}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </IconButton>
+                        ) : null}
+                        {canDelete ? (
+                          <IconButton label="Xóa" danger onClick={() => void deleteRow(row)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </IconButton>
+                        ) : null}
                       </div>
                       </RowActionsMenu>
                     </td>
@@ -761,6 +771,7 @@ export function VehiclesPanel({
       {viewingVehicle && (
         <VehicleDetailModal
           vehicle={viewingVehicle}
+          canEdit={canEdit}
           onClose={() => setViewingVehicle(null)}
           onDocumentsChanged={loadVehicles}
           onEdit={() => {
@@ -877,12 +888,14 @@ function VehicleDetailModal({
   vehicle,
   onClose,
   onEdit,
-  onDocumentsChanged
+  onDocumentsChanged,
+  canEdit = false
 }: {
   vehicle: Vehicle;
   onClose: () => void;
   onEdit: () => void;
   onDocumentsChanged: () => void | Promise<void>;
+  canEdit?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<'info' | 'documents'>('info');
   const [documents, setDocuments] = useState<VehicleDocument[]>(vehicle.giay_to);
@@ -916,10 +929,12 @@ function VehicleDetailModal({
           <button type="button" onClick={onClose} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700">
             Đóng
           </button>
-          <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-500 px-4 text-sm font-extrabold text-white hover:bg-brand-600">
-            <Pencil className="h-4 w-4" />
-            Sửa thông tin
-          </button>
+          {canEdit ? (
+            <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand-500 px-4 text-sm font-extrabold text-white hover:bg-brand-600">
+              <Pencil className="h-4 w-4" />
+              Sửa thông tin
+            </button>
+          ) : null}
         </div>
       }
     >
@@ -971,14 +986,16 @@ function VehicleDetailModal({
             <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">Hồ sơ giấy tờ</h4>
             <p className="mt-0.5 text-[10.5px] font-medium text-slate-500">{documents.length} loại giấy tờ</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsAddingDocument(true)}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white shadow-sm hover:bg-brand-600"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm giấy tờ
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => setIsAddingDocument(true)}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white shadow-sm hover:bg-brand-600"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm giấy tờ
+            </button>
+          ) : null}
         </div>
 
         {documents.length > 0 ? (
@@ -1030,14 +1047,16 @@ function VehicleDetailModal({
             <p className="mt-3 max-w-sm text-sm font-bold leading-relaxed text-slate-500">
               Chưa có thông tin đăng kiểm, bằng lái hoặc giấy tờ khác.
             </p>
-            <button
-              type="button"
-              onClick={() => setIsAddingDocument(true)}
-              className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 text-xs font-extrabold text-brand-700 shadow-sm hover:bg-brand-50"
-            >
-              <Plus className="h-4 w-4" />
-              Thêm giấy tờ đầu tiên
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setIsAddingDocument(true)}
+                className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 text-xs font-extrabold text-brand-700 shadow-sm hover:bg-brand-50"
+              >
+                <Plus className="h-4 w-4" />
+                Thêm giấy tờ đầu tiên
+              </button>
+            ) : null}
           </div>
         )}
       </section>
@@ -1267,13 +1286,8 @@ function VehicleDetailModal({
 }
 
 const DEFAULT_VEHICLE_TYPE_OPTIONS = [
-  'Xe tải 1.4T',
-  'Xe tải 2.5T',
-  'Xe tải 3.5T',
-  'Xe tải 5T',
-  'Xe van',
-  'Xe bán tải',
-  'Xe container'
+  '1,5 tấn',
+  '6 tấn'
 ];
 
 const splitAssignedDrivers = (value: string) =>
@@ -1377,7 +1391,7 @@ function VehicleModal({
   const loaiXeSuggestions = useMemo(() => {
     const seen = new Set<string>();
     const options: string[] = [];
-    for (const value of [...vehicleTypeOptions, ...DEFAULT_VEHICLE_TYPE_OPTIONS]) {
+    for (const value of [...DEFAULT_VEHICLE_TYPE_OPTIONS, ...vehicleTypeOptions, form.loai_xe]) {
       const trimmed = String(value || '').trim();
       if (!trimmed) continue;
       const key = trimmed.toLowerCase();
@@ -1385,8 +1399,8 @@ function VehicleModal({
       seen.add(key);
       options.push(trimmed);
     }
-    return options.sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [vehicleTypeOptions]);
+    return options.sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [form.loai_xe, vehicleTypeOptions]);
 
   const updateDocuments = (documents: VehicleDocument[]) => {
     setForm(prev => ({
@@ -1476,19 +1490,18 @@ function VehicleModal({
       {error && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Loại xe *">
-          <input
-            list="vehicle-type-suggestions"
+          <select
             value={form.loai_xe}
             onChange={event => setForm(prev => ({ ...prev, loai_xe: event.target.value }))}
             className={inputClass}
-            placeholder="Chọn hoặc nhập loại xe"
-            autoComplete="off"
-          />
-          <datalist id="vehicle-type-suggestions">
+          >
+            <option value="">Chọn loại xe</option>
             {loaiXeSuggestions.map(type => (
-              <option key={type} value={type} />
+              <option key={type} value={type}>
+                {type}
+              </option>
             ))}
-          </datalist>
+          </select>
         </Field>
         <Field label="Biển số xe (BSX) *">
           <input value={form.bien_so_xe} onChange={event => setForm(prev => ({ ...prev, bien_so_xe: event.target.value.toUpperCase() }))} className={`${inputClass} font-mono`} placeholder="VD: 51D-251.05" />

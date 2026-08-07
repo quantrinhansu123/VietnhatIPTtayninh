@@ -58,7 +58,11 @@ function cellToText(value: unknown) {
 }
 
 function findColumn(headers: string[], aliases: string[]) {
-  return headers.findIndex(header => aliases.includes(header));
+  const exact = headers.findIndex(header => aliases.some(alias => header === alias));
+  if (exact >= 0) return exact;
+  return headers.findIndex(header =>
+    aliases.some(alias => alias.length >= 4 && (header.includes(alias) || alias.includes(header)))
+  );
 }
 
 export async function parseCustomerExcel(file: File): Promise<CustomerExcelRow[]> {
@@ -133,23 +137,24 @@ export function downloadCustomerExcelTemplate() {
       'Mã số thuế/CCCD chủ hộ',
       'Điện thoại',
       'ĐT di động NLH',
-      'Là Đối tượng nội bộ',
-      'Đơn vị Quản lý',
+      'Là đối tượng nội bộ',
+      'Đơn vị quản lý',
       'Ghi chú'
     ],
     [
       'KH001',
       'Công ty mẫu',
-      'Địa chỉ trước đây',
-      'Địa chỉ hiện tại',
-      '0',
-      '0123456789',
-      '0123456789, 0213456789',
-      '0901234567, 0912345678',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
       'Không',
-      'Chi nhánh Đà Nẵng',
-      'Xóa dòng mẫu này trước khi nhập'
-    ]
+      '',
+      ''
+    ],
+    ['KH002', 'Khách hàng để trống các cột còn lại', '', '', '', '', '', '', '', '', '']
   ]);
   worksheet['!cols'] = [
     { wch: 18 },
@@ -158,8 +163,8 @@ export function downloadCustomerExcelTemplate() {
     { wch: 40 },
     { wch: 16 },
     { wch: 24 },
-    { wch: 18 },
-    { wch: 18 },
+    { wch: 24 },
+    { wch: 24 },
     { wch: 20 },
     { wch: 24 },
     { wch: 36 }

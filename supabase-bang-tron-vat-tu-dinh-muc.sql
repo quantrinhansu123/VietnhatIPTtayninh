@@ -10,6 +10,7 @@ create table if not exists public.bang_tron_vat_tu_dinh_muc (
 alter table public.bang_tron_vat_tu_dinh_muc
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists ngay date,
+  add column if not exists ca text,
   add column if not exists ma_lenh_sx text,
   add column if not exists tong_trong_luong numeric,
   add column if not exists ghi_chu text,
@@ -27,6 +28,9 @@ create index if not exists bang_tron_vat_tu_dinh_muc_ngay_idx
 
 create index if not exists bang_tron_vat_tu_dinh_muc_ma_lenh_sx_idx
   on public.bang_tron_vat_tu_dinh_muc (ma_lenh_sx);
+
+create index if not exists bang_tron_vat_tu_dinh_muc_ngay_ca_idx
+  on public.bang_tron_vat_tu_dinh_muc (ngay desc, ca);
 
 alter table public.bang_tron_vat_tu_dinh_muc enable row level security;
 

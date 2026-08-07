@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTabAccess } from '../../app/useTabAccess';
 import {
   BookOpen,
   ChevronDown,
@@ -284,7 +285,7 @@ function printVehicleExpenses(
     <main class="sheet">
       <header class="header">
         <img class="logo" src="${escapePrintHtml(vietNhatLogoUrl)}" alt="Việt Nhật">
-        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Số 21 đường Phước Lý 10 - P. Hòa Minh, Q. Liên Chiểu, Đà Nẵng</div>
+        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Chi nhánh Phú Thọ</div>
       </header>
       <h1>BÁO CÁO – CHI PHÍ – LÁI XE</h1>
       <div class="meta">
@@ -310,7 +311,7 @@ function printVehicleExpenses(
       <div class="section">V. Hóa đơn nợ và chuyển khoản</div>
       <table><thead><tr><th>STT</th><th>Khách hàng</th><th>Số tiền</th><th>Người cho nợ</th></tr></thead><tbody>${[1,2,3].map(i => `<tr><td class="center">${i}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</tbody></table>
       <table class="summary"><tr><td>TỔNG THU</td><td></td></tr><tr><td>CHI PHÍ</td><td class="money">${escapePrintHtml(formatMoney(total))}</td></tr><tr><td>CÒN NỘP</td><td></td></tr></table>
-      <div class="sign-date">Đà Nẵng, ngày ...... tháng ...... năm ........</div>
+      <div class="sign-date">Phú Thọ, ngày ...... tháng ...... năm ........</div>
       <div class="sign-grid">
         <div class="sign-box">
           <div class="sign-title">Lái xe</div>
@@ -387,7 +388,7 @@ function printVehicleKmLogs(
     <main class="sheet">
       <header class="header">
         <img class="logo" src="${escapePrintHtml(vietNhatLogoUrl)}" alt="Việt Nhật">
-        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Đ/c: Số 21 đường Phước Lý 10 - P. Hòa Minh, Q. Liên Chiểu, Đà Nẵng</div>
+        <div class="company">Công ty cổ phần vật liệu cách nhiệt Việt Nhật<br>Đ/c: Chi nhánh Phú Thọ</div>
       </header>
       <h1>PHIẾU XÁC NHẬN KM LÁI XE</h1>
       <div class="meta">
@@ -894,13 +895,15 @@ function ViewHeader({
   subtitle,
   count,
   buttonLabel,
-  onAdd
+  onAdd,
+  showAdd = true
 }: {
   title: string;
   subtitle: string;
   count: number;
   buttonLabel: string;
   onAdd: () => void;
+  showAdd?: boolean;
 }) {
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -908,14 +911,16 @@ function ViewHeader({
         <h3 className="text-sm font-black text-slate-900">{title}</h3>
         <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{subtitle} · {count} dòng</p>
       </div>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
-      >
-        <Plus className="h-4 w-4" />
-        {buttonLabel}
-      </button>
+      {showAdd ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
+        >
+          <Plus className="h-4 w-4" />
+          {buttonLabel}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -1137,6 +1142,7 @@ export function VehicleDeliveryRequestsView({
   vehicles: VehicleOption[];
   staff: StaffOption[];
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [rows, setRows] = useState<VehicleDeliveryRequest[]>([]);
   const [shippingOrders, setShippingOrders] = useState<BusinessShippingOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1242,7 +1248,7 @@ export function VehicleDeliveryRequestsView({
 
   return (
     <>
-      <ViewHeader title="Yêu cầu xuất hàng" subtitle="Điều phối giao hàng theo xe và lái xe" count={filteredRows.length} buttonLabel="Thêm yêu cầu" onAdd={() => setEditing(null)} />
+      <ViewHeader title="Yêu cầu xuất hàng" subtitle="Điều phối giao hàng theo xe và lái xe" count={filteredRows.length} buttonLabel="Thêm yêu cầu" showAdd={canCreate} onAdd={() => setEditing(null)} />
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
 
       <TableToolbar isLoading={isLoading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
@@ -1296,7 +1302,7 @@ export function VehicleDeliveryRequestsView({
                 <td className="px-3 py-2.5">
                   <StatusBadge label={row.trang_thai} color={deliveryRequestStatusColor(row.trang_thai)} />
                 </td>
-                <td className="px-3 py-2.5 text-center"><RowActionsMenu label={`Thao tác ${row.so_yeu_cau}`}><div className="flex justify-center gap-1"><ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton><ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton></div></RowActionsMenu></td>
+                <td className="px-3 py-2.5 text-center"><RowActionsMenu label={`Thao tác ${row.so_yeu_cau}`}><div className="flex justify-center gap-1">{canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}{canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}</div></RowActionsMenu></td>
               </TableRow>
             </React.Fragment>
           ))}
@@ -1453,6 +1459,7 @@ export function VehicleExpensesView({
   staff: StaffOption[];
   currentUser?: { id: string; name: string } | null;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [rows, setRows] = useState<VehicleExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1519,7 +1526,7 @@ export function VehicleExpensesView({
 
   return (
     <>
-      <ViewHeader title="Chi phí xe" subtitle={`Tổng theo bộ lọc ${formatMoney(total)}`} count={filteredRows.length} buttonLabel="Thêm chi phí" onAdd={() => setEditing(null)} />
+      <ViewHeader title="Chi phí xe" subtitle={`Tổng theo bộ lọc ${formatMoney(total)}`} count={filteredRows.length} buttonLabel="Thêm chi phí" showAdd={canCreate} onAdd={() => setEditing(null)} />
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       {warning && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{warning}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -1617,8 +1624,8 @@ export function VehicleExpensesView({
                   <td className="px-3 py-2.5">
                     <RowActionsMenu label={`Thao tác chi phí ${row.id}`}>
                     <div className="flex justify-center gap-1">
-                      <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                      <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                      {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                      {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -1637,8 +1644,8 @@ export function VehicleExpensesView({
                 </div>
                 <RowActionsMenu label={`Thao tác chi phí ${row.id}`}>
                 <div className="flex gap-1">
-                  <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                  <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                  {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                  {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                 </div>
                 </RowActionsMenu>
               </div>
@@ -1940,6 +1947,7 @@ export function VehicleLogsView({
   vehicles: VehicleOption[];
   staff: StaffOption[];
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [rows, setRows] = useState<VehicleLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1999,7 +2007,7 @@ export function VehicleLogsView({
 
   return (
     <>
-      <ViewHeader title="Nhật ký xe" subtitle={`Doanh thu ${formatMoney(totals.revenue)} · Chi phí ${formatMoney(totals.expense)}`} count={rows.length} buttonLabel="Thêm nhật ký" onAdd={() => setEditing(null)} />
+      <ViewHeader title="Nhật ký xe" subtitle={`Doanh thu ${formatMoney(totals.revenue)} · Chi phí ${formatMoney(totals.expense)}`} count={rows.length} buttonLabel="Thêm nhật ký" showAdd={canCreate} onAdd={() => setEditing(null)} />
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       {warning && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{warning}</p>}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -2032,8 +2040,8 @@ export function VehicleLogsView({
                   <td className="px-3 py-2.5">
                     <RowActionsMenu label={`Thao tác nhật ký ${row.id}`}>
                     <div className="flex justify-center gap-1">
-                      <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                      <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                      {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                      {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2406,6 +2414,7 @@ export function VehicleKmLogsView({
   vehicles: VehicleOption[];
   staff: StaffOption[];
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [rows, setRows] = useState<VehicleKmLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -2465,7 +2474,7 @@ export function VehicleKmLogsView({
 
   return (
     <>
-      <ViewHeader title="Nhật ký KM xe" subtitle={`Tổng KM theo bộ lọc ${formatNumber(totalKm)} km`} count={filteredRows.length} buttonLabel="Thêm nhật ký KM" onAdd={() => setEditing(null)} />
+      <ViewHeader title="Nhật ký KM xe" subtitle={`Tổng KM theo bộ lọc ${formatNumber(totalKm)} km`} count={filteredRows.length} buttonLabel="Thêm nhật ký KM" showAdd={canCreate} onAdd={() => setEditing(null)} />
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       {warning && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{warning}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -2556,8 +2565,8 @@ export function VehicleKmLogsView({
                   <td className="px-3 py-2.5">
                     <RowActionsMenu label={`Thao tác km ${row.id}`}>
                     <div className="flex justify-center gap-1">
-                      <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                      <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                      {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                      {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2817,6 +2826,7 @@ export function CustomerPaymentsView({
   vehicles: VehicleOption[];
   staff: StaffOption[];
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('vehicles');
   const [rows, setRows] = useState<CustomerPayment[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2882,7 +2892,7 @@ export function CustomerPaymentsView({
 
   return (
     <>
-      <ViewHeader title="Thu tiền khách hàng" subtitle={`Tổng thu theo bộ lọc ${formatMoney(total)}`} count={filteredRows.length} buttonLabel="Thêm phiếu thu" onAdd={() => setEditing(null)} />
+      <ViewHeader title="Thu tiền khách hàng" subtitle={`Tổng thu theo bộ lọc ${formatMoney(total)}`} count={filteredRows.length} buttonLabel="Thêm phiếu thu" showAdd={canCreate} onAdd={() => setEditing(null)} />
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       {warning && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{warning}</p>}
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -2953,8 +2963,8 @@ export function CustomerPaymentsView({
                   <td className="px-3 py-2.5">
                     <RowActionsMenu label={`Thao tác phiếu thu ${row.id}`}>
                     <div className="flex justify-center gap-1">
-                      <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                      <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                      {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                      {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2982,8 +2992,8 @@ export function CustomerPaymentsView({
                 </div>
                 <RowActionsMenu label={`Thao tác phiếu thu ${row.id}`}>
                 <div className="flex gap-1">
-                  <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton>
-                  <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton>
+                  {canEdit ? <ActionButton label="Sửa" onClick={() => setEditing(row)}><Pencil className="h-3.5 w-3.5" /></ActionButton> : null}
+                  {canDelete ? <ActionButton label="Xóa" danger onClick={() => void deleteRow(row)}><Trash2 className="h-3.5 w-3.5" /></ActionButton> : null}
                 </div>
                 </RowActionsMenu>
               </div>

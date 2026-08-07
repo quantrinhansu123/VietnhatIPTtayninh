@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ClipboardList, Eye, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
+import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady } from '../utils/printReady';
@@ -210,6 +211,7 @@ export default function MachineDowntimeReportListView({
   onBack: () => void;
   onCreate?: () => void;
 }) {
+  const { canCreate, canDelete } = useTabAccess('machine-downtime-list');
   const [slips, setSlips] = useState<MachineDowntimeSlip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -378,7 +380,7 @@ export default function MachineDowntimeReportListView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {onCreate ? (
+              {onCreate && canCreate ? (
                 <button
                   type="button"
                   onClick={onCreate}
@@ -541,19 +543,21 @@ export default function MachineDowntimeReportListView({
                                     In
                                   </span>
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(slip.id)}
-                                  disabled={deletingId === slip.id}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                  title="Xóa phiếu"
-                                >
-                                  {deletingId === slip.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-4 w-4" />
-                                  )}
-                                </button>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(slip.id)}
+                                    disabled={deletingId === slip.id}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="Xóa phiếu"
+                                  >
+                                    {deletingId === slip.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                ) : null}
                               </div>
                               </RowActionsMenu>
                             </td>

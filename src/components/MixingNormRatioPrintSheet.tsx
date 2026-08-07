@@ -6,6 +6,9 @@ import type { MixingNormLine, MixingNormProduct, MixingNormRow } from './MixingN
 export type MixingNormRatioPrintDoc = {
   maLenhSx: string;
   ngay: string;
+  ca?: string;
+  isActual?: boolean;
+  actualValues?: Array<Array<{ percent: number | null; weight: number | null }>>;
   intro?: string;
   products: MixingNormProduct[];
 };
@@ -83,16 +86,17 @@ export function MixingNormRatioPrintSheet({ doc }: { doc: MixingNormRatioPrintDo
           <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="mixing-norm-ratio-print-logo" />
           <div className="mixing-norm-ratio-print-company">
             <p className="mixing-norm-ratio-print-company-name">{PRINT_COMPANY_NAME}</p>
-            <p className="mixing-norm-ratio-print-company-sub">Phiếu tỷ lệ trộn định mức</p>
+            <p className="mixing-norm-ratio-print-company-sub">Phiếu tỷ lệ trộn {doc.isActual ? 'thực tế' : 'định mức'}</p>
           </div>
         </header>
 
-        <h1 className="mixing-norm-ratio-print-title">TỶ LỆ TRỘN ĐỊNH MỨC</h1>
+        <h1 className="mixing-norm-ratio-print-title">TỶ LỆ TRỘN {doc.isActual ? 'THỰC TẾ' : 'ĐỊNH MỨC'}</h1>
         <p className="mixing-norm-ratio-print-intro">{intro}</p>
         <p className="mixing-norm-ratio-print-meta">
           Lệnh SX: <strong>{doc.maLenhSx || '—'}</strong>
           <span className="mixing-norm-ratio-print-meta-sep">·</span>
           Ngày: <strong>{`${dateParts.day}/${dateParts.month}/${dateParts.year}`}</strong>
+          {doc.ca ? <><span className="mixing-norm-ratio-print-meta-sep">·</span>Ca: <strong>{doc.ca}</strong></> : null}
         </p>
 
         {doc.products.length === 0 ? (
@@ -123,12 +127,13 @@ export function MixingNormRatioPrintSheet({ doc }: { doc: MixingNormRatioPrintDo
                       <th className="col-name">Tên NVL</th>
                       <th className="col-pct">Tỷ lệ</th>
                       <th className="col-kg">Khối lượng</th>
+                      {doc.isActual ? <th className="col-kg">Thực tế</th> : null}
                     </tr>
                   </thead>
                   <tbody>
                     {product.chi_tiet.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="mixing-norm-ratio-print-empty-cell">
+                        <td colSpan={doc.isActual ? 6 : 5} className="mixing-norm-ratio-print-empty-cell">
                           Chưa có dòng NVL
                         </td>
                       </tr>
@@ -142,6 +147,13 @@ export function MixingNormRatioPrintSheet({ doc }: { doc: MixingNormRatioPrintDo
                             <td className="col-name">{line.ten_nvl || ''}</td>
                             <td className="col-pct">{percent}</td>
                             <td className="col-kg">{kg ? `${kg} kg` : ''}</td>
+                            {doc.isActual ? (
+                              <td className="col-kg">
+                                {formatNumberVi(doc.actualValues?.[index]?.[lineIndex]?.percent)}%
+                                {' · '}
+                                {formatNumberVi(doc.actualValues?.[index]?.[lineIndex]?.weight)} kg
+                              </td>
+                            ) : null}
                           </tr>
                         );
                       })

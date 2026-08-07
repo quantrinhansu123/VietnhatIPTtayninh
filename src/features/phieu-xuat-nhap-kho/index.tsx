@@ -19,6 +19,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import {
@@ -589,6 +590,7 @@ export function WarehouseSlipPanel({
   onBack: () => void;
   onOpenHistory: () => void;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
   const [warehouseKind, setWarehouseKind] = useState<WarehouseKind>('nvl');
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -605,7 +607,7 @@ export function WarehouseSlipPanel({
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [recipient, setRecipient] = useState('');
   const [deliverer, setDeliverer] = useState('');
-  const [warehouseLocation, setWarehouseLocation] = useState('Đà Nẵng');
+  const [warehouseLocation, setWarehouseLocation] = useState('Phú Thọ');
   const [lines, setLines] = useState<WarehouseSlipLineDraft[]>(() => [createWarehouseLineDraft()]);
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
@@ -694,7 +696,7 @@ export function WarehouseSlipPanel({
       setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
       setRecipient(draft.recipient || '');
       setDeliverer(draft.deliverer || draft.recipient || '');
-      setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
+      setWarehouseLocation(draft.warehouseLocation || 'Phú Thọ');
       setLines(draft.lines.map(createWarehouseLineDraftFromPrefill));
       const editingCode = String(draft.editSlipCode || '').trim();
       if (editingCode) {
@@ -1262,7 +1264,7 @@ export function WarehouseSlipPanel({
                   value={warehouseLocation}
                   onChange={event => setWarehouseLocation(event.target.value)}
                   className={warehouseFieldClass}
-                  placeholder="VD: Đà Nẵng"
+                  placeholder="VD: Phú Thọ"
                 />
               </label>
             </>
@@ -1461,14 +1463,16 @@ export function WarehouseSlipPanel({
                   : `Mỗi dòng là một ${warehouseKind === 'san_pham' ? 'mã SP' : 'mã NPL'} trong phiếu`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
-              className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Thêm dòng
-            </button>
+            {(editSlipCode ? canEdit : canCreate) ? (
+              <button
+                type="button"
+                onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
+                className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Thêm dòng
+              </button>
+            ) : null}
           </div>
 
           <div
@@ -1637,7 +1641,7 @@ export function WarehouseSlipPanel({
                     {formatWarehouseMoney(computeWarehouseLineAmount(line.quantity, line.unitPrice))}
                   </div>
                 </div>
-                {lines.length > 1 && (
+                {lines.length > 1 && canDelete ? (
                   <button
                     type="button"
                     onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
@@ -1646,7 +1650,7 @@ export function WarehouseSlipPanel({
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
-                )}
+                ) : null}
               </div>
             ))}
           </div>
@@ -1665,21 +1669,23 @@ export function WarehouseSlipPanel({
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
             In phiếu
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-5 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {isSaving
-              ? editSlipCode
-                ? 'Đang cập nhật...'
-                : 'Đang lưu...'
-              : editSlipCode
-                ? `Cập nhật phiếu ${editSlipCode}`
-                : `Lưu & in phiếu ${warehouseSlipTypeLabel(slipType).toLowerCase()}`}
-          </button>
+          {(editSlipCode ? canEdit : canCreate) ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-5 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isSaving
+                ? editSlipCode
+                  ? 'Đang cập nhật...'
+                  : 'Đang lưu...'
+                : editSlipCode
+                  ? `Cập nhật phiếu ${editSlipCode}`
+                  : `Lưu & in phiếu ${warehouseSlipTypeLabel(slipType).toLowerCase()}`}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -1704,6 +1710,7 @@ export function WarehouseHistoryPanel({
   onBack: () => void;
   onOpenSlip: () => void;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
   const [warehouseTab, setWarehouseTab] = useState<WarehouseKind>('nvl');
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -2038,14 +2045,16 @@ export function WarehouseHistoryPanel({
         </div>
 
         <div className="flex justify-end p-3">
-          <button
-            type="button"
-            onClick={onOpenSlip}
-            className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] sm:w-auto"
-          >
-            <Plus className="h-4 w-4" />
-            Lập phiếu
-          </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={onOpenSlip}
+              className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] sm:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              Lập phiếu
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -2077,7 +2086,7 @@ export function WarehouseHistoryPanel({
         <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
       </TableToolbar>
 
-      {selectableSlips.length > 0 && (
+      {canDelete && selectableSlips.length > 0 && (
         <section className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-zinc-900/10 bg-zinc-50 px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold text-zinc-600">
             {selectedCount > 0 ? `Đã chọn ${selectedCount} phiếu` : 'Chọn phiếu để xóa nhiều'}
@@ -2150,14 +2159,16 @@ export function WarehouseHistoryPanel({
               <TableShell minWidthClassName="min-w-[820px]">
                 <TableHead>
                   <TableHeadCell className="w-10" align="center">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      disabled={selectableSlips.length === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
-                      className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
-                      title="Chọn tất cả"
-                    />
+                    {canDelete ? (
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAll}
+                        disabled={selectableSlips.length === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
+                        className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                        title="Chọn tất cả"
+                      />
+                    ) : null}
                   </TableHeadCell>
                   <TableHeadCell>Mã phiếu</TableHeadCell>
                   <TableHeadCell>Loại</TableHeadCell>
@@ -2176,14 +2187,16 @@ export function WarehouseHistoryPanel({
                       <React.Fragment key={group.slipCode}>
                         <TableRow className={isSelected ? 'bg-red-50/30' : ''}>
                           <td className="px-3 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              disabled={!group.slipCode || isBulkDeleting || isDeleting}
-                              onChange={() => toggleSlipSelection(group.slipCode)}
-                              className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
-                              title="Chọn phiếu"
-                            />
+                            {canDelete ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={!group.slipCode || isBulkDeleting || isDeleting}
+                                onChange={() => toggleSlipSelection(group.slipCode)}
+                                className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                                title="Chọn phiếu"
+                              />
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 font-black text-zinc-950">
                             <div>{group.slipCode || '-'}</div>
@@ -2210,14 +2223,16 @@ export function WarehouseHistoryPanel({
                               >
                                 <Eye className="h-4 w-4" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleEditSlip(group.slipCode)}
-                                title="Sửa phiếu"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditSlip(group.slipCode)}
+                                  title="Sửa phiếu"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => handlePrintSlipByCode(group.slipCode, true)}
@@ -2226,19 +2241,21 @@ export function WarehouseHistoryPanel({
                               >
                                 <Printer className="h-4 w-4" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteSlip(group.slipCode, lineCount)}
-                                disabled={isDeleting || isBulkDeleting}
-                                title="Xóa phiếu"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isDeleting ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </button>
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteSlip(group.slipCode, lineCount)}
+                                  disabled={isDeleting || isBulkDeleting}
+                                  title="Xóa phiếu"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isDeleting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </button>
+                              ) : null}
                             </div>
                             </RowActionsMenu>
                           </td>
@@ -2404,14 +2421,16 @@ export function WarehouseHistoryPanel({
                 Tổng tiền: <span className="text-[#ef1b2d]">{formatWarehouseMoney(viewingSlipTotal)} đ</span>
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleEditSlip(viewingSlipCode!)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Sửa phiếu
-                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => handleEditSlip(viewingSlipCode!)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Sửa phiếu
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => handlePrintViewingSlip(true)}

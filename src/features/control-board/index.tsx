@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../utils';
 import type { AppTab } from '../../routes';
+import { useTabAccess } from '../../app/useTabAccess';
 import ControlBoardBbMachineReportTable from '../../components/ControlBoardBbMachineReportTable';
 import { ControlBoardCommonFilters } from '../../components/ControlBoardCommonFilters';
 import {
@@ -97,6 +98,7 @@ export function ControlBoardPanel({
   onMachineReport: (machine: MachineRow, type: 'mixing' | 'nvl') => void;
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('control-board');
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
@@ -712,6 +714,7 @@ export function ControlBoardPanel({
   }, [productionOrders]);
 
   const handleDeleteProductionOrder = async (row: ProductionOrderRow) => {
+    if (!canDelete) return;
     const label = row.code || row.name || 'lệnh SX';
     if (
       !window.confirm(
@@ -901,10 +904,14 @@ export function ControlBoardPanel({
           }}
           openLabel={`Tạo Kế hoạch SX${selectedProductionOrdersForPlan.length > 0 ? ` (${selectedProductionOrdersForPlan.length})` : ''}`}
           disabled={selectedProductionOrdersForPlan.length === 0}
-          secondaryAction={{
-            label: 'Thêm mới',
-            onClick: () => setShowAddProductionOrder(true)
-          }}
+          secondaryAction={
+            canCreate
+              ? {
+                  label: 'Thêm mới',
+                  onClick: () => setShowAddProductionOrder(true)
+                }
+              : undefined
+          }
           tertiaryAction={{
             label: `In lệnh${selectedProductionOrderIds.length > 0 ? ` (${selectedProductionOrderIds.length})` : ''}`,
             onClick: handlePrintSelectedProductionOrders,
@@ -1035,6 +1042,7 @@ export function ControlBoardPanel({
                           <Eye className="h-4 w-4" />
                           Xem
                         </button>
+                        {canEdit ? (
                         <button
                           type="button"
                           onClick={() => setEditingProductionOrder(row)}
@@ -1043,6 +1051,8 @@ export function ControlBoardPanel({
                           <Pencil className="h-4 w-4" />
                           Sửa
                         </button>
+                        ) : null}
+                        {canDelete ? (
                         <button
                           type="button"
                           onClick={() => handleDeleteProductionOrder(row)}
@@ -1056,6 +1066,7 @@ export function ControlBoardPanel({
                           )}
                           Xóa
                         </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => printProductionOrder(row)}

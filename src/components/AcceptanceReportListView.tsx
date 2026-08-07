@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ClipboardList, Eye, Loader2, Pencil, Plus, Printer, Trash2, X } from 'lucide-react';
+import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady } from '../utils/printReady';
@@ -47,13 +48,15 @@ function AcceptanceReportDetailModal({
   productName,
   onClose,
   onEdit,
-  onViewImage
+  onViewImage,
+  canEdit = false
 }: {
   report: AcceptanceReport;
   productName: string;
   onClose: () => void;
   onEdit: (report: AcceptanceReport) => void;
   onViewImage: (url: string) => void;
+  canEdit?: boolean;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -149,17 +152,19 @@ function AcceptanceReportDetailModal({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3 sm:px-5">
-          <button
-            type="button"
-            onClick={() => {
-              onEdit(report);
-              onClose();
-            }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Sửa
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                onEdit(report);
+                onClose();
+              }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Sửa
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -249,6 +254,7 @@ export default function AcceptanceReportListView({
   onCreate: (prefill?: { ngay: string; ca: string }) => void;
   onEdit: (report: AcceptanceReport) => void;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('acceptance-report-list');
   const [filterFromDate, setFilterFromDate] = useState(todayIso());
   const [filterToDate, setFilterToDate] = useState(todayIso());
   const [filterShift, setFilterShift] = useState('');
@@ -474,26 +480,30 @@ export default function AcceptanceReportListView({
           Xem
         </span>
       </button>
-      <button
-        type="button"
-        onClick={() => onEdit(report)}
-        className="rounded-lg border border-zinc-200 px-2 py-1 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
-        title="Sửa báo cáo"
-      >
-        <span className="inline-flex items-center gap-1">
-          <Pencil className="h-3.5 w-3.5" />
-          Sửa
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={() => handleDelete(report.id)}
-        disabled={deletingId === report.id}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-        title="Xóa báo cáo"
-      >
-        {deletingId === report.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      </button>
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={() => onEdit(report)}
+          className="rounded-lg border border-zinc-200 px-2 py-1 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
+          title="Sửa báo cáo"
+        >
+          <span className="inline-flex items-center gap-1">
+            <Pencil className="h-3.5 w-3.5" />
+            Sửa
+          </span>
+        </button>
+      ) : null}
+      {canDelete ? (
+        <button
+          type="button"
+          onClick={() => handleDelete(report.id)}
+          disabled={deletingId === report.id}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Xóa báo cáo"
+        >
+          {deletingId === report.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      ) : null}
     </div>
   );
 
@@ -509,14 +519,16 @@ export default function AcceptanceReportListView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onCreate}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={onCreate}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onBack}
@@ -537,16 +549,18 @@ export default function AcceptanceReportListView({
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleBulkDelete}
-              disabled={selectedCount === 0 || bulkDeleting || isLoading}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Xóa các dòng đã chọn"
-            >
-              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Xoá đã chọn ({selectedCount})
-            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={selectedCount === 0 || bulkDeleting || isLoading}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Xóa các dòng đã chọn"
+              >
+                {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Xoá đã chọn ({selectedCount})
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
@@ -619,13 +633,15 @@ export default function AcceptanceReportListView({
                   <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[520px]">
                     <TableHead>
                       <TableHeadCell align="center" className="w-10">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          onChange={toggleSelectAll}
-                          aria-label="Chọn tất cả"
-                          className="h-4 w-4 accent-[#ef1b2d]"
-                        />
+                        {canDelete ? (
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={toggleSelectAll}
+                            aria-label="Chọn tất cả"
+                            className="h-4 w-4 accent-[#ef1b2d]"
+                          />
+                        ) : null}
                       </TableHeadCell>
                       <TableHeadCell align="center" className="w-12">STT</TableHeadCell>
                       <TableHeadCell>Ảnh</TableHeadCell>
@@ -643,13 +659,15 @@ export default function AcceptanceReportListView({
                         <React.Fragment key={report.id}>
                           <TableRow>
                             <td className="px-3 py-2 text-center">
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.has(report.id)}
-                                onChange={() => toggleSelected(report.id)}
-                                aria-label="Chọn dòng"
-                                className="h-4 w-4 accent-[#ef1b2d]"
-                              />
+                              {canDelete ? (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.has(report.id)}
+                                  onChange={() => toggleSelected(report.id)}
+                                  aria-label="Chọn dòng"
+                                  className="h-4 w-4 accent-[#ef1b2d]"
+                                />
+                              ) : null}
                             </td>
                             <td className="px-3 py-2 text-center font-mono font-bold text-zinc-600">
                               {reportIndex + 1}
@@ -735,6 +753,7 @@ export default function AcceptanceReportListView({
           onClose={() => setViewingReport(null)}
           onEdit={onEdit}
           onViewImage={url => setViewingImage({ url, title: 'Ảnh báo cáo sản lượng' })}
+          canEdit={canEdit}
         />
       ) : null}
     </div>

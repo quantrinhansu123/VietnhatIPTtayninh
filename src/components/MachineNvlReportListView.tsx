@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Boxes, ChevronLeft, Eye, Loader2, Pencil, Plus, Printer, Trash2, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { useTabAccess } from '../app/useTabAccess';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import {
@@ -75,12 +76,14 @@ function MachineNvlReportDetailModal({
   report,
   onClose,
   onEdit,
-  onPrint
+  onPrint,
+  canEdit = false
 }: {
   report: MachineNvlSavedReport;
   onClose: () => void;
   onEdit: (report: MachineNvlSavedReport) => void;
   onPrint: (report: MachineNvlSavedReport) => void;
+  canEdit?: boolean;
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const totalKg = reportTotal(report);
@@ -216,17 +219,19 @@ function MachineNvlReportDetailModal({
             <Printer className="h-3.5 w-3.5" />
             In phiếu
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              onEdit(report);
-              onClose();
-            }}
-            className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Sửa
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                onEdit(report);
+                onClose();
+              }}
+              className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Sửa
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -258,7 +263,9 @@ function MachineNvlSection({
   onToggleSelectAll,
   onBulkDelete,
   onClearSelection,
-  bulkDeleting
+  bulkDeleting,
+  canEdit = false,
+  canDelete = false
 }: {
   kind: MachineNvlReportKind;
   title: string;
@@ -276,6 +283,8 @@ function MachineNvlSection({
   onBulkDelete: (ids: string[]) => void;
   onClearSelection: () => void;
   bulkDeleting: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const reportIds = useMemo(
     () =>
@@ -300,15 +309,17 @@ function MachineNvlSection({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onBulkDelete([...selectedIds])}
-              disabled={selectedIds.size === 0 || bulkDeleting || isLoading}
-              className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
-            >
-              {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              Xoá đã chọn ({selectedIds.size})
-            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => onBulkDelete([...selectedIds])}
+                disabled={selectedIds.size === 0 || bulkDeleting || isLoading}
+                className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
+              >
+                {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Xoá đã chọn ({selectedIds.size})
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClearSelection}
@@ -362,13 +373,15 @@ function MachineNvlSection({
                       <thead className="bg-zinc-950 text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
                         <tr className="border-b border-zinc-200">
                           <th className="w-11 px-3 py-2.5 text-center font-black">
-                            <input
-                              type="checkbox"
-                              checked={allSelected}
-                              onChange={() => onToggleSelectAll(reportIds)}
-                              aria-label="Chọn tất cả"
-                              className="h-4 w-4 accent-[#ef1b2d]"
-                            />
+                            {canDelete ? (
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={() => onToggleSelectAll(reportIds)}
+                                aria-label="Chọn tất cả"
+                                className="h-4 w-4 accent-[#ef1b2d]"
+                              />
+                            ) : null}
                           </th>
                           <th className="px-3 py-2.5 font-black">Ca</th>
                           <th className="px-3 py-2.5 font-black">Máy</th>
@@ -387,13 +400,15 @@ function MachineNvlSection({
                             className="align-middle transition hover:bg-red-50/20"
                           >
                             <td className="px-3 py-2.5 text-center">
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.has(report.id)}
-                                onChange={() => onToggleSelected(report.id)}
-                                aria-label="Chọn dòng"
-                                className="h-4 w-4 accent-[#ef1b2d]"
-                              />
+                              {canDelete ? (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.has(report.id)}
+                                  onChange={() => onToggleSelected(report.id)}
+                                  aria-label="Chọn dòng"
+                                  className="h-4 w-4 accent-[#ef1b2d]"
+                                />
+                              ) : null}
                             </td>
                             <td className="px-3 py-2.5">
                               <span className="inline-flex rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-black text-zinc-800">
@@ -429,15 +444,17 @@ function MachineNvlSection({
                                   <Eye className="h-3.5 w-3.5" />
                                   Xem
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onEdit(report)}
-                                  className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
-                                  title="Sửa báo cáo"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  Sửa
-                                </button>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEdit(report)}
+                                    className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
+                                    title="Sửa báo cáo"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    Sửa
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => onPrint(report)}
@@ -447,20 +464,22 @@ function MachineNvlSection({
                                   <Printer className="h-3.5 w-3.5" />
                                   In
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDelete(report.id)}
-                                  disabled={deletingId === report.id}
-                                  className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
-                                  title="Xóa báo cáo"
-                                >
-                                  {deletingId === report.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  )}
-                                  Xoá
-                                </button>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDelete(report.id)}
+                                    disabled={deletingId === report.id}
+                                    className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
+                                    title="Xóa báo cáo"
+                                  >
+                                    {deletingId === report.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                    Xoá
+                                  </button>
+                                ) : null}
                               </div>
                               </RowActionsMenu>
                             </td>
@@ -488,6 +507,7 @@ export default function MachineNvlReportListView({
   onCreate: () => void;
   onEdit: (report: MachineNvlSavedReport) => void;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('machine-nvl-report-list');
   const [filterFromDate, setFilterFromDate] = useState(todayIso());
   const [filterToDate, setFilterToDate] = useState(todayIso());
   const [filterCa, setFilterCa] = useState('');
@@ -732,14 +752,16 @@ export default function MachineNvlReportListView({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onCreate}
-                className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={onCreate}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm mới
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onBack}
@@ -866,6 +888,8 @@ export default function MachineNvlReportListView({
         onBulkDelete={ids => void handleBulkDelete('dau_ca', ids)}
         onClearSelection={() => clearSelection('dau_ca')}
         bulkDeleting={bulkDeleting}
+        canEdit={canEdit}
+        canDelete={canDelete}
       />
 
       <MachineNvlSection
@@ -885,6 +909,8 @@ export default function MachineNvlReportListView({
         onBulkDelete={ids => void handleBulkDelete('cuoi_ca', ids)}
         onClearSelection={() => clearSelection('cuoi_ca')}
         bulkDeleting={bulkDeleting}
+        canEdit={canEdit}
+        canDelete={canDelete}
       />
 
       {viewingReport ? (
@@ -893,6 +919,7 @@ export default function MachineNvlReportListView({
           onClose={() => setViewingReport(null)}
           onEdit={onEdit}
           onPrint={handlePrint}
+          canEdit={canEdit}
         />
       ) : null}
 

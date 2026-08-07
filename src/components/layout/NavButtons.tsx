@@ -69,7 +69,7 @@ export function HomeNavButton({
 // Bảng ánh xạ tab hiện tại → tab cha (dùng cho nút Quay lại ở bottom nav)
 export const BACK_TAB_MAP: Record<string, string> = {
   'quan-tri': 'menu',
-  'acceptance-report-list': 'report-lists',
+  'acceptance-report-list': 'factory-qc',
   'report-lists': 'factory-cong-nhan',
   'report-forms': 'factory-cong-nhan',
   'production-reports': 'factory-quan-doc',
@@ -82,7 +82,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'factory-cong-nhan': 'menu',
   'factory-kho': 'menu',
   'products': 'factory-kho',
-  'machines': 'facility-management',
+  'machines': 'menu',
   'materials': 'factory-kho',
   'warehouse-slip': 'factory-kho',
   'warehouse-history': 'factory-kho',

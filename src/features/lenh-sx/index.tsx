@@ -39,7 +39,8 @@ import { normalizeProducts } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
 import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
-import { useAccessControl } from '../../app/accessControl';
+import { useTabAccess } from '../../app/useTabAccess';
+import type { AuthUser } from '../../app/authUser';
 import {
   Eye,
   Loader2,
@@ -50,18 +51,65 @@ import {
   Trash2
 } from 'lucide-react';
 
+function normalizeStaffMatchKey(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ');
+}
+
+function isNhanVienRole(role: string) {
+  return normalizeStaffMatchKey(role) === normalizeStaffMatchKey('Nhân Viên');
+}
+
+/** Tách chuỗi phân công (có thể nhiều tên ngăn bởi , ; / |) rồi khớp đúng tên đăng nhập. */
+function productionOrderAssignedToPerson(row: ProductionOrderRow, personName: string) {
+  const target = normalizeStaffMatchKey(personName);
+  if (!target) return false;
+
+  const fields = [row.staff, row.shiftLead, row.mainStaff, row.assistantStaff, row.traineeStaff];
+  for (const field of fields) {
+    const raw = String(field || '').trim();
+    if (!raw || raw === '-' || /^chưa phân công$/i.test(raw)) continue;
+    const tokens = raw
+      .split(/[,;/|]+|\s+[-–—]\s+/)
+      .map(part => normalizeStaffMatchKey(part))
+      .filter(Boolean);
+    if (tokens.some(token => token === target || token.includes(target) || target.includes(token))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function productionOrderStaffDisplay(row: ProductionOrderRow) {
+  if (row.staff && row.staff !== '-') return row.staff;
+  return [...new Set(
+    [row.shiftLead, row.mainStaff, row.assistantStaff, row.traineeStaff]
+      .filter(value => value && value !== '-')
+  )].join(', ') || '-';
+}
+
 export function ProductionOrdersPanel({
   onBack,
+  currentUser,
+  canCreate: canCreateOverride,
   canEdit: canEditOverride,
   canDelete: canDeleteOverride
 }: {
   onBack: () => void;
+  currentUser?: AuthUser | null;
+  canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
 }) {
-  const access = useAccessControl();
-  const canEdit = canEditOverride ?? access.canEdit('production-orders');
-  const canDelete = canDeleteOverride ?? access.canDelete('production-orders');
+  const tabAccess = useTabAccess('production-orders');
+  const canCreate = canCreateOverride ?? tabAccess.canCreate;
+  const canEdit = canEditOverride ?? tabAccess.canEdit;
+  const canDelete = canDeleteOverride ?? tabAccess.canDelete;
   const [rows, setRows] = useState<ProductionOrderRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -92,14 +140,35 @@ export function ProductionOrdersPanel({
     setLoadError('');
 
     try {
-      const res = await fetch('/api/lenh-sx');
-      const data = await res.json().catch(() => ({}));
+      const [res, orderRes] = await Promise.all([
+        fetch('/api/lenh-sx'),
+        fetch('/api/don-hang')
+      ]);
+      const [data, orderData] = await Promise.all([
+        res.json().catch(() => ({})),
+        orderRes.json().catch(() => ({}))
+      ]);
 
       if (!res.ok) {
         throw new Error(data.error || 'Không thể tải lệnh sản xuất từ Supabase.');
       }
 
-      setRows(normalizeProductionOrders(data));
+      const orderRows = orderRes.ok ? normalizeOrders(orderData) : [];
+      const customerByOrderCode = new Map(
+        orderRows
+          .filter(order => order.orderCode && order.orderCode !== '-')
+          .map(order => [order.orderCode.trim().toLowerCase(), order.customer] as const)
+      );
+      const productionRows = normalizeProductionOrders(data).map(row => {
+        if (row.customer && row.customer !== '-') return row;
+        const customers = String(row.orderRef || '')
+          .split(/[,;|]+/)
+          .map(code => customerByOrderCode.get(code.trim().toLowerCase()))
+          .filter((customer): customer is string => Boolean(customer && customer !== '-'));
+        return { ...row, customer: [...new Set(customers)].join(', ') || '-' };
+      });
+      setOrders(orderRows);
+      setRows(productionRows);
     } catch (error: any) {
       setRows([]);
       setLoadError(error.message || 'Không thể tải lệnh sản xuất từ Supabase.');
@@ -113,6 +182,7 @@ export function ProductionOrdersPanel({
   }, []);
 
   const openEditModal = async (row: ProductionOrderRow) => {
+    if (!canEdit) return;
     setIsLoadingEdit(true);
     setActionMessage('');
     try {
@@ -185,13 +255,22 @@ export function ProductionOrdersPanel({
     setSearchText('');
   };
 
+  const restrictToOwnAssignments =
+    Boolean(currentUser) &&
+    !currentUser?.fullAccess &&
+    isNhanVienRole(currentUser?.role || '');
+
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredRows = useMemo(() => {
     const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
     const toTime = dateTo ? new Date(dateTo).getTime() : null;
+    const personName = currentUser?.name || '';
 
     return rows
       .filter(row => {
+        if (restrictToOwnAssignments && !productionOrderAssignedToPerson(row, personName)) {
+          return false;
+        }
         const matchesStatus = selectedStatus === 'all' || row.status === selectedStatus;
         const matchesMachine = selectedMachines.length === 0 || selectedMachines.includes(row.machine);
         const rowStartTime = parseDisplayDate(row.startDate);
@@ -199,7 +278,7 @@ export function ProductionOrdersPanel({
         const matchesTo = !toTime || (rowStartTime !== null && rowStartTime <= toTime);
         const matchesSearch =
           !normalizedSearch ||
-          `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note}`
+          `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note} ${row.staff} ${row.shiftLead} ${row.mainStaff} ${row.assistantStaff} ${row.traineeStaff}`
             .toLowerCase()
             .includes(normalizedSearch);
         return matchesStatus && matchesMachine && matchesFrom && matchesTo && matchesSearch;
@@ -217,10 +296,20 @@ export function ProductionOrdersPanel({
         if (rightValid) return 1;
         return left.id.localeCompare(right.id, 'vi');
       });
-  }, [normalizedSearch, rows, selectedStatus, selectedMachines, dateFrom, dateTo, sortOrder]);
+  }, [
+    currentUser?.name,
+    normalizedSearch,
+    restrictToOwnAssignments,
+    rows,
+    selectedStatus,
+    selectedMachines,
+    dateFrom,
+    dateTo,
+    sortOrder
+  ]);
 
-  const activeCount = rows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
-  const totalQuantity = rows.reduce((sum, row) => {
+  const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
+  const totalQuantity = filteredRows.reduce((sum, row) => {
     const value = Number(row.quantity);
     return Number.isFinite(value) ? sum + value : sum;
   }, 0);
@@ -256,21 +345,30 @@ export function ProductionOrdersPanel({
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setShowAddForm(true)}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm(true)}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
 
             </div>
           </div>
 
+          {restrictToOwnAssignments ? (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+              Tài khoản chức vụ Nhân Viên: chỉ hiện lệnh SX có phân công cho{' '}
+              <span className="font-black">{currentUser?.name || 'bạn'}</span>.
+            </p>
+          ) : null}
+
           <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
             {[
-              ['Lệnh SX', rows.length],
+              ['Lệnh SX', restrictToOwnAssignments ? filteredRows.length : rows.length],
               ['Đang / chờ SX', activeCount],
               ['Tổng SL', formatNumber(totalQuantity)]
             ].map(([label, value]) => (
@@ -379,51 +477,82 @@ export function ProductionOrdersPanel({
                 </div>
               </div>
               <div className="hover-scrollbar max-h-[70vh] overflow-auto">
-                <table className="w-full min-w-[900px] table-fixed border-collapse text-left text-sm">
+                <table className="w-full min-w-[1080px] table-fixed border-collapse text-left text-sm">
                   <colgroup>
-                    <col className="w-[6%]" /><col className="w-[5%]" /><col className="w-[9%]" />
-                    <col className="w-[32%]" /><col className="w-[9%]" /><col className="w-[6%]" />
-                    <col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[5%]" />
-                    <col className="w-[7%]" /><col className="w-[5%]" />
+                    <col className="w-[7%]" /><col className="w-[5%]" /><col className="w-[28%]" />
+                    <col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[8%]" />
+                    <col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[6%]" />
+                    <col className="w-[9%]" /><col className="w-[5%]" />
                   </colgroup>
                   <TableHead>
                     <TableHeadCell>Mã lệnh</TableHeadCell>
                     <TableHeadCell>Ca</TableHeadCell>
-                    <TableHeadCell>Mã hàng</TableHeadCell>
-                    <TableHeadCell>Tên hàng</TableHeadCell>
+                    <TableHeadCell className="min-w-[320px]">
+                      <div className="grid grid-cols-[minmax(80px,0.85fr)_minmax(120px,1.5fr)_64px] gap-2">
+                        <span>Mã hàng</span>
+                        <span>Tên hàng</span>
+                        <span className="text-right">Số lượng</span>
+                      </div>
+                    </TableHeadCell>
                     <TableHeadCell className="w-32 min-w-32 whitespace-nowrap">Trạng thái</TableHeadCell>
                     <TableHeadCell>Khách hàng</TableHeadCell>
                     <TableHeadCell>Đơn hàng</TableHeadCell>
                     <TableHeadCell>Bắt đầu</TableHeadCell>
                     <TableHeadCell>Kết thúc</TableHeadCell>
+                    <TableHeadCell>Nhân sự phụ trách</TableHeadCell>
                     <TableHeadCell>Máy</TableHeadCell>
                     <TableHeadCell align="center">Thao tác</TableHeadCell>
                   </TableHead>
                   <TableBody>
-                    {group.rows.map(row => (
+                    {group.rows.map(row => {
+                      const productLines = getProductionOrderProductLines(row);
+                      return (
                       <React.Fragment key={row.id}>
                       <TableRow>
-                        <td className="px-4 py-3 font-black text-zinc-950">{row.code || '-'}</td>
-                        <td className="px-4 py-3 text-zinc-700">{row.shift || '-'}</td>
-                        <td className="px-4 py-3 text-zinc-700">
-                          {getProductionOrderProductLines(row)
-                            .map(product => product.productCode || '-')
-                            .join(' | ') || '-'}
+                        <td className="px-4 py-3 align-top font-black text-zinc-950">{row.code || '-'}</td>
+                        <td className="px-4 py-3 align-top text-zinc-700">{row.shift || '-'}</td>
+                        <td className="px-4 py-3 align-top">
+                          {productLines.length > 0 ? (
+                            <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                              <table className="w-full border-collapse text-left text-xs">
+                                <tbody className="divide-y divide-zinc-100">
+                                  {productLines.map((product, index) => (
+                                    <tr key={`${row.id}-${product.productCode}-${index}`}>
+                                      <td className="w-[28%] px-2.5 py-1.5 font-black text-zinc-950">
+                                        {product.productCode || '-'}
+                                      </td>
+                                      <td className="px-2.5 py-1.5 font-semibold text-zinc-700">
+                                        {product.productName || '-'}
+                                      </td>
+                                      <td className="w-[22%] whitespace-nowrap px-2.5 py-1.5 text-right font-mono font-bold text-zinc-900">
+                                        {product.quantity || '-'}
+                                        {product.unit && product.unit !== '-' ? (
+                                          <span className="ml-1 font-sans text-[10px] font-semibold text-zinc-500">
+                                            {product.unit}
+                                          </span>
+                                        ) : null}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-400">-</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-zinc-800">
-                          {getProductionOrderProductLines(row)
-                            .map(product => product.productName || '-')
-                            .join(' | ') || '-'}
-                        </td>
-                        <td className="w-32 min-w-32 whitespace-nowrap px-4 py-3">
+                        <td className="w-32 min-w-32 whitespace-nowrap px-4 py-3 align-top">
                           <StatusBadge label={row.status} color="amber" />
                         </td>
-                        <td className="px-4 py-3 text-zinc-700">{row.customer}</td>
-                        <td className="px-4 py-3 text-zinc-600">{row.orderRef}</td>
-                        <td className="px-4 py-3 text-zinc-600">{row.startDate}</td>
-                        <td className="px-4 py-3 text-zinc-600">{row.endDate}</td>
-                        <td className="px-4 py-3 text-zinc-600">{row.machine}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 align-top text-zinc-700">{row.customer}</td>
+                        <td className="px-4 py-3 align-top text-zinc-600">{row.orderRef}</td>
+                        <td className="px-4 py-3 align-top text-zinc-600">{row.startDate}</td>
+                        <td className="px-4 py-3 align-top text-zinc-600">{row.endDate}</td>
+                        <td className="px-4 py-3 align-top font-semibold text-zinc-700">
+                          {productionOrderStaffDisplay(row)}
+                        </td>
+                        <td className="px-4 py-3 align-top text-zinc-600">{row.machine}</td>
+                        <td className="px-4 py-3 align-top text-center">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -442,7 +571,8 @@ export function ProductionOrdersPanel({
                         </td>
                       </TableRow>
                       </React.Fragment>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </table>
               </div>

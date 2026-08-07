@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import {
   cloudinaryPreviewUrl,
@@ -37,8 +38,10 @@ import {
 } from '../../components/shared/table';
 import {
   RefreshCw,
+  Download,
   Eye,
   ExternalLink,
+  FileUp,
   ImageUp,
   Loader2,
   Pencil,
@@ -46,8 +49,11 @@ import {
   Save,
   Trash2
 } from 'lucide-react';
+import { downloadStaffExcel, downloadStaffExcelTemplate, parseStaffExcel } from '../../utils/staffExcel';
+import { showAppToast } from '../../lib/appToast';
 
 export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('hr');
   const [branches, setBranches] = useState<HrBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [searchText, setSearchText] = useState('');
@@ -63,6 +69,10 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
   const [showAddStaffForm, setShowAddStaffForm] = useState(false);
   const [isSyncingViTri, setIsSyncingViTri] = useState(false);
   const [syncViTriMessage, setSyncViTriMessage] = useState('');
+  const [isImportingExcel, setIsImportingExcel] = useState(false);
+  const [selectedStaffCodes, setSelectedStaffCodes] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const [addStaffDefaults, setAddStaffDefaults] = useState<{ branchId: string; department: string }>({
     branchId: '',
     department: ''
@@ -112,11 +122,161 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
       if (!res.ok) {
         throw new Error(data.error || 'Không thể xóa nhân sự.');
       }
+      setSelectedStaffCodes(prev => {
+        const next = new Set(prev);
+        next.delete(member.code);
+        return next;
+      });
       await loadStaffGroups();
+      showAppToast(`Đã xóa nhân sự ${member.code}.`);
     } catch (error: any) {
       window.alert(error.message || 'Không thể xóa nhân sự.');
     } finally {
       setDeletingCode('');
+    }
+  };
+
+  const toggleStaffCode = (code: string) => {
+    const normalized = code.trim();
+    if (!normalized) return;
+    setSelectedStaffCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
+      return next;
+    });
+  };
+
+  const buildStaffViTri = (department: string, role: string) =>
+    `${department.trim()}_${role.trim()}`.replace(/\s+/g, '_').replace(/_+/g, '_');
+
+  const handleDownloadStaffTemplate = () => {
+    downloadStaffExcelTemplate();
+  };
+
+  const handleDownloadStaffExcel = () => {
+    const rows = branches.flatMap(branch =>
+      branch.departments.flatMap(department =>
+        department.members.map(member => ({
+          code: member.code || '',
+          name: member.name || '',
+          branch: branch.name || '',
+          department: department.name || '',
+          role: member.role || '',
+          shift: member.shift || '',
+          status: member.status || '',
+          username: member.username || ''
+        }))
+      )
+    );
+    if (rows.length === 0) {
+      downloadStaffExcelTemplate();
+      return;
+    }
+    downloadStaffExcel(rows);
+  };
+
+  const handleImportStaffExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingExcel(true);
+    setSyncViTriMessage('');
+    try {
+      const rows = await parseStaffExcel(file);
+      if (rows.length === 0) {
+        throw new Error('File Excel không có dòng dữ liệu nhân sự.');
+      }
+
+      const existingCodes = new Set(
+        collectStaffCodes(branches).map(code => code.trim().toUpperCase()).filter(Boolean)
+      );
+      const generatedCodes = [...existingCodes];
+      let created = 0;
+      let updated = 0;
+      const failures: string[] = [];
+
+      for (const row of rows) {
+        const name = row.name.trim();
+        const department = row.department.trim();
+        if (!name) {
+          failures.push(`dòng ${row.rowNumber}: thiếu họ tên`);
+          continue;
+        }
+        if (!department) {
+          failures.push(`dòng ${row.rowNumber}: thiếu phòng ban`);
+          continue;
+        }
+
+        let code = row.code.trim();
+        if (!code) {
+          code = generateNextStaffCode(generatedCodes);
+          generatedCodes.push(code);
+        }
+
+        const role = row.role.trim();
+        const payload: Record<string, unknown> = {
+          nhan_su: name,
+          ma_nhan_su: code,
+          chi_nhanh: row.branch.trim(),
+          phong_ban: department,
+          cong_viec: role,
+          vi_tri: buildStaffViTri(department, role),
+          ca_lam: row.shift.trim() || 'Ca 1',
+          trang_thai: row.status.trim() || 'Đang làm',
+          ten_dang_nhap: row.username.trim()
+        };
+        if (row.password.trim()) {
+          payload.mat_khau = row.password.trim();
+        }
+
+        const codeKey = code.toUpperCase();
+        const isExisting = existingCodes.has(codeKey);
+        const res = await fetch(
+          isExisting ? `/api/nhan-su/${encodeURIComponent(code)}` : '/api/nhan-su',
+          {
+            method: isExisting ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failures.push(`dòng ${row.rowNumber}: ${data.error || 'Không lưu được'}`);
+          continue;
+        }
+
+        existingCodes.add(codeKey);
+        if (!generatedCodes.some(item => item.toUpperCase() === codeKey)) {
+          generatedCodes.push(code);
+        }
+        if (isExisting) updated += 1;
+        else created += 1;
+      }
+
+      if (created > 0 || updated > 0) {
+        await loadStaffGroups();
+      }
+
+      const summary = [
+        created || updated ? `Đã nhập Excel: thêm ${created}, cập nhật ${updated}.` : 'Không nhập được dòng nào.',
+        failures.length ? `${failures.length} dòng lỗi (${failures.slice(0, 3).join('; ')}).` : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+      setSyncViTriMessage(summary);
+      if (created > 0 || updated > 0) {
+        showAppToast(`Đã nhập Excel: thêm ${created}, cập nhật ${updated}.`);
+      } else if (failures.length > 0) {
+        showAppToast(failures[0], 'error');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể đọc hoặc nhập file Excel.';
+      setSyncViTriMessage(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsImportingExcel(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
     }
   };
 
@@ -208,6 +368,102 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
       ),
     [filteredDepartments]
   );
+
+  const visibleStaffCodes = useMemo(
+    () =>
+      tableRows
+        .map(({ member }) => String(member.code || '').trim())
+        .filter(Boolean),
+    [tableRows]
+  );
+
+  const allStaffCodes = useMemo(() => collectStaffCodes(branches).map(code => code.trim()).filter(Boolean), [branches]);
+
+  const allVisibleSelected =
+    visibleStaffCodes.length > 0 && visibleStaffCodes.every(code => selectedStaffCodes.has(code));
+
+  const selectedCount = selectedStaffCodes.size;
+
+  const toggleSelectAllVisible = () => {
+    setSelectedStaffCodes(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleStaffCodes.forEach(code => next.delete(code));
+      } else {
+        visibleStaffCodes.forEach(code => next.add(code));
+      }
+      return next;
+    });
+  };
+
+  const selectAllStaff = () => {
+    setSelectedStaffCodes(new Set(allStaffCodes));
+  };
+
+  const clearStaffSelection = () => {
+    setSelectedStaffCodes(new Set());
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const codes = [...selectedStaffCodes].map(code => code.trim()).filter(Boolean);
+    if (codes.length === 0) return;
+
+    const deletingAll = allStaffCodes.length > 0 && codes.length >= allStaffCodes.length;
+    const label = deletingAll
+      ? `TOÀN BỘ ${codes.length} nhân sự`
+      : codes.length === 1
+        ? `nhân sự "${codes[0]}"`
+        : `${codes.length} nhân sự đã chọn`;
+
+    if (
+      !window.confirm(
+        deletingAll
+          ? `Bạn sắp XÓA HẾT ${codes.length} nhân sự trong hệ thống.\n\nHành động này không thể hoàn tác. Tiếp tục?`
+          : `Xóa ${label}?\n\nHành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
+
+    if (
+      deletingAll &&
+      !window.confirm(`Xác nhận lần cuối: xóa hết ${codes.length} nhân sự?`)
+    ) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    setSyncViTriMessage('');
+    try {
+      const res = await fetch('/api/nhan-su/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể xóa nhân sự đã chọn.');
+      }
+
+      const deleted = Number(data.deleted) || codes.length;
+      setSelectedStaffCodes(new Set());
+      await loadStaffGroups();
+      const message = `Đã xóa ${deleted} nhân sự.`;
+      setSyncViTriMessage(message);
+      showAppToast(message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể xóa nhân sự đã chọn.';
+      setSyncViTriMessage(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedStaffCodes(new Set());
+  }, [selectedBranchId]);
+
   const departmentOptions = useMemo(() => {
     const names = new Set<string>();
     branches.forEach(branch => branch.departments.forEach(department => names.add(department.name)));
@@ -230,14 +486,56 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
               <p className="text-xs font-black uppercase tracking-wider text-red-300">Quản lý nhân sự</p>
               <h2 className="mt-1 text-2xl font-black leading-tight">Chi nhánh & Phòng ban</h2>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-300">
-                Phòng ban Sản xuất · Chi nhánh Đà Nẵng.
+                Phòng ban Sản xuất · Chi nhánh Phú Thọ.
               </p>
             </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <button
+                type="button"
+                onClick={handleDownloadStaffTemplate}
+                disabled={isImportingExcel || isLoadingStaff}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Tải file mẫu cột nhập nhân sự"
+              >
+                <Download className="h-4 w-4" />
+                Tải mẫu Excel
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadStaffExcel}
+                disabled={isImportingExcel || isLoadingStaff}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Xuất danh sách nhân sự hiện tại ra Excel"
+              >
+                <Download className="h-4 w-4" />
+                Xuất Excel
+              </button>
+              {canCreate || canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  disabled={isImportingExcel || isLoadingStaff}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isImportingExcel ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="h-4 w-4" />
+                  )}
+                  {isImportingExcel ? 'Đang nhập...' : 'Tải Excel lên'}
+                </button>
+              ) : null}
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden"
+                onChange={event => void handleImportStaffExcel(event)}
+              />
               <button
                 type="button"
                 onClick={() => void handleSyncViTri()}
-                disabled={isSyncingViTri || isLoadingStaff}
+                disabled={isSyncingViTri || isLoadingStaff || isImportingExcel}
                 className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-[#ef1b2d] hover:bg-red-50 hover:text-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-60"
                 title="Ghi cột vi_tri = Phòng_ban_Chức_vụ (dấu cách → _)"
               >
@@ -248,14 +546,16 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
                 )}
                 {isSyncingViTri ? 'Đang cập nhật...' : 'Cập nhật vị trí'}
               </button>
-              <button
-                type="button"
-                onClick={() => openAddStaffForm()}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={() => openAddStaffForm()}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -333,6 +633,52 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
         />
       </TableToolbar>
 
+      {canDelete ? (
+        <section className="grid gap-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-zinc-950">Xóa theo lựa chọn</p>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+              Đã tick {selectedCount} dòng. Có thể chọn hết danh sách đang xem hoặc toàn bộ nhân sự rồi xóa.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={isLoadingStaff || visibleStaffCodes.length === 0 || isBulkDeleting}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {allVisibleSelected ? 'Bỏ chọn đang xem' : 'Chọn đang xem'}
+            </button>
+            <button
+              type="button"
+              onClick={selectAllStaff}
+              disabled={isLoadingStaff || allStaffCodes.length === 0 || isBulkDeleting}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Chọn hết ({allStaffCodes.length})
+            </button>
+            <button
+              type="button"
+              onClick={clearStaffSelection}
+              disabled={selectedCount === 0 || isBulkDeleting}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Bỏ chọn
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleBulkDeleteSelected()}
+              disabled={selectedCount === 0 || isBulkDeleting}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isBulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isBulkDeleting ? 'Đang xóa...' : `Xóa đã chọn${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
         {!isLoadingStaff && !staffError && branches.length === 0 && (
           <div className="px-4 py-8 text-center text-sm font-bold text-zinc-500">
@@ -342,8 +688,20 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
 
         {filteredDepartments.length > 0 && (
           <>
-            <TableShell minWidthClassName="min-w-[1280px]">
+            <TableShell minWidthClassName="min-w-[1320px]">
               <TableHead>
+                {canDelete ? (
+                  <TableHeadCell align="center" className="w-12">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      disabled={visibleStaffCodes.length === 0 || isBulkDeleting}
+                      className="h-4 w-4 accent-[#ef1b2d]"
+                      aria-label="Chọn tất cả nhân sự đang xem"
+                    />
+                  </TableHeadCell>
+                ) : null}
                 <TableHeadCell>Họ tên</TableHeadCell>
                 <TableHeadCell>Mã NV</TableHeadCell>
                 <TableHeadCell>Phòng ban</TableHeadCell>
@@ -358,9 +716,25 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
                 <TableHeadCell align="center">Thao tác</TableHeadCell>
               </TableHead>
               <TableBody>
-                {tableRows.map(({ key, departmentName, member }) => (
+                {tableRows.map(({ key, departmentName, member }) => {
+                  const code = String(member.code || '').trim();
+                  const canTick = Boolean(code);
+                  return (
                   <React.Fragment key={key}>
                     <TableRow>
+                      {canDelete ? (
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={canTick && selectedStaffCodes.has(code)}
+                            onChange={() => toggleStaffCode(code)}
+                            disabled={!canTick || isBulkDeleting}
+                            className="h-4 w-4 accent-[#ef1b2d] disabled:opacity-40"
+                            aria-label={canTick ? `Chọn ${member.name}` : `${member.name} chưa có mã`}
+                            title={canTick ? undefined : 'Chưa có mã nhân sự — không thể xóa hàng loạt'}
+                          />
+                        </td>
+                      ) : null}
                       <td className="whitespace-nowrap px-4 py-3 font-black text-zinc-950">{member.name}</td>
                       <td className="whitespace-nowrap px-4 py-3 font-mono font-semibold text-zinc-700">
                         {member.code || '—'}
@@ -418,43 +792,48 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
                             <Eye className="h-3.5 w-3.5" />
                             Xem
                           </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditTarget({
-                                member,
-                                departmentName,
-                                branchName: selectedBranch?.name || ''
-                              })
-                            }
-                            aria-label={`Sửa ${member.name}`}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Sửa
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteMember(member)}
-                            disabled={deletingCode === member.code}
-                            aria-label={`Xóa ${member.name}`}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingCode === member.code ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                            Xoá
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditTarget({
+                                  member,
+                                  departmentName,
+                                  branchName: selectedBranch?.name || ''
+                                })
+                              }
+                              aria-label={`Sửa ${member.name}`}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Sửa
+                            </button>
+                          ) : null}
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteMember(member)}
+                              disabled={deletingCode === member.code || isBulkDeleting}
+                              aria-label={`Xóa ${member.name}`}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingCode === member.code ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                              Xoá
+                            </button>
+                          ) : null}
                         </div>
                         </RowActionsMenu>
                       </td>
                     </TableRow>
                   </React.Fragment>
-                ))}
+                  );
+                })}
                 {tableRows.length === 0 && !isLoadingStaff && (
-                  <TableEmptyRow colSpan={12}>Không có nhân sự phù hợp bộ lọc.</TableEmptyRow>
+                  <TableEmptyRow colSpan={canDelete ? 13 : 12}>Không có nhân sự phù hợp bộ lọc.</TableEmptyRow>
                 )}
               </TableBody>
             </TableShell>
@@ -489,6 +868,7 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
           departmentName={viewMember.departmentName}
           branchName={selectedBranch?.name || ''}
           onClose={() => setViewMember(null)}
+          canEdit={canEdit}
           onEdit={() => {
             setEditTarget({
               member: viewMember.member,
@@ -515,13 +895,15 @@ function StaffDetailModal({
   departmentName,
   branchName,
   onClose,
-  onEdit
+  onEdit,
+  canEdit = false
 }: {
   member: HrMember;
   departmentName: string;
   branchName: string;
   onClose: () => void;
   onEdit: () => void;
+  canEdit?: boolean;
 }) {
   const rows: [string, string][] = [
     ['Họ tên', member.name],
@@ -603,14 +985,16 @@ function StaffDetailModal({
           >
             Đóng
           </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c]"
-          >
-            <Pencil className="h-4 w-4" />
-            Sửa
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Pencil className="h-4 w-4" />
+              Sửa
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -766,7 +1150,7 @@ export function emptyStaffForm(defaults?: { branch?: string; department?: string
   return {
     name: '',
     code: '',
-    branch: defaults?.branch || 'Đà Nẵng',
+    branch: defaults?.branch || 'Phú Thọ',
     department: defaults?.department || 'Sản xuất',
     role: 'Nhân sự',
     shift: STANDARD_SHIFTS[0] || 'Ca 1',
@@ -806,7 +1190,7 @@ export function AddStaffModal({
 
   const branchOptions = useMemo(() => {
     const names = branches.map(branch => branch.name).filter(Boolean);
-    return names.length > 0 ? names : ['Đà Nẵng'];
+    return names.length > 0 ? names : ['Phú Thọ'];
   }, [branches]);
 
   useEffect(() => {
@@ -817,7 +1201,7 @@ export function AddStaffModal({
       setForm({
         name: member.name,
         code: member.code || '',
-        branch: branchName || branchOptions[0] || 'Đà Nẵng',
+        branch: branchName || branchOptions[0] || 'Phú Thọ',
         department: departmentName || departmentOptions[0] || 'Sản xuất',
         role: member.role || 'Nhân sự',
         shift: member.shift || STANDARD_SHIFTS[0] || 'Ca 1',
@@ -831,7 +1215,7 @@ export function AddStaffModal({
       return;
     }
 
-    const branchName = branches.find(branch => branch.id === defaultBranchId)?.name || branchOptions[0] || 'Đà Nẵng';
+    const branchName = branches.find(branch => branch.id === defaultBranchId)?.name || branchOptions[0] || 'Phú Thọ';
     const nextCode = generateNextStaffCode(collectStaffCodes(branches));
     setForm({
       ...emptyStaffForm({ branch: branchName, department: defaultDepartment || departmentOptions[0] || 'Sản xuất' }),

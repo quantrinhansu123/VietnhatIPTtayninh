@@ -45,6 +45,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `cai_dat_thoi_gian` | `/cai-dat` | [cai_dat_thoi_gian.md](./cai_dat_thoi_gian.md) |
 | `bao_cao_phoi_tron` | `/bao-cao-phoi-tron` | [bao_cao_phoi_tron.md](./bao_cao_phoi_tron.md) |
 | `bang_tron_vat_tu_dinh_muc` | `/danh-sach-bao-cao-phoi-tron` (tab định mức) | [bang_tron_vat_tu_dinh_muc.md](./bang_tron_vat_tu_dinh_muc.md) |
+| `phieu_tron_thuc_te` | `/danh-sach-bao-cao-phoi-tron` (tab thực tế) | [phieu_tron_thuc_te.md](./phieu_tron_thuc_te.md) |
 | `bao_cao_nghiem_thu` | `/bao-cao-san-luong` | [bao_cao_nghiem_thu.md](./bao_cao_nghiem_thu.md) |
 | `bao_cao_may_nvl_ton` | `/bao-cao-may-nvl-ton` | [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) |
 | `phieu_bao_dung_may` | `/phieu-bao-dung-may` | [phieu_bao_dung_may.md](./phieu_bao_dung_may.md) |

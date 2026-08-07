@@ -22,6 +22,8 @@ type Props = {
   isLoadingStaff: boolean;
   staffError: string;
   onReloadStaff: () => Promise<void>;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 function assignmentsFromStaff(members: HrMember[]): StaffAssignmentRow[] {
@@ -47,7 +49,9 @@ export function StaffRoleAssignmentPanel({
   staffMembers,
   isLoadingStaff,
   staffError,
-  onReloadStaff
+  onReloadStaff,
+  canEdit = false,
+  canDelete = false
 }: Props) {
   const [query, setQuery] = useState('');
   const [editingCode, setEditingCode] = useState('');
@@ -324,15 +328,17 @@ export function StaffRoleAssignmentPanel({
               Hủy sửa
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white hover:bg-[#b30d1c] disabled:opacity-60"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? 'Đang lưu...' : editingCode ? 'Cập nhật trên nhân sự' : 'Lưu vào nhân sự'}
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white hover:bg-[#b30d1c] disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Đang lưu...' : editingCode ? 'Cập nhật trên nhân sự' : 'Lưu vào nhân sự'}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -382,27 +388,31 @@ export function StaffRoleAssignmentPanel({
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5">
                     <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(row)}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 hover:bg-amber-100"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Sửa
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(row.maNhanSu)}
-                        disabled={deletingCode === row.maNhanSu}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                      >
-                        {deletingCode === row.maNhanSu ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                        Xóa
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(row)}
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 hover:bg-amber-100"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Sửa
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(row.maNhanSu)}
+                          disabled={deletingCode === row.maNhanSu}
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                        >
+                          {deletingCode === row.maNhanSu ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          Xóa
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

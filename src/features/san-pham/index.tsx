@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
+import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
@@ -26,6 +27,12 @@ import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
 import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, excelRowsToProductNplItems, bulkExcelRowsToProductMap, productNplAmountTypeLabel, formatProductNplAmount, roundNplNumber } from './types';
 import { downloadBulkProductNplComponentsTemplate, downloadProductNplComponentsTemplate, parseBulkProductNplComponentsExcel, parseProductNplComponentsExcel } from '../../utils/productNplComponentsExcel';
+import {
+  downloadProductCatalogExcelTemplate,
+  parseProductCatalogExcel,
+  productCatalogRowToPayload
+} from '../../utils/productCatalogExcel';
+import { showAppToast } from '../../lib/appToast';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 
 const PRODUCT_QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Công nhân sx', 'Ngày sản xuất'] as const;
@@ -400,7 +407,8 @@ export function ProductViewModal({
   onSaveItems,
   onEdit,
   onDelete,
-  isDeleting
+  isDeleting,
+  canEditComponents: canEditComponentsProp
 }: {
   product: ProductRow;
   initialTab?: ProductViewTab;
@@ -412,7 +420,9 @@ export function ProductViewModal({
   onEdit?: () => void;
   onDelete?: () => void;
   isDeleting?: boolean;
+  canEditComponents?: boolean;
 }) {
+  const canEditComponents = canEditComponentsProp ?? Boolean(onEdit);
   const [tab, setTab] = useState<ProductViewTab>(initialTab);
   const [items, setItems] = useState<ProductNplItem[]>(product.nplItems);
   const [detailItem, setDetailItem] = useState<ProductNplItem | null>(null);
@@ -453,16 +463,19 @@ export function ProductViewModal({
   };
 
   const openAddForm = () => {
+    if (!canEditComponents) return;
     setFormIndex(null);
     setFormMode('add');
   };
 
   const openEditForm = (index: number) => {
+    if (!canEditComponents) return;
     setFormIndex(index);
     setFormMode('edit');
   };
 
   const handleDeleteItem = async (index: number) => {
+    if (!canEditComponents) return;
     const item = items[index];
     if (!item) return;
     if (!window.confirm(`Xóa thành phần "${item.code}" khỏi sản phẩm?`)) return;
@@ -750,42 +763,46 @@ export function ProductViewModal({
                       Tổng %: {formatPercent(totalPercent)}%
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleDownloadComponentsTemplate}
-                    className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
-                  >
-                    <Download className="h-4 w-4" />
-                    Tải mẫu Excel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => componentsFileInputRef.current?.click()}
-                    disabled={isSaving || isReadingComponentsExcel}
-                    className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isReadingComponentsExcel ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    {isReadingComponentsExcel ? 'Đang đọc...' : 'Tải Excel lên'}
-                  </button>
-                  <input
-                    ref={componentsFileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={event => handleComponentsExcelChange(event.target.files?.[0])}
-                  />
-                  <button
-                    type="button"
-                    onClick={openAddForm}
-                    className="flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Thêm
-                  </button>
+                  {canEditComponents ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleDownloadComponentsTemplate}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
+                      >
+                        <Download className="h-4 w-4" />
+                        Tải mẫu Excel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => componentsFileInputRef.current?.click()}
+                        disabled={isSaving || isReadingComponentsExcel}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isReadingComponentsExcel ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        {isReadingComponentsExcel ? 'Đang đọc...' : 'Tải Excel lên'}
+                      </button>
+                      <input
+                        ref={componentsFileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        className="hidden"
+                        onChange={event => handleComponentsExcelChange(event.target.files?.[0])}
+                      />
+                      <button
+                        type="button"
+                        onClick={openAddForm}
+                        className="flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Thêm
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -852,23 +869,27 @@ export function ProductViewModal({
                             >
                               <Eye className="h-4 w-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => openEditForm(index)}
-                              title="Sửa"
-                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(index)}
-                              disabled={isSaving}
-                              title="Xóa"
-                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {canEditComponents ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditForm(index)}
+                                  title="Sửa"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(index)}
+                                  disabled={isSaving}
+                                  title="Xóa"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         </td>
                       </TableRow>
@@ -1189,6 +1210,7 @@ export function ProductEditModal({
 }
 
 export function ProductsPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('products');
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('all');
@@ -1218,7 +1240,9 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   const [productFormError, setProductFormError] = useState('');
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const bulkComponentsFileInputRef = useRef<HTMLInputElement>(null);
+  const catalogFileInputRef = useRef<HTMLInputElement>(null);
   const [isImportingBulkProductComponents, setIsImportingBulkProductComponents] = useState(false);
+  const [isImportingProductCatalog, setIsImportingProductCatalog] = useState(false);
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
@@ -1290,6 +1314,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openProductCreate = () => {
+    if (!canCreate) return;
     setProductActionMessage('');
     setProductError('');
     setProductFormError('');
@@ -1299,6 +1324,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openProductEdit = (product: ProductRow) => {
+    if (!canEdit) return;
     setProductActionMessage('');
     setProductError('');
     setProductFormError('');
@@ -1441,6 +1467,90 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const handleDownloadProductCatalogTemplate = () => {
+    downloadProductCatalogExcelTemplate();
+  };
+
+  const handleImportProductCatalog = async (file?: File | null) => {
+    if ((!canCreate && !canEdit) || !file) return;
+
+    setIsImportingProductCatalog(true);
+    setProductError('');
+    setProductActionMessage('');
+
+    try {
+      const rows = await parseProductCatalogExcel(file);
+      if (rows.length === 0) {
+        throw new Error('File Excel không có dòng sản phẩm hợp lệ.');
+      }
+
+      const byCode = new Map(
+        products
+          .map(product => [normalizeProductCodeKey(product.code), product] as const)
+          .filter(([key]) => Boolean(key))
+      );
+
+      let created = 0;
+      let updated = 0;
+      const failures: string[] = [];
+
+      for (const row of rows) {
+        const code = row.code.trim();
+        const name = row.name.trim();
+        if (!code && !name) {
+          failures.push(`dòng ${row.rowNumber}: thiếu mã SP và tên`);
+          continue;
+        }
+
+        const payload = productCatalogRowToPayload(row);
+        const existing = code ? byCode.get(normalizeProductCodeKey(code)) : undefined;
+
+        const res = existing
+          ? await fetch(`/api/san-pham/${existing.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+          : await fetch('/api/san-pham', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failures.push(`dòng ${row.rowNumber}: ${data.error || 'Không lưu được'}`);
+          continue;
+        }
+        if (existing) updated += 1;
+        else created += 1;
+      }
+
+      if (created > 0 || updated > 0) {
+        await loadProducts();
+      }
+
+      const summary = [
+        created || updated ? `Đã nhập Excel SP: thêm ${created}, cập nhật ${updated}.` : 'Không nhập được dòng nào.',
+        failures.length ? `${failures.length} dòng lỗi (${failures.slice(0, 3).join('; ')}).` : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+      setProductActionMessage(summary);
+      if (created > 0 || updated > 0) showAppToast(summary);
+      else if (failures.length > 0) {
+        setProductError(summary);
+        showAppToast(failures[0], 'error');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể đọc hoặc nhập Excel danh mục sản phẩm.';
+      setProductError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsImportingProductCatalog(false);
+      if (catalogFileInputRef.current) catalogFileInputRef.current.value = '';
+    }
+  };
+
   const handleDownloadBulkProductComponentsTemplate = () => {
     downloadBulkProductNplComponentsTemplate(
       products.flatMap(product =>
@@ -1457,7 +1567,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   };
 
   const handleImportBulkProductComponents = async (file?: File | null) => {
-    if (!file) return;
+    if (!canEdit || !file) return;
 
     setIsImportingBulkProductComponents(true);
     setProductError('');
@@ -1815,15 +1925,45 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="w-full space-y-4">
-      <section className="flex justify-end rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+      <section className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
         <button
           type="button"
-          onClick={openProductCreate}
-          className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+          onClick={handleDownloadProductCatalogTemplate}
+          disabled={isImportingProductCatalog || isLoadingProducts}
+          className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
         >
-          <Plus className="h-4 w-4" />
-          Thêm mới
+          <Download className="h-4 w-4" />
+          Tải mẫu Excel SP
         </button>
+        {canCreate || canEdit ? (
+          <button
+            type="button"
+            onClick={() => catalogFileInputRef.current?.click()}
+            disabled={isImportingProductCatalog || isLoadingProducts}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
+          </button>
+        ) : null}
+        <input
+          ref={catalogFileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
+        />
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openProductCreate}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+          >
+            <Plus className="h-4 w-4" />
+            Thêm mới
+          </button>
+        ) : null}
       </section>
 
       <TableToolbar
@@ -1864,37 +2004,63 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         <div className="min-w-0">
           <p className="text-sm font-black text-zinc-950">Thao tác hàng loạt</p>
           <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-            Đã tick {selectedProducts.length} dòng. Đồng bộ mã đã kiểm kho vào Tồn đầu, in QR theo tickbox, nhập Excel thành phần hoặc xóa.
+            Đã tick {selectedProducts.length} dòng. Excel danh mục SP khớp cột bảng (ô trống vẫn nhập được). Excel định mức NVL riêng.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => void handleSyncOpeningStock()}
+              disabled={isSyncingOpeningStock}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSyncingOpeningStock ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {isSyncingOpeningStock ? 'Đang đồng bộ...' : 'Đồng bộ'}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => void handleSyncOpeningStock()}
-            disabled={isSyncingOpeningStock}
-            className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handleDownloadProductCatalogTemplate}
+            disabled={isLoadingProducts || isImportingProductCatalog}
+            className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Mẫu cột bảng /san-pham — ô trống vẫn đẩy lên được"
           >
-            {isSyncingOpeningStock ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {isSyncingOpeningStock ? 'Đang đồng bộ...' : 'Đồng bộ'}
+            <Download className="h-4 w-4" />
+            Tải mẫu Excel
           </button>
+          {canCreate || canEdit ? (
+            <button
+              type="button"
+              onClick={() => catalogFileInputRef.current?.click()}
+              disabled={isLoadingProducts || isImportingProductCatalog}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleDownloadBulkProductComponentsTemplate}
             disabled={isLoadingProducts}
             className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Mẫu định mức thành phần NVL (không phải danh mục SP)"
           >
             <Download className="h-4 w-4" />
-            Tải mẫu Excel TP
+            Mẫu định mức NVL
           </button>
-          <button
-            type="button"
-            onClick={() => bulkComponentsFileInputRef.current?.click()}
-            disabled={isLoadingProducts || isImportingBulkProductComponents}
-            className="flex h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isImportingBulkProductComponents ? 'Đang nhập...' : 'Tải Excel TP lên'}
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => bulkComponentsFileInputRef.current?.click()}
+              disabled={isLoadingProducts || isImportingBulkProductComponents}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingBulkProductComponents ? 'Đang nhập...' : 'Nhập định mức NVL'}
+            </button>
+          ) : null}
           <input
             ref={bulkComponentsFileInputRef}
             type="file"
@@ -1910,15 +2076,17 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           >
             {allFilteredSelected ? 'Bỏ chọn bộ lọc' : 'Chọn các dòng đang lọc'}
           </button>
-          <button
-            type="button"
-            onClick={handleBulkDeleteProducts}
-            disabled={selectedProducts.length === 0 || isDeletingProducts}
-            className="flex h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isDeletingProducts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            {isDeletingProducts ? 'Đang xóa...' : 'Xóa đã chọn'}
-          </button>
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={handleBulkDeleteProducts}
+              disabled={selectedProducts.length === 0 || isDeletingProducts}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDeletingProducts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isDeletingProducts ? 'Đang xóa...' : 'Xóa đã chọn'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleOpenPrintQtyModal}
@@ -2011,23 +2179,27 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openProductEdit(product)}
-                      title="Sửa"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteProduct(product)}
-                      disabled={deletingProductId === product.id}
-                      title="Xóa"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {deletingProductId === product.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => openProductEdit(product)}
+                        title="Sửa"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(product)}
+                        disabled={deletingProductId === product.id}
+                        title="Xóa"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingProductId === product.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    ) : null}
                   </div>
                   </RowActionsMenu>
                 </td>
@@ -2062,8 +2234,9 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           isSaving={isSavingProductNpl}
           onClose={() => setViewingProduct(null)}
           onSaveItems={items => saveProductNplItems(viewingProduct.id, items)}
-          onEdit={() => openProductEdit(viewingProduct)}
-          onDelete={() => handleDeleteProduct(viewingProduct)}
+          onEdit={canEdit ? () => openProductEdit(viewingProduct) : undefined}
+          onDelete={canDelete ? () => handleDeleteProduct(viewingProduct) : undefined}
+          canEditComponents={canEdit}
           isDeleting={deletingProductId === viewingProduct.id}
         />
       )}

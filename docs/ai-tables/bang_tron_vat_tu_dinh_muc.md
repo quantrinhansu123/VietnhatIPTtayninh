@@ -5,13 +5,15 @@
 | **SQL** | `supabase-bang-tron-vat-tu-dinh-muc.sql` |
 
 **API:** `/api/bang-tron-vat-tu-dinh-muc`  
-**UI:** `MixingNormMaterialsTab.tsx` · in: `MixingNormRatioPrintSheet.tsx`
+Query: `ngay`, `ca`, `q`  
+**UI:** `MixingNormMaterialsTab.tsx` · in: `MixingNormRatioPrintSheet.tsx`  
+Gợi ý sang form phối trộn: `MixingReportForm.tsx` + `utils/mixingNormSuggestion.ts`
 
 ## Mô hình
 
 **1 form nhập = 1 dòng DB = 1 phiếu**
 
-- `ma_lenh_sx`, `ngay`, `ghi_chu`
+- `ma_lenh_sx`, `ngay`, `ca`, `ghi_chu`
 - `chi_tiet` jsonb = mảng sản phẩm:
 
 ```json

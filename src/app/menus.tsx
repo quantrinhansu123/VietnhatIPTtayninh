@@ -59,6 +59,7 @@ import {
   ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban
 } from 'lucide-react';
 import type { AppTab } from '../routes';
+import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
 import { pathFromTab } from '../routes';
 import MachineDowntimeIcon from '../components/icons/MachineDowntimeIcon';
 
@@ -121,6 +122,13 @@ export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
     icon: Warehouse,
     icon3d: warehouse3d,
     tab: 'factory-kho'
+  },
+  {
+    title: 'Quản lý máy',
+    desc: 'Danh sách máy móc, tình trạng và thông tin vận hành.',
+    icon: Cpu,
+    icon3d: wrench3d,
+    tab: 'machines'
   },
   {
     title: 'Lái xe',
@@ -539,10 +547,10 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Kiểm tra kho thành phẩm',
-    desc: 'Quét mã SP bằng máy BT-A700 và lưu kiểm kho.',
-    icon: ClipboardList,
-    icon3d: reportList3d,
-    tab: 'kiem-kho'
+    desc: 'Xem, sửa và in các phiếu báo cáo sản lượng đã lưu.',
+    icon: ClipboardCheck,
+    icon3d: checkMarkButton3d,
+    tab: 'acceptance-report-list'
   },
   {
     title: 'Báo cáo chất lượng',
@@ -669,7 +677,6 @@ export function MenuCardGrid({
                 <span className="block font-display font-semibold tracking-tight text-[13.5px] text-slate-900">{item.title}</span>
                 <span className="mt-0.5 block text-[11.5px] leading-snug text-slate-500 line-clamp-2">{item.desc}</span>
               </span>
-              <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-400 transition group-hover:text-brand-500 group-hover:translate-x-0.5" />
             </div>
           </button>
         );
@@ -725,7 +732,7 @@ function MainMenuFlowCard({
             <Icon className={largeIcon ? 'h-8 w-8' : 'h-5 w-5'} strokeWidth={largeIcon ? 1.8 : 2} />
           )}
         </span>
-        <span className="min-w-0 flex-1 pr-2">
+        <span className="min-w-0 flex-1">
           <span className="block font-display text-[14px] font-semibold tracking-tight text-slate-900">
             {item.title}
           </span>
@@ -733,7 +740,6 @@ function MainMenuFlowCard({
             {item.desc}
           </span>
         </span>
-        <ChevronRight className="mt-7 h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />
       </span>
     </button>
   );
@@ -769,51 +775,7 @@ export function MainMenuFlow({
   items: MenuCardConfig[];
   onNavigate: (tab: AppTab) => void;
 }) {
-  if (items.length !== 6 && items.length !== 9) {
-    return <MenuCardGrid items={items} onNavigate={onNavigate} />;
-  }
-
-  const isTwoRowFlow = items.length === 6;
-
-  return (
-    <>
-      <div className="lg:hidden">
-        <MenuCardGrid items={items} onNavigate={onNavigate} />
-      </div>
-
-      <section
-        className={`relative hidden grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)_44px_minmax(0,1fr)] ${
-          isTwoRowFlow ? 'grid-rows-[auto_40px_auto]' : 'grid-rows-[auto_40px_auto_40px_auto]'
-        } lg:grid`}
-        aria-label="Lưu đồ chức năng"
-      >
-        <div className="col-start-1 row-start-1"><MainMenuFlowCard item={items[0]} step={1} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-        <div className="col-start-2 row-start-1"><FlowArrow direction="right" /></div>
-        <div className="col-start-3 row-start-1"><MainMenuFlowCard item={items[1]} step={2} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-        <div className="col-start-4 row-start-1"><FlowArrow direction="right" /></div>
-        <div className="col-start-5 row-start-1"><MainMenuFlowCard item={items[2]} step={3} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-
-        <div className="col-start-5 row-start-2"><FlowArrow direction="down" /></div>
-
-        <div className="col-start-1 row-start-3"><MainMenuFlowCard item={items[5]} step={6} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-        <div className="col-start-2 row-start-3"><FlowArrow direction="left" /></div>
-        <div className="col-start-3 row-start-3"><MainMenuFlowCard item={items[4]} step={5} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-        <div className="col-start-4 row-start-3"><FlowArrow direction="left" /></div>
-        <div className="col-start-5 row-start-3"><MainMenuFlowCard item={items[3]} step={4} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-
-        {!isTwoRowFlow && (
-          <>
-            <div className="col-start-1 row-start-4"><FlowArrow direction="down" /></div>
-            <div className="col-start-1 row-start-5"><MainMenuFlowCard item={items[6]} step={7} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-            <div className="col-start-2 row-start-5"><FlowArrow direction="right" /></div>
-            <div className="col-start-3 row-start-5"><MainMenuFlowCard item={items[7]} step={8} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-            <div className="col-start-4 row-start-5"><FlowArrow direction="right" /></div>
-            <div className="col-start-5 row-start-5"><MainMenuFlowCard item={items[8]} step={9} showStep={false} largeIcon onNavigate={onNavigate} /></div>
-          </>
-        )}
-      </section>
-    </>
-  );
+  return <MenuCardGrid items={items} onNavigate={onNavigate} />;
 }
 
 export function FourStepMenuFlow({
@@ -917,7 +879,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },
       { label: 'Dữ liệu cân tự động', tab: 'can-tu-dong' },
-      { label: 'Kiểm tra kho thành phẩm', tab: 'kiem-kho' },
+      { label: 'Kiểm tra kho thành phẩm', tab: 'acceptance-report-list' },
       { label: 'Báo cáo chất lượng', tab: 'factory-qc', disabled: true }
     ]
   },
@@ -946,6 +908,12 @@ export const PRIMARY_NAV_GROUPS: {
     ]
   },
   {
+    title: 'Quản lý máy',
+    icon: Cpu,
+    tab: 'machines',
+    children: []
+  },
+  {
     title: 'Lái xe',
     icon: Truck,
     tab: 'vehicles',
@@ -962,7 +930,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'report-forms': { group: 'Công nhân', sub: 'Nhập báo cáo ca' },
   'form': { group: 'Công nhân', sub: 'Nhập báo cáo ca' },
   'report-lists': { group: 'Công nhân', sub: 'Lịch sử công việc' },
-  'acceptance-report-list': { group: 'Quản Đốc', sub: 'DS phiếu nghiệm thu' },
+  'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary': { group: 'Công nhân', sub: 'Phiếu cân' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
   'can-tu-dong': { group: 'QC', sub: 'Dữ liệu cân tự động' },
@@ -985,7 +953,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'materials': { group: 'Kho', sub: 'Kho nguyên vật liệu' },
   'materials-inventory': { group: 'Kho', sub: 'Kho nguyên vật liệu' },
   'products': { group: 'Kho', sub: 'Kho thành phẩm' },
-  'machines': { group: 'Kho', sub: 'Danh sách máy' },
+  'machines': { group: 'Trang chủ', sub: 'Quản lý máy' },
   'warehouse-slip': { group: 'Kho', sub: 'Phiếu xuất nhập kho' },
   'warehouse-history': { group: 'Kho', sub: 'Lịch sử xuất nhập' },
   'settings': { group: 'Quản trị', sub: 'Người dùng và phân quyền / Cấu hình hệ thống' },
@@ -1023,7 +991,17 @@ export function SubNav({
   allowedTabs?: Set<string>;
   fullAccess?: boolean;
 }) {
-  const canSee = (tab: AppTab) => tab === 'settings' || fullAccess || (allowedTabs?.has(tab) ?? false);
+  const canSee = (tab: AppTab) => {
+    if (fullAccess) return true;
+    if (!allowedTabs) return false;
+    const accessTab = resolveAccessTab(tab);
+    return (
+      allowedTabs.has(tab) ||
+      allowedTabs.has(accessTab) ||
+      hubHasAllowedChild(tab, allowedTabs) ||
+      hubHasAllowedChild(accessTab, allowedTabs)
+    );
+  };
   const visibleGroups = PRIMARY_NAV_GROUPS
     .map(group => ({
       ...group,

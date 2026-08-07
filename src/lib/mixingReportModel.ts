@@ -698,7 +698,10 @@ export function normalizeMixingReport(record: Record<string, unknown>): MixingRe
 
   return {
     id: String(record.id ?? ''),
-    ca: String(record.ca ?? ''),
+    ca: (() => {
+      const raw = String(record.ca ?? '').trim();
+      return !raw || raw === '-' || raw === '—' ? '' : raw;
+    })(),
     ngay: String(record.ngay ?? '').slice(0, 10),
     gio: String(record.gio ?? '').slice(0, 5),
     chi_nhanh: String(record.chi_nhanh ?? ''),

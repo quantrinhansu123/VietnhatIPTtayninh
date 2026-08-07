@@ -54,7 +54,7 @@ export default function WasteForm({ wasteWeight, notes, onChange }: WasteFormPro
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/50 flex gap-2 text-xs text-amber-800 font-medium leading-relaxed">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
             <span>
-              <strong>Cảnh báo phế phẩm cao:</strong> Khối lượng phế phẩm vượt quá 10kg có thể ảnh hưởng lớn đến hiệu suất định mức của phân xưởng Đà Nẵng. Hãy ghi rõ nguyên nhân lỗi ở khung ghi chú bên dưới!
+              <strong>Cảnh báo phế phẩm cao:</strong> Khối lượng phế phẩm vượt quá 10kg có thể ảnh hưởng lớn đến hiệu suất định mức của phân xưởng Phú Thọ. Hãy ghi rõ nguyên nhân lỗi ở khung ghi chú bên dưới!
             </span>
           </div>
         )}

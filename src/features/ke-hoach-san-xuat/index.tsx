@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import { RowActionsMenu } from '../../components/shared/table';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from '../../components/layout/constants';
@@ -23,7 +24,7 @@ import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, typ
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
 import type { WarehouseSlipPrefillDraft } from '../phieu-xuat-nhap-kho';
 import { STANDARD_SHIFTS } from '../../types';
-import { normalizeHrBranches, type HrBranch } from '../_shared/hr';
+import { normalizeHrBranches, type HrBranch, type HrMember } from '../_shared/hr';
 import { ControlBoardShiftSummaryPrintBatch } from '../../components/ControlBoardShiftSummaryPrintSheet';
 import { buildControlBoardShiftSummary, type ControlBoardShiftSummaryRow } from '../../utils/controlBoardShiftSummary';
 import { waitForPrintImagesReady } from '../../utils/printReady';
@@ -70,9 +71,11 @@ import {
   ChevronRight,
   ClipboardCheck,
   ClipboardList,
+  Eye,
   GripVertical,
   Loader2,
   Plus,
+  Pencil,
   Printer,
   QrCode,
   Save,
@@ -1644,6 +1647,7 @@ export type ProductionPlanHistorySummary = {
 
 export type ProductionPlanHistoryLine = {
   id: string;
+  productionOrderId: string;
   priority: number;
   position: string;
   note: string;
@@ -1700,6 +1704,7 @@ export function normalizeProductionPlanHistoryLines(data: unknown): ProductionPl
 
       return {
         id: String(record.id ?? '').trim() || `${record.ma_lenh_sx}-${record.thu_tu_uu_tien}`,
+        productionOrderId: String(record.lenh_sx_id ?? '').trim(),
         priority: Number(record.thu_tu_uu_tien ?? 0) || 0,
         position: pickText(record, ['vi_tri', 'position'], '-'),
         note: pickText(record, ['ghi_chu', 'note'], ''),
@@ -1722,6 +1727,7 @@ export function formatProductionPlanHistoryProducts(products: OrderProductLine[]
 }
 
 export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('production-plan-history');
   const [filterDate, setFilterDate] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -1731,6 +1737,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isLoadingCreate, setIsLoadingCreate] = useState(false);
+  const [createOrders, setCreateOrders] = useState<ProductionOrderRow[]>([]);
+  const [createMachines, setCreateMachines] = useState<MachineRow[]>([]);
+  const [editingPlan, setEditingPlan] = useState<ProductionPlanHistorySummary | null>(null);
+  const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
+  const [deletingPlanId, setDeletingPlanId] = useState('');
 
   const loadPlans = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
     setIsLoading(true);
@@ -1818,6 +1831,81 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     void loadPlans({ ngay: today });
   };
 
+  const openCreatePlan = async () => {
+    setIsLoadingCreate(true);
+    setLoadError('');
+    try {
+      const [orderRes, machineRes] = await Promise.all([
+        fetch('/api/lenh-sx'),
+        fetch('/api/danh-sach-may')
+      ]);
+      const [orderData, machineData] = await Promise.all([
+        orderRes.json().catch(() => ({})),
+        machineRes.json().catch(() => ({}))
+      ]);
+      if (!orderRes.ok || !machineRes.ok) {
+        throw new Error('Không thể tải lệnh sản xuất và danh sách máy.');
+      }
+      setCreateOrders(normalizeProductionOrders(orderData));
+      setCreateMachines(normalizeMachines(machineData));
+      setEditingPlan(null);
+      setEditLines([]);
+      setShowCreateModal(true);
+    } catch (error: any) {
+      setLoadError(error.message || 'Không thể mở form thêm kế hoạch sản xuất.');
+    } finally {
+      setIsLoadingCreate(false);
+    }
+  };
+
+  const openEditPlan = async (plan: ProductionPlanHistorySummary) => {
+    setIsLoadingCreate(true);
+    setLoadError('');
+    try {
+      const [detailRes, orderRes, machineRes] = await Promise.all([
+        fetch(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`),
+        fetch('/api/lenh-sx'),
+        fetch('/api/danh-sach-may')
+      ]);
+      const [detailData, orderData, machineData] = await Promise.all([
+        detailRes.json().catch(() => ({})), orderRes.json().catch(() => ({})), machineRes.json().catch(() => ({}))
+      ]);
+      if (!detailRes.ok || !orderRes.ok || !machineRes.ok) throw new Error('Không thể tải dữ liệu để sửa kế hoạch.');
+      const historyLines = normalizeProductionPlanHistoryLines(detailData);
+      setCreateOrders(normalizeProductionOrders(orderData));
+      setCreateMachines(normalizeMachines(machineData));
+      setEditLines(historyLines.map(line => ({
+        id: line.productionOrderId,
+        code: line.orderCode,
+        name: line.orderCode,
+        productCode: line.products[0]?.productCode || '',
+        productName: line.products[0]?.productName || '',
+        quantity: line.products[0]?.quantity || '',
+        unit: line.products[0]?.unit || '',
+        products: line.products,
+        status: '', orderRef: line.orderRef, position: line.machine !== '-' ? line.machine : line.position,
+        staff: line.staff, shift: line.shift, priority: line.priority, note: line.note
+      })));
+      setEditingPlan(plan);
+      setShowCreateModal(true);
+    } catch (error: any) {
+      setLoadError(error.message || 'Không thể mở form sửa kế hoạch.');
+    } finally { setIsLoadingCreate(false); }
+  };
+
+  const deletePlan = async (plan: ProductionPlanHistorySummary) => {
+    if (!window.confirm(`Xóa kế hoạch ${plan.code}?`)) return;
+    setDeletingPlanId(plan.id); setLoadError('');
+    try {
+      const res = await fetch(`/api/ke-hoach-sx/${encodeURIComponent(plan.id)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể xóa kế hoạch.');
+      if (selectedPlanId === plan.id) { setSelectedPlanId(''); setSelectedLines([]); }
+      await loadPlans();
+    } catch (error: any) { setLoadError(error.message || 'Không thể xóa kế hoạch.'); }
+    finally { setDeletingPlanId(''); }
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
@@ -1849,6 +1937,17 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
 
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-end gap-2">
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={() => void openCreatePlan()}
+              disabled={isLoadingCreate}
+              className="mr-auto inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+            >
+              {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Thêm mới
+            </button>
+          ) : null}
           <label className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
             <input
@@ -1945,14 +2044,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                       </span>
                     </div>
                     {datePlans.map(plan => (
-                      <button
+                      <div
                         key={plan.id}
-                        type="button"
-                        onClick={() => void loadPlanDetail(plan.id)}
-                        className={`flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition hover:bg-red-50/50 ${
+                        className={`px-4 py-3 transition hover:bg-red-50/50 ${
                           selectedPlanId === plan.id ? 'bg-emerald-50' : ''
                         }`}
                       >
+                        <button type="button" onClick={() => void loadPlanDetail(plan.id)} className="flex w-full items-start justify-between gap-3 text-left">
                         <div className="min-w-0">
                           <p className="font-mono text-sm font-black text-zinc-950">{plan.code}</p>
                           <p className="mt-0.5 text-xs font-semibold text-zinc-600">
@@ -1963,7 +2061,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                           ) : null}
                         </div>
                         <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
-                      </button>
+                        </button>
+                        <div className="mt-2 flex flex-wrap gap-1.5 border-t border-zinc-200/70 pt-2">
+                          <button type="button" onClick={() => void loadPlanDetail(plan.id)} className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 text-[11px] font-bold text-sky-700"><Eye className="h-3.5 w-3.5" />Xem</button>
+                          {canEdit ? <button type="button" onClick={() => void openEditPlan(plan)} disabled={isLoadingCreate} className="inline-flex h-7 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button> : null}
+                          {canDelete ? <button type="button" onClick={() => void deletePlan(plan)} disabled={deletingPlanId === plan.id} className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 disabled:opacity-50">{deletingPlanId === plan.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Xóa</button> : null}
+                        </div>
+                      </div>
                     ))}
                   </div>
                   );
@@ -2036,6 +2140,21 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           )}
         </section>
       </div>
+      <ProductionPlanModal
+        open={showCreateModal}
+        onClose={() => { setShowCreateModal(false); setEditingPlan(null); setEditLines([]); }}
+        onSaved={async () => {
+          setShowCreateModal(false);
+          await loadPlans();
+        }}
+        onOpenWarehouseSlip={() => setShowCreateModal(false)}
+        productionOrders={createOrders}
+        machines={createMachines}
+        editPlanId={editingPlan?.id}
+        initialLines={editingPlan ? editLines : undefined}
+        initialPlanDate={editingPlan?.planDate}
+        initialNote={editingPlan?.note}
+      />
     </div>
   );
 }
@@ -2046,7 +2165,11 @@ export function ProductionPlanModal({
   onSaved,
   onOpenWarehouseSlip,
   productionOrders,
-  machines
+  machines,
+  editPlanId,
+  initialLines,
+  initialPlanDate,
+  initialNote
 }: {
   open: boolean;
   onClose: () => void;
@@ -2054,7 +2177,12 @@ export function ProductionPlanModal({
   onOpenWarehouseSlip: () => void;
   productionOrders: ProductionOrderRow[];
   machines: MachineRow[];
+  editPlanId?: string;
+  initialLines?: ProductionPlanLine[];
+  initialPlanDate?: string;
+  initialNote?: string;
 }) {
+  const { canCreate } = useTabAccess('production-plan-history');
   const [planLines, setPlanLines] = useState<ProductionPlanLine[]>([]);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -2101,7 +2229,7 @@ export function ProductionPlanModal({
 
   useEffect(() => {
     if (!open) return;
-    setPlanLines(buildInitialProductionPlanLines(productionOrders, machines));
+    setPlanLines(initialLines?.length ? initialLines : buildInitialProductionPlanLines(productionOrders, machines));
     setFormError('');
     setDragIndex(null);
     setPendingPrint(false);
@@ -2117,8 +2245,8 @@ export function ProductionPlanModal({
     setAccountingMaterialsByLine({});
     setAccountingInventoryMaterials([]);
     setShowQrPrintModal(false);
-    setPlanDate(todayDateInputValue());
-    setPlanHeaderNote('');
+    setPlanDate(initialPlanDate || todayDateInputValue());
+    setPlanHeaderNote(initialNote || '');
     setPendingStaffAssignmentPrint(false);
     setIsLoadingRelatedPrint(false);
     setRelatedPrintData(null);
@@ -2134,7 +2262,7 @@ export function ProductionPlanModal({
       .then(res => (res.ok ? res.json() : null))
       .then(data => setRelatedShiftOptions(data ? getProductionShiftOptions(normalizeShiftSettings(data)) : []))
       .catch(() => setRelatedShiftOptions([]));
-  }, [open, productionOrders, machines]);
+  }, [open, productionOrders, machines, initialLines, initialPlanDate, initialNote]);
 
   useEffect(() => {
     if (!open) return;
@@ -2315,6 +2443,7 @@ export function ProductionPlanModal({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: editPlanId,
           ngay_ke_hoach: planDate,
           ghi_chu: planHeaderNote.trim(),
           items: buildProductionPlanSaveItems(displayLines)
@@ -2874,15 +3003,17 @@ export function ProductionPlanModal({
               {isLoadingRelatedPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               In tất cả phiếu liên quan
             </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving || displayLines.length === 0}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Lưu kế hoạch SX
-            </button>
+            {canCreate ? (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || displayLines.length === 0}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Lưu kế hoạch SX
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -3918,6 +4049,61 @@ export type ProductionOrderFormState = {
   note: string;
 };
 
+type ProductionStaffRoleKey = 'shiftLeadId' | 'mainStaffId' | 'assistantStaffId' | 'traineeStaffId';
+
+/** Phòng ban nguồn cho Trưởng ca / NS chính / Thợ phụ (/ Học việc) trên lệnh SX */
+const PRODUCTION_WORKSHOP_DEPARTMENT = 'PHÂN XƯỞNG SẢN XUẤT';
+
+const PRODUCTION_STAFF_ROLES: Array<{ key: ProductionStaffRoleKey; label: string }> = [
+  { key: 'shiftLeadId', label: 'Trưởng ca' },
+  { key: 'mainStaffId', label: 'Nhân sự chính' },
+  { key: 'assistantStaffId', label: 'Thợ phụ' },
+  { key: 'traineeStaffId', label: 'Học việc' }
+];
+
+function normalizeStaffPositionText(value: string) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[_/|,;+]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isProductionWorkshopDepartment(name: string) {
+  const normalized = normalizeStaffPositionText(name);
+  if (!normalized) return false;
+  const target = normalizeStaffPositionText(PRODUCTION_WORKSHOP_DEPARTMENT);
+  if (normalized === target || normalized.includes(target) || target.includes(normalized)) return true;
+  // Biến thể tên phòng trên hệ thống / dữ liệu cũ
+  if (normalized.includes('phan xuong')) return true;
+  if (normalized === 'san xuat' || normalized === 'px san xuat') return true;
+  return false;
+}
+
+function collectProductionWorkshopStaff(branches: HrBranch[]): HrMember[] {
+  const byId = new Map<string, HrMember>();
+
+  for (const branch of branches) {
+    for (const department of branch.departments) {
+      const deptMatch = isProductionWorkshopDepartment(department.name);
+      for (const member of department.members) {
+        const assignedMatch = (member.assignedPositions ?? []).some(item =>
+          isProductionWorkshopDepartment(item.department)
+        );
+        if (!deptMatch && !assignedMatch) continue;
+        const key = String(member.id || member.code || member.name);
+        if (!key || byId.has(key)) continue;
+        byId.set(key, member);
+      }
+    }
+  }
+
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+}
+
 export function newProductionOrderEntryLine(): ProductionOrderEntryLine {
   return {
     key: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -4076,7 +4262,7 @@ export function AddProductionOrderModal({
           fetch('/api/lenh-sx'),
           fetch('/api/danh-sach-may'),
           fetch('/api/cai-dat'),
-          fetch('/api/nhan-su?format=groups'),
+          fetch('/api/nhan-su?format=groups&scope=all'),
           fetch('/api/san-pham?format=table')
         ]);
 
@@ -4167,21 +4353,27 @@ export function AddProductionOrderModal({
     });
   }, [assignedMachineKeys, machines]);
 
-  const staffOptions = useMemo(() => {
-    const allMembers = staffBranches.flatMap(branch =>
-      branch.departments.flatMap(department => department.members)
-    );
+  const workshopStaff = useMemo(() => collectProductionWorkshopStaff(staffBranches), [staffBranches]);
 
-    if (selectedShifts.length === 0) return allMembers;
+  const staffOptions = useMemo(() => {
+    if (selectedShifts.length === 0) return workshopStaff;
 
     const needles = selectedShifts.map(shift => shift.toLowerCase());
-    const filtered = allMembers.filter(member => {
+    const filtered = workshopStaff.filter(member => {
       const memberShift = member.shift.toLowerCase();
       return needles.some(needle => memberShift.includes(needle) || needle.includes(memberShift));
     });
 
-    return filtered.length > 0 ? filtered : allMembers;
-  }, [selectedShifts, staffBranches]);
+    // Giữ trong PHÂN XƯỞNG SẢN XUẤT — không fallback sang phòng ban khác
+    return filtered.length > 0 ? filtered : workshopStaff;
+  }, [selectedShifts, workshopStaff]);
+
+  const staffOptionsByRole = useMemo(() => {
+    // Trưởng ca / NS chính / Thợ phụ (/ Học việc): sổ từ cùng pool phòng PHÂN XƯỞNG SẢN XUẤT
+    return Object.fromEntries(
+      PRODUCTION_STAFF_ROLES.map(role => [role.key, staffOptions])
+    ) as Record<ProductionStaffRoleKey, HrMember[]>;
+  }, [staffOptions]);
 
   const selectedStaffRoles = useMemo(() => {
     const nameById = (id: string) => staffOptions.find(member => member.id === id)?.name || '';
@@ -4782,21 +4974,16 @@ export function AddProductionOrderModal({
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Phân công nhân sự</span>
               <p className="mt-1 text-[11px] font-semibold text-zinc-400">
-                Chọn riêng từng vai trò để lưu đúng cột trong lệnh sản xuất.
+                Trưởng ca / Nhân sự chính / Thợ phụ lấy từ phòng ban {PRODUCTION_WORKSHOP_DEPARTMENT}.
               </p>
             </div>
             {staffOptions.length === 0 ? (
               <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs font-semibold text-zinc-400">
-                Chưa có nhân sự phù hợp ca đã chọn.
+                Chưa có nhân sự thuộc phòng {PRODUCTION_WORKSHOP_DEPARTMENT}.
               </p>
             ) : (
               <div className="grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
-                {([
-                  { key: 'shiftLeadId', label: 'Trưởng ca' },
-                  { key: 'mainStaffId', label: 'Nhân sự chính' },
-                  { key: 'assistantStaffId', label: 'Thợ phụ' },
-                  { key: 'traineeStaffId', label: 'Học việc' }
-                ] as const).map(field => (
+                {PRODUCTION_STAFF_ROLES.map(field => (
                   <label key={field.key} className="space-y-1.5">
                     <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{field.label}</span>
                     <select
@@ -4807,11 +4994,16 @@ export function AddProductionOrderModal({
                       className={orderFieldClass}
                     >
                       <option value="">Chưa phân công</option>
-                      {staffOptions.map(member => (
-                        <option key={`${field.key}-${member.id}`} value={member.id}>
-                          {member.name} · {member.role} · {member.shift}
-                        </option>
-                      ))}
+                      {staffOptionsByRole[field.key].map(member => {
+                        const roleLabel = member.role || member.position || '';
+                        return (
+                          <option key={`${field.key}-${member.id}`} value={member.id}>
+                            {member.name}
+                            {roleLabel ? ` · ${roleLabel}` : ''}
+                            {member.shift ? ` · ${member.shift}` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </label>
                 ))}
@@ -5289,13 +5481,14 @@ export function EditProductionOrderModal({
   onSaved: () => void | Promise<void>;
 }) {
   const [form, setForm] = useState<ProductionOrderFormState>(emptyProductionOrderForm);
-  const [staffText, setStaffText] = useState('');
   const [staffRoles, setStaffRoles] = useState({
     shiftLead: '',
     mainStaff: '',
     assistantStaff: '',
     traineeStaff: ''
   });
+  const [staffBranches, setStaffBranches] = useState<HrBranch[]>([]);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(false);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -5330,7 +5523,6 @@ export function EditProductionOrderModal({
       machine: row.machine === '-' ? '' : row.machine,
       note: row.note === '-' ? '' : row.note || ''
     });
-    setStaffText(row.staff === '-' ? '' : row.staff);
     setStaffRoles({
       shiftLead: row.shiftLead === '-' ? '' : row.shiftLead,
       mainStaff: row.mainStaff === '-' ? '' : row.mainStaff,
@@ -5339,6 +5531,38 @@ export function EditProductionOrderModal({
     });
     setFormError('');
   }, [open, row]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const loadStaff = async () => {
+      setIsLoadingStaff(true);
+      try {
+        const res = await fetch('/api/nhan-su?format=groups&scope=all');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Không thể tải nhân sự.');
+        if (!cancelled) setStaffBranches(normalizeHrBranches(data));
+      } catch (error: any) {
+        if (!cancelled) {
+          setStaffBranches([]);
+          setFormError(error?.message || 'Không thể tải nhân sự Phân xưởng sản xuất.');
+        }
+      } finally {
+        if (!cancelled) setIsLoadingStaff(false);
+      }
+    };
+    loadStaff();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const workshopStaff = useMemo(() => collectProductionWorkshopStaff(staffBranches), [staffBranches]);
+
+  const staffText = useMemo(
+    () => [...new Set(Object.values(staffRoles).map(name => name.trim()).filter(Boolean))].join(', '),
+    [staffRoles]
+  );
 
   const orderCodeOptions = useMemo(() => {
     return [...new Set(orders.map(order => order.orderCode).filter(code => code && code !== '-'))].sort((a, b) =>
@@ -5442,6 +5666,13 @@ export function EditProductionOrderModal({
       setIsSaving(false);
     }
   };
+
+  const staffRoleFields = [
+    { key: 'shiftLead', label: 'Trưởng ca' },
+    { key: 'mainStaff', label: 'Nhân sự chính' },
+    { key: 'assistantStaff', label: 'Thợ phụ' },
+    { key: 'traineeStaff', label: 'Học việc' }
+  ] as const;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
@@ -5613,26 +5844,55 @@ export function EditProductionOrderModal({
               <input value={form.shift} onChange={e => setForm(prev => ({ ...prev, shift: e.target.value }))} className={orderFieldClass} />
             </label>
 
-            <label className="space-y-1.5">
+            <label className="space-y-1.5 sm:col-span-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Nhân sự</span>
-              <input value={staffText} onChange={e => setStaffText(e.target.value)} className={orderFieldClass} />
+              <input
+                value={staffText}
+                readOnly
+                className={`${orderFieldClass} bg-zinc-50 text-zinc-700`}
+                placeholder="Tự tổng hợp theo các vai trò bên dưới"
+              />
+              <span className="block text-[10px] font-semibold text-zinc-400">
+                Trưởng ca / NS chính / Thợ phụ / Học việc sổ từ phòng {PRODUCTION_WORKSHOP_DEPARTMENT}.
+              </span>
             </label>
 
-            {([
-              { key: 'shiftLead', label: 'Trưởng ca' },
-              { key: 'mainStaff', label: 'Nhân sự chính' },
-              { key: 'assistantStaff', label: 'Thợ phụ' },
-              { key: 'traineeStaff', label: 'Học việc' }
-            ] as const).map(field => (
-              <label key={field.key} className="space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">{field.label}</span>
-                <input
-                  value={staffRoles[field.key]}
-                  onChange={event => setStaffRoles(prev => ({ ...prev, [field.key]: event.target.value }))}
-                  className={orderFieldClass}
-                />
-              </label>
-            ))}
+            {staffRoleFields.map(field => {
+              const currentName = staffRoles[field.key];
+              const hasCurrent =
+                Boolean(currentName) &&
+                !workshopStaff.some(member => member.name === currentName);
+              return (
+                <label key={field.key} className="space-y-1.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-zinc-500">{field.label}</span>
+                  <select
+                    value={currentName}
+                    onChange={event =>
+                      setStaffRoles(prev => ({ ...prev, [field.key]: event.target.value }))
+                    }
+                    disabled={isLoadingStaff}
+                    className={orderFieldClass}
+                  >
+                    <option value="">
+                      {isLoadingStaff ? 'Đang tải nhân sự...' : 'Chưa phân công'}
+                    </option>
+                    {hasCurrent ? <option value={currentName}>{currentName}</option> : null}
+                    {workshopStaff.map(member => (
+                      <option key={`${field.key}-${member.id}`} value={member.name}>
+                        {member.name}
+                        {member.role ? ` · ${member.role}` : ''}
+                        {member.shift ? ` · ${member.shift}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {!isLoadingStaff && workshopStaff.length === 0 ? (
+                    <span className="block text-[10px] font-semibold text-amber-700">
+                      Chưa có nhân sự phòng {PRODUCTION_WORKSHOP_DEPARTMENT}.
+                    </span>
+                  ) : null}
+                </label>
+              );
+            })}
 
             <label className="space-y-1.5">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Máy</span>

@@ -23,6 +23,8 @@ export type WeighingSlipConfig = {
   splitPlasticFilmWeights?: boolean;
   /** Báo cáo hàng hỏng: tách 3 loại nhựa lỗi + màng + lõi */
   splitDamagedPlasticDefectWeights?: boolean;
+  /** Tab ma trận phân quyền (Xem / Thêm / Sửa / Xóa) */
+  accessTab?: string;
 };
 
 export const DEFAULT_WEIGHING_SLIP_CONFIG: WeighingSlipConfig = {
@@ -32,7 +34,8 @@ export const DEFAULT_WEIGHING_SLIP_CONFIG: WeighingSlipConfig = {
   summaryTitle: 'Tổng hợp báo cáo cân',
   summarySubtitle: 'Theo dõi phiếu cân theo từng ca sản xuất',
   printTitle: 'PHIẾU CÂN CA',
-  restrictProductsToOrders: true
+  restrictProductsToOrders: true,
+  accessTab: 'weighing-summary-list'
 };
 
 export const DAMAGED_GOODS_SLIP_CONFIG: WeighingSlipConfig = {
@@ -50,5 +53,6 @@ export const DAMAGED_GOODS_SLIP_CONFIG: WeighingSlipConfig = {
   hideWeightImage: true,
   hideProductFields: true,
   splitPlasticFilmWeights: true,
-  splitDamagedPlasticDefectWeights: true
+  splitDamagedPlasticDefectWeights: true,
+  accessTab: 'damaged-goods-report-list'
 };

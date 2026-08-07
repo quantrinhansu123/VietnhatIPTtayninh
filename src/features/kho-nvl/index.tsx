@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
+import { useTabAccess } from '../../app/useTabAccess';
 import {
   Download,
   Eye,
@@ -22,6 +23,12 @@ import {
   parseBulkMaterialTotalWeightExcel,
   type BulkMaterialTotalWeightImportRow
 } from '../../utils/bulkMaterialTotalWeightExcel';
+import {
+  downloadMaterialCatalogExcelTemplate,
+  parseMaterialCatalogExcel,
+  materialCatalogRowToPayload
+} from '../../utils/materialCatalogExcel';
+import { showAppToast } from '../../lib/appToast';
 import { productFieldClass } from '../san-pham/productFieldClass';
 import { readUnitSuggestions, saveUnitSuggestion } from '../_shared/orderHelpers';
 import {
@@ -387,11 +394,11 @@ export function BulkMaterialTotalWeightModal({
               className="flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100"
             >
               <Download className="h-4 w-4" />
-              Tải mẫu Excel
+              Tải mẫu Tổng kg
             </button>
             <label className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
               {isReadingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isReadingFile ? 'Đang đọc file...' : 'Tải file Excel lên'}
+              {isReadingFile ? 'Đang đọc file...' : 'Tải file Tổng kg lên'}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -409,12 +416,12 @@ export function BulkMaterialTotalWeightModal({
             <p className="font-bold text-zinc-800">Hướng dẫn</p>
             <ol className="mt-1 list-decimal space-y-1 pl-4">
               <li>
-                Bấm <strong>Tải mẫu Excel</strong> — file có 2 cột: <strong>Mã NVL</strong> và{' '}
-                <strong>Tổng trọng lượng</strong>.
+                Bấm <strong>Tải mẫu Tổng kg</strong> — file có 2 cột: <strong>Mã NVL</strong> và{' '}
+                <strong>Tổng trọng lượng</strong> (chỉ cập nhật Tổng kg, không phải danh mục đầy đủ).
               </li>
               <li>Sửa cột <strong>Tổng trọng lượng</strong> theo từng mã NPL.</li>
               <li>
-                Bấm <strong>Tải file Excel lên</strong> — hệ thống khớp Mã NVL và cập nhật cột Tổng kg.
+                Bấm <strong>Tải file Tổng kg lên</strong> — hệ thống khớp Mã NVL và cập nhật cột Tổng kg.
               </li>
             </ol>
           </div>
@@ -559,8 +566,8 @@ export function MaterialViewModal({
 }: {
   material: MaterialRow;
   onClose: () => void;
-  onEdit: (material: MaterialRow) => void;
-  onDelete: (material: MaterialRow) => void;
+  onEdit?: (material: MaterialRow) => void;
+  onDelete?: (material: MaterialRow) => void;
   isDeleting: boolean;
 }) {
   const [tab, setTab] = useState<MaterialViewTab>('detail');
@@ -750,19 +757,23 @@ export function MaterialViewModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
-          <button type="button" onClick={() => onEdit(material)} className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
-            <Pencil className="h-4 w-4" />
-            Sửa
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(material)}
-            disabled={isDeleting}
-            className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            Xóa
-          </button>
+          {onEdit ? (
+            <button type="button" onClick={() => onEdit(material)} className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
+              <Pencil className="h-4 w-4" />
+              Sửa
+            </button>
+          ) : null}
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(material)}
+              disabled={isDeleting}
+              className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Xóa
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -770,6 +781,7 @@ export function MaterialViewModal({
 }
 
 export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('materials');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedUnit, setSelectedUnit] = useState('all');
@@ -784,6 +796,8 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
   const [actionMessage, setActionMessage] = useState('');
   const [materialForm, setMaterialForm] = useState<MaterialFormState>(emptyMaterialForm);
   const [showBulkTotalWeight, setShowBulkTotalWeight] = useState(false);
+  const [isImportingCatalog, setIsImportingCatalog] = useState(false);
+  const catalogFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadMaterials = async () => {
     setIsLoadingMaterials(true);
@@ -850,7 +864,104 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
     );
   };
 
+  const handleDownloadCatalogTemplate = () => {
+    downloadMaterialCatalogExcelTemplate();
+  };
+
+  const handleImportCatalogExcel = async (file?: File | null) => {
+    if ((!canCreate && !canEdit) || !file) return;
+
+    setIsImportingCatalog(true);
+    setMaterialsError('');
+    setActionMessage('');
+
+    try {
+      const rows = await parseMaterialCatalogExcel(file);
+      if (rows.length === 0) {
+        throw new Error('File Excel không có dòng NVL hợp lệ (cần cột Mã NPL).');
+      }
+
+      const byCode = new Map(
+        materials
+          .map(material => [normalizeMaterialCodeKey(material.code), material] as const)
+          .filter(([key]) => Boolean(key))
+      );
+
+      let created = 0;
+      let updated = 0;
+      const failures: string[] = [];
+
+      for (const row of rows) {
+        const code = row.code.trim();
+        if (!code) {
+          failures.push(`dòng ${row.rowNumber}: thiếu mã NPL`);
+          continue;
+        }
+
+        const existing = byCode.get(normalizeMaterialCodeKey(code));
+        const name = row.name.trim() || existing?.name || '';
+        if (!name || name === '-') {
+          failures.push(`dòng ${row.rowNumber}: thiếu tên nguyên phụ liệu`);
+          continue;
+        }
+
+        const payload = {
+          ...materialCatalogRowToPayload(row),
+          name
+        };
+
+        if (payload.unit) {
+          saveUnitSuggestion(payload.unit);
+        }
+
+        const res = existing
+          ? await fetch(`/api/kho-nvl/${existing.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+          : await fetch('/api/kho-nvl', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failures.push(`dòng ${row.rowNumber}: ${data.error || 'Không lưu được'}`);
+          continue;
+        }
+        if (existing) updated += 1;
+        else created += 1;
+      }
+
+      if (created > 0 || updated > 0) {
+        await loadMaterials();
+      }
+
+      const summary = [
+        created || updated ? `Đã nhập Excel NVL: thêm ${created}, cập nhật ${updated}.` : 'Không nhập được dòng nào.',
+        failures.length ? `${failures.length} dòng lỗi (${failures.slice(0, 3).join('; ')}).` : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+      setActionMessage(summary);
+      if (created > 0 || updated > 0) showAppToast(summary);
+      else if (failures.length > 0) {
+        setMaterialsError(summary);
+        showAppToast(failures[0], 'error');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể đọc hoặc nhập Excel danh mục NVL.';
+      setMaterialsError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsImportingCatalog(false);
+      if (catalogFileInputRef.current) catalogFileInputRef.current.value = '';
+    }
+  };
+
   const openAddForm = () => {
+    if (!canCreate) return;
     setFormError('');
     setActionMessage('');
     setEditingId(null);
@@ -859,6 +970,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openEditForm = (material: MaterialRow) => {
+    if (!canEdit) return;
     setFormError('');
     setActionMessage('');
     setViewingMaterial(null);
@@ -969,29 +1081,62 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
-                onClick={handleDownloadTotalWeightTemplate}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100"
+                onClick={handleDownloadCatalogTemplate}
+                disabled={isImportingCatalog || isLoadingMaterials}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Mẫu Excel khớp cột bảng /kho-nvl — ô trống vẫn đẩy lên"
               >
                 <Download className="h-4 w-4" />
                 Tải mẫu Excel
               </button>
+              {canCreate || canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => catalogFileInputRef.current?.click()}
+                  disabled={isImportingCatalog || isLoadingMaterials}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isImportingCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isImportingCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
+                </button>
+              ) : null}
+              <input
+                ref={catalogFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={event => void handleImportCatalogExcel(event.target.files?.[0])}
+              />
               <button
                 type="button"
-                onClick={() => setShowBulkTotalWeight(true)}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200"
+                onClick={handleDownloadTotalWeightTemplate}
+                disabled={isLoadingMaterials}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Chỉ cập nhật cột Tổng kg theo mã NVL"
               >
-                <Upload className="h-4 w-4" />
-                Tải Excel lên
+                <Download className="h-4 w-4" />
+                Mẫu cập nhật Tổng kg
               </button>
-              <button
-                type="button"
-                onClick={openAddForm}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
-
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => setShowBulkTotalWeight(true)}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200"
+                >
+                  <Upload className="h-4 w-4" />
+                  Nhập Tổng kg
+                </button>
+              ) : null}
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openAddForm}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -1120,8 +1265,8 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
             setViewingMaterial(null);
             loadMaterials();
           }}
-          onEdit={openEditForm}
-          onDelete={handleDeleteMaterial}
+          onEdit={canEdit ? openEditForm : undefined}
+          onDelete={canDelete ? handleDeleteMaterial : undefined}
           isDeleting={deletingMaterialId === viewingMaterial.id}
         />
       )}
@@ -1173,27 +1318,31 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(material)}
-                      title="Sửa"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-700 transition hover:bg-sky-50 active:scale-95"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMaterial(material)}
-                      disabled={deletingMaterialId === material.id}
-                      title="Xóa"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 active:scale-95"
-                    >
-                      {deletingMaterialId === material.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => openEditForm(material)}
+                        title="Sửa"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-700 transition hover:bg-sky-50 active:scale-95"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMaterial(material)}
+                        disabled={deletingMaterialId === material.id}
+                        title="Xóa"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 active:scale-95"
+                      >
+                        {deletingMaterialId === material.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    ) : null}
                   </div>
                   </RowActionsMenu>
                 </td>

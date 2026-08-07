@@ -27,3 +27,7 @@ Helper tự sinh mã: `generateNextOrderCodeFromDb()` ~2924.
 ## Liên kết
 
 Tạo lệnh SX: `POST /api/lenh-sx/from-don-hang/:id`
+
+### Form đơn hàng
+
+- **Khách hàng**: sổ xuống (`<select>`) lấy từ `/api/khach-hang` (bảng danh mục Khách hàng), bắt buộc chọn.

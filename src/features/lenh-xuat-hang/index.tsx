@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Pencil, Plus, Save, Trash2, Truck } from 'lucide-react';
+import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
@@ -205,6 +206,7 @@ export function ShippingOrdersPanel({
   onBack: () => void;
   currentUser?: { id: string; name: string } | null;
 }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('shipping-orders');
   const [orders, setOrders] = useState<ShippingOrder[]>([]);
   const [customers, setCustomers] = useState<CustomerDetail[]>([]);
   const [products, setProducts] = useState<OrderProductOption[]>([]);
@@ -267,6 +269,7 @@ export function ShippingOrdersPanel({
   }, [orders, searchText, selectedStatus]);
 
   const openCreate = () => {
+    if (!canCreate) return;
     setEditingId(null);
     setForm(emptyForm(generateNextShippingCode(orders.map(order => order.ma_lenh)), currentUser?.name || ''));
     setFormOpen(true);
@@ -274,6 +277,7 @@ export function ShippingOrdersPanel({
   };
 
   const openEdit = (order: ShippingOrder) => {
+    if (!canEdit) return;
     setEditingId(order.id);
     setForm({
       ma_lenh: order.ma_lenh,
@@ -422,14 +426,16 @@ export function ShippingOrdersPanel({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
-        >
-          <Plus className="h-4 w-4" />
-          Thêm lệnh xuất
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
+          >
+            <Plus className="h-4 w-4" />
+            Thêm lệnh xuất
+          </button>
+        ) : null}
       </section>
 
       <TableToolbar
@@ -494,22 +500,26 @@ export function ShippingOrdersPanel({
                   <td className="px-4 py-3 text-center">
                     <RowActionsMenu label={`Thao tác ${order.ma_lenh}`}>
                     <div className="inline-flex items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(order)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                        title="Sửa"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(order)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                        title="Xóa"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(order)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                          title="Sửa"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(order)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>

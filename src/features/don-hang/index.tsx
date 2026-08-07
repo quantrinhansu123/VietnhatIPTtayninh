@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Eye, Loader2, Pencil, Plus, Printer, Save, Trash2 } from 'lucide-react';
+import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -239,6 +240,7 @@ export function orderToForm(order: OrderRow): OrderFormState {
 }
 
 export function OrdersPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('orders');
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState('all');
@@ -342,6 +344,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   }, [formMode]);
 
   const openAddForm = () => {
+    if (!canCreate) return;
     setFormError('');
     setActionMessage('');
     setEditingId(null);
@@ -353,6 +356,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openEditForm = (order: OrderRow) => {
+    if (!canEdit) return;
     setFormError('');
     setActionMessage('');
     setViewingOrder(null);
@@ -431,6 +435,10 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
     }
     if (!orderForm.createdAt.trim()) {
       setFormError('Vui lòng chọn ngày tạo.');
+      return;
+    }
+    if (!orderForm.customer.trim()) {
+      setFormError('Vui lòng chọn khách hàng từ danh mục.');
       return;
     }
 
@@ -639,26 +647,38 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                   value={orderForm.staffName}
                   onChange={staffName => setOrderForm(prev => ({ ...prev, staffName }))}
                   options={staffOptions}
-                  placeholder="Chọn nhân viên KD Đà Nẵng"
+                  placeholder="Chọn nhân viên Phòng Kinh Doanh"
                   isLoading={isLoadingLookups}
                   getValue={item => (item as StaffOption).name}
                   getLabel={item => (item as StaffOption).name}
                 />
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Khách hàng</span>
-                <SimpleSelect
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Khách hàng *</span>
+                <select
                   value={orderForm.customer}
-                  onChange={customer => setOrderForm(prev => ({ ...prev, customer }))}
-                  options={customerOptions}
-                  placeholder="Chọn khách hàng"
-                  isLoading={isLoadingLookups}
-                  getValue={item => (item as CustomerOption).name}
-                  getLabel={item => {
-                    const customer = item as CustomerOption;
-                    return customer.code ? `${customer.code} · ${customer.name}` : customer.name;
-                  }}
-                />
+                  onChange={event => setOrderForm(prev => ({ ...prev, customer: event.target.value }))}
+                  disabled={isLoadingLookups}
+                  className={orderFieldClass}
+                >
+                  <option value="">
+                    {isLoadingLookups ? 'Đang tải khách hàng...' : 'Chọn khách hàng'}
+                  </option>
+                  {orderForm.customer &&
+                  !customerOptions.some(customer => customer.name === orderForm.customer) ? (
+                    <option value={orderForm.customer}>{orderForm.customer}</option>
+                  ) : null}
+                  {customerOptions.map(customer => (
+                    <option key={customer.id || customer.code || customer.name} value={customer.name}>
+                      {customer.code ? `${customer.code} · ${customer.name}` : customer.name}
+                    </option>
+                  ))}
+                </select>
+                {!isLoadingLookups && customerOptions.length === 0 ? (
+                  <span className="block text-[11px] font-semibold text-amber-700">
+                    Chưa có khách hàng trong danh mục /khach-hang.
+                  </span>
+                ) : null}
               </label>
 
               <RepeatableLinesBlock
@@ -840,19 +860,23 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                 <Printer className="h-4 w-4" />
                 In phiếu
               </button>
-              <button type="button" onClick={() => openEditForm(viewingOrder)} className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
-                <Pencil className="h-4 w-4" />
-                Sửa
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteOrder(viewingOrder)}
-                disabled={deletingOrderId === viewingOrder.id}
-                className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deletingOrderId === viewingOrder.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Xóa
-              </button>
+              {canEdit ? (
+                <button type="button" onClick={() => openEditForm(viewingOrder)} className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
+                  <Pencil className="h-4 w-4" />
+                  Sửa
+                </button>
+              ) : null}
+              {canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteOrder(viewingOrder)}
+                  disabled={deletingOrderId === viewingOrder.id}
+                  className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-4 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingOrderId === viewingOrder.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Xóa
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -870,14 +894,16 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
             <span>SL {formatNumber(totalQuantity)}</span>
           </div>
 
-          <button
-            type="button"
-            onClick={openAddForm}
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm mới
-          </button>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openAddForm}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm mới
+            </button>
+          ) : null}
         </div>
 
         <TableToolbar
@@ -977,27 +1003,31 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(order)}
-                        title="Sửa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteOrder(order)}
-                        disabled={deletingOrderId === order.id}
-                        title="Xóa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {deletingOrderId === order.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(order)}
+                          title="Sửa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOrder(order)}
+                          disabled={deletingOrderId === order.id}
+                          title="Xóa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingOrderId === order.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>

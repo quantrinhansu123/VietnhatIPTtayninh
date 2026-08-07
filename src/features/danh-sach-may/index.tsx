@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
+import { useTabAccess } from '../../app/useTabAccess';
 import { Cpu, Eye, ImagePlus, Loader2, Pencil, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -211,7 +212,7 @@ const emptyMachineForm = (): MachineFormState => ({
   code: '',
   name: '',
   type: '',
-  branch: 'Đà Nẵng',
+  branch: 'Phú Thọ',
   location: '',
   status: 'Đang dùng',
   note: '',
@@ -248,6 +249,7 @@ export function machineStatusColor(status: string): StatusBadgeColor {
 }
 
 export function MachinesPanel({ onBack }: { onBack: () => void }) {
+  const { canCreate, canEdit, canDelete } = useTabAccess('machines');
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState('all');
@@ -347,6 +349,7 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
   }, []);
 
   const openAddForm = () => {
+    if (!canCreate) return;
     setFormError('');
     setActionMessage('');
     setEditingId(null);
@@ -356,6 +359,7 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openEditForm = (machine: MachineRow) => {
+    if (!canEdit) return;
     setFormError('');
     setActionMessage('');
     setEditingId(machine.id);
@@ -489,7 +493,7 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
   };
 
   const handleMachineImageUpload = async (machine: MachineRow, file?: File | null) => {
-    if (!file) return;
+    if (!canEdit || !file) return;
 
     setMachineError('');
     setUploadingMachineIds(prev => {
@@ -590,14 +594,16 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={openAddForm}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm mới
-              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openAddForm}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
 
             </div>
           </div>
@@ -943,24 +949,26 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
                           </div>
                         )}
 
-                        <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]">
-                          {uploadingMachineIds.has(machine.id) ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <ImagePlus className="h-4 w-4" />
-                          )}
-                          {uploadingMachineIds.has(machine.id) ? 'Đang chụp...' : machine.imageUrl ? 'Chụp lại' : 'Chụp ảnh'}
-                          <input
-                            {...CAMERA_IMAGE_INPUT_PROPS}
-                            className="hidden"
-                            disabled={uploadingMachineIds.has(machine.id)}
-                            onChange={event => {
-                              const file = event.target.files?.[0];
-                              event.target.value = '';
-                              handleMachineImageUpload(machine, file);
-                            }}
-                          />
-                        </label>
+                        {canEdit ? (
+                          <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]">
+                            {uploadingMachineIds.has(machine.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <ImagePlus className="h-4 w-4" />
+                            )}
+                            {uploadingMachineIds.has(machine.id) ? 'Đang chụp...' : machine.imageUrl ? 'Chụp lại' : 'Chụp ảnh'}
+                            <input
+                              {...CAMERA_IMAGE_INPUT_PROPS}
+                              className="hidden"
+                              disabled={uploadingMachineIds.has(machine.id)}
+                              onChange={event => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                handleMachineImageUpload(machine, file);
+                              }}
+                            />
+                          </label>
+                        ) : null}
                       </div>
                       <p className="text-[10px] font-semibold text-zinc-400">JPG, PNG · lưu Cloudinary</p>
                     </div>
@@ -1007,27 +1015,31 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(machine)}
-                        title="Sửa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteMachine(machine)}
-                        disabled={deletingMachineId === machine.id}
-                        title="Xóa"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {deletingMachineId === machine.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(machine)}
+                          title="Sửa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMachine(machine)}
+                          disabled={deletingMachineId === machine.id}
+                          title="Xóa"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingMachineId === machine.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -1132,18 +1144,20 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => {
-                  const machine = viewingMachine;
-                  closeMixingView();
-                  openEditForm(machine);
-                }}
-                className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-[#ef1b2d] transition hover:border-[#ef1b2d]"
-              >
-                <Pencil className="h-4 w-4" />
-                Sửa định mức
-              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const machine = viewingMachine;
+                    closeMixingView();
+                    openEditForm(machine);
+                  }}
+                  className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-[#ef1b2d] transition hover:border-[#ef1b2d]"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Sửa định mức
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={closeMixingView}

@@ -11,3 +11,8 @@
 - `AcceptanceReportPrintSheet.tsx`
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
+
+## Menu
+
+- QC `/nha-may/qc` → card **Kiểm tra kho thành phẩm** → `acceptance-report-list`
+- Công nhân → Nhập báo cáo ca → `acceptance-report` / danh sách → `acceptance-report-list`

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, Printer, X } from 'lucide-react';
-import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
+import { PRINT_COMPANY_NAME, COMPANY_BRANCH_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatMoney, formatNumber } from '../utils';
 import { formatVietnameseMoneyWords } from '../utils/vietnameseMoneyWords';
 import { waitForPrintImagesReady } from '../utils/printReady';
@@ -122,7 +122,9 @@ function formatNhapKhoDateParts(value: string) {
 }
 
 function warehouseImportLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
-  return kind === 'san_pham' ? 'Kho Thành phẩm - Đà Nẵng' : 'Kho NVL - Đà Nẵng';
+  return kind === 'san_pham'
+    ? `Kho Thành phẩm - ${COMPANY_BRANCH_NAME}`
+    : `Kho NVL - ${COMPANY_BRANCH_NAME}`;
 }
 
 function nhapKhoAccountingCodes(kind: WarehouseSlipPrintData['warehouseKind']) {

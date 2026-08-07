@@ -26,6 +26,8 @@ export type TableId =
   | 'thu_tien_khach_hang'
   | 'cai_dat_thoi_gian'
   | 'bao_cao_phoi_tron'
+  | 'bang_tron_vat_tu_dinh_muc'
+  | 'phieu_tron_thuc_te'
   | 'bao_cao_nghiem_thu'
   | 'bao_cao_may_nvl_ton'
   | 'phieu_bao_dung_may'
@@ -120,7 +122,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'products',
     appLines: 'src/features/san-pham/index.tsx, src/features/san-pham/types.ts, src/features/san-pham/productFieldClass.ts',
     components: ['src/components/ProductQrScanner.tsx', 'src/components/LineEditorSheet.tsx'],
-    utils: ['src/utils/productNplComponentsExcel.ts']
+    utils: ['src/utils/productNplComponentsExcel.ts', 'src/utils/productCatalogExcel.ts']
   },
   danh_sach_may: {
     table: 'danh_sach_may',
@@ -142,7 +144,11 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'materials',
     appLines: 'src/features/kho-nvl/index.tsx',
     components: ['src/components/MaterialsForm.tsx'],
-    utils: ['src/utils/bulkOpeningStockExcel.ts', 'src/utils/bulkMaterialTotalWeightExcel.ts']
+    utils: [
+      'src/utils/bulkOpeningStockExcel.ts',
+      'src/utils/bulkMaterialTotalWeightExcel.ts',
+      'src/utils/materialCatalogExcel.ts'
+    ]
   },
   phieu_xuat_nhap_kho: {
     table: 'phieu_xuat_nhap_kho',
@@ -228,7 +234,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/components/ShiftInfoForm.tsx',
       'src/features/cai-dat-thoi-gian/StaffRoleAssignmentPanel.tsx'
     ],
-    utils: ['src/utils/shiftSettings.ts', 'src/features/nhan-su/menuViews.ts']
+    utils: ['src/utils/shiftSettings.ts', 'src/utils/staffExcel.ts', 'src/features/nhan-su/menuViews.ts']
   },
   danh_sach_xe: {
     table: 'danh_sach_xe',
@@ -330,6 +336,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'mixing-report-list',
     appLines: 'src/components/MixingNormMaterialsTab.tsx',
     components: ['src/components/MixingNormMaterialsTab.tsx'],
+    utils: []
+  },
+  phieu_tron_thuc_te: {
+    table: 'phieu_tron_thuc_te',
+    label: 'Phiếu trộn thực tế',
+    sql: ['supabase-phieu-tron-thuc-te.sql'],
+    apiPrefix: '/api/phieu-tron-thuc-te',
+    serverLines: 'phieu_tron_thuc_te routes',
+    appTab: 'mixing-report-list',
+    appLines: 'src/components/ActualMixingSheetTab.tsx',
+    components: ['src/components/ActualMixingSheetTab.tsx'],
     utils: []
   },
   bao_cao_nghiem_thu: {

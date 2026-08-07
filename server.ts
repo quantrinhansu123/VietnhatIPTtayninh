@@ -85,6 +85,8 @@ const SUPABASE_WAREHOUSE_MOVEMENTS_TABLE = process.env.SUPABASE_WAREHOUSE_MOVEME
 const SUPABASE_MIXING_REPORTS_TABLE = process.env.SUPABASE_MIXING_REPORTS_TABLE || 'bao_cao_phoi_tron';
 const SUPABASE_MIXING_NORM_TABLE =
   process.env.SUPABASE_MIXING_NORM_TABLE || 'bang_tron_vat_tu_dinh_muc';
+const SUPABASE_ACTUAL_MIXING_SHEET_TABLE =
+  process.env.SUPABASE_ACTUAL_MIXING_SHEET_TABLE || 'phieu_tron_thuc_te';
 const SUPABASE_ACCEPTANCE_REPORTS_TABLE = process.env.SUPABASE_ACCEPTANCE_REPORTS_TABLE || 'bao_cao_nghiem_thu';
 const SUPABASE_MACHINE_NVL_REPORTS_TABLE =
   process.env.SUPABASE_MACHINE_NVL_REPORTS_TABLE || 'bao_cao_may_nvl_ton';
@@ -93,7 +95,7 @@ const SUPABASE_MACHINE_DOWNTIME_TABLE =
 const SUPABASE_MACHINE_RUN_LOG_TABLE =
   process.env.SUPABASE_MACHINE_RUN_LOG_TABLE || 'nhat_ky_chay_may';
 const SUPABASE_STAFF_DEPARTMENT = process.env.SUPABASE_STAFF_DEPARTMENT || 'Sản xuất';
-const SUPABASE_STAFF_BRANCH = process.env.SUPABASE_STAFF_BRANCH || 'Đà Nẵng';
+const SUPABASE_STAFF_BRANCH = process.env.SUPABASE_STAFF_BRANCH || 'Phú Thọ';
 const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME?.trim();
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY?.trim();
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET?.trim();
@@ -1293,10 +1295,24 @@ function parseStaffBody(body: unknown): { error: string } | { record: Record<str
     trang_thai: pickRowField(source, ['trang_thai', 'status'], 'Đang làm'),
     ma_nhan_su: code || null,
     ten_dang_nhap: pickRowField(source, ['ten_dang_nhap', 'username', 'login'], '') || null,
-    mat_khau: pickRowField(source, ['mat_khau', 'password'], '') || null,
-    link_chu_ky: pickRowField(source, ['link_chu_ky', 'chu_ky_url', 'signature_url'], '') || null,
-    quyen_xem: parseStaffQuyenXem(source)
+    link_chu_ky: pickRowField(source, ['link_chu_ky', 'chu_ky_url', 'signature_url'], '') || null
   };
+
+  // Chỉ ghi mật khẩu khi client gửi rõ — tránh Excel/PUT vô tình xóa mật khẩu cũ
+  if (
+    Object.prototype.hasOwnProperty.call(source, 'mat_khau') ||
+    Object.prototype.hasOwnProperty.call(source, 'password')
+  ) {
+    record.mat_khau = pickRowField(source, ['mat_khau', 'password'], '') || null;
+  }
+
+  // Chỉ ghi quyền xem khi client gửi rõ — tránh Excel ghi đè [] mất phân quyền menu
+  if (
+    Object.prototype.hasOwnProperty.call(source, 'quyen_xem') ||
+    Object.prototype.hasOwnProperty.call(source, 'viewPermissions')
+  ) {
+    record.quyen_xem = parseStaffQuyenXem(source);
+  }
 
   // Chỉ ghi vi_tri_gan khi client gửi rõ — tránh form nhân sự ghi đè [] mất dữ liệu gán quyền
   if (
@@ -2663,7 +2679,7 @@ function parseMixingReportBody(body: unknown): { error: string } | { record: Rec
   const ma_may = String(source.ma_may ?? source.machineCode ?? '').trim();
   const ten_may = String(source.ten_may ?? source.machineName ?? '').trim();
 
-  if (!ca) return { error: 'Vui lòng nhập ca.' };
+  if (!ca || ca === '-' || ca === '—') return { error: 'Vui lòng nhập ca.' };
   if (!ngay) return { error: 'Vui lòng chọn ngày.' };
   if (!ma_may && !ten_may) return { error: 'Vui lòng chọn máy.' };
 
@@ -2775,6 +2791,8 @@ function parseMixingNormBody(body: unknown): { error: string } | { record: Recor
   const ngayRaw = String(source.ngay ?? '').trim();
   const ngay = ngayRaw ? parseWarehouseSlipDate(ngayRaw) || ngayRaw : null;
   const ma_lenh_sx = String(source.ma_lenh_sx ?? source.maLenhSx ?? '').trim() || null;
+  const caRaw = String(source.ca ?? source.shift ?? '').trim();
+  const ca = !caRaw || caRaw === '-' || caRaw === '—' ? null : caRaw;
 
   const parseNvlLines = (raw: unknown, label: string) => {
     const linesRaw = Array.isArray(raw) ? raw : [];
@@ -2877,11 +2895,13 @@ function parseMixingNormBody(body: unknown): { error: string } | { record: Recor
     }
 
     if (products.length === 0) return { error: 'Vui lòng thêm ít nhất 1 sản phẩm.' };
+    if (!ca) return { error: 'Vui lòng chọn ca.' };
 
     const first = products[0];
     return {
       record: {
         ngay,
+        ca,
         ma_lenh_sx,
         ma_sp: first.ma_sp,
         ten_sp: first.ten_sp,
@@ -2909,6 +2929,7 @@ function parseMixingNormBody(body: unknown): { error: string } | { record: Recor
   return {
     record: {
       ngay,
+      ca,
       ma_lenh_sx,
       ma_sp,
       ten_sp,
@@ -4855,6 +4876,7 @@ function parseProductionPlanSnapshotLine(raw: unknown): ProductionPlanSnapshotLi
 }
 
 async function saveProductionPlanSnapshot(options: {
+  planId?: string;
   planDate: string;
   note: string;
   createdBy: string;
@@ -4874,9 +4896,10 @@ async function saveProductionPlanSnapshot(options: {
     updated_at: new Date().toISOString()
   };
 
-  const { data: createdPlan, error: headerError } = await supabase
-    .from(SUPABASE_PRODUCTION_PLANS_TABLE)
-    .insert(header)
+  const headerQuery = options.planId
+    ? supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).update(header).eq('id', options.planId)
+    : supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).insert(header);
+  const { data: createdPlan, error: headerError } = await headerQuery
     .select('*')
     .single();
 
@@ -4888,6 +4911,14 @@ async function saveProductionPlanSnapshot(options: {
   const planId = String((createdPlan as Record<string, unknown>).id ?? '');
   if (!planId) {
     throw new Error('Không thể tạo bản ghi kế hoạch sản xuất.');
+  }
+
+  if (options.planId) {
+    const { error: clearError } = await supabase
+      .from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE)
+      .delete()
+      .eq('ke_hoach_id', planId);
+    if (clearError) throw new Error(productionPlanWriteErrorMessage(clearError));
   }
 
   const detailRows = options.lines.map(line => ({
@@ -4907,7 +4938,7 @@ async function saveProductionPlanSnapshot(options: {
   const { error: detailError } = await supabase.from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE).insert(detailRows);
   if (detailError) {
     console.error('Supabase ke_hoach_san_xuat_dong insert error:', detailError);
-    await supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).delete().eq('id', planId);
+    if (!options.planId) await supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).delete().eq('id', planId);
     throw new Error(productionPlanWriteErrorMessage(detailError));
   }
 
@@ -6142,6 +6173,7 @@ export function createApp() {
 
     try {
       const source = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const planId = String(source.id ?? source.planId ?? '').trim();
       const items = source.items;
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: 'Danh sách lệnh SX trống.' });
@@ -6198,6 +6230,7 @@ export function createApp() {
       let savedPlan: Record<string, unknown> | null = null;
       try {
         savedPlan = (await saveProductionPlanSnapshot({
+          planId: planId || undefined,
           planDate,
           note: planNote,
           createdBy,
@@ -6228,6 +6261,25 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi lưu kế hoạch sản xuất.' });
+    }
+  });
+
+  app.delete('/api/ke-hoach-sx/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID kế hoạch.' });
+    try {
+      const { data, error } = await supabase
+        .from(SUPABASE_PRODUCTION_PLANS_TABLE)
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: productionPlanWriteErrorMessage(error) });
+      if (!data) return res.status(404).json({ error: 'Không tìm thấy kế hoạch sản xuất.' });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Không thể xóa kế hoạch sản xuất.' });
     }
   });
 
@@ -7868,6 +7920,37 @@ export function createApp() {
     }
   });
 
+  app.post('/api/nhan-su/bulk-delete', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const codesRaw = Array.isArray(body.codes) ? body.codes : Array.isArray(body.ids) ? body.ids : [];
+      const codes = [...new Set(codesRaw.map(code => String(code || '').trim()).filter(Boolean))];
+      if (codes.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách mã nhân sự.' });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_STAFF_TABLE)
+        .delete()
+        .in('ma_nhan_su', codes)
+        .select('ma_nhan_su');
+
+      if (error) {
+        console.error('Supabase nhan_su bulk delete error:', error);
+        return res.status(500).json({ error: staffWriteErrorMessage(error) });
+      }
+
+      const deleted = Array.isArray(data) ? data.length : 0;
+      return res.json({ success: true, deleted, requested: codes.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa nhiều nhân sự.' });
+    }
+  });
+
   app.get('/api/danh-sach-xe', async (_req, res) => {
     if (!supabase) {
       return res.json({ vehicles: [], total: 0, source: 'local', warning: 'Supabase chưa được cấu hình.' });
@@ -9241,11 +9324,21 @@ export function createApp() {
 
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      const ngay =
+        typeof req.query.ngay === 'string'
+          ? req.query.ngay.trim().slice(0, 10)
+          : typeof req.query.tu_ngay === 'string'
+            ? req.query.tu_ngay.trim().slice(0, 10)
+            : '';
+      const ca = typeof req.query.ca === 'string' ? req.query.ca.trim() : '';
+
       let query = supabase
         .from(SUPABASE_MIXING_NORM_TABLE)
         .select('*')
         .order('ngay', { ascending: false })
         .order('created_at', { ascending: false });
+
+      if (ngay) query = query.eq('ngay', ngay);
 
       const { data, error } = await query.limit(2000);
       if (error) {
@@ -9254,11 +9347,20 @@ export function createApp() {
       }
 
       let records = Array.isArray(data) ? data : [];
+      if (ca) {
+        const needle = ca.toLowerCase();
+        records = records.filter(row => {
+          const value = String((row as Record<string, unknown>).ca ?? '')
+            .trim()
+            .toLowerCase();
+          return value === needle || value.includes(needle) || needle.includes(value);
+        });
+      }
       if (q) {
         const needle = q.toLowerCase();
         records = records.filter(row => {
           const r = row as Record<string, unknown>;
-          return `${r.ngay ?? ''} ${r.ma_sp ?? ''} ${r.ten_sp ?? ''} ${r.ma_nvl ?? ''} ${r.ten_nvl ?? ''} ${r.ghi_chu ?? ''}`
+          return `${r.ngay ?? ''} ${r.ca ?? ''} ${r.ma_lenh_sx ?? ''} ${r.ma_sp ?? ''} ${r.ten_sp ?? ''} ${r.ma_nvl ?? ''} ${r.ten_nvl ?? ''} ${r.ghi_chu ?? ''}`
             .toLowerCase()
             .includes(needle);
         });
@@ -9343,6 +9445,114 @@ export function createApp() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa dòng định mức.' });
+    }
+  });
+
+  app.get('/api/phieu-tron-thuc-te', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    try {
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const ca = typeof req.query.ca === 'string' ? req.query.ca.trim() : '';
+      let query = supabase
+        .from(SUPABASE_ACTUAL_MIXING_SHEET_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (ngay) query = query.eq('ngay', ngay);
+      if (ca) query = query.eq('ca', ca);
+      const { data, error } = await query.limit(2000);
+      if (error) {
+        const message = isMissingTableError(error)
+          ? `Bảng ${SUPABASE_ACTUAL_MIXING_SHEET_TABLE} chưa tồn tại trên Supabase. Hãy chạy file supabase-phieu-tron-thuc-te.sql trong Supabase SQL Editor.`
+          : `Không thể tải phiếu trộn thực tế. ${error.message}`;
+        return res.status(500).json({ error: message });
+      }
+      return res.json({ records: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phiếu trộn thực tế.' });
+    }
+  });
+
+  app.post('/api/phieu-tron-thuc-te', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const ngay = String(body.ngay ?? '').trim();
+      const ca = String(body.ca ?? '').trim();
+      const normId = String(body.dinh_muc_id ?? '').trim();
+      const rawChiTiet = Array.isArray(body.chi_tiet) ? body.chi_tiet : [];
+      const chiTiet = rawChiTiet
+        .map(item => {
+          if (!item || typeof item !== 'object') return null;
+          const product = item as Record<string, unknown>;
+          const nvlRaw = Array.isArray(product.nvl)
+            ? product.nvl
+            : Array.isArray(product.chi_tiet)
+              ? product.chi_tiet
+              : [];
+          const nvl = nvlRaw
+            .map(line => {
+              if (!line || typeof line !== 'object') return null;
+              const row = line as Record<string, unknown>;
+              const ma_nvl = String(row.ma_nvl ?? '').trim();
+              const ten_nvl = String(row.ten_nvl ?? '').trim();
+              if (!ma_nvl && !ten_nvl) return null;
+              const toNum = (value: unknown) => {
+                if (value === null || value === undefined || String(value).trim() === '') return null;
+                const parsed = Number(String(value).replace(',', '.'));
+                return Number.isFinite(parsed) ? parsed : null;
+              };
+              return {
+                ma_nvl,
+                ten_nvl,
+                gia_tri: toNum(row.gia_tri ?? row.dinh_muc),
+                khoi_luong: toNum(row.khoi_luong),
+                phan_tram_thuc_te: toNum(row.phan_tram_thuc_te),
+                trong_luong_thuc_te: toNum(row.trong_luong_thuc_te)
+              };
+            })
+            .filter(Boolean);
+          return {
+            ma_sp: String(product.ma_sp ?? '').trim(),
+            ten_sp: String(product.ten_sp ?? '').trim(),
+            tong_trong_luong: (() => {
+              const value = product.tong_trong_luong;
+              if (value === null || value === undefined || String(value).trim() === '') return null;
+              const parsed = Number(String(value).replace(',', '.'));
+              return Number.isFinite(parsed) ? parsed : null;
+            })(),
+            nvl
+          };
+        })
+        .filter(Boolean);
+
+      if (!ngay || !ca) return res.status(400).json({ error: 'Vui lòng chọn ngày và ca.' });
+      if (!normId) return res.status(400).json({ error: 'Thiếu phiếu trộn định mức.' });
+      if (chiTiet.length === 0) return res.status(400).json({ error: 'Phiếu không có chi tiết NVL.' });
+
+      const record = {
+        ngay,
+        ca,
+        dinh_muc_id: normId,
+        ma_lenh_sx: String(body.ma_lenh_sx ?? '').trim() || null,
+        ghi_chu: String(body.ghi_chu ?? '').trim() || null,
+        chi_tiet: chiTiet,
+        updated_at: new Date().toISOString()
+      };
+      const id = String(body.id ?? '').trim();
+      const request = id
+        ? supabase.from(SUPABASE_ACTUAL_MIXING_SHEET_TABLE).update(record).eq('id', id)
+        : supabase.from(SUPABASE_ACTUAL_MIXING_SHEET_TABLE).upsert(record, { onConflict: 'dinh_muc_id' });
+      const { data, error } = await request.select('*').single();
+      if (error) {
+        const message = isMissingTableError(error)
+          ? `Bảng ${SUPABASE_ACTUAL_MIXING_SHEET_TABLE} chưa tồn tại trên Supabase. Hãy chạy file supabase-phieu-tron-thuc-te.sql trong Supabase SQL Editor.`
+          : `Không thể lưu phiếu trộn thực tế. ${error.message}`;
+        return res.status(500).json({ error: message });
+      }
+      return res.status(id ? 200 : 201).json({ success: true, record: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu phiếu trộn thực tế.' });
     }
   });
 

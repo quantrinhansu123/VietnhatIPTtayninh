@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, Plus, Save, ScanBarcode, Trash2, X } from 'lucide-react';
+import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -149,6 +150,7 @@ export function KiemKhoPanel({
   onBack: () => void;
   currentUser?: { name?: string | null } | null;
 }) {
+  const { canCreate, canDelete } = useTabAccess('kiem-kho');
   const loginName = String(currentUser?.name ?? '').trim();
   const [dotKiemKho, setDotKiemKho] = useState('');
   const [nguoiKiemKho, setNguoiKiemKho] = useState(loginName);
@@ -431,15 +433,17 @@ export function KiemKhoPanel({
         <div className="min-w-0">
           <BackButton onClick={onBack} />
         </div>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={saving}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Lưu phiếu
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Lưu phiếu
+          </button>
+        ) : null}
       </div>
 
       <nav
@@ -530,39 +534,43 @@ export function KiemKhoPanel({
             </p>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={openManualModal}
-              className="flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-extrabold text-zinc-800 transition hover:bg-zinc-50"
-              title="Nhập mã SP thủ công"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Thêm
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setScannerMode('hardware');
-                setIsQrScannerOpen(true);
-              }}
-              className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-              title="Bật đầu đọc laser BT-A700"
-            >
-              <ScanBarcode className="h-3.5 w-3.5" />
-              Quét máy
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setScannerMode('camera');
-                setIsQrScannerOpen(true);
-              }}
-              className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
-              title="Quét QR bằng camera ĐT"
-            >
-              <ScanBarcode className="h-3.5 w-3.5" />
-              Quét ĐT
-            </button>
+            {canCreate ? (
+              <>
+                <button
+                  type="button"
+                  onClick={openManualModal}
+                  className="flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-extrabold text-zinc-800 transition hover:bg-zinc-50"
+                  title="Nhập mã SP thủ công"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerMode('hardware');
+                    setIsQrScannerOpen(true);
+                  }}
+                  className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  title="Bật đầu đọc laser BT-A700"
+                >
+                  <ScanBarcode className="h-3.5 w-3.5" />
+                  Quét máy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerMode('camera');
+                    setIsQrScannerOpen(true);
+                  }}
+                  className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
+                  title="Quét QR bằng camera ĐT"
+                >
+                  <ScanBarcode className="h-3.5 w-3.5" />
+                  Quét ĐT
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -616,14 +624,16 @@ export function KiemKhoPanel({
                     <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{line.loaiSp || '—'}</td>
                     <td className={`px-4 py-3 text-center ${highlightClass}`}>
                       <RowActionsMenu label={`Thao tác ${line.maSp}`}>
-                      <button
-                        type="button"
-                        onClick={() => removeLine(line.key)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                        title="Xóa dòng"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => removeLine(line.key)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                          title="Xóa dòng"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                       </RowActionsMenu>
                     </td>
                   </TableRow>
@@ -699,14 +709,16 @@ export function KiemKhoPanel({
                   <td className="px-4 py-3 font-semibold text-zinc-700">{row.nguoi_kiem_kho || '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <RowActionsMenu label={`Thao tác bản ghi ${row.id}`}>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteRecent(row.id)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                      title="Xóa"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteRecent(row.id)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        title="Xóa"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                     </RowActionsMenu>
                   </td>
                 </TableRow>

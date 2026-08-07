@@ -18,7 +18,7 @@
 
 Tab `Quy chế lái xe` (`DriverPolicy.tsx`) là nội dung tĩnh, không có bảng/API — QĐ 220222 CN/QĐ (22/02/2022) để nhân sự & lái xe đọc lại.
 
-Dữ liệu gốc `danh_sach_xe`: loại xe, biển số, tài xế phụ trách.  
+Dữ liệu gốc `danh_sach_xe`: loại xe (sổ xuống: `1,5 tấn`, `6 tấn` + loại đã có trong DB), biển số, tài xế phụ trách.
 Hồ sơ `giay_to` (JSONB): STT, tên giấy tờ (ví dụ Đăng kiểm, Bằng lái), nhiều ảnh Cloudinary.
 Dữ liệu tháng `doi_chieu_lai_xe`: công quy đổi, chuyến, km, các khoản thưởng và doanh số.
 Chi phí `chi_phi_xe`: ngày giờ, loại/tên chi phí, số tiền, BSX, nhân viên và ảnh hóa đơn.

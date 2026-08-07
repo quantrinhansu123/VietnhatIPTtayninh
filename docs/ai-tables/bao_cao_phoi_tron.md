@@ -12,6 +12,10 @@
 - `MixingReportPrintSheet.tsx` — in
 - `MixingOrderAutofillModal.tsx` — autofill
 
-**Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts`
+**Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts`, `utils/mixingNormSuggestion.ts`
 
-Tab **Bảng trộn vật tư định mức** lưu bảng riêng `bang_tron_vat_tu_dinh_muc` — xem [bang_tron_vat_tu_dinh_muc.md](./bang_tron_vat_tu_dinh_muc.md).
+**Gợi ý định mức QC:** Form `/bao-cao-phoi-tron` khi chọn Ngày + Ca sẽ tải `/api/bang-tron-vat-tu-dinh-muc?ngay&ca` và hiện phiếu định mức QC để **Áp dụng** (đổ NVL gộp theo mã vào lần 1).
+
+**Danh sách gộp:** Tab `mixing-report-list` → «Danh sách phiếu phối trộn» hiện cả `bao_cao_phoi_tron` + định mức + thực tế (badge loại), cùng lọc ngày/ca.
+
+**Update ca:** Form sửa chuẩn hóa `ca` (bỏ `-`), khớp với sổ ca / cài đặt thời gian trước khi PATCH. API từ chối lưu nếu `ca` trống hoặc chỉ là `-`.

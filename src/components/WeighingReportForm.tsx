@@ -13,7 +13,9 @@ import WeighingImagePreviewModal, {
 } from './WeighingImagePreviewModal';
 import { CAMERA_IMAGE_INPUT_PROPS } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
+import { useTabAccess } from '../app/useTabAccess';
 import { RowActionsMenu } from './shared/table';
+import { FACTORY_PLACEHOLDER } from './layout/constants';
 
 interface WeighingRow {
   id: number;
@@ -47,8 +49,6 @@ interface WeighingRow {
 }
 
 const DEFAULT_ROWS: WeighingRow[] = [];
-
-const FACTORY_PLACEHOLDER = 'Nhà máy Đà Nẵng';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();
@@ -575,6 +575,7 @@ export default function WeighingReportForm({
   const hideProductFields = Boolean(config.hideProductFields);
   const splitPlasticFilmWeights = Boolean(config.splitPlasticFilmWeights);
   const splitDamagedPlasticDefectWeights = Boolean(config.splitDamagedPlasticDefectWeights);
+  const { canCreate, canEdit, canDelete } = useTabAccess(config.accessTab || 'weighing-summary-list');
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [form, setForm] = useState({
     documentNo: '',
@@ -947,6 +948,7 @@ export default function WeighingReportForm({
     machineName?: string;
     newWeighRound?: boolean;
   }) => {
+    if (!canCreate) return;
     const slip = rows.length > 0 ? getSlipContextFromRows(rows) : null;
     const lastRow = rows[rows.length - 1];
     const productionDate = options?.productionDate || slip?.productionDate || lastRow?.productionDate || today;
@@ -998,6 +1000,7 @@ export default function WeighingReportForm({
   };
 
   const openEditRow = (row: WeighingRow) => {
+    if (!canEdit) return;
     setEditingRow(row);
     if (row.weigherName) {
       updateCurrentWeigherName(row.weigherName);
@@ -1011,6 +1014,7 @@ export default function WeighingReportForm({
   };
 
   const handleDeleteRow = async (row: WeighingRow) => {
+    if (!canDelete) return;
     if (!window.confirm('Bạn có chắc muốn xóa dòng cân này?')) return;
 
     setDeletingRowId(row.id);
@@ -1128,6 +1132,7 @@ export default function WeighingReportForm({
   }, [autoOpenNewSlip, pendingAdd, today]);
 
   const addFormRow = async () => {
+    if (editingRow ? !canEdit : !canCreate) return;
     const slip = rows.length > 0 ? getSlipContextFromRows(rows) : null;
     const productionDate = slip?.productionDate || newRow.productionDate;
     const shiftName = slip?.shiftName || newRow.shiftName;
@@ -1903,6 +1908,7 @@ export default function WeighingReportForm({
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
+                      {canEdit ? (
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
@@ -1911,6 +1917,8 @@ export default function WeighingReportForm({
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
+                      ) : null}
+                      {canDelete ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteRow(row)}
@@ -1924,6 +1932,7 @@ export default function WeighingReportForm({
                           <Trash2 className="h-3.5 w-3.5" />
                         )}
                       </button>
+                      ) : null}
                     </div>
                   </div>
                   <div
@@ -2178,6 +2187,7 @@ export default function WeighingReportForm({
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
+                      {canEdit ? (
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
@@ -2186,6 +2196,8 @@ export default function WeighingReportForm({
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
+                      ) : null}
+                      {canDelete ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteRow(row)}
@@ -2199,6 +2211,7 @@ export default function WeighingReportForm({
                           <Trash2 className="h-3.5 w-3.5" />
                         )}
                       </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2255,6 +2268,7 @@ export default function WeighingReportForm({
                       >
                         <Eye className="h-4 w-4" />
                       </button>
+                      {canEdit ? (
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
@@ -2263,6 +2277,8 @@ export default function WeighingReportForm({
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
+                      ) : null}
+                      {canDelete ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteRow(row)}
@@ -2276,6 +2292,7 @@ export default function WeighingReportForm({
                           <Trash2 className="h-4 w-4" />
                         )}
                       </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2374,6 +2391,7 @@ export default function WeighingReportForm({
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
+                      {canEdit ? (
                       <button
                         type="button"
                         onClick={() => openEditRow(row)}
@@ -2382,6 +2400,8 @@ export default function WeighingReportForm({
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
+                      ) : null}
+                      {canDelete ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteRow(row)}
@@ -2395,6 +2415,7 @@ export default function WeighingReportForm({
                           <Trash2 className="h-3.5 w-3.5" />
                         )}
                       </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -2427,6 +2448,7 @@ export default function WeighingReportForm({
             </div>
           ) : null}
           <div className="flex items-center justify-end gap-1 overflow-x-auto">
+            {canCreate ? (
             <button
               type="button"
               onClick={() => openAddForm({ newWeighRound: true })}
@@ -2435,6 +2457,7 @@ export default function WeighingReportForm({
             >
               Lần mới
             </button>
+            ) : null}
             <button
               type="button"
               onClick={handleSave}
@@ -3166,6 +3189,7 @@ export default function WeighingReportForm({
               >
                 Hủy
               </button>
+              {(editingRow ? canEdit : canCreate) ? (
               <button
                 type="button"
                 onClick={addFormRow}
@@ -3185,6 +3209,7 @@ export default function WeighingReportForm({
                     ? 'Lưu thay đổi'
                     : 'Thêm vào bảng'}
               </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3388,6 +3413,7 @@ export default function WeighingReportForm({
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
+              {canEdit ? (
               <button
                 type="button"
                 onClick={() => {
@@ -3399,6 +3425,7 @@ export default function WeighingReportForm({
                 <Pencil className="h-3.5 w-3.5" />
                 Sửa
               </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setViewingRow(null)}

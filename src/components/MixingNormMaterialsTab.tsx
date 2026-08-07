@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Pencil, Plus, Printer, Save, Search, Trash2, X } from 'lucide-react';
+import { useTabAccess } from '../app/useTabAccess';
 import { RowActionsMenu } from './shared/table';
 import { SearchableSelect } from './shared/SearchableSelect';
 import {
@@ -12,6 +13,7 @@ import {
   toPrintDoc,
   type MixingNormRatioPrintDoc
 } from './MixingNormRatioPrintSheet';
+import { getProductionShiftOptions, normalizeShiftSettings, resolveShiftName } from '../utils/shiftSettings';
 
 export type MixingNormLine = {
   ma_nvl: string;
@@ -33,6 +35,7 @@ export type MixingNormProduct = {
 export type MixingNormRow = {
   id: string;
   ngay: string;
+  ca: string;
   ma_lenh_sx: string;
   ghi_chu: string;
   products: MixingNormProduct[];
@@ -69,6 +72,7 @@ type ProductForm = {
 
 type NormForm = {
   ngay: string;
+  ca: string;
   maLenhSx: string;
   ghiChu: string;
   products: ProductForm[];
@@ -96,6 +100,7 @@ const emptyProduct = (): ProductForm => ({
 
 const emptyForm = (): NormForm => ({
   ngay: new Date().toISOString().slice(0, 10),
+  ca: '',
   maLenhSx: '',
   ghiChu: '',
   products: [emptyProduct()]
@@ -354,6 +359,7 @@ function normalizeRows(data: unknown): MixingNormRow[] {
       return {
         id,
         ngay: String(row.ngay ?? '').trim(),
+        ca: String(row.ca ?? '').trim(),
         ma_lenh_sx: String(row.ma_lenh_sx ?? '').trim(),
         ghi_chu: String(row.ghi_chu ?? '').trim(),
         products,
@@ -386,10 +392,12 @@ function summarizeProductsNvl(products: MixingNormProduct[]) {
 }
 
 export default function MixingNormMaterialsTab() {
+  const { canCreate, canEdit, canDelete } = useTabAccess('mixing-report-list');
   const [rows, setRows] = useState<MixingNormRow[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
   const [productionOrders, setProductionOrders] = useState<MixingProductionOrder[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<ProductOption[]>([]);
+  const [shiftOptions, setShiftOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState('');
@@ -468,17 +476,20 @@ export default function MixingNormMaterialsTab() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [materialRes, orderRes, productRes] = await Promise.all([
+      const [materialRes, orderRes, productRes, settingRes] = await Promise.all([
         fetch('/api/kho-nvl'),
         fetch('/api/lenh-sx'),
-        fetch('/api/san-pham?format=table')
+        fetch('/api/san-pham?format=table'),
+        fetch('/api/cai-dat')
       ]);
       const materialData = await materialRes.json().catch(() => ({}));
       const orderData = await orderRes.json().catch(() => ({}));
       const productData = await productRes.json().catch(() => ({}));
+      const settingData = await settingRes.json().catch(() => ({}));
       if (materialRes.ok) setMaterials(normalizeMaterials(materialData));
       if (orderRes.ok) setProductionOrders(normalizeMixingProductionOrders(orderData));
       if (productRes.ok) setCatalogProducts(normalizeCatalogProducts(productData));
+      if (settingRes.ok) setShiftOptions(getProductionShiftOptions(normalizeShiftSettings(settingData)));
     } catch {
       // giữ partial data nếu một nguồn lỗi
     }
@@ -529,11 +540,12 @@ export default function MixingNormMaterialsTab() {
       const spText = row.products
         .map(p => `${p.ma_sp} ${p.ten_sp} ${p.tong_trong_luong ?? ''} ${p.ghi_chu} ${summarizeLines(p.chi_tiet)}`)
         .join(' ');
-      return `${row.ngay} ${row.ma_lenh_sx} ${row.ghi_chu} ${spText}`.toLowerCase().includes(q);
+      return `${row.ngay} ${row.ca} ${row.ma_lenh_sx} ${row.ghi_chu} ${spText}`.toLowerCase().includes(q);
     });
   }, [query, rows]);
 
   const openCreate = () => {
+    if (!canCreate) return;
     setEditingId('');
     setForm(emptyForm());
     setShowForm(true);
@@ -542,9 +554,11 @@ export default function MixingNormMaterialsTab() {
   };
 
   const openEdit = (row: MixingNormRow) => {
+    if (!canEdit) return;
     setEditingId(row.id);
     setForm({
       ngay: row.ngay || new Date().toISOString().slice(0, 10),
+      ca: row.ca,
       maLenhSx: row.ma_lenh_sx,
       ghiChu: row.ghi_chu,
       products:
@@ -661,6 +675,11 @@ export default function MixingNormMaterialsTab() {
   };
 
   const handleSave = async () => {
+    const resolvedCa = resolveShiftName(form.ca.trim(), shiftOptions) || form.ca.trim();
+    if (!resolvedCa || resolvedCa === '-' || resolvedCa === '—') {
+      setError('Vui lòng chọn ca.');
+      return;
+    }
     if (!form.maLenhSx.trim()) {
       setError('Vui lòng chọn lệnh SX.');
       return;
@@ -724,6 +743,7 @@ export default function MixingNormMaterialsTab() {
 
       const payload = {
         ngay: form.ngay.trim() || null,
+        ca: resolvedCa,
         ma_lenh_sx: form.maLenhSx.trim(),
         ghi_chu: form.ghiChu.trim(),
         products: payloadProducts
@@ -815,14 +835,16 @@ export default function MixingNormMaterialsTab() {
           <Printer className="h-4 w-4" />
           In danh sách
         </button>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="mt-3 flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] lg:mt-0"
-        >
-          <Plus className="h-4 w-4" />
-          Thêm phiếu định mức
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="mt-3 flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] lg:mt-0"
+          >
+            <Plus className="h-4 w-4" />
+            Thêm phiếu định mức
+          </button>
+        ) : null}
       </section>
 
       {error && (
@@ -840,6 +862,7 @@ export default function MixingNormMaterialsTab() {
             <thead className="bg-zinc-950 text-xs uppercase tracking-wider text-white">
               <tr>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Ngày</th>
+                <th className="whitespace-nowrap px-3 py-3 font-black">Ca</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Lệnh SX</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Sản phẩm</th>
                 <th className="px-3 py-3 font-black">NVL / giá trị theo SP</th>
@@ -852,6 +875,7 @@ export default function MixingNormMaterialsTab() {
                   <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-zinc-800">
                     {row.ngay || '—'}
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-black text-zinc-800">{row.ca || '—'}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs font-bold text-zinc-700">
                     {row.ma_lenh_sx || '—'}
                   </td>
@@ -932,27 +956,31 @@ export default function MixingNormMaterialsTab() {
                         <Printer className="h-3.5 w-3.5" />
                         In
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(row)}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 hover:bg-amber-100"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Sửa
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(row.id)}
-                        disabled={deletingId === row.id}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                      >
-                        {deletingId === row.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                        Xóa
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(row)}
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 hover:bg-amber-100"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Sửa
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(row.id)}
+                          disabled={deletingId === row.id}
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                        >
+                          {deletingId === row.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          Xóa
+                        </button>
+                      ) : null}
                     </div>
                     </RowActionsMenu>
                   </td>
@@ -960,14 +988,14 @@ export default function MixingNormMaterialsTab() {
               ))}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center font-bold text-zinc-500">
+                  <td colSpan={6} className="px-4 py-10 text-center font-bold text-zinc-500">
                     Chưa có phiếu trộn định mức. Bấm “Thêm phiếu định mức”.
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center font-bold text-zinc-500">
+                  <td colSpan={6} className="px-4 py-10 text-center font-bold text-zinc-500">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Đang tải...
@@ -980,7 +1008,7 @@ export default function MixingNormMaterialsTab() {
         </div>
       </section>
 
-      {showForm && (
+      {showForm && (canCreate || (canEdit && editingId)) ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
@@ -997,7 +1025,7 @@ export default function MixingNormMaterialsTab() {
             </div>
 
             <div className="space-y-4 p-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <label className="space-y-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày</span>
                   <input
@@ -1006,6 +1034,16 @@ export default function MixingNormMaterialsTab() {
                     onChange={event => setForm(prev => ({ ...prev, ngay: event.target.value }))}
                     className={inputClass}
                   />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ca <span className="text-[#ef1b2d]">*</span></span>
+                  <select value={form.ca} onChange={event => setForm(prev => ({ ...prev, ca: event.target.value }))} className={inputClass}>
+                    <option value="">Chọn ca</option>
+                    {form.ca && !shiftOptions.some(option => option.value === form.ca) ? (
+                      <option value={form.ca}>{form.ca}</option>
+                    ) : null}
+                    {shiftOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 </label>
                 <label className="space-y-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
@@ -1297,7 +1335,7 @@ export default function MixingNormMaterialsTab() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {printDocs.length > 0 ? <MixingNormRatioPrintBatch docs={printDocs} /> : null}
     </div>

@@ -45,7 +45,14 @@ import {
 import { readCachedReports, STORAGE_DRAFT_KEY, STORAGE_OFFLINE_KEY, STORAGE_REPORTS_CACHE_KEY, STORAGE_AUTH_KEY } from './features/_shared/storage';
 import LoginPage, { grantResolvedAccess, type AuthUser } from './components/LoginPage';
 import { AccessControlProvider } from './app/accessControl';
-import { buildAllowedTabSet, hasFullMenuAccess, STAFF_MENU_VIEW_TREE } from './features/nhan-su/menuViews';
+import { buildAllowedTabSet, hasFullMenuAccess } from './features/nhan-su/menuViews';
+import { refreshAuthUserPermissions } from './app/refreshAuthPermissions';
+import {
+  buildKnownPermissionTabSet,
+  expandImpliedHubTabs,
+  hubHasAllowedChild,
+  resolveAccessTab
+} from './app/tabAccess';
 import { VietNhatLogo } from './components/layout/Logo';
 import { BackButton, HomeNavButton, MobileBackNavButton, BACK_TAB_MAP } from './components/layout/NavButtons';
 import {
@@ -127,6 +134,27 @@ export default function App() {
     setAuthUser(null);
   };
 
+  // Mỗi lần mở app: nạp lại quyền từ ma trận Phân quyền (tránh localStorage quyền cũ).
+  useEffect(() => {
+    const username = authUser?.username;
+    if (!username || authUser?.fullAccess) return;
+    let cancelled = false;
+    void refreshAuthUserPermissions(username).then(next => {
+      if (cancelled || !next) return;
+      try {
+        localStorage.setItem(STORAGE_AUTH_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      setAuthUser(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Chỉ chạy khi đổi user đăng nhập
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.username, authUser?.fullAccess]);
+
   const [activeTab, setActiveTab] = useState<AppTab>(() => tabFromPath(window.location.pathname));
   const [locationPath, setLocationPath] = useState(() => window.location.pathname);
   const resolvedTab = useMemo(() => tabFromPath(locationPath), [locationPath]);
@@ -181,24 +209,50 @@ export default function App() {
   const [machineNvlEditReport, setMachineNvlEditReport] = useState<MachineNvlSavedReport | null>(null);
   const [weighingPendingAdd, setWeighingPendingAdd] = useState<WeighingPendingAdd | null>(null);
   const navigateToTab = (tab: AppTab, options?: { replace?: boolean }) => {
-    const path = pathFromTab(tab);
+    let nextTab = tab;
+    let nextOptions = options;
+    if (authUser) {
+      const fullAccess =
+        Boolean(authUser.fullAccess) || hasFullMenuAccess(authUser.role, authUser.username);
+      if (!fullAccess && nextTab !== 'menu') {
+        const allowed = buildAllowedTabSet(authUser.viewPermissions ?? []);
+        const known = buildKnownPermissionTabSet();
+        const accessTab = resolveAccessTab(nextTab);
+        const allowedHere =
+          allowed.has(accessTab) ||
+          allowed.has(nextTab) ||
+          hubHasAllowedChild(accessTab, allowed) ||
+          hubHasAllowedChild(nextTab, allowed);
+        const controlled = known.has(nextTab) || known.has(accessTab);
+        if (controlled && !allowedHere) {
+          nextTab = 'menu';
+          nextOptions = { ...options, replace: true };
+        }
+      }
+    }
+
+    const path = pathFromTab(nextTab);
 
     if (window.location.pathname !== path) {
-      if (options?.replace) {
-        window.history.replaceState({ tab, appNavigation: true, previousPath: null }, '', path);
+      if (nextOptions?.replace) {
+        window.history.replaceState(
+          { tab: nextTab, appNavigation: true, previousPath: null },
+          '',
+          path
+        );
       } else {
         window.history.pushState(
-          { tab, appNavigation: true, previousPath: window.location.pathname },
+          { tab: nextTab, appNavigation: true, previousPath: window.location.pathname },
           '',
           path
         );
       }
     }
 
-    setActiveTab(tab);
+    setActiveTab(nextTab);
     setLocationPath(path);
 
-    if (tab === 'dashboard') {
+    if (nextTab === 'dashboard') {
       fetchReports();
     }
   };
@@ -211,6 +265,26 @@ export default function App() {
     }
     navigateToTab(fallbackTab);
   };
+
+  // URL / tab đang mở phải nằm trong quyền xem (trừ admin).
+  useEffect(() => {
+    if (!authUser) return;
+    const fullAccess =
+      Boolean(authUser.fullAccess) || hasFullMenuAccess(authUser.role, authUser.username);
+    if (fullAccess || activeTab === 'menu') return;
+    const allowed = buildAllowedTabSet(authUser.viewPermissions ?? []);
+    const known = buildKnownPermissionTabSet();
+    const accessTab = resolveAccessTab(activeTab);
+    const allowedHere =
+      allowed.has(accessTab) ||
+      allowed.has(activeTab) ||
+      hubHasAllowedChild(accessTab, allowed) ||
+      hubHasAllowedChild(activeTab, allowed);
+    const controlled = known.has(activeTab) || known.has(accessTab);
+    if (controlled && !allowedHere) {
+      navigateToTab('menu', { replace: true });
+    }
+  }, [authUser, activeTab]);
 
   const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>, tab: AppTab) => {
     event.preventDefault();
@@ -353,7 +427,7 @@ export default function App() {
 
         if (res.ok) {
           const newRep = await res.json();
-          addNotification('Lưu báo cáo lên database Đà Nẵng thành công!', 'success');
+          addNotification('Lưu báo cáo lên database Phú Thọ thành công!', 'success');
           // Update local list
           setReports(prev => [newRep, ...prev]);
           // Reset form draft
@@ -437,7 +511,7 @@ export default function App() {
         if (res.ok) {
           const resJson = await res.json();
           setReports(resJson.data);
-          addNotification('Khôi phục database mẫu Đà Nẵng thành công!', 'success');
+          addNotification('Khôi phục database mẫu Phú Thọ thành công!', 'success');
         }
       } catch (e) {
         addNotification('Lỗi khi khôi phục database.', 'error');
@@ -481,35 +555,31 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  // Chỉ quản trị mới xem toàn bộ; còn lại đúng theo "Quyền xem menu"
+  // Chỉ quản trị mới xem toàn bộ; còn lại đúng theo ma trận Phân quyền (và vị trí gán).
   // Kiểm tra cả vai trò và tài khoản để phiên admin cũ/khác cách ghi vai trò vẫn luôn có toàn quyền.
   const menuFullAccess = Boolean(authUser.fullAccess) || hasFullMenuAccess(authUser.role, authUser.username);
-  const allowedMenuTabs = buildAllowedTabSet(authUser.viewPermissions ?? []);
-  const editableMenuTabs = buildAllowedTabSet(authUser.editPermissions ?? []);
-  const deletableMenuTabs = buildAllowedTabSet(authUser.deletePermissions ?? []);
-  const knownPermissionTabs = buildAllowedTabSet(STAFF_MENU_VIEW_TREE);
-  // Tab không thuộc cây phân quyền => không bị kiểm soát, luôn hiển thị
-  const canSeeTab = (tab: AppTab) =>
-    tab === 'settings' || menuFullAccess || !knownPermissionTabs.has(tab) || allowedMenuTabs.has(tab);
-  const canSeeMainMenuTab = (tab: AppTab) => {
-    if (canSeeTab(tab)) return true;
-    if (tab === 'business') {
-      return ['orders', 'customers', 'shipping-orders'].some(child => allowedMenuTabs.has(child));
+  const allowedMenuTabs = expandImpliedHubTabs(buildAllowedTabSet(authUser.viewPermissions ?? []));
+  const editableMenuTabs = expandImpliedHubTabs(buildAllowedTabSet(authUser.editPermissions ?? []));
+  const deletableMenuTabs = expandImpliedHubTabs(buildAllowedTabSet(authUser.deletePermissions ?? []));
+  const knownPermissionTabs = buildKnownPermissionTabSet();
+  const canSeeTab = (tab: AppTab) => {
+    if (menuFullAccess || tab === 'menu') return true;
+    const accessTab = resolveAccessTab(tab);
+    if (
+      allowedMenuTabs.has(accessTab) ||
+      allowedMenuTabs.has(tab) ||
+      hubHasAllowedChild(accessTab, allowedMenuTabs) ||
+      hubHasAllowedChild(tab, allowedMenuTabs)
+    ) {
+      return true;
     }
-    if (tab === 'factory') {
-      return [
-        'factory-quan-doc',
-        'factory-qc',
-        'factory-cong-nhan',
-        'factory-kho',
-        'production-reports',
-        'facility-management',
-        'production-orders',
-        'production-plan-history'
-      ].some(child => allowedMenuTabs.has(child));
-    }
-    return false;
+    const controlled = knownPermissionTabs.has(tab) || knownPermissionTabs.has(accessTab);
+    // Tab thuộc cây / alias phân quyền mà không được cấp → ẩn
+    if (controlled) return false;
+    // Tab ngoài ma trận: giữ hành vi cũ (không khóa)
+    return true;
   };
+  const canSeeMainMenuTab = (tab: AppTab) => canSeeTab(tab);
   const visibleMainMenuItems = menuFullAccess
     ? MAIN_MENU_ITEMS
     : MAIN_MENU_ITEMS.filter(item => canSeeMainMenuTab(item.tab));
@@ -808,7 +878,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <AcceptanceReportListView
-                  onBack={() => goBack('report-lists')}
+                  onBack={() => goBack('factory-qc')}
                   onCreate={prefill => {
                     setAcceptanceEditReport(null);
                     setAcceptanceCreatePrefill(prefill ?? null);
@@ -1005,7 +1075,7 @@ export default function App() {
                   <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="p-5 bg-white rounded-2xl shadow-xl flex items-center gap-3.5 text-slate-800 font-bold max-w-sm">
                       <Loader2 className="w-6 h-6 text-emerald-600 animate-spin shrink-0" />
-                      <span>Đang mã hóa & đồng bộ dữ liệu Đà Nẵng...</span>
+                      <span>Đang mã hóa & đồng bộ dữ liệu Phú Thọ...</span>
                     </div>
                   </div>
                 )}
@@ -1257,7 +1327,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <MachinesPanel onBack={() => goBack('facility-management')} />
+                <MachinesPanel onBack={() => goBack('menu')} />
               </motion.div>
             ) : activeTab === 'materials' ? (
               <motion.div
@@ -1336,6 +1406,7 @@ export default function App() {
               >
                 <ProductionOrdersPanel
                   onBack={() => goBack('factory')}
+                  currentUser={authUser}
                   canEdit={menuFullAccess || editableMenuTabs.has('production-orders')}
                   canDelete={menuFullAccess || deletableMenuTabs.has('production-orders')}
                 />

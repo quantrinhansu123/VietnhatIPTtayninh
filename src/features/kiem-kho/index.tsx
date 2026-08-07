@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ClipboardList, Loader2, Plus, Save, ScanBarcode, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Save, ScanBarcode, Trash2, X } from 'lucide-react';
 import { BackButton } from '../../components/layout/NavButtons';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -430,17 +430,6 @@ export function KiemKhoPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <BackButton onClick={onBack} />
-          <div className="mt-3 flex items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#ef1b2d]/10 text-[#ef1b2d]">
-              <ClipboardList className="h-5 w-5" />
-            </span>
-            <div>
-              <h1 className="text-lg font-black text-zinc-900 sm:text-xl">Báo cáo kiểm kho</h1>
-              <p className="text-xs font-semibold text-zinc-500">
-                Bảng <span className="font-mono">kiem_kho</span> · quét bằng máy BT-A700 / camera
-              </p>
-            </div>
-          </div>
         </div>
         <button
           type="button"
@@ -452,6 +441,56 @@ export function KiemKhoPanel({
           Lưu phiếu
         </button>
       </div>
+
+      <nav
+        aria-label="Chức năng kiểm kho"
+        className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm md:grid-cols-3"
+      >
+        <button
+          type="button"
+          aria-current="page"
+          className="min-h-[76px] rounded-xl border-2 border-[#ef1b2d] bg-red-50 px-4 py-3 text-left"
+        >
+          <span className="block text-sm font-black text-zinc-900">Thực hiện kiểm kho</span>
+          <span className="mt-1 block text-xs font-semibold text-zinc-500">
+            Tạo phiếu và quét mã sản phẩm
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled
+          className="min-h-[76px] cursor-not-allowed rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left opacity-70"
+          title="Chức năng sẽ được triển khai sau"
+        >
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-sm font-black text-zinc-900">Danh sách đợt kiểm kho</span>
+            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-zinc-500">
+              Sắp triển khai
+            </span>
+          </span>
+          <span className="mt-1 block text-xs font-semibold text-zinc-500">
+            Xem và quản lý các đợt kiểm kho
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled
+          className="min-h-[76px] cursor-not-allowed rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left opacity-70"
+          title="Chức năng sẽ được triển khai sau"
+        >
+          <span className="flex items-center justify-between gap-2">
+            <span className="text-sm font-black text-zinc-900">Tổng hợp đợt kiểm kho</span>
+            <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-zinc-500">
+              Sắp triển khai
+            </span>
+          </span>
+          <span className="mt-1 block text-xs font-semibold text-zinc-500">
+            Tổng hợp kết quả theo từng đợt
+          </span>
+        </button>
+      </nav>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
         <h2 className="mb-3 text-sm font-black text-zinc-900">Thông tin phiếu</h2>

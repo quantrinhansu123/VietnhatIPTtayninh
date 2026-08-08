@@ -59,6 +59,8 @@ Cả 3 route `dot-mo`, `dot`, `dot-xac-nhan` dùng chung helper `computeKiemKhoD
 
 `GET /api/kiem-kho/dot` và `GET /api/kiem-kho/dot-mo` trả thêm `thu_tu_trong_ngay`, `tong_dot_trong_ngay`. Nếu có nhiều đợt bắt đầu trong cùng một ngày (múi giờ Việt Nam), nhãn hiển thị thêm `- 1`, `- 2`, `- 3`... theo thứ tự bắt đầu; ngày chỉ có một đợt thì giữ nguyên nhãn cũ.
 
+Cả ba tab **Thực hiện kiểm kho**, **Danh sách chi tiết** và **Bảng tổng hợp** đều dùng `SearchableSelect` với `comboboxMode`. Riêng tab **Thực hiện kiểm kho** đặt `comboboxSearchable={false}` để menu chỉ hiện danh sách lựa chọn; hai tab còn lại vẫn có ô tìm kiếm.
+
 ## Frontend
 
 | File | Nội dung |

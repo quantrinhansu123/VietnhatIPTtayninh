@@ -210,6 +210,20 @@ export function KiemKhoPanel({
   const [openBatches, setOpenBatches] = useState<OpenBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [nguoiKiemKho, setNguoiKiemKho] = useState(loginName);
+  const performBatchOptions = useMemo<OpenBatch[]>(
+    () =>
+      openBatches.length > 0
+        ? openBatches
+        : [
+            {
+              dot_kiem_kho: '',
+              ngay_bat_dau: null,
+              thu_tu_trong_ngay: 1,
+              tong_dot_trong_ngay: 1
+            }
+          ],
+    [openBatches]
+  );
 
   // Tab "Danh sách chi tiết"
   const [allBatches, setAllBatches] = useState<DotGroup[]>([]);
@@ -695,26 +709,31 @@ export function KiemKhoPanel({
         <div className="grid grid-cols-1 gap-3">
           <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
             Đợt kiểm kho
-            <select
-              value={dotKiemKho}
-              onChange={e => setDotKiemKho(e.target.value)}
-              disabled={loadingBatches}
-              className={`mt-1 min-w-0 max-w-full ${inputClass}`}
-            >
-              {openBatches.length === 0 ? (
-                <option value="">+ Tạo đợt mới</option>
-              ) : null}
-              {openBatches.map(batch => (
-                <option key={batch.dot_kiem_kho} value={batch.dot_kiem_kho}>
-                  {formatDotLabel(
-                    batch.ngay_bat_dau,
-                    null,
-                    batch.thu_tu_trong_ngay,
-                    batch.tong_dot_trong_ngay
-                  )}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelect
+                value={dotKiemKho}
+                onChange={setDotKiemKho}
+                options={performBatchOptions}
+                getValue={item => (item as OpenBatch).dot_kiem_kho}
+                getLabel={item => {
+                  const batch = item as OpenBatch;
+                  return batch.dot_kiem_kho
+                    ? formatDotLabel(
+                        batch.ngay_bat_dau,
+                        null,
+                        batch.thu_tu_trong_ngay,
+                        batch.tong_dot_trong_ngay
+                      )
+                    : '+ Tạo đợt mới';
+                }}
+                placeholder="+ Tạo đợt mới"
+                isLoading={loadingBatches}
+                allowEmpty={false}
+                inputClassName={inputClass}
+                comboboxMode
+                comboboxSearchable={false}
+              />
+            </div>
             <span className="mt-1 block text-[11px] font-medium normal-case tracking-normal text-zinc-400">
               {loadingBatches
                 ? 'Đang tải danh sách đợt...'
@@ -863,6 +882,7 @@ export function KiemKhoPanel({
                 isLoading={loadingAllBatches}
                 allowEmpty={false}
                 inputClassName={inputClass}
+                comboboxMode
               />
             </div>
           </label>
@@ -967,6 +987,7 @@ export function KiemKhoPanel({
               isLoading={loadingAllBatches}
               allowEmpty={false}
               inputClassName={inputClass}
+              comboboxMode
             />
           </div>
         </label>

@@ -70,7 +70,7 @@ type KiemKhoDetailRow = {
 };
 
 type KiemKhoTongHopRow = {
-  id: number | string;
+  id?: number | string;
   dot_kiem_kho?: string | null;
   ma_nvl?: string | null;
   ten_sp?: string | null;
@@ -78,6 +78,8 @@ type KiemKhoTongHopRow = {
   tong_so_luong?: number | null;
   chot_luc?: string | null;
   nguoi_chot?: string | null;
+  /** false = tính "live" từ đợt chưa chốt (không có id/chot_luc/nguoi_chot thật). */
+  da_chot?: boolean;
 };
 
 const inputClass =
@@ -237,7 +239,6 @@ export function KiemKhoPanel({
   // Tab "Bảng tổng hợp"
   const [summaryRows, setSummaryRows] = useState<KiemKhoTongHopRow[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [summaryLoaded, setSummaryLoaded] = useState(false);
   const [summaryError, setSummaryError] = useState('');
   const [selectedSummaryDot, setSelectedSummaryDot] = useState('');
   const [summaryDotTouched, setSummaryDotTouched] = useState(false);
@@ -391,18 +392,27 @@ export function KiemKhoPanel({
     }
   };
 
-  const loadSummary = useCallback(async () => {
+  // Tải tổng hợp CHỈ của 1 đợt (không tải cả lịch sử về rồi lọc client) — đợt đã
+  // chốt đọc bảng kiem_kho_tong_hop có sẵn, đợt chưa chốt gộp "live" từ kiem_kho
+  // (GROUP BY chạy trong Postgres qua RPC, xem docs/de-xuat-tong-hop-hien-thi-dot-chua-chot.md).
+  const loadSummary = useCallback(async (dot: string, daXacNhan: boolean) => {
+    if (!dot) {
+      setSummaryRows([]);
+      return;
+    }
     setLoadingSummary(true);
     setSummaryError('');
     try {
-      const res = await fetch('/api/kiem-kho-tong-hop?limit=5000');
+      const url = daXacNhan
+        ? `/api/kiem-kho-tong-hop?dotKiemKho=${encodeURIComponent(dot)}&limit=1000`
+        : `/api/kiem-kho/dot-tong-hop-live?dotKiemKho=${encodeURIComponent(dot)}`;
+      const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được bảng tổng hợp.'));
-      setSummaryRows(Array.isArray(data?.records) ? data.records : []);
-      setSummaryLoaded(true);
+      const records: KiemKhoTongHopRow[] = Array.isArray(data?.records) ? data.records : [];
+      setSummaryRows(daXacNhan ? records.map(row => ({ ...row, da_chot: true })) : records);
     } catch (err: any) {
       setSummaryRows([]);
-      setSummaryLoaded(true);
       const text = err?.message || 'Không tải được bảng tổng hợp.';
       setSummaryError(text);
       showAppToast(text, 'error');
@@ -411,37 +421,24 @@ export function KiemKhoPanel({
     }
   }, []);
 
-  useEffect(() => {
-    if (view === 'tong-hop' && !summaryLoaded) {
-      void loadSummary();
-    }
-  }, [view, summaryLoaded, loadSummary]);
+  // Liệt kê mọi đợt (đã chốt lẫn chưa chốt) — mới nhất trước, theo thứ tự allBatches trả về.
+  const summaryDotOptions = useMemo(() => allBatches.map(b => b.dot_kiem_kho), [allBatches]);
 
-  // Chỉ đợt đã xác nhận mới có trong bảng tổng hợp — dùng làm lựa chọn "Đợt".
-  const confirmedBatches = useMemo(() => allBatches.filter(b => b.da_xac_nhan), [allBatches]);
-  // Liệt kê mọi đợt đã xác nhận — mới nhất trước — kể cả đợt tổng hợp đang rỗng, để còn chọn được mà kiểm tra.
-  const summaryDotOptions = useMemo(
-    () =>
-      [...confirmedBatches]
-        .sort((a, b) => (b.thoi_gian_xac_nhan || '').localeCompare(a.thoi_gian_xac_nhan || ''))
-        .map(b => b.dot_kiem_kho),
-    [confirmedBatches]
-  );
-
-  // Mới vào tab → mặc định chỉ hiện đợt chốt gần nhất (theo thoi_gian_xac_nhan mới nhất).
+  // Mới vào tab → mặc định chỉ hiện đợt gần nhất.
   useEffect(() => {
     if (view !== 'tong-hop' || summaryDotTouched || summaryDotOptions.length === 0) return;
     setSelectedSummaryDot(summaryDotOptions[0]);
   }, [view, summaryDotOptions, summaryDotTouched]);
 
   const selectedSummaryDotGroup = useMemo(
-    () => confirmedBatches.find(b => b.dot_kiem_kho === selectedSummaryDot) ?? null,
-    [confirmedBatches, selectedSummaryDot]
+    () => allBatches.find(b => b.dot_kiem_kho === selectedSummaryDot) ?? null,
+    [allBatches, selectedSummaryDot]
   );
 
-  const filteredSummaryRows = useMemo(() => {
-    return summaryRows.filter(row => !selectedSummaryDot || row.dot_kiem_kho === selectedSummaryDot);
-  }, [summaryRows, selectedSummaryDot]);
+  useEffect(() => {
+    if (view !== 'tong-hop') return;
+    void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan);
+  }, [view, selectedSummaryDot, selectedSummaryDotGroup, loadSummary]);
 
   const addLineFromCode = useCallback(
     (raw: string): boolean | 'duplicate' => {
@@ -964,7 +961,7 @@ export function KiemKhoPanel({
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
         <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn đợt kiểm kho</h2>
         <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
-          Đợt kiểm kho đã chốt
+          Đợt kiểm kho
           <div className="mt-1">
             <SearchableSelect
               value={selectedSummaryDot}
@@ -972,7 +969,7 @@ export function KiemKhoPanel({
                 setSelectedSummaryDot(value);
                 setSummaryDotTouched(true);
               }}
-              options={confirmedBatches}
+              options={allBatches}
               getValue={item => (item as DotGroup).dot_kiem_kho}
               getLabel={item => {
                 const b = item as DotGroup;
@@ -981,7 +978,7 @@ export function KiemKhoPanel({
                   b.thoi_gian_xac_nhan,
                   b.thu_tu_trong_ngay,
                   b.tong_dot_trong_ngay
-                )} · ${b.so_dong} mã · Đã xác nhận`;
+                )} · ${b.so_dong} mã · ${b.da_xac_nhan ? 'Đã xác nhận' : 'Chưa xác nhận'}`;
               }}
               placeholder="Tìm đợt kiểm kho..."
               isLoading={loadingAllBatches}
@@ -995,9 +992,13 @@ export function KiemKhoPanel({
         {selectedSummaryDotGroup ? (
           <p className="mt-3 text-[11px] font-semibold text-zinc-500">
             Bắt đầu: {formatDateTime(selectedSummaryDotGroup.ngay_bat_dau)} ·{' '}
-            <span className="text-emerald-600">
-              Đã xác nhận kiểm kê lúc {formatDateTime(selectedSummaryDotGroup.thoi_gian_xac_nhan)}
-            </span>
+            {selectedSummaryDotGroup.da_xac_nhan ? (
+              <span className="text-emerald-600">
+                Đã xác nhận kiểm kê lúc {formatDateTime(selectedSummaryDotGroup.thoi_gian_xac_nhan)}
+              </span>
+            ) : (
+              <span className="text-amber-600">Chưa xác nhận kiểm kê — số liệu tính theo thời điểm hiện tại</span>
+            )}
           </p>
         ) : null}
       </section>
@@ -1005,14 +1006,14 @@ export function KiemKhoPanel({
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
           <div>
-            <h2 className="text-sm font-black text-zinc-900">Danh sách các sản phẩm đã chốt</h2>
+            <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm</h2>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {filteredSummaryRows.length} / {summaryRows.length} mã SP · gộp theo mã NVL của các đợt đã xác nhận kiểm kê
+              {summaryRows.length} mã SP · gộp theo mã NVL của đợt đang chọn
             </p>
           </div>
           <button
             type="button"
-            onClick={() => void loadSummary()}
+            onClick={() => void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan)}
             disabled={loadingSummary}
             className="text-[11px] font-bold text-[#ef1b2d] hover:underline disabled:opacity-50"
           >
@@ -1037,29 +1038,35 @@ export function KiemKhoPanel({
             <TableHeadCell>Người chốt</TableHeadCell>
           </TableHead>
           <TableBody>
-            {filteredSummaryRows.map((row, index) => (
-              <React.Fragment key={String(row.id)}>
+            {summaryRows.map((row, index) => (
+              <React.Fragment key={row.da_chot ? String(row.id) : `live-${row.ma_nvl}`}>
                 <TableRow>
                   <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
                   <td className="px-4 py-3 font-mono font-bold text-zinc-800">{row.ma_nvl || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-zinc-700">{row.ten_sp || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-zinc-600">{row.loai_sp || '—'}</td>
                   <td className="px-4 py-3 text-center font-black text-zinc-900">{row.tong_so_luong ?? 0}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                    {formatDateTime(row.chot_luc)}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-zinc-700">{row.nguoi_chot || '—'}</td>
+                  {row.da_chot ? (
+                    <>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                        {formatDateTime(row.chot_luc)}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-zinc-700">{row.nguoi_chot || '—'}</td>
+                    </>
+                  ) : (
+                    <td className="px-4 py-3" colSpan={2}>
+                      <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                        Chưa chốt
+                      </span>
+                    </td>
+                  )}
                 </TableRow>
               </React.Fragment>
             ))}
 
-            {filteredSummaryRows.length === 0 && (
+            {summaryRows.length === 0 && (
               <TableEmptyRow colSpan={7}>
-                {loadingSummary
-                  ? 'Đang tải dữ liệu...'
-                  : summaryRows.length === 0
-                    ? 'Chưa có đợt nào được xác nhận kiểm kê.'
-                    : 'Không có mã nào phù hợp bộ lọc.'}
+                {loadingSummary ? 'Đang tải dữ liệu...' : 'Đợt này chưa có sản phẩm nào được quét.'}
               </TableEmptyRow>
             )}
           </TableBody>

@@ -9045,94 +9045,89 @@ export function createApp() {
     if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
 
     try {
-      const { data, error } = await db
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('id, ma_nvl, ten_sp, loai_sp, thoi_gian_xac_nhan')
-        .eq('dot_kiem_kho', dotKiemKho)
-        .limit(20000);
+      // Chốt đợt trong 1 round-trip DB: set thoi_gian_xac_nhan + GROUP BY theo
+      // mã NVL + upsert kiem_kho_tong_hop, tất cả chạy trong Postgres (xem
+      // supabase-kiem-kho-tong-hop-rpc.sql) — không còn giới hạn số dòng đọc về Node.
+      const { data, error } = await db.rpc('kiem_kho_chot_dot', {
+        p_dot: dotKiemKho,
+        p_nguoi: nguoiXacNhan || null
+      });
 
       if (error) {
+        const message = String(error.message || '');
+        if (/DOT_NOT_FOUND/.test(message)) {
+          return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho này.', db: dbLabel });
+        }
+        if (/ALREADY_CONFIRMED/.test(message)) {
+          return res.status(409).json({ error: 'Đợt này đã được xác nhận kiểm kê.', db: dbLabel });
+        }
         return res.status(500).json({
-          error: error.message || 'Không đọc được dữ liệu đợt kiểm kho.',
+          error: message || 'Không xác nhận được đợt kiểm kho.',
           db: dbLabel
         });
       }
 
-      const rows = Array.isArray(data) ? data : [];
-      if (!rows.length) {
-        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho này.', db: dbLabel });
-      }
-      if (rows.every((row: any) => row.thoi_gian_xac_nhan)) {
-        return res.status(409).json({ error: 'Đợt này đã được xác nhận kiểm kê.', db: dbLabel });
-      }
-
-      const confirmedAt = new Date().toISOString();
-      const { error: updateError } = await db
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .update({ thoi_gian_xac_nhan: confirmedAt })
-        .eq('dot_kiem_kho', dotKiemKho);
-
-      if (updateError) {
-        return res.status(500).json({
-          error: updateError.message || 'Không xác nhận được đợt kiểm kho.',
-          db: dbLabel
-        });
-      }
-
-      // Gộp theo mã NVL (bỏ hậu tố) — chỉ lưu sản phẩm + tổng số lượng.
-      const groups = new Map<string, { ten_sp: string | null; loai_sp: string | null; count: number }>();
-      for (const row of rows as any[]) {
-        const maNvl = String(row.ma_nvl ?? '').trim() || '(không xác định)';
-        const g = groups.get(maNvl);
-        if (!g) {
-          groups.set(maNvl, {
-            ten_sp: row.ten_sp ?? null,
-            loai_sp: row.loai_sp ?? null,
-            count: 1
-          });
-        } else {
-          g.count += 1;
-          if (!g.ten_sp && row.ten_sp) g.ten_sp = row.ten_sp;
-          if (!g.loai_sp && row.loai_sp) g.loai_sp = row.loai_sp;
-        }
-      }
-
-      const summaryRows = [...groups.entries()].map(([ma_nvl, g]) => ({
-        dot_kiem_kho: dotKiemKho,
-        ma_nvl,
-        ten_sp: g.ten_sp,
-        loai_sp: g.loai_sp,
-        tong_so_luong: g.count,
-        chot_luc: confirmedAt,
-        nguoi_chot: nguoiXacNhan || null
-      }));
-
-      let summaryWarning = '';
-      const resolvedSummary = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TONG_HOP_TABLE);
-      if (resolvedSummary) {
-        const { error: summaryError } = await resolvedSummary.client
-          .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
-          .upsert(summaryRows, { onConflict: 'dot_kiem_kho,ma_nvl' });
-        if (summaryError) {
-          summaryWarning =
-            'Đã xác nhận kiểm kê nhưng chưa lưu được bảng tổng hợp: ' + (summaryError.message || '');
-        }
-      } else {
-        summaryWarning = `Đã xác nhận kiểm kê nhưng chưa có bảng ${SUPABASE_KIEM_KHO_TONG_HOP_TABLE}.`;
-      }
+      const summaryRows = Array.isArray(data) ? data : [];
+      const confirmedAt =
+        summaryRows.find((row: any) => row?.chot_luc)?.chot_luc || new Date().toISOString();
+      const soDong = summaryRows.reduce(
+        (sum: number, row: any) => sum + (Number(row?.tong_so_luong) || 0),
+        0
+      );
 
       return res.json({
         success: true,
         dot_kiem_kho: dotKiemKho,
         thoi_gian_xac_nhan: confirmedAt,
-        so_dong: rows.length,
+        so_dong: soDong,
         so_ma_nvl: summaryRows.length,
-        warning: summaryWarning || undefined,
         db: dbLabel
       });
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi xác nhận kiểm kê.',
+        db: dbLabel
+      });
+    }
+  });
+
+  /**
+   * Tổng hợp "live" theo mã NVL của 1 đợt CHƯA chốt — gộp trực tiếp trong Postgres
+   * (không lưu DB, không giới hạn số dòng ở Node). Dùng cho tab "Bảng tổng hợp"
+   * khi đợt đang chọn chưa được xác nhận kiểm kê (nên chưa có trong kiem_kho_tong_hop).
+   */
+  app.get('/api/kiem-kho/dot-tong-hop-live', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa có trên Supabase mới lẫn cũ.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+
+    const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
+    if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+
+    try {
+      const { data, error } = await db.rpc('kiem_kho_gop_theo_ma_nvl', { p_dot: dotKiemKho });
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không tổng hợp được đợt kiểm kho.',
+          db: dbLabel
+        });
+      }
+
+      const records = (Array.isArray(data) ? data : []).map((row: any) => ({
+        ...row,
+        dot_kiem_kho: dotKiemKho,
+        da_chot: false
+      }));
+
+      return res.json({ records, total: records.length, source: 'supabase', db: dbLabel });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tổng hợp đợt kiểm kho.',
         db: dbLabel
       });
     }

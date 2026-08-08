@@ -51,6 +51,14 @@ Kết quả *chốt kiểm* của một đợt — gộp các dòng `kiem_kho` c
 
 Cả 3 route `dot-mo`, `dot`, `dot-xac-nhan` dùng chung helper `computeKiemKhoDotGroups()` (gộp theo `dot_kiem_kho` ở Node vì Supabase-js không hỗ trợ group-by).
 
+### Quy tắc chống trùng khi lưu
+
+`POST /api/kiem-kho` chuẩn hóa và bỏ qua `ma_sp` trùng trong payload hoặc đã có trong cùng `dot_kiem_kho`. Response trả `saved_count` và `skipped_count`; frontend dùng hai số này để thông báo chính xác, không lấy tổng số dòng trên form.
+
+### Tên đợt trong cùng ngày
+
+`GET /api/kiem-kho/dot` và `GET /api/kiem-kho/dot-mo` trả thêm `thu_tu_trong_ngay`, `tong_dot_trong_ngay`. Nếu có nhiều đợt bắt đầu trong cùng một ngày (múi giờ Việt Nam), nhãn hiển thị thêm `- 1`, `- 2`, `- 3`... theo thứ tự bắt đầu; ngày chỉ có một đợt thì giữ nguyên nhãn cũ.
+
 ## Frontend
 
 | File | Nội dung |

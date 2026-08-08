@@ -1916,6 +1916,8 @@ type KiemKhoDotGroup = {
   thoi_gian_xac_nhan: string | null;
   da_xac_nhan: boolean;
   so_dong: number;
+  thu_tu_trong_ngay: number;
+  tong_dot_trong_ngay: number;
 };
 
 /** Gộp các dòng kiem_kho theo dot_kiem_kho. Đợt "đã xác nhận" = mọi dòng đều có thoi_gian_xac_nhan. */
@@ -1939,13 +1941,43 @@ function computeKiemKhoDotGroups(
       g.count += 1;
     }
   }
-  return [...groups.entries()].map(([dot_kiem_kho, g]) => ({
+  const result: KiemKhoDotGroup[] = [...groups.entries()].map(([dot_kiem_kho, g]) => ({
     dot_kiem_kho,
     ngay_bat_dau: g.start || null,
     thoi_gian_xac_nhan: g.hasUnconfirmed ? null : g.confirmMax,
     da_xac_nhan: !g.hasUnconfirmed,
-    so_dong: g.count
+    so_dong: g.count,
+    thu_tu_trong_ngay: 1,
+    tong_dot_trong_ngay: 1
   }));
+
+  // Việt Nam không có DST: cộng 7 giờ trước khi lấy ngày UTC để nhóm đúng ngày địa phương.
+  const getVietnamDayKey = (value: string | null) => {
+    if (!value) return '';
+    const timestamp = new Date(value).getTime();
+    if (Number.isNaN(timestamp)) return '';
+    return new Date(timestamp + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  };
+  const groupsByDay = new Map<string, KiemKhoDotGroup[]>();
+  for (const item of result) {
+    const dayKey = getVietnamDayKey(item.ngay_bat_dau);
+    if (!dayKey) continue;
+    const sameDay = groupsByDay.get(dayKey) ?? [];
+    sameDay.push(item);
+    groupsByDay.set(dayKey, sameDay);
+  }
+  for (const sameDay of groupsByDay.values()) {
+    sameDay.sort((a, b) => {
+      const byStart = (a.ngay_bat_dau || '').localeCompare(b.ngay_bat_dau || '');
+      return byStart || a.dot_kiem_kho.localeCompare(b.dot_kiem_kho);
+    });
+    sameDay.forEach((item, index) => {
+      item.thu_tu_trong_ngay = index + 1;
+      item.tong_dot_trong_ngay = sameDay.length;
+    });
+  }
+
+  return result;
 }
 
 const supabaseTableClientCache = new Map<string, SupabaseDbRef>();
@@ -8940,7 +8972,12 @@ export function createApp() {
       const groups = computeKiemKhoDotGroups(Array.isArray(data) ? data : []);
       const records = groups
         .filter(g => !g.da_xac_nhan)
-        .map(g => ({ dot_kiem_kho: g.dot_kiem_kho, ngay_bat_dau: g.ngay_bat_dau }))
+        .map(g => ({
+          dot_kiem_kho: g.dot_kiem_kho,
+          ngay_bat_dau: g.ngay_bat_dau,
+          thu_tu_trong_ngay: g.thu_tu_trong_ngay,
+          tong_dot_trong_ngay: g.tong_dot_trong_ngay
+        }))
         .sort((a, b) => (a.ngay_bat_dau || '') < (b.ngay_bat_dau || '') ? 1 : -1);
 
       return res.json({ records, total: records.length, source: 'supabase', db: dbLabel });
@@ -9162,7 +9199,76 @@ export function createApp() {
     }
 
     try {
-      const { data, error } = await db.from(SUPABASE_KIEM_KHO_TABLE).insert(rows).select('*');
+      // Một mã QR chỉ được xuất hiện một lần trong cùng đợt kiểm kho.
+      // Lọc cả mã trùng trong payload lẫn mã đã có trong danh sách chi tiết của đợt.
+      const normalizeMaSp = (value: unknown) =>
+        String(value ?? '')
+          .trim()
+          .toLocaleLowerCase('vi-VN')
+          .replace(/\s+/g, ' ');
+      const uniqueRows: any[] = [];
+      const incomingKeys = new Set<string>();
+      let skippedCount = 0;
+
+      for (const row of rows as any[]) {
+        const key = normalizeMaSp(row.ma_sp);
+        if (!key || incomingKeys.has(key)) {
+          skippedCount += 1;
+          continue;
+        }
+        incomingKeys.add(key);
+        uniqueRows.push(row);
+      }
+
+      const existingKeys = new Set<string>();
+      const PAGE_SIZE = 1000;
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page, error: existingError } = await db
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('ma_sp')
+          .eq('dot_kiem_kho', dotKiemKho)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (existingError) {
+          return res.status(500).json({
+            error: existingError.message || 'Không kiểm tra được mã SP đã có trong đợt kiểm kho.',
+            db: dbLabel
+          });
+        }
+
+        const records = Array.isArray(page) ? page : [];
+        for (const record of records) {
+          const key = normalizeMaSp(record?.ma_sp);
+          if (key) existingKeys.add(key);
+        }
+        if (records.length < PAGE_SIZE) break;
+      }
+
+      const rowsToInsert = uniqueRows.filter(row => {
+        if (existingKeys.has(normalizeMaSp(row.ma_sp))) {
+          skippedCount += 1;
+          return false;
+        }
+        return true;
+      });
+
+      if (rowsToInsert.length === 0) {
+        return res.status(200).json({
+          records: [],
+          total: 0,
+          saved_count: 0,
+          skipped_count: skippedCount,
+          source: 'supabase',
+          db: dbLabel,
+          table: SUPABASE_KIEM_KHO_TABLE
+        });
+      }
+
+      const { data, error } = await db
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .insert(rowsToInsert)
+        .select('*');
       if (error) {
         const missingColumn =
           error.code === 'PGRST204' || /dot_kiem_kho/i.test(error.message || '');
@@ -9178,6 +9284,8 @@ export function createApp() {
       return res.status(201).json({
         records,
         total: records.length,
+        saved_count: records.length,
+        skipped_count: skippedCount,
         source: 'supabase',
         db: dbLabel,
         table: SUPABASE_KIEM_KHO_TABLE

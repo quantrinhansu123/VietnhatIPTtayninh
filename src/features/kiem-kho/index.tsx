@@ -44,6 +44,8 @@ type KiemKhoLine = {
 type OpenBatch = {
   dot_kiem_kho: string;
   ngay_bat_dau: string | null;
+  thu_tu_trong_ngay: number;
+  tong_dot_trong_ngay: number;
 };
 
 type DotGroup = {
@@ -52,6 +54,8 @@ type DotGroup = {
   thoi_gian_xac_nhan: string | null;
   da_xac_nhan: boolean;
   so_dong: number;
+  thu_tu_trong_ngay: number;
+  tong_dot_trong_ngay: number;
 };
 
 type KiemKhoDetailRow = {
@@ -123,15 +127,21 @@ function toIsoFromLocalDateTime(value: string) {
   return date.toISOString();
 }
 
-/** Nhãn hiển thị đợt: "T{tháng}/{năm 2 số} (dd/mm-dd/mm)"; chưa xác nhận thì phần cuối là "...". */
-function formatDotLabel(startIso: string | null, confirmIso?: string | null) {
+/** Nhãn hiển thị đợt; nếu một ngày có nhiều đợt thì thêm "- 1", "- 2"... ở cuối. */
+function formatDotLabel(
+  startIso: string | null,
+  confirmIso?: string | null,
+  dayOrdinal?: number,
+  sameDayCount?: number
+) {
   const start = startIso ? new Date(startIso) : null;
   if (!start || Number.isNaN(start.getTime())) return startIso || '—';
   const startDay = `${start.getDate()}/${start.getMonth() + 1}`;
   const yy = String(start.getFullYear()).slice(-2);
   const confirm = confirmIso ? new Date(confirmIso) : null;
   const endDay = confirm && !Number.isNaN(confirm.getTime()) ? `${confirm.getDate()}/${confirm.getMonth() + 1}` : '...';
-  return `T${start.getMonth() + 1}/${yy} (${startDay}-${endDay})`;
+  const ordinalSuffix = Number(sameDayCount) > 1 ? ` - ${Math.max(1, Number(dayOrdinal) || 1)}` : '';
+  return `T${start.getMonth() + 1}/${yy} (${startDay}-${endDay})${ordinalSuffix}`;
 }
 
 function newDotKiemKhoKey() {
@@ -563,12 +573,17 @@ export function KiemKhoPanel({
       if (!res.ok) {
         throw new Error(readApiErrorMessage(res, data, 'Không lưu được báo cáo kiểm kho.'));
       }
-      const savedCount = lines.length;
+      const savedCount = Number(data?.saved_count ?? data?.total ?? 0);
+      const skippedCount = Number(data?.skipped_count ?? 0);
+      const resultMessage =
+        skippedCount > 0
+          ? `Đã lưu ${savedCount} sản phẩm. ${skippedCount} sản phẩm đã có trong đợt nên không lưu lại.`
+          : `Đã lưu ${savedCount} sản phẩm.`;
       setLines([]);
       linesRef.current = [];
       setDotKiemKho(finalDotKiemKho);
-      setMessage(`Đã lưu ${savedCount} dòng kiểm kho.`);
-      showAppToast('Đã lưu báo cáo kiểm kho.', 'success');
+      setMessage(resultMessage);
+      showAppToast(resultMessage, 'success');
       await loadOpenBatches();
     } catch (err: any) {
       const text = err?.message || 'Không lưu được báo cáo kiểm kho.';
@@ -691,7 +706,12 @@ export function KiemKhoPanel({
               ) : null}
               {openBatches.map(batch => (
                 <option key={batch.dot_kiem_kho} value={batch.dot_kiem_kho}>
-                  {formatDotLabel(batch.ngay_bat_dau)}
+                  {formatDotLabel(
+                    batch.ngay_bat_dau,
+                    null,
+                    batch.thu_tu_trong_ngay,
+                    batch.tong_dot_trong_ngay
+                  )}
                 </option>
               ))}
             </select>
@@ -832,7 +852,12 @@ export function KiemKhoPanel({
                 getLabel={item => {
                   const b = item as DotGroup;
                   const status = b.da_xac_nhan ? 'Đã xác nhận' : 'Chưa xác nhận';
-                  return `${formatDotLabel(b.ngay_bat_dau, b.thoi_gian_xac_nhan)} · ${b.so_dong} mã · ${status}`;
+                  return `${formatDotLabel(
+                    b.ngay_bat_dau,
+                    b.thoi_gian_xac_nhan,
+                    b.thu_tu_trong_ngay,
+                    b.tong_dot_trong_ngay
+                  )} · ${b.so_dong} mã · ${status}`;
                 }}
                 placeholder="Tìm đợt kiểm kho..."
                 isLoading={loadingAllBatches}
@@ -931,7 +956,12 @@ export function KiemKhoPanel({
               getValue={item => (item as DotGroup).dot_kiem_kho}
               getLabel={item => {
                 const b = item as DotGroup;
-                return `${formatDotLabel(b.ngay_bat_dau, b.thoi_gian_xac_nhan)} · ${b.so_dong} mã · Đã xác nhận`;
+                return `${formatDotLabel(
+                  b.ngay_bat_dau,
+                  b.thoi_gian_xac_nhan,
+                  b.thu_tu_trong_ngay,
+                  b.tong_dot_trong_ngay
+                )} · ${b.so_dong} mã · Đã xác nhận`;
               }}
               placeholder="Tìm đợt kiểm kho..."
               isLoading={loadingAllBatches}
@@ -1058,9 +1088,15 @@ export function KiemKhoPanel({
                     <p>
                       <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Đợt </span>
                       {dotKiemKho.trim()
-                        ? formatDotLabel(
-                            openBatches.find(b => b.dot_kiem_kho === dotKiemKho)?.ngay_bat_dau ?? null
-                          )
+                        ? (() => {
+                            const batch = openBatches.find(b => b.dot_kiem_kho === dotKiemKho);
+                            return formatDotLabel(
+                              batch?.ngay_bat_dau ?? null,
+                              null,
+                              batch?.thu_tu_trong_ngay,
+                              batch?.tong_dot_trong_ngay
+                            );
+                          })()
                         : 'Đợt mới (bắt đầu hôm nay)'}
                     </p>
                     <p className="mt-1 text-[10px] font-medium text-zinc-400">

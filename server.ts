@@ -2184,7 +2184,8 @@ function parseProductPatchBody(body: unknown): { error: string } | { record: Rec
     'stock', 'sl_ton', 'minStock', 'so_luong_ton_toi_thieu',
     'origin', 'nguon_goc', 'description', 'mo_ta',
     'totalWeight', 'tong_trong_luong', 'rollWidth', 'kho_cuon', 'rollLength', 'chieu_dai_cuon',
-    'coreWeight', 'trong_luong_loi', 'bagWeight', 'trong_luong_tui', 'plasticWeight', 'trong_luong_nhua'
+    'coreWeight', 'trong_luong_loi', 'bagWeight', 'trong_luong_tui', 'plasticWeight', 'trong_luong_nhua',
+    'warehouse', 'ten_kho'
   ].some(key => Object.prototype.hasOwnProperty.call(source, key));
 
   if (!hasProductField) {
@@ -2251,6 +2252,9 @@ function parseProductPatchBody(body: unknown): { error: string } | { record: Rec
   }
   if (Object.prototype.hasOwnProperty.call(source, 'plasticWeight') || Object.prototype.hasOwnProperty.call(source, 'trong_luong_nhua')) {
     record.trong_luong_nhua = parseOptionalMaterialDecimalText(source.plasticWeight ?? source.trong_luong_nhua);
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'warehouse') || Object.prototype.hasOwnProperty.call(source, 'ten_kho')) {
+    record.ten_kho = parseMaterialText(source.warehouse ?? source.ten_kho) || null;
   }
 
   return { record };
@@ -3881,7 +3885,8 @@ function parseMaterialBody(body: unknown): { error: string } | MaterialWritePayl
     chieu_dai_don_vi: parseOptionalMaterialDecimalText(source.unitLength),
     ton_dau_ky: parseOptionalMaterialNumber(source.openingStock),
     nhap_trong_ky: parseOptionalMaterialNumber(source.inbound),
-    xuat_trong_ky: parseOptionalMaterialNumber(source.outbound)
+    xuat_trong_ky: parseOptionalMaterialNumber(source.outbound),
+    ten_kho: parseMaterialText(source.warehouse ?? source.ten_kho) || null
   };
 
   return { record };
@@ -4268,6 +4273,7 @@ function parseWarehouseSlipBody(body: unknown): {
   ghiChu: string | null;
   nguoiLap: string | null;
   ca: string | null;
+  tenKho: string | null;
   items: WarehouseSlipLineInput[];
 } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -4294,6 +4300,7 @@ function parseWarehouseSlipBody(body: unknown): {
     ghiChu: String(source.ghiChu ?? source.ghi_chu ?? source.note ?? '').trim() || null,
     nguoiLap: String(source.nguoiLap ?? source.nguoi_lap ?? source.createdBy ?? '').trim() || null,
     ca: String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim() || null,
+    tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
     items: parsedItems.items
   };
 }
@@ -4307,6 +4314,7 @@ function buildWarehouseSlipInsertRecords(
     ghiChu: string | null;
     nguoiLap: string | null;
     ca: string | null;
+    tenKho: string | null;
     items: WarehouseSlipLineInput[];
   },
   maPhieu: string
@@ -4317,6 +4325,7 @@ function buildWarehouseSlipInsertRecords(
       ma_phieu: maPhieu,
       loai_phieu: parsed.loaiPhieu,
       loai_kho: parsed.loaiKho,
+      ten_kho: parsed.tenKho || null,
       ngay_phieu: parsed.ngayPhieu,
       don_vi: item.unit || '',
       so_luong: item.quantity,
@@ -9611,6 +9620,201 @@ export function createApp() {
         error: err?.message || 'Lỗi khi xóa kho.',
         db: SUPABASE_MAIN_DB_LABEL
       });
+    }
+  });
+
+  type TonKhoGopRow = {
+    ma: string;
+    ten: string;
+    don_vi: string | null;
+    ten_kho: string | null;
+    ton_dau_ky: number;
+    nhap_trong_ky: number;
+    xuat_trong_ky: number;
+    ton_cuoi_ky: number;
+  };
+
+  async function loadAllTonKhoRows(
+    buildQuery: (from: number, to: number) => PromiseLike<{ data: Record<string, unknown>[] | null; error: any }>
+  ) {
+    const pageSize = 1000;
+    const rows: Record<string, unknown>[] = [];
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await buildQuery(from, from + pageSize - 1);
+      if (error) throw new Error(error.message || 'Không thể đọc dữ liệu tồn kho từ Supabase.');
+      const page = Array.isArray(data) ? data : [];
+      rows.push(...page);
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  async function loadTonKhoGopFallback(
+    loaiKho: 'nvl' | 'san_pham',
+    tenKho: string | null,
+    tuNgay: string | null,
+    denNgay: string | null
+  ): Promise<TonKhoGopRow[]> {
+    const isProduct = loaiKho === 'san_pham';
+    const catalogTable = isProduct ? SUPABASE_PRODUCTS_TABLE : SUPABASE_MATERIALS_TABLE;
+    const catalogSelect = isProduct
+      ? 'ma_sp, ten_sp, don_vi, ten_kho, ton_dau_ky'
+      : 'ma_npl, ten_npl, don_vi, ten_kho, ton_dau_ky';
+
+    const [catalogRows, movementRows] = await Promise.all([
+      loadAllTonKhoRows((from, to) => {
+        let query = supabase!.from(catalogTable).select(catalogSelect);
+        if (tenKho) query = query.eq('ten_kho', tenKho);
+        return query.range(from, to);
+      }),
+      loadAllTonKhoRows((from, to) => {
+        let query = supabase!
+          .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+          .select('ma_npl, ma_sp, so_luong, ngay_phieu, loai_phieu, loai_kho, ten_kho');
+        query = isProduct ? query.eq('loai_kho', 'san_pham') : query.or('loai_kho.eq.nvl,loai_kho.is.null');
+        if (tenKho) query = query.eq('ten_kho', tenKho);
+        if (denNgay) query = query.lte('ngay_phieu', denNgay);
+        return query.range(from, to);
+      })
+    ]);
+
+    const totals = new Map<string, TonKhoGopRow>();
+    for (const row of catalogRows) {
+      const code = String(isProduct ? row.ma_sp ?? '' : row.ma_npl ?? '').trim();
+      if (!code) continue;
+      const name = String(isProduct ? row.ten_sp ?? '' : row.ten_npl ?? '').trim();
+      const baseline = Number(row.ton_dau_ky);
+      totals.set(code, {
+        ma: code,
+        ten: name || code,
+        don_vi: String(row.don_vi ?? '').trim() || null,
+        ten_kho: String(row.ten_kho ?? '').trim() || tenKho,
+        ton_dau_ky: Number.isFinite(baseline) ? baseline : 0,
+        nhap_trong_ky: 0,
+        xuat_trong_ky: 0,
+        ton_cuoi_ky: 0
+      });
+    }
+
+    for (const row of movementRows) {
+      const code = String(isProduct ? row.ma_sp ?? '' : row.ma_npl ?? '').trim();
+      if (!code) continue;
+
+      const current = totals.get(code) ?? {
+        ma: code,
+        ten: code,
+        don_vi: null,
+        ten_kho: tenKho,
+        ton_dau_ky: 0,
+        nhap_trong_ky: 0,
+        xuat_trong_ky: 0,
+        ton_cuoi_ky: 0
+      };
+      totals.set(code, current);
+
+      const quantityValue = Number(row.so_luong);
+      const quantity = Number.isFinite(quantityValue) ? quantityValue : 0;
+      const slipType = String(row.loai_phieu ?? '').trim();
+      const slipDate = String(row.ngay_phieu ?? '').slice(0, 10);
+
+      if (tuNgay && slipDate && slipDate < tuNgay) {
+        if (slipType === 'nhap') current.ton_dau_ky += quantity;
+        if (slipType === 'xuat') current.ton_dau_ky -= quantity;
+        continue;
+      }
+
+      const isInPeriod = (!tuNgay || (slipDate && slipDate >= tuNgay))
+        && (!denNgay || (slipDate && slipDate <= denNgay));
+      if (!isInPeriod) continue;
+      if (slipType === 'nhap') current.nhap_trong_ky += quantity;
+      if (slipType === 'xuat') current.xuat_trong_ky += quantity;
+    }
+
+    return Array.from(totals.values())
+      .map(row => ({
+        ...row,
+        ton_cuoi_ky: row.ton_dau_ky + row.nhap_trong_ky - row.xuat_trong_ky
+      }))
+      .sort((left, right) => left.ma.localeCompare(right.ma, 'vi'));
+  }
+
+  let hasWarnedMissingTonKhoRpc = false;
+
+  async function loadTonKhoGop(
+    loaiKho: 'nvl' | 'san_pham',
+    tenKho: string | null,
+    tuNgay: string | null,
+    denNgay: string | null
+  ) {
+    const rpcName = loaiKho === 'san_pham' ? 'ton_kho_san_pham_gop' : 'ton_kho_nvl_gop';
+    const result = await supabase!.rpc(rpcName, {
+      p_ten_kho: tenKho,
+      p_tu_ngay: tuNgay,
+      p_den_ngay: denNgay
+    });
+    if (!result.error || result.error.code !== 'PGRST202') return result;
+
+    if (!hasWarnedMissingTonKhoRpc) {
+      console.warn(
+        `[SUPABASE] Chưa có RPC ${rpcName}; đang dùng cách tính dự phòng từ các bảng. ` +
+        'Nên chạy supabase-ton-kho-rpc.sql để tối ưu hiệu năng.'
+      );
+      hasWarnedMissingTonKhoRpc = true;
+    }
+
+    const data = await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay);
+    return { data, error: null };
+  }
+
+  app.get('/api/ton-kho/chi-tiet', async (req, res) => {
+    if (!supabase) {
+      return res.json({ records: [], total: 0, source: 'local' });
+    }
+
+    try {
+      const loaiKho = parseWarehouseStorageType(req.query.loai_kho ?? req.query.loaiKho) ?? 'nvl';
+      const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
+      const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
+      const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+
+      const { data, error } = await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay);
+      if (error) {
+        console.error('Supabase ton-kho chi-tiet RPC error:', error);
+        return res.status(500).json({
+          error: error.message || 'Không thể tải danh sách chi tiết tồn kho. Hãy chạy supabase-ton-kho-rpc.sql.'
+        });
+      }
+
+      const records = Array.isArray(data) ? data : [];
+      return res.json({ records, total: records.length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải danh sách chi tiết tồn kho.' });
+    }
+  });
+
+  app.get('/api/ton-kho/tong-hop', async (req, res) => {
+    if (!supabase) {
+      return res.json({ records: [], total: 0, source: 'local' });
+    }
+
+    try {
+      const loaiKho = parseWarehouseStorageType(req.query.loai_kho ?? req.query.loaiKho) ?? 'nvl';
+      const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
+      const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
+      const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+
+      const { data, error } = await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay);
+      if (error) {
+        console.error('Supabase ton-kho tong-hop RPC error:', error);
+        return res.status(500).json({
+          error: error.message || 'Không thể tải bảng tổng hợp tồn kho. Hãy chạy supabase-ton-kho-rpc.sql.'
+        });
+      }
+
+      const records = Array.isArray(data) ? data : [];
+      return res.json({ records, total: records.length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải bảng tổng hợp tồn kho.' });
     }
   });
 

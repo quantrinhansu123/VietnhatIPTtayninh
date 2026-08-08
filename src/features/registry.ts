@@ -13,6 +13,7 @@ export type TableId =
   | 'danh_sach_may'
   | 'kho_nvl'
   | 'phieu_xuat_nhap_kho'
+  | 'ton_kho'
   | 'don_hang'
   | 'khach_hang'
   | 'lenh_xuat_hang'
@@ -160,6 +161,22 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
     components: ['src/components/WarehouseSlipPrintModal.tsx'],
     utils: ['scripts/sync-kho-nvl-from-phieu.mjs']
+  },
+  ton_kho: {
+    table: 'ton_kho',
+    label: 'Tồn kho tổng hợp',
+    sql: [
+      'supabase-kho-nvl-ten-kho.sql',
+      'supabase-san-pham-ten-kho.sql',
+      'supabase-phieu-xuat-nhap-kho-ten-kho.sql',
+      'supabase-ton-kho-rpc.sql'
+    ],
+    apiPrefix: '/api/ton-kho',
+    serverLines: 'GET /api/ton-kho/chi-tiet + GET /api/ton-kho/tong-hop',
+    appTab: 'ton-kho',
+    appLines: 'src/features/ton-kho/index.tsx',
+    components: ['src/components/shared/table/FilterCombobox.tsx'],
+    utils: []
   },
   don_hang: {
     table: 'don_hang',

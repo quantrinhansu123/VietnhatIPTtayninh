@@ -61,6 +61,7 @@ export interface WarehouseMovementRow {
   slipCode: string;
   slipType: WarehouseSlipType;
   warehouseKind: WarehouseKind;
+  warehouseName: string;
   slipDate: string;
   shift: string;
   itemCode: string;
@@ -109,6 +110,7 @@ export type NvlInboundLotOption = {
 export type WarehouseSlipPrefillDraft = {
   slipType: WarehouseSlipType;
   warehouseKind: WarehouseKind;
+  warehouseName?: string;
   slipDate?: string;
   reason: string;
   note: string;
@@ -153,6 +155,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
   return {
     slipType: header.slipType,
     warehouseKind: header.warehouseKind,
+    warehouseName: header.warehouseName,
     slipDate: header.slipDate,
     reason: header.reason || '',
     note: header.note || '',
@@ -464,6 +467,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         slipCode: String(record.ma_phieu ?? record.slipCode ?? '').trim(),
         slipType,
         warehouseKind,
+        warehouseName: String(record.ten_kho ?? record.warehouseName ?? '').trim(),
         slipDate: String(record.ngay_phieu ?? record.slipDate ?? '').trim(),
         shift: String(record.ca ?? record.shift ?? record.ca_san_xuat ?? '').trim(),
         itemCode,
@@ -592,6 +596,8 @@ export function WarehouseSlipPanel({
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
   const [warehouseKind, setWarehouseKind] = useState<WarehouseKind>('nvl');
+  const [warehouseName, setWarehouseName] = useState('');
+  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
@@ -644,6 +650,23 @@ export function WarehouseSlipPanel({
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
   useEffect(() => {
+    const loadWarehouses = async () => {
+      try {
+        const res = await fetch('/api/quan-ly-kho');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
+        setWarehouseOptions(
+          Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+        );
+      } catch {
+        setWarehouseOptions([]);
+      }
+    };
+    void loadWarehouses();
+  }, []);
+
+  useEffect(() => {
     const loadProductionOrders = async () => {
       setIsLoadingProductionOrders(true);
       try {
@@ -685,6 +708,7 @@ export function WarehouseSlipPanel({
       if (!draft.createdAt || Date.now() - draft.createdAt > WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS) return;
 
       setWarehouseKind(draft.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl');
+      setWarehouseName(String(draft.warehouseName || '').trim());
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
       if (draft.slipDate) setSlipDate(draft.slipDate);
       setReason(draft.reason || '');
@@ -1023,6 +1047,10 @@ export function WarehouseSlipPanel({
   };
 
   const handleSave = async () => {
+    if (!warehouseName.trim()) {
+      setFormError('Vui lòng chọn kho cho phiếu.');
+      return;
+    }
     const linesForSave = isNvlExport
       ? lines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
       : lines;
@@ -1044,6 +1072,7 @@ export function WarehouseSlipPanel({
     const slipPayload = {
       loaiPhieu: slipType,
       loaiKho: warehouseKind,
+      tenKho: warehouseName.trim(),
       ngayPhieu: slipDate,
       lyDo: reason.trim(),
       ghiChu: note.trim(),
@@ -1239,6 +1268,19 @@ export function WarehouseSlipPanel({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Kho *</span>
+            <select
+              value={warehouseName}
+              onChange={event => setWarehouseName(event.target.value)}
+              className={warehouseFieldClass}
+            >
+              <option value="">-- Chọn kho --</option>
+              {warehouseOptions.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
           <label className="block space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />

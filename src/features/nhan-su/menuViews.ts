@@ -79,7 +79,8 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'products', label: 'Kho thành phẩm' },
       { tab: 'warehouse-slip', label: 'Phiếu xuất nhập kho' },
       { tab: 'kiem-kho', label: 'Kiểm kho' },
-      { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' }
+      { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },
+      { tab: 'ton-kho', label: 'Tồn kho' }
     ]
   },
   {

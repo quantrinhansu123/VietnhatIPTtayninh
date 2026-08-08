@@ -50,6 +50,7 @@ export interface MaterialRow {
   code: string;
   name: string;
   unit: string;
+  warehouse: string;
   totalWeight: string;
   plasticWeight: string;
   bagWeight: string;
@@ -132,6 +133,7 @@ export function normalizeMaterialsInventory(data: unknown): MaterialRow[] {
         code,
         name,
         unit: formatCell(record.don_vi),
+        warehouse: formatCell(record.ten_kho),
         totalWeight: formatCell(record.tong_trong_luong),
         plasticWeight: formatCell(record.trong_luong_nhua),
         bagWeight: formatCell(record.trong_luong_tui),
@@ -150,6 +152,7 @@ export type MaterialFormState = {
   code: string;
   name: string;
   unit: string;
+  warehouse: string;
   totalWeight: string;
   plasticWeight: string;
   bagWeight: string;
@@ -165,6 +168,7 @@ const emptyMaterialForm = (): MaterialFormState => ({
   code: '',
   name: '',
   unit: '',
+  warehouse: '',
   totalWeight: '',
   plasticWeight: '',
   bagWeight: '',
@@ -185,6 +189,7 @@ export function materialToForm(material: MaterialRow): MaterialFormState {
     code: materialCellToInput(material.code),
     name: materialCellToInput(material.name),
     unit: materialCellToInput(material.unit),
+    warehouse: materialCellToInput(material.warehouse),
     totalWeight: materialCellToInput(material.totalWeight),
     plasticWeight: materialCellToInput(material.plasticWeight),
     bagWeight: materialCellToInput(material.bagWeight),
@@ -612,6 +617,7 @@ export function MaterialViewModal({
     ['Mã NPL', material.code],
     ['Tên NVL', material.name],
     ['Đơn vị', material.unit],
+    ['Kho', material.warehouse || '—'],
     ['Tồn đầu', material.openingStock],
     ['Nhập', inboundDisplay],
     ['Xuất', outboundDisplay],
@@ -798,6 +804,24 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
   const [showBulkTotalWeight, setShowBulkTotalWeight] = useState(false);
   const [isImportingCatalog, setIsImportingCatalog] = useState(false);
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
+  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadWarehouses = async () => {
+      try {
+        const res = await fetch('/api/quan-ly-kho');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
+        setWarehouseOptions(
+          Array.from(new Set(records.map(r => String(r.ten_kho ?? '').trim()).filter(Boolean)))
+        );
+      } catch {
+        setWarehouseOptions([]);
+      }
+    };
+    void loadWarehouses();
+  }, []);
 
   const loadMaterials = async () => {
     setIsLoadingMaterials(true);
@@ -881,7 +905,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
         throw new Error('File Excel không có dòng NVL hợp lệ (cần cột Mã NPL).');
       }
 
-      const byCode = new Map(
+      const byCode = new Map<string, MaterialRow>(
         materials
           .map(material => [normalizeMaterialCodeKey(material.code), material] as const)
           .filter(([key]) => Boolean(key))
@@ -1226,6 +1250,21 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
                   ))}
                 </datalist>
               </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Kho</span>
+                <select
+                  value={materialForm.warehouse}
+                  onChange={e => setMaterialForm(prev => ({ ...prev, warehouse: e.target.value }))}
+                  className={materialFieldClass}
+                >
+                  <option value="">— Chưa gán kho —</option>
+                  {warehouseOptions.map(name => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {materialFormFields.map(field => (
                 <label key={field.key} className="space-y-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
@@ -1286,6 +1325,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell>Mã NPL</TableHeadCell>
           <TableHeadCell>Tên nguyên phụ liệu</TableHeadCell>
           <TableHeadCell>ĐV</TableHeadCell>
+          <TableHeadCell>Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng kg</TableHeadCell>
           <TableHeadCell>Tồn đầu</TableHeadCell>
           <TableHeadCell>Nhập</TableHeadCell>
@@ -1300,6 +1340,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
                 <td className="px-4 py-3 font-black text-zinc-950">{material.code || '-'}</td>
                 <td className="px-4 py-3 font-semibold text-zinc-900">{material.name || '-'}</td>
                 <td className="px-4 py-3 text-zinc-700">{material.unit}</td>
+                <td className="px-4 py-3 text-zinc-700">{material.warehouse || '—'}</td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-zinc-800">{material.totalWeight}</td>
                 <td className="px-4 py-3 font-mono font-bold text-zinc-700">{material.openingStock}</td>
                 <td className="px-4 py-3 font-mono font-bold text-zinc-700">{material.inbound}</td>
@@ -1351,7 +1392,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
           ))}
 
           {!isLoadingMaterials && filteredMaterials.length === 0 && (
-            <TableEmptyRow colSpan={9}>
+            <TableEmptyRow colSpan={10}>
               Không có nguyên phụ liệu phù hợp bộ lọc.
             </TableEmptyRow>
           )}

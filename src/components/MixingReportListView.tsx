@@ -310,7 +310,9 @@ export default function MixingReportListView({
   const relatedSlips = useMemo(() => {
     const machine = machines.find(item => item.id === filters.machineId);
     const query = searchText.trim().toLowerCase();
-    const actualByNormId = new Map(actualSlips.map(row => [row.dinhMucId, row]));
+    const actualByNormId = new Map<string, ActualSlipRow>(
+      actualSlips.map(row => [row.dinhMucId, row] as const)
+    );
 
     // 1 dòng = 1 phiếu định mức (gắn trạng thái thực tế nếu có) — giống tab thực tế.
     const lineRows: RelatedMixingSlip[] = normSlips.map(norm => {

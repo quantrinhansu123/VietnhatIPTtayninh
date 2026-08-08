@@ -34,6 +34,19 @@ const SUPABASE_WEIGHING_KEY =
   process.env.SUPABASE_WEIGHING_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_WEIGHING_PUBLISHABLE_KEY ||
   '';
+/** DB riêng chỉ dùng cho các API kiểm kho. */
+const SUPABASE_KIEM_KHO_URL =
+  process.env.SUPABASE_KIEM_KHO_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_KIEM_KHO_URL ||
+  '';
+const SUPABASE_KIEM_KHO_SERVICE_KEY = process.env.SUPABASE_KIEM_KHO_SERVICE_KEY || '';
+const SUPABASE_KIEM_KHO_KEY =
+  SUPABASE_KIEM_KHO_SERVICE_KEY ||
+  process.env.SUPABASE_KIEM_KHO_KEY ||
+  process.env.SUPABASE_KIEM_KHO_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_KIEM_KHO_PUBLISHABLE_KEY ||
+  '';
+const SUPABASE_KIEM_KHO_DB_LABEL = process.env.SUPABASE_KIEM_KHO_DB_LABEL || 'kiem-kho';
 const SUPABASE_WEIGHING_DB_LABEL = process.env.SUPABASE_WEIGHING_DB_LABEL || 'phieu-can';
 const SUPABASE_MAIN_DB_LABEL = process.env.SUPABASE_MAIN_DB_LABEL || 'he-thong';
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || 'reports';
@@ -156,9 +169,16 @@ const supabaseWeighing =
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
+const supabaseKiemKho =
+  SUPABASE_KIEM_KHO_URL && SUPABASE_KIEM_KHO_KEY
+    ? createClient(SUPABASE_KIEM_KHO_URL, SUPABASE_KIEM_KHO_KEY, {
+        global: { fetch: fetchWithTimeoutAndRetry }
+      })
+    : null;
 const useSupabase = Boolean(supabase);
 const usingServiceKey = Boolean(process.env.SUPABASE_SERVICE_KEY);
 const usingWeighingServiceKey = Boolean(SUPABASE_WEIGHING_SERVICE_KEY);
+const usingKiemKhoServiceKey = Boolean(SUPABASE_KIEM_KHO_SERVICE_KEY);
 if (useSupabase) {
   console.log(`[SUPABASE:${SUPABASE_MAIN_DB_LABEL}] Connected to`, SUPABASE_URL, 'tables', {
     reports: SUPABASE_TABLE,
@@ -198,6 +218,13 @@ if (supabaseWeighing) {
   console.log(
     `[SUPABASE:${SUPABASE_WEIGHING_DB_LABEL}] Chưa cấu hình riêng — bảng can_tu_dong chưa gắn DB cân tự động.`
   );
+}
+if (supabaseKiemKho) {
+  console.log(`[SUPABASE:${SUPABASE_KIEM_KHO_DB_LABEL}] Connected to`, SUPABASE_KIEM_KHO_URL, {
+    kiemKho: SUPABASE_KIEM_KHO_TABLE,
+    kiemKhoTongHop: SUPABASE_KIEM_KHO_TONG_HOP_TABLE,
+    key: usingKiemKhoServiceKey ? 'service_role' : 'anon/publishable'
+  });
 }
 
 async function resolveCanTuDongImageUrl(
@@ -1928,6 +1955,13 @@ const supabaseTableClientCache = new Map<string, SupabaseDbRef>();
  * Cache theo tên bảng sau lần resolve đầu.
  */
 async function resolveSupabaseClientForTable(table: string): Promise<SupabaseDbRef | null> {
+  if (
+    supabaseKiemKho &&
+    (table === SUPABASE_KIEM_KHO_TABLE || table === SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+  ) {
+    return { client: supabaseKiemKho, label: SUPABASE_KIEM_KHO_DB_LABEL };
+  }
+
   const cached = supabaseTableClientCache.get(table);
   if (cached) return cached;
 
@@ -5262,7 +5296,6 @@ export function createApp() {
               : null,
           table: SUPABASE_WEIGHING_TABLE,
           canTuDong: SUPABASE_CAN_TU_DONG_TABLE,
-          kiemKho: SUPABASE_KIEM_KHO_TABLE,
           quanLyKho: SUPABASE_QUAN_LY_KHO_TABLE,
           role: supabaseWeighing
             ? usingWeighingServiceKey
@@ -5271,6 +5304,13 @@ export function createApp() {
             : usingServiceKey
               ? 'service_role'
               : 'anon/public'
+        },
+        [SUPABASE_KIEM_KHO_DB_LABEL]: {
+          connected: Boolean(supabaseKiemKho),
+          url: SUPABASE_KIEM_KHO_URL ? `${SUPABASE_KIEM_KHO_URL.slice(0, 40)}...` : null,
+          kiemKho: SUPABASE_KIEM_KHO_TABLE,
+          kiemKhoTongHop: SUPABASE_KIEM_KHO_TONG_HOP_TABLE,
+          role: usingKiemKhoServiceKey ? 'service_role' : 'anon/publishable'
         }
       },
       tables: {

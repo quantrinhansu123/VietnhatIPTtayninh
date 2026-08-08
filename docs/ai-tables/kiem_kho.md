@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `kiem_kho` |
 | **Tab** | `kiem-kho` → `/kiem-kho` |
-| **DB** | Riêng — label `phieu-can` (project `njdlkyxdieefeebcyaov`) |
+| **DB** | Riêng — label `kiem-kho` (project `grlcgkzotqishzxwpddc`), cấu hình qua `SUPABASE_KIEM_KHO_*` |
 | **SQL** | `supabase-kiem-kho.sql` |
 
 ## Cột
@@ -27,7 +27,7 @@
 
 ## Bảng liên quan: `kiem_kho_tong_hop`
 
-Kết quả *chốt kiểm* của một đợt — gộp các dòng `kiem_kho` cùng `ma_nvl` (bỏ hậu tố) thành 1 dòng + tổng số lượng. SQL: `supabase-kiem-kho-tong-hop.sql` (cùng DB `phieu-can`). Cột: `dot_kiem_kho`, `ma_nvl`, `ten_sp`, `loai_sp`, `tong_so_luong`, `chot_luc`, `nguoi_chot`. Unique theo `(dot_kiem_kho, ma_nvl)`. Được ghi tự động bởi `POST /api/kiem-kho/dot-xac-nhan` (nút "Xác nhận kiểm kho" ở tab "Danh sách chi tiết").
+Kết quả *chốt kiểm* của một đợt — gộp các dòng `kiem_kho` cùng `ma_nvl` (bỏ hậu tố) thành 1 dòng + tổng số lượng. SQL: `supabase-kiem-kho-tong-hop.sql` (cùng DB `kiem-kho`). Cột: `dot_kiem_kho`, `ma_nvl`, `ten_sp`, `loai_sp`, `tong_so_luong`, `chot_luc`, `nguoi_chot`. Unique theo `(dot_kiem_kho, ma_nvl)`. Được ghi tự động bởi `POST /api/kiem-kho/dot-xac-nhan` (nút "Xác nhận kiểm kho" ở tab "Danh sách chi tiết").
 
 ## Quy tắc đợt kiểm kho
 
@@ -62,6 +62,6 @@ Cả 3 route `dot-mo`, `dot`, `dot-xac-nhan` dùng chung helper `computeKiemKhoD
 ## Thêm cột trên DB đã có
 
 Chạy lại `supabase-kiem-kho.sql` (có `add column if not exists dot_kiem_kho`, `thoi_gian_xac_nhan`, và `drop column if exists da_dong_bo/dong_bo_luc`) và `supabase-kiem-kho-tong-hop.sql` (bảng mới) trên:
-https://supabase.com/dashboard/project/njdlkyxdieefeebcyaov/sql/new
+https://supabase.com/dashboard/project/grlcgkzotqishzxwpddc/sql/new
 
 > Tính năng "Đồng bộ" cột `da_dong_bo`/`dong_bo_luc` (cộng số liệu kiểm kho vào `san_pham.ton_dau_ky`) đã bị **gỡ bỏ hoàn toàn** — không còn route `POST /api/kiem-kho/dong-bo-ton-dau`, không còn nút "Đồng bộ" ở trang Sản phẩm, không còn RPC/bảng so cái trên DB chính. Xem `supabase-san-pham-kiem-kho-dong-bo.sql` để dọn phần còn sót trên DB cũ.

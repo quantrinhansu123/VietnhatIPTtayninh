@@ -1,22 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, Loader2, Plus, Save, ScanBarcode, Trash2, X } from 'lucide-react';
+import {
+  BarChart3,
+  CheckCircle2,
+  ClipboardCheck,
+  ListChecks,
+  Loader2,
+  Plus,
+  Save,
+  ScanBarcode,
+  Trash2,
+  X
+} from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import {
-  MultiSelectFilter,
-  TableToolbar,
-  TableSearchInput,
   TableShell,
   TableHead,
   TableHeadCell,
   TableBody,
   TableRow,
-    TableEmptyRow,
-    RowActionsMenu
+  TableEmptyRow
 } from '../../components/shared/table';
 
 type CatalogProduct = {
@@ -202,8 +209,6 @@ export function KiemKhoPanel({
   const [dotDetailLines, setDotDetailLines] = useState<KiemKhoDetailRow[]>([]);
   const [loadingDotDetail, setLoadingDotDetail] = useState(false);
   const [confirmingDot, setConfirmingDot] = useState(false);
-  const [detailSearchText, setDetailSearchText] = useState('');
-  const [detailTypeFilter, setDetailTypeFilter] = useState<string[]>([]);
 
   // Tab "Bảng tổng hợp"
   const [summaryRows, setSummaryRows] = useState<KiemKhoTongHopRow[]>([]);
@@ -229,10 +234,6 @@ export function KiemKhoPanel({
   const [showManualModal, setShowManualModal] = useState(false);
   const manualInputRef = useRef<HTMLInputElement>(null);
   const manualAutoAddTimerRef = useRef<number | null>(null);
-
-  // Bảng "Danh sách mã SP" (đang nhập trong phiên hiện tại)
-  const [lineSearchText, setLineSearchText] = useState('');
-  const [lineTypeFilter, setLineTypeFilter] = useState<string[]>([]);
 
   const linesRef = useRef(lines);
   useEffect(() => {
@@ -364,30 +365,6 @@ export function KiemKhoPanel({
     } finally {
       setConfirmingDot(false);
     }
-  };
-
-  const detailTypeOptions = useMemo(() => {
-    const values = dotDetailLines.map(line => line.loai_sp).filter((v): v is string => Boolean(v));
-    return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
-  }, [dotDetailLines]);
-
-  const normalizedDetailSearch = normalizeKey(detailSearchText);
-  const filteredDetailLines = useMemo(() => {
-    return dotDetailLines.filter(line => {
-      const matchesType = detailTypeFilter.length === 0 || (line.loai_sp ? detailTypeFilter.includes(line.loai_sp) : false);
-      const matchesSearch =
-        !normalizedDetailSearch ||
-        normalizeKey(`${line.ma_nvl ?? ''} ${line.ma_sp ?? ''} ${line.ten_sp ?? ''} ${line.loai_sp ?? ''}`).includes(
-          normalizedDetailSearch
-        );
-      return matchesType && matchesSearch;
-    });
-  }, [dotDetailLines, detailTypeFilter, normalizedDetailSearch]);
-
-  const hasActiveDetailFilters = Boolean(detailSearchText) || detailTypeFilter.length > 0;
-  const resetDetailFilters = () => {
-    setDetailSearchText('');
-    setDetailTypeFilter([]);
   };
 
   const loadSummary = useCallback(async () => {
@@ -604,28 +581,6 @@ export function KiemKhoPanel({
 
   const lineCountLabel = useMemo(() => `${lines.length} mã SP`, [lines.length]);
 
-  const lineTypeOptions = useMemo(() => {
-    const values = lines.map(line => line.loaiSp).filter((value): value is string => Boolean(value));
-    return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
-  }, [lines]);
-
-  const normalizedLineSearch = normalizeKey(lineSearchText);
-  const filteredLines = useMemo(() => {
-    return lines.filter(line => {
-      const matchesType = lineTypeFilter.length === 0 || lineTypeFilter.includes(line.loaiSp);
-      const matchesSearch =
-        !normalizedLineSearch ||
-        normalizeKey(`${line.maNvl} ${line.maSp} ${line.tenSp} ${line.loaiSp}`).includes(normalizedLineSearch);
-      return matchesType && matchesSearch;
-    });
-  }, [lines, lineTypeFilter, normalizedLineSearch]);
-
-  const hasActiveLineFilters = Boolean(lineSearchText) || lineTypeFilter.length > 0;
-  const resetLineFilters = () => {
-    setLineSearchText('');
-    setLineTypeFilter([]);
-  };
-
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -636,19 +591,27 @@ export function KiemKhoPanel({
 
       <nav
         aria-label="Chức năng kiểm kho"
-        className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm md:grid-cols-3"
+        className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:p-3"
       >
         <button
           type="button"
           aria-current={view === 'thuc-hien' ? 'page' : undefined}
           onClick={() => setView('thuc-hien')}
-          className={`min-h-[76px] rounded-xl border-2 px-4 py-3 text-left transition ${
-            view === 'thuc-hien' ? 'border-[#ef1b2d] bg-red-50' : 'border-zinc-200 bg-white hover:border-zinc-300'
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'thuc-hien'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
           }`}
         >
-          <span className="block text-sm font-black text-zinc-900">Thực hiện kiểm kho</span>
-          <span className="mt-1 block text-xs font-semibold text-zinc-500">
-            Tạo phiếu và quét mã sản phẩm
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'thuc-hien' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <ClipboardCheck className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Thực hiện</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Thực hiện kiểm kho</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Tạo phiếu và quét mã sản phẩm
+            </span>
           </span>
         </button>
 
@@ -656,13 +619,21 @@ export function KiemKhoPanel({
           type="button"
           aria-current={view === 'danh-sach' ? 'page' : undefined}
           onClick={() => setView('danh-sach')}
-          className={`min-h-[76px] rounded-xl border-2 px-4 py-3 text-left transition ${
-            view === 'danh-sach' ? 'border-[#ef1b2d] bg-red-50' : 'border-zinc-200 bg-white hover:border-zinc-300'
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'danh-sach'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
           }`}
         >
-          <span className="text-sm font-black text-zinc-900">Danh sách chi tiết</span>
-          <span className="mt-1 block text-xs font-semibold text-zinc-500">
-            Xem và xác nhận kiểm kê từng đợt
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'danh-sach' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Chi tiết</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Danh sách chi tiết</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Xem và xác nhận kiểm kê từng đợt
+            </span>
           </span>
         </button>
 
@@ -670,13 +641,21 @@ export function KiemKhoPanel({
           type="button"
           aria-current={view === 'tong-hop' ? 'page' : undefined}
           onClick={() => setView('tong-hop')}
-          className={`min-h-[76px] rounded-xl border-2 px-4 py-3 text-left transition ${
-            view === 'tong-hop' ? 'border-[#ef1b2d] bg-red-50' : 'border-zinc-200 bg-white hover:border-zinc-300'
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'tong-hop'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
           }`}
         >
-          <span className="text-sm font-black text-zinc-900">Bảng tổng hợp</span>
-          <span className="mt-1 block text-xs font-semibold text-zinc-500">
-            Tổng hợp kết quả theo từng đợt
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'tong-hop' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Tổng hợp</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Bảng tổng hợp</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Tổng hợp kết quả theo từng đợt
+            </span>
           </span>
         </button>
       </nav>
@@ -705,10 +684,10 @@ export function KiemKhoPanel({
               value={dotKiemKho}
               onChange={e => setDotKiemKho(e.target.value)}
               disabled={loadingBatches}
-              className={`mt-1 ${inputClass}`}
+              className={`mt-1 min-w-0 max-w-full ${inputClass}`}
             >
               {openBatches.length === 0 ? (
-                <option value="">+ Tạo đợt mới (bắt đầu hôm nay)</option>
+                <option value="">+ Tạo đợt mới</option>
               ) : null}
               {openBatches.map(batch => (
                 <option key={batch.dot_kiem_kho} value={batch.dot_kiem_kho}>
@@ -776,32 +755,6 @@ export function KiemKhoPanel({
           </div>
         </div>
 
-        {lines.length > 0 ? (
-          <div className="border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-            <TableToolbar
-              hasActiveFilters={hasActiveLineFilters}
-              onResetFilters={resetLineFilters}
-            >
-              <TableSearchInput
-                value={lineSearchText}
-                onChange={setLineSearchText}
-                placeholder="Tìm mã NVL, mã quét, tên SP..."
-              />
-              {lineTypeOptions.length > 0 && (
-                <MultiSelectFilter
-                  label="Loại SP"
-                  allLabel="Tất cả loại SP"
-                  searchPlaceholder="Tìm loại SP..."
-                  emptyLabel="Không tìm thấy loại SP"
-                  options={lineTypeOptions}
-                  values={lineTypeFilter}
-                  onChange={setLineTypeFilter}
-                />
-              )}
-            </TableToolbar>
-          </div>
-        ) : null}
-
         <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[420px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
@@ -812,7 +765,7 @@ export function KiemKhoPanel({
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            {filteredLines.map((line, index) => {
+            {lines.map((line, index) => {
               const highlightClass = line.key === highlightKey ? 'bg-emerald-50/70' : '';
               return (
                 <React.Fragment key={line.key}>
@@ -825,34 +778,27 @@ export function KiemKhoPanel({
                     <td className={`px-4 py-3 font-semibold text-zinc-700 ${highlightClass}`}>{line.tenSp || '—'}</td>
                     <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{line.loaiSp || '—'}</td>
                     <td className={`px-4 py-3 text-center ${highlightClass}`}>
-                      <RowActionsMenu label={`Thao tác ${line.maSp}`}>
                       {canDelete ? (
                         <button
                           type="button"
                           onClick={() => removeLine(line.key)}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                           title="Xóa dòng"
+                          aria-label={`Xóa mã ${line.maSp}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       ) : null}
-                      </RowActionsMenu>
                     </td>
                   </TableRow>
                 </React.Fragment>
               );
             })}
 
-            {filteredLines.length === 0 && (
+            {lines.length === 0 && (
               <TableEmptyRow colSpan={6}>
-                {lines.length === 0 ? (
-                  <>
-                    Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc{' '}
-                    <span className="text-[#ef1b2d]">Quét máy</span>.
-                  </>
-                ) : (
-                  'Không có mã nào phù hợp bộ lọc.'
-                )}
+                Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc{' '}
+                <span className="text-[#ef1b2d]">Quét máy</span>.
               </TableEmptyRow>
             )}
           </TableBody>
@@ -930,29 +876,6 @@ export function KiemKhoPanel({
           </div>
         </div>
 
-        {dotDetailLines.length > 0 ? (
-          <div className="border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-            <TableToolbar hasActiveFilters={hasActiveDetailFilters} onResetFilters={resetDetailFilters}>
-              <TableSearchInput
-                value={detailSearchText}
-                onChange={setDetailSearchText}
-                placeholder="Tìm mã NVL, mã quét, tên SP..."
-              />
-              {detailTypeOptions.length > 0 && (
-                <MultiSelectFilter
-                  label="Loại SP"
-                  allLabel="Tất cả loại SP"
-                  searchPlaceholder="Tìm loại SP..."
-                  emptyLabel="Không tìm thấy loại SP"
-                  options={detailTypeOptions}
-                  values={detailTypeFilter}
-                  onChange={setDetailTypeFilter}
-                />
-              )}
-            </TableToolbar>
-          </div>
-        ) : null}
-
         <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[480px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
@@ -964,7 +887,7 @@ export function KiemKhoPanel({
             <TableHeadCell>Thời điểm lưu</TableHeadCell>
           </TableHead>
           <TableBody>
-            {filteredDetailLines.map((line, index) => (
+            {dotDetailLines.map((line, index) => (
               <React.Fragment key={String(line.id)}>
                 <TableRow>
                   <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
@@ -980,13 +903,11 @@ export function KiemKhoPanel({
               </React.Fragment>
             ))}
 
-            {filteredDetailLines.length === 0 && (
+            {dotDetailLines.length === 0 && (
               <TableEmptyRow colSpan={7}>
                 {loadingDotDetail
                   ? 'Đang tải dữ liệu...'
-                  : dotDetailLines.length === 0
-                    ? 'Đợt này chưa có sản phẩm nào được quét.'
-                    : 'Không có mã nào phù hợp bộ lọc.'}
+                  : 'Đợt này chưa có sản phẩm nào được quét.'}
               </TableEmptyRow>
             )}
           </TableBody>

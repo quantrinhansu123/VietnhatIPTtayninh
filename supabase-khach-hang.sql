@@ -3,12 +3,16 @@
 -- đối tượng nội bộ và đơn vị quản lý.
 
 alter table public.khach_hang
+  add column if not exists created_at timestamptz not null default now(),
   add column if not exists cong_no numeric(18,2) not null default 0,
   add column if not exists ma_so_thue text,
   add column if not exists dt_di_dong_nlh text,
   add column if not exists la_doi_tuong_noi_bo boolean not null default false,
   add column if not exists don_vi_quan_ly text,
   add column if not exists ghi_chu text;
+
+create index if not exists khach_hang_created_at_idx
+  on public.khach_hang (created_at desc);
 
 comment on column public.khach_hang.cong_no is 'Công nợ hiện tại của khách hàng.';
 comment on column public.khach_hang.ma_so_thue is 'Mã số thuế hoặc CCCD chủ hộ.';

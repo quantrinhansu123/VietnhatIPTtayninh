@@ -6,6 +6,7 @@
 **API:** `server.ts` — CRUD `/api/khach-hang`; `POST /api/khach-hang/replace`; `GET /api/address-lookup`; `PATCH /api/khach-hang/:id/dia-chi-moi`
 **UI:** `src/features/khach-hang/index.tsx` — `CustomersPanel`
 **Utils:** `src/utils/customerExcel.ts` — tải mẫu và đọc dữ liệu khách hàng từ Excel
+**SQL:** `supabase-khach-hang.sql`
 
 ### Excel
 

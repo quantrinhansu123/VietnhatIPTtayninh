@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, ListChecks } from 'lucide-react';
-import QRCode from 'qrcode';
 import { useTabAccess } from '../../app/useTabAccess';
-import { BackButton } from '../../components/layout/NavButtons';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import {
   FilterCombobox,
@@ -17,11 +15,11 @@ import {
   TableEmptyRow
 } from '../../components/shared/table';
 
-type LoaiKho = 'nvl' | 'san_pham';
-
 type TonKhoRow = {
   ma: string;
+  ma_goc: string;
   ten: string;
+  loai_sp: string | null;
   don_vi: string | null;
   ten_kho: string | null;
   ton_dau_ky: number;
@@ -48,7 +46,11 @@ function normalizeTonKhoRows(data: unknown): TonKhoRow[] {
       };
       return {
         ma,
+        // Mã gốc trên màn hình luôn là tiền tố của chính mã quét. Điều này giữ
+        // các lô/serial cùng nhóm ngay cả khi dữ liệu cũ lưu ma_goc chưa đồng nhất.
+        ma_goc: getBaseInventoryCode(ma),
         ten: String(record.ten ?? '').trim(),
+        loai_sp: record.loai_sp ? String(record.loai_sp).trim() : null,
         don_vi: record.don_vi ? String(record.don_vi).trim() : null,
         ten_kho: record.ten_kho ? String(record.ten_kho).trim() : null,
         ton_dau_ky: num(record.ton_dau_ky),
@@ -62,6 +64,12 @@ function normalizeTonKhoRows(data: unknown): TonKhoRow[] {
 
 function formatQty(value: number) {
   return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+}
+
+function getBaseInventoryCode(value: string) {
+  const code = String(value ?? '').trim();
+  const suffixSeparatorIndex = code.indexOf('_');
+  return suffixSeparatorIndex > 0 ? code.slice(0, suffixSeparatorIndex).trim() : code;
 }
 
 type WarehouseCatalogItem = { id: string | number; ten_kho: string };
@@ -87,7 +95,6 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   useTabAccess('ton-kho');
 
   const [view, setView] = useState<'chi-tiet' | 'tong-hop'>('chi-tiet');
-  const [loaiKho, setLoaiKho] = useState<LoaiKho>('nvl');
   const [tenKho, setTenKho] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -96,9 +103,9 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   const [warehouses, setWarehouses] = useState<WarehouseCatalogItem[]>([]);
   const [chiTietRows, setChiTietRows] = useState<TonKhoRow[]>([]);
   const [tongHopRows, setTongHopRows] = useState<TonKhoRow[]>([]);
-  const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const hasDateRange = Boolean(fromDate && toDate);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -116,24 +123,43 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (!hasDateRange) {
+      setChiTietRows([]);
+      setTongHopRows([]);
+      setLoadError('');
+      setIsLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     const load = async () => {
       setIsLoading(true);
       setLoadError('');
       try {
         const params = new URLSearchParams();
-        params.set('loai_kho', loaiKho);
+        // Trang tồn kho này chỉ dùng để đối chiếu thành phẩm đã kiểm kê.
+        params.set('loai_kho', 'san_pham');
         if (tenKho !== 'all') params.set('ten_kho', tenKho);
-        if (fromDate) params.set('from', fromDate);
-        if (toDate) params.set('to', toDate);
+        params.set('from', fromDate);
+        params.set('to', toDate);
 
-        const res = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, { signal: controller.signal });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được dữ liệu tồn kho.'));
-        const rows = normalizeTonKhoRows(data);
-        // Hai tab phải là hai cách nhìn của cùng một tập mã sản phẩm.
-        setChiTietRows(rows);
-        setTongHopRows(rows);
+        const query = params.toString();
+        const [chiTietRes, tongHopRes] = await Promise.all([
+          fetch(`/api/ton-kho/chi-tiet?${query}`, { signal: controller.signal }),
+          fetch(`/api/ton-kho/tong-hop?${query}`, { signal: controller.signal })
+        ]);
+        const [chiTietData, tongHopData] = await Promise.all([
+          chiTietRes.json().catch(() => ({})),
+          tongHopRes.json().catch(() => ({}))
+        ]);
+        if (!chiTietRes.ok) {
+          throw new Error(readApiErrorMessage(chiTietRes, chiTietData, 'Không tải được danh sách sản phẩm tồn kho.'));
+        }
+        if (!tongHopRes.ok) {
+          throw new Error(readApiErrorMessage(tongHopRes, tongHopData, 'Không tải được dữ liệu tồn kho.'));
+        }
+        setChiTietRows(normalizeTonKhoRows(chiTietData));
+        setTongHopRows(normalizeTonKhoRows(tongHopData));
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
         const message = err?.message || 'Không tải được dữ liệu tồn kho.';
@@ -146,39 +172,16 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     };
     void load();
     return () => controller.abort();
-  }, [loaiKho, tenKho, fromDate, toDate]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const generateQrImages = async () => {
-      const entries = await Promise.all(
-        chiTietRows.map(async row => {
-          try {
-            const dataUrl = await QRCode.toDataURL(row.ma, {
-              width: 128,
-              margin: 1,
-              errorCorrectionLevel: 'M'
-            });
-            return [row.ma, dataUrl] as const;
-          } catch {
-            return [row.ma, ''] as const;
-          }
-        })
-      );
-      if (!cancelled) setQrImages(Object.fromEntries(entries));
-    };
-    void generateQrImages();
-    return () => {
-      cancelled = true;
-    };
-  }, [chiTietRows]);
+  }, [tenKho, fromDate, toDate, hasDateRange]);
 
   const warehouseOptions = useMemo(() => warehouses.map(w => w.ten_kho), [warehouses]);
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredChiTiet = useMemo(() => {
     if (!normalizedSearch) return chiTietRows;
-    return chiTietRows.filter(row => `${row.ma} ${row.ten}`.toLowerCase().includes(normalizedSearch));
+    return chiTietRows.filter(row =>
+      `${row.ma_goc} ${row.ma} ${row.ten} ${row.ten_kho ?? ''}`.toLowerCase().includes(normalizedSearch)
+    );
   }, [chiTietRows, normalizedSearch]);
 
   const filteredTongHop = useMemo(() => {
@@ -210,34 +213,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <BackButton onClick={onBack} />
-        </div>
-      </div>
-
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-        <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 p-1 sm:inline-grid sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setLoaiKho('nvl')}
-            className={`h-9 rounded-lg px-4 text-xs font-black transition ${
-              loaiKho === 'nvl' ? 'bg-[#ef1b2d] text-white shadow-sm' : 'text-zinc-600 hover:bg-white'
-            }`}
-          >
-            NVL
-          </button>
-          <button
-            type="button"
-            onClick={() => setLoaiKho('san_pham')}
-            className={`h-9 rounded-lg px-4 text-xs font-black transition ${
-              loaiKho === 'san_pham' ? 'bg-[#ef1b2d] text-white shadow-sm' : 'text-zinc-600 hover:bg-white'
-            }`}
-          >
-            Thành phẩm
-          </button>
-        </div>
-
         <TableToolbar
           isLoading={isLoading}
           hasActiveFilters={hasActiveFilters}
@@ -247,7 +223,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
           <TableSearchInput
             value={searchText}
             onChange={setSearchText}
-            placeholder="Tìm mã, tên..."
+            placeholder="Tìm mã sản phẩm, tên, kho..."
             disabled={isLoading}
           />
           <FilterCombobox
@@ -284,7 +260,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
             <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Chi tiết</span>
             <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Danh sách chi tiết</span>
             <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
-              Mỗi mã QR sản phẩm là một dòng dữ liệu
+              Mỗi mã phát sinh trên sổ kho trong khoảng ngày là một dòng
             </span>
           </span>
         </button>
@@ -316,49 +292,39 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
         <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
             <div>
-              <h2 className="text-sm font-black text-zinc-900">Danh sách chi tiết</h2>
-              <p className="text-[11px] font-semibold text-zinc-500">
-                {filteredChiTiet.length} mã QR · Cùng nguồn dữ liệu với bảng tổng hợp
-              </p>
+              <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm trên sổ kho</h2>
+              <p className="text-[11px] font-semibold text-zinc-500">{filteredChiTiet.length} mã sản phẩm</p>
             </div>
           </div>
 
-          <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[560px]">
+          <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[560px]">
             <TableHead>
-              <TableHeadCell align="center">STT</TableHeadCell>
-              <TableHeadCell align="center">Mã QR</TableHeadCell>
-              <TableHeadCell>Mã sản phẩm</TableHeadCell>
+              <TableHeadCell>Mã SP</TableHeadCell>
+              <TableHeadCell align="center">Số lượng</TableHeadCell>
               <TableHeadCell>Tên sản phẩm</TableHeadCell>
-              <TableHeadCell>Loại</TableHeadCell>
-              <TableHeadCell>Đơn vị</TableHeadCell>
+              <TableHeadCell>Loại sản phẩm</TableHeadCell>
               <TableHeadCell>Kho</TableHeadCell>
             </TableHead>
             <TableBody>
               {filteredChiTiet.map((row, index) => (
-                <React.Fragment key={row.ma}>
+                <React.Fragment key={`${row.ma}-${index}`}>
                   <TableRow>
-                    <td className="px-4 py-3 text-center font-bold text-zinc-500">{index + 1}</td>
-                    <td className="px-3 py-2 text-center">
-                      {qrImages[row.ma] ? (
-                        <div className="mx-auto h-14 w-14 rounded-lg border border-zinc-200 bg-white p-1">
-                          <img src={qrImages[row.ma]} alt={`QR ${row.ma}`} className="h-full w-full" />
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-semibold text-zinc-400">Đang tạo</span>
-                      )}
+                    <td className="whitespace-nowrap px-5 py-4 font-mono text-base font-black text-zinc-900">{row.ma}</td>
+                    <td className="px-5 py-4 text-right font-mono text-base font-black text-zinc-900">
+                      {formatQty(row.ton_cuoi_ky)}
                     </td>
-                    <td className="px-4 py-3 font-mono font-black text-zinc-900">{row.ma}</td>
-                    <td className="px-4 py-3 font-semibold text-zinc-700">{row.ten || '—'}</td>
-                    <td className="px-4 py-3 font-semibold text-zinc-600">
-                      {loaiKho === 'san_pham' ? 'Thành phẩm' : 'NVL'}
+                    <td className="px-5 py-4 text-base font-bold text-zinc-700">{row.ten || '—'}</td>
+                    <td className="px-5 py-4 font-semibold text-zinc-600">
+                      {row.loai_sp || 'Thành phẩm'}
                     </td>
-                    <td className="px-4 py-3 text-zinc-700">{row.don_vi || '—'}</td>
-                    <td className="px-4 py-3 text-zinc-700">{row.ten_kho || '—'}</td>
+                    <td className="px-5 py-4 font-semibold text-zinc-600">{row.ten_kho || '—'}</td>
                   </TableRow>
                 </React.Fragment>
               ))}
               {!isLoading && filteredChiTiet.length === 0 && (
-                <TableEmptyRow colSpan={7}>Không có dữ liệu phù hợp bộ lọc.</TableEmptyRow>
+                <TableEmptyRow colSpan={5}>
+                  {hasDateRange ? 'Không có dữ liệu phù hợp bộ lọc.' : 'Vui lòng chọn đủ Từ ngày và Đến ngày.'}
+                </TableEmptyRow>
               )}
             </TableBody>
           </TableShell>
@@ -397,7 +363,9 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
                 </React.Fragment>
               ))}
               {!isLoading && filteredTongHop.length === 0 && (
-                <TableEmptyRow colSpan={7}>Không có dữ liệu phù hợp bộ lọc.</TableEmptyRow>
+                <TableEmptyRow colSpan={7}>
+                  {hasDateRange ? 'Không có dữ liệu phù hợp bộ lọc.' : 'Vui lòng chọn đủ Từ ngày và Đến ngày.'}
+                </TableEmptyRow>
               )}
               {filteredTongHop.length > 0 && (
                 <TableRow className="bg-zinc-50">

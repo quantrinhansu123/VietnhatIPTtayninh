@@ -88,6 +88,8 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'warehouse-history': 'factory-kho',
   'quan-ly-kho': 'factory-kho',
   'kiem-kho': 'factory-kho',
+  'kiem-kho-chenh-lech': 'factory-kho',
+  'ton-kho': 'factory-kho',
   'hr': 'hcns',
   'vehicles': 'menu',
   'settings': 'quan-tri',

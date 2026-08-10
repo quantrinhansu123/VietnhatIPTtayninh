@@ -16,6 +16,7 @@ import {
   Plus,
   Printer,
   Save,
+  ScanBarcode,
   Search,
   Trash2
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercent
 import { useTabAccess } from '../../app/useTabAccess';
 import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
+import ProductQrScanner from '../../components/ProductQrScanner';
 import {
   FilterCombobox,
   TableToolbar,
@@ -385,6 +387,14 @@ export function buildWarehouseSlipPrintData(
 
 export function formatWarehouseMoney(value: number) {
   return formatMoney(value, 0);
+}
+
+/** Tiền tố trước dấu "_" — dùng để tra tên/ĐVT trong danh mục khi mã quét có hậu tố lô/serial (VD "L30cm_3701190208G" → "L30cm"). */
+function warehouseCodePrefix(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const underscoreIdx = trimmed.indexOf('_');
+  return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
 }
 
 export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
@@ -911,19 +921,20 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const pickItem = (key: string, code: string) => {
-    const item = itemOptions.find(option => option.code === code);
+  /**
+   * Mã có thể mang hậu tố lô/serial (quét QR, VD "L30cm_3701190208G") không khớp đúng danh mục
+   * — tra tên/ĐVT theo tiền tố trước "_", nhưng vẫn lưu nguyên mã đầy đủ vào dòng phiếu.
+   */
+  const resolveLinePatchForCode = (fullCode: string) => {
+    const item = itemOptions.find(option => option.code === warehouseCodePrefix(fullCode));
     const isExportNvl = warehouseKind === 'nvl' && slipType === 'xuat';
-    const materialCode = code.trim();
     const cachedAvg =
-      isExportNvl && materialCode
-        ? avgInboundPriceByKey[avgPriceCacheKey(materialCode, slipDate)]
-        : undefined;
+      isExportNvl && fullCode ? avgInboundPriceByKey[avgPriceCacheKey(fullCode, slipDate)] : undefined;
     const immediatePrice =
       typeof cachedAvg === 'number' && cachedAvg > 0 ? formatSuggestedUnitPrice(cachedAvg) : '';
 
-    updateLine(key, {
-      code,
+    return {
+      code: fullCode,
       name: item?.name || '',
       unit: item?.unit || '',
       ...(isExportNvl
@@ -934,7 +945,13 @@ export function WarehouseSlipPanel({
             unitPrice: immediatePrice
           }
         : {})
-    });
+    };
+  };
+
+  const pickItem = (key: string, code: string) => {
+    const materialCode = code.trim();
+    const isExportNvl = warehouseKind === 'nvl' && slipType === 'xuat';
+    updateLine(key, resolveLinePatchForCode(materialCode));
     if (isExportNvl && materialCode) {
       void loadNvlAvgInboundPrice(materialCode, slipDate, {
         lineKey: key,
@@ -942,6 +959,46 @@ export function WarehouseSlipPanel({
         forceOverwrite: true
       });
     }
+  };
+
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  // Theo dõi `lines` bằng ref để quét liên tiếp (nhiều mã trong 1 nhịp camera) không bị đọc dữ
+  // liệu cũ khi state React chưa kịp render lại giữa hai lần quét.
+  const linesRef = useRef(lines);
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  /** Quét/nhận một mã (có thể mang hậu tố lô/serial) — điền vào dòng trống đầu tiên, hoặc thêm dòng mới. */
+  const addLineFromScan = (raw: string): boolean | 'duplicate' => {
+    const fullCode = String(raw ?? '').trim();
+    if (!fullCode) return false;
+    const current = linesRef.current;
+    if (current.some(line => line.code.trim() === fullCode)) return 'duplicate';
+
+    const patch = resolveLinePatchForCode(fullCode);
+    const emptyIndex = current.findIndex(line => !line.code.trim());
+    let targetKey: string;
+    let nextLines: WarehouseSlipLineDraft[];
+    if (emptyIndex >= 0) {
+      targetKey = current[emptyIndex].key;
+      nextLines = current.map((line, idx) => (idx === emptyIndex ? { ...line, ...patch } : line));
+    } else {
+      const draft = createWarehouseLineDraft();
+      targetKey = draft.key;
+      nextLines = [...current, { ...draft, ...patch }];
+    }
+    linesRef.current = nextLines;
+    setLines(nextLines);
+
+    if (warehouseKind === 'nvl' && slipType === 'xuat') {
+      void loadNvlAvgInboundPrice(fullCode, slipDate, {
+        lineKey: targetKey,
+        applySuggestion: true,
+        forceOverwrite: true
+      });
+    }
+    return true;
   };
 
   const isNvlExport = warehouseKind === 'nvl' && slipType === 'xuat';
@@ -1750,14 +1807,25 @@ export function WarehouseSlipPanel({
               </p>
             </div>
             {(editSlipCode ? canEdit : canCreate) ? (
-              <button
-                type="button"
-                onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
-                className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Thêm dòng
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setQrScannerOpen(true)}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
+                  title="Quét mã QR/tem có hậu tố lô/serial — mỗi lần quét là một dòng riêng"
+                >
+                  <ScanBarcode className="h-3.5 w-3.5" />
+                  Quét QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm dòng
+                </button>
+              </div>
             ) : null}
           </div>
 
@@ -1985,6 +2053,14 @@ export function WarehouseSlipPanel({
           setPrintAutoTrigger(false);
         }}
       />
+
+      <ProductQrScanner
+        open={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        onScan={addLineFromScan}
+        closeAfterScan={false}
+        requireConfirm={false}
+      />
     </div>
   );
 }
@@ -2127,11 +2203,15 @@ export function WarehouseHistoryPanel({
         slipCode,
         rows,
         header: rows[0],
+        createdAt: rows.reduce(
+          (latest, row) => row.createdAt.localeCompare(latest) > 0 ? row.createdAt : latest,
+          ''
+        ),
         totalAmount: rows.reduce((sum, row) => sum + row.lineAmount, 0)
       }))
       .sort((a, b) => {
-        const byDate = (b.header.slipDate || '').localeCompare(a.header.slipDate || '');
-        if (byDate !== 0) return byDate;
+        const byCreated = b.createdAt.localeCompare(a.createdAt);
+        if (byCreated !== 0) return byCreated;
         return (b.slipCode || '').localeCompare(a.slipCode || '', 'vi');
       });
   }, [filteredMovements]);
@@ -2154,8 +2234,8 @@ export function WarehouseHistoryPanel({
   const sortedMovementLines = useMemo(
     () =>
       [...filteredMovements].sort((a, b) => {
-        const byDate = (b.slipDate || '').localeCompare(a.slipDate || '');
-        if (byDate !== 0) return byDate;
+        const byCreated = b.createdAt.localeCompare(a.createdAt);
+        if (byCreated !== 0) return byCreated;
         const bySlip = (b.slipCode || '').localeCompare(a.slipCode || '', 'vi');
         if (bySlip !== 0) return bySlip;
         return (a.itemCode || '').localeCompare(b.itemCode || '', 'vi');

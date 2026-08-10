@@ -278,8 +278,11 @@ export default function MachineDowntimeReportListView({
       map.set(key, list);
     }
     return [...map.entries()]
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([ngay, groupSlips]) => ({ ngay, slips: groupSlips }));
+      .map(([ngay, groupSlips]) => ({
+        ngay,
+        slips: [...groupSlips].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      }))
+      .sort((a, b) => b.slips[0]?.createdAt.localeCompare(a.slips[0]?.createdAt ?? '') ?? 0);
   }, [filteredSlips]);
 
   const totalMinutes = useMemo(

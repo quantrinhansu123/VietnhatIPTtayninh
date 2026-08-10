@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Pencil, Plus, Save, Trash2, Truck } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber } from '../../utils';
-import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
 import { pickText } from '../_shared/recordHelpers';
@@ -415,7 +414,6 @@ export function ShippingOrdersPanel({
     <div className="space-y-3 pb-8">
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex min-w-0 items-center gap-3">
-          <BackButton onClick={onBack} />
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-sm font-black text-slate-900">
               <Truck className="h-4 w-4 text-brand-500" />

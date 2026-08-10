@@ -13,7 +13,6 @@ import {
   X
 } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
-import { BackButton } from '../../components/layout/NavButtons';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -609,12 +608,6 @@ export function KiemKhoPanel({
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <BackButton onClick={onBack} />
-        </div>
-      </div>
-
       <nav
         aria-label="Chức năng kiểm kho"
         className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:p-3"
@@ -794,7 +787,7 @@ export function KiemKhoPanel({
         <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[420px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
-            <TableHeadCell>Mã NVL</TableHeadCell>
+            <TableHeadCell>Mã SP gốc</TableHeadCell>
             <TableHeadCell>Mã quét</TableHeadCell>
             <TableHeadCell>Tên SP</TableHeadCell>
             <TableHeadCell>Loại SP</TableHeadCell>
@@ -921,7 +914,7 @@ export function KiemKhoPanel({
         <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[480px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
-            <TableHeadCell>Mã NVL</TableHeadCell>
+            <TableHeadCell>Mã SP gốc</TableHeadCell>
             <TableHeadCell>Mã quét</TableHeadCell>
             <TableHeadCell>Tên SP</TableHeadCell>
             <TableHeadCell>Loại SP</TableHeadCell>
@@ -1008,7 +1001,7 @@ export function KiemKhoPanel({
           <div>
             <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm</h2>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {summaryRows.length} mã SP · gộp theo mã NVL của đợt đang chọn
+              {summaryRows.length} mã SP · gộp theo mã SP gốc của đợt đang chọn
             </p>
           </div>
           <button
@@ -1030,7 +1023,7 @@ export function KiemKhoPanel({
         <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[560px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
-            <TableHeadCell>Mã NVL</TableHeadCell>
+            <TableHeadCell>Mã SP gốc</TableHeadCell>
             <TableHeadCell>Tên SP</TableHeadCell>
             <TableHeadCell>Loại SP</TableHeadCell>
             <TableHeadCell align="center">Tổng số lượng</TableHeadCell>

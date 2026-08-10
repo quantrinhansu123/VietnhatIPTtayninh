@@ -53,7 +53,7 @@ import {
   resolveAccessTab
 } from './app/tabAccess';
 import { VietNhatLogo } from './components/layout/Logo';
-import { BackButton, HomeNavButton, MobileBackNavButton, BACK_TAB_MAP } from './components/layout/NavButtons';
+import { HomeNavButton, MobileBackNavButton, BACK_TAB_MAP } from './components/layout/NavButtons';
 import {
   MenuCardGrid, MainMenuFlow, FourStepMenuFlow, MenuPageHeader, SubNav, MAIN_MENU_ITEMS,
   ADMIN_MENU_ITEMS, REPORT_FORM_MENU_ITEMS, PRODUCTION_REPORT_MENU_ITEMS, FACILITY_MENU_ITEMS,
@@ -77,6 +77,7 @@ import { HumanResourcesPanel } from './features/nhan-su';
 import { VehiclesPanel } from './features/danh-sach-xe';
 import { CanTuDongPanel } from './features/can-tu-dong';
 import { KiemKhoPanel } from './features/kiem-kho';
+import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
@@ -884,12 +885,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
                 className="space-y-3"
               >
-                <div className="flex items-start gap-3">
-                  <BackButton onClick={() => goBack('factory-kho')} />
-                  <div className="min-w-0 flex-1">
-                    <MenuPageHeader title="Quản lý CSVC" desc="Cơ sở vật chất, kho hàng và thiết bị sản xuất." />
-                  </div>
-                </div>
+                <MenuPageHeader title="Quản lý CSVC" desc="Cơ sở vật chất, kho hàng và thiết bị sản xuất." />
                 <MenuCardGrid items={filterMenuItems(FACILITY_MENU_ITEMS)} onNavigate={navigateToTab} />
               </motion.div>
             ) : activeTab === 'hcns' ? (
@@ -1093,6 +1089,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <KiemKhoPanel onBack={() => goBack('factory-kho')} currentUser={authUser} />
+              </motion.div>
+            ) : resolvedTab === 'kiem-kho-chenh-lech' ? (
+              <motion.div
+                key="kiem-kho-chenh-lech"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <XuLyChenhLechPanel onBack={() => goBack('factory-kho')} currentUser={authUser} />
               </motion.div>
             ) : resolvedTab === 'quan-ly-kho' ? (
               <motion.div

@@ -57,6 +57,8 @@ const SUPABASE_CAN_TU_DONG_STORAGE_BUCKET =
 const SUPABASE_KIEM_KHO_TABLE = process.env.SUPABASE_KIEM_KHO_TABLE || 'kiem_kho';
 const SUPABASE_KIEM_KHO_TONG_HOP_TABLE =
   process.env.SUPABASE_KIEM_KHO_TONG_HOP_TABLE || 'kiem_kho_tong_hop';
+const SUPABASE_KIEM_KHO_CHENH_LECH_TABLE =
+  process.env.SUPABASE_KIEM_KHO_CHENH_LECH_TABLE || 'kiem_kho_chenh_lech_xu_ly';
 const SUPABASE_QUAN_LY_KHO_TABLE = process.env.SUPABASE_QUAN_LY_KHO_TABLE || 'quan_ly_kho';
 const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE || 'bao_cao_hang_hong';
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
@@ -894,9 +896,8 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
         let query = db
           .from(cfg.supabaseTable)
           .select('*')
-          .order('ngay_san_xuat', { ascending: false })
-          .order('ca_san_xuat', { ascending: true })
-          .order('gio_can', { ascending: true });
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
 
         if (ngay) {
           query = query.or(`ngay_san_xuat.eq.${ngay},report_date.eq.${ngay}`);
@@ -941,7 +942,11 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
         }
       }
 
-      return res.json(records);
+      return res.json(
+        [...records].sort((left, right) =>
+          String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))
+        )
+      );
     } catch (err: any) {
       return res.status(500).json({ error: err.message || `Lỗi khi tải ${cfg.entityLabel}.` });
     }
@@ -1338,6 +1343,7 @@ function mapStaffRecord(row: Record<string, unknown>) {
   const username = pickStaffField(row, ['ten_dang_nhap', 'username', 'login'], '');
   const password = pickStaffField(row, ['mat_khau', 'password'], '');
   const signatureUrl = pickStaffField(row, ['link_chu_ky', 'chu_ky_url', 'signature_url'], '');
+  const createdAt = pickStaffField(row, ['created_at', 'createdAt'], '');
 
   return {
     id: code || name,
@@ -1352,6 +1358,7 @@ function mapStaffRecord(row: Record<string, unknown>) {
     username,
     password,
     signatureUrl,
+    createdAt,
     link_chu_ky: signatureUrl,
     viewPermissions: normalizeStaffViewPermissions(row.quyen_xem ?? row.viewPermissions),
     quyen_xem: normalizeStaffViewPermissions(row.quyen_xem ?? row.viewPermissions),
@@ -1364,9 +1371,7 @@ function buildStaffGroups(rows: Record<string, unknown>[]) {
   const staff = rows
     .map(mapStaffRecord)
     .filter(person => person.name)
-    .sort((a, b) =>
-      `${a.branch} ${a.department} ${a.name}`.localeCompare(`${b.branch} ${b.department} ${b.name}`, 'vi')
-    );
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const branchMap = new Map<string, {
     id: string;
@@ -2109,7 +2114,9 @@ const supabaseTableClientCache = new Map<string, SupabaseDbRef>();
 async function resolveSupabaseClientForTable(table: string): Promise<SupabaseDbRef | null> {
   if (
     supabaseKiemKho &&
-    (table === SUPABASE_KIEM_KHO_TABLE || table === SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+    (table === SUPABASE_KIEM_KHO_TABLE ||
+      table === SUPABASE_KIEM_KHO_TONG_HOP_TABLE ||
+      table === SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
   ) {
     return { client: supabaseKiemKho, label: SUPABASE_KIEM_KHO_DB_LABEL };
   }
@@ -5688,14 +5695,16 @@ export function createApp() {
     try {
       const list = await getReportsFromDb();
       const sorted = [...(list || [])].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        (a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))
       );
       return res.json(sorted);
     } catch (err: any) {
       console.error('GET /api/reports error:', err);
       try {
         const fallback = await getReportsFromLocalFile();
-        return res.json(fallback);
+        return res.json(
+          [...fallback].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+        );
       } catch (fallbackErr) {
         console.error('GET /api/reports fallback error:', fallbackErr);
         return res.json(getSeedReports());
@@ -5762,7 +5771,8 @@ export function createApp() {
         const { data, error } = await supabase
           .from(SUPABASE_PRODUCTS_TABLE)
           .select('*')
-          .order('ten_sp', { ascending: true });
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
 
         if (error) {
           return respondSupabaseReadError(res, error, SUPABASE_PRODUCTS_TABLE, { products: [], total: 0 });
@@ -5948,7 +5958,11 @@ export function createApp() {
 
     try {
       const result = await runOnSupabaseTableWithFallback(SUPABASE_MACHINES_TABLE, async client => {
-        const { data, error } = await client.from(SUPABASE_MACHINES_TABLE).select('*');
+        const { data, error } = await client
+          .from(SUPABASE_MACHINES_TABLE)
+          .select('*')
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
         return { data, error };
       });
 
@@ -6139,7 +6153,10 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_ORDERS_TABLE)
         .select('*')
-        .order('ma_don_hang', { ascending: true });
+        // created_at là ngày người dùng chọn; mã đơn được sinh tuần tự nên phản ánh đúng thứ tự tạo.
+        .order('ma_don_hang', { ascending: false })
+        .order('id', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false });
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_ORDERS_TABLE, { orders: [], total: 0 });
@@ -6276,14 +6293,14 @@ export function createApp() {
         ({ data, error } = await supabase
           .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
           .select('*')
-          .order('ma_lenh_sx', { ascending: true }));
+          .order('id', { ascending: false }));
       }
 
       if (error && isMissingColumnError(error)) {
         ({ data, error } = await supabase
           .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
           .select('*')
-          .order('id', { ascending: true }));
+          .order('ma_lenh_sx', { ascending: false }));
       }
 
       if (error) {
@@ -6498,8 +6515,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_PRODUCTION_PLANS_TABLE)
         .select('*')
-        .order('ngay_ke_hoach', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(Math.min(Number(req.query.limit) || 100, 500));
 
       const planDate = parseProductionPlanDateInput(req.query.ngay ?? req.query.planDate);
@@ -6851,12 +6868,14 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_CUSTOMERS_TABLE)
         .select('*')
-        .order('ten_khach_hang', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error && isMissingColumnError(error)) {
         const fallback = await supabase
           .from(SUPABASE_CUSTOMERS_TABLE)
-          .select('*');
+          .select('*')
+          .order('id', { ascending: false });
         if (fallback.error) {
           console.error('Supabase khach_hang query error:', fallback.error);
           return res.status(500).json({
@@ -7127,7 +7146,8 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_SHIPPING_ORDERS_TABLE)
         .select('*')
-        .order('ngay_xuat', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_SHIPPING_ORDERS_TABLE, {
@@ -7214,13 +7234,14 @@ export function createApp() {
       let { data, error } = await supabase
         .from(SUPABASE_SETTINGS_TABLE)
         .select('*')
-        .order('ma_cai_dat', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error && isMissingColumnError(error)) {
         ({ data, error } = await supabase
           .from(SUPABASE_SETTINGS_TABLE)
           .select('*')
-          .order('id', { ascending: true }));
+          .order('id', { ascending: false }));
       }
 
       if (error) {
@@ -7338,7 +7359,8 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_MATERIALS_TABLE)
         .select('*')
-        .order('ma_npl', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_MATERIALS_TABLE, { materials: [], total: 0 });
@@ -7588,8 +7610,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('*')
-        .order('ngay_phieu', { ascending: false })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (loaiFilter) query = query.eq('loai_phieu', loaiFilter);
       if (khoFilter === 'san_pham') {
@@ -7904,7 +7926,9 @@ export function createApp() {
       if (format === 'groups') {
         const { data, error } = await supabase
           .from(SUPABASE_STAFF_TABLE)
-          .select('*');
+          .select('*')
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
 
         if (error) {
           return respondSupabaseReadError(res, error, SUPABASE_STAFF_TABLE, { branches: [], total: 0 });
@@ -8319,7 +8343,8 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_VEHICLES_TABLE)
         .select('*')
-        .order('bien_so_xe', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_VEHICLES_TABLE, { vehicles: [], total: 0 });
@@ -8397,9 +8422,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_DRIVER_RECONCILIATION_TABLE)
         .select('*')
-        .order('nam', { ascending: false })
-        .order('thang', { ascending: false })
-        .order('ten_tai_xe', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (Number.isFinite(year) && year > 0) query = query.eq('nam', Math.trunc(year));
       if (Number.isFinite(month) && month >= 1 && month <= 12) query = query.eq('thang', Math.trunc(month));
@@ -8499,7 +8523,11 @@ export function createApp() {
       const plateNumber = typeof req.query.bien_so_xe === 'string' ? req.query.bien_so_xe.trim() : '';
       const fromDate = typeof req.query.tu_ngay === 'string' ? req.query.tu_ngay.trim() : '';
       const toDate = typeof req.query.den_ngay === 'string' ? req.query.den_ngay.trim() : '';
-      let query = supabase.from(SUPABASE_CUSTOMER_PAYMENTS_TABLE).select('*').order('ngay_thu', { ascending: false });
+      let query = supabase
+        .from(SUPABASE_CUSTOMER_PAYMENTS_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (customerCode) query = query.eq('ma_khach_hang', customerCode);
       if (plateNumber) query = query.eq('bien_so_xe', plateNumber);
@@ -8860,7 +8888,11 @@ export function createApp() {
         const plateNumber = typeof req.query.bien_so_xe === 'string' ? req.query.bien_so_xe.trim() : '';
         const fromDate = typeof req.query.tu_ngay === 'string' ? req.query.tu_ngay.trim() : '';
         const toDate = typeof req.query.den_ngay === 'string' ? req.query.den_ngay.trim() : '';
-        let query = supabase.from(route.table).select('*').order(route.dateColumn, { ascending: false });
+        let query = supabase
+          .from(route.table)
+          .select('*')
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
 
         if (plateNumber) query = query.eq('bien_so_xe', plateNumber);
         if (fromDate) query = query.gte(route.dateColumn, fromDate);
@@ -8961,7 +8993,9 @@ export function createApp() {
       let query = db
         .from(SUPABASE_CAN_TU_DONG_TABLE)
         .select('*')
-        .order('captured_at', { ascending: false })
+        // Dữ liệu cân tự động dùng captured_at làm thời điểm bản ghi được tạo/thu nhận.
+        .order('captured_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (deviceId) query = query.eq('device_id', deviceId);
@@ -9118,7 +9152,8 @@ export function createApp() {
       let query = db
         .from(SUPABASE_KIEM_KHO_TABLE)
         .select('*')
-        .order('ngay_gio_kiem_kho', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (tenKho) query = query.eq('ten_kho', tenKho);
@@ -9550,7 +9585,8 @@ export function createApp() {
       let query = db
         .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
         .select('*')
-        .order('chot_luc', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (dotKiemKho) query = query.eq('dot_kiem_kho', dotKiemKho);
@@ -9674,6 +9710,311 @@ export function createApp() {
     }
   });
 
+  // Đối chiếu số lượng kiểm kê (kiem_kho_tong_hop, DB kiem-kho) với tồn cuối kỳ
+  // sổ sách (RPC ton_kho_nvl_gop/ton_kho_san_pham_gop, DB chính) cho 1 đợt kiểm
+  // kho. Hai nguồn nằm trên 2 Supabase project khác nhau nên phải gộp ở Node,
+  // không thể JOIN SQL thẳng — xem docs/ai-tables/kiem_kho_chenh_lech.md.
+  app.get('/api/kiem-kho/chenh-lech', async (req, res) => {
+    try {
+      const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
+      if (!dotKiemKho) {
+        return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+      }
+      const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim() || null;
+
+      const kiemKhoResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+      if (!kiemKhoResolved) {
+        return res.status(503).json({
+          error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa có trên Supabase mới lẫn cũ.`
+        });
+      }
+      if (!supabase) {
+        return res.status(503).json({ error: 'Supabase (DB chính) chưa được cấu hình.' });
+      }
+
+      const { data: dotRows, error: dotError } = await kiemKhoResolved.client
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
+        .eq('dot_kiem_kho', dotKiemKho);
+      if (dotError) {
+        return res.status(500).json({
+          error: dotError.message || 'Không tải được thông tin đợt kiểm kho.',
+          db: kiemKhoResolved.label
+        });
+      }
+      const dotGroup = computeKiemKhoDotGroups(dotRows || [])[0];
+      if (!dotGroup) {
+        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
+      }
+
+      let tongHopRows: Array<{ ma_nvl: string; ten_sp: string | null; loai_sp: string | null; tong_so_luong: number }> = [];
+      if (dotGroup.da_xac_nhan) {
+        const { data, error } = await kiemKhoResolved.client
+          .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+          .select('ma_nvl, ten_sp, loai_sp, tong_so_luong')
+          .eq('dot_kiem_kho', dotKiemKho);
+        if (error) {
+          return res.status(500).json({
+            error: error.message || 'Không tải được bảng tổng hợp kiểm kho.',
+            db: kiemKhoResolved.label
+          });
+        }
+        tongHopRows = data || [];
+      } else {
+        const { data, error } = await kiemKhoResolved.client.rpc('kiem_kho_gop_theo_ma_nvl', {
+          p_dot: dotKiemKho
+        });
+        if (error) {
+          return res.status(500).json({
+            error: error.message || 'Không gộp được số lượng kiểm kê (đợt chưa chốt).',
+            db: kiemKhoResolved.label
+          });
+        }
+        tongHopRows = data || [];
+      }
+
+      // Tồn hệ thống được xem tại thời điểm chốt đợt (hoặc hôm nay nếu chưa chốt).
+      const denNgay =
+        dotGroup.da_xac_nhan && dotGroup.thoi_gian_xac_nhan
+          ? String(dotGroup.thoi_gian_xac_nhan).slice(0, 10)
+          : new Date().toISOString().slice(0, 10);
+      const tuNgay = dotGroup.ngay_bat_dau ? String(dotGroup.ngay_bat_dau).slice(0, 10) : null;
+
+      // Trang xử lý chênh lệch này chỉ áp dụng cho thành phẩm.
+      const spResult = await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay);
+      if (spResult.error) {
+        return res.status(500).json({ error: spResult.error.message || 'Không tải được tồn kho thành phẩm.' });
+      }
+      const spRowsRaw = Array.isArray(spResult.data) ? (spResult.data as TonKhoGopRow[]) : [];
+      const spRows = groupTonKhoRowsByPrefix(spRowsRaw);
+      const spMap = new Map(spRows.map(row => [row.ma, row]));
+
+      // Chi tiết chưa gộp theo tiền tố (từng lô/hậu tố riêng) — dùng để giải thích một
+      // con số chênh lệch đã gộp (VD "97") gồm những lô/kho cụ thể nào bên hệ thống.
+      const heThongChiTiet = spRowsRaw.map(row => ({
+        ma: row.ma,
+        ma_goc: extractTonKhoPrefix(row.ma) || row.ma,
+        ten: row.ten,
+        loai_kho: 'san_pham' as const,
+        don_vi: row.don_vi,
+        ten_kho: row.ten_kho,
+        ton_cuoi_ky: row.ton_cuoi_ky
+      }));
+
+      const xuLyMap = new Map<string, { ma_phieu_dieu_chinh: string; loai_phieu: string | null }>();
+      const xuLyResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);
+      if (xuLyResolved) {
+        const { data: xuLyRows, error: xuLyError } = await xuLyResolved.client
+          .from(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
+          .select('ma_sp, ma_phieu_dieu_chinh, loai_phieu, xu_ly_luc')
+          .eq('dot_kiem_kho', dotKiemKho)
+          .order('xu_ly_luc', { ascending: true });
+        if (!xuLyError) {
+          for (const row of xuLyRows || []) {
+            const ma = String((row as any).ma_sp ?? '').trim();
+            if (!ma) continue;
+            xuLyMap.set(ma, {
+              ma_phieu_dieu_chinh: String((row as any).ma_phieu_dieu_chinh ?? ''),
+              loai_phieu: (row as any).loai_phieu ?? null
+            });
+          }
+        }
+      }
+
+      // Bảng tổng hợp là hợp của mã thành phẩm đã kiểm kê và mọi thành phẩm hệ
+      // thống còn tồn dương.
+      // Các dòng hệ thống đã được groupTonKhoRowsByPrefix() nên những mã khác hậu tố
+      // nhưng cùng tiền tố được cộng về đúng một mã gốc trước khi tính chênh lệch.
+      const kiemKeByMa = new Map<string, any>();
+      for (const row of tongHopRows || []) {
+        const maDayDu = String((row as any).ma_nvl ?? '').trim();
+        const ma = extractTonKhoPrefix(maDayDu) || maDayDu;
+        if (!ma) continue;
+        const existing = kiemKeByMa.get(ma);
+        if (existing) {
+          existing.tong_so_luong += Number((row as any).tong_so_luong) || 0;
+        } else {
+          kiemKeByMa.set(ma, {
+            ...row,
+            ma_nvl: ma,
+            tong_so_luong: Number((row as any).tong_so_luong) || 0
+          });
+        }
+      }
+
+      // Tính chênh lệch theo từng mã sản phẩm nguyên bản. Bảng tổng hợp phía dưới
+      // vẫn gom theo tiền tố, nhưng trạng thái xử lý của một nhóm chỉ hoàn tất khi
+      // mọi mã nguyên bản đang lệch trong nhóm đều đã có lịch sử tạo phiếu.
+      const kiemKeTheoMaDayDu = new Map<string, number>();
+      for (const row of dotRows || []) {
+        const maDayDu = String((row as any).ma_sp ?? '').trim();
+        if (!maDayDu) continue;
+        kiemKeTheoMaDayDu.set(maDayDu, (kiemKeTheoMaDayDu.get(maDayDu) || 0) + 1);
+      }
+      const tonTheoMaDayDu = new Map<string, number>();
+      for (const row of spRowsRaw) {
+        const maDayDu = String(row.ma ?? '').trim();
+        if (!maDayDu) continue;
+        tonTheoMaDayDu.set(maDayDu, (tonTheoMaDayDu.get(maDayDu) || 0) + Number(row.ton_cuoi_ky || 0));
+      }
+      const maLechTheoMaGoc = new Map<string, string[]>();
+      const maDayDuDoiChieu = new Set<string>([...kiemKeTheoMaDayDu.keys(), ...tonTheoMaDayDu.keys()]);
+      for (const maDayDu of maDayDuDoiChieu) {
+        const chenhLechChiTiet = (kiemKeTheoMaDayDu.get(maDayDu) || 0) - Math.max(0, tonTheoMaDayDu.get(maDayDu) || 0);
+        if (chenhLechChiTiet === 0) continue;
+        const maGoc = extractTonKhoPrefix(maDayDu) || maDayDu;
+        const codes = maLechTheoMaGoc.get(maGoc) || [];
+        codes.push(maDayDu);
+        maLechTheoMaGoc.set(maGoc, codes);
+      }
+      const comparisonCodes = new Set<string>(kiemKeByMa.keys());
+      for (const row of spRows) {
+        if (row.ton_cuoi_ky > 0) comparisonCodes.add(row.ma);
+      }
+
+      const records = Array.from(comparisonCodes)
+        .map(ma => {
+          const kiemKeRow = kiemKeByMa.get(ma) || null;
+          const tonThucTe = Number(kiemKeRow?.tong_so_luong) || 0;
+          const spCandidate = spMap.get(ma);
+          const spMatch = spCandidate && spCandidate.ton_cuoi_ky > 0 ? spCandidate : undefined;
+          const matched = spMatch || spCandidate;
+          const loaiKho: 'san_pham' | null = spCandidate ? 'san_pham' : null;
+          // Không khớp được danh mục (mã kiểm kê lệch tiền tố so với kho_nvl/san_pham) —
+          // KHÔNG được coi tồn hệ thống = 0 (sẽ ra chênh lệch giả). Đánh dấu riêng
+          // 'khong_xac_dinh' để người dùng biết cần đối chiếu lại mã, không tính vào thừa/thiếu.
+          const tonHeThong = matched ? matched.ton_cuoi_ky : null;
+          const chenhLech = matched ? tonThucTe - (tonHeThong as number) : null;
+          const trangThai: 'khop' | 'thua' | 'thieu' | 'khong_xac_dinh' = !matched
+            ? 'khong_xac_dinh'
+            : chenhLech === 0
+              ? 'khop'
+              : (chenhLech as number) > 0
+                ? 'thua'
+                : 'thieu';
+          const maChiTietCanXuLy = maLechTheoMaGoc.get(ma) || [];
+          // Tương thích lịch sử cũ từng lưu mã gộp: nếu có dòng mã gộp thì coi cả
+          // nhóm đã xử lý. Dữ liệu mới lưu từng mã nguyên bản.
+          const xuLyCuTheoMaGop = xuLyMap.get(ma) || null;
+          const soMaChiTietDaXuLy = maChiTietCanXuLy.filter(code => xuLyMap.has(code)).length;
+          const daXuLyHet = Boolean(xuLyCuTheoMaGop) || (
+            maChiTietCanXuLy.length > 0 && soMaChiTietDaXuLy === maChiTietCanXuLy.length
+          );
+          const dangXuLy = !daXuLyHet && soMaChiTietDaXuLy > 0;
+          const xuLyGanNhat = xuLyCuTheoMaGop || [...maChiTietCanXuLy]
+            .reverse()
+            .map(code => xuLyMap.get(code))
+            .find(Boolean) || null;
+          return {
+            ma_nvl: ma,
+            ten_sp: kiemKeRow?.ten_sp || matched?.ten || ma,
+            loai_sp: kiemKeRow?.loai_sp || null,
+            loai_kho: loaiKho,
+            don_vi: matched?.don_vi || null,
+            ten_kho: matched?.ten_kho || null,
+            ton_thuc_te: tonThucTe,
+            ton_he_thong: tonHeThong,
+            chenh_lech: chenhLech,
+            trang_thai: trangThai,
+            da_xu_ly: daXuLyHet,
+            trang_thai_xu_ly: chenhLech === 0
+              ? 'khong_can_xu_ly'
+              : daXuLyHet
+                ? 'da_xu_ly'
+                : dangXuLy
+                  ? 'dang_xu_ly'
+                  : 'chua_xu_ly',
+            ma_phieu_dieu_chinh: xuLyGanNhat?.ma_phieu_dieu_chinh || null
+          };
+        })
+        .sort((left, right) => left.ma_nvl.localeCompare(right.ma_nvl, 'vi'));
+
+      return res.json({
+        records,
+        total: records.length,
+        dot_kiem_kho: dotKiemKho,
+        da_chot: dotGroup.da_xac_nhan,
+        ngay_bat_dau: dotGroup.ngay_bat_dau,
+        chot_luc: dotGroup.thoi_gian_xac_nhan,
+        he_thong_chi_tiet: heThongChiTiet,
+        xu_ly_chi_tiet: Array.from(xuLyMap.entries()).map(([ma_sp, value]) => ({
+          ma_sp,
+          ma_phieu_dieu_chinh: value.ma_phieu_dieu_chinh,
+          loai_phieu: value.loai_phieu
+        }))
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi đối chiếu chênh lệch kiểm kho.' });
+    }
+  });
+
+  app.post('/api/kiem-kho/chenh-lech-xu-ly', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+    const dotKiemKho = String(body.dot_kiem_kho ?? body.dotKiemKho ?? '').trim();
+    const maSp = String(body.ma_sp ?? body.maSp ?? '').trim();
+    const maPhieuDieuChinh = String(body.ma_phieu_dieu_chinh ?? body.maPhieuDieuChinh ?? '').trim();
+
+    if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+    if (!maSp) return res.status(400).json({ error: 'Thiếu mã sản phẩm.' });
+    if (!maPhieuDieuChinh) return res.status(400).json({ error: 'Thiếu mã phiếu điều chỉnh.' });
+
+    const kiemKhoResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+    if (!kiemKhoResolved) {
+      return res.status(503).json({ error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa được cấu hình.` });
+    }
+    const { data: confirmationRows, error: confirmationError } = await kiemKhoResolved.client
+      .from(SUPABASE_KIEM_KHO_TABLE)
+      .select('thoi_gian_xac_nhan')
+      .eq('dot_kiem_kho', dotKiemKho);
+    if (confirmationError) {
+      return res.status(500).json({
+        error: confirmationError.message || 'Không kiểm tra được trạng thái xác nhận đợt kiểm kho.',
+        db: kiemKhoResolved.label
+      });
+    }
+    if (!confirmationRows?.length) {
+      return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
+    }
+    if (confirmationRows.some(row => !row.thoi_gian_xac_nhan)) {
+      return res.status(409).json({ error: 'Đợt kiểm kho chưa xác nhận, chưa thể xử lý chênh lệch.' });
+    }
+
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_KIEM_KHO_CHENH_LECH_TABLE} chưa có trên Supabase. Hãy chạy supabase-kiem-kho-chenh-lech-xu-ly.sql.`
+      });
+    }
+
+    const soLuongRaw = Number(body.so_luong_dieu_chinh ?? body.soLuongDieuChinh);
+    const record = {
+      dot_kiem_kho: dotKiemKho,
+      ma_sp: maSp,
+      loai_phieu: String(body.loai_phieu ?? body.loaiPhieu ?? '').trim() || null,
+      so_luong_dieu_chinh: Number.isFinite(soLuongRaw) ? soLuongRaw : null,
+      ma_phieu_dieu_chinh: maPhieuDieuChinh,
+      ghi_chu: String(body.ghi_chu ?? body.ghiChu ?? '').trim() || null,
+      nguoi_xu_ly: String(body.nguoi_xu_ly ?? body.nguoiXuLy ?? '').trim() || null
+    };
+
+    try {
+      const { data, error } = await resolved.client
+        .from(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
+        .insert(record)
+        .select('*')
+        .single();
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không lưu được trạng thái xử lý chênh lệch.',
+          db: resolved.label
+        });
+      }
+      return res.status(201).json({ success: true, record: data, db: resolved.label });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi lưu trạng thái xử lý chênh lệch.' });
+    }
+  });
+
   app.get('/api/quan-ly-kho', async (_req, res) => {
     const resolved = await resolveSupabaseClientForTable(SUPABASE_QUAN_LY_KHO_TABLE);
     if (!resolved) {
@@ -9686,8 +10027,8 @@ export function createApp() {
       const { data, error } = await resolved.client
         .from(SUPABASE_QUAN_LY_KHO_TABLE)
         .select('*')
-        .order('ten_kho', { ascending: true })
-        .order('id', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (error) {
         return res.status(500).json({
@@ -9827,7 +10168,9 @@ export function createApp() {
 
   type TonKhoGopRow = {
     ma: string;
+    ma_goc?: string;
     ten: string;
+    loai_sp?: string | null;
     don_vi: string | null;
     ten_kho: string | null;
     ton_dau_ky: number;
@@ -9902,11 +10245,15 @@ export function createApp() {
       const code = String(isProduct ? row.ma_sp ?? '' : row.ma_npl ?? '').trim();
       if (!code) continue;
 
+      // Mã lô/hậu tố (VD "L30cm_3701190208G") thường không có sẵn trong danh mục — mượn tên/đơn vị
+      // từ mã gốc (tiền tố) nếu danh mục đã có, để chi tiết không hiển thị tên trống/mã thô.
+      const prefix = extractTonKhoPrefix(code);
+      const prefixMatch = prefix && prefix !== code ? totals.get(prefix) : undefined;
       const current = totals.get(code) ?? {
         ma: code,
-        ten: code,
-        don_vi: null,
-        ten_kho: tenKho,
+        ten: prefixMatch?.ten || code,
+        don_vi: prefixMatch?.don_vi ?? null,
+        ten_kho: prefixMatch?.ten_kho ?? tenKho,
         ton_dau_ky: 0,
         nhap_trong_ky: 0,
         xuat_trong_ky: 0,
@@ -9938,6 +10285,61 @@ export function createApp() {
         ton_cuoi_ky: row.ton_dau_ky + row.nhap_trong_ky - row.xuat_trong_ky
       }))
       .sort((left, right) => left.ma.localeCompare(right.ma, 'vi'));
+  }
+
+  /** Tiền tố trước `_` (VD: "MT-L30cm 0.1kg_3701190208G" → "MT-L30cm 0.1kg") — mỗi lô/hậu tố là một `ma` riêng ở chi tiết, tổng hợp gộp lại theo tiền tố này. */
+  function extractTonKhoPrefix(ma: string): string {
+    const trimmed = String(ma ?? '').trim();
+    if (!trimmed) return '';
+    const underscoreIdx = trimmed.indexOf('_');
+    return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
+  }
+
+  function groupTonKhoRowsByPrefix(rows: TonKhoGopRow[]): TonKhoGopRow[] {
+    const groups = new Map<string, TonKhoGopRow & { hasExactCatalogMatch: boolean }>();
+
+    for (const row of rows) {
+      const prefix = extractTonKhoPrefix(row.ma) || row.ma;
+      const isExactMatch = row.ma === prefix;
+      let group = groups.get(prefix);
+      if (!group) {
+        group = {
+          ma: prefix,
+          ten: row.ten,
+          don_vi: row.don_vi,
+          ten_kho: row.ten_kho,
+          ton_dau_ky: 0,
+          nhap_trong_ky: 0,
+          xuat_trong_ky: 0,
+          ton_cuoi_ky: 0,
+          hasExactCatalogMatch: isExactMatch
+        };
+        groups.set(prefix, group);
+      }
+
+      group.ton_dau_ky += row.ton_dau_ky;
+      group.nhap_trong_ky += row.nhap_trong_ky;
+      group.xuat_trong_ky += row.xuat_trong_ky;
+      if (!group.ten_kho && row.ten_kho) group.ten_kho = row.ten_kho;
+
+      // Ưu tiên tên/đơn vị từ đúng mã gốc (tiền tố) trong danh mục; các dòng lô/hậu tố chỉ dùng để bổ sung khi chưa có.
+      if (isExactMatch) {
+        group.ten = row.ten;
+        group.don_vi = row.don_vi;
+        group.hasExactCatalogMatch = true;
+      } else if (!group.hasExactCatalogMatch && row.ten && row.ten !== row.ma) {
+        group.ten = row.ten;
+        group.don_vi = group.don_vi || row.don_vi;
+      }
+    }
+
+    return Array.from(groups.values())
+      .map(({ hasExactCatalogMatch, ...row }) => ({
+        ...row,
+        // Sau khi gộp mọi mã cùng tiền tố, luôn tính tồn cuối từ đúng công thức kho.
+        ton_cuoi_ky: row.ton_dau_ky + row.nhap_trong_ky - row.xuat_trong_ky
+      }))
+      .sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
   }
 
   let hasWarnedMissingTonKhoRpc = false;
@@ -9974,21 +10376,35 @@ export function createApp() {
     }
 
     try {
-      const loaiKho = parseWarehouseStorageType(req.query.loai_kho ?? req.query.loaiKho) ?? 'nvl';
       const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
       const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
 
-      const { data, error } = await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay);
-      if (error) {
-        console.error('Supabase ton-kho chi-tiet RPC error:', error);
+      // Danh sách chi tiết phải là từng mã lô/serial còn tồn ở cuối khoảng ngày đã chọn,
+      // không phải mọi mã từng phát sinh phiếu trong kỳ. Không gọi hàm group theo tiền tố
+      // ở đây để `MT-L30cm 0.1kg_3701190208G` vẫn là một dòng độc lập.
+      const result = await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay);
+      if (result.error) {
+        console.error('Supabase ton-kho chi-tiet RPC error:', result.error);
         return res.status(500).json({
-          error: error.message || 'Không thể tải danh sách chi tiết tồn kho. Hãy chạy supabase-ton-kho-rpc.sql.'
+          error: result.error.message || 'Không thể tải danh sách chi tiết tồn kho.'
         });
       }
 
-      const records = Array.isArray(data) ? data : [];
-      return res.json({ records, total: records.length, source: 'supabase' });
+      const records = (Array.isArray(result.data) ? (result.data as TonKhoGopRow[]) : [])
+        .filter(row => Number(row.ton_cuoi_ky) > 0)
+        .map(row => ({
+          ...row,
+          ma_goc: extractTonKhoPrefix(row.ma),
+          loai_sp: 'Thành phẩm'
+        }))
+        .sort((left, right) => left.ma.localeCompare(right.ma, 'vi'));
+
+      return res.json({
+        records,
+        total: records.length,
+        source: 'supabase'
+      });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải danh sách chi tiết tồn kho.' });
     }
@@ -10000,12 +10416,13 @@ export function createApp() {
     }
 
     try {
-      const loaiKho = parseWarehouseStorageType(req.query.loai_kho ?? req.query.loaiKho) ?? 'nvl';
       const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
       const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
 
-      const { data, error } = await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay);
+      const results = [await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay)];
+      const failedResult = results.find(result => result.error);
+      const error = failedResult?.error;
       if (error) {
         console.error('Supabase ton-kho tong-hop RPC error:', error);
         return res.status(500).json({
@@ -10013,7 +10430,9 @@ export function createApp() {
         });
       }
 
-      const records = Array.isArray(data) ? data : [];
+      const data = results.flatMap(result => (Array.isArray(result.data) ? (result.data as TonKhoGopRow[]) : []));
+      // Trang tồn kho chỉ liệt kê mặt hàng thực sự còn tồn ở cuối khoảng ngày.
+      const records = groupTonKhoRowsByPrefix(data).filter(row => Number(row.ton_cuoi_ky) > 0);
       return res.json({ records, total: records.length, source: 'supabase' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải bảng tổng hợp tồn kho.' });
@@ -10047,8 +10466,8 @@ export function createApp() {
         let query = supabase!
           .from(SUPABASE_MIXING_REPORTS_TABLE)
           .select('*')
-          .order('ngay', { ascending: false })
-          .order('gio', { ascending: false });
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false });
 
         if (ngay) {
           query = query.eq('ngay', ngay);
@@ -10286,8 +10705,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_MIXING_NORM_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (ngay) query = query.eq('ngay', ngay);
 
@@ -10407,8 +10826,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_ACTUAL_MIXING_SHEET_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
       if (ngay) query = query.eq('ngay', ngay);
       if (ca) query = query.eq('ca', ca);
       const { data, error } = await query.limit(2000);
@@ -10524,8 +10943,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('gio', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (ngay) {
@@ -10728,8 +11147,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_MACHINE_DOWNTIME_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (ngay) query = query.eq('ngay', ngay);
@@ -10817,8 +11236,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_MACHINE_RUN_LOG_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
         .limit(limit);
 
       if (ngay) query = query.eq('ngay', ngay);
@@ -10924,8 +11343,8 @@ export function createApp() {
       let query = supabase
         .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
         .select('*')
-        .order('ngay', { ascending: false })
-        .order('gio', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
 
       if (ngay) {
         query = query.eq('ngay', ngay);

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, Scale, Trash2 } from 'lucide-react';
-import { BackButton } from '../../components/layout/NavButtons';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
@@ -348,8 +347,7 @@ export function CanTuDongPanel({
     <div className="w-full max-w-none space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <BackButton onClick={onBack} />
-          <div className="mt-3 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#ef1b2d]/10 text-[#ef1b2d]">
               <Scale className="h-5 w-5" />
             </span>

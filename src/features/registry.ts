@@ -7,6 +7,7 @@ export type TableId =
   | 'phieu_can_dinh_ki'
   | 'can_tu_dong'
   | 'kiem_kho'
+  | 'kiem_kho_chenh_lech'
   | 'quan_ly_kho'
   | 'bao_cao_hang_hong'
   | 'san_pham'
@@ -90,6 +91,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'kiem-kho',
     appLines: 'src/features/kiem-kho/index.tsx',
     components: ['src/components/ProductQrScanner.tsx'],
+    utils: []
+  },
+  kiem_kho_chenh_lech: {
+    table: 'kiem_kho_chenh_lech',
+    label: 'Xử lý chênh lệch kiểm kho',
+    sql: ['supabase-kiem-kho-chenh-lech-xu-ly.sql'],
+    apiPrefix: '/api/kiem-kho/chenh-lech',
+    serverLines: 'GET /api/kiem-kho/chenh-lech + POST /api/kiem-kho/chenh-lech-xu-ly (gộp kiem_kho_tong_hop DB kiem-kho + RPC ton_kho_*_gop DB chính)',
+    appTab: 'kiem-kho-chenh-lech',
+    appLines: 'src/features/xu-ly-chenh-lech/index.tsx',
+    components: [],
     utils: []
   },
   quan_ly_kho: {
@@ -192,7 +204,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   khach_hang: {
     table: 'khach_hang',
     label: 'Khách hàng',
-    sql: ['supabase-don-hang-san-pham.sql'],
+    sql: ['supabase-khach-hang.sql'],
     apiPrefix: '/api/khach-hang',
     serverLines: '5601–5644',
     appTab: 'customers',

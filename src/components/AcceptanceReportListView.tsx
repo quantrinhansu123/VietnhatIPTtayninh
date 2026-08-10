@@ -236,13 +236,13 @@ function buildDateGroups(reports: AcceptanceReport[]): AcceptanceDateGroup[] {
   return [...grouped.entries()]
     .map(([ngay, groupReports]) => ({
       ngay,
-      reports: [...groupReports].sort((a, b) => {
-        const byCa = String(a.ca).localeCompare(String(b.ca), 'vi');
-        if (byCa !== 0) return byCa;
-        return compareAcceptanceReports(a, b);
-      })
+      reports: [...groupReports].sort((a, b) =>
+        String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')) || compareAcceptanceReports(a, b)
+      )
     }))
-    .sort((a, b) => b.ngay.localeCompare(a.ngay));
+    .sort((a, b) =>
+      String(b.reports[0]?.created_at ?? '').localeCompare(String(a.reports[0]?.created_at ?? ''))
+    );
 }
 
 export default function AcceptanceReportListView({

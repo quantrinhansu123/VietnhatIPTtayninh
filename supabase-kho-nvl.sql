@@ -5,6 +5,22 @@ create table if not exists public.kho_nvl (
   created_at timestamptz not null default now()
 );
 
+-- Tự vá cho bảng đã tồn tại nhưng thiếu cột id (VD tạo thủ công/import trước đó) —
+-- create table if not exists ở trên bị bỏ qua trong trường hợp này nên phải thêm riêng.
+alter table public.kho_nvl
+  add column if not exists id uuid default gen_random_uuid();
+update public.kho_nvl set id = gen_random_uuid() where id is null;
+alter table public.kho_nvl
+  alter column id set not null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'kho_nvl_pkey'
+  ) then
+    alter table public.kho_nvl add constraint kho_nvl_pkey primary key (id);
+  end if;
+end $$;
+
 alter table public.kho_nvl
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists ma_npl text,

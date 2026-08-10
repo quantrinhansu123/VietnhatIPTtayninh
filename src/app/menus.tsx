@@ -56,7 +56,7 @@ import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
-  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban
+  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight
 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
@@ -635,6 +635,12 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     icon: ClipboardList,
     icon3d: reportList3d,
     tab: 'kiem-kho'
+  },
+  {
+    title: 'Xử lý chênh lệch',
+    desc: 'Đối chiếu số lượng kiểm kê với tồn cuối và tạo phiếu điều chỉnh.',
+    icon: ArrowLeftRight,
+    tab: 'kiem-kho-chenh-lech'
   },
   {
     title: 'Lịch sử xuất nhập',

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2, Pencil, Plus, Save, Trash2, Warehouse, X } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
-import { BackButton } from '../../components/layout/NavButtons';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import {
   TableToolbar,
@@ -179,8 +178,6 @@ export function QuanLyKhoPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4">
-      <BackButton onClick={onBack} />
-
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
         <div className="bg-white p-3 text-slate-700 border-b border-slate-200">
           <div className="flex items-start justify-between gap-3">

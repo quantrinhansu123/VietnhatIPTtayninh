@@ -449,16 +449,14 @@ export function VehiclesPanel({
       <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <BackButton
-              onClick={() => {
-                if (activeView) {
+            {activeView ? (
+              <BackButton
+                onClick={() => {
                   setActiveView(null);
                   setError('');
-                  return;
-                }
-                onBack();
-              }}
-            />
+                }}
+              />
+            ) : null}
             <div className="min-w-0">
               <h2 className="truncate font-display text-base font-bold text-slate-900">Quản lý xe & lái xe</h2>
               <p className="text-[11px] font-medium text-slate-500">Danh mục, chi phí, nhật ký và đối chiếu lái xe</p>

@@ -67,6 +67,7 @@ interface WeighingSlip {
   worker1: string;
   worker2: string;
   machineName: string;
+  createdAt: string;
   rows: WeighingRecord[];
 }
 
@@ -81,6 +82,7 @@ interface ShiftDateGroup {
   shiftKey: string;
   shiftLabel: string;
   slips: WeighingSlip[];
+  createdAt: string;
   slipCount: number;
   totalWeighRounds: number;
 }
@@ -88,6 +90,7 @@ interface ShiftDateGroup {
 interface DateGroup {
   date: string;
   shiftGroups: ShiftDateGroup[];
+  createdAt: string;
   slipCount: number;
   totalWeighRounds: number;
 }
@@ -154,6 +157,9 @@ function groupSlipsByDateAndShift(records: WeighingRecord[], shiftOptions: Shift
     const existing = slipMap.get(key);
     if (existing) {
       existing.rows.push(record);
+      if (String(record.createdAt ?? '').localeCompare(existing.createdAt) > 0) {
+        existing.createdAt = String(record.createdAt ?? '');
+      }
       const machineName = resolveMachineName(record.machineName, existing.machineName);
       if (machineName !== '—') {
         existing.machineName = machineName;
@@ -170,6 +176,7 @@ function groupSlipsByDateAndShift(records: WeighingRecord[], shiftOptions: Shift
       worker1: record.worker1,
       worker2: record.worker2,
       machineName: resolveMachineName(record.machineName),
+      createdAt: String(record.createdAt ?? ''),
       rows: [record]
     });
   });
@@ -193,26 +200,29 @@ function groupSlipsByDateAndShift(records: WeighingRecord[], shiftOptions: Shift
         .map(option => {
           const shiftSlips = dateSlips
             .filter(slip => resolveShiftName(slip.shiftName, shiftOptions) === option.value)
-            .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
           return {
             shiftKey: option.value,
             shiftLabel: option.label,
             slips: shiftSlips,
+            createdAt: shiftSlips[0]?.createdAt ?? '',
             slipCount: shiftSlips.length,
             totalWeighRounds: shiftSlips.reduce((sum, slip) => sum + countWeighingRounds(slip.rows), 0)
           };
         })
-        .filter(group => group.slipCount > 0);
+        .filter(group => group.slipCount > 0)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
       return {
         date,
         shiftGroups,
+        createdAt: shiftGroups[0]?.createdAt ?? '',
         slipCount: dateSlips.length,
         totalWeighRounds: dateSlips.reduce((sum, slip) => sum + countWeighingRounds(slip.rows), 0)
       };
     })
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function findWeighingSlipInGroups(groups: DateGroup[], record: WeighingRecord): WeighingSlip | null {

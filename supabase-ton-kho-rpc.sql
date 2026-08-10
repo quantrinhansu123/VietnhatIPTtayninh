@@ -8,6 +8,11 @@
 -- Cong thuc: ton_dau_ky (cua ky dang xem) = ton_dau_ky goc (kho_nvl/san_pham.ton_dau_ky)
 --   + nhap truoc p_tu_ngay - xuat truoc p_tu_ngay (neu p_tu_ngay khong null).
 -- ton_cuoi_ky = ton_dau_ky + nhap_trong_ky - xuat_trong_ky.
+--
+-- Ma lo/hau to: mot ma NVL/SP co the co nhieu dong voi hau to lo/serial sau dau "_"
+-- (VD "L30cm_3701190208G"), moi hau to la mot `ma` rieng o day (chi tiet). Ten/don_vi cho
+-- cac ma hau to duoc muon tu ma goc (tien to truoc "_") trong danh muc khi khong khop dung.
+-- Trang /ton-kho gop cac dong cung tien to lai o Bang tong hop (xu ly rieng, khong trong RPC nay).
 
 create or replace function public.ton_kho_nvl_gop(p_ten_kho text, p_tu_ngay date, p_den_ngay date)
 returns table (
@@ -64,15 +69,18 @@ as $$
   )
   select
     c.ma,
-    coalesce(cat.ten, c.ma) as ten,
-    cat.don_vi,
-    coalesce(cat.ten_kho, p_ten_kho) as ten_kho,
+    -- Mã lô/hậu tố (VD "L30cm_3701190208G") không có trong danh mục — mượn tên/đơn vị của mã
+    -- gốc (tiền tố trước dấu "_") nếu có, để chi tiết không hiển thị tên trống/mã thô.
+    coalesce(cat.ten, cat_prefix.ten, c.ma) as ten,
+    coalesce(cat.don_vi, cat_prefix.don_vi) as don_vi,
+    coalesce(cat.ten_kho, cat_prefix.ten_kho, p_ten_kho) as ten_kho,
     coalesce(cat.baseline, 0) + coalesce(oa.adj, 0) as ton_dau_ky,
     coalesce(pt.nhap, 0) as nhap_trong_ky,
     coalesce(pt.xuat, 0) as xuat_trong_ky,
     coalesce(cat.baseline, 0) + coalesce(oa.adj, 0) + coalesce(pt.nhap, 0) - coalesce(pt.xuat, 0) as ton_cuoi_ky
   from codes c
   left join catalog cat on cat.ma = c.ma
+  left join catalog cat_prefix on cat.ma is null and cat_prefix.ma = split_part(c.ma, '_', 1)
   left join opening_adj oa on oa.ma = c.ma
   left join period_totals pt on pt.ma = c.ma
   order by c.ma;
@@ -133,15 +141,16 @@ as $$
   )
   select
     c.ma,
-    coalesce(cat.ten, c.ma) as ten,
-    cat.don_vi,
-    coalesce(cat.ten_kho, p_ten_kho) as ten_kho,
+    coalesce(cat.ten, cat_prefix.ten, c.ma) as ten,
+    coalesce(cat.don_vi, cat_prefix.don_vi) as don_vi,
+    coalesce(cat.ten_kho, cat_prefix.ten_kho, p_ten_kho) as ten_kho,
     coalesce(cat.baseline, 0) + coalesce(oa.adj, 0) as ton_dau_ky,
     coalesce(pt.nhap, 0) as nhap_trong_ky,
     coalesce(pt.xuat, 0) as xuat_trong_ky,
     coalesce(cat.baseline, 0) + coalesce(oa.adj, 0) + coalesce(pt.nhap, 0) - coalesce(pt.xuat, 0) as ton_cuoi_ky
   from codes c
   left join catalog cat on cat.ma = c.ma
+  left join catalog cat_prefix on cat.ma is null and cat_prefix.ma = split_part(c.ma, '_', 1)
   left join opening_adj oa on oa.ma = c.ma
   left join period_totals pt on pt.ma = c.ma
   order by c.ma;

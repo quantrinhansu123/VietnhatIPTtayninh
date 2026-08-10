@@ -427,14 +427,18 @@ export function buildMachineNvlReportGroups(
               )
             }))
             .sort((left, right) =>
-              (left.tenMay || left.maMay || '').localeCompare(right.tenMay || right.maMay || '', 'vi')
+              (right.reports[0]?.createdAt || '').localeCompare(left.reports[0]?.createdAt || '')
             )
         }))
-        .sort((left, right) => {
-          const byShiftIndex = shiftOrder(left.ca) - shiftOrder(right.ca);
-          if (byShiftIndex !== 0) return byShiftIndex;
-          return left.ca.localeCompare(right.ca, 'vi');
-        })
+        .sort((left, right) =>
+          (right.machines[0]?.reports[0]?.createdAt || '').localeCompare(
+            left.machines[0]?.reports[0]?.createdAt || ''
+          ) || shiftOrder(left.ca) - shiftOrder(right.ca)
+        )
     }))
-    .sort((left, right) => right.ngay.localeCompare(left.ngay));
+    .sort((left, right) =>
+      (right.shifts[0]?.machines[0]?.reports[0]?.createdAt || '').localeCompare(
+        left.shifts[0]?.machines[0]?.reports[0]?.createdAt || ''
+      )
+    );
 }

@@ -60,6 +60,8 @@ function compareMixingReportsForList(
   right: MixingReport,
   shiftOptions: ReturnType<typeof getProductionShiftOptions>
 ) {
+  const byCreated = String(right.created_at ?? '').localeCompare(String(left.created_at ?? ''));
+  if (byCreated !== 0) return byCreated;
   const shiftOrder = (ca: string) => {
     const index = shiftOptions.findIndex(
       option => option.value === ca || shiftNamesMatch(option.value, ca) || shiftNamesMatch(option.label, ca)
@@ -259,8 +261,10 @@ export default function MixingReportListView({
       map.set(key, list);
     }
     return [...map.entries()]
-      .sort((left, right) => right[0].localeCompare(left[0]))
-      .map(([ngay, groupReports]) => ({ ngay, reports: groupReports }));
+      .map(([ngay, groupReports]) => ({ ngay, reports: groupReports }))
+      .sort((left, right) =>
+        String(right.reports[0]?.created_at ?? '').localeCompare(String(left.reports[0]?.created_at ?? ''))
+      );
   }, [sortedReports]);
 
   const loadReferenceData = async () => {

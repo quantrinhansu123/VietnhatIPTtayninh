@@ -1812,7 +1812,9 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(plan);
     });
-    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0], 'vi'));
+    return [...map.entries()].sort((a, b) =>
+      String(b[1][0]?.createdAt ?? '').localeCompare(String(a[1][0]?.createdAt ?? ''))
+    );
   }, [plans]);
 
   const applyFilters = () => {

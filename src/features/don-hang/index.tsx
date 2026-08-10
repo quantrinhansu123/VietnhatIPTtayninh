@@ -126,7 +126,15 @@ export function normalizeOrders(data: unknown): OrderRow[] {
         createdAt: formatCell(record.created_at)
       };
     })
-    .filter((order): order is OrderRow => Boolean(order));
+    .filter((order): order is OrderRow => Boolean(order))
+    .sort((left, right) => {
+      const byOrderCode = right.orderCode.localeCompare(left.orderCode, 'vi', { numeric: true });
+      if (byOrderCode !== 0) return byOrderCode;
+      const byId = right.id.localeCompare(left.id, 'vi', { numeric: true });
+      if (byId !== 0) return byId;
+      const byCreated = right.createdAt.localeCompare(left.createdAt);
+      return byCreated;
+    });
 }
 
 export type OrderProductFormLine = {

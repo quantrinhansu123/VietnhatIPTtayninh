@@ -7,12 +7,14 @@ Phần code của tính năng đã hoàn tất và đã qua typecheck/build. Tra
 - Thêm `ten_kho` cho `kho_nvl`, `san_pham`, `phieu_xuat_nhap_kho` qua ba migration riêng.
 - Thêm RPC tính tồn đầu kỳ, nhập, xuất và tồn cuối kỳ trong `supabase-ton-kho-rpc.sql`.
 - Backend tự chuyển sang tính trực tiếp từ ba bảng nguồn khi RPC chưa được cài (`PGRST202`); chạy RPC vẫn được khuyến nghị để tối ưu hiệu năng.
-- Hai tab tồn kho dùng chung một tập mã theo bộ lọc: **Danh sách chi tiết** hiển thị mỗi mã QR/SKU thành một dòng; **Bảng tổng hợp** hiển thị tồn đầu, nhập, xuất và tồn cuối của chính các mã đó.
+- **Danh sách chi tiết** và **Bảng tổng hợp** đều lấy từ dữ liệu tồn kho (`kho_nvl`/`san_pham` kết hợp `phieu_xuat_nhap_kho`). Chi tiết liệt kê mỗi mã hàng một dòng; tổng hợp hiển thị tồn đầu, nhập, xuất và tồn cuối.
 - Thêm API `GET /api/ton-kho/chi-tiet` và `GET /api/ton-kho/tong-hop`.
 - Thêm trang `src/features/ton-kho/index.tsx`, routing, menu và phân quyền.
 - Danh mục NVL và Sản phẩm đều có dropdown kho lấy từ `/api/quan-ly-kho`, có cột Kho trong danh sách và thông tin chi tiết.
 - Form Phiếu xuất/nhập kho bắt buộc chọn kho, gửi `tenKho` lên backend và khôi phục đúng kho khi sửa phiếu từ lịch sử.
 - Đã cập nhật `src/features/registry.ts` và các manifest trong `docs/ai-tables/`.
+- Phiếu xuất/nhập kho hỗ trợ quét QR/tem để nhập mã có hậu tố lô/serial (VD `L30cm_3701190208G`) — mỗi hậu tố là một dòng `ma_npl`/`ma_sp` riêng trong `phieu_xuat_nhap_kho`. Tên/ĐVT được tra theo tiền tố trước dấu `_` trong danh mục khi mã hậu tố chưa có sẵn.
+- **Danh sách chi tiết** vẫn liệt kê từng mã (kể cả các mã hậu tố) một dòng riêng. **Bảng tổng hợp** gộp các dòng cùng tiền tố (khác hậu tố) lại thành một dòng, cộng dồn tồn đầu/nhập/xuất/tồn cuối.
 - `npm run lint` (`tsc --noEmit`) đã chạy thành công.
 - `npm run build` đã chạy thành công; chỉ còn cảnh báo kích thước chunk Vite, không làm build thất bại.
 

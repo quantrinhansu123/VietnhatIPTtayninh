@@ -1224,23 +1224,37 @@ export default function ControlBoardBbMachineReportTable({
   return (
     <>
     <section className="control-board-report-theme overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-800 bg-gradient-to-r from-[#b30d1c] to-[#ef1b2d] px-3 py-2 text-white">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Báo cáo máy BB</p>
-          <h3 className="text-sm font-black sm:text-base">Báo cáo tổng hợp máy BB</h3>
+      <div className="border-b border-red-800 bg-gradient-to-r from-[#b30d1c] to-[#ef1b2d] px-3 py-3 text-white">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Báo cáo máy BB</p>
+            <h3 className="text-sm font-black sm:text-base">Báo cáo tổng hợp máy BB</h3>
+          </div>
+          <button
+            type="button"
+            id="bb-machine-report-print-btn"
+            onClick={handlePrint}
+            disabled={isLoading || orderGroups.length === 0 || pendingPrint}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/80 bg-white px-3 text-xs font-black text-sky-950 shadow-sm transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            title="In báo cáo tổng hợp máy BB"
+          >
+            {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            {pendingPrint ? 'Đang chuẩn bị...' : 'In báo cáo'}
+          </button>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Tổng SL và Tổng (kg) trong tab Dữ liệu trong lệnh sản xuất (theo bộ lọc)"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng nhựa yêu cầu
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Tổng cột «SL» lệnh sản xuất">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Số lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : orderTotals.quantity > 0
@@ -1250,7 +1264,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Tổng cột «Tổng (kg)» lệnh sản xuất">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : plasticRequiredWeightKg > 0
@@ -1260,22 +1274,23 @@ export default function ControlBoardBbMachineReportTable({
               </div>
             </div>
           </div>
+
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Trọng lượng xuất = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg, cột Tổng kg)"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">Trọng lượng xuất</p>
-            <p className="mt-0.5 font-mono text-sm font-black tabular-nums sm:text-base">
+            <p className="mt-0.5 font-mono text-sm font-black tabular-nums">
               {isLoading
                 ? '…'
                 : exportWeightByKind.totalKg > 0
                   ? `${formatKg(exportWeightByKind.totalKg, 2)} kg`
                   : '—'}
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Dòng NVL nhựa, ĐVT = kg">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.plasticKg > 0
@@ -1285,7 +1300,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Dòng ĐVT ≠ kg — lấy cột Tổng (kg)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.otherKg > 0
@@ -1295,24 +1310,25 @@ export default function ControlBoardBbMachineReportTable({
               </div>
             </div>
           </div>
+
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Trọng lượng tồn đầu ca = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg) trên phiếu tồn đầu"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng tồn Đầu ca
             </p>
-            <p className="mt-0.5 font-mono text-sm font-black tabular-nums sm:text-base">
+            <p className="mt-0.5 font-mono text-sm font-black tabular-nums">
               {isLoading
                 ? '…'
                 : dauCaWeightByKind.totalKg > 0
                   ? `${formatKg(dauCaWeightByKind.totalKg, 2)} kg`
                   : '—'}
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Dòng NVL nhựa, ĐVT = kg">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : dauCaWeightByKind.plasticKg > 0
@@ -1322,7 +1338,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Dòng ĐVT ≠ kg trên phiếu tồn đầu">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : dauCaWeightByKind.otherKg > 0
@@ -1332,24 +1348,25 @@ export default function ControlBoardBbMachineReportTable({
               </div>
             </div>
           </div>
+
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Trọng lượng tồn cuối ca = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg) trên phiếu tồn cuối"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng tồn Cuối ca
             </p>
-            <p className="mt-0.5 font-mono text-sm font-black tabular-nums sm:text-base">
+            <p className="mt-0.5 font-mono text-sm font-black tabular-nums">
               {isLoading
                 ? '…'
                 : cuoiCaWeightByKind.totalKg > 0
                   ? `${formatKg(cuoiCaWeightByKind.totalKg, 2)} kg`
                   : '—'}
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Dòng NVL nhựa, ĐVT = kg">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : cuoiCaWeightByKind.plasticKg > 0
@@ -1359,7 +1376,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Dòng ĐVT ≠ kg trên phiếu tồn cuối">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
-                <p className="font-mono text-[11px] font-black tabular-nums sm:text-xs">
+                <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : cuoiCaWeightByKind.otherKg > 0
@@ -1369,17 +1386,18 @@ export default function ControlBoardBbMachineReportTable({
               </div>
             </div>
           </div>
+
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo sản lượng
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Tổng cột «SL sản lượng»">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Số lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : sanLuongTotals.quantity > 0
@@ -1389,7 +1407,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Tổng cột «Trọng lượng thực tế (kg)»">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : sanLuongTotals.weightKg > 0
@@ -1399,17 +1417,18 @@ export default function ControlBoardBbMachineReportTable({
               </div>
             </div>
           </div>
+
           <div
-            className="min-w-[220px] rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+            className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title="Tổng số phiếu và trọng lượng lỗi hỏng (kg) trên tab Dữ liệu trong báo cáo hàng lỗi hỏng"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo lỗi hỏng
             </p>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
               <div title="Số phiếu hàng lỗi hỏng (theo bộ lọc)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Số lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : damagedTotals.quantity > 0
@@ -1419,7 +1438,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               <div title="Tổng cột «Lỗi hỏng (kg)»">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
-                <p className="font-mono text-sm font-black tabular-nums sm:text-base">
+                <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : damagedTotals.weightKg > 0
@@ -1428,19 +1447,6 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
             </div>
-          </div>
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              id="bb-machine-report-print-btn"
-              onClick={handlePrint}
-              disabled={isLoading || orderGroups.length === 0 || pendingPrint}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-white/80 bg-white px-3 text-xs font-black text-sky-950 shadow-sm transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
-              title="In báo cáo tổng hợp máy BB"
-            >
-              {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              {pendingPrint ? 'Đang chuẩn bị...' : 'In báo cáo'}
-            </button>
           </div>
         </div>
       </div>

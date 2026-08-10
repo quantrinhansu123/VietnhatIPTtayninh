@@ -15,6 +15,12 @@ import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
+import BbCanTuDongSanLuongPanel from './BbCanTuDongSanLuongPanel';
+import {
+  filterCanTuDongRecordsForBoard,
+  sumCanTuDongSanLuongTotals
+} from '../utils/canTuDongWeights';
+import type { CanTuDongRecord } from '../features/can-tu-dong';
 import {
   BB_MACHINE_REPORT_TABS,
   buildBbCuoiCaLineRows,
@@ -335,6 +341,8 @@ export default function ControlBoardBbMachineReportTable({
   machineNvlReports = [],
   mixingReports = [],
   acceptanceReports = [],
+  canTuDongRecords = [],
+  sanLuongSource = 'acceptance',
   shiftSettings,
   isLoading,
   dateFrom,
@@ -352,6 +360,9 @@ export default function ControlBoardBbMachineReportTable({
   machineNvlReports?: MachineNvlSavedReport[];
   mixingReports?: MixingReport[];
   acceptanceReports?: AcceptanceReport[];
+  canTuDongRecords?: CanTuDongRecord[];
+  /** `/phan-tich-tu-dong`: tab sản lượng lấy từ can_tu_dong theo ngày/ca. */
+  sanLuongSource?: 'acceptance' | 'can-tu-dong';
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   isLoading?: boolean;
   dateFrom: string;
@@ -938,6 +949,22 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
+  /** Cùng tập dòng với `/can-tu-dong` theo ngày + ca (không lọc máy — trang cân cũng vậy). */
+  const scopedCanTuDongRecords = useMemo(
+    () =>
+      filterCanTuDongRecordsForBoard(canTuDongRecords, {
+        shiftFilter,
+        dateFrom,
+        dateTo
+      }),
+    [canTuDongRecords, shiftFilter, dateFrom, dateTo]
+  );
+  const canTuDongSanLuongTotals = useMemo(
+    () => sumCanTuDongSanLuongTotals(scopedCanTuDongRecords),
+    [scopedCanTuDongRecords]
+  );
+  const displaySanLuongTotals =
+    sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals;
   const plasticDamagedWeightKg = useMemo(
     () =>
       damagedRows.reduce((sum, row) => {
@@ -955,7 +982,7 @@ export default function ControlBoardBbMachineReportTable({
    */
   const plasticDifferenceWeightKg =
     plasticStockInWeightKg -
-    sanLuongTotals.weightKg -
+    displaySanLuongTotals.weightKg -
     plasticDamagedWeightKg -
     cuoiCaWeightByKind.plasticKg;
   /** Tồn nhựa (đầu − cuối) — phần rút từ tồn ca. */
@@ -963,7 +990,8 @@ export default function ControlBoardBbMachineReportTable({
   const plasticSummaryRow = {
     requiredKg: plasticRequiredWeightKg,
     exportKg: exportWeightByKind.plasticKg,
-    finishedKg: sanLuongTotals.weightKg,
+    /** `/phan-tich-tu-dong`: = tổng cột «Trọng lượng nhựa» (SP − lõi − bì 0,16). */
+    finishedKg: displaySanLuongTotals.weightKg,
     stockNetKg: plasticStockNetKg,
     damagedKg: plasticDamagedWeightKg,
     differenceKg: plasticDifferenceWeightKg
@@ -1409,29 +1437,49 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng"
+            title={
+              sanLuongSource === 'can-tu-dong'
+                ? 'Số lần cân trên /can-tu-dong và tổng trọng lượng nhựa (SP − lõi − bì) theo bộ lọc ngày/ca'
+                : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng'
+            }
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo sản lượng
             </p>
             <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
-              <div title="Tổng cột «SL sản lượng»">
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Số lượng</p>
+              <div
+                title={
+                  sanLuongSource === 'can-tu-dong'
+                    ? 'Số lần cân = số dòng trên /can-tu-dong theo cùng ngày/ca'
+                    : 'Tổng cột «SL sản lượng»'
+                }
+              >
+                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">
+                  {sanLuongSource === 'can-tu-dong' ? 'Lần cân' : 'Số lượng'}
+                </p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
-                    : sanLuongTotals.quantity > 0
-                      ? formatNumber(sanLuongTotals.quantity, 2)
+                    : displaySanLuongTotals.quantity > 0
+                      ? formatNumber(displaySanLuongTotals.quantity, sanLuongSource === 'can-tu-dong' ? 0 : 2)
                       : '—'}
                 </p>
               </div>
-              <div title="Tổng cột «Trọng lượng thực tế (kg)»">
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
+              <div
+                title={
+                  sanLuongSource === 'can-tu-dong'
+                    ? 'Tổng trọng lượng nhựa = SP − lõi − bì (bì mặc định 0,16 kg)'
+                    : 'Tổng cột «Trọng lượng thực tế (kg)»'
+                }
+              >
+                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">
+                  {sanLuongSource === 'can-tu-dong' ? 'Trọng lượng nhựa' : 'Trọng lượng'}
+                </p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
-                    : sanLuongTotals.weightKg > 0
-                      ? `${formatKg(sanLuongTotals.weightKg, 2)} kg`
+                    : displaySanLuongTotals.quantity > 0
+                      ? `${formatKg(displaySanLuongTotals.weightKg, 2)} kg`
                       : '—'}
                 </p>
               </div>
@@ -1500,12 +1548,19 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Tổng nhựa thành phẩm',
-                  title: 'Trọng lượng thực tế tab sản lượng',
+                  title:
+                    sanLuongSource === 'can-tu-dong'
+                      ? 'Σ cột «Trọng lượng nhựa» trên /can-tu-dong (và tab sản lượng) theo cùng ngày/ca — SP − lõi − bì 0,16'
+                      : 'Trọng lượng thực tế tab sản lượng',
                   display: isLoading
                     ? '…'
-                    : plasticSummaryRow.finishedKg > 0
-                      ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
-                      : '—'
+                    : sanLuongSource === 'can-tu-dong'
+                      ? displaySanLuongTotals.quantity > 0
+                        ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
+                        : '—'
+                      : plasticSummaryRow.finishedKg > 0
+                        ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
+                        : '—'
                 },
                 {
                   label: 'Tổng nhựa tồn',
@@ -1558,34 +1613,38 @@ export default function ControlBoardBbMachineReportTable({
           {BB_MACHINE_REPORT_TABS.map(tab => {
             const isChecked = checkedTabs.has(tab.id);
             return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`group inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg py-1.5 pl-1.5 pr-3 text-[11px] font-extrabold uppercase tracking-wide transition ${
-                activeTab === tab.id
-                  ? 'bg-[#ef1b2d] text-white shadow-sm'
-                  : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              <span
-                role="checkbox"
-                aria-checked={isChecked}
-                aria-label={isChecked ? `Bỏ đánh dấu ${tab.label}` : `Đánh dấu đã rà soát ${tab.label}`}
-                onClick={event => toggleTabChecked(tab.id, event)}
-                title={isChecked ? 'Đã rà soát — bấm để bỏ đánh dấu' : 'Bấm để đánh dấu đã rà soát'}
-                className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${
-                  isChecked
-                    ? 'border-emerald-500 bg-emerald-500 text-white'
-                    : activeTab === tab.id
-                      ? 'border-white/60 bg-white/10 text-transparent hover:bg-white/20'
-                      : 'border-zinc-300 bg-white text-transparent hover:border-emerald-400'
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`group inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg py-1.5 pl-1.5 pr-3 text-[11px] font-extrabold uppercase tracking-wide transition ${
+                  activeTab === tab.id
+                    ? 'bg-[#ef1b2d] text-white shadow-sm'
+                    : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
                 }`}
               >
-                <Check className="h-3 w-3" strokeWidth={3} />
-              </span>
-              {tab.label}
-            </button>
+                <span
+                  role="checkbox"
+                  aria-checked={isChecked}
+                  aria-label={
+                    isChecked ? `Bỏ đánh dấu ${tab.label}` : `Đánh dấu đã rà soát ${tab.label}`
+                  }
+                  onClick={event => toggleTabChecked(tab.id, event)}
+                  title={
+                    isChecked ? 'Đã rà soát — bấm để bỏ đánh dấu' : 'Bấm để đánh dấu đã rà soát'
+                  }
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${
+                    isChecked
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : activeTab === tab.id
+                        ? 'border-white/60 bg-white/10 text-transparent hover:bg-white/20'
+                        : 'border-zinc-300 bg-white text-transparent hover:border-emerald-400'
+                  }`}
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
+                {tab.label}
+              </button>
             );
           })}
         </div>
@@ -1606,7 +1665,10 @@ export default function ControlBoardBbMachineReportTable({
             <button
               type="button"
               onClick={() => setAllActiveGroupsExpanded(false)}
-              disabled={!allActiveGroupsExpanded && activeGroupKeys.every(groupKey => !isGroupExpanded(activeTab, groupKey))}
+              disabled={
+                !allActiveGroupsExpanded &&
+                activeGroupKeys.every(groupKey => !isGroupExpanded(activeTab, groupKey))
+              }
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
             >
               Đóng tất cả
@@ -2319,6 +2381,15 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
           </table>
         ) : activeTab === 'bao_cao_san_luong' ? (
+          sanLuongSource === 'can-tu-dong' ? (
+            <BbCanTuDongSanLuongPanel
+              records={canTuDongRecords}
+              isLoading={isLoading}
+              shiftFilter={shiftFilter}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+            />
+          ) : (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
             <thead className="bg-gradient-to-r from-violet-100 to-fuchsia-50 border-b-2 border-violet-300 text-xs uppercase tracking-wider text-violet-900">
               <tr>
@@ -2523,6 +2594,7 @@ export default function ControlBoardBbMachineReportTable({
               </tfoot>
             ) : null}
           </table>
+          )
         ) : activeTab === 'bao_cao_loi_hong' ? (
           <>
             {damagedGroupsWithMixing.length > 0 ? (

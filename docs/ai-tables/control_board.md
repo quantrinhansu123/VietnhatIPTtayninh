@@ -4,6 +4,8 @@ Tab `control-board` → `/bang-dieu-khien` — **đọc nhiều bảng**, không
 
 Tab `dashboard` → `/phan-tich` — cùng **Báo cáo tổng hợp máy BB** (`ControlBoardPanel` `mode="report-only"`), không dùng `AnalyticsDashboard` / bảng `reports` legacy.
 
+Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`, UI y hệt `/phan-tich`; tab **Dữ liệu trong báo cáo sản lượng** lấy `can_tu_dong` theo ngày/ca. **Tổng nhựa thành phẩm** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) — cùng công thức `/can-tu-dong`.
+
 ## UI
 
 | File | Vai trò |
@@ -12,6 +14,7 @@ Tab `dashboard` → `/phan-tich` — cùng **Báo cáo tổng hợp máy BB** (`
 | `src/features/dashboard/index.tsx` | Re-export; routing `/phan-tich` qua `App.tsx` |
 | `ControlBoardShiftSummaryTable.tsx` | Bảng tổng hợp ca |
 | `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, lỗi hỏng, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt) |
+| `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`, bên dưới = list view tương ứng |
 | `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in báo cáo tổng hợp máy BB (gồm mục 2 thành phẩm đạt nhập kho) |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |
 | `ControlBoardShiftDetailModal.tsx` | Chi tiết ca |

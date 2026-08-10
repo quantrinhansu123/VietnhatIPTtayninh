@@ -726,21 +726,29 @@ export default function WeighingShiftSummary({
   onBackToMenu,
   initialPendingAdd = null,
   onInitialPendingConsumed,
-  defaultShowForm = false
+  defaultShowForm = false,
+  initialFilters
 }: {
   config?: WeighingSlipConfig;
   onBackToMenu?: () => void;
   initialPendingAdd?: WeighingPendingAdd | null;
   onInitialPendingConsumed?: () => void;
   defaultShowForm?: boolean;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+  };
 } = {}) {
   const splitPlasticFilmWeights = Boolean(config.splitPlasticFilmWeights);
   const splitDamagedPlasticDefectWeights = Boolean(config.splitDamagedPlasticDefectWeights);
   const hideProductFields = Boolean(config.hideProductFields);
   const { canCreate, canEdit, canDelete } = useTabAccess(config.accessTab || 'weighing-summary-list');
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(
+    () => initialFilters?.dateFrom?.trim() || new Date().toISOString().split('T')[0]
+  );
+  const [dateTo, setDateTo] = useState(
+    () => initialFilters?.dateTo?.trim() || new Date().toISOString().split('T')[0]
+  );
   const [records, setRecords] = useState<WeighingRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');

@@ -8,6 +8,13 @@ import WeighingImagePreviewModal, {
 import { formatNumber } from '../../utils';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import {
+  DEFAULT_CAN_TU_DONG_BI_KG,
+  filterCanTuDongRecordsForBoard,
+  resolveTrongLuongBiKg,
+  resolveTrongLuongNhuaKg,
+  sumCanTuDongSanLuongTotals
+} from '../../utils/canTuDongWeights';
+import {
   TableToolbar,
   TableSearchInput,
   FilterCombobox,
@@ -20,10 +27,11 @@ import {
 } from '../../components/shared/table';
 
 /**
- * Ý nghĩa cột DB:
+ * Ý nghĩa cột DB / hiển thị:
  * - tare_weight      = Cân lõi
  * - weight           = Cân sản phẩm (còn lõi)
- * - net_weight       = Khối lượng thực (weight − tare_weight)
+ * - Trọng lượng bì   = mặc định 0,16 kg
+ * - Trọng lượng nhựa = SP − lõi − bì
  * - core_image_*     = Ảnh cân lõi
  * - product_image_*  = Ảnh cân sản phẩm
  */
@@ -60,13 +68,20 @@ export type CanTuDongRecord = {
 };
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function defaultFromDate(days = 14) {
   const d = new Date();
   d.setDate(d.getDate() - Math.max(0, days - 1));
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatDateTime(value?: string | null) {
@@ -84,12 +99,16 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-function formatWeight(value?: number | string | null, unit?: string | null) {
+function formatWeight(
+  value?: number | string | null,
+  unit?: string | null,
+  fractionDigits: number = 1
+) {
   if (value == null || value === '') return '—';
   const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
   if (!Number.isFinite(num)) return String(value);
   const unitLabel = String(unit ?? 'kg').trim() || 'kg';
-  return `${formatNumber(num)} ${unitLabel}`;
+  return `${formatNumber(num, fractionDigits)} ${unitLabel}`;
 }
 
 function statusClass(status?: string | null) {
@@ -135,18 +154,33 @@ function rowIdKey(id: number | string) {
   return String(id);
 }
 
-export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
+export function CanTuDongPanel({
+  onBack,
+  initialFilters
+}: {
+  onBack: () => void;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    shift?: string;
+  };
+}) {
   const [records, setRecords] = useState<CanTuDongRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [fromDate, setFromDate] = useState(() => defaultFromDate(14));
-  const [toDate, setToDate] = useState(() => todayIso());
+  const [fromDate, setFromDate] = useState(
+    () => initialFilters?.dateFrom?.trim() || defaultFromDate(14)
+  );
+  const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
   const [deviceFilter, setDeviceFilter] = useState('');
   const [qrFilter, setQrFilter] = useState('');
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedCa, setSelectedCa] = useState('all');
+  const [selectedCa, setSelectedCa] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? 'all' : shift;
+  });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
@@ -154,7 +188,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ limit: '300' });
+      const params = new URLSearchParams({ limit: '2000' });
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
       if (deviceFilter.trim()) params.set('deviceId', deviceFilter.trim());
@@ -222,20 +256,29 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredRecords = useMemo(() => {
-    return records.filter(row => {
+    const byDateAndCa = filterCanTuDongRecordsForBoard(records, {
+      shiftFilter: selectedCa,
+      dateFrom: fromDate,
+      dateTo: toDate
+    });
+    return byDateAndCa.filter(row => {
       const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
-      const matchesCa = selectedCa === 'all' || String(row.ca ?? '').trim() === selectedCa;
       const matchesSearch =
         !normalizedSearch ||
         `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''} ${row.ca ?? ''}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesStatus && matchesCa && matchesSearch;
+      return matchesStatus && matchesSearch;
     });
-  }, [records, normalizedSearch, selectedStatus, selectedCa]);
+  }, [records, normalizedSearch, selectedStatus, selectedCa, fromDate, toDate]);
 
   const visibleIds = useMemo(
     () => filteredRecords.map(row => rowIdKey(row.id)).filter(Boolean),
+    [filteredRecords]
+  );
+
+  const trongLuongNhuaTotals = useMemo(
+    () => sumCanTuDongSanLuongTotals(filteredRecords),
     [filteredRecords]
   );
 
@@ -313,7 +356,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
             <div>
               <h1 className="text-lg font-black text-zinc-900 sm:text-xl">Cân tự động</h1>
               <p className="text-xs font-semibold text-zinc-500">
-                Cân lõi · Cân sản phẩm · KL thực (= SP − lõi)
+                Cân lõi · Cân sản phẩm · Trọng lượng bì (0,16) · Trọng lượng nhựa (= SP − lõi − bì)
               </p>
             </div>
           </div>
@@ -438,7 +481,21 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
         </div>
       ) : null}
 
-      <TableShell minWidthClassName="min-w-[1180px]">
+      <TableShell
+        minWidthClassName="min-w-[1280px]"
+        footer={
+          !loading && filteredRecords.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
+              <span className="uppercase tracking-wider">
+                Tổng ({trongLuongNhuaTotals.quantity} lần cân) · Trọng lượng nhựa
+              </span>
+              <span className="font-mono text-sm text-emerald-800">
+                {formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg
+              </span>
+            </div>
+          ) : undefined
+        }
+      >
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input
@@ -457,20 +514,23 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell>QR</TableHeadCell>
           <TableHeadCell title="tare_weight">Cân lõi</TableHeadCell>
           <TableHeadCell title="weight — còn lõi">Cân sản phẩm</TableHeadCell>
-          <TableHeadCell title="net_weight = weight − tare_weight">KL thực</TableHeadCell>
+          <TableHeadCell title={`Mặc định ${DEFAULT_CAN_TU_DONG_BI_KG} kg`}>
+            Trọng lượng bì
+          </TableHeadCell>
+          <TableHeadCell title="Cân SP − Cân lõi − Trọng lượng bì">Trọng lượng nhựa</TableHeadCell>
           <TableHeadCell>Thiết bị</TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={11}>
+            <TableEmptyRow colSpan={12}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={11}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={12}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
           ) : (
             filteredRecords.map(row => {
               const idKey = rowIdKey(row.id);
@@ -480,7 +540,8 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
               const productTitle = `Ảnh cân sản phẩm · ${row.qr_code || row.event_id || row.id}`;
               const canLoi = row.can_loi ?? row.tare_weight;
               const canSp = row.can_san_pham ?? row.weight;
-              const klThuc = row.khoi_luong_thuc ?? row.net_weight;
+              const trongLuongBi = resolveTrongLuongBiKg(row);
+              const trongLuongNhua = resolveTrongLuongNhuaKg(row);
               return (
                 <TableRow key={idKey}>
                   <td className="px-4 py-3 text-center align-middle">
@@ -524,8 +585,11 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
                     {formatWeight(canSp, row.unit)}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                    {formatWeight(trongLuongBi, row.unit, 2)}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-black text-emerald-800">
-                    {formatWeight(klThuc, row.unit)}
+                    {trongLuongNhua !== null ? formatWeight(trongLuongNhua, row.unit, 2) : '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {row.device_id || '—'}

@@ -248,16 +248,27 @@ function buildDateGroups(reports: AcceptanceReport[]): AcceptanceDateGroup[] {
 export default function AcceptanceReportListView({
   onBack,
   onCreate,
-  onEdit
+  onEdit,
+  initialFilters
 }: {
   onBack: () => void;
   onCreate: (prefill?: { ngay: string; ca: string }) => void;
   onEdit: (report: AcceptanceReport) => void;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    shift?: string;
+  };
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('acceptance-report-list');
-  const [filterFromDate, setFilterFromDate] = useState(todayIso());
-  const [filterToDate, setFilterToDate] = useState(todayIso());
-  const [filterShift, setFilterShift] = useState('');
+  const [filterFromDate, setFilterFromDate] = useState(
+    () => initialFilters?.dateFrom?.trim() || todayIso()
+  );
+  const [filterToDate, setFilterToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
+  const [filterShift, setFilterShift] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? '' : shift;
+  });
   const [searchText, setSearchText] = useState('');
   const [reports, setReports] = useState<AcceptanceReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);

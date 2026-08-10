@@ -23,6 +23,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     label: 'Quản trị',
     children: [
       { tab: 'dashboard', label: 'Dashboard' },
+      { tab: 'dashboard-auto', label: 'Báo cáo mới' },
       { tab: 'settings', label: 'Cài đặt / phân quyền' }
     ]
   },

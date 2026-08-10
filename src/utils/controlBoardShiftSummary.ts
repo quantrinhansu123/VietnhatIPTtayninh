@@ -1180,9 +1180,15 @@ export function defaultShiftSummaryDateRange(days = 14) {
   const today = new Date();
   const from = new Date(today);
   from.setDate(from.getDate() - Math.max(0, days - 1));
+  const toLocalIso = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   return {
-    from: from.toISOString().slice(0, 10),
-    to: today.toISOString().slice(0, 10)
+    from: toLocalIso(from),
+    to: toLocalIso(today)
   };
 }
 

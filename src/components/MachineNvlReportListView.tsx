@@ -501,17 +501,32 @@ function MachineNvlSection({
 export default function MachineNvlReportListView({
   onBack,
   onCreate,
-  onEdit
+  onEdit,
+  initialFilters
 }: {
   onBack: () => void;
   onCreate: () => void;
   onEdit: (report: MachineNvlSavedReport) => void;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    shift?: string;
+    machineCode?: string;
+  };
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('machine-nvl-report-list');
-  const [filterFromDate, setFilterFromDate] = useState(todayIso());
-  const [filterToDate, setFilterToDate] = useState(todayIso());
-  const [filterCa, setFilterCa] = useState('');
-  const [filterMachine, setFilterMachine] = useState('');
+  const [filterFromDate, setFilterFromDate] = useState(
+    () => initialFilters?.dateFrom?.trim() || todayIso()
+  );
+  const [filterToDate, setFilterToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
+  const [filterCa, setFilterCa] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? '' : shift;
+  });
+  const [filterMachine, setFilterMachine] = useState(() => {
+    const machine = initialFilters?.machineCode?.trim() || '';
+    return !machine || machine === 'all' ? '' : machine;
+  });
   const [searchText, setSearchText] = useState('');
   const [dauCaReports, setDauCaReports] = useState<MachineNvlSavedReport[]>([]);
   const [cuoiCaReports, setCuoiCaReports] = useState<MachineNvlSavedReport[]>([]);

@@ -8871,7 +8871,7 @@ export function createApp() {
     const dbLabel = SUPABASE_WEIGHING_DB_LABEL;
 
     const limitRaw = Number(req.query.limit ?? 200);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 200;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 2000) : 200;
     const deviceId = String(req.query.deviceId ?? req.query.device_id ?? '').trim();
     const status = String(req.query.status ?? '').trim();
     const qrCode = String(req.query.qrCode ?? req.query.qr_code ?? '').trim();
@@ -8888,8 +8888,8 @@ export function createApp() {
       if (deviceId) query = query.eq('device_id', deviceId);
       if (status) query = query.eq('status', status);
       if (qrCode) query = query.eq('qr_code', qrCode);
-      if (from) query = query.gte('captured_at', `${from}T00:00:00`);
-      if (to) query = query.lte('captured_at', `${to}T23:59:59.999`);
+      if (from) query = query.gte('captured_at', `${from}T00:00:00+07:00`);
+      if (to) query = query.lte('captured_at', `${to}T23:59:59.999+07:00`);
 
       const { data, error } = await query;
       if (error) {

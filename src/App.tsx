@@ -252,7 +252,7 @@ export default function App() {
     setActiveTab(nextTab);
     setLocationPath(path);
 
-    if (nextTab === 'dashboard') {
+    if (nextTab === 'dashboard' || nextTab === 'dashboard-auto') {
       fetchReports();
     }
   };
@@ -343,7 +343,7 @@ export default function App() {
       const tab = tabFromPath(window.location.pathname);
       setLocationPath(window.location.pathname);
       setActiveTab(tab);
-      if (tab === 'dashboard') {
+      if (tab === 'dashboard' || tab === 'dashboard-auto') {
         fetchReports();
       }
     };
@@ -814,7 +814,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
                 className="space-y-3"
               >
-                <MenuPageHeader title="Quản trị" desc="Dashboard quản trị, người dùng/phân quyền, cấu hình hệ thống và danh mục dùng chung." />
+                <MenuPageHeader title="Quản trị" desc="Dashboard, báo cáo mới, người dùng/phân quyền, cấu hình hệ thống và danh mục dùng chung." />
                 <FourStepMenuFlow items={filterMenuItems(ADMIN_MENU_ITEMS)} onNavigate={navigateToTab} showFlow={false} />
               </motion.div>
             ) : activeTab === 'production-reports' ? (
@@ -1425,20 +1425,29 @@ export default function App() {
               >
                 <SettingsPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
-            ) : (
+            ) : activeTab === 'dashboard' || activeTab === 'dashboard-auto' ? (
               <motion.div
-                key="dashboard-charts"
+                key={activeTab === 'dashboard-auto' ? 'dashboard-auto-charts' : 'dashboard-charts'}
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.15 }}
               >
                 <ControlBoardPanel
-                  mode="report-only"
+                  mode={activeTab === 'dashboard-auto' ? 'report-only-auto' : 'report-only'}
                   onNavigate={navigateToTab}
                   onEditWeighing={pending => {
                     setWeighingPendingAdd(pending);
                     navigateToTab('weighing-summary');
+                  }}
+                  onEditMachineNvlReport={report => {
+                    setMachineNvlEditReport(report);
+                    navigateToTab('machine-nvl-report');
+                  }}
+                  onEditAcceptanceReport={report => {
+                    setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReport(report);
+                    navigateToTab('acceptance-report');
                   }}
                   onMachineReport={(machine, type) => {
                     if (type === 'mixing') {
@@ -1457,6 +1466,17 @@ export default function App() {
                     navigateToTab('machine-nvl-report');
                   }}
                 />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="fallback-menu"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-5"
+              >
+                <MainMenuFlow items={visibleMainMenuItems} onNavigate={navigateToTab} />
               </motion.div>
             )}
           </AnimatePresence>

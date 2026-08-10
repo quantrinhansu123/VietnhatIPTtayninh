@@ -416,7 +416,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: [],
     apiPrefix: '—',
     serverLines: '—',
-    appTab: 'control-board | dashboard',
+    appTab: 'control-board | dashboard | dashboard-auto',
     appLines: 'src/features/control-board/index.tsx (mode full | report-only), src/features/dashboard/index.tsx',
     components: [
       'src/components/ControlBoardShiftSummaryTable.tsx',

@@ -1991,18 +1991,23 @@ export function WarehouseSlipPanel({
 
 export function WarehouseHistoryPanel({
   onBack,
-  onOpenSlip
+  onOpenSlip,
+  initialFilters
 }: {
   onBack: () => void;
   onOpenSlip: () => void;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+  };
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
   const [warehouseTab, setWarehouseTab] = useState<WarehouseKind>('nvl');
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | WarehouseSlipType>('all');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(() => initialFilters?.dateFrom?.trim() || '');
+  const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || '');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');

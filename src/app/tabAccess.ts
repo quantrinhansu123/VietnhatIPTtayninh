@@ -12,7 +12,9 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'machine-nvl-report': 'machine-nvl-report-list',
   'machine-downtime-report': 'machine-downtime-list',
   'acceptance-report': 'acceptance-report-list',
-  'machine-run-log': 'machine-run-log-list'
+  'machine-run-log': 'machine-run-log-list',
+  /** Cùng quyền Dashboard /phan-tich */
+  'dashboard-auto': 'dashboard'
 };
 
 /**

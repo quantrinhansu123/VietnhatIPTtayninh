@@ -4,6 +4,9 @@ import type { AppTab } from '../../routes';
 import { useTabAccess } from '../../app/useTabAccess';
 import ControlBoardBbMachineReportTable from '../../components/ControlBoardBbMachineReportTable';
 import { ControlBoardCommonFilters } from '../../components/ControlBoardCommonFilters';
+import ReportListsHubModal from '../../components/ReportListsHubModal';
+import { ClipboardList } from 'lucide-react';
+import type { CanTuDongRecord } from '../can-tu-dong';
 import {
   buildControlBoardShiftSummary,
   defaultShiftSummaryDateRange,
@@ -93,16 +96,22 @@ export function ControlBoardPanel({
   onNavigate,
   onMachineReport,
   onEditWeighing,
+  onEditMachineNvlReport,
+  onEditAcceptanceReport,
   mode = 'full'
 }: {
   onNavigate: (tab: AppTab) => void;
   onMachineReport: (machine: MachineRow, type: 'mixing' | 'nvl') => void;
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
-  /** `report-only`: chỉ bộ lọc + báo cáo tổng hợp máy BB (dùng cho `/phan-tich`). */
-  mode?: 'full' | 'report-only';
+  onEditMachineNvlReport?: (report: MachineNvlSavedReport) => void;
+  onEditAcceptanceReport?: (report: AcceptanceReport) => void;
+  /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (sản lượng từ can_tu_dong). */
+  mode?: 'full' | 'report-only' | 'report-only-auto';
 }) {
-  const reportOnly = mode === 'report-only';
+  const reportOnly = mode === 'report-only' || mode === 'report-only-auto';
+  const useCanTuDongSanLuong = mode === 'report-only-auto';
   const { canCreate, canEdit, canDelete } = useTabAccess(reportOnly ? 'dashboard' : 'control-board');
+  const [showReportListsModal, setShowReportListsModal] = useState(false);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
@@ -116,6 +125,7 @@ export function ControlBoardPanel({
   const [damagedRecords, setDamagedRecords] = useState<WeighingRecord[]>([]);
   const [machineNvlReports, setMachineNvlReports] = useState<MachineNvlSavedReport[]>([]);
   const [shiftSummaryWarehouseMovements, setShiftSummaryWarehouseMovements] = useState<WarehouseMovementRow[]>([]);
+  const [canTuDongRecords, setCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const defaultShiftSummaryRange = defaultShiftSummaryDateRange(14);
   const [shiftSummaryDateFrom, setShiftSummaryDateFrom] = useState(defaultShiftSummaryRange.from);
   const [shiftSummaryDateTo, setShiftSummaryDateTo] = useState(defaultShiftSummaryRange.to);
@@ -159,8 +169,23 @@ export function ControlBoardPanel({
       const summaryTo = shiftSummaryDateTo || defaultShiftSummaryRange.to;
       // Tỉ lệ TB thực tế lấy phiếu trộn ca liền trước (12C1 → 12C2 ngày hôm trước) → tải thêm 1 ngày trước.
       const mixingFrom = shiftIsoDateByDays(summaryFrom, -1) || summaryFrom;
-      const [orderRes, productRes, machineRes, materialRes, productionRes, settingRes, acceptanceRes, shiftSummaryAcceptanceRes, mixingRes, weighingRes, damagedRes, machineNvlRes, warehouseMovementRes] =
-        await Promise.all([
+      const canTuDongUrl = `/api/can-tu-dong?limit=2000&from=${encodeURIComponent(summaryFrom)}&to=${encodeURIComponent(summaryTo)}`;
+      const [
+        orderRes,
+        productRes,
+        machineRes,
+        materialRes,
+        productionRes,
+        settingRes,
+        acceptanceRes,
+        shiftSummaryAcceptanceRes,
+        mixingRes,
+        weighingRes,
+        damagedRes,
+        machineNvlRes,
+        warehouseMovementRes,
+        canTuDongRes
+      ] = await Promise.all([
         fetch('/api/don-hang'),
         fetch('/api/san-pham?format=table'),
         fetch('/api/danh-sach-may'),
@@ -179,7 +204,8 @@ export function ControlBoardPanel({
         ),
         fetch(
           `/api/phieu-xuat-nhap-kho?from=${encodeURIComponent(summaryFrom)}&to=${encodeURIComponent(summaryTo)}`
-        )
+        ),
+        useCanTuDongSanLuong ? fetch(canTuDongUrl) : Promise.resolve(null)
       ]);
 
       const orderData = await orderRes.json().catch(() => ({}));
@@ -195,6 +221,7 @@ export function ControlBoardPanel({
       const damagedData = await damagedRes.json().catch(() => ([]));
       const machineNvlData = await machineNvlRes.json().catch(() => ({}));
       const warehouseMovementData = await warehouseMovementRes.json().catch(() => ({}));
+      const canTuDongData = canTuDongRes ? await canTuDongRes.json().catch(() => ([])) : [];
 
       if (!orderRes.ok) throw new Error(orderData.error || 'Không thể tải đơn hàng.');
       if (!productRes.ok) throw new Error(productData.error || 'Không thể tải sản phẩm.');
@@ -251,6 +278,25 @@ export function ControlBoardPanel({
         setShiftSummaryWarehouseMovements([]);
       }
 
+      if (useCanTuDongSanLuong && canTuDongRes) {
+        if (!canTuDongRes.ok) {
+          const errMsg =
+            (canTuDongData as { error?: string })?.error ||
+            `Không tải được cân tự động (HTTP ${canTuDongRes.status}).`;
+          setCanTuDongRecords([]);
+          setLoadError(prev => (prev ? `${prev} ${errMsg}` : errMsg));
+        } else {
+          const list = Array.isArray(canTuDongData)
+            ? canTuDongData
+            : Array.isArray((canTuDongData as { records?: unknown }).records)
+              ? (canTuDongData as { records: CanTuDongRecord[] }).records
+              : [];
+          setCanTuDongRecords(list as CanTuDongRecord[]);
+        }
+      } else {
+        setCanTuDongRecords([]);
+      }
+
       const localPayloads = [machineData, orderData, materialData, productionData].filter(
         payload => payload && typeof payload === 'object' && (payload as { source?: string }).source === 'local'
       ) as Array<{ source?: string; warning?: string }>;
@@ -279,6 +325,7 @@ export function ControlBoardPanel({
       setDamagedRecords([]);
       setMachineNvlReports([]);
       setShiftSummaryWarehouseMovements([]);
+      setCanTuDongRecords([]);
       setLoadError(error.message || 'Không thể tải dữ liệu bảng điều khiển.');
     } finally {
       setIsLoading(false);
@@ -287,7 +334,7 @@ export function ControlBoardPanel({
 
   useEffect(() => {
     loadBoard();
-  }, [shiftSummaryDateFrom, shiftSummaryDateTo]);
+  }, [shiftSummaryDateFrom, shiftSummaryDateTo, useCanTuDongSanLuong]);
 
   const shiftSummaryWarehouseMovementRefs = useMemo(
     () => mapWarehouseMovementsForShiftSummary(shiftSummaryWarehouseMovements),
@@ -848,7 +895,7 @@ export function ControlBoardPanel({
         </p>
       )}
 
-      <div className="order-[-30]">
+      <div className="order-[-30] flex flex-col gap-2">
         <ControlBoardCommonFilters
           dateFrom={shiftSummaryDateFrom}
           dateTo={shiftSummaryDateTo}
@@ -869,6 +916,19 @@ export function ControlBoardPanel({
           onClear={clearBoardFilters}
           isLoading={isLoading}
         />
+        {reportOnly ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowReportListsModal(true)}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#ef1b2d]/30 bg-white px-3 text-xs font-black text-[#b30d1c] shadow-sm transition hover:bg-red-50"
+              title="Mở danh sách báo cáo như trang /danh-sach-bao-cao"
+            >
+              <ClipboardList className="h-4 w-4" />
+              Danh sách báo cáo
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <ControlBoardBbMachineReportTable
@@ -881,6 +941,8 @@ export function ControlBoardPanel({
         machineNvlReports={boardScopedMachineNvlReports}
         mixingReports={boardScopedMixingReports}
         acceptanceReports={boardScopedAcceptanceReports}
+        canTuDongRecords={useCanTuDongSanLuong ? canTuDongRecords : []}
+        sanLuongSource={useCanTuDongSanLuong ? 'can-tu-dong' : 'acceptance'}
         shiftSettings={productionOrderSettings}
         isLoading={isLoading}
         dateFrom={shiftSummaryDateFrom}
@@ -889,6 +951,40 @@ export function ControlBoardPanel({
         machineFilter={boardFilterMachine}
         selectedMachine={selectedBoardMachine}
       />
+
+      {reportOnly ? (
+        <ReportListsHubModal
+          open={showReportListsModal}
+          onClose={() => setShowReportListsModal(false)}
+          onNavigate={tab => {
+            setShowReportListsModal(false);
+            onNavigate(tab);
+          }}
+          filters={{
+            dateFrom: shiftSummaryDateFrom,
+            dateTo: shiftSummaryDateTo,
+            shift: boardFilterShift,
+            machineCode: boardFilterMachine
+          }}
+          filterSummary={
+            [
+              shiftSummaryDateFrom && shiftSummaryDateTo
+                ? shiftSummaryDateFrom === shiftSummaryDateTo
+                  ? shiftSummaryDateFrom
+                  : `${shiftSummaryDateFrom} → ${shiftSummaryDateTo}`
+                : '',
+              !boardFilterShift || boardFilterShift === 'all' ? 'Tất cả ca' : `Ca ${boardFilterShift}`,
+              selectedBoardMachine?.name ||
+                selectedBoardMachine?.code ||
+                (!boardFilterMachine || boardFilterMachine === 'all' ? 'Tất cả máy' : boardFilterMachine)
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }
+          onEditMachineNvlReport={onEditMachineNvlReport}
+          onEditAcceptanceReport={onEditAcceptanceReport}
+        />
+      ) : null}
 
       {!reportOnly && (
       <>

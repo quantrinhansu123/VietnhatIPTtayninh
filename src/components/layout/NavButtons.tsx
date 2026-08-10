@@ -111,7 +111,8 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'machine-run-log': 'report-forms',
   'machine-run-log-list': 'report-lists',
   'acceptance-report': 'report-forms',
-  'dashboard': 'quan-tri'
+  'dashboard': 'quan-tri',
+  'dashboard-auto': 'quan-tri'
 };
 
 export function MobileBackNavButton({

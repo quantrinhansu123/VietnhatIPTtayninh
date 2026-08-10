@@ -206,20 +206,33 @@ function MachineDowntimeDetailModal({
 
 export default function MachineDowntimeReportListView({
   onBack,
-  onCreate
+  onCreate,
+  initialFilters
 }: {
   onBack: () => void;
   onCreate?: () => void;
+  initialFilters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    shift?: string;
+  };
 }) {
   const { canCreate, canDelete } = useTabAccess('machine-downtime-list');
   const [slips, setSlips] = useState<MachineDowntimeSlip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [filterFromDate, setFilterFromDate] = useState(defaultFromDate);
-  const [filterToDate, setFilterToDate] = useState(todayIso);
+  const [filterFromDate, setFilterFromDate] = useState(
+    () => initialFilters?.dateFrom?.trim() || defaultFromDate()
+  );
+  const [filterToDate, setFilterToDate] = useState(
+    () => initialFilters?.dateTo?.trim() || todayIso()
+  );
   const [searchText, setSearchText] = useState('');
-  const [filterShift, setFilterShift] = useState('');
+  const [filterShift, setFilterShift] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? '' : shift;
+  });
   const [deletingId, setDeletingId] = useState('');
   const [viewingSlip, setViewingSlip] = useState<MachineDowntimeSlip | null>(null);
   const [printSlips, setPrintSlips] = useState<MachineDowntimePrintSlip[]>([]);

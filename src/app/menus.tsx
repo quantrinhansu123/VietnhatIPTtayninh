@@ -365,6 +365,13 @@ export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'dashboard'
   },
   {
+    title: 'Báo cáo mới',
+    desc: 'Phân tích tự động — cùng báo cáo tổng hợp máy BB như /phan-tich.',
+    icon: ClipboardList,
+    icon3d: chartIncreasing3d,
+    tab: 'dashboard-auto'
+  },
+  {
     title: 'Người dùng và phân quyền',
     desc: 'Tài khoản, vị trí, vai trò và thiết lập quyền xem menu theo phòng ban.',
     icon: UsersRound,
@@ -846,6 +853,7 @@ export const PRIMARY_NAV_GROUPS: {
     tab: 'quan-tri',
     children: [
       { label: 'Dashboard quản trị', tab: 'dashboard' },
+      { label: 'Báo cáo mới', tab: 'dashboard-auto' },
       { label: 'Người dùng và phân quyền', tab: 'settings' },
       { label: 'Cấu hình hệ thống', tab: 'settings' },
       { label: 'Danh mục dùng chung', tab: 'quan-tri', disabled: true }
@@ -983,7 +991,8 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'factory-qc': { group: 'Trang chủ', sub: 'QC' },
   'factory-cong-nhan': { group: 'Trang chủ', sub: 'Công nhân' },
   'factory-kho': { group: 'Trang chủ', sub: 'Kho' },
-  'dashboard': { group: 'Quản trị', sub: 'Dashboard quản trị' }
+  'dashboard': { group: 'Quản trị', sub: 'Dashboard quản trị' },
+  'dashboard-auto': { group: 'Quản trị', sub: 'Báo cáo mới' }
 };
 
 export function getActivePageMeta(tab: AppTab): { group: string; sub: string } {

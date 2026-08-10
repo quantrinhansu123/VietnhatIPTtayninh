@@ -20,7 +20,8 @@
 |---------|--------|---------|-------|
 | Cân lõi | `tare_weight` | Số đọc ở bước cân lõi | 1,06 kg |
 | Cân sản phẩm | `weight` | Tổng KL sản phẩm còn lõi | 7,84 kg |
-| KL thực | `net_weight` | `weight − tare_weight` | 6,78 kg |
+| Trọng lượng bì | (UI, mặc định) | Mặc định **0,16 kg** — chưa lưu DB | 0,16 kg |
+| Trọng lượng nhựa | (UI tính) | `weight − tare_weight − bì` | 6,62 kg |
 | Ca | `ca` (API) | Từ `metadata` (`SOURCE_SHIFT=…`) hoặc suy theo giờ `captured_at` + khung giờ `cai_dat_thoi_gian` | HC1 |
 | Ảnh lõi | `core_image_*` | Ảnh chụp bước cân lõi | Cloudinary |
 | Ảnh sản phẩm | `product_image_*` | Ảnh chụp bước cân sản phẩm | Cloudinary |
@@ -36,7 +37,9 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | Bảng: ảnh lõi/SP + Ca + 3 số cân + checkbox xóa hàng loạt |
+| `src/features/can-tu-dong/index.tsx` | Bảng: ảnh lõi/SP + Ca + Cân lõi/SP + **Trọng lượng bì** (0,16) + **Trọng lượng nhựa** (= SP − lõi − bì) + footer tổng + xóa hàng loạt |
+| `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` — dùng chung `/can-tu-dong` và `/phan-tich-tu-dong` |
+| `src/components/BbCanTuDongSanLuongPanel.tsx` | Tab «Báo cáo sản lượng» trên `/phan-tich-tu-dong` — cùng công thức; **Tổng nhựa thành phẩm** = tổng cột Trọng lượng nhựa |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |
 | `src/App.tsx` | Import + route tab |
 

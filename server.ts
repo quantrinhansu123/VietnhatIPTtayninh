@@ -290,6 +290,126 @@ function resolveCanTuDongNetWeight(row: Record<string, unknown>): number | null 
   return Math.round((weight - tare) * 1000) / 1000;
 }
 
+function pickCanTuDongText(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text && text !== '-') return text;
+  }
+  return '';
+}
+
+/** Trích ca từ cột/metadata (SOURCE_SHIFT=HC1 trong weight_raw). */
+function resolveCanTuDongCaFromRecord(row: Record<string, unknown>): string | null {
+  const direct = pickCanTuDongText(row, ['ca', 'shift', 'shift_name', 'ca_san_xuat', 'shiftName']);
+  if (direct) return direct;
+
+  const metadata = row.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const meta = metadata as Record<string, unknown>;
+    const fromMeta = pickCanTuDongText(meta, [
+      'ca',
+      'shift',
+      'source_shift',
+      'SOURCE_SHIFT',
+      'shift_name',
+      'ca_san_xuat'
+    ]);
+    if (fromMeta) return fromMeta;
+
+    for (const value of Object.values(meta)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const match = value.match(/SOURCE_SHIFT\s*=\s*([^\s;|,]+)/i);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return null;
+}
+
+function parseClockMinutes(value: string): number | null {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function isClockMinutesInRange(mins: number, start: number, end: number): boolean {
+  if (start === end) return true;
+  if (start < end) return mins >= start && mins < end;
+  // Ca qua đêm (vd 20:00 → 08:00)
+  return mins >= start || mins < end;
+}
+
+/** Phút trong ngày theo giờ VN (UTC+7) từ ISO captured_at. */
+function vietnamClockMinutesFromIso(iso: string): number | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return (date.getUTCHours() * 60 + date.getUTCMinutes() + 7 * 60) % (24 * 60);
+}
+
+type CanTuDongShiftWindow = { name: string; startTime: string; endTime: string };
+
+function resolveCanTuDongCaFromCapturedAt(
+  capturedAt: string,
+  windows: CanTuDongShiftWindow[]
+): string | null {
+  const mins = vietnamClockMinutesFromIso(capturedAt);
+  if (mins === null || windows.length === 0) return null;
+  for (const window of windows) {
+    const start = parseClockMinutes(window.startTime);
+    const end = parseClockMinutes(window.endTime);
+    if (start === null || end === null) continue;
+    if (isClockMinutesInRange(mins, start, end)) return window.name;
+  }
+  return null;
+}
+
+async function loadCanTuDongShiftWindows(): Promise<CanTuDongShiftWindow[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.from(SUPABASE_SETTINGS_TABLE).select('*');
+    if (error || !Array.isArray(data)) return [];
+    const windows: CanTuDongShiftWindow[] = [];
+    for (const item of data) {
+      if (!item || typeof item !== 'object') continue;
+      const record = item as Record<string, unknown>;
+      const loai = String(record.loai_cai_dat ?? record.loai ?? '').trim();
+      if (loai && loai !== 'Thời gian') continue;
+      const name = String(record.ten_cai_dat ?? record.hang_muc ?? record.ma_cai_dat ?? record.ma ?? '')
+        .trim();
+      const startRaw = record.gio_bat_dau ?? record.thoi_gian_bat_dau ?? record.start_time ?? record.gio_bd;
+      const endRaw = record.gio_ket_thuc ?? record.thoi_gian_ket_thuc ?? record.end_time ?? record.gio_kt;
+      const startMatch = String(startRaw ?? '').match(/(\d{1,2}):(\d{2})/);
+      const endMatch = String(endRaw ?? '').match(/(\d{1,2}):(\d{2})/);
+      if (!name || !startMatch || !endMatch) continue;
+      windows.push({
+        name,
+        startTime: `${String(startMatch[1]).padStart(2, '0')}:${startMatch[2]}`,
+        endTime: `${String(endMatch[1]).padStart(2, '0')}:${endMatch[2]}`
+      });
+    }
+    return windows;
+  } catch {
+    return [];
+  }
+}
+
+function resolveCanTuDongCa(
+  row: Record<string, unknown>,
+  windows: CanTuDongShiftWindow[]
+): string | null {
+  const fromRecord = resolveCanTuDongCaFromRecord(row);
+  if (fromRecord) return fromRecord;
+  const capturedAt = String(row.captured_at ?? row.created_at ?? '').trim();
+  if (!capturedAt) return null;
+  return resolveCanTuDongCaFromCapturedAt(capturedAt, windows);
+}
+
 function getSeedReports(): ProductionReport[] {
   return [
     {
@@ -8780,6 +8900,7 @@ export function createApp() {
       }
 
       const rows = Array.isArray(data) ? data : [];
+      const shiftWindows = await loadCanTuDongShiftWindows();
       const records = await Promise.all(
         rows.map(async row => {
           const record = row as Record<string, unknown>;
@@ -8803,11 +8924,13 @@ export function createApp() {
           ]);
 
           const netWeight = resolveCanTuDongNetWeight(record);
+          const ca = resolveCanTuDongCa(record, shiftWindows);
 
           return {
             ...record,
             // Chuẩn hoá net nếu DB để trống nhưng đã có weight + tare
             net_weight: netWeight ?? record.net_weight ?? null,
+            ca,
             // Alias đọc UI theo nghĩa nghiệp vụ
             can_loi: asFiniteNumber(record.tare_weight),
             can_san_pham: asFiniteNumber(record.weight),

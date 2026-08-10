@@ -36,9 +36,113 @@ export type ShiftSummaryWarehouseMovement = {
   /** Đơn giá từ phiếu xuất/nhập kho (đ/đơn vị) */
   unitPrice?: number;
   createdBy: string;
-  /** Lý do phiếu — thường chứa mã lệnh SX đã chọn khi lập phiếu */
+  /** Lý do phiếu — thường chứa mã lệnh SX đã chọn khi lập phiếu (`... | LSX-...`) */
   reason?: string;
+  /** Ghi chú phiếu — có thể chứa mã lệnh SX (autofill cũ) */
+  note?: string;
 };
+
+/** Token mã lệnh SX — ví dụ LSX-DH029 / LSX00094; không nhận mã ca HC1/12C1 hay "xuất sản xuất". */
+export function looksLikeProductionOrderCode(token: string | undefined | null): boolean {
+  const value = String(token || '').trim();
+  if (value.length < 3 || /\s/.test(value)) return false;
+  // Mã ca sản xuất thường gặp trong lý do phiếu — không phải mã lệnh.
+  if (/^(HC|12C|CA)\d{1,2}$/i.test(value)) return false;
+  if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(value)) return false;
+  // Ưu tiên mã lệnh dạng LSX...
+  if (/^LSX[\w\-]*\d[\w\-]*$/i.test(value)) return true;
+  // Token sau `|` có thể là mã lệnh khác: chữ + số, dài hơn mã ca ngắn.
+  if (value.length < 5) return false;
+  return /[A-Za-zÀ-ỹ]/.test(value) && /\d/.test(value);
+}
+
+/** Tách token mã lệnh từ chuỗi (ưu tiên phần sau `|`; quét pattern LSX trong ghi chú). */
+export function parseProductionOrderCodeTokens(value: string | undefined | null): string[] {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  const tokens: string[] = [];
+  const pushToken = (token: string) => {
+    const cleaned = token.trim().replace(/^[(\[{<'"]+|[)\]}>'",.;:]+$/g, '');
+    if (looksLikeProductionOrderCode(cleaned)) tokens.push(cleaned);
+  };
+
+  // Phần sau `|` là danh sách mã lệnh đã gắn có chủ đích.
+  if (raw.includes('|')) {
+    for (const segment of raw.split('|').slice(1)) {
+      for (const part of segment.split(/[,;|/]+/)) {
+        pushToken(part);
+      }
+    }
+  }
+
+  // Ghi chú autofill cũ: "... lệnh SX (LSX-DH029, LSX-DH028)."
+  const patternMatches = raw.match(/\bLSX[\w\-]*/gi) || [];
+  for (const match of patternMatches) {
+    pushToken(match);
+  }
+
+  return [...new Set(tokens)];
+}
+
+/** Lấy mã lệnh liên thông từ ly_do + ghi_chu phiếu XK. */
+export function extractLinkedProductionOrderCodes(
+  ...parts: Array<string | undefined | null>
+): string[] {
+  const codes: string[] = [];
+  for (const part of parts) {
+    for (const token of parseProductionOrderCodeTokens(part)) {
+      codes.push(token);
+    }
+  }
+  return [...new Set(codes)];
+}
+
+/** Bỏ hậu tố ` | LSX-...` khỏi lý do để hiển thị/sửa. */
+export function stripProductionOrderCodesFromReason(reason: string | undefined | null): string {
+  const raw = String(reason || '').trim();
+  if (!raw || !raw.includes('|')) return raw;
+  const head = raw.split('|')[0]?.trim() || '';
+  return head;
+}
+
+/** Gắn mã lệnh vào ly_do dạng `lý do | LSX-A, LSX-B`. */
+export function composeReasonWithProductionOrderCodes(
+  reason: string | undefined | null,
+  codes: string[]
+): string {
+  const base = stripProductionOrderCodesFromReason(reason);
+  const uniqueCodes = [...new Set(codes.map(code => String(code || '').trim()).filter(Boolean))];
+  if (uniqueCodes.length === 0) return base;
+  const suffix = uniqueCodes.join(', ');
+  return base ? `${base} | ${suffix}` : suffix;
+}
+
+/** Phiếu có gắn mã lệnh (parse được từ reason/note) khớp `orderCode` không. */
+export function movementLinksProductionOrderCode(
+  movement: Pick<ShiftSummaryWarehouseMovement, 'reason' | 'note' | 'slipCode' | 'itemCode' | 'itemName' | 'createdBy'>,
+  orderCode: string
+): boolean {
+  const code = String(orderCode || '').trim();
+  if (!code) return false;
+  const upper = code.toUpperCase();
+
+  const linked = extractLinkedProductionOrderCodes(movement.reason, movement.note).map(item =>
+    item.toUpperCase()
+  );
+  if (linked.length > 0) return linked.includes(upper);
+
+  const hay = `${movement.reason || ''} ${movement.note || ''} ${movement.slipCode || ''} ${movement.createdBy || ''} ${movement.itemName || ''} ${movement.itemCode || ''}`
+    .toUpperCase();
+  return hay.includes(upper);
+}
+
+/** Phiếu đã khai báo ít nhất một mã lệnh parse được (không phải free-text thuần). */
+export function movementHasLinkedProductionOrderCodes(
+  movement: Pick<ShiftSummaryWarehouseMovement, 'reason' | 'note'>
+): boolean {
+  return extractLinkedProductionOrderCodes(movement.reason, movement.note).length > 0;
+}
 
 export type ShiftSummaryFilterSources = {
   shiftSettings: ShiftSetting[];

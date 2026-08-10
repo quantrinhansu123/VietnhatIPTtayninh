@@ -4,7 +4,6 @@ import {
   ProductionReport, ShiftInfo, ProductEntry, MaterialBatches, STANDARD_SHIFTS
 } from './types';
 import { computeReportMetrics, formatNumber } from './utils';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
 import ShiftInfoForm from './components/ShiftInfoForm';
 import ProductEntryForm from './components/ProductEntryForm';
 import MaterialsForm from './components/MaterialsForm';
@@ -502,22 +501,6 @@ export default function App() {
     localStorage.removeItem(STORAGE_DRAFT_KEY);
     setCurrentStep(1);
     navigateToTab('menu', { replace: true });
-  };
-
-  // Reset Server Database (for demo and review testing)
-  const handleResetDb = async () => {
-    if (window.confirm('Vui lòng xác nhận khôi phục tất cả dữ liệu báo cáo về bản seeding mẫu?')) {
-      try {
-        const res = await fetch('/api/reports/reset', { method: 'POST' });
-        if (res.ok) {
-          const resJson = await res.json();
-          setReports(resJson.data);
-          addNotification('Khôi phục database mẫu Đà Nẵng thành công!', 'success');
-        }
-      } catch (e) {
-        addNotification('Lỗi khi khôi phục database.', 'error');
-      }
-    }
   };
 
   // Wizard update handlers
@@ -1099,7 +1082,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <CanTuDongPanel onBack={() => goBack('report-lists')} />
+                <CanTuDongPanel onBack={() => goBack('report-forms')} />
               </motion.div>
             ) : resolvedTab === 'kiem-kho' ? (
               <motion.div
@@ -1450,10 +1433,29 @@ export default function App() {
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.15 }}
               >
-                <AnalyticsDashboard 
-                  reports={reports} 
-                  onResetDb={handleResetDb} 
-                  isLoading={isFetchLoading} 
+                <ControlBoardPanel
+                  mode="report-only"
+                  onNavigate={navigateToTab}
+                  onEditWeighing={pending => {
+                    setWeighingPendingAdd(pending);
+                    navigateToTab('weighing-summary');
+                  }}
+                  onMachineReport={(machine, type) => {
+                    if (type === 'mixing') {
+                      setMixingReportMachinePrefill({
+                        id: machine.id,
+                        code: machine.code,
+                        name: machine.name
+                      });
+                      navigateToTab('mixing-report');
+                      return;
+                    }
+                    setMachineNvlReportPrefill({
+                      code: machine.code,
+                      name: machine.name
+                    });
+                    navigateToTab('machine-nvl-report');
+                  }}
                 />
               </motion.div>
             )}

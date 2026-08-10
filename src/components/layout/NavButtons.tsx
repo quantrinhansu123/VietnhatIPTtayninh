@@ -99,7 +99,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'control-board': 'factory-quan-doc',
   'weighing-summary': 'report-forms',
   'weighing-summary-list': 'factory-qc',
-  'can-tu-dong': 'factory-qc',
+  'can-tu-dong': 'report-forms',
   'damaged-goods-report': 'report-forms',
   'damaged-goods-report-list': 'factory-qc',
   'mixing-report': 'report-forms',

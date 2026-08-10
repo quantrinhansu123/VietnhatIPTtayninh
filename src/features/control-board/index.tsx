@@ -92,13 +92,17 @@ function compareProductionOrderByRecentDate(a: ProductionOrderRow, b: Production
 export function ControlBoardPanel({
   onNavigate,
   onMachineReport,
-  onEditWeighing
+  onEditWeighing,
+  mode = 'full'
 }: {
   onNavigate: (tab: AppTab) => void;
   onMachineReport: (machine: MachineRow, type: 'mixing' | 'nvl') => void;
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
+  /** `report-only`: chỉ bộ lọc + báo cáo tổng hợp máy BB (dùng cho `/phan-tich`). */
+  mode?: 'full' | 'report-only';
 }) {
-  const { canCreate, canEdit, canDelete } = useTabAccess('control-board');
+  const reportOnly = mode === 'report-only';
+  const { canCreate, canEdit, canDelete } = useTabAccess(reportOnly ? 'dashboard' : 'control-board');
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
@@ -886,6 +890,8 @@ export function ControlBoardPanel({
         selectedMachine={selectedBoardMachine}
       />
 
+      {!reportOnly && (
+      <>
       <div className="order-[-20] grid grid-cols-1 gap-3">
         <DashboardWindow
           title="Lệnh sản xuất"
@@ -1142,6 +1148,8 @@ export function ControlBoardPanel({
           shiftSettings={productionOrderSettings}
           productCatalog={printingBatchProductCatalog}
         />
+      )}
+      </>
       )}
     </div>
   );

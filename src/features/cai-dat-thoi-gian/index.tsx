@@ -1428,11 +1428,25 @@ export function getHrDepartmentMembers(branches: HrBranch[], departmentName: str
 export function parseProductionOrderFilterDate(value: string): string {
   const raw = String(value || '').trim();
   if (!raw || raw === '-') return '';
-  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (direct) return direct[1];
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // startDate lệnh SX thường là DD/MM/YYYY sau formatProductionOrderDate.
+  const dmy = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = dmy[2].padStart(2, '0');
+    const year = dmy[3];
+    return `${year}-${month}-${day}`;
+  }
+
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 10);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function splitProductionOrderStaffNames(value: string): string[] {

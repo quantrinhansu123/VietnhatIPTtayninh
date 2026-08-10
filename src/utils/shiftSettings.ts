@@ -159,8 +159,8 @@ function shiftOptionIndex(rawShift: string, options: ShiftOption[]): number {
   if (exact >= 0) return exact;
 
   const extractRank = (value: string) => {
-    const cMatch = value.match(/c\s*(\d+)/i);
-    if (cMatch) return Number(cMatch[1]);
+    const parsed = parseProductionCShift(value);
+    if (parsed) return parsed.num;
     return null;
   };
   const currentRank = extractRank(rawShift);
@@ -182,9 +182,29 @@ export function shiftIsoDateByDays(isoDate: string, deltaDays: number): string |
 }
 
 /**
+ * Parse ca dạng 12C1 / C2 / Ca 12C1.
+ * Không nhận HC1/HC2 (chữ cái đứng ngay trước C).
+ */
+export function parseProductionCShift(value: string): { family: string; num: number } | null {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const re = /(\d*)\s*[cC]\s*(\d+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(raw)) !== null) {
+    const idx = match.index ?? 0;
+    if (idx > 0 && /[A-Za-zÀ-ỹ]/.test(raw.charAt(idx - 1))) continue;
+    const num = Number(match[2]);
+    if (!Number.isFinite(num)) continue;
+    return { family: match[1] || '', num };
+  }
+  return null;
+}
+
+/**
  * Ca trước của ca hiện tại:
  * - Cùng ngày: 12C1 là ca trước của 12C2
  * - Qua ngày: 12C2 ngày hôm trước là ca trước của 12C1 hôm nay
+ * - Ca HC / ca thường: theo thứ tự danh sách ca (ca đầu ngày → ca cuối ngày hôm trước)
  */
 export function resolvePreviousProductionShift(
   ngay: string,
@@ -195,18 +215,11 @@ export function resolvePreviousProductionShift(
   const rawShift = String(shift || '').trim();
   if (!date || !rawShift) return null;
 
-  /** Vi du "Ca 12C1" -> family=12, num=1 */
-  const parseCShift = (value: string) => {
-    const m = String(value || '').match(/(\d*)\s*[cC]\s*(\d+)/);
-    if (!m) return null;
-    return { family: m[1] || '', num: Number(m[2]) };
-  };
-
-  const current = parseCShift(rawShift);
+  const current = parseProductionCShift(rawShift);
   if (current && Number.isFinite(current.num)) {
     const resolveInOptions = (family: string, num: number, fallback: string) => {
       const matched = options.find(option => {
-        const parsed = parseCShift(option.value) || parseCShift(option.label);
+        const parsed = parseProductionCShift(option.value) || parseProductionCShift(option.label);
         return parsed && parsed.family === family && parsed.num === num;
       });
       return matched?.value || fallback;
@@ -227,7 +240,7 @@ export function resolvePreviousProductionShift(
 
     let maxNum = 2;
     for (const option of options) {
-      const parsed = parseCShift(option.value) || parseCShift(option.label);
+      const parsed = parseProductionCShift(option.value) || parseProductionCShift(option.label);
       if (!parsed || parsed.family !== current.family) continue;
       if (parsed.num > maxNum) maxNum = parsed.num;
     }

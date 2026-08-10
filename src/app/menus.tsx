@@ -171,6 +171,13 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary'
   },
   {
+    title: 'Phiếu cân tự động',
+    desc: 'Xem dữ liệu cân tự động (can_tu_dong); bấm ảnh để mở modal xem.',
+    icon: Scale,
+    icon3d: robot3d,
+    tab: 'can-tu-dong'
+  },
+  {
     title: 'Phiếu báo dừng máy',
     desc: 'Ghi nhận thời gian dừng, lý do và số cuộn ảnh hưởng theo ca.',
     icon: MachineDowntimeIcon,
@@ -352,7 +359,7 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
 export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
   {
     title: 'Dashboard quản trị',
-    desc: 'Tổng quan nhân sự, kinh doanh, sản xuất, kho và vận chuyển.',
+    desc: 'Báo cáo tổng hợp máy BB theo ngày/ca — cùng mục báo cáo trên Bảng điều khiển.',
     icon: LayoutDashboard,
     icon3d: barChart3d,
     tab: 'dashboard'
@@ -941,7 +948,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary': { group: 'Công nhân', sub: 'Phiếu cân' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
-  'can-tu-dong': { group: 'QC', sub: 'Dữ liệu cân tự động' },
+  'can-tu-dong': { group: 'Công nhân', sub: 'Phiếu cân tự động' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },
   'quan-ly-kho': { group: 'Kho', sub: 'Danh mục kho' },
   'damaged-goods-report': { group: 'Công nhân', sub: 'Báo cáo hàng hư' },

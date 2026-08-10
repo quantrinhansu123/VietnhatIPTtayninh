@@ -44,7 +44,12 @@ import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } fr
 import { findProductByCode, normalizeProducts } from '../san-pham';
 import { buildProductionOrderMaterialProposal, loadProductionOrderProductCatalog } from '../ke-hoach-san-xuat';
 import { normalizeMaterialsInventory } from '../kho-nvl';
-import type { ShiftSummaryWarehouseMovement } from '../../utils/controlBoardShiftSummary';
+import {
+  composeReasonWithProductionOrderCodes,
+  extractLinkedProductionOrderCodes,
+  stripProductionOrderCodesFromReason,
+  type ShiftSummaryWarehouseMovement
+} from '../../utils/controlBoardShiftSummary';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import type { MaterialOption } from '../san-pham/types';
 import {
@@ -154,14 +159,17 @@ export function buildWarehouseSlipDraftFromHistoryRows(
   const header = rows[0];
   if (!header) return null;
 
+  const linkedOrderCodes = extractLinkedProductionOrderCodes(header.reason, header.note);
+
   return {
     slipType: header.slipType,
     warehouseKind: header.warehouseKind,
     warehouseName: header.warehouseName,
     slipDate: header.slipDate,
-    reason: header.reason || '',
+    reason: stripProductionOrderCodesFromReason(header.reason || ''),
     note: header.note || '',
     createdBy: header.createdBy || '',
+    productionOrderRef: formatWarehouseProductionOrderSelection(linkedOrderCodes),
     shift: header.shift || '',
     editSlipCode: slipCode,
     lines: rows.map(row => ({
@@ -505,7 +513,8 @@ export function mapWarehouseMovementsForShiftSummary(rows: WarehouseMovementRow[
     quantity: row.quantity,
     unitPrice: Number.isFinite(row.unitPrice) ? row.unitPrice : 0,
     createdBy: row.createdBy,
-    reason: row.reason || ''
+    reason: row.reason || '',
+    note: row.note || ''
   }));
 }
 
@@ -755,10 +764,14 @@ export function WarehouseSlipPanel({
       setWarehouseName(String(draft.warehouseName || '').trim());
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
       if (draft.slipDate) setSlipDate(draft.slipDate);
-      setReason(draft.reason || '');
+      setReason(stripProductionOrderCodesFromReason(draft.reason || ''));
       setNote(draft.note || '');
       setCreatedBy(draft.createdBy || '');
-      setProductionOrderCodes(parseWarehouseProductionOrderSelection(draft.productionOrderRef));
+      {
+        const fromRef = parseWarehouseProductionOrderSelection(draft.productionOrderRef);
+        const fromText = extractLinkedProductionOrderCodes(draft.reason, draft.note);
+        setProductionOrderCodes(fromRef.length > 0 ? fromRef : fromText);
+      }
       setProductionOrderSearch('');
       setMachine(draft.machine || '');
       setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
@@ -1138,13 +1151,14 @@ export function WarehouseSlipPanel({
       }
       if (matchedShifts.size > 0) setSelectedShifts([...matchedShifts]);
 
-      if (!reason.trim()) {
-        setReason(
-          selectedShifts.length > 0
-            ? `Xuất theo lệnh SX · ${slipDate} · ${formatWarehouseShiftSelection([...matchedShifts])}`
-            : `Theo lệnh SX · ${slipDate}`
-        );
-      }
+      setReason(
+        stripProductionOrderCodesFromReason(
+          reason.trim() ||
+            (selectedShifts.length > 0
+              ? `Xuất theo lệnh SX · ${slipDate} · ${formatWarehouseShiftSelection([...matchedShifts])}`
+              : `Theo lệnh SX · ${slipDate}`)
+        )
+      );
       if (!note.trim()) {
         setNote(`Tự động điền từ ${matchedOrders.length} lệnh SX (${orderCodes.join(', ')}).`);
       }
@@ -1281,7 +1295,7 @@ export function WarehouseSlipPanel({
       loaiKho: warehouseKind,
       tenKho: warehouseName.trim(),
       ngayPhieu: slipDate,
-      lyDo: reason.trim(),
+      lyDo: composeReasonWithProductionOrderCodes(reason, productionOrderCodes),
       ghiChu: note.trim(),
       nguoiLap: createdBy.trim(),
       ca: shiftLabel || null,
@@ -1310,6 +1324,7 @@ export function WarehouseSlipPanel({
       }
 
       const savedSlipCode = String(data.slipCode || editSlipCode || '').trim();
+      const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodes);
 
       setPrintSlip(
         buildWarehouseSlipPrintData(payloadItems, {
@@ -1317,7 +1332,7 @@ export function WarehouseSlipPanel({
           slipType,
           warehouseKind,
           slipDate,
-          reason: reason.trim(),
+          reason: savedReason,
           note: note.trim(),
           createdBy: createdBy.trim(),
           productionOrderRef: productionOrderLabel,

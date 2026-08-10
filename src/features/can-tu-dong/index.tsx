@@ -31,6 +31,8 @@ export type CanTuDongRecord = {
   id: number | string;
   event_id?: string | null;
   qr_code?: string | null;
+  /** Ca sản xuất (SOURCE_SHIFT metadata hoặc suy từ giờ captured_at). */
+  ca?: string | null;
   /** Cân sản phẩm (còn lõi) */
   weight?: number | string | null;
   /** Cân lõi */
@@ -144,6 +146,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedCa, setSelectedCa] = useState('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
@@ -199,25 +202,37 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
   }, [records]);
 
-  const hasActiveFilters = Boolean(searchText.trim()) || selectedStatus !== 'all';
+  const caOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of records) {
+      const ca = String(row.ca ?? '').trim();
+      if (ca) set.add(ca);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [records]);
+
+  const hasActiveFilters =
+    Boolean(searchText.trim()) || selectedStatus !== 'all' || selectedCa !== 'all';
 
   const resetFilters = () => {
     setSearchText('');
     setSelectedStatus('all');
+    setSelectedCa('all');
   };
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredRecords = useMemo(() => {
     return records.filter(row => {
       const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
+      const matchesCa = selectedCa === 'all' || String(row.ca ?? '').trim() === selectedCa;
       const matchesSearch =
         !normalizedSearch ||
-        `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''}`
+        `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''} ${row.ca ?? ''}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesCa && matchesSearch;
     });
-  }, [records, normalizedSearch, selectedStatus]);
+  }, [records, normalizedSearch, selectedStatus, selectedCa]);
 
   const visibleIds = useMemo(
     () => filteredRecords.map(row => rowIdKey(row.id)).filter(Boolean),
@@ -383,6 +398,14 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
           disabled={loading}
         />
         <FilterCombobox
+          label="Ca"
+          options={caOptions}
+          value={selectedCa}
+          onChange={setSelectedCa}
+          searchPlaceholder="Tìm ca..."
+          compact
+        />
+        <FilterCombobox
           label="Trạng thái"
           options={statusOptions}
           value={selectedStatus}
@@ -415,7 +438,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
         </div>
       ) : null}
 
-      <TableShell minWidthClassName="min-w-[1100px]">
+      <TableShell minWidthClassName="min-w-[1180px]">
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input
@@ -430,6 +453,7 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell>Ảnh lõi</TableHeadCell>
           <TableHeadCell>Ảnh sản phẩm</TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Thời điểm</TableHeadCell>
+          <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
           <TableHeadCell>QR</TableHeadCell>
           <TableHeadCell title="tare_weight">Cân lõi</TableHeadCell>
           <TableHeadCell title="weight — còn lõi">Cân sản phẩm</TableHeadCell>
@@ -439,14 +463,14 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={10}>
+            <TableEmptyRow colSpan={11}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={10}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={11}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
           ) : (
             filteredRecords.map(row => {
               const idKey = rowIdKey(row.id);
@@ -487,6 +511,9 @@ export function CanTuDongPanel({ onBack }: { onBack: () => void }) {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatDateTime(row.captured_at || row.created_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-bold text-sky-900">
+                    {row.ca || '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-900">
                     {row.qr_code || '—'}

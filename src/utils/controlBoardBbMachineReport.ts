@@ -29,6 +29,8 @@ import {
   machineValueMatchesFilter,
   matchesControlBoardDateRange,
   matchesShiftSummaryBucket,
+  movementHasLinkedProductionOrderCodes,
+  movementLinksProductionOrderCode,
   resolveMachineNvlLineMaterialType,
   resolveShiftSummaryGiaNhuaFromWarehouse,
   TI_LE_LOI_HONG_DINH_MUC_PERCENT
@@ -566,26 +568,23 @@ function resolveExportWeightKg(
   return roundQty(converted, 4);
 }
 
-function movementMentionsOrderCode(movement: ShiftSummaryWarehouseMovement, orderCode: string) {
-  const code = String(orderCode || '').trim().toLowerCase();
-  if (!code) return false;
-  const hay = `${movement.slipCode} ${movement.createdBy} ${movement.itemName} ${movement.itemCode} ${movement.reason || ''}`.toLowerCase();
-  return hay.includes(code);
-}
-
-function parseWarehouseSlipOrderCodes(value: string | undefined | null): string[] {
-  return String(value || '')
-    .split(/[,;|/]+/)
-    .map(item => item.trim())
-    .filter(Boolean);
-}
-
 function movementMatchesOrderCode(movement: ShiftSummaryWarehouseMovement, orderCode: string) {
-  const code = String(orderCode || '').trim().toUpperCase();
-  if (!code) return false;
-  const linked = parseWarehouseSlipOrderCodes(movement.reason).map(item => item.toUpperCase());
-  if (linked.length > 0) return linked.includes(code);
-  return movementMentionsOrderCode(movement, orderCode);
+  return movementLinksProductionOrderCode(movement, orderCode);
+}
+
+/** Phiếu XK có gắn ngày+ca header; nếu phiếu có mã lệnh thì phải khớp mã. */
+function movementAppliesToBbOrderHeader(
+  movement: ShiftSummaryWarehouseMovement,
+  header: { ngay: string; shift: string; orderCode?: string },
+  shiftOptions: ReturnType<typeof getProductionShiftOptions>
+): boolean {
+  if (!matchesShiftSummaryBucket(header.ngay, header.shift, movement.slipDate, movement.shift, shiftOptions)) {
+    return false;
+  }
+  if (!movementHasLinkedProductionOrderCodes(movement)) return true;
+  const orderCode = String(header.orderCode || '').trim();
+  if (!orderCode) return false;
+  return movementMatchesOrderCode(movement, orderCode);
 }
 
 function orderIncludesProduct(order: ProductionOrderRow, productCode: string, productName: string) {
@@ -670,6 +669,9 @@ export function buildBbWarehouseExportLineRows(input: {
     if (relatedOrders.length === 0) continue;
 
     const explicitMatches = relatedOrders.filter(order => movementMatchesOrderCode(movement, order.orderCode));
+    const hasLinkedCodes = movementHasLinkedProductionOrderCodes(movement);
+    // Có mã lệnh trên phiếu nhưng không khớp lệnh BB trong ca → bỏ (không gán nhầm).
+    if (hasLinkedCodes && explicitMatches.length === 0) continue;
     const matchedOrders = explicitMatches.length > 0 ? explicitMatches : relatedOrders;
     const matchedByOrder = explicitMatches.length > 0;
     const orderCode = [...new Set(matchedOrders.map(order => order.orderCode).filter(Boolean))].join(', ');
@@ -730,6 +732,59 @@ export function sumBbProductionOrderTotals(rows: BbProductionOrderLineRow[]) {
 
 export function sumBbWarehouseExportWeightKg(rows: BbWarehouseExportLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg && row.weightKg > 0 ? row.weightKg : 0), 0);
+}
+
+/**
+ * Tổng trọng lượng xuất tách nhựa / vật tư khác (khớp cột «Tổng (kg)» tab phiếu XK).
+ * - Nhựa: dòng nhựa + ĐVT = kg
+ * - Vật tư khác: ĐVT ≠ kg (dùng cột Tổng kg đã quy đổi)
+ */
+export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRow[]) {
+  const seen = new Set<string>();
+  let plasticKg = 0;
+  let otherKg = 0;
+  for (const row of rows) {
+    const slipId = row.slipLineKey || row.key;
+    if (seen.has(slipId)) continue;
+    seen.add(slipId);
+    const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
+    if (!(kg > 0)) continue;
+
+    const isKg = isWarehouseKgUnit(row.unit || '');
+    if (isKg) {
+      if (
+        isWarehousePlasticNvlLine({
+          warehouseKind: 'nvl',
+          itemCode: row.itemCode,
+          itemName: row.itemName,
+          unit: row.unit
+        })
+      ) {
+        plasticKg += kg;
+      }
+      continue;
+    }
+
+    // ĐVT khác kg → Vật tư khác (lấy cột Tổng kg).
+    otherKg += kg;
+  }
+  return {
+    plasticKg,
+    otherKg,
+    totalKg: plasticKg + otherKg
+  };
+}
+
+/** @deprecated Dùng sumBbWarehouseExportWeightKgByKind — giữ tương thích chỗ gọi cũ. */
+export function sumBbWarehousePlasticExportWeightKg(rows: BbWarehouseExportLineRow[]) {
+  return sumBbWarehouseExportWeightKgByKind(rows).totalKg;
+}
+
+/**
+ * Tổng trọng lượng nhựa yêu cầu (kg) = Σ cột «Tổng (kg)» trên dòng lệnh SX đã lọc.
+ */
+export function sumBbProductionOrderPlasticRequiredKg(rows: BbProductionOrderLineRow[]) {
+  return rows.reduce((sum, row) => sum + (row.totalNormKg && row.totalNormKg > 0 ? row.totalNormKg : 0), 0);
 }
 
 /** Tổng SL đúng cột phiếu xuất kho — mỗi dòng phiếu chỉ cộng một lần. */
@@ -806,6 +861,15 @@ export function aggregateBbWarehouseExportByMaterial(
   }
 
   return [...map.values()].sort((a, b) => {
+    const aIsKg = isWarehouseKgUnit(a.unit || '');
+    const bIsKg = isWarehouseKgUnit(b.unit || '');
+    if (aIsKg !== bIsKg) return aIsKg ? -1 : 1;
+
+    const unitCmp = String(a.unit || '')
+      .trim()
+      .localeCompare(String(b.unit || '').trim(), 'vi', { sensitivity: 'base' });
+    if (unitCmp !== 0) return unitCmp;
+
     const codeCmp = a.itemCode.localeCompare(b.itemCode, 'vi');
     if (codeCmp !== 0) return codeCmp;
     return a.itemName.localeCompare(b.itemName, 'vi');
@@ -2278,6 +2342,19 @@ export function sumBbDamagedGoodsWeightKg(rows: BbDamagedGoodsLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0);
 }
 
+/** Tổng số phiếu lỗi hỏng + trọng lượng (kg) trên tab báo cáo hàng lỗi hỏng. */
+export function sumBbDamagedGoodsTotals(rows: BbDamagedGoodsLineRow[]) {
+  const slips = new Set<string>();
+  let weightKg = 0;
+  for (const row of rows) {
+    weightKg += row.weightKg > 0 ? row.weightKg : 0;
+    slips.add(
+      [String(row.documentNo || '').trim() || row.key, row.ngay, row.shift, row.orderCode].join('|')
+    );
+  }
+  return { quantity: slips.size, weightKg };
+}
+
 export function groupBbDamagedGoodsLines(rows: BbDamagedGoodsLineRow[]): BbDamagedGoodsGroup[] {
   const map = new Map<string, BbDamagedGoodsGroup>();
 
@@ -2852,6 +2929,42 @@ export function sumBbCuoiCaWeightKg(rows: BbCuoiCaLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0);
 }
 
+/**
+ * Tổng trọng lượng tồn cuối ca tách nhựa / vật tư khác (cùng logic tồn đầu ca).
+ * - Nhựa: dòng nhựa + ĐVT = kg
+ * - Vật tư khác: ĐVT ≠ kg (cột trọng lượng kg trên phiếu)
+ */
+export function sumBbCuoiCaWeightKgByKind(rows: BbCuoiCaLineRow[]) {
+  let plasticKg = 0;
+  let otherKg = 0;
+  for (const row of rows) {
+    const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
+    if (!(kg > 0)) continue;
+
+    const isKg = isWarehouseKgUnit(row.unit || '');
+    if (isKg) {
+      if (
+        isWarehousePlasticNvlLine({
+          warehouseKind: 'nvl',
+          itemCode: row.itemCode,
+          itemName: row.itemName,
+          unit: row.unit
+        })
+      ) {
+        plasticKg += kg;
+      }
+      continue;
+    }
+
+    otherKg += kg;
+  }
+  return {
+    plasticKg,
+    otherKg,
+    totalKg: plasticKg + otherKg
+  };
+}
+
 export function groupBbCuoiCaLines(rows: BbCuoiCaLineRow[]): BbCuoiCaGroup[] {
   const map = new Map<string, BbCuoiCaGroup>();
 
@@ -3043,6 +3156,42 @@ export function sumBbDauCaWeightKg(rows: BbDauCaLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0);
 }
 
+/**
+ * Tổng trọng lượng tồn đầu ca tách nhựa / vật tư khác (khớp logic Trọng lượng xuất).
+ * - Nhựa: dòng nhựa + ĐVT = kg
+ * - Vật tư khác: ĐVT ≠ kg (cột trọng lượng kg trên phiếu)
+ */
+export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
+  let plasticKg = 0;
+  let otherKg = 0;
+  for (const row of rows) {
+    const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
+    if (!(kg > 0)) continue;
+
+    const isKg = isWarehouseKgUnit(row.unit || '');
+    if (isKg) {
+      if (
+        isWarehousePlasticNvlLine({
+          warehouseKind: 'nvl',
+          itemCode: row.itemCode,
+          itemName: row.itemName,
+          unit: row.unit
+        })
+      ) {
+        plasticKg += kg;
+      }
+      continue;
+    }
+
+    otherKg += kg;
+  }
+  return {
+    plasticKg,
+    otherKg,
+    totalKg: plasticKg + otherKg
+  };
+}
+
 function buildBbDauCaMaterialLinesForOrder(input: {
   group: Omit<BbDauCaGroup, 'materialLines' | 'productCount' | 'totalNormWeightKg'>;
   productionOrders: ProductionOrderRow[];
@@ -3075,22 +3224,32 @@ function buildBbDauCaMaterialLinesForOrder(input: {
     return null;
   };
   const useDinhMucAsThucTe = isBb12C1OnJuly1(group.ngay, group.shift);
-  const previousShift = resolvePreviousProductionShift(group.ngay, group.shift, shiftOptions);
-  const mixingShiftStats =
-    !useDinhMucAsThucTe && previousShift
-      ? buildBbMixingShiftStats({
-          mixingReports: input.mixingReports || [],
-          headerMachine: group.machine,
-          mixingNgay: previousShift.ngay,
-          mixingShift: previousShift.shift,
-          shiftOptions
-        })
-      : { byMaterial: new Map<string, BbMixingShiftMaterialStat>(), totalMixKg: 0 };
+  const mixingShiftStats = useDinhMucAsThucTe
+    ? { byMaterial: new Map<string, BbMixingShiftMaterialStat>(), totalMixKg: 0 }
+    : resolveBbMixingShiftStatsForOrderHeader({
+        mixingReports: input.mixingReports || [],
+        headerMachine: group.machine,
+        headerNgay: group.ngay,
+        headerShift: group.shift,
+        shiftOptions
+      }).stats;
   const resolveTiLeThucTe = (code: string, name: string, tiLeDinhMucPercent: number | null) => {
     if (useDinhMucAsThucTe) return tiLeDinhMucPercent;
-    const key = materialIdentityKey(code, name);
-    const mixStat = key ? mixingShiftStats.byMaterial.get(key) : undefined;
-    return resolveBbMixingShiftTiLeThucTeTbPercent(mixStat?.klSum ?? 0, mixingShiftStats.totalMixKg);
+    const mixStat = lookupBbMixingShiftMaterialStat(mixingShiftStats.byMaterial, code, name);
+    const fromMix = resolveBbMixingShiftTiLeThucTeTbPercent(
+      mixStat?.klSum ?? 0,
+      mixingShiftStats.totalMixKg
+    );
+    if (fromMix !== null && Number.isFinite(fromMix) && fromMix > 0) return fromMix;
+    // Chưa có phiếu trộn (hoặc không khớp mã) → dùng tỉ lệ ĐM để hiện & phân bổ NNS-TRON.
+    if (
+      tiLeDinhMucPercent !== null &&
+      Number.isFinite(tiLeDinhMucPercent) &&
+      tiLeDinhMucPercent > 0
+    ) {
+      return tiLeDinhMucPercent;
+    }
+    return null;
   };
   const orderCodes = group.orderCode
     .split(',')
@@ -3211,15 +3370,23 @@ function buildBbDauCaMaterialLinesForOrder(input: {
       if (name && tonMaps.qtyByName.has(name)) return tonMaps.qtyByName.get(name) || 0;
       return 0;
     })();
-    // Có NNS-TRON → Tồn đầu (kg) = NNS-TRON × Tỉ lệ thực tế (%); không thì lấy tồn đầu theo mã NVL.
+    // Có NNS-TRON → Tồn đầu (kg) = NNS-TRON × tỉ lệ thực tế (đã fallback ĐM trong resolveTiLeThucTe).
     const useNns =
       nnsTronTonDauKg > 0 &&
       tiLeThucTeTbPercent !== null &&
       Number.isFinite(tiLeThucTeTbPercent) &&
       tiLeThucTeTbPercent > 0 &&
       !isNnsTronMaterial(meta.itemCode, meta.itemName);
-    const tonDauWeightKg = roundQty(useNns ? nnsTronTonDauKg * (tiLeThucTeTbPercent / 100) : directTon, 4);
-    const tonDauQuantity = roundQty(useNns ? 0 : directQty, 4);
+    const tonDauWeightKg = roundQty(
+      useNns ? nnsTronTonDauKg * (tiLeThucTeTbPercent / 100) : directTon,
+      4
+    );
+    // ĐVT kg: SL tồn = tồn đầu (kg). ĐVT khác: SL trên phiếu tồn đầu theo mã (không chia NNS-TRON).
+    const unitIsKg = isWarehouseKgUnit(meta.unit || '');
+    const tonDauQuantity = roundQty(
+      unitIsKg ? (tonDauWeightKg > 0 ? tonDauWeightKg : directQty) : directQty,
+      4
+    );
     const tonDauFormula: BbDauCaTonDauFormula = {
       itemCode: meta.itemCode,
       itemName: meta.itemName,
@@ -3312,7 +3479,16 @@ function buildBbDauCaMaterialLinesForOrder(input: {
     });
   }
 
-  materialLines.sort((a, b) => a.itemName.localeCompare(b.itemName, 'vi'));
+  materialLines.sort((a, b) => {
+    const aIsKg = isWarehouseKgUnit(a.unit || '');
+    const bIsKg = isWarehouseKgUnit(b.unit || '');
+    if (aIsKg !== bIsKg) return aIsKg ? -1 : 1;
+    const unitCmp = String(a.unit || '')
+      .trim()
+      .localeCompare(String(b.unit || '').trim(), 'vi', { sensitivity: 'base' });
+    if (unitCmp !== 0) return unitCmp;
+    return a.itemName.localeCompare(b.itemName, 'vi');
+  });
 
   return { lines: materialLines, productCount: productList.length };
 }
@@ -4031,6 +4207,18 @@ export function buildBbSanLuongGroups(input: {
   });
 }
 
+/** Tổng SL sản lượng + trọng lượng thực tế (kg) trên tab báo cáo sản lượng. */
+export function sumBbSanLuongTotals(groups: BbSanLuongGroup[]) {
+  return groups.reduce(
+    (acc, group) => {
+      acc.quantity += group.totalQuantity > 0 ? group.totalQuantity : 0;
+      acc.weightKg += group.totalActualWeightKg > 0 ? group.totalActualWeightKg : 0;
+      return acc;
+    },
+    { quantity: 0, weightKg: 0 }
+  );
+}
+
 export type BbThucDungLineRow = {
   key: string;
   ngay: string;
@@ -4321,9 +4509,7 @@ function sumWarehouseExportKgByCodeForHeader(
 
   for (const movement of movements) {
     if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
-    if (!matchesShiftSummaryBucket(header.ngay, header.shift, movement.slipDate, movement.shift, shiftOptions)) {
-      continue;
-    }
+    if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) continue;
     const kg = resolveMovementExportKg(movement, materials);
     if (kg <= 0) continue;
     const code = normalizeMaterialCodeKey(movement.itemCode || '');
@@ -4622,6 +4808,94 @@ function resolveBbMixingShiftTiLeThucTeTbPercent(klSum: number, totalMixKg: numb
   return roundQty((klSum / totalMixKg) * 100, 4);
 }
 
+function lookupBbMixingShiftMaterialStat(
+  byMaterial: Map<string, BbMixingShiftMaterialStat>,
+  code: string,
+  name: string
+): BbMixingShiftMaterialStat | undefined {
+  const key = materialIdentityKey(code, name);
+  if (key && byMaterial.has(key)) return byMaterial.get(key);
+  const codeKey = normalizeMaterialCodeKey(code);
+  if (codeKey) {
+    for (const [statKey, stat] of byMaterial.entries()) {
+      if (statKey === codeKey || normalizeMaterialCodeKey(stat.materialCode) === codeKey) return stat;
+    }
+  }
+  const nameKey = String(name || '').trim().toUpperCase();
+  if (nameKey) {
+    for (const stat of byMaterial.values()) {
+      if (String(stat.materialName || '').trim().toUpperCase() === nameKey) return stat;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Ưu tiên phiếu trộn ca liền trước; nếu chưa có dữ liệu → lấy phiếu trộn cùng ca lệnh.
+ */
+function resolveBbMixingShiftStatsForOrderHeader(input: {
+  mixingReports: MixingReport[];
+  headerMachine: string;
+  headerNgay: string;
+  headerShift: string;
+  shiftOptions: ReturnType<typeof getProductionShiftOptions>;
+}): {
+  stats: { byMaterial: Map<string, BbMixingShiftMaterialStat>; totalMixKg: number };
+  mixingNgay: string | null;
+  mixingShift: string | null;
+  fromPreviousShift: boolean;
+} {
+  const empty = {
+    byMaterial: new Map<string, BbMixingShiftMaterialStat>(),
+    totalMixKg: 0
+  };
+  const previousShift = resolvePreviousProductionShift(
+    input.headerNgay,
+    input.headerShift,
+    input.shiftOptions
+  );
+  if (previousShift) {
+    const previousStats = buildBbMixingShiftStats({
+      mixingReports: input.mixingReports,
+      headerMachine: input.headerMachine,
+      mixingNgay: previousShift.ngay,
+      mixingShift: previousShift.shift,
+      shiftOptions: input.shiftOptions
+    });
+    if (previousStats.byMaterial.size > 0) {
+      return {
+        stats: previousStats,
+        mixingNgay: previousShift.ngay,
+        mixingShift: previousShift.shift,
+        fromPreviousShift: true
+      };
+    }
+  }
+
+  const currentStats = buildBbMixingShiftStats({
+    mixingReports: input.mixingReports,
+    headerMachine: input.headerMachine,
+    mixingNgay: input.headerNgay,
+    mixingShift: input.headerShift,
+    shiftOptions: input.shiftOptions
+  });
+  if (currentStats.byMaterial.size > 0) {
+    return {
+      stats: currentStats,
+      mixingNgay: input.headerNgay,
+      mixingShift: input.headerShift,
+      fromPreviousShift: false
+    };
+  }
+
+  return {
+    stats: empty,
+    mixingNgay: previousShift?.ngay ?? null,
+    mixingShift: previousShift?.shift ?? null,
+    fromPreviousShift: Boolean(previousShift)
+  };
+}
+
 /** 12C1 ngày 01/07: không có ca trước hợp lệ → TB thực tế = tỉ lệ ĐM máy. */
 function isBb12C1OnJuly1(ngay: string, shift: string) {
   const date = String(ngay || '').trim();
@@ -4679,25 +4953,29 @@ function buildBbTonDauAllocationContext(params: {
   };
 
   const useDinhMucAsThucTe = isBb12C1OnJuly1(header.ngay, header.shift);
-  const previousShift = resolvePreviousProductionShift(header.ngay, header.shift, shiftOptions);
-  const mixingShiftStats = previousShift
-    ? buildBbMixingShiftStats({
+  const mixingShiftStats = useDinhMucAsThucTe
+    ? { byMaterial: new Map<string, BbMixingShiftMaterialStat>(), totalMixKg: 0 }
+    : resolveBbMixingShiftStatsForOrderHeader({
         mixingReports,
         headerMachine: header.machine,
-        mixingNgay: previousShift.ngay,
-        mixingShift: previousShift.shift,
+        headerNgay: header.ngay,
+        headerShift: header.shift,
         shiftOptions
-      })
-    : { byMaterial: new Map<string, BbMixingShiftMaterialStat>(), totalMixKg: 0 };
+      }).stats;
 
   const resolveTiLeThucTeTbPercent = (code: string, name: string): number | null => {
     if (useDinhMucAsThucTe) {
       const fromMachine = resolveMachineDinhMuc(code, name);
       return fromMachine === null ? null : roundQty(fromMachine, 4);
     }
-    const key = materialIdentityKey(code, name);
-    const mixStat = key ? mixingShiftStats.byMaterial.get(key) : undefined;
-    return resolveBbMixingShiftTiLeThucTeTbPercent(mixStat?.klSum ?? 0, mixingShiftStats.totalMixKg);
+    const mixStat = lookupBbMixingShiftMaterialStat(mixingShiftStats.byMaterial, code, name);
+    const fromMix = resolveBbMixingShiftTiLeThucTeTbPercent(
+      mixStat?.klSum ?? 0,
+      mixingShiftStats.totalMixKg
+    );
+    if (fromMix !== null && Number.isFinite(fromMix) && fromMix > 0) return fromMix;
+    const fromMachine = resolveMachineDinhMuc(code, name);
+    return fromMachine === null ? null : roundQty(fromMachine, 4);
   };
 
   return {
@@ -4868,9 +5146,7 @@ export function buildBbInboundBalanceMetricDetail(input: {
     const rows: Array<Record<string, string | number | null | undefined>> = [];
     for (const movement of input.warehouseMovements) {
       if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
-      if (!matchesShiftSummaryBucket(header.ngay, header.shift, movement.slipDate, movement.shift, shiftOptions)) {
-        continue;
-      }
+      if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) continue;
       const code = String(movement.itemCode || '').trim();
       const name = String(movement.itemName || '').trim();
       if (!materialMatchesLine(code, name, target)) continue;
@@ -5143,17 +5419,7 @@ export function buildBbThucDungLineRows(input: {
     const xuatByMaterial = new Map<string, number>();
     for (const movement of input.warehouseMovements) {
       if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
-      if (
-        !matchesShiftSummaryBucket(
-          header.ngay,
-          header.shift,
-          movement.slipDate,
-          movement.shift,
-          shiftOptions
-        )
-      ) {
-        continue;
-      }
+      if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) continue;
       const code = String(movement.itemCode || '').trim();
       const name = String(movement.itemName || '').trim();
       const key = materialIdentityKey(code, name);
@@ -5178,19 +5444,17 @@ export function buildBbThucDungLineRows(input: {
       xuatByMaterial.set(key, roundQty(kg, 4));
     }
 
-    // Tỉ lệ TB thực tế chỉ lấy từ phiếu trộn ca liền trước (vd: 12C2 ← 12C1 cùng ngày; 12C1 ← 12C2 hôm trước).
-    const previousShift = resolvePreviousProductionShift(header.ngay, header.shift, shiftOptions);
-    const mixingShiftStats = previousShift
-      ? buildBbMixingShiftStats({
-          mixingReports: input.mixingReports,
-          headerMachine: header.machine,
-          mixingNgay: previousShift.ngay,
-          mixingShift: previousShift.shift,
-          shiftOptions
-        })
-      : { byMaterial: new Map<string, BbMixingShiftMaterialStat>(), totalMixKg: 0 };
-    const mixingRatioNgay = previousShift?.ngay ?? null;
-    const mixingRatioShift = previousShift?.shift ?? null;
+    // Tỉ lệ TB thực tế: ưu tiên phiếu trộn ca liền trước; không có thì lấy cùng ca lệnh.
+    const mixingResolved = resolveBbMixingShiftStatsForOrderHeader({
+      mixingReports: input.mixingReports,
+      headerMachine: header.machine,
+      headerNgay: header.ngay,
+      headerShift: header.shift,
+      shiftOptions
+    });
+    const mixingShiftStats = mixingResolved.stats;
+    const mixingRatioNgay = mixingResolved.mixingNgay;
+    const mixingRatioShift = mixingResolved.mixingShift;
 
     for (const [key, stat] of mixingShiftStats.byMaterial.entries()) {
       if (byMaterial.has(key)) continue;
@@ -5215,7 +5479,11 @@ export function buildBbThucDungLineRows(input: {
       if (isNnsTronMaterial(agg.materialCode, agg.materialName) && nnsTronTonDauKg > 0) {
         continue;
       }
-      const mixStat = mixingShiftStats.byMaterial.get(materialKey);
+      const mixStat = lookupBbMixingShiftMaterialStat(
+        mixingShiftStats.byMaterial,
+        agg.materialCode,
+        agg.materialName
+      );
       const mixingShiftMaterialKg =
         !useDinhMucAsThucTe && mixStat && mixStat.klSum > 0 ? roundQty(mixStat.klSum, 4) : null;
       const mixingShiftTotalKg =
@@ -5224,10 +5492,16 @@ export function buildBbThucDungLineRows(input: {
         const fromMachine = resolveMachineDinhMuc(agg.materialCode, agg.materialName);
         return fromMachine === null ? null : roundQty(fromMachine, 4);
       })();
-      // 12C1 ngày 1/7: TB thực tế = ĐM; còn lại lấy từ phiếu trộn ca liền trước.
+      // 12C1 ngày 1/7: TB thực tế = ĐM; còn lại lấy từ phiếu trộn (ca trước / cùng ca); không có thì ĐM.
+      const fromMix = resolveBbMixingShiftTiLeThucTeTbPercent(
+        mixStat?.klSum ?? 0,
+        mixingShiftStats.totalMixKg
+      );
       const tiLeThucTeTbPercent = useDinhMucAsThucTe
         ? tiLeDinhMucPercent
-        : resolveBbMixingShiftTiLeThucTeTbPercent(mixStat?.klSum ?? 0, mixingShiftStats.totalMixKg);
+        : fromMix !== null && Number.isFinite(fromMix) && fromMix > 0
+          ? fromMix
+          : tiLeDinhMucPercent;
       // Xuất trong ca = KL phiếu xuất kho NVL của mã này trong ca hiện tại.
       const xuatTrongCaKg = xuatByMaterial.get(materialKey) || 0;
       const trongLuongDaTronKg = xuatTrongCaKg;
@@ -5408,15 +5682,14 @@ export function buildBbThucDungMetricDetail(input: {
     }
   };
 
-  const previousShift = resolvePreviousProductionShift(header.ngay, header.shift, shiftOptions);
-  const mixingRatioNgay = previousShift?.ngay ?? '';
-  const mixingRatioShift = previousShift?.shift ?? '';
+  const mixingRatioNgay = input.line.tiLeThucTeSourceNgay || '';
+  const mixingRatioShift = input.line.tiLeThucTeSourceShift || '';
   const useDinhMucAsThucTe = isBb12C1OnJuly1(header.ngay, header.shift);
   const previousShiftNote = useDinhMucAsThucTe
     ? '12C1 ngày 01/07: Tỉ lệ TB thực tế = Tỉ lệ ĐM (%)'
-    : previousShift
-      ? `Tỉ lệ TB thực tế lấy từ phiếu trộn ca liền trước: ${previousShift.shift} (${previousShift.ngay})`
-      : 'Tỉ lệ TB thực tế: chưa xác định được ca liền trước';
+    : mixingRatioNgay && mixingRatioShift
+      ? `Tỉ lệ TB thực tế lấy từ phiếu trộn: ${mixingRatioShift} (${mixingRatioNgay})`
+      : 'Tỉ lệ TB thực tế: chưa có phiếu trộn khớp — dùng tỉ lệ ĐM máy nếu có';
 
   const xuatTrongCaFormula = `Xuất trong ca = tổng KL phiếu xuất kho NVL của mã này trong ca hiện tại = ${roundQty(
     input.line.xuatTrongCaKg, 4
@@ -5452,17 +5725,7 @@ export function buildBbThucDungMetricDetail(input: {
     const materials = input.materials || [];
     for (const movement of input.warehouseMovements) {
       if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
-      if (
-        !matchesShiftSummaryBucket(
-          header.ngay,
-          header.shift,
-          movement.slipDate,
-          movement.shift,
-          shiftOptions
-        )
-      ) {
-        continue;
-      }
+      if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) continue;
       const code = String(movement.itemCode || '').trim();
       const name = String(movement.itemName || '').trim();
       if (!materialMatchesLine(code, name, input.line)) continue;
@@ -5850,17 +6113,7 @@ export function buildBbTongHopThucXuatMetricDetail(input: {
     const materials = input.materials || [];
     for (const movement of input.warehouseMovements) {
       if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
-      if (
-        !matchesShiftSummaryBucket(
-          header.ngay,
-          header.shift,
-          movement.slipDate,
-          movement.shift,
-          shiftOptions
-        )
-      ) {
-        continue;
-      }
+      if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) continue;
       const code = String(movement.itemCode || '').trim();
       const name = String(movement.itemName || '').trim();
       if (!materialMatchesLine(code, name, materialTarget)) continue;
@@ -6198,13 +6451,7 @@ export function buildBbTongGroups(input: {
 
     for (const movement of input.warehouseMovements) {
       if (
-        !matchesShiftSummaryBucket(
-          header.ngay,
-          header.shift,
-          movement.slipDate,
-          movement.shift,
-          shiftOptions
-        )
+        !movementAppliesToBbOrderHeader(movement, header, shiftOptions)
       ) {
         continue;
       }
@@ -6420,17 +6667,15 @@ export function buildBbMixingRatioGroups(input: {
   const groups: BbMixingRatioGroup[] = [];
 
   for (const header of headers) {
-    // Tỉ lệ trộn lấy từ phiếu trộn ca liền trước của ca lệnh hiện tại.
-    const previousShift = resolvePreviousProductionShift(header.ngay, header.shift, shiftOptions);
-    if (!previousShift) continue;
-
-    const mixingShiftStats = buildBbMixingShiftStats({
+    // Tỉ lệ trộn: ưu tiên phiếu trộn ca liền trước; không có thì lấy cùng ca lệnh.
+    const mixingResolved = resolveBbMixingShiftStatsForOrderHeader({
       mixingReports: input.mixingReports,
       headerMachine: header.machine,
-      mixingNgay: previousShift.ngay,
-      mixingShift: previousShift.shift,
+      headerNgay: header.ngay,
+      headerShift: header.shift,
       shiftOptions
     });
+    const mixingShiftStats = mixingResolved.stats;
 
     if (mixingShiftStats.byMaterial.size === 0) continue;
 
@@ -6561,15 +6806,7 @@ export function buildBbDanhGiaHaoHutGroups(input: {
     }
 
     for (const movement of input.warehouseMovements) {
-      if (
-        !matchesShiftSummaryBucket(
-          header.ngay,
-          header.shift,
-          movement.slipDate,
-          movement.shift,
-          shiftOptions
-        )
-      ) {
+      if (!movementAppliesToBbOrderHeader(movement, header, shiftOptions)) {
         continue;
       }
       addMaterialBucket(xuat, classifyExportMovementKg(movement, input.materials));

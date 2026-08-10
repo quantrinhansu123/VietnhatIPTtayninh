@@ -14,6 +14,7 @@ export interface ProductRow {
   nature: string;
   group: string;
   unit: string;
+  warehouse: string;
   totalWeight: string;
   rollWidth: string;
   rollLength: string;

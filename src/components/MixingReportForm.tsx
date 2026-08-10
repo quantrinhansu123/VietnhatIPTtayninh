@@ -1286,7 +1286,10 @@ export default function MixingReportForm({
     const roundKey = ROUND_KEYS[0];
     let nextLines: MixingReportLine[] = [];
     for (const item of items) {
-      nextLines = upsertMaterialInRound(nextLines, roundKey, item);
+      nextLines = upsertMaterialInRound(nextLines, roundKey, {
+        ...item,
+        don_vi: item.don_vi || ''
+      });
     }
 
     setForm(prev => ({

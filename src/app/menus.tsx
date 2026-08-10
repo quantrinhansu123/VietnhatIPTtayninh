@@ -630,6 +630,13 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'warehouse-history'
   },
   {
+    title: 'Tồn kho',
+    desc: 'Xem tổng hợp tồn kho theo kho, loại và khoảng ngày.',
+    icon: BarChart3,
+    icon3d: chartIncreasing3d,
+    tab: 'ton-kho'
+  },
+  {
     title: 'Chuẩn bị xuất hàng',
     desc: 'Danh sách lệnh giao hàng, xác nhận đủ hàng và bàn giao cho lái xe.',
     icon: Truck,
@@ -904,6 +911,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
+      { label: 'Tồn kho', tab: 'ton-kho' },
       { label: 'Chuẩn bị xuất hàng', tab: 'factory-kho', disabled: true }
     ]
   },
@@ -956,6 +964,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'machines': { group: 'Trang chủ', sub: 'Quản lý máy' },
   'warehouse-slip': { group: 'Kho', sub: 'Phiếu xuất nhập kho' },
   'warehouse-history': { group: 'Kho', sub: 'Lịch sử xuất nhập' },
+  'ton-kho': { group: 'Kho', sub: 'Tồn kho' },
   'settings': { group: 'Quản trị', sub: 'Người dùng và phân quyền / Cấu hình hệ thống' },
   'hr': { group: 'HCNS', sub: 'Hồ sơ nhân sự' },
   'vehicles': { group: 'Trang chủ', sub: 'Lái xe' },

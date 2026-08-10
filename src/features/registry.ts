@@ -13,6 +13,7 @@ export type TableId =
   | 'danh_sach_may'
   | 'kho_nvl'
   | 'phieu_xuat_nhap_kho'
+  | 'ton_kho'
   | 'don_hang'
   | 'khach_hang'
   | 'lenh_xuat_hang'
@@ -83,9 +84,9 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   kiem_kho: {
     table: 'kiem_kho',
     label: 'Báo cáo kiểm kho',
-    sql: ['supabase-kiem-kho.sql'],
+    sql: ['supabase-kiem-kho.sql', 'supabase-kiem-kho-tong-hop.sql'],
     apiPrefix: '/api/kiem-kho',
-    serverLines: 'GET/POST/DELETE /api/kiem-kho + POST /api/kiem-kho/dong-bo-ton-dau',
+    serverLines: 'GET/POST/DELETE /api/kiem-kho + /api/kiem-kho/dot-mo, /dot, /dot-xac-nhan + /api/kiem-kho-tong-hop',
     appTab: 'kiem-kho',
     appLines: 'src/features/kiem-kho/index.tsx',
     components: ['src/components/ProductQrScanner.tsx'],
@@ -116,7 +117,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   san_pham: {
     table: 'san_pham',
     label: 'Danh mục sản phẩm',
-    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql', 'supabase-san-pham-kiem-kho-dong-bo.sql'],
+    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql'],
     apiPrefix: '/api/san-pham',
     serverLines: '3507–3695',
     appTab: 'products',
@@ -160,6 +161,22 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
     components: ['src/components/WarehouseSlipPrintModal.tsx'],
     utils: ['scripts/sync-kho-nvl-from-phieu.mjs']
+  },
+  ton_kho: {
+    table: 'ton_kho',
+    label: 'Tồn kho tổng hợp',
+    sql: [
+      'supabase-kho-nvl-ten-kho.sql',
+      'supabase-san-pham-ten-kho.sql',
+      'supabase-phieu-xuat-nhap-kho-ten-kho.sql',
+      'supabase-ton-kho-rpc.sql'
+    ],
+    apiPrefix: '/api/ton-kho',
+    serverLines: 'GET /api/ton-kho/chi-tiet + GET /api/ton-kho/tong-hop',
+    appTab: 'ton-kho',
+    appLines: 'src/features/ton-kho/index.tsx',
+    components: ['src/components/shared/table/FilterCombobox.tsx'],
+    utils: []
   },
   don_hang: {
     table: 'don_hang',

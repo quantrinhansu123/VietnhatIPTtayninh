@@ -78,6 +78,7 @@ import { HumanResourcesPanel } from './features/nhan-su';
 import { VehiclesPanel } from './features/danh-sach-xe';
 import { CanTuDongPanel } from './features/can-tu-dong';
 import { KiemKhoPanel } from './features/kiem-kho';
+import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
 
@@ -763,7 +764,7 @@ export default function App() {
             ? 'p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
               ? 'overflow-hidden p-0'
-              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history'
+              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'ton-kho'
                 ? 'p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'
                   ? 'p-2 md:p-4 pb-4'
@@ -1364,6 +1365,16 @@ export default function App() {
                   onBack={() => goBack('factory-kho')}
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
                 />
+              </motion.div>
+            ) : activeTab === 'ton-kho' ? (
+              <motion.div
+                key="ton-kho"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <TonKhoPanel onBack={() => goBack('factory-kho')} />
               </motion.div>
             ) : activeTab === 'orders' ? (
               <motion.div

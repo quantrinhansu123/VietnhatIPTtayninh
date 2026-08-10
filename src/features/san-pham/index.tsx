@@ -22,7 +22,7 @@ import {
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
-import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, RefreshCw, X } from 'lucide-react';
+import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
 import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, excelRowsToProductNplItems, bulkExcelRowsToProductMap, productNplAmountTypeLabel, formatProductNplAmount, roundNplNumber } from './types';
@@ -586,6 +586,7 @@ export function ProductViewModal({
       : []),
     ['Nhóm', product.group],
     ['Tính chất', product.nature],
+    ['Kho', product.warehouse],
     ['Tồn đầu', product.openingStock],
     ['Nhập', product.inbound],
     ['Xuất', product.outbound],
@@ -978,6 +979,7 @@ export function normalizeProducts(data: unknown): ProductRow[] {
         nature: String(record.tinh_chat ?? '').trim() || 'Chưa phân loại',
         group: String(record.nhom_vthh ?? '').trim() || 'Chưa nhóm',
         unit: String(record.don_vi ?? '').trim() || '-',
+        warehouse: String(record.ten_kho ?? '').trim(),
         totalWeight: formatCell(record.tong_trong_luong),
         rollWidth: formatCell(record.kho_cuon),
         rollLength: formatCell(record.chieu_dai_cuon),
@@ -1015,6 +1017,7 @@ export type ProductFormState = {
   nature: string;
   group: string;
   unit: string;
+  warehouse: string;
   totalWeight: string;
   rollWidth: string;
   rollLength: string;
@@ -1043,6 +1046,7 @@ export function productToForm(product: ProductRow): ProductFormState {
     nature: productCellToInput(product.nature),
     group: productCellToInput(product.group),
     unit: productCellToInput(product.unit),
+    warehouse: productCellToInput(product.warehouse),
     totalWeight: productCellToInput(product.totalWeight),
     rollWidth: productCellToInput(product.rollWidth),
     rollLength: productCellToInput(product.rollLength),
@@ -1068,6 +1072,7 @@ export function emptyProductForm(): ProductFormState {
     nature: '',
     group: '',
     unit: '',
+    warehouse: '',
     totalWeight: '',
     rollWidth: '',
     rollLength: '',
@@ -1093,6 +1098,7 @@ export function productFormToPayload(form: ProductFormState) {
     nature: form.nature.trim(),
     group: form.group.trim(),
     unit: form.unit.trim(),
+    warehouse: form.warehouse.trim(),
     totalWeight: form.totalWeight.trim(),
     rollWidth: form.rollWidth.trim(),
     rollLength: form.rollLength.trim(),
@@ -1112,6 +1118,7 @@ export function productFormToPayload(form: ProductFormState) {
 export function ProductEditModal({
   mode,
   product,
+  warehouseOptions,
   isSaving,
   formError,
   onClose,
@@ -1119,6 +1126,7 @@ export function ProductEditModal({
 }: {
   mode: 'add' | 'edit';
   product: ProductRow | null;
+  warehouseOptions: string[];
   isSaving: boolean;
   formError: string;
   onClose: () => void;
@@ -1140,6 +1148,7 @@ export function ProductEditModal({
     { key: 'nature', label: 'Tính chất' },
     { key: 'group', label: 'Nhóm VTHH' },
     { key: 'unit', label: 'Đơn vị tính' },
+    { key: 'warehouse', label: 'Kho' },
     { key: 'totalWeight', label: 'Tổng trọng lượng TP (kg)' },
     { key: 'rollWidth', label: 'Khổ cuộn (m)' },
     { key: 'rollLength', label: 'Chiều dài mét/cuộn (m)' },
@@ -1184,11 +1193,24 @@ export function ProductEditModal({
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 {field.label}{field.required ? ' *' : ''}
               </span>
-              <input
-                value={form[field.key]}
-                onChange={event => setForm(prev => ({ ...prev, [field.key]: event.target.value }))}
-                className={productFieldClass}
-              />
+              {field.key === 'warehouse' ? (
+                <select
+                  value={form.warehouse}
+                  onChange={event => setForm(prev => ({ ...prev, warehouse: event.target.value }))}
+                  className={productFieldClass}
+                >
+                  <option value="">-- Chưa chọn kho --</option>
+                  {warehouseOptions.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form[field.key]}
+                  onChange={event => setForm(prev => ({ ...prev, [field.key]: event.target.value }))}
+                  className={productFieldClass}
+                />
+              )}
             </label>
           ))}
         </div>
@@ -1227,7 +1249,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   const [printQtyError, setPrintQtyError] = useState('');
   const [bulkPrintQty, setBulkPrintQty] = useState('1');
   const [isDeletingProducts, setIsDeletingProducts] = useState(false);
-  const [isSyncingOpeningStock, setIsSyncingOpeningStock] = useState(false);
   const [productActionMessage, setProductActionMessage] = useState('');
   const [viewingProduct, setViewingProduct] = useState<ProductRow | null>(null);
   const [productViewTab, setProductViewTab] = useState<ProductViewTab>('info');
@@ -1243,6 +1264,24 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
   const [isImportingBulkProductComponents, setIsImportingBulkProductComponents] = useState(false);
   const [isImportingProductCatalog, setIsImportingProductCatalog] = useState(false);
+  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadWarehouses = async () => {
+      try {
+        const res = await fetch('/api/quan-ly-kho');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
+        setWarehouseOptions(
+          Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+        );
+      } catch {
+        setWarehouseOptions([]);
+      }
+    };
+    void loadWarehouses();
+  }, []);
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
@@ -1484,7 +1523,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         throw new Error('File Excel không có dòng sản phẩm hợp lệ.');
       }
 
-      const byCode = new Map(
+      const byCode = new Map<string, ProductRow>(
         products
           .map(product => [normalizeProductCodeKey(product.code), product] as const)
           .filter(([key]) => Boolean(key))
@@ -1889,40 +1928,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const handleSyncOpeningStock = async () => {
-    setIsSyncingOpeningStock(true);
-    setProductActionMessage('');
-    setProductError('');
-
-    try {
-      const res = await fetch('/api/kiem-kho/dong-bo-ton-dau', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || 'Không thể đồng bộ dữ liệu kiểm kho vào tồn đầu.');
-      }
-
-      const updated = Number(data.updated) || 0;
-      const unmatched = Number(data.unmatched) || 0;
-      const unmatchedCodes = Array.isArray(data.unmatched_codes) ? data.unmatched_codes.join(', ') : '';
-      const parts = [
-        updated > 0
-          ? `Đã đồng bộ ${updated} sản phẩm kiểm kho vào Tồn đầu.`
-          : 'Không có sản phẩm kiểm kho mới cần đồng bộ.'
-      ];
-      if (unmatched > 0) {
-        parts.push(`Chưa tìm thấy ${unmatched} mã trong danh mục${unmatchedCodes ? `: ${unmatchedCodes}` : ''}.`);
-      }
-      if (data.has_more) parts.push('Vẫn còn dữ liệu; bấm Đồng bộ thêm lần nữa để xử lý tiếp.');
-      if (data.warning) parts.push(String(data.warning));
-      setProductActionMessage(parts.join(' '));
-      await loadProducts();
-    } catch (error: any) {
-      setProductError(error.message || 'Không thể đồng bộ dữ liệu kiểm kho vào tồn đầu.');
-    } finally {
-      setIsSyncingOpeningStock(false);
-    }
-  };
-
   return (
     <div className="w-full space-y-4">
       <section className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
@@ -2008,17 +2013,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => void handleSyncOpeningStock()}
-              disabled={isSyncingOpeningStock}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSyncingOpeningStock ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {isSyncingOpeningStock ? 'Đang đồng bộ...' : 'Đồng bộ'}
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={handleDownloadProductCatalogTemplate}
@@ -2099,7 +2093,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         </div>
       </section>
 
-      <TableShell minWidthClassName="min-w-[1400px]">
+      <TableShell minWidthClassName="min-w-[1500px]">
         <TableHead>
           <TableHeadCell align="center" className="w-14">
             <input
@@ -2116,6 +2110,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell>Tính chất</TableHeadCell>
           <TableHeadCell align="center">Nhóm</TableHeadCell>
           <TableHeadCell align="center">Đơn vị</TableHeadCell>
+          <TableHeadCell align="center">Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng TL (kg)</TableHeadCell>
           <TableHeadCell align="center">Tồn đầu</TableHeadCell>
           <TableHeadCell align="center">Nhập</TableHeadCell>
@@ -2160,6 +2155,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
                 </td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.group}</td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.unit}</td>
+                <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.warehouse || '—'}</td>
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-emerald-800">
                   {formatProductSpecDisplay(product.totalWeight)}
                 </td>
@@ -2168,7 +2164,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.outbound}</td>
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.minStock}</td>
-                <td className="sticky right-0 z-10 border-l border-zinc-100 bg-white px-3 py-3.5">
+                <td className="sticky right-0 z-[1] border-l border-zinc-100 bg-white px-3 py-3.5">
                   <RowActionsMenu label={`Thao tác ${product.code || product.name}`}>
                   <div className="flex items-center justify-center gap-1">
                     <button
@@ -2208,7 +2204,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           ))}
 
           {!isLoadingProducts && filteredProducts.length === 0 && (
-            <TableEmptyRow colSpan={14}>Không có sản phẩm phù hợp bộ lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={15}>Không có sản phẩm phù hợp bộ lọc.</TableEmptyRow>
           )}
         </TableBody>
       </TableShell>
@@ -2218,6 +2214,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         <ProductEditModal
           mode={productFormMode}
           product={editingProduct}
+          warehouseOptions={warehouseOptions}
           isSaving={isSavingProduct}
           formError={productFormError}
           onClose={closeProductForm}

@@ -1,4 +1,4 @@
-export type AppTab = 'menu' | 'quan-tri' | 'production-reports' | 'report-forms' | 'report-lists' | 'facility-management' | 'hcns' | 'business' | 'factory' | 'factory-quan-doc' | 'factory-qc' | 'factory-cong-nhan' | 'factory-kho' | 'control-board' | 'form' | 'weighing-summary' | 'weighing-summary-list' | 'can-tu-dong' | 'kiem-kho' | 'quan-ly-kho' | 'damaged-goods-report' | 'damaged-goods-report-list' | 'mixing-report' | 'mixing-report-list' | 'machine-nvl-report' | 'machine-nvl-report-list' | 'machine-downtime-report' | 'machine-downtime-list' | 'machine-run-log' | 'machine-run-log-list' | 'acceptance-report' | 'acceptance-report-list' | 'hr' | 'vehicles' | 'products' | 'machines' | 'materials' | 'warehouse-slip' | 'warehouse-history' | 'orders' | 'customers' | 'shipping-orders' | 'production-orders' | 'production-plan-history' | 'settings' | 'dashboard';
+export type AppTab = 'menu' | 'quan-tri' | 'production-reports' | 'report-forms' | 'report-lists' | 'facility-management' | 'hcns' | 'business' | 'factory' | 'factory-quan-doc' | 'factory-qc' | 'factory-cong-nhan' | 'factory-kho' | 'control-board' | 'form' | 'weighing-summary' | 'weighing-summary-list' | 'can-tu-dong' | 'kiem-kho' | 'quan-ly-kho' | 'damaged-goods-report' | 'damaged-goods-report-list' | 'mixing-report' | 'mixing-report-list' | 'machine-nvl-report' | 'machine-nvl-report-list' | 'machine-downtime-report' | 'machine-downtime-list' | 'machine-run-log' | 'machine-run-log-list' | 'acceptance-report' | 'acceptance-report-list' | 'hr' | 'vehicles' | 'products' | 'machines' | 'materials' | 'warehouse-slip' | 'warehouse-history' | 'ton-kho' | 'orders' | 'customers' | 'shipping-orders' | 'production-orders' | 'production-plan-history' | 'settings' | 'dashboard';
 
 export const TAB_ROUTES: Record<AppTab, string> = {
   menu: '/',
@@ -40,6 +40,7 @@ export const TAB_ROUTES: Record<AppTab, string> = {
   materials: '/kho-nvl',
   'warehouse-slip': '/phieu-xuat-nhap-kho',
   'warehouse-history': '/lich-su-xuat-nhap-kho',
+  'ton-kho': '/ton-kho',
   orders: '/don-hang',
   customers: '/khach-hang',
   'shipping-orders': '/lenh-xuat-hang',

@@ -43,14 +43,16 @@ export function TableHead({ children }: { children: ReactNode }) {
 export function TableHeadCell({
   children,
   className = '',
-  align = 'left'
+  align = 'left',
+  title
 }: {
   children: ReactNode;
   className?: string;
   align?: 'left' | 'center';
+  title?: string;
 }) {
   return (
-    <th className={`px-4 py-3 font-black ${align === 'center' ? 'text-center' : ''} ${className}`}>
+    <th title={title} className={`px-4 py-3 font-black ${align === 'center' ? 'text-center' : ''} ${className}`}>
       {children}
     </th>
   );
@@ -60,7 +62,7 @@ export function TableBody({ children }: { children: ReactNode }) {
   return <tbody className="divide-y divide-zinc-100">{children}</tbody>;
 }
 
-export function TableRow({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function TableRow({ children, className = '' }: { children: ReactNode; className?: string; key?: string }) {
   return <tr className={`transition hover:bg-red-50/40 ${className}`}>{children}</tr>;
 }
 

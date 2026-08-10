@@ -5560,7 +5560,12 @@ export function EditProductionOrderModal({
   const workshopStaff = useMemo(() => collectProductionWorkshopStaff(staffBranches), [staffBranches]);
 
   const staffText = useMemo(
-    () => [...new Set(Object.values(staffRoles).map(name => name.trim()).filter(Boolean))].join(', '),
+    () => [...new Set([
+      staffRoles.shiftLead,
+      staffRoles.mainStaff,
+      staffRoles.assistantStaff,
+      staffRoles.traineeStaff
+    ].map(name => name.trim()).filter(Boolean))].join(', '),
     [staffRoles]
   );
 

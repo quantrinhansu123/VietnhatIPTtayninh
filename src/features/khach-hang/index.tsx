@@ -522,7 +522,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
       const rows = await parseCustomerExcel(file);
       if (rows.length === 0) throw new Error('File Excel không có dòng dữ liệu khách hàng.');
 
-      const byCode = new Map(
+      const byCode = new Map<string, CustomerOption>(
         customers
           .map(item => [item.code.trim().toUpperCase(), item] as const)
           .filter(([code]) => Boolean(code))

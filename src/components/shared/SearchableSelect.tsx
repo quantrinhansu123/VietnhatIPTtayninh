@@ -34,7 +34,10 @@ export function SearchableSelect({
   getOptionLabel,
   getSearchText,
   displaySelectedAsValue = false,
-  desktopAutoFlip = false
+  desktopAutoFlip = false,
+  comboboxMode = false,
+  comboboxSearchable = true,
+  searchPlaceholder
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -54,9 +57,17 @@ export function SearchableSelect({
   displaySelectedAsValue?: boolean;
   /** Trên desktop, tự mở menu lên trên nếu phía dưới không đủ chỗ. */
   desktopAutoFlip?: boolean;
+  /** Hiển thị dạng combobox: nút có mũi tên, menu mở ra có ô tìm kiếm riêng. */
+  comboboxMode?: boolean;
+  /** Cho phép hiển thị ô tìm kiếm bên trong menu combobox. */
+  comboboxSearchable?: boolean;
+  /** Placeholder riêng cho ô tìm kiếm trong menu combobox. */
+  searchPlaceholder?: string;
 }) {
   const fieldClass = inputClassName || orderFieldClass;
-  const inputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
   const selectedItem = useMemo(() => {
     if (!value) return null;
@@ -161,7 +172,7 @@ export function SearchableSelect({
   const emptyText = isLoading ? 'Đang tải...' : options.length === 0 ? 'Không có dữ liệu' : placeholder;
 
   const updateMenuPosition = () => {
-    const element = inputRef.current;
+    const element = anchorRef.current;
     if (!element) return;
     const rect = element.getBoundingClientRect();
     // Trên mobile ô nhập rất hẹp → nới rộng menu để tên dài không bị xuống dòng nhiều
@@ -226,6 +237,24 @@ export function SearchableSelect({
     };
   }, [open, query, filteredOptions.length, desktopAutoFlip]);
 
+  useEffect(() => {
+    if (!open || !comboboxMode) return;
+    const focusTimer = comboboxSearchable
+      ? window.setTimeout(() => searchInputRef.current?.focus(), 0)
+      : null;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setQuery(selectedLabel);
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => {
+      if (focusTimer !== null) window.clearTimeout(focusTimer);
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+    };
+  }, [open, comboboxMode, comboboxSearchable, selectedLabel]);
+
   const dropdownPanelClass =
     'fixed z-[200] max-h-52 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-lg';
 
@@ -236,9 +265,61 @@ export function SearchableSelect({
   const renderDropdown = () => {
     if (!open || isDisabled || !menuStyle) return null;
 
+    if (comboboxMode) {
+      return createPortal(
+        <div
+          ref={menuRef}
+          className={`${dropdownPanelClass} overflow-hidden`}
+          style={menuStyle}
+        >
+          {comboboxSearchable ? (
+            <div className="border-b border-zinc-100 bg-white p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  ref={searchInputRef}
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder={searchPlaceholder || placeholder}
+                  className="h-10 w-full rounded-lg bg-zinc-50 pl-9 pr-3 text-sm font-medium text-zinc-800 outline-none ring-1 ring-transparent placeholder:text-zinc-400 focus:bg-white focus:ring-red-200"
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className={`${comboboxSearchable ? 'max-h-44' : 'max-h-52'} overflow-y-auto py-1`}>
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((item, index) => {
+                const optionValue = getValue(item);
+                const optionLabel = (getOptionLabel ?? getLabel)(item);
+                return (
+                  <button
+                    key={`${optionValue}-${index}`}
+                    type="button"
+                    onClick={() => commitValue(optionValue, item)}
+                    className={`block w-full px-3 py-2.5 text-left text-sm transition hover:bg-red-50 ${
+                      optionValue === value
+                        ? 'bg-red-50 font-black text-[#ef1b2d]'
+                        : 'font-semibold text-zinc-800'
+                    }`}
+                  >
+                    {optionLabel}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-4 py-8 text-center text-sm font-medium text-zinc-400">
+                {isLoading ? 'Đang tải...' : 'Không tìm thấy kết quả phù hợp'}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      );
+    }
+
     if (filteredOptions.length > 0) {
       return createPortal(
-        <div className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
+        <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
           {allowEmpty && !query.trim() && (
             <button
               type="button"
@@ -273,7 +354,7 @@ export function SearchableSelect({
 
     if (query.trim()) {
       return createPortal(
-        <div className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
+        <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
           <div className="px-3 py-2 text-xs font-semibold text-zinc-500">Không tìm thấy kết quả</div>
         </div>,
         document.body
@@ -284,22 +365,47 @@ export function SearchableSelect({
   };
 
   return (
-    <div className="relative min-w-0 w-full">
-      <input
-        ref={inputRef}
-        value={query}
-        onChange={event => {
-          setQuery(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => {
-          if (!isDisabled) setOpen(true);
-        }}
-        onBlur={handleBlur}
-        disabled={isDisabled}
-        placeholder={emptyText}
-        className={fieldClass}
-      />
+    <div ref={anchorRef} className="relative min-w-0 w-full">
+      {comboboxMode ? (
+        <button
+          type="button"
+          disabled={isDisabled}
+          onClick={() => {
+            if (isDisabled) return;
+            setQuery('');
+            setOpen(current => !current);
+          }}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className={`${fieldClass} flex items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          <span className={`min-w-0 truncate ${selectedItem || value ? 'text-zinc-800' : 'text-zinc-400'}`}>
+            {isLoading ? 'Đang tải...' : selectedLabel || placeholder}
+          </span>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-zinc-400" />
+          ) : (
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          )}
+        </button>
+      ) : (
+        <input
+          value={query}
+          onChange={event => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            if (!isDisabled) setOpen(true);
+          }}
+          onBlur={handleBlur}
+          disabled={isDisabled}
+          placeholder={emptyText}
+          className={fieldClass}
+        />
+      )}
       {renderDropdown()}
     </div>
   );

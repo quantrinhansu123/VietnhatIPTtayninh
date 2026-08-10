@@ -939,15 +939,35 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
   const plasticDamagedWeightKg = useMemo(
-    () => damagedRows.reduce(
-      (sum, row) => sum + (row.materialCode.toUpperCase().startsWith('NHUA-') && row.weightKg > 0 ? row.weightKg : 0),
-      0
-    ),
+    () =>
+      damagedRows.reduce((sum, row) => {
+        const code = String(row.materialCode || '').toUpperCase();
+        if (!code.startsWith('NHUA-')) return sum;
+        return sum + (row.weightKg > 0 ? row.weightKg : 0);
+      }, 0),
     [damagedRows]
   );
-  const plasticReceivedWeightKg = dauCaWeightByKind.plasticKg + exportWeightByKind.plasticKg;
+  /** Nhựa nhận = tồn đầu nhựa + xuất nhựa. */
+  const plasticStockInWeightKg = dauCaWeightByKind.plasticKg + exportWeightByKind.plasticKg;
+  /**
+   * Chênh lệch nhựa =
+   * (Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối
+   */
   const plasticDifferenceWeightKg =
-    plasticReceivedWeightKg - sanLuongTotals.weightKg - plasticDamagedWeightKg - cuoiCaWeightByKind.plasticKg;
+    plasticStockInWeightKg -
+    sanLuongTotals.weightKg -
+    plasticDamagedWeightKg -
+    cuoiCaWeightByKind.plasticKg;
+  /** Tồn nhựa (đầu − cuối) — phần rút từ tồn ca. */
+  const plasticStockNetKg = dauCaWeightByKind.plasticKg - cuoiCaWeightByKind.plasticKg;
+  const plasticSummaryRow = {
+    requiredKg: plasticRequiredWeightKg,
+    exportKg: exportWeightByKind.plasticKg,
+    finishedKg: sanLuongTotals.weightKg,
+    stockNetKg: plasticStockNetKg,
+    damagedKg: plasticDamagedWeightKg,
+    differenceKg: plasticDifferenceWeightKg
+  };
   const inboundTotals = useMemo(() => sumBbInboundReportTotals(inboundRows), [inboundRows]);
   const thucDungTotalKg = useMemo(() => sumBbThucDungWeightKg(thucDungRows), [thucDungRows]);
   const tongNhapKhoTotalKg = useMemo(() => sumBbTongTrongLuongNhapKho(tongGroups), [tongGroups]);
@@ -1447,6 +1467,88 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-3 rounded-lg border border-white/40 bg-white/15 px-2.5 py-2 shadow-sm backdrop-blur-[1px]"
+          title="Chênh lệch = (Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối"
+        >
+          <p className="mb-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
+            Tổng hợp nhựa
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            {(
+              [
+                {
+                  label: 'Tổng nhựa yêu cầu',
+                  title: 'Tổng (kg) lệnh sản xuất',
+                  display: isLoading
+                    ? '…'
+                    : plasticSummaryRow.requiredKg > 0
+                      ? `${formatKg(plasticSummaryRow.requiredKg, 2)} kg`
+                      : '—'
+                },
+                {
+                  label: 'Tổng nhựa xuất',
+                  title: 'Xuất nhựa (ĐVT kg)',
+                  display: isLoading
+                    ? '…'
+                    : plasticSummaryRow.exportKg > 0
+                      ? `${formatKg(plasticSummaryRow.exportKg, 2)} kg`
+                      : '—'
+                },
+                {
+                  label: 'Tổng nhựa thành phẩm',
+                  title: 'Trọng lượng thực tế tab sản lượng',
+                  display: isLoading
+                    ? '…'
+                    : plasticSummaryRow.finishedKg > 0
+                      ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
+                      : '—'
+                },
+                {
+                  label: 'Tổng nhựa tồn',
+                  title: 'Tồn đầu ca − Tồn cuối ca (nhựa)',
+                  display: isLoading
+                    ? '…'
+                    : dauCaWeightByKind.plasticKg > 0 || cuoiCaWeightByKind.plasticKg > 0
+                      ? `${formatKg(plasticSummaryRow.stockNetKg, 2)} kg`
+                      : '—'
+                },
+                {
+                  label: 'Tổng nhựa lỗi',
+                  title: 'Chỉ NVL mã NHUA-*',
+                  display: isLoading
+                    ? '…'
+                    : plasticSummaryRow.damagedKg > 0
+                      ? `${formatKg(plasticSummaryRow.damagedKg, 2)} kg`
+                      : '—'
+                },
+                {
+                  label: 'Chênh lệch',
+                  title: '(Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối',
+                  display: isLoading
+                    ? '…'
+                    : Number.isFinite(plasticSummaryRow.differenceKg)
+                      ? `${formatKg(plasticSummaryRow.differenceKg, 2)} kg`
+                      : '—'
+                }
+              ] as const
+            ).map(item => (
+              <div
+                key={item.label}
+                className="rounded-md border border-white/30 bg-white/10 px-2 py-1.5"
+                title={item.title}
+              >
+                <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
+                  {item.label}
+                </p>
+                <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">
+                  {item.display}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

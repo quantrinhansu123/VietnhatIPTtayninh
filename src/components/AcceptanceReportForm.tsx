@@ -20,7 +20,6 @@ import WeighingImagePreviewModal, {
 } from './WeighingImagePreviewModal';
 import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
-import { isRecyclingMachine } from '../utils/machineKind';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
 
 const productLineGridClass =
@@ -467,13 +466,6 @@ export default function AcceptanceReportForm({
     [productionOrders, form.ngay]
   );
 
-  const selectedMachine = useMemo(
-    () => machines.find(machine => machine.id === form.teamId) ?? null,
-    [machines, form.teamId]
-  );
-
-  const isRecycleMachineSelected = isRecyclingMachine(selectedMachine);
-
   const settingShiftOptions = useMemo(
     () => getProductionShiftOptions(shiftSettings).map(option => option.value),
     [shiftSettings]
@@ -486,14 +478,14 @@ export default function AcceptanceReportForm({
     return [...new Set(shifts)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [ordersForSelectedDay]);
 
-  /** Máy tái chế: chọn ca từ cài đặt, không phụ thuộc lệnh SX. */
+  /** Ca lấy từ lệnh SX theo ngày; thiếu lệnh thì fallback cài đặt thời gian. */
   const shiftOptions = useMemo(() => {
-    if (isRecycleMachineSelected || orderShiftOptions.length === 0) {
+    if (orderShiftOptions.length === 0) {
       const merged = [...new Set([...settingShiftOptions, ...orderShiftOptions])];
       return merged.sort((a, b) => String(a).localeCompare(String(b), 'vi'));
     }
     return orderShiftOptions;
-  }, [isRecycleMachineSelected, orderShiftOptions, settingShiftOptions]);
+  }, [orderShiftOptions, settingShiftOptions]);
 
   const teamOptions = useMemo(
     () =>
@@ -988,22 +980,20 @@ export default function AcceptanceReportForm({
             </label>
             <label className="field-cell">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Ca{isRecycleMachineSelected ? ' (tái chế)' : ''}
+                Ca
               </span>
               <select
                 value={form.ca}
                 onChange={e => handleShiftChange(e.target.value)}
                 className={inputClass}
-                disabled={!isRecycleMachineSelected && !form.teamId && orderShiftOptions.length === 0 && settingShiftOptions.length === 0}
+                disabled={!form.teamId && orderShiftOptions.length === 0 && settingShiftOptions.length === 0}
               >
                 <option value="">
-                  {isRecycleMachineSelected
-                    ? 'Chọn ca...'
-                    : orderShiftOptions.length === 0 && !isRecycleMachineSelected
-                      ? settingShiftOptions.length > 0
-                        ? 'Chọn ca...'
-                        : 'Không có ca (thiếu lệnh SX)'
-                      : 'Chọn ca...'}
+                  {orderShiftOptions.length === 0
+                    ? settingShiftOptions.length > 0
+                      ? 'Chọn ca...'
+                      : 'Không có ca (thiếu lệnh SX)'
+                    : 'Chọn ca...'}
                 </option>
                 {shiftOptions.map(shift => (
                   <option key={shift} value={shift}>
@@ -1035,11 +1025,6 @@ export default function AcceptanceReportForm({
               />
             </label>
           </div>
-          {isRecycleMachineSelected ? (
-            <p className="text-[11px] font-semibold text-emerald-700">
-              Máy tái chế — chọn ca trực tiếp, không cần lệnh sản xuất.
-            </p>
-          ) : null}
         </div>
 
         <div className="border-t border-zinc-100 bg-white p-3 sm:p-4">

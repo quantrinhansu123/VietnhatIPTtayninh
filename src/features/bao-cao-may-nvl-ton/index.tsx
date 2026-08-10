@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
-import { ClipboardList, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
+import { ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
@@ -299,6 +299,42 @@ export function formatMachineNvlQuantityValue(value: number | null | undefined) 
   return String(value);
 }
 
+export function formatMachineNvlCuoiCaOptionLabel(report: MachineNvlSavedReport) {
+  const machine = report.tenMay || report.maMay || 'Máy';
+  const total = Number.isFinite(report.total) ? `${formatNumber(report.total)} kg` : '—';
+  return `${report.ngay} · ${report.ca || '—'} · ${machine} · ${total} · ${report.lines.length} NVL`;
+}
+
+export function filterCuoiCaReportsForPicker(
+  reports: MachineNvlSavedReport[],
+  filters: { ngay: string; ca: string; machineRef: string },
+  machines: MachineRow[]
+) {
+  const ngay = filters.ngay.trim();
+  const ca = filters.ca.trim();
+  const machineRef = filters.machineRef.trim();
+  const selectedMachine = machineRef ? findMachineByRef(machines, machineRef) : null;
+
+  return reports
+    .filter(report => report.reportKind === 'cuoi_ca')
+    .filter(report => !ngay || report.ngay === ngay)
+    .filter(report => !ca || machineNvlShiftKey(report.ca) === machineNvlShiftKey(ca))
+    .filter(report => {
+      if (!machineRef) return true;
+      return machineNvlReportMatchesMachine(
+        report,
+        selectedMachine?.code || machineRef,
+        selectedMachine?.name || machineRef,
+        machineRef
+      );
+    })
+    .sort((a, b) => {
+      const byDate = b.ngay.localeCompare(a.ngay);
+      if (byDate !== 0) return byDate;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+}
+
 export const MACHINE_NVL_DAU_CA_GRID =
   // STT | Mã | Tên | ĐVT | Loại vật tư | Tồn máy | Tồn bồn | Chưa trộn | Tồn ngoài | Tổng | KL định mức | SL tồn | Ghi chú | Xóa
   'grid-cols-[52px_minmax(130px,1.1fr)_minmax(160px,2fr)_64px_104px_96px_96px_96px_96px_104px_104px_96px_minmax(96px,1fr)_40px]';
@@ -350,6 +386,15 @@ export function savedMachineNvlLineToFormLine(line: MachineNvlSavedLine): Machin
   };
 }
 
+/** Tồn cuối ca trước → dòng tồn đầu ca (SL tồn cuối làm tồn đầu + tham chiếu ca trước). */
+export function savedCuoiCaLineToDauCaFormLine(line: MachineNvlSavedLine): MachineNvlReportLine {
+  const base = savedMachineNvlLineToFormLine(line);
+  return {
+    ...base,
+    previousQuantity: formatMachineNvlQuantityValue(line.soLuongTon)
+  };
+}
+
 export function MachineNvlReportPanel({
   onBack,
   onOpenList,
@@ -385,6 +430,11 @@ export function MachineNvlReportPanel({
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [printReport, setPrintReport] = useState<MachineNvlPrintReport | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
+  const [showCuoiCaPicker, setShowCuoiCaPicker] = useState(false);
+  const [pickerNgay, setPickerNgay] = useState('');
+  const [pickerCa, setPickerCa] = useState('');
+  const [pickerMachineRef, setPickerMachineRef] = useState('');
+  const [pickerReportId, setPickerReportId] = useState('');
 
   const loadReports = async (kind: MachineNvlReportKind = activeKind) => {
     const res = await fetch(`/api/bao-cao-may-nvl-ton?limit=50&loai_bao_cao=${encodeURIComponent(kind)}`);
@@ -403,9 +453,9 @@ export function MachineNvlReportPanel({
           fetch('/api/kho-nvl'),
           fetch('/api/cai-dat'),
           fetch('/api/lenh-sx'),
-          fetch(`/api/bao-cao-may-nvl-ton?limit=50&loai_bao_cao=${encodeURIComponent(activeKind)}`),
-          fetch('/api/bao-cao-may-nvl-ton?limit=50&loai_bao_cao=dau_ca'),
-          fetch('/api/bao-cao-may-nvl-ton?limit=50&loai_bao_cao=cuoi_ca')
+          fetch(`/api/bao-cao-may-nvl-ton?limit=200&loai_bao_cao=${encodeURIComponent(activeKind)}`),
+          fetch('/api/bao-cao-may-nvl-ton?limit=200&loai_bao_cao=dau_ca'),
+          fetch('/api/bao-cao-may-nvl-ton?limit=200&loai_bao_cao=cuoi_ca')
         ]);
         const [machineData, materialData, settingsData, productionData, reportData, dauCaData, cuoiCaData] = await Promise.all([
           machineRes.json().catch(() => ({})),
@@ -536,9 +586,10 @@ export function MachineNvlReportPanel({
   };
 
   const machineNvlStaffText = selectedStaffNames.join(', ');
+  const canPickPreviousCuoiCa = Boolean(isDauCaTab && date && shift && machineRef.trim());
   const previousCuoiCaReport = useMemo(
     () =>
-      isDauCaTab
+      canPickPreviousCuoiCa
         ? findLatestPreviousCuoiCaReport(
             cuoiCaReports,
             selectedMachine?.code || machineRef.trim(),
@@ -548,7 +599,7 @@ export function MachineNvlReportPanel({
             shift
           )
         : null,
-    [isDauCaTab, cuoiCaReports, selectedMachine, machineRef, date, shift]
+    [canPickPreviousCuoiCa, cuoiCaReports, selectedMachine, machineRef, date, shift]
   );
   const previousDauCaReport = useMemo(() => {
     if (isDauCaTab) return null;
@@ -566,6 +617,75 @@ export function MachineNvlReportPanel({
     () => buildPreviousShiftQuantityMap(isDauCaTab ? previousCuoiCaReport : previousDauCaReport),
     [isDauCaTab, previousCuoiCaReport, previousDauCaReport]
   );
+
+  const pickerCuoiCaOptions = useMemo(
+    () =>
+      filterCuoiCaReportsForPicker(
+        cuoiCaReports,
+        { ngay: pickerNgay, ca: pickerCa, machineRef: pickerMachineRef },
+        machines
+      ),
+    [cuoiCaReports, pickerNgay, pickerCa, pickerMachineRef, machines]
+  );
+
+  useEffect(() => {
+    if (!showCuoiCaPicker) return;
+    if (!pickerReportId) return;
+    if (pickerCuoiCaOptions.some(report => report.id === pickerReportId)) return;
+    setPickerReportId('');
+  }, [showCuoiCaPicker, pickerCuoiCaOptions, pickerReportId]);
+
+  const openCuoiCaPickerModal = () => {
+    setPickerNgay('');
+    setPickerCa('');
+    setPickerMachineRef('');
+    setPickerReportId('');
+    setShowCuoiCaPicker(true);
+  };
+
+  const closeCuoiCaPickerModal = () => {
+    setShowCuoiCaPicker(false);
+    setPickerReportId('');
+  };
+
+  const applySelectedCuoiCaReport = () => {
+    if (!isDauCaTab) return;
+    const selected =
+      pickerCuoiCaOptions.find(report => report.id === pickerReportId) ??
+      cuoiCaReports.find(report => report.id === pickerReportId) ??
+      null;
+    if (!selected) {
+      const msg = 'Hãy chọn một phiếu tồn cuối ca trong danh sách.';
+      setMessage(msg);
+      showAppToast(msg, 'error');
+      return;
+    }
+
+    const sourceLabel = `${selected.ngay} · ${selected.ca} · ${selected.tenMay || selected.maMay}`;
+    if (
+      lines.some(line => line.code.trim() || resolveMachineNvlLineQty(line) > 0) &&
+      !window.confirm(
+        `Điền lại toàn bộ dòng từ tồn cuối ca?\n${sourceLabel}\n\nCác dòng hiện tại trên form sẽ bị thay thế.`
+      )
+    ) {
+      return;
+    }
+
+    const nextLines =
+      selected.lines.length > 0
+        ? selected.lines.map(savedCuoiCaLineToDauCaFormLine)
+        : [emptyMachineNvlLine()];
+    setLines(nextLines);
+    setNote(prev => {
+      const stamp = `Điền từ tồn cuối ca ${sourceLabel}`;
+      if (!prev.trim()) return stamp;
+      if (prev.includes('Điền từ tồn cuối ca')) return stamp;
+      return `${prev}\n${stamp}`;
+    });
+    setMessage('');
+    closeCuoiCaPickerModal();
+    showAppToast(`Đã điền ${nextLines.length} dòng từ tồn cuối ca ${sourceLabel}.`);
+  };
 
   useEffect(() => {
     if (previousShiftQtyMap.size === 0) return;
@@ -974,6 +1094,26 @@ export function MachineNvlReportPanel({
               </label>
             </div>
 
+            {isDauCaTab ? (
+              <div className="mt-3 flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-sky-900">Điền từ báo cáo tồn cuối ca</p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-sky-800/80">
+                    Nhấn nút để mở bộ lọc Ngày · Ca · Máy và chọn phiếu tồn cuối ca cần điền.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCuoiCaPickerModal}
+                  disabled={isLoading}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-sky-700 px-3 text-[11px] font-extrabold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  Tự điền tồn đầu ca
+                </button>
+              </div>
+            ) : null}
+
             <div className="mt-3 min-w-0 max-w-full overflow-hidden rounded-lg border border-zinc-200 md:mt-4 md:rounded-xl">
               <div
                 className={`hidden md:grid gap-2 ${isDauCaTab ? MACHINE_NVL_DAU_CA_GRID : MACHINE_NVL_CUOI_CA_GRID} bg-zinc-950 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white md:min-w-[1120px]`}
@@ -1306,6 +1446,136 @@ export function MachineNvlReportPanel({
         </div>
         {printReport && <MachineNvlPrintBatch reports={[printReport]} />}
       </div>
+
+      {showCuoiCaPicker ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">
+                  Chọn phiếu tồn cuối ca
+                </h3>
+                <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                  Lọc Ngày · Ca · Máy rồi chọn phiếu trong sổ xuống để điền tồn đầu ca.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCuoiCaPickerModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
+                aria-label="Đóng"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto px-4 py-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className={machineNvlFormLabelClass}>
+                  Ngày phiếu cuối ca
+                  <input
+                    type="date"
+                    value={pickerNgay}
+                    onChange={event => setPickerNgay(event.target.value)}
+                    className={machineNvlFormFieldClass}
+                  />
+                </label>
+                <label className={machineNvlFormLabelClass}>
+                  Ca
+                  <select
+                    value={pickerCa}
+                    onChange={event => setPickerCa(event.target.value)}
+                    className={machineNvlFormFieldClass}
+                  >
+                    <option value="">Tất cả ca</option>
+                    {shiftOptions.map(option => (
+                      <option key={option} value={option}>
+                        {formatProductionOrderShiftLabel(option, shiftSettings)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={`${machineNvlFormLabelClass} sm:col-span-2`}>
+                  Máy
+                  <div className="mt-1 min-w-0">
+                    {renderMachineSelect(pickerMachineRef, setPickerMachineRef, machines, {
+                      placeholder: 'Tất cả máy',
+                      isLoading,
+                      inputClassName: machineNvlFormControlClass
+                    })}
+                  </div>
+                </label>
+              </div>
+
+              <label className={machineNvlFormLabelClass}>
+                Phiếu tồn cuối ca
+                <select
+                  value={pickerReportId}
+                  onChange={event => setPickerReportId(event.target.value)}
+                  className={machineNvlFormFieldClass}
+                >
+                  <option value="">
+                    {pickerCuoiCaOptions.length === 0
+                      ? 'Không có phiếu khớp bộ lọc'
+                      : `Chọn phiếu (${pickerCuoiCaOptions.length})`}
+                  </option>
+                  {pickerCuoiCaOptions.map(report => (
+                    <option key={report.id} value={report.id}>
+                      {formatMachineNvlCuoiCaOptionLabel(report)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {pickerReportId ? (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                  Đã chọn:{' '}
+                  {formatMachineNvlCuoiCaOptionLabel(
+                    pickerCuoiCaOptions.find(report => report.id === pickerReportId) ||
+                      cuoiCaReports.find(report => report.id === pickerReportId) || {
+                        id: pickerReportId,
+                        ngay: '—',
+                        ca: '—',
+                        gio: '',
+                        maMay: '',
+                        tenMay: '—',
+                        nhanSu: '',
+                        total: NaN,
+                        note: '',
+                        reportKind: 'cuoi_ca',
+                        lines: [],
+                        createdAt: ''
+                      }
+                  )}
+                </p>
+              ) : (
+                <p className="text-[11px] font-semibold text-zinc-500">
+                  Có thể để trống Ngày/Ca/Máy để xem toàn bộ phiếu tồn cuối ca.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-3">
+              <button
+                type="button"
+                onClick={closeCuoiCaPickerModal}
+                className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 bg-white text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={applySelectedCuoiCaReport}
+                disabled={!pickerReportId}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-sky-700 text-xs font-extrabold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Điền vào form
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

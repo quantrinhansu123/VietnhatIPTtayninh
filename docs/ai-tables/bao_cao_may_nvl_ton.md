@@ -10,4 +10,10 @@
 **Utils:** `utils/machineNvlReports.ts`  
 **App:** `src/App.tsx` — import + route tab (shell, không đọc logic)
 
-Loại báo cáo: tồn đầu ca, nhập, xuất, tồn cuối ca.
+Loại báo cáo: tồn đầu ca, tồn cuối ca.
+
+**Danh sách:** `/danh-sach-bao-cao-may-nvl-ton` (`MachineNvlReportListView`) có **2 tab**:
+- Báo cáo tồn đầu ca
+- Báo cáo tồn cuối ca
+
+**Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** mở modal lọc Ngày/Ca/Máy (mặc định trống) → chọn phiếu tồn cuối ca trong sổ xuống → **Điền vào form**.

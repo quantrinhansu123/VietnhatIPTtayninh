@@ -6,7 +6,7 @@ import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercent
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
-import { getProductionShiftOptions } from '../../utils/shiftSettings';
+import { getProductionShiftOptions, shiftNamesMatch } from '../../utils/shiftSettings';
 import {
   FilterCombobox,
   MultiSelectFilter,
@@ -114,6 +114,8 @@ export function ProductionOrdersPanel({
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedMachines, setSelectedMachines] = useState<string[]>([]);
+  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
+  const [selectedOrderCodes, setSelectedOrderCodes] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -235,6 +237,23 @@ export function ProductionOrdersPanel({
     return [...new Set(machines)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [rows]);
 
+  const shiftFilters = useMemo(() => {
+    const fromRows = rows
+      .map(row => row.shift)
+      .filter((shift): shift is string => Boolean(shift) && shift !== '-');
+    const fromSettings = getProductionShiftOptions(shiftSettings).map(option => option.value);
+    return [...new Set([...fromSettings, ...fromRows])].sort((a, b) =>
+      String(a).localeCompare(String(b), 'vi', { numeric: true })
+    );
+  }, [rows, shiftSettings]);
+
+  const orderCodeFilters = useMemo(() => {
+    const codes = rows
+      .map(row => row.code)
+      .filter((code): code is string => Boolean(code) && code !== '-');
+    return [...new Set(codes)].sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
+  }, [rows]);
+
   // Định dạng dd/mm/yyyy hiển thị trên bảng -> mốc thời gian để so sánh khoảng ngày.
   const parseDisplayDate = (value: string): number | null => {
     const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -245,11 +264,19 @@ export function ProductionOrdersPanel({
   };
 
   const hasActiveFilters =
-    selectedStatus !== 'all' || selectedMachines.length > 0 || Boolean(dateFrom) || Boolean(dateTo) || Boolean(searchText);
+    selectedStatus !== 'all' ||
+    selectedMachines.length > 0 ||
+    selectedShifts.length > 0 ||
+    selectedOrderCodes.length > 0 ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    Boolean(searchText);
 
   const resetFilters = () => {
     setSelectedStatus('all');
     setSelectedMachines([]);
+    setSelectedShifts([]);
+    setSelectedOrderCodes([]);
     setDateFrom('');
     setDateTo('');
     setSearchText('');
@@ -273,6 +300,11 @@ export function ProductionOrdersPanel({
         }
         const matchesStatus = selectedStatus === 'all' || row.status === selectedStatus;
         const matchesMachine = selectedMachines.length === 0 || selectedMachines.includes(row.machine);
+        const matchesShift =
+          selectedShifts.length === 0 ||
+          selectedShifts.some(shift => shiftNamesMatch(shift, row.shift) || shift === row.shift);
+        const matchesOrderCode =
+          selectedOrderCodes.length === 0 || selectedOrderCodes.includes(row.code);
         const rowStartTime = parseDisplayDate(row.startDate);
         const matchesFrom = !fromTime || (rowStartTime !== null && rowStartTime >= fromTime);
         const matchesTo = !toTime || (rowStartTime !== null && rowStartTime <= toTime);
@@ -281,7 +313,15 @@ export function ProductionOrdersPanel({
           `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note} ${row.staff} ${row.shiftLead} ${row.mainStaff} ${row.assistantStaff} ${row.traineeStaff}`
             .toLowerCase()
             .includes(normalizedSearch);
-        return matchesStatus && matchesMachine && matchesFrom && matchesTo && matchesSearch;
+        return (
+          matchesStatus &&
+          matchesMachine &&
+          matchesShift &&
+          matchesOrderCode &&
+          matchesFrom &&
+          matchesTo &&
+          matchesSearch
+        );
       })
       // Bản ghi tạo mới nhất đứng trước; dữ liệu không có created_at được đặt sau cùng.
       .sort((left, right) => {
@@ -303,6 +343,8 @@ export function ProductionOrdersPanel({
     rows,
     selectedStatus,
     selectedMachines,
+    selectedShifts,
+    selectedOrderCodes,
     dateFrom,
     dateTo,
     sortOrder
@@ -372,9 +414,9 @@ export function ProductionOrdersPanel({
               ['Đang / chờ SX', activeCount],
               ['Tổng SL', formatNumber(totalQuantity)]
             ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <span className="block font-bold text-zinc-400">{label}</span>
-                <span className="mt-1 block text-xl font-black text-white">{value}</span>
+              <div key={label} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <span className="block font-bold text-zinc-500">{label}</span>
+                <span className="mt-1 block text-xl font-black text-zinc-950">{value}</span>
               </div>
             ))}
           </div>
@@ -395,6 +437,29 @@ export function ProductionOrdersPanel({
           disabled={isLoading}
         />
 
+        <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
+        <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
+
+        <MultiSelectFilter
+          label="Ca"
+          allLabel="Tất cả ca"
+          searchPlaceholder="Tìm ca..."
+          emptyLabel="Không tìm thấy ca"
+          options={shiftFilters}
+          values={selectedShifts}
+          onChange={setSelectedShifts}
+        />
+
+        <MultiSelectFilter
+          label="Lệnh SX"
+          allLabel="Tất cả lệnh SX"
+          searchPlaceholder="Tìm mã lệnh SX..."
+          emptyLabel="Không tìm thấy lệnh SX"
+          options={orderCodeFilters}
+          values={selectedOrderCodes}
+          onChange={setSelectedOrderCodes}
+        />
+
         <FilterCombobox
           label="Trạng thái"
           options={PRODUCTION_ORDER_STATUS_OPTIONS}
@@ -413,9 +478,6 @@ export function ProductionOrdersPanel({
           values={selectedMachines}
           onChange={setSelectedMachines}
         />
-
-        <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
-        <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
 
         <FilterCombobox
           label="Sắp xếp"

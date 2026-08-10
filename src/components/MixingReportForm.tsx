@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  ClipboardCheck,
   ClipboardList,
   Clock3,
   Cpu,
@@ -24,11 +25,15 @@ import { formatNumber, parseMoneyInput } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import SearchableMultiSelect from './SearchableMultiSelect';
 import { RowActionsMenu } from './shared/table';
+import MixingProductionOrderAutofillModal from './MixingProductionOrderAutofillModal';
 import {
+  normalizeMixingCatalogProducts,
   normalizeMixingProductionOrders,
+  type MixingCatalogProduct,
   type MixingProductionOrder
 } from '../utils/mixingOrderAutofill';
 import {
+  applyMixingRoundAutofill,
   calcNormQuantityFromPercent,
   computeNextMixingSessionStart,
   deriveLineUnit,
@@ -1000,10 +1005,12 @@ export default function MixingReportForm({
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
   const [productionOrders, setProductionOrders] = useState<MixingProductionOrder[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<MixingCatalogProduct[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [activeRoundCount, setActiveRoundCount] = useState(1);
   const [sessionRoundStart, setSessionRoundStart] = useState(1);
   const [roundBatchWeightDrafts, setRoundBatchWeightDrafts] = useState<Partial<Record<RoundKey, string>>>({});
+  const [autofillRoundKey, setAutofillRoundKey] = useState<RoundKey | null>(null);
   const [roundItemModal, setRoundItemModal] = useState<{
     roundKey: RoundKey;
     edit?: { lineIndex: number; itemIndex: number };
@@ -1041,15 +1048,17 @@ export default function MixingReportForm({
   }, [reasonOptions, form.ly_do_theo_lan]);
 
   const loadReferenceData = async () => {
-    const [machineRes, materialRes, productionRes, settingRes] = await Promise.all([
+    const [machineRes, materialRes, productionRes, productRes, settingRes] = await Promise.all([
       fetch('/api/danh-sach-may'),
       fetch('/api/kho-nvl'),
       fetch('/api/lenh-sx'),
+      fetch('/api/san-pham?format=table'),
       fetch('/api/cai-dat')
     ]);
     const machineData = await machineRes.json().catch(() => ({}));
     const materialData = await materialRes.json().catch(() => ({}));
     const productionData = await productionRes.json().catch(() => ({}));
+    const productData = await productRes.json().catch(() => ({}));
     const settingData = await settingRes.json().catch(() => ({}));
     if (!machineRes.ok) throw new Error(machineData.error || 'Không thể tải danh sách máy.');
     if (!materialRes.ok) throw new Error(materialData.error || 'Không thể tải kho NVL.');
@@ -1077,6 +1086,7 @@ export default function MixingReportForm({
     );
 
     setProductionOrders(normalizeMixingProductionOrders(productionData));
+    if (productRes.ok) setCatalogProducts(normalizeMixingCatalogProducts(productData));
     if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
   };
 
@@ -1614,6 +1624,24 @@ export default function MixingReportForm({
       )
     }));
     setRoundItemModal(null);
+  };
+
+  const applyRoundAutofill = (roundKey: RoundKey, items: MixingRoundItem[]) => {
+    if (items.length === 0) {
+      setError('Không có NVL để điền từ lệnh sản xuất.');
+      return;
+    }
+    setForm(prev => ({
+      ...prev,
+      chi_tiet: applyMixingRoundAutofill(
+        prev.chi_tiet,
+        roundKey,
+        items,
+        resolveRoundBatchWeight(prev.chi_tiet, roundKey)
+      )
+    }));
+    setMessage(`Đã tự động điền ${items.length} NVL từ lệnh sản xuất.`);
+    showAppToast(`Đã tự động điền ${items.length} NVL từ lệnh sản xuất.`);
   };
 
   const openEditLineModal = (index: number) => {
@@ -2241,6 +2269,15 @@ export default function MixingReportForm({
                           <Plus className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
                           Thêm NVL
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setAutofillRoundKey(roundKey)}
+                          className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-[#ef1b2d]/25 bg-red-50 px-1.5 text-[9px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 sm:h-8 sm:justify-start sm:rounded-lg sm:px-3 sm:text-[11px]"
+                          title="Tự động điền NVL theo Lệnh sản xuất (ngày · ca · máy)"
+                        >
+                          <ClipboardCheck className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+                          Tự động điền
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -2719,6 +2756,30 @@ export default function MixingReportForm({
           );
         }}
         onSave={saveRoundMaterialModal}
+      />
+
+      <MixingProductionOrderAutofillModal
+        open={Boolean(autofillRoundKey)}
+        roundLabel={
+          autofillRoundKey
+            ? roundColumnLabel(sessionRoundStart, ROUND_KEYS.indexOf(autofillRoundKey))
+            : ''
+        }
+        orders={productionOrders}
+        catalogProducts={catalogProducts}
+        materials={materials}
+        filters={{
+          ngay: form.ngay,
+          ca: form.ca,
+          maMay: form.ma_may,
+          tenMay: form.ten_may
+        }}
+        machines={machines}
+        onClose={() => setAutofillRoundKey(null)}
+        onApply={items => {
+          if (!autofillRoundKey) return;
+          applyRoundAutofill(autofillRoundKey, items);
+        }}
       />
 
     </>

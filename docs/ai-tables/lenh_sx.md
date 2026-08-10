@@ -47,3 +47,5 @@ Cột «Nhân sự» tự tổng hợp theo các vai trò đã chọn.
 ### Danh sách lệnh SX
 
 Mỗi dòng lệnh: cột **Mã hàng / Tên hàng / Số lượng** trình bày bảng con (mỗi SP một dòng), không ghép bằng `|`.
+
+**Bộ lọc:** Từ ngày · Đến ngày · **Ca** (checkbox nhiều) · **Lệnh SX** (checkbox nhiều) · Trạng thái · Máy · Sắp xếp.

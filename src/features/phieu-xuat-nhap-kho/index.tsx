@@ -7,6 +7,7 @@ import {
   ArrowUpFromLine,
   Boxes,
   ChevronDown,
+  ClipboardCheck,
   Eye,
   History,
   Loader2,
@@ -40,7 +41,8 @@ import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, { type WarehouseSlipPrintData } from '../../components/WarehouseSlipPrintModal';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } from '../../utils/shiftSettings';
-import { normalizeProducts } from '../san-pham';
+import { findProductByCode, normalizeProducts } from '../san-pham';
+import { buildProductionOrderMaterialProposal, loadProductionOrderProductCatalog } from '../ke-hoach-san-xuat';
 import { normalizeMaterialsInventory } from '../kho-nvl';
 import type { ShiftSummaryWarehouseMovement } from '../../utils/controlBoardShiftSummary';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -583,6 +585,47 @@ export function normalizeWarehouseProductionOrders(data: unknown): WarehouseProd
     .filter((order): order is WarehouseProductionOrderOption => Boolean(order));
 }
 
+export function filterWarehouseProductionOrdersByDateShift(
+  orders: WarehouseProductionOrderOption[],
+  dateIso: string,
+  shifts: string[]
+) {
+  const ngay = String(dateIso || '').trim().slice(0, 10);
+  return orders.filter(order => {
+    if (ngay && order.startDate && order.startDate !== ngay) return false;
+    if (shifts.length === 0) return true;
+    return shifts.some(
+      shift => shiftNamesMatch(shift, order.shift) || shift === order.shift || !order.shift
+    );
+  });
+}
+
+function mergeWarehouseProductLinesFromOrders(orders: WarehouseProductionOrderOption[]) {
+  const merged = new Map<string, { code: string; name: string; unit: string; quantity: number }>();
+  for (const order of orders) {
+    for (const line of order.lines) {
+      const code = line.code.trim();
+      if (!code) continue;
+      const key = code.toLowerCase();
+      const qty = Number(line.quantity);
+      const existing = merged.get(key);
+      if (existing) {
+        if (Number.isFinite(qty) && qty > 0) existing.quantity += qty;
+        if (!existing.name && line.name) existing.name = line.name;
+        if (!existing.unit && line.unit) existing.unit = line.unit;
+      } else {
+        merged.set(key, {
+          code,
+          name: line.name || code,
+          unit: line.unit || '',
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 0
+        });
+      }
+    }
+  }
+  return [...merged.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+}
+
 export function WarehouseSlipPanel({
   onBack,
   onOpenHistory
@@ -639,6 +682,7 @@ export function WarehouseSlipPanel({
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
+  const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
@@ -864,6 +908,7 @@ export function WarehouseSlipPanel({
   };
 
   const isNvlExport = warehouseKind === 'nvl' && slipType === 'xuat';
+  const isNvlInbound = warehouseKind === 'nvl' && slipType === 'nhap';
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -933,18 +978,181 @@ export function WarehouseSlipPanel({
     }
   };
 
+  const fillLinesFromMatchedOrders = async (matchedOrders: WarehouseProductionOrderOption[]) => {
+    if (warehouseKind === 'san_pham') {
+      const productLines = mergeWarehouseProductLinesFromOrders(matchedOrders);
+      if (productLines.length === 0) {
+        throw new Error('Các lệnh SX khớp ngày/ca chưa có sản phẩm để điền.');
+      }
+      setLines(
+        productLines.map(line =>
+          createWarehouseLineDraftFromPrefill({
+            code: line.code,
+            name: line.name,
+            unit: line.unit,
+            quantity: line.quantity > 0 ? formatNumber(line.quantity, 2) : '',
+            documentQuantity: line.quantity > 0 ? formatNumber(line.quantity, 2) : '',
+            unitPrice: ''
+          })
+        )
+      );
+      return productLines.length;
+    }
+
+    const catalog = await loadProductionOrderProductCatalog();
+    const materialMap = new Map<
+      string,
+      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number }
+    >();
+
+    for (const order of matchedOrders) {
+      for (const line of order.lines) {
+        const productCode = line.code.trim();
+        if (!productCode) continue;
+        const product = findProductByCode(catalog, productCode);
+        if (!product || product.nplItems.length === 0) continue;
+        const orderQty = Number(line.quantity);
+        const qty = Number.isFinite(orderQty) && orderQty > 0 ? orderQty : 0;
+        const materials = buildProductionOrderMaterialProposal(qty, product.nplItems, product);
+        for (const material of materials) {
+          const key = material.code.trim().toLowerCase();
+          if (!key) continue;
+          const existing = materialMap.get(key);
+          if (existing) {
+            existing.quantity += material.proposedQuantity;
+            existing.quotaQuantity += material.proposedQuantity;
+            if (!existing.name && material.name) existing.name = material.name;
+            if (!existing.unit && material.unit) existing.unit = material.unit;
+          } else {
+            materialMap.set(key, {
+              code: material.code,
+              name: material.name || material.code,
+              unit: material.unit || 'kg',
+              quantity: material.proposedQuantity,
+              quotaQuantity: material.proposedQuantity
+            });
+          }
+        }
+      }
+    }
+
+    const materialLines = [...materialMap.values()]
+      .filter(line => line.quantity > 0)
+      .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+
+    if (materialLines.length === 0) {
+      throw new Error('Không tìm được NVL định mức từ sản phẩm trong lệnh SX khớp ngày/ca.');
+    }
+
+    setLines(
+      materialLines.map(line =>
+        createWarehouseLineDraftFromPrefill({
+          code: line.code,
+          name: line.name,
+          unit: line.unit,
+          quantity: formatNumber(line.quantity, 2),
+          documentQuantity: formatNumber(line.quantity, 2),
+          quotaQuantity: formatNumber(line.quotaQuantity, 2),
+          suggestedQuantity: formatNumber(line.quantity, 2),
+          unitPrice: ''
+        })
+      )
+    );
+    return materialLines.length;
+  };
+
+  const handleAutofillFromProductionOrders = async () => {
+    if (!slipDate.trim()) {
+      setFormError('Vui lòng chọn Ngày phiếu trước khi tự động điền.');
+      return;
+    }
+    if (!isNvlInbound && selectedShifts.length === 0) {
+      setFormError('Vui lòng chọn ít nhất một Ca trước khi tự động điền theo lệnh SX.');
+      return;
+    }
+
+    const matchedOrders = filterWarehouseProductionOrdersByDateShift(
+      productionOrders,
+      slipDate,
+      selectedShifts
+    );
+    if (matchedOrders.length === 0) {
+      setFormError(
+        selectedShifts.length > 0
+          ? `Không có lệnh SX khớp ngày ${slipDate} và ca đã chọn.`
+          : `Không có lệnh SX khớp ngày ${slipDate}.`
+      );
+      return;
+    }
+
+    const hasExistingLines = lines.some(line => line.code.trim() || line.name.trim() || line.quantity.trim());
+    if (hasExistingLines) {
+      const ok = window.confirm(
+        `Tìm thấy ${matchedOrders.length} lệnh SX theo ngày/ca.\nĐiền lại sẽ thay danh sách dòng hiện tại. Tiếp tục?`
+      );
+      if (!ok) return;
+    }
+
+    setIsAutofillingFromOrders(true);
+    setFormError('');
+    setActionMessage('');
+    try {
+      const orderCodes = matchedOrders.map(order => order.orderCode);
+      setProductionOrderCodes(orderCodes);
+
+      const machines = [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))];
+      if (machines.length > 0) setMachine(machines.join(', '));
+
+      const matchedShifts = new Set<string>(selectedShifts);
+      for (const order of matchedOrders) {
+        if (!order.shift) continue;
+        const matched = shiftOptions
+          .filter(option => shiftNamesMatch(option.value, order.shift) || shiftNamesMatch(option.label, order.shift))
+          .map(option => option.value);
+        if (matched.length > 0) matched.forEach(value => matchedShifts.add(value));
+        else matchedShifts.add(order.shift);
+      }
+      if (matchedShifts.size > 0) setSelectedShifts([...matchedShifts]);
+
+      if (!reason.trim()) {
+        setReason(
+          selectedShifts.length > 0
+            ? `Xuất theo lệnh SX · ${slipDate} · ${formatWarehouseShiftSelection([...matchedShifts])}`
+            : `Theo lệnh SX · ${slipDate}`
+        );
+      }
+      if (!note.trim()) {
+        setNote(`Tự động điền từ ${matchedOrders.length} lệnh SX (${orderCodes.join(', ')}).`);
+      }
+
+      const lineCount = await fillLinesFromMatchedOrders(matchedOrders);
+      const msg = `Đã tự động điền ${lineCount} dòng từ ${matchedOrders.length} lệnh SX theo ngày/ca.`;
+      setActionMessage(msg);
+      showAppToast(msg);
+    } catch (error: any) {
+      setFormError(error?.message || 'Không thể tự động điền từ lệnh SX.');
+    } finally {
+      setIsAutofillingFromOrders(false);
+    }
+  };
+
   const toggleProductionOrder = (orderCode: string) => {
     applyProductionOrderSelection(toggleWarehouseProductionOrderSelection(productionOrderCodes, orderCode));
   };
 
   const filteredProductionOrders = useMemo(() => {
+    const byDateShift = filterWarehouseProductionOrdersByDateShift(
+      productionOrders,
+      slipDate,
+      selectedShifts
+    );
     const query = productionOrderSearch.trim().toLowerCase();
-    if (!query) return productionOrders;
-    return productionOrders.filter(order => {
+    if (!query) return byDateShift;
+    return byDateShift.filter(order => {
       const hay = `${order.orderCode} ${order.shift} ${order.machine} ${order.startDate}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [productionOrders, productionOrderSearch]);
+  }, [productionOrders, productionOrderSearch, slipDate, selectedShifts]);
 
   const productionOrderLabel = formatWarehouseProductionOrderSelection(productionOrderCodes);
 
@@ -1016,7 +1224,6 @@ export function WarehouseSlipPanel({
   }, [lines, warehouseKind, weightCatalog]);
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
-  const isNvlInbound = warehouseKind === 'nvl' && slipType === 'nhap';
 
   const handlePrintPreview = () => {
     void handleSave();
@@ -1347,12 +1554,32 @@ export function WarehouseSlipPanel({
             </>
           ) : null}
           <div className="relative block space-y-1.5 sm:col-span-2 lg:col-span-4">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-              Mã đơn hàng / Lệnh SX{' '}
-              <span className="font-semibold normal-case tracking-normal text-zinc-400">
-                (chọn nhiều)
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                Mã đơn hàng / Lệnh SX{' '}
+                <span className="font-semibold normal-case tracking-normal text-zinc-400">
+                  (chọn nhiều)
+                </span>
               </span>
-            </span>
+              <button
+                type="button"
+                onClick={() => void handleAutofillFromProductionOrders()}
+                disabled={isAutofillingFromOrders || isLoadingProductionOrders}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Điền máy, lệnh SX và dòng hàng theo Ngày phiếu + Ca"
+              >
+                {isAutofillingFromOrders ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                )}
+                Tự động điền theo lệnh SX
+              </button>
+            </div>
+            <p className="text-[11px] font-semibold text-zinc-500">
+              Chọn Ngày phiếu + Ca rồi bấm nút để lấy lệnh SX khớp và điền{' '}
+              {warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL định mức'}.
+            </p>
             <button
               type="button"
               ref={productionOrderTriggerRef}
@@ -1432,7 +1659,9 @@ export function WarehouseSlipPanel({
                       <p className="text-[11px] font-semibold text-zinc-500">
                         {productionOrderCodes.length > 0
                           ? `Đã chọn ${productionOrderCodes.length} lệnh SX`
-                          : `Tick nhiều mã lệnh SX${warehouseKind === 'san_pham' ? ' — sẽ gộp dòng sản phẩm' : ''}.`}
+                          : slipDate
+                            ? `Lọc theo ngày ${slipDate}${selectedShifts.length > 0 ? ` · ${selectedShifts.length} ca` : ''}`
+                            : `Tick nhiều mã lệnh SX${warehouseKind === 'san_pham' ? ' — sẽ gộp dòng sản phẩm' : ''}.`}
                       </p>
                       <button
                         type="button"

@@ -76,7 +76,6 @@ import {
   type MixingProductionOrder
 } from '../utils/mixingOrderAutofill';
 import { sanitizeDecimalTyping } from '../lib/mixingReportModel';
-import { isRecyclingMachine } from '../utils/machineKind';
 
 const DEFAULT_SHELL_WEIGHT = '0,16';
 const ACCEPTANCE_STATUS_OPTIONS = ['Đạt', 'Không đạt'] as const;
@@ -1524,27 +1523,6 @@ export default function WeighingReportForm({
   const restrictProductsToOrders = config.restrictProductsToOrders !== false;
   const isOtherOrderSelected = selectedProductionOrderCode === WEIGHING_OTHER_ORDER_CODE;
 
-  const selectedWeighingMachine = useMemo(() => {
-    const label = String(newRow.machineName || '').trim();
-    if (!label) return null;
-    return (
-      machines.find(
-        machine =>
-          machine.name === label ||
-          machine.code === label ||
-          `${machine.code} · ${machine.name}` === label
-      ) ?? null
-    );
-  }, [machines, newRow.machineName]);
-
-  const isRecycleMachineSelected = isRecyclingMachine(selectedWeighingMachine);
-
-  useEffect(() => {
-    if (!isRecycleMachineSelected) return;
-    if (selectedProductionOrderCode === WEIGHING_OTHER_ORDER_CODE) return;
-    setSelectedProductionOrderCode(WEIGHING_OTHER_ORDER_CODE);
-  }, [isRecycleMachineSelected, selectedProductionOrderCode]);
-
   const productionOrderOptions = useMemo(() => {
     if (!newRow.productionDate || !newRow.shiftName) return [];
     return productionOrders.filter(order => {
@@ -2609,61 +2587,50 @@ export default function WeighingReportForm({
                 {machinesError && (
                   <p className="text-[11px] font-bold text-rose-600">{machinesError}</p>
                 )}
-                {isRecycleMachineSelected ? (
-                  <p className="mt-1 text-[11px] font-semibold text-emerald-700">
-                    Máy tái chế — chọn ca trực tiếp, không cần lệnh sản xuất.
-                  </p>
-                ) : null}
               </label>
               <label className="field-cell col-span-2">
                 <span className={`flex items-center gap-1 ${modalLabelClass}`}>
                   <ClipboardList className="h-3.5 w-3.5 text-[#ef1b2d]" />
                   Lệnh SX
                 </span>
-                {isRecycleMachineSelected ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[11px] font-semibold text-emerald-800">
-                    Đã bỏ qua lệnh SX (máy tái chế).
-                  </div>
-                ) : (
-                  <SearchableSelect
-                    value={selectedProductionOrderCode}
-                    onChange={value => {
-                      setSelectedProductionOrderCode(value);
-                      if (value === WEIGHING_OTHER_ORDER_CODE) {
-                        setNewRow(prev => ({
-                          ...prev,
-                          productCode: '',
-                          productName: ''
-                        }));
-                      }
-                    }}
-                    options={productionOrderSelectOptions}
-                    placeholder={
-                      isLoadingProductionOrders
-                        ? 'Đang tải lệnh SX...'
-                        : productionOrderOptions.length === 0
-                          ? 'Không có lệnh SX — chọn Khác'
-                          : 'Chọn lệnh SX hoặc Khác'
+                <SearchableSelect
+                  value={selectedProductionOrderCode}
+                  onChange={value => {
+                    setSelectedProductionOrderCode(value);
+                    if (value === WEIGHING_OTHER_ORDER_CODE) {
+                      setNewRow(prev => ({
+                        ...prev,
+                        productCode: '',
+                        productName: ''
+                      }));
                     }
-                    isLoading={isLoadingProductionOrders}
-                    disabled={isLoadingProductionOrders}
-                    inputClassName={modalInputClass}
-                    getValue={item => (item as MixingProductionOrder).orderCode}
-                    getLabel={item => {
-                      const order = item as MixingProductionOrder;
-                      if (order.orderCode === WEIGHING_OTHER_ORDER_CODE) {
-                        return 'Khác — sản phẩm ngoài lệnh SX';
-                      }
-                      return order.machine ? `${order.orderCode} · ${order.machine}` : order.orderCode;
-                    }}
-                    resolveSelectedItem={(options, value) =>
-                      (options as MixingProductionOrder[]).find(order => order.orderCode === value)
+                  }}
+                  options={productionOrderSelectOptions}
+                  placeholder={
+                    isLoadingProductionOrders
+                      ? 'Đang tải lệnh SX...'
+                      : productionOrderOptions.length === 0
+                        ? 'Không có lệnh SX — chọn Khác'
+                        : 'Chọn lệnh SX hoặc Khác'
+                  }
+                  isLoading={isLoadingProductionOrders}
+                  disabled={isLoadingProductionOrders}
+                  inputClassName={modalInputClass}
+                  getValue={item => (item as MixingProductionOrder).orderCode}
+                  getLabel={item => {
+                    const order = item as MixingProductionOrder;
+                    if (order.orderCode === WEIGHING_OTHER_ORDER_CODE) {
+                      return 'Khác — sản phẩm ngoài lệnh SX';
                     }
-                  />
-                )}
+                    return order.machine ? `${order.orderCode} · ${order.machine}` : order.orderCode;
+                  }}
+                  resolveSelectedItem={(options, value) =>
+                    (options as MixingProductionOrder[]).find(order => order.orderCode === value)
+                  }
+                />
                 {productionOrdersError ? (
                   <p className="text-[10px] font-semibold text-rose-600">{productionOrdersError}</p>
-                ) : isOtherOrderSelected && !isRecycleMachineSelected ? (
+                ) : isOtherOrderSelected ? (
                   <p className="text-[10px] font-semibold text-amber-700">
                     Đã chọn Khác — chọn NVL bên dưới từ kho.
                   </p>

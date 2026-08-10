@@ -321,9 +321,9 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     components: [
       'src/components/MixingReportForm.tsx',
       'src/components/MixingReportListView.tsx',
-      'src/components/MixingNormMaterialsTab.tsx',
       'src/components/MixingReportPrintSheet.tsx',
-      'src/components/MixingOrderAutofillModal.tsx'
+      'src/components/MixingOrderAutofillModal.tsx',
+      'src/components/MixingProductionOrderAutofillModal.tsx'
     ],
     utils: ['src/lib/mixingReportModel.ts', 'src/utils/mixingOrderAutofill.ts']
   },
@@ -333,7 +333,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-bang-tron-vat-tu-dinh-muc.sql'],
     apiPrefix: '/api/bang-tron-vat-tu-dinh-muc',
     serverLines: 'bang_tron_vat_tu_dinh_muc routes',
-    appTab: 'mixing-report-list',
+    appTab: '(detached from mixing-report-list UI)',
     appLines: 'src/components/MixingNormMaterialsTab.tsx',
     components: ['src/components/MixingNormMaterialsTab.tsx'],
     utils: []
@@ -344,7 +344,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-phieu-tron-thuc-te.sql'],
     apiPrefix: '/api/phieu-tron-thuc-te',
     serverLines: 'phieu_tron_thuc_te routes',
-    appTab: 'mixing-report-list',
+    appTab: '(detached from mixing-report-list UI)',
     appLines: 'src/components/ActualMixingSheetTab.tsx',
     components: ['src/components/ActualMixingSheetTab.tsx'],
     utils: []

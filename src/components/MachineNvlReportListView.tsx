@@ -526,6 +526,7 @@ export default function MachineNvlReportListView({
   const [printReport, setPrintReport] = useState<MachineNvlPrintReport | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [viewingReport, setViewingReport] = useState<MachineNvlSavedReport | null>(null);
+  const [listTab, setListTab] = useState<MachineNvlReportKind>('dau_ca');
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
@@ -871,47 +872,74 @@ export default function MachineNvlReportListView({
         </div>
       </section>
 
-      <MachineNvlSection
-        kind="dau_ca"
-        title={MACHINE_NVL_SECTIONS[0].title}
-        emptyLabel={MACHINE_NVL_SECTIONS[0].emptyLabel}
-        groups={dauCaGroups}
-        isLoading={isLoading}
-        onView={setViewingReport}
-        onEdit={onEdit}
-        onPrint={handlePrint}
-        onDelete={handleDelete}
-        deletingId={deletingId}
-        selectedIds={selectedDauCaIds}
-        onToggleSelected={id => toggleSelected('dau_ca', id)}
-        onToggleSelectAll={ids => toggleSelectAll('dau_ca', ids)}
-        onBulkDelete={ids => void handleBulkDelete('dau_ca', ids)}
-        onClearSelection={() => clearSelection('dau_ca')}
-        bulkDeleting={bulkDeleting}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {MACHINE_NVL_SECTIONS.map(section => {
+          const count = section.id === 'dau_ca' ? filteredDauCaReports.length : filteredCuoiCaReports.length;
+          const active = listTab === section.id;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => setListTab(section.id)}
+              aria-pressed={active}
+              className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+                active
+                  ? 'border-[#ef1b2d] bg-red-50'
+                  : 'border-zinc-200 bg-white hover:border-zinc-300'
+              }`}
+            >
+              <span className="block text-sm font-black text-zinc-950">{section.title}</span>
+              <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
+                {isLoading ? 'Đang tải...' : `${count} phiếu`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-      <MachineNvlSection
-        kind="cuoi_ca"
-        title={MACHINE_NVL_SECTIONS[1].title}
-        emptyLabel={MACHINE_NVL_SECTIONS[1].emptyLabel}
-        groups={cuoiCaGroups}
-        isLoading={isLoading}
-        onView={setViewingReport}
-        onEdit={onEdit}
-        onPrint={handlePrint}
-        onDelete={handleDelete}
-        deletingId={deletingId}
-        selectedIds={selectedCuoiCaIds}
-        onToggleSelected={id => toggleSelected('cuoi_ca', id)}
-        onToggleSelectAll={ids => toggleSelectAll('cuoi_ca', ids)}
-        onBulkDelete={ids => void handleBulkDelete('cuoi_ca', ids)}
-        onClearSelection={() => clearSelection('cuoi_ca')}
-        bulkDeleting={bulkDeleting}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
+      {listTab === 'dau_ca' ? (
+        <MachineNvlSection
+          kind="dau_ca"
+          title={MACHINE_NVL_SECTIONS[0].title}
+          emptyLabel={MACHINE_NVL_SECTIONS[0].emptyLabel}
+          groups={dauCaGroups}
+          isLoading={isLoading}
+          onView={setViewingReport}
+          onEdit={onEdit}
+          onPrint={handlePrint}
+          onDelete={handleDelete}
+          deletingId={deletingId}
+          selectedIds={selectedDauCaIds}
+          onToggleSelected={id => toggleSelected('dau_ca', id)}
+          onToggleSelectAll={ids => toggleSelectAll('dau_ca', ids)}
+          onBulkDelete={ids => void handleBulkDelete('dau_ca', ids)}
+          onClearSelection={() => clearSelection('dau_ca')}
+          bulkDeleting={bulkDeleting}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
+      ) : (
+        <MachineNvlSection
+          kind="cuoi_ca"
+          title={MACHINE_NVL_SECTIONS[1].title}
+          emptyLabel={MACHINE_NVL_SECTIONS[1].emptyLabel}
+          groups={cuoiCaGroups}
+          isLoading={isLoading}
+          onView={setViewingReport}
+          onEdit={onEdit}
+          onPrint={handlePrint}
+          onDelete={handleDelete}
+          deletingId={deletingId}
+          selectedIds={selectedCuoiCaIds}
+          onToggleSelected={id => toggleSelected('cuoi_ca', id)}
+          onToggleSelectAll={ids => toggleSelectAll('cuoi_ca', ids)}
+          onBulkDelete={ids => void handleBulkDelete('cuoi_ca', ids)}
+          onClearSelection={() => clearSelection('cuoi_ca')}
+          bulkDeleting={bulkDeleting}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
+      )}
 
       {viewingReport ? (
         <MachineNvlReportDetailModal

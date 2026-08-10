@@ -31,27 +31,13 @@ import type { MixingRoundPhoto } from './MixingReportForm';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import type { MixingReport } from './MixingReportForm';
 import MixingReportForm from './MixingReportForm';
-import MixingNormMaterialsTab from './MixingNormMaterialsTab';
-import ActualMixingSheetTab from './ActualMixingSheetTab';
 import {
   getProductionShiftOptions,
   normalizeShiftSettings,
   shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
-import {
-  FilterCombobox,
-  TableToolbar,
-  TableSearchInput,
-  TableDateFilter,
-  TableShell,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableRow,
-  TableEmptyRow,
-  RowActionsMenu
-} from './shared/table';
+import { RowActionsMenu } from './shared/table';
 
 const inputClass =
   'h-9 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -68,51 +54,6 @@ type MixingReportFilters = {
   ca: string;
   machineId: string;
 };
-
-type RelatedMixingSlipKind = 'report' | 'line';
-
-type RelatedMixingSlip = {
-  kind: RelatedMixingSlipKind;
-  id: string;
-  ngay: string;
-  ca: string;
-  title: string;
-  detail: string;
-  meta: string;
-  /** Chỉ dùng cho dòng định mức/thực tế gộp */
-  actualId?: string;
-  hasActual?: boolean;
-  spCount?: number;
-};
-
-type NormSlipRow = {
-  id: string;
-  ngay: string;
-  ca: string;
-  title: string;
-  detail: string;
-  meta: string;
-  spCount: number;
-};
-
-type ActualSlipRow = {
-  id: string;
-  dinhMucId: string;
-  ngay: string;
-  ca: string;
-  title: string;
-  detail: string;
-  meta: string;
-  spCount: number;
-};
-
-function inFilterDateRange(ngay: string, tuNgay: string, denNgay: string) {
-  const date = String(ngay || '').slice(0, 10);
-  if (!date || date === '-') return !tuNgay && !denNgay;
-  if (tuNgay && date < tuNgay) return false;
-  if (denNgay && date > denNgay) return false;
-  return true;
-}
 
 function compareMixingReportsForList(
   left: MixingReport,
@@ -259,8 +200,6 @@ export default function MixingReportListView({
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [reports, setReports] = useState<MixingReport[]>([]);
-  const [normSlips, setNormSlips] = useState<NormSlipRow[]>([]);
-  const [actualSlips, setActualSlips] = useState<ActualSlipRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -275,24 +214,11 @@ export default function MixingReportListView({
   const [reloadTick, setReloadTick] = useState(0);
   const [printReports, setPrintReports] = useState<MixingReport[]>([]);
   const [pendingPrint, setPendingPrint] = useState(false);
-  const [listTab, setListTab] = useState<'reports' | 'norms' | 'actual'>('reports');
-  const [searchText, setSearchText] = useState('');
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
-  const visibleReports = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
-    if (!query) return reports;
-    return reports.filter(report =>
-      `${report.ca} ${report.gio} ${report.ma_may} ${report.ten_may} ${report.nhan_su} ${report.chi_tiet
-        .map(line => `${line.ma_nvl} ${line.ten_vat_tu}`)
-        .join(' ')}`
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [reports, searchText]);
   const sortedReports = useMemo(
-    () => [...visibleReports].sort((left, right) => compareMixingReportsForList(left, right, shiftOptions)),
-    [visibleReports, shiftOptions]
+    () => [...reports].sort((left, right) => compareMixingReportsForList(left, right, shiftOptions)),
+    [reports, shiftOptions]
   );
   const dateGroups = useMemo(() => {
     const map = new Map<string, MixingReport[]>();
@@ -306,74 +232,6 @@ export default function MixingReportListView({
       .sort((left, right) => right[0].localeCompare(left[0]))
       .map(([ngay, groupReports]) => ({ ngay, reports: groupReports }));
   }, [sortedReports]);
-
-  const relatedSlips = useMemo(() => {
-    const machine = machines.find(item => item.id === filters.machineId);
-    const query = searchText.trim().toLowerCase();
-    const actualByNormId = new Map(actualSlips.map(row => [row.dinhMucId, row]));
-
-    // 1 dòng = 1 phiếu định mức (gắn trạng thái thực tế nếu có) — giống tab thực tế.
-    const lineRows: RelatedMixingSlip[] = normSlips.map(norm => {
-      const actual = actualByNormId.get(norm.id);
-      return {
-        kind: 'line' as const,
-        id: norm.id,
-        ngay: norm.ngay,
-        ca: norm.ca,
-        title: norm.title,
-        detail: `${norm.spCount} SP · ${norm.meta}`,
-        meta: '',
-        actualId: actual?.id,
-        hasActual: Boolean(actual),
-        spCount: norm.spCount
-      };
-    });
-
-    // Phiếu phối trộn theo máy (nếu có) vẫn hiện riêng.
-    const reportRows: RelatedMixingSlip[] = reports.map(report => ({
-      kind: 'report' as const,
-      id: report.id,
-      ngay: report.ngay || '-',
-      ca: report.ca || '-',
-      title: report.ten_may || report.ma_may || 'Phiếu phối trộn',
-      detail: report.nhan_su || report.gio || '—',
-      meta: `${report.chi_tiet.length} dòng VT · ${formatMixingReportSessionLabel(report)}`
-    }));
-
-    const rows = [...lineRows, ...reportRows].filter(row => {
-      if (!inFilterDateRange(row.ngay, filters.tuNgay, filters.denNgay)) return false;
-      if (filters.ca && row.ca !== '-' && !shiftNamesMatch(row.ca, filters.ca) && row.ca !== filters.ca) {
-        return false;
-      }
-      if (machine && row.kind === 'report') {
-        const report = reports.find(item => item.id === row.id);
-        if (!report) return false;
-        if (report.ma_may && machine.code && report.ma_may !== machine.code) return false;
-      }
-      if (!query) return true;
-      return `${row.title} ${row.detail} ${row.meta} ${row.ca} ${row.ngay}`
-        .toLowerCase()
-        .includes(query);
-    });
-
-    return rows.sort((left, right) => {
-      const byDate = right.ngay.localeCompare(left.ngay);
-      if (byDate !== 0) return byDate;
-      const byCa = left.ca.localeCompare(right.ca, 'vi');
-      if (byCa !== 0) return byCa;
-      if (left.kind !== right.kind) return left.kind === 'line' ? -1 : 1;
-      return left.title.localeCompare(right.title, 'vi');
-    });
-  }, [reports, normSlips, actualSlips, filters, machines, searchText]);
-
-  const relatedCounts = useMemo(() => {
-    const lines = relatedSlips.filter(row => row.kind === 'line');
-    return {
-      report: relatedSlips.filter(row => row.kind === 'report').length,
-      line: lines.length,
-      withActual: lines.filter(row => row.hasActual).length
-    };
-  }, [relatedSlips]);
 
   const loadReferenceData = async () => {
     const [machineRes, settingRes] = await Promise.all([
@@ -399,62 +257,12 @@ export default function MixingReportListView({
 
   const loadReports = async (nextFilters = filters, machineList = machines) => {
     const query = buildFilterQuery(nextFilters, machineList);
-    const [reportRes, normRes, actualRes] = await Promise.all([
-      fetch(`/api/bao-cao-phoi-tron${query ? `?${query}` : ''}`),
-      fetch('/api/bang-tron-vat-tu-dinh-muc'),
-      fetch('/api/phieu-tron-thuc-te')
-    ]);
+    const reportRes = await fetch(`/api/bao-cao-phoi-tron${query ? `?${query}` : ''}`);
     const reportData = await reportRes.json().catch(() => ({}));
-    const normData = await normRes.json().catch(() => ({}));
-    const actualData = await actualRes.json().catch(() => ({}));
     if (!reportRes.ok) throw new Error(reportData.error || 'Không thể tải báo cáo phối trộn.');
 
     const list = Array.isArray(reportData.reports) ? reportData.reports : [];
     setReports(list.map((item: Record<string, unknown>) => normalizeMixingReport(item)));
-
-    const norms = Array.isArray(normData.records) ? normData.records : [];
-    setNormSlips(
-      norms
-        .map((row: Record<string, unknown>): NormSlipRow | null => {
-          const id = String(row.id ?? '').trim();
-          if (!id) return null;
-          const chiTiet = Array.isArray(row.chi_tiet) ? row.chi_tiet : [];
-          const maLenh = String(row.ma_lenh_sx ?? '').trim();
-          return {
-            id,
-            ngay: String(row.ngay ?? '').slice(0, 10) || '-',
-            ca: String(row.ca ?? '').trim() || '-',
-            title: maLenh || 'Phiếu định mức',
-            detail: `${chiTiet.length} SP`,
-            meta: String(row.ghi_chu ?? '').trim() || 'Định mức QC',
-            spCount: chiTiet.length
-          };
-        })
-        .filter((row): row is NormSlipRow => Boolean(row))
-    );
-
-    const actuals = Array.isArray(actualData.records) ? actualData.records : [];
-    setActualSlips(
-      actuals
-        .map((row: Record<string, unknown>): ActualSlipRow | null => {
-          const id = String(row.id ?? '').trim();
-          const dinhMucId = String(row.dinh_muc_id ?? '').trim();
-          if (!id || !dinhMucId) return null;
-          const chiTiet = Array.isArray(row.chi_tiet) ? row.chi_tiet : [];
-          const maLenh = String(row.ma_lenh_sx ?? '').trim();
-          return {
-            id,
-            dinhMucId,
-            ngay: String(row.ngay ?? '').slice(0, 10) || '-',
-            ca: String(row.ca ?? '').trim() || '-',
-            title: maLenh || 'Phiếu thực tế',
-            detail: `${chiTiet.length} SP`,
-            meta: String(row.ghi_chu ?? '').trim() || 'Theo định mức',
-            spCount: chiTiet.length
-          };
-        })
-        .filter((row): row is ActualSlipRow => Boolean(row))
-    );
   };
 
   useEffect(() => {
@@ -750,33 +558,29 @@ export default function MixingReportListView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {listTab === 'reports' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handlePrintFilteredReports}
-                    disabled={sortedReports.length === 0}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Printer className="h-4 w-4" />
-                    In danh sách
-                  </button>
-                  {canCreate ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormModalMode('create');
-                        setPendingEditReport(null);
-                        setCreateModalOpen(true);
-                      }}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Thêm mới
-                    </button>
-                  ) : null}
-                </>
-              )}
+              <button
+                type="button"
+                onClick={handlePrintFilteredReports}
+                disabled={sortedReports.length === 0}
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Printer className="h-4 w-4" />
+                In danh sách
+              </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormModalMode('create');
+                    setPendingEditReport(null);
+                    setCreateModalOpen(true);
+                  }}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onBack}
@@ -789,115 +593,17 @@ export default function MixingReportListView({
           </div>
         </div>
 
-        <div className="grid gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => setListTab('reports')}
-            aria-pressed={listTab === 'reports'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'reports'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Danh sách phiếu phối trộn</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Gộp theo dòng phiếu định mức (kèm trạng thái thực tế)
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('norms')}
-            aria-pressed={listTab === 'norms'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'norms'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Phiếu trộn định mức</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Lệnh SX → Sản phẩm → NVL, lưu bảng riêng
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('actual')}
-            aria-pressed={listTab === 'actual'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'actual'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Phiếu trộn thực tế</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Chọn ngày + ca, nhập % thực tế
-            </span>
-          </button>
-        </div>
-
-        {listTab === 'reports' && (
         <div className="space-y-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-emerald-700" />
               <p className="text-sm font-black text-zinc-950">
-                {relatedCounts.line} dòng · {relatedCounts.withActual} đã có thực tế
-                {relatedCounts.report > 0 ? ` · ${relatedCounts.report} phối trộn máy` : ''}
+                {sortedReports.length} phiếu phối trộn
               </p>
             </div>
             <p className="text-[11px] font-semibold text-zinc-500">
               Đang lọc: {formatFilterSummary(filters, machines)}
             </p>
-          </div>
-          <div className="hidden">
-          <TableToolbar
-            isLoading={isLoading}
-            hasActiveFilters={Boolean(searchText || filters.ca || filters.machineId || filters.tuNgay || filters.denNgay)}
-            onResetFilters={() => {
-              setSearchText('');
-              setFilters(emptyFilters());
-            }}
-          >
-            <TableSearchInput
-              value={searchText}
-              onChange={value => {
-                setSearchText(value);
-              }}
-              placeholder="Tìm máy, nhân sự, mã hoặc tên vật tư..."
-              disabled={isLoading}
-            />
-            <FilterCombobox
-              label="Ca"
-              options={shiftOptions.map(shift => shift.value)}
-              value={filters.ca || 'all'}
-              onChange={value => setFilters(prev => ({ ...prev, ca: value === 'all' ? '' : value }))}
-              formatOption={value => shiftOptions.find(shift => shift.value === value)?.label || value}
-              compact
-            />
-            <FilterCombobox
-              label="Máy"
-              options={machines.map(machine => machine.id)}
-              value={filters.machineId || 'all'}
-              onChange={value => setFilters(prev => ({ ...prev, machineId: value === 'all' ? '' : value }))}
-              formatOption={value => {
-                const machine = machines.find(item => item.id === value);
-                return machine ? `${machine.code} · ${machine.name}` : value;
-              }}
-              compact
-            />
-            <TableDateFilter
-              label="Từ ngày"
-              value={filters.tuNgay}
-              onChange={value => setFilters(prev => ({ ...prev, tuNgay: value }))}
-            />
-            <TableDateFilter
-              label="Đến ngày"
-              value={filters.denNgay}
-              onChange={value => setFilters(prev => ({ ...prev, denNgay: value }))}
-            />
-          </TableToolbar>
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
             <label className="space-y-1">
@@ -967,15 +673,8 @@ export default function MixingReportListView({
             </div>
           </div>
         </div>
-        )}
       </section>
 
-      {listTab === 'norms' ? (
-        <MixingNormMaterialsTab />
-      ) : listTab === 'actual' ? (
-        <ActualMixingSheetTab />
-      ) : (
-        <>
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
           {error}
@@ -991,9 +690,9 @@ export default function MixingReportListView({
         <div className="border-b border-zinc-100 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-black text-zinc-950">Danh sách phiếu trộn</p>
+              <p className="text-sm font-black text-zinc-950">Danh sách phiếu phối trộn</p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                1 dòng = 1 phiếu định mức · trạng thái thực tế trên cùng dòng
+                Theo ngày · ca · máy / lần (`bao_cao_phoi_tron`)
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1005,7 +704,7 @@ export default function MixingReportListView({
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-extrabold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  Xoá phiếu phối trộn đã chọn ({selectedCount})
+                  Xoá đã chọn ({selectedCount})
                 </button>
               ) : null}
               <button
@@ -1024,124 +723,11 @@ export default function MixingReportListView({
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Đang tải...
           </div>
-        ) : relatedSlips.length === 0 ? (
+        ) : dateGroups.length === 0 ? (
           <div className="px-3 py-8 text-center font-bold text-zinc-400">
-            Chưa có phiếu trộn phù hợp bộ lọc.
+            Chưa có phiếu phối trộn phù hợp bộ lọc.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-xs">
-              <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
-                <tr>
-                  <th className="w-10 px-3 py-2 text-center font-black">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      aria-label="Chọn tất cả phiếu phối trộn"
-                      className="h-4 w-4 accent-[#ef1b2d]"
-                      title="Chỉ chọn phiếu phối trộn máy"
-                    />
-                  </th>
-                  <th className="px-3 py-2 font-black">Ngày</th>
-                  <th className="px-3 py-2 font-black">Ca</th>
-                  <th className="px-3 py-2 font-black">Lệnh / nội dung</th>
-                  <th className="px-3 py-2 font-black">Chi tiết</th>
-                  <th className="px-3 py-2 font-black">Thực tế</th>
-                  <th className="px-3 py-2 text-center font-black">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {relatedSlips.map(row => {
-                  const report = row.kind === 'report' ? reports.find(item => item.id === row.id) : null;
-                  return (
-                    <tr key={`${row.kind}-${row.id}`} className="transition hover:bg-emerald-50/40">
-                      <td className="whitespace-nowrap px-3 py-2 text-center">
-                        {row.kind === 'report' ? (
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(row.id)}
-                            onChange={() => toggleSelected(row.id)}
-                            aria-label="Chọn phiếu phối trộn"
-                            className="h-4 w-4 accent-[#ef1b2d]"
-                          />
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 font-mono font-bold text-zinc-800">{row.ngay}</td>
-                      <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-800">{row.ca || '-'}</td>
-                      <td className="px-3 py-2 font-bold text-zinc-900">
-                        {row.title}
-                        {row.kind === 'report' ? (
-                          <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                            Phối trộn máy
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2 text-zinc-600">
-                        <span className="font-semibold text-zinc-800">{row.detail}</span>
-                        {row.kind === 'report' && row.meta ? (
-                          <span className="mt-0.5 block text-[11px] text-zinc-500">{row.meta}</span>
-                        ) : null}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2">
-                        {row.kind === 'line' ? (
-                          row.hasActual ? (
-                            <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-sky-800">
-                              Đã nhập
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
-                              Chưa nhập
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-center">
-                        {row.kind === 'report' && report ? (
-                          <RowActionsMenu label="Thao tác báo cáo phối trộn">
-                            {renderReportActions(report)}
-                          </RowActionsMenu>
-                        ) : (
-                          <div className="inline-flex flex-wrap items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setListTab('norms')}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50"
-                            >
-                              Định mức
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setListTab('actual')}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-bold text-sky-800 transition hover:bg-sky-100"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              Thực tế
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {dateGroups.length > 0 ? (
-      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <div className="border-b border-zinc-100 px-4 py-3">
-          <p className="text-sm font-black text-zinc-950">Chi tiết phiếu phối trộn theo máy / lần</p>
-          <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-            Chỉ các phiếu lưu ở form báo cáo phối trộn (`bao_cao_phoi_tron`)
-          </p>
-        </div>
           <div className="space-y-3 p-3 sm:p-4">
             {dateGroups.map(group => (
               <div key={group.ngay} className="overflow-hidden rounded-xl border border-zinc-200">
@@ -1227,8 +813,8 @@ export default function MixingReportListView({
               </div>
             ))}
           </div>
+        )}
       </section>
-      ) : null}
 
       {viewingReport && (        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div className="relative flex max-h-[96vh] w-full max-w-[min(96vw,1280px)] flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
@@ -1513,8 +1099,6 @@ export default function MixingReportListView({
       ) : null}
 
       {printReports.length > 0 ? <MixingReportPrintBatch reports={printReports} /> : null}
-        </>
-      )}
     </div>
   );
 }

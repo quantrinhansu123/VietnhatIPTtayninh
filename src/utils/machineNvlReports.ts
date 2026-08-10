@@ -323,6 +323,72 @@ export function machineNvlReportMachineKey(report: MachineNvlSavedReport) {
   return maMay || tenMay || '-';
 }
 
+function normalizeMachineNvlToken(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+function machineNvlTokensMatch(left: string, right: string) {
+  const a = normalizeMachineNvlToken(left);
+  const b = normalizeMachineNvlToken(right);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function machineNvlCaMatches(left: string, right: string) {
+  const a = String(left || '').trim().toLowerCase();
+  const b = String(right || '').trim().toLowerCase();
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+/** Tìm phiếu tồn ca trùng khóa nghiệp vụ: ngày + ca + máy + loại (đầu/cuối ca). */
+export function findDuplicateMachineNvlTonReport(
+  reports: MachineNvlSavedReport[],
+  opts: {
+    ngay: string;
+    ca: string;
+    reportKind: MachineNvlReportKind;
+    maMay?: string;
+    tenMay?: string;
+    excludeId?: string | null;
+  }
+): MachineNvlSavedReport | null {
+  const ngay = String(opts.ngay || '').trim();
+  const ca = String(opts.ca || '').trim();
+  const maMay = String(opts.maMay || '').trim();
+  const tenMay = String(opts.tenMay || '').trim();
+  const excludeId = String(opts.excludeId || '').trim();
+  if (!ngay || !ca || (!maMay && !tenMay)) return null;
+
+  for (const report of reports) {
+    if (excludeId && String(report.id) === excludeId) continue;
+    if (report.reportKind !== opts.reportKind) continue;
+    if (report.ngay !== ngay) continue;
+    if (!machineNvlCaMatches(report.ca, ca)) continue;
+    const sameMachine =
+      machineNvlTokensMatch(report.maMay, maMay) ||
+      machineNvlTokensMatch(report.tenMay, tenMay) ||
+      machineNvlTokensMatch(report.maMay, tenMay) ||
+      machineNvlTokensMatch(report.tenMay, maMay);
+    if (sameMachine) return report;
+  }
+  return null;
+}
+
+export function formatMachineNvlDuplicateSaveMessage(
+  reportKind: MachineNvlReportKind,
+  ngay: string,
+  ca: string,
+  machineLabel: string
+) {
+  const kindLabel = reportKind === 'cuoi_ca' ? 'tồn cuối ca' : 'tồn đầu ca';
+  const machine = String(machineLabel || '').trim() || 'máy đã chọn';
+  return `Đã lưu báo cáo ${kindLabel} này rồi (${ngay} · ca ${ca} · ${machine}). Không lưu bản trùng.`;
+}
+
 export function buildMachineNvlReportGroups(
   reports: MachineNvlSavedReport[],
   shiftOrder: (ca: string) => number = () => 999

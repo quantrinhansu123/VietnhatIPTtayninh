@@ -17,3 +17,5 @@ Loại báo cáo: tồn đầu ca, tồn cuối ca.
 - Báo cáo tồn cuối ca
 
 **Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** mở modal lọc Ngày/Ca/Máy (mặc định trống) → chọn phiếu tồn cuối ca trong sổ xuống → **Điền vào form**.
+
+**Chống trùng:** không lưu 2 phiếu cùng **ngày + ca + máy + loại** (đầu/cuối ca). Form và API (`409`) báo đỏ: «Đã lưu … Không lưu bản trùng.»

@@ -3345,6 +3345,85 @@ function machineNvlReportWriteError(error: { code?: string; message?: string }) 
   return `Không thể lưu báo cáo NVL tồn theo máy. ${error.message || ''}`.trim();
 }
 
+function normalizeMachineNvlDupToken(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+function machineNvlDupTokensMatch(left: unknown, right: unknown) {
+  const a = normalizeMachineNvlDupToken(left);
+  const b = normalizeMachineNvlDupToken(right);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function machineNvlDupCaMatches(left: unknown, right: unknown) {
+  const a = String(left ?? '').trim().toLowerCase();
+  const b = String(right ?? '').trim().toLowerCase();
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function formatMachineNvlDuplicateApiError(
+  loai: 'dau_ca' | 'cuoi_ca',
+  ngay: string,
+  ca: string,
+  machineLabel: string
+) {
+  const kindLabel = loai === 'cuoi_ca' ? 'tồn cuối ca' : 'tồn đầu ca';
+  const machine = String(machineLabel || '').trim() || 'máy đã chọn';
+  return `Đã lưu báo cáo ${kindLabel} này rồi (${ngay} · ca ${ca} · ${machine}). Không lưu bản trùng.`;
+}
+
+/** Trùng khóa: ngày + ca + loại + máy (mã hoặc tên). */
+async function findExistingMachineNvlDuplicate(opts: {
+  ngay: string;
+  ca: string;
+  loai_bao_cao: 'dau_ca' | 'cuoi_ca';
+  ma_may?: string | null;
+  ten_may?: string | null;
+  excludeId?: string | null;
+}) {
+  if (!supabase) return null;
+  const ngay = String(opts.ngay || '').trim();
+  const ca = String(opts.ca || '').trim();
+  const loai = opts.loai_bao_cao;
+  const maMay = String(opts.ma_may || '').trim();
+  const tenMay = String(opts.ten_may || '').trim();
+  const excludeId = String(opts.excludeId || '').trim();
+  if (!ngay || !ca || (!maMay && !tenMay)) return null;
+
+  let query = supabase
+    .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
+    .select('id, ngay, ca, ma_may, ten_may, loai_bao_cao')
+    .eq('ngay', ngay)
+    .eq('loai_bao_cao', loai)
+    .limit(100);
+
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) {
+    if (error) console.error('Supabase machine NVL duplicate check error:', error);
+    return null;
+  }
+
+  for (const row of data) {
+    if (!row || typeof row !== 'object') continue;
+    const record = row as Record<string, unknown>;
+    const id = String(record.id ?? '').trim();
+    if (excludeId && id === excludeId) continue;
+    if (!machineNvlDupCaMatches(record.ca, ca)) continue;
+    const sameMachine =
+      machineNvlDupTokensMatch(record.ma_may, maMay) ||
+      machineNvlDupTokensMatch(record.ten_may, tenMay) ||
+      machineNvlDupTokensMatch(record.ma_may, tenMay) ||
+      machineNvlDupTokensMatch(record.ten_may, maMay);
+    if (sameMachine) return record;
+  }
+  return null;
+}
+
 function parseDowntimeTime(value: unknown) {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) return '';
@@ -10481,6 +10560,28 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
+      const duplicate = await findExistingMachineNvlDuplicate({
+        ngay: String(parsed.record.ngay || ''),
+        ca: String(parsed.record.ca || ''),
+        loai_bao_cao: parsed.record.loai_bao_cao as 'dau_ca' | 'cuoi_ca',
+        ma_may: parsed.record.ma_may as string | null,
+        ten_may: parsed.record.ten_may as string | null
+      });
+      if (duplicate) {
+        const machineLabel =
+          String(duplicate.ten_may || duplicate.ma_may || parsed.record.ten_may || parsed.record.ma_may || '').trim();
+        return res.status(409).json({
+          error: formatMachineNvlDuplicateApiError(
+            parsed.record.loai_bao_cao as 'dau_ca' | 'cuoi_ca',
+            String(parsed.record.ngay || ''),
+            String(parsed.record.ca || ''),
+            machineLabel
+          ),
+          code: 'DUPLICATE_REPORT',
+          existingId: duplicate.id
+        });
+      }
+
       const { data, error } = await supabase
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .insert(parsed.record)
@@ -10510,6 +10611,29 @@ export function createApp() {
       const parsed = parseMachineNvlReportBody(req.body);
       if ('error' in parsed) {
         return res.status(400).json({ error: parsed.error });
+      }
+
+      const duplicate = await findExistingMachineNvlDuplicate({
+        ngay: String(parsed.record.ngay || ''),
+        ca: String(parsed.record.ca || ''),
+        loai_bao_cao: parsed.record.loai_bao_cao as 'dau_ca' | 'cuoi_ca',
+        ma_may: parsed.record.ma_may as string | null,
+        ten_may: parsed.record.ten_may as string | null,
+        excludeId: id
+      });
+      if (duplicate) {
+        const machineLabel =
+          String(duplicate.ten_may || duplicate.ma_may || parsed.record.ten_may || parsed.record.ma_may || '').trim();
+        return res.status(409).json({
+          error: formatMachineNvlDuplicateApiError(
+            parsed.record.loai_bao_cao as 'dau_ca' | 'cuoi_ca',
+            String(parsed.record.ngay || ''),
+            String(parsed.record.ca || ''),
+            machineLabel
+          ),
+          code: 'DUPLICATE_REPORT',
+          existingId: duplicate.id
+        });
       }
 
       const { data, error } = await supabase

@@ -2621,7 +2621,7 @@ export function ProductionPlanModal({
           acceptanceReports: data.acceptance,
           warehouseMovements,
           weighingRecords: data.weighing,
-          damagedRecords: [...data.damaged, ...data.damagedDefective],
+          damagedRecords: data.damaged,
           machineNvlReports: data.machineNvl,
           dateFrom: planDate,
           dateTo: planDate

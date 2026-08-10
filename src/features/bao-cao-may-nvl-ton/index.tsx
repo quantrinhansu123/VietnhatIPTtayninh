@@ -12,6 +12,8 @@ import {
   type MachineNvlPrintReport
 } from '../../components/MachineNvlPrintSheet';
 import {
+  findDuplicateMachineNvlTonReport,
+  formatMachineNvlDuplicateSaveMessage,
   guessMachineNvlMaterialType,
   normalizeMachineNvlReports,
   MACHINE_NVL_MATERIAL_TYPE_OPTIONS,
@@ -437,9 +439,13 @@ export function MachineNvlReportPanel({
   const [pickerReportId, setPickerReportId] = useState('');
 
   const loadReports = async (kind: MachineNvlReportKind = activeKind) => {
-    const res = await fetch(`/api/bao-cao-may-nvl-ton?limit=50&loai_bao_cao=${encodeURIComponent(kind)}`);
+    const res = await fetch(`/api/bao-cao-may-nvl-ton?limit=200&loai_bao_cao=${encodeURIComponent(kind)}`);
     const data = await res.json().catch(() => ({}));
-    if (res.ok) setReports(normalizeMachineNvlReports(data));
+    if (!res.ok) return;
+    const list = normalizeMachineNvlReports(data);
+    setReports(list);
+    if (kind === 'dau_ca') setDauCaReports(list);
+    if (kind === 'cuoi_ca') setCuoiCaReports(list);
   };
 
   useEffect(() => {
@@ -855,6 +861,30 @@ export function MachineNvlReportPanel({
       return;
     }
 
+    const maMay = selectedMachine?.code || machineRef.trim();
+    const tenMay = selectedMachine?.name || machineRef.trim();
+    const machineLabel = selectedMachine
+      ? `${selectedMachine.code} · ${selectedMachine.name}`
+      : machineRef.trim();
+    const duplicateSource =
+      activeKind === 'cuoi_ca'
+        ? [...reports, ...cuoiCaReports]
+        : [...reports, ...dauCaReports];
+    const duplicate = findDuplicateMachineNvlTonReport(duplicateSource, {
+      ngay: date,
+      ca: shift,
+      reportKind: activeKind,
+      maMay,
+      tenMay,
+      excludeId: editingReportId
+    });
+    if (duplicate) {
+      setMessage(
+        showSaveFailure(formatMachineNvlDuplicateSaveMessage(activeKind, date, shift, machineLabel))
+      );
+      return;
+    }
+
     setIsSaving(true);
     try {
       const isEdit = Boolean(editingReportId);
@@ -867,8 +897,8 @@ export function MachineNvlReportPanel({
             ngay: date,
             ca: shift,
             gio: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-            ma_may: selectedMachine?.code || machineRef.trim(),
-            ten_may: selectedMachine?.name || machineRef.trim(),
+            ma_may: maMay,
+            ten_may: tenMay,
             nhan_su: machineNvlStaffText,
             ghi_chu: note.trim(),
             loai_bao_cao: activeKind,

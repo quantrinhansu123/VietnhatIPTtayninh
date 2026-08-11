@@ -368,8 +368,8 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th>Tên vật tư</th>
             <th>ĐVT</th>
             <th>PN nhập / giá</th>
-            <th>SL chứng từ</th>
-            <th>Thực nhập</th>
+            <th>SL CT</th>
+            <th>SL THỰC</th>
             <th>Quy về kg</th>
             <th>Thành tiền</th>
             <th>Ghi chú</th>
@@ -505,8 +505,8 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                   <th>{codeColumnLabel(printData.warehouseKind)}</th>
                   <th>{nameColumnLabel(printData.warehouseKind)}</th>
                   <th>ĐVT</th>
-                  <th>SL chứng từ</th>
-                  <th>Thực nhập</th>
+                  <th>SL CT</th>
+                  <th>SL THỰC</th>
                   <th>Đơn giá</th>
                   <th>Thành tiền</th>
                 </tr>

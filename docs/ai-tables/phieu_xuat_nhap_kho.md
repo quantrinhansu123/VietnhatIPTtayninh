@@ -32,7 +32,7 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` (tab **Kho tái chế**
 Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 
 - Phiếu **Nhập** chỉ có một trường **Số lượng**, lưu tại `so_luong`; `so_luong_chung_tu` luôn `NULL`.
-- Phiếu **Xuất** có **SL chứng từ** (`so_luong_chung_tu`) và **Thực nhập** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
+- Phiếu **Xuất** có **SL CT** (`so_luong_chung_tu`) và **SL THỰC** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
 
 
 ## Script

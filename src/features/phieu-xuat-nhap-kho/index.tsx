@@ -2066,8 +2066,8 @@ export function WarehouseSlipPanel({
               <span className={warehouseLineHeaderClass}>ĐVT</span>
               {slipType === 'xuat' ? (
                 <>
-                  <span className={warehouseLineHeaderClass}>SL chứng từ</span>
-                  <span className={warehouseLineHeaderClass}>Thực nhập *</span>
+                  <span className={warehouseLineHeaderClass}>SL CT</span>
+                  <span className={warehouseLineHeaderClass}>SL THỰC *</span>
                 </>
               ) : (
                 <span className={warehouseLineHeaderClass}>Số lượng *</span>
@@ -2140,7 +2140,7 @@ export function WarehouseSlipPanel({
                   {slipType === 'xuat' ? (
                     <>
                       <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>SL chứng từ</span>
+                        <span className={warehouseLineLabelClass}>SL CT</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -2151,7 +2151,7 @@ export function WarehouseSlipPanel({
                         />
                       </div>
                       <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>Thực nhập *</span>
+                        <span className={warehouseLineLabelClass}>SL THỰC *</span>
                         <input
                           type="text"
                           inputMode="decimal"

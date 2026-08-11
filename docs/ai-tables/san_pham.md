@@ -33,9 +33,7 @@
 
 ## Mã sản phẩm chi tiết
 
-- Bảng `ma_san_pham_chi_tiet`: mỗi dòng là một mã đầy đủ `ma_sp_goc_ssmmhhddmmX`.
-- Khi thêm sản phẩm với `initialQuantity > 0`, RPC `tao_san_pham_voi_ma_chi_tiet` tạo sản phẩm, mã chi tiết và phiếu nhập kho khởi tạo trong cùng transaction.
-- Tồn đầu mã gốc được giữ bằng 0; mỗi mã chi tiết được nhập kho với số lượng 1 để trang tồn kho chi tiết giữ hậu tố và tổng hợp gom theo tiền tố.
+Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Việc sinh/lưu serial QR đã chuyển sang **Phiếu nhập kho thành phẩm**; xem manifest `phieu_xuat_nhap_kho.md` và `ma_san_pham_chi_tiet.md`.
 
 > Tính năng "Đồng bộ" (cộng số liệu kiểm kho vào `ton_dau_ky`) đã bị **gỡ bỏ**. File `supabase-san-pham-kiem-kho-dong-bo.sql` giờ chỉ còn migration `DROP` để dọn RPC/bảng so cái cũ trên DB đã từng chạy — không cần chạy lại nếu DB chưa từng có tính năng này.
 

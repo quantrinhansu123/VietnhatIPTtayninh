@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bảng** | `ma_san_pham_chi_tiet` |
-| **Tab** | Chi tiết sản phẩm trong `/san-pham` |
+| **Tab** | Chi tiết phiếu nhập tại `/lich-su-xuat-nhap-kho` |
 | **DB** | Chính — label `he-thong` |
 | **SQL** | `supabase-san-pham-ma-chi-tiet.sql` |
 
@@ -13,11 +13,12 @@
 |---|---|---|
 | GET | `/api/san-pham/:id/ma-chi-tiet` | Danh sách mã đầy đủ của sản phẩm |
 | POST | `/api/ma-san-pham/danh-dau-in` | Tăng số lần in các mã đã chọn |
-| POST | `/api/san-pham` | Khi có `initialQuantity`, gọi RPC tạo sản phẩm + mã + phiếu nhập |
+| GET | `/api/phieu-xuat-nhap-kho/:slipCode/ma-qr` | Danh sách QR được sinh bởi một phiếu nhập |
+| POST | `/api/phieu-xuat-nhap-kho` | Phiếu nhập thành phẩm sinh serial + mã + tồn kho trong một transaction |
 
 ## Frontend
 
-`src/features/san-pham/index.tsx` — trường số lượng khởi tạo, tab Mã chi tiết và in QR từ mã đã lưu.
+`src/features/phieu-xuat-nhap-kho/index.tsx` — sinh QR khi nhập kho và in lại từ chi tiết lịch sử phiếu.
 
 ## Quy tắc tồn kho
 

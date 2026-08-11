@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  QrCode,
   Recycle,
   Save,
   ScanBarcode,
@@ -42,6 +43,7 @@ import {
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, { type WarehouseSlipPrintData } from '../../components/WarehouseSlipPrintModal';
+import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } from '../../utils/shiftSettings';
 import { findProductByCode, normalizeProducts } from '../san-pham';
@@ -835,6 +837,9 @@ export function WarehouseSlipPanel({
   const [printSlip, setPrintSlip] = useState<WarehouseSlipPrintData | null>(null);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printAutoTrigger, setPrintAutoTrigger] = useState(false);
+  const [pendingQrLabels, setPendingQrLabels] = useState<ProductQrPrintLabel[]>([]);
+  const [qrPrintOpen, setQrPrintOpen] = useState(false);
+  const [qrPrintAutoTrigger, setQrPrintAutoTrigger] = useState(false);
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
@@ -1585,6 +1590,9 @@ export function WarehouseSlipPanel({
     setIsSaving(true);
     setFormError('');
     setActionMessage('');
+    setPendingQrLabels([]);
+    setQrPrintOpen(false);
+    setQrPrintAutoTrigger(false);
 
     const isEditing = Boolean(editSlipCode);
     const printSlipType: WarehouseSlipType = slipType === 'xuat' ? 'xuat' : 'nhap';
@@ -1623,6 +1631,21 @@ export function WarehouseSlipPanel({
 
       const savedSlipCode = String(data.slipCode || editSlipCode || '').trim();
       const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodes);
+      const savedQrLabels: ProductQrPrintLabel[] = Array.isArray(data.qrCodes)
+        ? data.qrCodes
+            .map((record: Record<string, unknown>, index: number) => {
+              const payload = String(record.code ?? record.ma_sp_day_du ?? '').trim();
+              const productCode = String(record.baseCode ?? record.ma_sp_goc ?? '').trim();
+              return {
+                key: `${savedSlipCode}-${index}-${payload}`,
+                payload,
+                productCode,
+                productName: String(record.name ?? record.ten_sp ?? '').trim()
+              };
+            })
+            .filter((label: ProductQrPrintLabel) => Boolean(label.payload))
+        : [];
+      setPendingQrLabels(savedQrLabels);
 
       setPrintSlip(
         buildWarehouseSlipPrintData(payloadItems, {
@@ -1648,7 +1671,9 @@ export function WarehouseSlipPanel({
       setPrintModalOpen(true);
       const okMsg = isEditing
         ? `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Xem tại Lịch sử xuất nhập kho.`
-        : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
+        : savedQrLabels.length > 0
+          ? `Đã lưu phiếu ${savedSlipCode} và sinh ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
+          : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
       setActionMessage(okMsg);
       showAppToast(okMsg);
       setEditSlipCode(null);
@@ -2252,6 +2277,7 @@ export function WarehouseSlipPanel({
           <p className="mr-auto text-[11px] font-semibold text-zinc-500">
             <strong>In phiếu</strong> xem/in mẫu từ form (chưa lưu).{' '}
             <strong>Lưu &amp; in</strong> mới ghi vào lịch sử rồi in.
+            {warehouseKind === 'san_pham' && slipType === 'nhap' ? ' Phiếu nhập thành phẩm sẽ sinh từng serial và mở thêm file tem QR.' : ''}
           </p>
           <button
             type="button"
@@ -2290,6 +2316,28 @@ export function WarehouseSlipPanel({
           setPrintModalOpen(false);
           setPrintSlip(null);
           setPrintAutoTrigger(false);
+          if (pendingQrLabels.length > 0) {
+            setQrPrintOpen(true);
+            setQrPrintAutoTrigger(true);
+          }
+        }}
+        onAfterPrint={pendingQrLabels.length > 0 ? () => {
+          setPrintModalOpen(false);
+          setPrintSlip(null);
+          setPrintAutoTrigger(false);
+          setQrPrintOpen(true);
+          setQrPrintAutoTrigger(true);
+        } : undefined}
+      />
+
+      <ProductQrPrintModal
+        open={qrPrintOpen}
+        labels={pendingQrLabels}
+        autoPrint={qrPrintAutoTrigger}
+        onClose={() => {
+          setQrPrintOpen(false);
+          setQrPrintAutoTrigger(false);
+          setPendingQrLabels([]);
         }}
       />
 
@@ -2333,6 +2381,10 @@ export function WarehouseHistoryPanel({
   const [historyPrintSlip, setHistoryPrintSlip] = useState<WarehouseSlipPrintData | null>(null);
   const [historyPrintOpen, setHistoryPrintOpen] = useState(false);
   const [historyPrintAutoTrigger, setHistoryPrintAutoTrigger] = useState(false);
+  const [historyQrLabels, setHistoryQrLabels] = useState<ProductQrPrintLabel[]>([]);
+  const [historyQrPrintOpen, setHistoryQrPrintOpen] = useState(false);
+  const [isLoadingHistoryQr, setIsLoadingHistoryQr] = useState(false);
+  const [historyQrError, setHistoryQrError] = useState('');
   const [weightCatalogMaterials, setWeightCatalogMaterials] = useState<WarehouseWeightCatalogItem[]>([]);
   const [weightCatalogProducts, setWeightCatalogProducts] = useState<WarehouseWeightCatalogItem[]>([]);
 
@@ -2571,6 +2623,39 @@ export function WarehouseHistoryPanel({
   const handlePrintViewingSlip = (autoPrint = false) => {
     if (!viewingSlipCode) return;
     handlePrintSlipByCode(viewingSlipCode, autoPrint);
+  };
+
+  const handlePrintViewingQrCodes = async () => {
+    if (!viewingSlipCode || !viewingRows[0]) return;
+    setIsLoadingHistoryQr(true);
+    setHistoryQrError('');
+    try {
+      const response = await fetch(
+        `/api/phieu-xuat-nhap-kho/${encodeURIComponent(viewingSlipCode)}/ma-qr`
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể tải mã QR của phiếu nhập.');
+      const records: Array<Record<string, unknown>> = Array.isArray(data.records) ? data.records : [];
+      const labels = records.map((record, index) => {
+        const payload = String(record.ma_sp_day_du ?? '').trim();
+        const productCode = String(record.ma_sp_goc ?? '').trim();
+        const movement = viewingRows.find(row => row.itemCode === payload)
+          || viewingRows.find(row => row.itemCode.startsWith(`${productCode}_`));
+        return {
+          key: `${viewingSlipCode}-${index}-${payload}`,
+          payload,
+          productCode,
+          productName: movement?.itemName || ''
+        };
+      }).filter(label => Boolean(label.payload));
+      if (labels.length === 0) throw new Error('Phiếu nhập này chưa có mã QR chi tiết để in.');
+      setHistoryQrLabels(labels);
+      setHistoryQrPrintOpen(true);
+    } catch (reason: unknown) {
+      setHistoryQrError(reason instanceof Error ? reason.message : 'Không thể tải mã QR của phiếu nhập.');
+    } finally {
+      setIsLoadingHistoryQr(false);
+    }
   };
 
   const handleEditSlip = (slipCode: string) => {
@@ -3050,9 +3135,12 @@ export function WarehouseHistoryPanel({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#ef1b2d]/20 bg-red-50 px-4 py-3">
-              <p className="text-sm font-black text-zinc-950">
-                Tổng tiền: <span className="text-[#ef1b2d]">{formatWarehouseMoney(viewingSlipTotal)} đ</span>
-              </p>
+              <div>
+                <p className="text-sm font-black text-zinc-950">
+                  Tổng tiền: <span className="text-[#ef1b2d]">{formatWarehouseMoney(viewingSlipTotal)} đ</span>
+                </p>
+                {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 {canEdit ? (
                   <button
@@ -3072,6 +3160,17 @@ export function WarehouseHistoryPanel({
                   <Printer className="h-4 w-4" />
                   In phiếu
                 </button>
+                {viewingRows[0].warehouseKind === 'san_pham' && viewingRows[0].slipType === 'nhap' ? (
+                  <button
+                    type="button"
+                    onClick={() => void handlePrintViewingQrCodes()}
+                    disabled={isLoadingHistoryQr}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-white px-3 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {isLoadingHistoryQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                    {isLoadingHistoryQr ? 'Đang tải QR...' : 'In mã QR'}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -3086,6 +3185,15 @@ export function WarehouseHistoryPanel({
           setHistoryPrintOpen(false);
           setHistoryPrintSlip(null);
           setHistoryPrintAutoTrigger(false);
+        }}
+      />
+
+      <ProductQrPrintModal
+        open={historyQrPrintOpen}
+        labels={historyQrLabels}
+        onClose={() => {
+          setHistoryQrPrintOpen(false);
+          setHistoryQrLabels([]);
         }}
       />
     </div>

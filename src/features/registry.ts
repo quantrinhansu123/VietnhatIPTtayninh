@@ -141,12 +141,12 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   ma_san_pham_chi_tiet: {
     table: 'ma_san_pham_chi_tiet',
     label: 'Mã QR/serial chi tiết của sản phẩm',
-    sql: ['supabase-san-pham-ma-chi-tiet.sql'],
-    apiPrefix: '/api/san-pham/:id/ma-chi-tiet | /api/ma-san-pham/danh-dau-in',
-    serverLines: 'API mã sản phẩm chi tiết + đồng bộ phiếu xuất nhập kho',
-    appTab: 'products',
-    appLines: 'src/features/san-pham/index.tsx',
-    components: [],
+    sql: ['supabase-san-pham-ma-chi-tiet.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
+    apiPrefix: '/api/phieu-xuat-nhap-kho/:slipCode/ma-qr | /api/ma-san-pham/danh-dau-in',
+    serverLines: 'API sinh mã khi nhập thành phẩm + đồng bộ phiếu xuất nhập kho',
+    appTab: 'warehouse-history',
+    appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
+    components: ['src/components/ProductQrPrintModal.tsx'],
     utils: []
   },
   danh_sach_may: {
@@ -178,12 +178,12 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   phieu_xuat_nhap_kho: {
     table: 'phieu_xuat_nhap_kho',
     label: 'Phiếu xuất nhập kho',
-    sql: ['supabase-phieu-xuat-nhap-kho.sql', 'supabase-phieu-xuat-nhap-kho-*.sql'],
+    sql: ['supabase-phieu-xuat-nhap-kho.sql', 'supabase-phieu-xuat-nhap-kho-*.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
     apiPrefix: '/api/phieu-xuat-nhap-kho',
     serverLines: '4786–5118',
     appTab: 'warehouse-slip | warehouse-history',
     appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
-    components: ['src/components/WarehouseSlipPrintModal.tsx'],
+    components: ['src/components/WarehouseSlipPrintModal.tsx', 'src/components/ProductQrPrintModal.tsx'],
     utils: ['scripts/sync-kho-nvl-from-phieu.mjs']
   },
   ton_kho: {

@@ -566,12 +566,14 @@ export default function WarehouseSlipPrintModal({
   open,
   data,
   autoPrint = false,
-  onClose
+  onClose,
+  onAfterPrint
 }: {
   open: boolean;
   data: WarehouseSlipPrintData | null;
   autoPrint?: boolean;
   onClose: () => void;
+  onAfterPrint?: () => void;
 }) {
   const [pendingPrint, setPendingPrint] = useState(false);
 
@@ -594,6 +596,7 @@ export default function WarehouseSlipPrintModal({
         window.print();
         setPendingPrint(false);
         document.body.classList.remove('warehouse-slip-print-active');
+        onAfterPrint?.();
       });
     }, 200);
     return () => {
@@ -601,7 +604,7 @@ export default function WarehouseSlipPrintModal({
       window.clearTimeout(timer);
       document.body.classList.remove('warehouse-slip-print-active');
     };
-  }, [pendingPrint, data]);
+  }, [pendingPrint, data, onAfterPrint]);
 
   if (!open || !data) {
     return pendingPrint && data

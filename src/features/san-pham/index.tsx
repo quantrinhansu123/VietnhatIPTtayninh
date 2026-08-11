@@ -720,19 +720,6 @@ export function ProductViewModal({
           </button>
           <button
             type="button"
-            onClick={() => setTab('codes')}
-            className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
-              tab === 'codes' ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
-            }`}
-          >
-            <QrCode className="h-4 w-4" />
-            Mã chi tiết
-            {detailCodes.length > 0 ? (
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] text-[#ef1b2d]">{detailCodes.length}</span>
-            ) : null}
-          </button>
-          <button
-            type="button"
             onClick={() => setTab('components')}
             className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
               tab === 'components' ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
@@ -1211,7 +1198,6 @@ export type ProductFormState = {
   minStock: string;
   origin: string;
   description: string;
-  initialQuantity: string;
 };
 
 export function productCellToInput(value: string) {
@@ -1240,8 +1226,7 @@ export function productToForm(product: ProductRow): ProductFormState {
     stock: productCellToInput(product.stock),
     minStock: productCellToInput(product.minStock),
     origin: productCellToInput(product.origin),
-    description: productCellToInput(product.description),
-    initialQuantity: ''
+    description: productCellToInput(product.description)
   };
 }
 
@@ -1267,8 +1252,7 @@ export function emptyProductForm(): ProductFormState {
     stock: '',
     minStock: '',
     origin: '',
-    description: '',
-    initialQuantity: ''
+    description: ''
   };
 }
 
@@ -1294,8 +1278,7 @@ export function productFormToPayload(form: ProductFormState) {
     stock: form.stock.trim(),
     minStock: form.minStock.trim(),
     origin: form.origin.trim(),
-    description: form.description.trim(),
-    initialQuantity: form.initialQuantity.trim()
+    description: form.description.trim()
   };
 }
 
@@ -1333,9 +1316,6 @@ export function ProductEditModal({
     { key: 'group', label: 'Nhóm VTHH' },
     { key: 'unit', label: 'Đơn vị tính' },
     { key: 'warehouse', label: 'Kho' },
-    ...(mode === 'add'
-      ? [{ key: 'initialQuantity' as const, label: 'Số lượng sản phẩm khởi tạo' }]
-      : []),
     { key: 'totalWeight', label: 'Tổng trọng lượng TP (kg)' },
     { key: 'rollWidth', label: 'Khổ cuộn (m)' },
     { key: 'rollLength', label: 'Chiều dài mét/cuộn (m)' },
@@ -1350,9 +1330,6 @@ export function ProductEditModal({
     { key: 'origin', label: 'Nguồn gốc' },
     { key: 'description', label: 'Mô tả', span: true }
   ];
-  const usesDetailedOpeningStock = mode === 'add' && Number(form.initialQuantity || 0) > 0;
-  const manuallyCalculatedStockFields: Array<keyof ProductFormState> = ['openingStock', 'inbound', 'outbound', 'stock'];
-
   const handleSave = async () => {
     await onSave(form);
   };
@@ -1395,37 +1372,12 @@ export function ProductEditModal({
                 </select>
               ) : (
                 <input
-                  type={field.key === 'initialQuantity' ? 'number' : 'text'}
-                  min={field.key === 'initialQuantity' ? 0 : undefined}
-                  max={field.key === 'initialQuantity' ? 999 : undefined}
-                  step={field.key === 'initialQuantity' ? 1 : undefined}
-                  disabled={usesDetailedOpeningStock && manuallyCalculatedStockFields.includes(field.key)}
+                  type="text"
                   value={form[field.key]}
-                  onChange={event => setForm(prev =>
-                    field.key === 'initialQuantity' && Number(event.target.value || 0) > 0
-                      ? {
-                          ...prev,
-                          initialQuantity: event.target.value,
-                          openingStock: '',
-                          inbound: '',
-                          outbound: '',
-                          stock: ''
-                        }
-                      : { ...prev, [field.key]: event.target.value }
-                  )}
-                  className={`${productFieldClass} disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400`}
+                  onChange={event => setForm(prev => ({ ...prev, [field.key]: event.target.value }))}
+                  className={productFieldClass}
                 />
               )}
-              {field.key === 'initialQuantity' ? (
-                <span className="block text-[10px] font-semibold text-zinc-500">
-                  Nhập 10 sẽ tạo và lưu 10 mã QR riêng, đồng thời nhập kho 10 đơn vị. Cần chọn Kho.
-                </span>
-              ) : null}
-              {usesDetailedOpeningStock && manuallyCalculatedStockFields.includes(field.key) ? (
-                <span className="block text-[10px] font-semibold text-zinc-400">
-                  Tự động tính từ các mã QR chi tiết và phiếu nhập khởi tạo.
-                </span>
-              ) : null}
             </label>
           ))}
         </div>
@@ -1599,16 +1551,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
       return;
     }
 
-    const initialQuantity = Number(form.initialQuantity || 0);
-    if (!Number.isInteger(initialQuantity) || initialQuantity < 0 || initialQuantity > 999) {
-      setProductFormError('Số lượng sản phẩm khởi tạo phải là số nguyên từ 0 đến 999.');
-      return;
-    }
-    if (initialQuantity > 0 && !form.warehouse.trim()) {
-      setProductFormError('Vui lòng chọn Kho để tạo tồn kho cho các mã sản phẩm chi tiết.');
-      return;
-    }
-
     setIsSavingProduct(true);
     setProductFormError('');
 
@@ -1625,11 +1567,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
       }
 
       closeProductForm();
-      setProductActionMessage(
-        initialQuantity > 0
-          ? `Đã thêm sản phẩm và tạo ${initialQuantity} mã QR chi tiết.`
-          : 'Đã thêm sản phẩm mới.'
-      );
+      setProductActionMessage('Đã thêm sản phẩm mới. Hãy lập phiếu nhập kho thành phẩm để sinh serial và mã QR.');
       await loadProducts();
     } catch (error: any) {
       setProductFormError(error.message || 'Không thể thêm sản phẩm.');
@@ -2348,15 +2286,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
               {isDeletingProducts ? 'Đang xóa...' : 'Xóa đã chọn'}
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={handleOpenPrintQtyModal}
-            disabled={selectedProducts.length === 0}
-            className="flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-5 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <QrCode className="h-4 w-4" />
-            In QR đã chọn
-          </button>
         </div>
       </section>
 
@@ -2500,7 +2429,6 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           onSaveItems={items => saveProductNplItems(viewingProduct.id, items)}
           onEdit={canEdit ? () => openProductEdit(viewingProduct) : undefined}
           onDelete={canDelete ? () => handleDeleteProduct(viewingProduct) : undefined}
-          onPrintCodes={codes => handlePrintProductDetailCodes(viewingProduct, codes)}
           canEditComponents={canEdit}
           isDeleting={deletingProductId === viewingProduct.id}
         />

@@ -5971,66 +5971,6 @@ export function createApp() {
         return res.status(400).json({ error: parsedProduct.error });
       }
 
-      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-      const initialQuantityRaw = body.initialQuantity ?? body.so_luong_khoi_tao ?? body.initial_quantity;
-      const initialQuantityNumber = Number(String(initialQuantityRaw ?? '').trim().replace(',', '.'));
-      if (
-        initialQuantityRaw !== undefined && String(initialQuantityRaw ?? '').trim() !== ''
-        && (!Number.isInteger(initialQuantityNumber) || initialQuantityNumber < 0 || initialQuantityNumber > 999)
-      ) {
-        return res.status(400).json({ error: 'Số lượng sản phẩm khởi tạo phải là số nguyên từ 0 đến 999.' });
-      }
-      const initialQuantity = parseInitialProductQuantity(initialQuantityRaw);
-
-      if (initialQuantity > 0) {
-        const productCode = String(parsedProduct.record.ma_sp ?? '').trim();
-        const warehouse = String(parsedProduct.record.ten_kho ?? '').trim();
-        if (!productCode) {
-          return res.status(400).json({ error: 'Cần nhập Mã SP để sinh mã QR chi tiết.' });
-        }
-        if (!warehouse) {
-          return res.status(400).json({ error: 'Cần chọn Kho khi số lượng khởi tạo lớn hơn 0.' });
-        }
-
-        // Tồn chi tiết được ghi bằng phiếu nhập từng mã; không cộng thêm tồn đầu ở mã gốc.
-        parsedProduct.record.ton_dau_ky = 0;
-        parsedProduct.record.nhap_trong_ky = 0;
-        parsedProduct.record.xuat_trong_ky = 0;
-        parsedProduct.record.sl_ton = 0;
-
-        const codes = buildStoredProductQrCodes(productCode, initialQuantity);
-        const receiptCode = buildInitialProductReceiptCode();
-        const creator = String(body.createdBy ?? body.nguoi_tao ?? '').trim() || null;
-        const { data, error } = await supabase.rpc('tao_san_pham_voi_ma_chi_tiet', {
-          p_san_pham: parsedProduct.record,
-          p_ma_chi_tiet: codes,
-          p_ma_phieu: receiptCode,
-          p_ngay_phieu: new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit'
-          }).format(new Date()),
-          p_nguoi_tao: creator
-        });
-
-        if (error) {
-          console.error('Supabase create product with detailed codes error:', error);
-          const missingMigration = error.code === 'PGRST202'
-            || /tao_san_pham_voi_ma_chi_tiet|ma_san_pham_chi_tiet/i.test(error.message || '');
-          return res.status(500).json({
-            error: missingMigration
-              ? 'Chưa có cấu trúc mã sản phẩm chi tiết. Hãy chạy file supabase-san-pham-ma-chi-tiet.sql trên Supabase DB chính.'
-              : productWriteErrorMessage(error)
-          });
-        }
-
-        return res.status(201).json({
-          success: true,
-          product: data?.product ?? null,
-          codes: Array.isArray(data?.codes) ? data.codes : codes,
-          quantity: initialQuantity,
-          receiptCode
-        });
-      }
-
       const { data, error } = await supabase
         .from(SUPABASE_PRODUCTS_TABLE)
         .insert(parsedProduct.record)
@@ -7904,6 +7844,35 @@ export function createApp() {
     }
   });
 
+  app.get('/api/phieu-xuat-nhap-kho/:slipCode/ma-qr', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const slipCode = String(req.params.slipCode || '').trim();
+      if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu nhập.' });
+
+      const { data, error } = await supabase
+        .from(SUPABASE_PRODUCT_CODES_TABLE)
+        .select('id, ma_sp_goc, ma_sp_day_du, ten_kho, trang_thai, so_lan_in, ma_phieu_nhap, created_at')
+        .eq('ma_phieu_nhap', slipCode)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        return res.status(500).json({
+          error: isMissingTableError(error)
+            ? 'Chưa có bảng mã sản phẩm chi tiết. Hãy chạy migration mã QR sản phẩm.'
+            : error.message || 'Không thể tải mã QR của phiếu nhập.'
+        });
+      }
+
+      return res.json({ records: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải mã QR của phiếu nhập.' });
+    }
+  });
+
   app.post('/api/phieu-xuat-nhap-kho', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -7923,6 +7892,89 @@ export function createApp() {
       }
 
       const maPhieu = generateWarehouseSlipCode(parsed.loaiPhieu);
+
+      if (parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'san_pham') {
+        const totalQuantity = parsed.items.reduce((sum, item) => sum + item.quantity, 0);
+        const invalidItem = parsed.items.find(item => !Number.isInteger(item.quantity));
+        if (invalidItem) {
+          return res.status(400).json({
+            error: `Số lượng nhập của ${invalidItem.code} phải là số nguyên để sinh từng mã QR.`
+          });
+        }
+        if (totalQuantity < 1 || totalQuantity > 999) {
+          return res.status(400).json({ error: 'Tổng số lượng sinh mã QR trong một phiếu phải từ 1 đến 999.' });
+        }
+
+        const { data: productRows, error: productError } = await supabase
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .select('id, ma_sp, ma_sp_moi, ma_amis, ten_sp, don_vi');
+        if (productError) {
+          return res.status(500).json({ error: `Không thể tra danh mục sản phẩm. ${productError.message}` });
+        }
+
+        const normalizeCode = (value: unknown) => String(value ?? '').trim().toLocaleUpperCase('vi-VN');
+        const productByCode = new Map<string, any>();
+        for (const product of productRows || []) {
+          [product.ma_sp, product.ma_sp_moi, product.ma_amis].forEach(value => {
+            const key = normalizeCode(value);
+            if (key && !productByCode.has(key)) productByCode.set(key, product);
+          });
+        }
+
+        const detailedLines: Array<Record<string, unknown>> = [];
+        for (const item of parsed.items) {
+          const product = productByCode.get(normalizeCode(item.code));
+          if (!product) {
+            return res.status(400).json({ error: `Mã sản phẩm ${item.code} chưa có trong danh mục sản phẩm.` });
+          }
+          const baseCode = String(product.ma_sp ?? '').trim();
+          if (!baseCode) {
+            return res.status(400).json({ error: `Sản phẩm ${item.code} chưa có mã gốc để sinh QR.` });
+          }
+          detailedLines.push({
+            san_pham_id: product.id,
+            ma_sp_goc: baseCode,
+            ten_sp: item.name || String(product.ten_sp ?? '').trim(),
+            don_vi: item.unit || String(product.don_vi ?? '').trim(),
+            don_gia: item.unitPrice,
+            codes: buildStoredProductQrCodes(baseCode, item.quantity)
+          });
+        }
+
+        const { data: rpcData, error: rpcError } = await supabase.rpc(
+          'tao_phieu_nhap_san_pham_voi_ma_chi_tiet',
+          {
+            p_ma_phieu: maPhieu,
+            p_ngay_phieu: parsed.ngayPhieu,
+            p_ten_kho: parsed.tenKho,
+            p_ly_do: parsed.lyDo,
+            p_ghi_chu: parsed.ghiChu,
+            p_nguoi_lap: parsed.nguoiLap,
+            p_ca: parsed.ca,
+            p_dong_hang: detailedLines
+          }
+        );
+
+        if (rpcError) {
+          console.error('Supabase create product inbound slip with QR codes error:', rpcError);
+          const missingMigration = rpcError.code === 'PGRST202'
+            || /tao_phieu_nhap_san_pham_voi_ma_chi_tiet/i.test(rpcError.message || '');
+          return res.status(500).json({
+            error: missingMigration
+              ? 'Thiếu RPC sinh mã QR khi nhập kho. Hãy chạy file supabase-phieu-nhap-san-pham-ma-chi-tiet.sql.'
+              : rpcError.message || 'Không thể tạo phiếu nhập và mã QR trong cùng transaction.'
+          });
+        }
+
+        return res.status(201).json({
+          success: true,
+          slipCode: maPhieu,
+          movements: Array.isArray(rpcData?.movements) ? rpcData.movements : [],
+          qrCodes: Array.isArray(rpcData?.codes) ? rpcData.codes : [],
+          qrQuantity: Number(rpcData?.quantity) || totalQuantity
+        });
+      }
+
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
       const { data, error } = await supabase

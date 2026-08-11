@@ -513,7 +513,8 @@ export function XuLyChenhLechPanel({
       );
       rows.push({
         key: `system:${systemLine.loai_kho}:${systemLine.ma}:${systemLine.ten_kho ?? ''}`,
-        ma_hang: systemLine.ma_goc,
+        // Cột kho phải giữ nguyên mã chi tiết (tiền tố + hậu tố serial), không rút về mã gốc.
+        ma_hang: systemLine.ma,
         // Chỉ hiển thị mã ở cột "Mã hàng đã kiểm" khi đúng mã đó thực sự
         // xuất hiện trong đợt kiểm; mã chỉ có trong kho để trống.
         ma_da_kiem: scannedLine?.ma_sp ?? '',

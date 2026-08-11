@@ -194,6 +194,21 @@ export function buildWarehouseSlipDraftFromHistoryRows(
 const warehouseFieldClass =
   'h-11 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
 
+const warehouseLineFieldClass =
+  'h-9 w-full rounded-md border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+
+const warehouseLineLabelClass =
+  'mb-0.5 block text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:hidden';
+
+const warehouseLineHeaderClass =
+  'px-1.5 text-[10px] font-black uppercase tracking-wider text-white';
+
+const warehouseNhapLineGridClass =
+  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5rem_5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+
+const warehouseXuatLineGridClass =
+  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5.5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
     return value.map(item => item.trim()).filter(Boolean);
@@ -419,7 +434,7 @@ export function buildWarehouseSlipPrintData(
 
   return {
     slipCode: options.slipCode,
-    slipType: options.slipType,
+    slipType: options.slipType === 'xuat' ? 'xuat' : 'nhap',
     warehouseKind: options.warehouseKind,
     slipDate: options.slipDate,
     reason: options.reason,
@@ -506,8 +521,18 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
     .map((entry): WarehouseMovementRow | null => {
       if (!entry || typeof entry !== 'object') return null;
       const record = entry as Record<string, unknown>;
-      const slipTypeRaw = String(record.loai_phieu ?? record.slipType ?? '').trim().toLowerCase();
-      const slipType: WarehouseSlipType = slipTypeRaw === 'xuat' ? 'xuat' : 'nhap';
+      const slipTypeRaw = String(record.loai_phieu ?? record.slipType ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      const slipType: WarehouseSlipType =
+        slipTypeRaw === 'xuat' ||
+        slipTypeRaw === 'export' ||
+        slipTypeRaw === 'out' ||
+        slipTypeRaw.includes('xuat')
+          ? 'xuat'
+          : 'nhap';
       const maSp = String(record.ma_sp ?? record.productCode ?? '').trim();
       const maNpl = String(record.ma_npl ?? record.materialCode ?? '').trim();
       const tenSp = String(record.ten_sp ?? record.productName ?? '').trim();
@@ -1406,24 +1431,76 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
 
+  const openPrintPreviewFromForm = (autoPrint: boolean) => {
+    if (!warehouseName.trim()) {
+      setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return false;
+    }
+
+    const linesForPrint = isNvlExport
+      ? lines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
+      : lines;
+    const parsed = parseWarehouseSlipPayloadItems(linesForPrint, warehouseKind, {
+      allowMissingUnitPrice: true,
+      requireInboundLot: false
+    });
+    if ('error' in parsed) {
+      setFormError(showSaveFailure(parsed.error));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return false;
+    }
+
+    const printSlipType: WarehouseSlipType = slipType === 'xuat' ? 'xuat' : 'nhap';
+    const previewCode =
+      editSlipCode?.trim() ||
+      `XEM-${printSlipType === 'nhap' ? 'NH' : 'XH'}-${String(slipDate || '').replace(/-/g, '') || 'TAM'}`;
+
+    setPrintSlip(
+      buildWarehouseSlipPrintData(parsed.items, {
+        slipCode: previewCode,
+        slipType: printSlipType,
+        warehouseKind,
+        slipDate,
+        reason: composeReasonWithProductionOrderCodes(reason, productionOrderCodes),
+        note: note.trim(),
+        createdBy: createdBy.trim(),
+        productionOrderRef: productionOrderLabel,
+        machine: machine.trim(),
+        shift: shiftLabel,
+        recipient: recipient.trim(),
+        deliverer: deliverer.trim(),
+        warehouseLocation: warehouseLocation.trim(),
+        warehouseName: warehouseName.trim(),
+        materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
+        products: warehouseKind === 'san_pham' ? weightCatalog : []
+      })
+    );
+    setPrintAutoTrigger(autoPrint);
+    setPrintModalOpen(true);
+    return true;
+  };
+
   const handlePrintPreview = () => {
-    void handleSave();
+    openPrintPreviewFromForm(true);
   };
 
   const handleSave = async () => {
     if (!warehouseName.trim()) {
-      setFormError('Vui lòng chọn tên kho từ danh sách Quản lý kho.');
+      setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     const linesForSave = isNvlExport
       ? lines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
       : lines;
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
-      allowMissingUnitPrice: false,
+      allowMissingUnitPrice: isNvlExport,
       requireInboundLot: false
     });
     if ('error' in parsed) {
       setFormError(showSaveFailure(parsed.error));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -1433,8 +1510,9 @@ export function WarehouseSlipPanel({
     setActionMessage('');
 
     const isEditing = Boolean(editSlipCode);
+    const printSlipType: WarehouseSlipType = slipType === 'xuat' ? 'xuat' : 'nhap';
     const slipPayload = {
-      loaiPhieu: slipType,
+      loaiPhieu: printSlipType,
       loaiKho: warehouseKind,
       tenKho: warehouseName.trim(),
       ngayPhieu: slipDate,
@@ -1472,7 +1550,7 @@ export function WarehouseSlipPanel({
       setPrintSlip(
         buildWarehouseSlipPrintData(payloadItems, {
           slipCode: savedSlipCode,
-          slipType,
+          slipType: printSlipType,
           warehouseKind,
           slipDate,
           reason: savedReason,
@@ -1489,7 +1567,7 @@ export function WarehouseSlipPanel({
           products: warehouseKind === 'san_pham' ? weightCatalog : []
         })
       );
-      setPrintAutoTrigger(false);
+      setPrintAutoTrigger(true);
       setPrintModalOpen(true);
       const okMsg = isEditing
         ? `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Xem tại Lịch sử xuất nhập kho.`
@@ -1505,6 +1583,7 @@ export function WarehouseSlipPanel({
       setLines([createWarehouseLineDraft()]);
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu phiếu xuất nhập kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsSaving(false);
     }
@@ -1558,35 +1637,67 @@ export function WarehouseSlipPanel({
       )}
 
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm space-y-4">
-        <div>
-          <p className="text-sm font-black text-zinc-950">Tên kho</p>
-          <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-            Chọn kho từ Quản lý kho — hệ thống tự xác định loại (NVL / thành phẩm / tái chế)
-          </p>
-        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-black text-zinc-950">Loại phiếu</p>
+              <p className="mt-0.5 text-xs font-semibold text-zinc-500">Chọn nhập kho hoặc xuất kho</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ['nhap', 'Nhập kho', ArrowDownToLine],
+                ['xuat', 'Xuất kho', ArrowUpFromLine]
+              ] as const).map(([type, label, Icon]) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setSlipType(type)}
+                  className={`flex h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-extrabold transition ${
+                    slipType === type
+                      ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        <label className="block max-w-xl space-y-1.5">
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tên kho *</span>
-          <select
-            value={warehouseName}
-            onChange={event => handleWarehouseNameChange(event.target.value)}
-            className={warehouseFieldClass}
-          >
-            <option value="">-- Chọn tên kho --</option>
-            {warehouseSelectOptions.map(name => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          {warehouseName ? (
-            <p className="text-[11px] font-semibold text-zinc-500">Loại: {warehouseKindLabel(warehouseKind)}</p>
-          ) : warehouseOptions.length === 0 ? (
-            <p className="text-[11px] font-semibold text-amber-700">
-              Chưa có tên kho — thêm tại mục Quản lý kho.
-            </p>
-          ) : null}
-        </label>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-black text-zinc-950">Tên kho</p>
+              <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                Chọn kho từ Quản lý kho — tự xác định loại (NVL / thành phẩm / tái chế)
+              </p>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tên kho *</span>
+              <select
+                value={warehouseName}
+                onChange={event => handleWarehouseNameChange(event.target.value)}
+                className={warehouseFieldClass}
+              >
+                <option value="">-- Chọn tên kho --</option>
+                {warehouseSelectOptions.map(name => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              {warehouseName ? (
+                <p className="text-[11px] font-semibold text-zinc-500">
+                  Loại: {warehouseKindLabel(warehouseKind)}
+                </p>
+              ) : warehouseOptions.length === 0 ? (
+                <p className="text-[11px] font-semibold text-amber-700">
+                  Chưa có tên kho — thêm tại mục Quản lý kho.
+                </p>
+              ) : null}
+            </label>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm space-y-4">
@@ -1618,47 +1729,70 @@ export function WarehouseSlipPanel({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          {([
-            ['nhap', 'Nhập kho', ArrowDownToLine],
-            ['xuat', 'Xuất kho', ArrowUpFromLine]
-          ] as const).map(([type, label, Icon]) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setSlipType(type)}
-              className={`flex h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-extrabold transition ${
-                slipType === type
-                  ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                  : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="block space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
           </label>
           <label className="block space-y-1.5">
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
+              {isNvlInbound ? (
+                <>
+                  Ca{' '}
+                  <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
+                </>
+              ) : (
+                'Ca'
+              )}
+            </span>
+            <select
+              value={selectedShifts[0] ?? ''}
+              onChange={event => {
+                const value = event.target.value.trim();
+                setSelectedShifts(value ? [value] : []);
+              }}
+              className={warehouseFieldClass}
+              disabled={shiftOptions.length === 0}
+            >
+              <option value="">
+                {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
+              </option>
+              {shiftOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {isNvlInbound && selectedShifts.length === 0 ? (
+              <p className="text-[11px] font-semibold text-zinc-400">
+                Có thể bỏ trống ca khi nhập kho NVL.
+              </p>
+            ) : null}
+          </label>
+
+          <label className="block space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
             <input value={createdBy} onChange={event => setCreatedBy(event.target.value)} className={warehouseFieldClass} placeholder="Tên người lập phiếu" />
           </label>
           {slipType === 'nhap' ? (
+            <label className="block space-y-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người giao hàng</span>
+              <input
+                value={deliverer}
+                onChange={event => setDeliverer(event.target.value)}
+                className={warehouseFieldClass}
+                placeholder="Họ tên người giao hàng"
+              />
+            </label>
+          ) : (
+            <label className="block space-y-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
+              <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Xuất sản xuất..." />
+            </label>
+          )}
+
+          {slipType === 'nhap' ? (
             <>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người giao hàng</span>
-                <input
-                  value={deliverer}
-                  onChange={event => setDeliverer(event.target.value)}
-                  className={warehouseFieldClass}
-                  placeholder="Họ tên người giao hàng"
-                />
-              </label>
               <label className="block space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Địa điểm</span>
                 <input
@@ -1668,86 +1802,23 @@ export function WarehouseSlipPanel({
                   placeholder="VD: Đà Nẵng"
                 />
               </label>
-            </>
-          ) : (
-            <>
               <label className="block space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
-                <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Xuất sản xuất..." />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
-                <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
-              </label>
-            </>
-          )}
-          <div className="block space-y-1.5 sm:col-span-2 lg:col-span-4">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-              {isNvlInbound ? (
-                <>
-                  Ca{' '}
-                  <span className="font-semibold normal-case tracking-normal text-zinc-400">
-                    (không bắt buộc)
-                  </span>
-                </>
-              ) : (
-                'Ca'
-              )}
-            </span>
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-2.5">
-              {shiftOptions.length === 0 ? (
-                <p className="text-xs font-semibold text-zinc-400">Chưa có ca trong cài đặt.</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {shiftOptions.map(option => {
-                    const checked = selectedShifts.includes(option.value);
-                    return (
-                      <label
-                        key={option.value}
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
-                          checked
-                            ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                            : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setSelectedShifts(current => toggleWarehouseShiftSelection(current, option.value))
-                          }
-                          className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
-                        />
-                        {option.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-              {selectedShifts.length > 0 ? (
-                <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
-                  Đã chọn: {shiftLabel}
-                </p>
-              ) : isNvlInbound ? (
-                <p className="mt-1.5 text-[11px] font-semibold text-zinc-400">
-                  Có thể bỏ trống ca khi nhập kho NVL.
-                </p>
-              ) : null}
-            </div>
-          </div>
-          {slipType === 'nhap' ? (
-            <>
-              <label className="block space-y-1.5 sm:col-span-2">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
-                <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài, xuất sản xuất..." />
+                <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài..." />
               </label>
               <label className="block space-y-1.5 sm:col-span-2">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
                 <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Số chứng từ gốc kèm theo..." />
               </label>
             </>
-          ) : null}
-          <div className="relative block space-y-1.5 sm:col-span-2 lg:col-span-4">
+          ) : (
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
+              <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
+            </label>
+          )}
+
+          <div className="relative block space-y-1.5 sm:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Mã đơn hàng / Lệnh SX{' '}
@@ -1909,190 +1980,205 @@ export function WarehouseSlipPanel({
             ) : null}
           </div>
 
-          <div
-            className={
-              slipType === 'nhap'
-                ? 'hidden xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_5.5rem_5.5rem_5.5rem_6.5rem_7.5rem_2.5rem] xl:gap-3 xl:border-b xl:border-zinc-200/80 xl:pb-1.5'
-                : 'hidden xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_5rem_6rem_6rem_6.5rem_7.5rem_2.5rem] xl:gap-3 xl:border-b xl:border-zinc-200/80 xl:pb-1.5'
-            }
-          >
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-              {warehouseItemCodeLabel(warehouseKind)} *
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-              {warehouseItemNameLabel(warehouseKind)}
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đơn vị</span>
-            {slipType === 'nhap' ? (
-              <>
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo chứng từ</span>
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Thực nhập *</span>
-              </>
-            ) : (
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Số lượng *</span>
-            )}
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Quy đổi kg</span>
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Giá</span>
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Thành tiền</span>
-            <span />
-          </div>
+          <div className="-mx-0.5 overflow-x-auto">
+            <div
+              className={
+                slipType === 'nhap'
+                  ? 'hidden min-w-[52rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5rem_5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2'
+                  : 'hidden min-w-[46rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5.5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2'
+              }
+            >
+              <span className={warehouseLineHeaderClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
+              <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
+              <span className={warehouseLineHeaderClass}>ĐVT</span>
+              {slipType === 'nhap' ? (
+                <>
+                  <span className={warehouseLineHeaderClass}>Theo CT</span>
+                  <span className={warehouseLineHeaderClass}>Thực nhập *</span>
+                </>
+              ) : (
+                <span className={warehouseLineHeaderClass}>Số lượng *</span>
+              )}
+              <span className={warehouseLineHeaderClass}>Quy đổi kg</span>
+              <span className={warehouseLineHeaderClass}>Giá</span>
+              <span className={`${warehouseLineHeaderClass} text-right`}>Thành tiền</span>
+              <span />
+            </div>
 
-          <div className="divide-y divide-zinc-200/80">
-            {lines.map(line => (
-              <div
-                key={line.key}
-                className={
-                  slipType === 'nhap'
-                    ? 'grid grid-cols-1 gap-3 py-2 first:pt-0 last:pb-0 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_5.5rem_5.5rem_5.5rem_6.5rem_7.5rem_2.5rem] xl:items-center xl:gap-3'
-                    : 'grid grid-cols-1 gap-3 py-2 first:pt-0 last:pb-0 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_5rem_6rem_6rem_6.5rem_7.5rem_2.5rem] xl:items-center xl:gap-3'
-                }
-              >
-                <div className="sm:col-span-2 xl:col-span-1">
-                  <SearchableSelect
-                    value={line.code}
-                    onChange={code => pickItem(line.key, code)}
-                    options={itemOptions}
-                    placeholder={warehouseKind === 'san_pham' ? 'Gõ để tìm mã SP' : 'Gõ để tìm mã NPL'}
-                    isLoading={isLoadingItems}
-                    disabled={isLoadingItems}
-                    inputClassName={warehouseFieldClass}
-                    desktopAutoFlip
-                    getLabel={item => {
-                      const option = item as MaterialOption;
-                      return `${option.code} · ${option.name}`;
-                    }}
-                    getValue={item => (item as MaterialOption).code}
-                  />
-                </div>
-                <div>
-                  <input
-                    value={line.name}
-                    onChange={event => updateLine(line.key, { name: event.target.value })}
-                    className={warehouseFieldClass}
-                  />
-                </div>
-                <div>
-                  <input
-                    value={line.unit}
-                    onChange={event => updateLine(line.key, { unit: event.target.value })}
-                    className={warehouseFieldClass}
-                  />
-                </div>
-                {slipType === 'nhap' ? (
-                  <>
-                    <div>
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500 xl:hidden">
-                        Theo chứng từ
-                      </span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={line.documentQuantity || ''}
-                        onChange={event => updateLine(line.key, { documentQuantity: event.target.value })}
-                        className={warehouseFieldClass}
-                        placeholder="SL CT"
-                      />
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500 xl:hidden">
-                        Thực nhập *
-                      </span>
+            <div className={`space-y-2 ${slipType === 'nhap' ? 'lg:min-w-[52rem] lg:space-y-0' : 'lg:min-w-[46rem] lg:space-y-0'}`}>
+              {lines.map((line, lineIndex) => (
+                <div
+                  key={line.key}
+                  className={slipType === 'nhap' ? warehouseNhapLineGridClass : warehouseXuatLineGridClass}
+                >
+                  <div className="-mx-2 -mt-2 mb-1.5 col-span-3 flex items-center justify-between gap-2 rounded-t-lg bg-[#ef1b2d] px-2.5 py-1.5 lg:hidden">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-white">
+                      Dòng {lineIndex + 1}
+                    </span>
+                    {lines.length > 1 && canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-white/30 bg-white/15 px-2 text-[10px] font-bold text-white transition hover:bg-white/25"
+                        title="Xóa dòng"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Xóa
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="min-w-0 col-span-1">
+                    <span className={warehouseLineLabelClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
+                    <SearchableSelect
+                      value={line.code}
+                      onChange={code => pickItem(line.key, code)}
+                      options={itemOptions}
+                      placeholder={warehouseKind === 'san_pham' ? 'Mã SP' : 'Mã NPL'}
+                      isLoading={isLoadingItems}
+                      disabled={isLoadingItems}
+                      inputClassName={warehouseLineFieldClass}
+                      desktopAutoFlip
+                      getLabel={item => {
+                        const option = item as MaterialOption;
+                        return `${option.code} · ${option.name}`;
+                      }}
+                      getValue={item => (item as MaterialOption).code}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <span className={warehouseLineLabelClass}>{warehouseItemNameLabel(warehouseKind)}</span>
+                    <input
+                      value={line.name}
+                      onChange={event => updateLine(line.key, { name: event.target.value })}
+                      className={warehouseLineFieldClass}
+                      placeholder="Tên"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <span className={warehouseLineLabelClass}>Đơn vị</span>
+                    <input
+                      value={line.unit}
+                      onChange={event => updateLine(line.key, { unit: event.target.value })}
+                      className={warehouseLineFieldClass}
+                      placeholder="ĐVT"
+                    />
+                  </div>
+                  {slipType === 'nhap' ? (
+                    <>
+                      <div className="min-w-0">
+                        <span className={warehouseLineLabelClass}>Theo CT</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={line.documentQuantity || ''}
+                          onChange={event => updateLine(line.key, { documentQuantity: event.target.value })}
+                          className={warehouseLineFieldClass}
+                          placeholder="SL CT"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <span className={warehouseLineLabelClass}>Thực nhập *</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={line.quantity}
+                          onChange={event => updateLine(line.key, { quantity: event.target.value })}
+                          className={warehouseLineFieldClass}
+                          placeholder="SL thực"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="min-w-0">
+                      <span className={warehouseLineLabelClass}>Số lượng *</span>
                       <input
                         type="text"
                         inputMode="decimal"
                         value={line.quantity}
                         onChange={event => updateLine(line.key, { quantity: event.target.value })}
-                        className={warehouseFieldClass}
-                        placeholder="SL thực"
+                        className={warehouseLineFieldClass}
+                        placeholder="SL"
                       />
                     </div>
-                  </>
-                ) : (
-                  <div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={line.quantity}
-                      onChange={event => updateLine(line.key, { quantity: event.target.value })}
-                      className={warehouseFieldClass}
-                      placeholder="VD: 100,00"
-                    />
+                  )}
+                  <div className="min-w-0">
+                    <span className={warehouseLineLabelClass}>Quy đổi kg</span>
+                    <div
+                      className={`${warehouseLineFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}
+                    >
+                      {formatWarehouseWeightKg(resolveLineWeightKg(line))}
+                    </div>
                   </div>
-                )}
-                <div>
-                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500 xl:hidden">
-                    Quy đổi kg
-                  </span>
-                  <div className={`${warehouseFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}>
-                    {formatWarehouseWeightKg(resolveLineWeightKg(line))}
+                  <div className="min-w-0">
+                    <span className={warehouseLineLabelClass}>Giá</span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={line.unitPrice}
+                        onChange={event => updateLine(line.key, { unitPrice: sanitizeMoneyInput(event.target.value) })}
+                        onBlur={event => updateLine(line.key, { unitPrice: sanitizeMoneyInput(event.target.value) })}
+                        className={`${warehouseLineFieldClass} pr-6 ${
+                          isNvlExport && avgPriceLoadingCode === line.code.trim()
+                            ? 'border-amber-300 bg-amber-50/70'
+                            : isNvlExport && line.unitPrice.trim()
+                              ? 'border-emerald-200 bg-emerald-50/40'
+                              : ''
+                        }`}
+                        title={
+                          isNvlExport
+                            ? `Gợi ý BQ nhập tháng ${formatAvgPriceMonthLabel(slipDate)} — có thể sửa`
+                            : undefined
+                        }
+                        placeholder={
+                          isNvlExport
+                            ? avgPriceLoadingCode === line.code.trim()
+                              ? '...'
+                              : (() => {
+                                  const avg = avgInboundPriceByKey[avgPriceCacheKey(line.code, slipDate)];
+                                  return avg && avg > 0
+                                    ? formatWarehouseMoney(avg)
+                                    : 'Giá';
+                                })()
+                            : 'Giá'
+                        }
+                      />
+                      {isNvlExport && avgPriceLoadingCode === line.code.trim() ? (
+                        <Loader2 className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-amber-600" />
+                      ) : null}
+                    </div>
                   </div>
+                  <div className={`min-w-0 ${slipType === 'xuat' ? 'col-span-2 lg:col-span-1' : ''}`}>
+                    <span className={warehouseLineLabelClass}>Thành tiền</span>
+                    <div
+                      className={`${warehouseLineFieldClass} flex items-center justify-end whitespace-nowrap bg-zinc-50 font-mono font-bold tabular-nums text-zinc-900 lg:bg-white`}
+                    >
+                      {formatWarehouseMoney(computeWarehouseLineAmount(line.quantity, line.unitPrice))}
+                    </div>
+                  </div>
+                  {lines.length > 1 && canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
+                      className="hidden h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 lg:flex"
+                      title="Xóa dòng"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  ) : (
+                    <span className="hidden lg:block" />
+                  )}
                 </div>
-                <div>
-                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-zinc-500 xl:hidden">
-                    Giá
-                  </span>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={line.unitPrice}
-                      onChange={event => updateLine(line.key, { unitPrice: sanitizeMoneyInput(event.target.value) })}
-                      onBlur={event => updateLine(line.key, { unitPrice: sanitizeMoneyInput(event.target.value) })}
-                      className={`${warehouseFieldClass} ${
-                        isNvlExport && avgPriceLoadingCode === line.code.trim()
-                          ? 'border-amber-300 bg-amber-50/70'
-                          : isNvlExport && line.unitPrice.trim()
-                            ? 'border-emerald-200 bg-emerald-50/40'
-                            : ''
-                      }`}
-                      title={
-                        isNvlExport
-                          ? `Gợi ý BQ nhập tháng ${formatAvgPriceMonthLabel(slipDate)} — có thể sửa`
-                          : undefined
-                      }
-                      placeholder={
-                        isNvlExport
-                          ? avgPriceLoadingCode === line.code.trim()
-                            ? 'Đang lấy giá BQ...'
-                            : (() => {
-                                const avg = avgInboundPriceByKey[avgPriceCacheKey(line.code, slipDate)];
-                                return avg && avg > 0
-                                  ? `Gợi ý BQ: ${formatWarehouseMoney(avg)}`
-                                  : 'VD: 25.000';
-                              })()
-                          : 'VD: 25.000'
-                      }
-                    />
-                    {isNvlExport && avgPriceLoadingCode === line.code.trim() ? (
-                      <Loader2 className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-amber-600" />
-                    ) : null}
-                  </div>
-                </div>
-                <div>
-                  <div
-                    className={`${warehouseFieldClass} flex items-center justify-end whitespace-nowrap bg-white font-mono font-bold tabular-nums text-zinc-900`}
-                  >
-                    {formatWarehouseMoney(computeWarehouseLineAmount(line.quantity, line.unitPrice))}
-                  </div>
-                </div>
-                {lines.length > 1 && canDelete ? (
-                  <button
-                    type="button"
-                    onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                    title="Xóa dòng"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <p className="mr-auto text-[11px] font-semibold text-zinc-500">
-            Phiếu chỉ xuất hiện trong lịch sử sau khi bấm <strong>Lưu &amp; in</strong> hoặc <strong>In phiếu</strong>.
+            <strong>In phiếu</strong> xem/in mẫu từ form (chưa lưu).{' '}
+            <strong>Lưu &amp; in</strong> mới ghi vào lịch sử rồi in.
           </p>
           <button
             type="button"
@@ -2384,7 +2470,7 @@ export function WarehouseHistoryPanel({
     const totalAmount = rows.reduce((sum, row) => sum + row.lineAmount, 0);
     setHistoryPrintSlip({
       slipCode,
-      slipType: header.slipType,
+      slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',
       warehouseKind: header.warehouseKind,
       slipDate: header.slipDate,
       shift: header.shift,

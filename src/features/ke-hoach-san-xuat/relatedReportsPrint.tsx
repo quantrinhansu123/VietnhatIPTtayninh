@@ -391,7 +391,7 @@ function buildWarehouseExportSlips(
       const header = group[0];
       return {
         slipCode: header.slipCode,
-        slipType: header.slipType,
+        slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',
         warehouseKind: header.warehouseKind,
         slipDate: header.slipDate,
         reason: header.reason,

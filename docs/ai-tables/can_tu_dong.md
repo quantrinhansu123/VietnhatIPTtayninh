@@ -37,7 +37,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | Bảng: ảnh lõi/SP + Ca + Cân lõi/SP + **Trọng lượng bì** (0,16) + **Trọng lượng nhựa** (= SP − lõi − bì) + footer tổng + xóa hàng loạt |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: nhúng iframe `https://tram-can-qr-pilot.onrender.com/` (không mở tab mới). Type `CanTuDongRecord` vẫn export cho `/phan-tich-tu-dong` |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` — dùng chung `/can-tu-dong` và `/phan-tich-tu-dong` |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Tab «Báo cáo sản lượng» trên `/phan-tich-tu-dong` — cùng công thức; **Tổng nhựa thành phẩm** = tổng cột Trọng lượng nhựa |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |

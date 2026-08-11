@@ -41,20 +41,52 @@ export type WarehouseSlipPrintData = {
   lines: WarehouseSlipPrintLine[];
 };
 
+function normalizeWarehousePrintSlipType(value: unknown, slipCode?: string): 'nhap' | 'xuat' {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (
+    normalized === 'xuat' ||
+    normalized === 'export' ||
+    normalized === 'out' ||
+    normalized.includes('xuat')
+  ) {
+    return 'xuat';
+  }
+  if (
+    normalized === 'nhap' ||
+    normalized === 'import' ||
+    normalized === 'in' ||
+    normalized.includes('nhap')
+  ) {
+    return 'nhap';
+  }
+
+  const code = String(slipCode || '')
+    .trim()
+    .toUpperCase();
+  if (code.startsWith('PX') || code.includes('-XH-') || code.startsWith('XEM-XH')) return 'xuat';
+  if (code.startsWith('PN') || code.includes('-NH-') || code.startsWith('XEM-NH')) return 'nhap';
+  return 'nhap';
+}
+
 function isNhapKhoPrintLayout(data: WarehouseSlipPrintData) {
-  return data.slipType === 'nhap';
+  return normalizeWarehousePrintSlipType(data.slipType, data.slipCode) === 'nhap';
 }
 
 function isNvlExportPrintLayout(data: WarehouseSlipPrintData) {
-  return data.slipType === 'xuat' && data.warehouseKind !== 'san_pham';
+  return (
+    normalizeWarehousePrintSlipType(data.slipType, data.slipCode) === 'xuat' &&
+    data.warehouseKind !== 'san_pham'
+  );
 }
 
 function slipTypeTitle(data: WarehouseSlipPrintData) {
   if (isNhapKhoPrintLayout(data)) return 'PHIẾU NHẬP KHO';
   if (isNvlExportPrintLayout(data)) return 'PHIẾU XUẤT KHO VẬT TƯ';
-  const action = data.slipType === 'nhap' ? 'NHẬP KHO' : 'XUẤT KHO';
-  const warehouse = data.warehouseKind === 'san_pham' ? 'SẢN PHẨM' : 'NVL';
-  return `PHIẾU ${action} ${warehouse}`;
+  return 'PHIẾU XUẤT KHO SẢN PHẨM';
 }
 
 function codeColumnLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
@@ -429,14 +461,18 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
     month: '2-digit',
     year: 'numeric'
   });
-  const nvlExport = isNvlExportPrintLayout(data);
-  const nhapKho = isNhapKhoPrintLayout(data);
+  const printData: WarehouseSlipPrintData = {
+    ...data,
+    slipType: normalizeWarehousePrintSlipType(data.slipType, data.slipCode)
+  };
+  const nvlExport = isNvlExportPrintLayout(printData);
+  const nhapKho = isNhapKhoPrintLayout(printData);
 
   if (nhapKho) {
     return (
       <div className="warehouse-slip-print-sheet warehouse-slip-print-sheet--nhap-kho">
         <div className="warehouse-slip-print-doc warehouse-slip-print-doc--nhap-kho">
-          <NhapKhoPrintBody data={data} />
+          <NhapKhoPrintBody data={printData} />
         </div>
       </div>
     );
@@ -452,29 +488,29 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
               <p className="warehouse-slip-print-company-name">{PRINT_COMPANY_NAME}</p>
             </div>
           </div>
-          <h1 className="warehouse-slip-print-title">{slipTypeTitle(data)}</h1>
+          <h1 className="warehouse-slip-print-title">{slipTypeTitle(printData)}</h1>
         </header>
 
         {nvlExport ? (
-          <NvlExportPrintBody data={data} />
+          <NvlExportPrintBody data={printData} />
         ) : (
           <>
             <div className="warehouse-slip-print-meta">
               <p>
-                <strong>Số phiếu:</strong> {data.slipCode || '-'}
+                <strong>Số phiếu:</strong> {printData.slipCode || '-'}
               </p>
               <p>
-                <strong>Ngày phiếu:</strong> {formatSlipDate(data.slipDate)}
+                <strong>Ngày phiếu:</strong> {formatSlipDate(printData.slipDate)}
               </p>
               <p>
-                <strong>Người lập:</strong> {data.createdBy || '-'}
+                <strong>Người lập:</strong> {printData.createdBy || '-'}
               </p>
               <p>
-                <strong>Lý do:</strong> {data.reason || '-'}
+                <strong>Lý do:</strong> {printData.reason || '-'}
               </p>
-              {data.note ? (
+              {printData.note ? (
                 <p>
-                  <strong>Ghi chú:</strong> {data.note}
+                  <strong>Ghi chú:</strong> {printData.note}
                 </p>
               ) : null}
               <p>
@@ -486,8 +522,8 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
               <thead>
                 <tr>
                   <th>STT</th>
-                  <th>{codeColumnLabel(data.warehouseKind)}</th>
-                  <th>{nameColumnLabel(data.warehouseKind)}</th>
+                  <th>{codeColumnLabel(printData.warehouseKind)}</th>
+                  <th>{nameColumnLabel(printData.warehouseKind)}</th>
                   <th>ĐVT</th>
                   <th>Số lượng</th>
                   <th>Đơn giá</th>
@@ -495,7 +531,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                 </tr>
               </thead>
               <tbody>
-                {data.lines.map((line, index) => (
+                {printData.lines.map((line, index) => (
                   <tr key={`${line.code}-${index}`}>
                     <td className="warehouse-slip-print-center">{index + 1}</td>
                     <td>{line.code || '-'}</td>
@@ -513,7 +549,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                     Tổng cộng
                   </td>
                   <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-                    {formatMoney(data.totalAmount, 0)} đ
+                    {formatMoney(printData.totalAmount, 0)} đ
                   </td>
                 </tr>
               </tfoot>
@@ -611,7 +647,7 @@ export default function WarehouseSlipPrintModal({
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-4 sm:px-5">
             <div>
               <h3 className="text-lg font-black text-zinc-950">
-                {isNhapKhoPrintLayout(data) ? 'Mẫu phiếu nhập kho' : 'Mẫu in phiếu xuất nhập kho'}
+                {isNhapKhoPrintLayout(data) ? 'Mẫu phiếu nhập kho' : 'Mẫu phiếu xuất kho'}
               </h3>
               <p className="mt-1 text-sm font-medium text-zinc-500">
                 {data.slipCode} · {slipTypeTitle(data)}

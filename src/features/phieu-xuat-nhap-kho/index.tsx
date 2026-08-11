@@ -632,6 +632,42 @@ export type WarehouseProductionOrderOption = {
   lines: Array<{ code: string; name: string; unit: string; quantity: number | null }>;
 };
 
+/** Chuẩn hóa ngày lệnh SX về YYYY-MM-DD (ưu tiên cột `ngay`, không cắt chuỗi datetime thô). */
+export function resolveWarehouseProductionOrderDate(record: Record<string, unknown>): string {
+  const candidates = [
+    pickText(record, ['ngay', 'ngay_san_xuat'], ''),
+    pickText(record, ['ngay_bat_dau'], ''),
+    pickText(record, ['ngay_gio_bat_dau', 'start_date'], '')
+  ];
+
+  for (const raw of candidates) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) continue;
+
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+    const dmy = trimmed.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if (dmy) {
+      return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    }
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      // Dùng UTC date cho chuỗi có offset Z/+00 — tránh lệch ngày local.
+      if (/[zZ]|[+\-]\d{2}:\d{2}$/.test(trimmed)) {
+        return parsed.toISOString().slice(0, 10);
+      }
+      const y = parsed.getFullYear();
+      const m = String(parsed.getMonth() + 1).padStart(2, '0');
+      const d = String(parsed.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  return '';
+}
+
 function parseWarehouseProductionOrderLines(record: Record<string, unknown>) {
   let raw: unknown = record.san_pham ?? record.products;
   if (typeof raw === 'string') {
@@ -696,7 +732,7 @@ export function normalizeWarehouseProductionOrders(data: unknown): WarehouseProd
         orderCode,
         shift: pickText(record, ['ca', 'shift'], ''),
         machine: pickText(record, ['may', 'ma_may', 'ten_may', 'machine'], ''),
-        startDate: pickText(record, ['ngay_gio_bat_dau', 'ngay_bat_dau', 'ngay_san_xuat', 'start_date'], '').slice(0, 10),
+        startDate: resolveWarehouseProductionOrderDate(record),
         lines: parseWarehouseProductionOrderLines(record)
       };
     })
@@ -1171,7 +1207,12 @@ export function WarehouseSlipPanel({
       if (matched.length > 0) matched.forEach(value => matchedShifts.add(value));
       else matchedShifts.add(order.shift);
     }
-    if (matchedShifts.size > 0) setSelectedShifts([...matchedShifts]);
+    if (matchedShifts.size > 0) {
+      const preferred =
+        [...matchedShifts].find(value => shiftOptions.some(option => option.value === value)) ||
+        [...matchedShifts][0];
+      setSelectedShifts(preferred ? [preferred] : []);
+    }
 
     if (warehouseKind === 'san_pham') {
       const mergedLines = selectedOrders.flatMap(order => order.lines);
@@ -1255,7 +1296,16 @@ export function WarehouseSlipPanel({
       .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
 
     if (materialLines.length === 0) {
-      throw new Error('Không tìm được NVL định mức từ sản phẩm trong lệnh SX khớp ngày/ca.');
+      const productCodes = [
+        ...new Set(
+          matchedOrders.flatMap(order => order.lines.map(line => line.code.trim()).filter(Boolean))
+        )
+      ];
+      throw new Error(
+        productCodes.length > 0
+          ? `Không tìm được NVL định mức từ SP: ${productCodes.slice(0, 6).join(', ')}${productCodes.length > 6 ? '…' : ''}. Kiểm tra BOM (npl) trong danh mục sản phẩm.`
+          : 'Không tìm được NVL định mức từ sản phẩm trong lệnh SX khớp ngày/ca.'
+      );
     }
 
     setLines(
@@ -1278,10 +1328,17 @@ export function WarehouseSlipPanel({
   const handleAutofillFromProductionOrders = async () => {
     if (!slipDate.trim()) {
       setFormError('Vui lòng chọn Ngày phiếu trước khi tự động điền.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (!isNvlInbound && selectedShifts.length === 0) {
-      setFormError('Vui lòng chọn ít nhất một Ca trước khi tự động điền theo lệnh SX.');
+      setFormError('Vui lòng chọn ca trước khi tự động điền theo lệnh SX.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!warehouseName.trim()) {
+      setFormError('Vui lòng chọn tên kho trước khi tự động điền.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -1291,11 +1348,15 @@ export function WarehouseSlipPanel({
       selectedShifts
     );
     if (matchedOrders.length === 0) {
+      const sameDate = productionOrders.filter(order => order.startDate === slipDate.trim().slice(0, 10));
       setFormError(
         selectedShifts.length > 0
-          ? `Không có lệnh SX khớp ngày ${slipDate} và ca đã chọn.`
+          ? sameDate.length > 0
+            ? `Có ${sameDate.length} lệnh SX ngày ${slipDate} nhưng không khớp ca đã chọn.`
+            : `Không có lệnh SX khớp ngày ${slipDate} và ca đã chọn.`
           : `Không có lệnh SX khớp ngày ${slipDate}.`
       );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -1317,22 +1378,26 @@ export function WarehouseSlipPanel({
       const machines = [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))];
       if (machines.length > 0) setMachine(machines.join(', '));
 
-      const matchedShifts = new Set<string>(selectedShifts);
-      for (const order of matchedOrders) {
-        if (!order.shift) continue;
-        const matched = shiftOptions
-          .filter(option => shiftNamesMatch(option.value, order.shift) || shiftNamesMatch(option.label, order.shift))
-          .map(option => option.value);
-        if (matched.length > 0) matched.forEach(value => matchedShifts.add(value));
-        else matchedShifts.add(order.shift);
-      }
-      if (matchedShifts.size > 0) setSelectedShifts([...matchedShifts]);
+      const resolvedShift =
+        selectedShifts[0] ||
+        (() => {
+          for (const order of matchedOrders) {
+            if (!order.shift) continue;
+            const matched = shiftOptions.find(
+              option =>
+                shiftNamesMatch(option.value, order.shift) || shiftNamesMatch(option.label, order.shift)
+            );
+            if (matched) return matched.value;
+          }
+          return matchedOrders.find(order => order.shift)?.shift || '';
+        })();
+      if (resolvedShift) setSelectedShifts([resolvedShift]);
 
       setReason(
         stripProductionOrderCodesFromReason(
           reason.trim() ||
-            (selectedShifts.length > 0
-              ? `Xuất theo lệnh SX · ${slipDate} · ${formatWarehouseShiftSelection([...matchedShifts])}`
+            (resolvedShift
+              ? `Xuất theo lệnh SX · ${slipDate} · ${resolvedShift}`
               : `Theo lệnh SX · ${slipDate}`)
         )
       );
@@ -1346,6 +1411,7 @@ export function WarehouseSlipPanel({
       showAppToast(msg);
     } catch (error: any) {
       setFormError(error?.message || 'Không thể tự động điền từ lệnh SX.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsAutofillingFromOrders(false);
     }

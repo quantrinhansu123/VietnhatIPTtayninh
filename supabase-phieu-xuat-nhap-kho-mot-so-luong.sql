@@ -1,8 +1,9 @@
--- Hợp nhất "Theo chứng từ" và "Thực nhập" thành một cột Số lượng.
--- Chạy trên Supabase DB chính (he-thong).
+-- Migration tương thích dữ liệu cũ. Phiếu nhập dùng một cột Số lượng;
+-- phiếu xuất vẫn giữ so_luong_chung_tu và so_luong.
+-- Chạy trên Supabase DB chính (he-thong). Có thể chạy lại an toàn.
 --
 -- Cột so_luong vốn là số lượng thực tế dùng để tính tồn kho. Với dữ liệu cũ
--- bị thiếu so_luong, lấy so_luong_chung_tu làm giá trị dự phòng trước khi xóa.
+-- bị thiếu so_luong, lấy so_luong_chung_tu làm giá trị dự phòng.
 
 begin;
 
@@ -19,9 +20,6 @@ begin
     set so_luong = so_luong_chung_tu
     where so_luong is null
       and so_luong_chung_tu is not null;
-
-    alter table public.phieu_xuat_nhap_kho
-      drop column so_luong_chung_tu;
   end if;
 end $$;
 

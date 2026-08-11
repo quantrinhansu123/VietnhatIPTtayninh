@@ -4181,6 +4181,7 @@ type WarehouseSlipLineInput = {
   name: string;
   unit: string;
   quantity: number;
+  documentQuantity?: number;
   unitPrice: number;
   lineAmount: number;
   sourceInboundLineId?: string;
@@ -4480,7 +4481,8 @@ function parseWarehouseSlipDate(value: unknown): string | null {
 
 function parseWarehouseSlipLines(
   raw: unknown,
-  loaiKho: 'nvl' | 'san_pham'
+  loaiKho: 'nvl' | 'san_pham',
+  loaiPhieu: 'nhap' | 'xuat' | null
 ): { error: string } | { items: WarehouseSlipLineInput[] } {
   const list = Array.isArray(raw) ? raw : [];
   if (list.length === 0) {
@@ -4503,6 +4505,9 @@ function parseWarehouseSlipLines(
     ).trim();
     const unit = String(record.unit ?? record.don_vi ?? '').trim();
     const quantity = parseOptionalMaterialNumber(record.quantity ?? record.so_luong);
+    const documentQuantity = parseOptionalMaterialNumber(
+      record.documentQuantity ?? record.so_luong_chung_tu ?? record.document_qty
+    );
     const unitPriceRaw = record.unitPrice ?? record.don_gia ?? record.price ?? record.gia;
     const unitPrice = parseOptionalMaterialNumber(unitPriceRaw) ?? 0;
     const sourceInboundLineId = String(
@@ -4527,6 +4532,10 @@ function parseWarehouseSlipLines(
       name,
       unit,
       quantity: roundWarehouseMoney(quantity),
+      documentQuantity:
+        loaiPhieu === 'xuat' && documentQuantity !== null && documentQuantity > 0
+          ? roundWarehouseMoney(documentQuantity)
+          : undefined,
       unitPrice: roundWarehouseMoney(unitPrice),
       lineAmount: roundWarehouseMoney(quantity * unitPrice),
       ...(sourceInboundLineId ? { sourceInboundLineId } : {}),
@@ -4558,7 +4567,7 @@ function parseWarehouseSlipBody(body: unknown): {
   const loaiPhieu = parseWarehouseSlipType(source.loaiPhieu ?? source.loai_phieu ?? source.type);
   const loaiKho = parseWarehouseStorageType(source.loaiKho ?? source.loai_kho ?? source.kho) ?? 'nvl';
   const ngayPhieu = parseWarehouseSlipDate(source.ngayPhieu ?? source.ngay_phieu ?? source.date);
-  const parsedItems = parseWarehouseSlipLines(source.items ?? source.lines ?? source.chi_tiet, loaiKho);
+  const parsedItems = parseWarehouseSlipLines(source.items ?? source.lines ?? source.chi_tiet, loaiKho, loaiPhieu);
 
   if (!loaiPhieu) {
     return { error: 'Loại phiếu phải là nhập hoặc xuất.' };
@@ -4607,6 +4616,7 @@ function buildWarehouseSlipInsertRecords(
       ngay_phieu: parsed.ngayPhieu,
       don_vi: item.unit || '',
       so_luong: item.quantity,
+      so_luong_chung_tu: parsed.loaiPhieu === 'xuat' ? item.documentQuantity ?? null : null,
       don_gia: item.unitPrice,
       thanh_tien: item.lineAmount,
       ly_do: parsed.lyDo || '',

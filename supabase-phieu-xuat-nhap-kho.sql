@@ -25,6 +25,7 @@ alter table public.phieu_xuat_nhap_kho
   add column if not exists loai_kho text default 'nvl',
   add column if not exists ma_sp text,
   add column if not exists ten_sp text,
+  add column if not exists so_luong_chung_tu numeric,
   add column if not exists id_dong_nhap_nguon uuid,
   add column if not exists ma_phieu_nhap_nguon text;
 
@@ -61,6 +62,8 @@ comment on column public.phieu_xuat_nhap_kho.ma_sp is 'Ma san pham khi loai_kho 
 comment on column public.phieu_xuat_nhap_kho.ten_sp is 'Ten san pham khi loai_kho = san_pham.';
 comment on column public.phieu_xuat_nhap_kho.don_gia is 'Don gia tung dong.';
 comment on column public.phieu_xuat_nhap_kho.thanh_tien is 'Thanh tien = don_gia * so_luong.';
+comment on column public.phieu_xuat_nhap_kho.so_luong_chung_tu is
+  'Số lượng chứng từ của phiếu xuất; phiếu nhập để null.';
 comment on column public.phieu_xuat_nhap_kho.id_dong_nhap_nguon is
   'Id dong phieu nhap NVL ma dong xuat nay tru ton. Null voi nhap hoac xuat cu.';
 comment on column public.phieu_xuat_nhap_kho.ma_phieu_nhap_nguon is

@@ -405,6 +405,7 @@ function buildWarehouseExportSlips(
           name: row.itemName,
           unit: row.unit,
           quantity: row.quantity,
+          documentQuantity: row.documentQuantity ?? null,
           unitPrice: row.unitPrice,
           lineAmount: row.lineAmount,
           weightKg: convertWarehouseQuantityToKg({

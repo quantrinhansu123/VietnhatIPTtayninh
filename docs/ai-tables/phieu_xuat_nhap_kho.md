@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `phieu_xuat_nhap_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
-| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (gồm `supabase-phieu-xuat-nhap-kho-lo-ton.sql`, `supabase-phieu-xuat-nhap-kho-ten-kho.sql`, `supabase-phieu-xuat-nhap-kho-mot-so-luong.sql`) |
+| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (mới nhất: `supabase-phieu-xuat-nhap-kho-khoi-phuc-sl-chung-tu-xuat.sql`) |
 
 ## API (`server.ts`)
 
@@ -31,7 +31,8 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` (tab **Kho tái chế**
 
 Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 
-Mỗi dòng phiếu chỉ có một trường **Số lượng**, lưu tại `so_luong`. Migration `supabase-phieu-xuat-nhap-kho-mot-so-luong.sql` sao lưu giá trị cũ còn thiếu từ `so_luong_chung_tu` rồi xóa cột phụ này.
+- Phiếu **Nhập** chỉ có một trường **Số lượng**, lưu tại `so_luong`; `so_luong_chung_tu` luôn `NULL`.
+- Phiếu **Xuất** có **SL chứng từ** (`so_luong_chung_tu`) và **Thực nhập** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
 
 
 ## Script

@@ -10,6 +10,7 @@ export type WarehouseSlipPrintLine = {
   name: string;
   unit: string;
   quantity: number;
+  documentQuantity?: number | null;
   unitPrice: number;
   lineAmount: number;
   /** SL đã quy đổi về kg (nếu quy được). */
@@ -367,8 +368,8 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th>Tên vật tư</th>
             <th>ĐVT</th>
             <th>PN nhập / giá</th>
-            <th>SL định mức xuất</th>
-            <th>SL thực xuất</th>
+            <th>SL chứng từ</th>
+            <th>Thực nhập</th>
             <th>Quy về kg</th>
             <th>Thành tiền</th>
             <th>Ghi chú</th>
@@ -386,8 +387,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
                   .filter(Boolean)
                   .join(' · ')}
               </td>
-              {/* Cột định mức = SL thực xuất; giữ cả 2 cột trên Chi tiết NVL */}
-              <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
+              <td className="warehouse-slip-print-right">{formatPrintQty(line.documentQuantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td className="warehouse-slip-print-right">
@@ -505,7 +505,8 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                   <th>{codeColumnLabel(printData.warehouseKind)}</th>
                   <th>{nameColumnLabel(printData.warehouseKind)}</th>
                   <th>ĐVT</th>
-                  <th>Số lượng</th>
+                  <th>SL chứng từ</th>
+                  <th>Thực nhập</th>
                   <th>Đơn giá</th>
                   <th>Thành tiền</th>
                 </tr>
@@ -517,6 +518,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                     <td>{line.code || '-'}</td>
                     <td>{line.name || '-'}</td>
                     <td className="warehouse-slip-print-center">{line.unit || '-'}</td>
+                    <td className="warehouse-slip-print-right">{formatPrintQty(line.documentQuantity, 2)}</td>
                     <td className="warehouse-slip-print-right">{formatNumber(line.quantity, 2)}</td>
                     <td className="warehouse-slip-print-right">{formatMoney(line.unitPrice, 0)} đ</td>
                     <td className="warehouse-slip-print-right">{formatMoney(line.lineAmount, 0)} đ</td>
@@ -525,7 +527,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="warehouse-slip-print-total-label">
+                  <td colSpan={7} className="warehouse-slip-print-total-label">
                     Tổng cộng
                   </td>
                   <td className="warehouse-slip-print-right warehouse-slip-print-total-value">

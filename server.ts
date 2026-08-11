@@ -7927,8 +7927,7 @@ export function createApp() {
         const { data, error } = await supabase
           .from(SUPABASE_STAFF_TABLE)
           .select('*')
-          .order('created_at', { ascending: false, nullsFirst: false })
-          .order('id', { ascending: false });
+          .order('created_at', { ascending: false, nullsFirst: false });
 
         if (error) {
           return respondSupabaseReadError(res, error, SUPABASE_STAFF_TABLE, { branches: [], total: 0 });

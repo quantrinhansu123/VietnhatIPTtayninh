@@ -27,6 +27,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `quan_ly_kho` | `/quan-ly-kho` | [quan_ly_kho.md](./quan_ly_kho.md) |
 | `bao_cao_hang_hong` | `/bao-cao-hang-hong` | [bao_cao_hang_hong.md](./bao_cao_hang_hong.md) |
 | `san_pham` | `/san-pham` | [san_pham.md](./san_pham.md) |
+| `ma_san_pham_chi_tiet` | `/san-pham` (tab Mã chi tiết) | [ma_san_pham_chi_tiet.md](./ma_san_pham_chi_tiet.md) |
 | `danh_sach_may` | `/danh-sach-may` | [danh_sach_may.md](./danh_sach_may.md) |
 | `kho_nvl` | `/kho-nvl` | [kho_nvl.md](./kho_nvl.md) |
 | `phieu_xuat_nhap_kho` | `/phieu-xuat-nhap-kho` | [phieu_xuat_nhap_kho.md](./phieu_xuat_nhap_kho.md) |

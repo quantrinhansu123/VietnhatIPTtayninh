@@ -101,12 +101,12 @@ language sql
 stable
 as $$
   with catalog as (
-    select s.ma_sp as ma, s.ten_sp as ten, s.don_vi, s.ten_kho, coalesce(s.ton_dau_ky, 0) as baseline
+    select trim(s.ma_sp) as ma, s.ten_sp as ten, s.don_vi, s.ten_kho, coalesce(s.ton_dau_ky, 0) as baseline
     from public.san_pham s
     where p_ten_kho is null or s.ten_kho = p_ten_kho
   ),
   movement_codes as (
-    select distinct m.ma_sp as ma
+    select distinct trim(m.ma_sp) as ma
     from public.phieu_xuat_nhap_kho m
     where m.loai_kho = 'san_pham'
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
@@ -118,7 +118,7 @@ as $$
     select ma from movement_codes
   ),
   opening_adj as (
-    select m.ma_sp as ma,
+    select trim(m.ma_sp) as ma,
       sum(case when m.loai_phieu = 'nhap' then m.so_luong else 0 end) -
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as adj
     from public.phieu_xuat_nhap_kho m
@@ -126,10 +126,10 @@ as $$
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and p_tu_ngay is not null
       and m.ngay_phieu < p_tu_ngay
-    group by m.ma_sp
+    group by trim(m.ma_sp)
   ),
   period_totals as (
-    select m.ma_sp as ma,
+    select trim(m.ma_sp) as ma,
       sum(case when m.loai_phieu = 'nhap' then m.so_luong else 0 end) as nhap,
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as xuat
     from public.phieu_xuat_nhap_kho m
@@ -137,7 +137,7 @@ as $$
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and (p_tu_ngay is null or m.ngay_phieu >= p_tu_ngay)
       and (p_den_ngay is null or m.ngay_phieu <= p_den_ngay)
-    group by m.ma_sp
+    group by trim(m.ma_sp)
   )
   select
     c.ma,
@@ -149,8 +149,9 @@ as $$
     coalesce(pt.xuat, 0) as xuat_trong_ky,
     coalesce(cat.baseline, 0) + coalesce(oa.adj, 0) + coalesce(pt.nhap, 0) - coalesce(pt.xuat, 0) as ton_cuoi_ky
   from codes c
-  left join catalog cat on cat.ma = c.ma
-  left join catalog cat_prefix on cat.ma is null and cat_prefix.ma = split_part(c.ma, '_', 1)
+  left join catalog cat on upper(replace(cat.ma, ' ', '')) = upper(replace(c.ma, ' ', ''))
+  left join catalog cat_prefix on cat.ma is null
+    and upper(replace(cat_prefix.ma, ' ', '')) = upper(replace(split_part(c.ma, '_', 1), ' ', ''))
   left join opening_adj oa on oa.ma = c.ma
   left join period_totals pt on pt.ma = c.ma
   order by c.ma;

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ListChecks, BarChart3, ArrowDownToLine, Check, X } from 'lucide-react';
+import { ListChecks, BarChart3, ArrowDownToLine, Check, Search, X } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
@@ -353,6 +353,8 @@ export function XuLyChenhLechPanel({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [creatingSlips, setCreatingSlips] = useState(false);
   const [adjustmentDate, setAdjustmentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adjustmentSearchText, setAdjustmentSearchText] = useState('');
+  const [showAdjustmentSuggestions, setShowAdjustmentSuggestions] = useState(false);
 
   const loadBatches = useCallback(async () => {
     setLoadingBatches(true);
@@ -645,14 +647,63 @@ export function XuLyChenhLechPanel({
   }, [detailLines, heThongChiTiet, normalizedSearch, xuLyChiTiet]);
 
   // Mã đã có lịch sử xử lý không được chọn tạo phiếu lần nữa.
+  const normalizedAdjustmentSearch = adjustmentSearchText.trim().toLowerCase();
+  const filteredPendingRows = useMemo(
+    () => pendingRows.filter(row =>
+      !normalizedAdjustmentSearch
+      || `${row.ma_sp} ${row.ma_goc} ${row.ten_sp}`.toLowerCase().includes(normalizedAdjustmentSearch)
+    ),
+    [normalizedAdjustmentSearch, pendingRows]
+  );
+
+  const adjustmentSuggestions = useMemo(() => {
+    if (!normalizedAdjustmentSearch) return [];
+    const suggestions = new Map<string, { value: string; code: string; name: string; kind: 'product' | 'serial' }>();
+
+    pendingRows.forEach(row => {
+      const searchable = `${row.ma_sp} ${row.ma_goc} ${row.ten_sp}`.toLowerCase();
+      if (!searchable.includes(normalizedAdjustmentSearch)) return;
+
+      const productKey = `product:${row.ma_goc}`;
+      if (!suggestions.has(productKey)) {
+        suggestions.set(productKey, {
+          value: row.ma_goc,
+          code: row.ma_goc,
+          name: row.ten_sp,
+          kind: 'product'
+        });
+      }
+      if (row.ma_sp !== row.ma_goc) {
+        suggestions.set(`serial:${row.ma_sp}`, {
+          value: row.ma_sp,
+          code: row.ma_sp,
+          name: row.ten_sp,
+          kind: 'serial'
+        });
+      }
+    });
+
+    return [...suggestions.values()]
+      .sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === 'product' ? -1 : 1;
+        return left.code.localeCompare(right.code, 'vi');
+      })
+      .slice(0, 10);
+  }, [normalizedAdjustmentSearch, pendingRows]);
+
   const actionableRows = useMemo(
-    () => pendingRows.filter(row => row.loai_phieu !== null && !row.da_xu_ly),
-    [pendingRows]
+    () => filteredPendingRows.filter(row => row.loai_phieu !== null && !row.da_xu_ly),
+    [filteredPendingRows]
   );
   const tongSoLuongDeXuat = useMemo(
     () => actionableRows.reduce((sum, row) => sum + row.so_luong, 0),
     [actionableRows]
   );
+
+  useEffect(() => {
+    const visibleKeys = new Set(actionableRows.map(row => row.ma_sp));
+    setSelectedKeys(previous => new Set([...previous].filter(key => visibleKeys.has(key))));
+  }, [actionableRows]);
 
   const toggleRowSelected = (ma: string) => {
     setSelectedKeys(prev => {
@@ -1143,6 +1194,72 @@ export function XuLyChenhLechPanel({
               </div>
             </div>
 
+            <div className="border-b border-zinc-100 bg-zinc-50/70 px-3 py-3 sm:px-4">
+              <div className="relative max-w-2xl">
+                <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                  value={adjustmentSearchText}
+                  onChange={event => {
+                    setAdjustmentSearchText(event.target.value);
+                    setShowAdjustmentSuggestions(true);
+                  }}
+                  onFocus={() => setShowAdjustmentSuggestions(true)}
+                  onBlur={() => window.setTimeout(() => setShowAdjustmentSuggestions(false), 120)}
+                  placeholder="Nhập mã QR, mã sản phẩm hoặc tên sản phẩm..."
+                  autoComplete="off"
+                  className="h-11 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-11 text-sm font-semibold text-zinc-800 outline-none transition focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                />
+                {adjustmentSearchText ? (
+                  <button
+                    type="button"
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => {
+                      setAdjustmentSearchText('');
+                      setShowAdjustmentSuggestions(false);
+                    }}
+                    title="Xóa bộ lọc"
+                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+
+                {showAdjustmentSuggestions && normalizedAdjustmentSearch && adjustmentSuggestions.length > 0 ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-72 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-2xl">
+                    {adjustmentSuggestions.map(suggestion => (
+                      <button
+                        key={`${suggestion.kind}-${suggestion.code}`}
+                        type="button"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => {
+                          setAdjustmentSearchText(suggestion.value);
+                          setShowAdjustmentSuggestions(false);
+                        }}
+                        className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-red-50"
+                      >
+                        <span className={`mt-0.5 rounded-md px-2 py-0.5 text-[9px] font-black uppercase ${
+                          suggestion.kind === 'product'
+                            ? 'bg-[#ef1b2d] text-white'
+                            : 'bg-zinc-100 text-zinc-500'
+                        }`}>
+                          {suggestion.kind === 'product' ? 'Mã gốc' : 'Mã QR'}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-xs font-black text-zinc-900">{suggestion.code}</span>
+                          <span className="mt-0.5 block truncate text-xs font-semibold text-zinc-500">{suggestion.name || '—'}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
+                {normalizedAdjustmentSearch
+                  ? `Đang hiển thị ${filteredPendingRows.length}/${pendingRows.length} mã phù hợp.`
+                  : 'Có thể tìm theo mã đầy đủ, mã gốc hoặc tên sản phẩm.'}
+              </p>
+            </div>
+
             <TableShell minWidthClassName="min-w-[1250px]" maxHeightClassName="max-h-[520px]">
               <TableHead>
                 <TableHeadCell>{' '}</TableHeadCell>
@@ -1157,7 +1274,7 @@ export function XuLyChenhLechPanel({
                 <TableHeadCell align="center">Xử lý</TableHeadCell>
               </TableHead>
               <TableBody>
-                {pendingRows.map(row => (
+                {filteredPendingRows.map(row => (
                   <TableRow key={row.ma_sp} className={row.loai_phieu === null ? 'opacity-70' : ''}>
                     <td className="px-4 py-3">
                       {row.loai_phieu === null || row.da_xu_ly ? (
@@ -1202,9 +1319,13 @@ export function XuLyChenhLechPanel({
                     </td>
                   </TableRow>
                 ))}
-                {pendingRows.length === 0 && (
+                {filteredPendingRows.length === 0 && (
                   <TableEmptyRow colSpan={10}>
-                    {loadingRows ? 'Đang tải dữ liệu...' : 'Không có mã sản phẩm nào để đối chiếu.'}
+                    {loadingRows
+                      ? 'Đang tải dữ liệu...'
+                      : normalizedAdjustmentSearch
+                        ? 'Không tìm thấy mã hoặc tên sản phẩm phù hợp.'
+                        : 'Không có mã sản phẩm nào để đối chiếu.'}
                   </TableEmptyRow>
                 )}
               </TableBody>

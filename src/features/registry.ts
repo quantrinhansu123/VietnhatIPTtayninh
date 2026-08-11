@@ -11,6 +11,7 @@ export type TableId =
   | 'quan_ly_kho'
   | 'bao_cao_hang_hong'
   | 'san_pham'
+  | 'ma_san_pham_chi_tiet'
   | 'danh_sach_may'
   | 'kho_nvl'
   | 'phieu_xuat_nhap_kho'
@@ -129,13 +130,24 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   san_pham: {
     table: 'san_pham',
     label: 'Danh mục sản phẩm',
-    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql'],
+    sql: ['supabase-san-pham.sql', 'supabase-san-pham-dinh-muc.sql', 'supabase-san-pham-dinh-muc-seed.sql', 'supabase-san-pham-npl-phan-tram.sql', 'supabase-san-pham-ton-dau-ky.sql', 'supabase-san-pham-ma-chi-tiet.sql'],
     apiPrefix: '/api/san-pham',
     serverLines: '3507–3695',
     appTab: 'products',
     appLines: 'src/features/san-pham/index.tsx, src/features/san-pham/types.ts, src/features/san-pham/productFieldClass.ts',
     components: ['src/components/ProductQrScanner.tsx', 'src/components/LineEditorSheet.tsx'],
     utils: ['src/utils/productNplComponentsExcel.ts', 'src/utils/productCatalogExcel.ts']
+  },
+  ma_san_pham_chi_tiet: {
+    table: 'ma_san_pham_chi_tiet',
+    label: 'Mã QR/serial chi tiết của sản phẩm',
+    sql: ['supabase-san-pham-ma-chi-tiet.sql'],
+    apiPrefix: '/api/san-pham/:id/ma-chi-tiet | /api/ma-san-pham/danh-dau-in',
+    serverLines: 'API mã sản phẩm chi tiết + đồng bộ phiếu xuất nhập kho',
+    appTab: 'products',
+    appLines: 'src/features/san-pham/index.tsx',
+    components: [],
+    utils: []
   },
   danh_sach_may: {
     table: 'danh_sach_may',

@@ -64,6 +64,9 @@ alter table public.san_pham
   add column if not exists trong_luong_nhua numeric;
 
 create unique index if not exists san_pham_ma_sp_key on public.san_pham (ma_sp);
+-- DB cũ có thể đã có một primary key khác tên/cột, khiến khối thêm san_pham_pkey phía trên
+-- không bảo đảm riêng cột id là khóa tham chiếu. Unique index này giúp các bảng chi tiết FK tới id.
+create unique index if not exists san_pham_id_unique_idx on public.san_pham (id);
 
 alter table public.san_pham enable row level security;
 

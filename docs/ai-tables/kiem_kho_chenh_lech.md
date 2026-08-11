@@ -51,6 +51,8 @@ Không phải "trạng thái" tính toán được — chỉ là **lịch sử c
 
 `src/features/xu-ly-chenh-lech/index.tsx` (`XuLyChenhLechPanel`) — tab "Phiếu Nhập/Xuất điều chỉnh" đối chiếu từng mã nguyên bản, hiển thị riêng tồn hệ thống, số lần kiểm, chênh lệch, loại phiếu và số lượng. Các dòng được chọn gộp theo `(loaiPhieu, kho vật lý)` thành phiếu, nhưng mỗi item và mỗi dòng lịch sử vẫn giữ nguyên mã đầy đủ.
 
+Tab phiếu điều chỉnh có bộ lọc combobox theo mã QR đầy đủ, mã gốc hoặc tên sản phẩm. Gợi ý **Mã gốc** lọc toàn bộ serial của sản phẩm; gợi ý **Mã QR** lọc đúng một mã. Chọn tất cả và thống kê chỉ áp dụng trên các dòng đang hiển thị.
+
 ## Thêm bảng trên DB đã có
 
 Chạy `supabase-kiem-kho-chenh-lech-xu-ly.sql` trên:

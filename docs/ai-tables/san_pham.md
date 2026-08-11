@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `san_pham` |
 | **Tab** | `products` → `/san-pham` |
-| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-ten-kho.sql` |
+| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-ten-kho.sql`, `supabase-san-pham-ma-chi-tiet.sql` |
 
 ## API (`server.ts`)
 
@@ -12,6 +12,7 @@
 |--------|------|------|
 | GET | `/api/san-pham` | 3507 |
 | POST | `/api/san-pham` | 3564 |
+| GET | `/api/san-pham/:id/ma-chi-tiet` | danh sách mã QR/serial đã lưu |
 | PATCH | `/api/san-pham/:id` | 3629 |
 | DELETE | `/api/san-pham` | 3592 |
 
@@ -29,6 +30,12 @@
 ## Cột quan trọng
 
 `ma_sp`, `ten_sp`, `nhom_vthh`, `ten_kho`, `ton_dau_ky`, `dinh_muc_npl` (JSON NPL).
+
+## Mã sản phẩm chi tiết
+
+- Bảng `ma_san_pham_chi_tiet`: mỗi dòng là một mã đầy đủ `ma_sp_goc_ssmmhhddmmX`.
+- Khi thêm sản phẩm với `initialQuantity > 0`, RPC `tao_san_pham_voi_ma_chi_tiet` tạo sản phẩm, mã chi tiết và phiếu nhập kho khởi tạo trong cùng transaction.
+- Tồn đầu mã gốc được giữ bằng 0; mỗi mã chi tiết được nhập kho với số lượng 1 để trang tồn kho chi tiết giữ hậu tố và tổng hợp gom theo tiền tố.
 
 > Tính năng "Đồng bộ" (cộng số liệu kiểm kho vào `ton_dau_ky`) đã bị **gỡ bỏ**. File `supabase-san-pham-kiem-kho-dong-bo.sql` giờ chỉ còn migration `DROP` để dọn RPC/bảng so cái cũ trên DB đã từng chạy — không cần chạy lại nếu DB chưa từng có tính năng này.
 

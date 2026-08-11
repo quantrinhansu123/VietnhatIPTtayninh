@@ -62,6 +62,7 @@ const SUPABASE_KIEM_KHO_CHENH_LECH_TABLE =
 const SUPABASE_QUAN_LY_KHO_TABLE = process.env.SUPABASE_QUAN_LY_KHO_TABLE || 'quan_ly_kho';
 const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE || 'bao_cao_hang_hong';
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
+const SUPABASE_PRODUCT_CODES_TABLE = process.env.SUPABASE_PRODUCT_CODES_TABLE || 'ma_san_pham_chi_tiet';
 /** Sửa typo env phổ biến: anh_sach_may → danh_sach_may */
 const SUPABASE_MACHINES_TABLE = (() => {
   const raw = String(process.env.SUPABASE_MACHINES_TABLE || '')
@@ -2397,6 +2398,71 @@ function productWriteErrorMessage(error: { code?: string; message?: string; deta
   return `Không thể lưu sản phẩm vào ${SUPABASE_PRODUCTS_TABLE}. ${error.message}${error.details ? ` (${error.details})` : ''}`;
 }
 
+function parseInitialProductQuantity(value: unknown): number {
+  const quantity = Number(String(value ?? '').trim().replace(',', '.'));
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+  return Math.min(999, Math.floor(quantity));
+}
+
+function buildProductQrTimeSerial(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    second: '2-digit',
+    minute: '2-digit',
+    hour: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find(part => part.type === type)?.value.padStart(2, '0') || '00';
+  return `${value('second')}${value('minute')}${value('hour')}${value('day')}${value('month')}`;
+}
+
+function randomProductQrSuffix(length: number): string {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let result = '';
+  for (let index = 0; index < length; index += 1) {
+    result += alphabet[crypto.randomInt(0, alphabet.length)];
+  }
+  return result;
+}
+
+/** Giữ đúng quy tắc cũ: MãSP_ssmmhhddmm + ký tự ngẫu nhiên; tăng độ dài khi cần chống trùng. */
+function buildStoredProductQrCodes(productCode: string, quantity: number): string[] {
+  const code = productCode.trim();
+  const used = new Set<string>();
+  const records: string[] = [];
+
+  for (let itemIndex = 0; itemIndex < quantity; itemIndex += 1) {
+    let generated = '';
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const randomLength = attempt < 24 ? 1 : attempt < 64 ? 2 : 3;
+      const candidate = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(randomLength)}`;
+      if (!used.has(candidate)) {
+        generated = candidate;
+        break;
+      }
+    }
+    if (!generated) {
+      generated = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(4)}`;
+    }
+    used.add(generated);
+    records.push(generated);
+  }
+
+  return records;
+}
+
+function buildInitialProductReceiptCode(): string {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(now).replace(/-/g, '');
+  return `PN-KHOI-TAO-${date}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
 function parseMixingNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(String(value).replace(',', '.'));
@@ -4601,6 +4667,67 @@ async function syncMaterialInventoryFromMovements(maNpl: string) {
   }
 }
 
+async function syncProductDetailCodeFromMovements(fullCode: string) {
+  if (!supabase) return;
+  const code = String(fullCode || '').trim();
+  if (!code || !code.includes('_')) return;
+
+  const { data: registered, error: registryError } = await supabase
+    .from(SUPABASE_PRODUCT_CODES_TABLE)
+    .select('id, trang_thai')
+    .eq('ma_sp_day_du', code)
+    .maybeSingle();
+
+  if (registryError) {
+    if (!isMissingTableError(registryError)) {
+      console.error('Supabase product detail code lookup error:', registryError);
+    }
+    return;
+  }
+  if (!registered) return;
+
+  const { data: movements, error: movementError } = await supabase
+    .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+    .select('ma_phieu, loai_phieu, so_luong, created_at')
+    .eq('loai_kho', 'san_pham')
+    .eq('ma_sp', code)
+    .order('created_at', { ascending: true });
+
+  if (movementError) {
+    console.error('Supabase product detail movement sync error:', movementError);
+    return;
+  }
+
+  let balance = 0;
+  let lastInbound = '';
+  let lastOutbound = '';
+  for (const row of movements || []) {
+    const quantity = Number(row.so_luong);
+    if (!Number.isFinite(quantity)) continue;
+    if (String(row.loai_phieu) === 'xuat') {
+      balance -= quantity;
+      lastOutbound = String(row.ma_phieu ?? '').trim() || lastOutbound;
+    } else {
+      balance += quantity;
+      lastInbound = String(row.ma_phieu ?? '').trim() || lastInbound;
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from(SUPABASE_PRODUCT_CODES_TABLE)
+    .update({
+      trang_thai: balance > 0 ? 'trong_kho' : 'da_xuat',
+      ma_phieu_nhap: lastInbound || null,
+      ma_phieu_xuat: lastOutbound || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', registered.id);
+
+  if (updateError) {
+    console.error('Supabase product detail status sync error:', updateError);
+  }
+}
+
 async function buildMaterialMovementTotals(): Promise<Map<string, { nhap: number; xuat: number }>> {
   const totals = new Map<string, { nhap: number; xuat: number }>();
   if (!supabase) return totals;
@@ -5829,6 +5956,66 @@ export function createApp() {
         return res.status(400).json({ error: parsedProduct.error });
       }
 
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const initialQuantityRaw = body.initialQuantity ?? body.so_luong_khoi_tao ?? body.initial_quantity;
+      const initialQuantityNumber = Number(String(initialQuantityRaw ?? '').trim().replace(',', '.'));
+      if (
+        initialQuantityRaw !== undefined && String(initialQuantityRaw ?? '').trim() !== ''
+        && (!Number.isInteger(initialQuantityNumber) || initialQuantityNumber < 0 || initialQuantityNumber > 999)
+      ) {
+        return res.status(400).json({ error: 'Số lượng sản phẩm khởi tạo phải là số nguyên từ 0 đến 999.' });
+      }
+      const initialQuantity = parseInitialProductQuantity(initialQuantityRaw);
+
+      if (initialQuantity > 0) {
+        const productCode = String(parsedProduct.record.ma_sp ?? '').trim();
+        const warehouse = String(parsedProduct.record.ten_kho ?? '').trim();
+        if (!productCode) {
+          return res.status(400).json({ error: 'Cần nhập Mã SP để sinh mã QR chi tiết.' });
+        }
+        if (!warehouse) {
+          return res.status(400).json({ error: 'Cần chọn Kho khi số lượng khởi tạo lớn hơn 0.' });
+        }
+
+        // Tồn chi tiết được ghi bằng phiếu nhập từng mã; không cộng thêm tồn đầu ở mã gốc.
+        parsedProduct.record.ton_dau_ky = 0;
+        parsedProduct.record.nhap_trong_ky = 0;
+        parsedProduct.record.xuat_trong_ky = 0;
+        parsedProduct.record.sl_ton = 0;
+
+        const codes = buildStoredProductQrCodes(productCode, initialQuantity);
+        const receiptCode = buildInitialProductReceiptCode();
+        const creator = String(body.createdBy ?? body.nguoi_tao ?? '').trim() || null;
+        const { data, error } = await supabase.rpc('tao_san_pham_voi_ma_chi_tiet', {
+          p_san_pham: parsedProduct.record,
+          p_ma_chi_tiet: codes,
+          p_ma_phieu: receiptCode,
+          p_ngay_phieu: new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit'
+          }).format(new Date()),
+          p_nguoi_tao: creator
+        });
+
+        if (error) {
+          console.error('Supabase create product with detailed codes error:', error);
+          const missingMigration = error.code === 'PGRST202'
+            || /tao_san_pham_voi_ma_chi_tiet|ma_san_pham_chi_tiet/i.test(error.message || '');
+          return res.status(500).json({
+            error: missingMigration
+              ? 'Chưa có cấu trúc mã sản phẩm chi tiết. Hãy chạy file supabase-san-pham-ma-chi-tiet.sql trên Supabase DB chính.'
+              : productWriteErrorMessage(error)
+          });
+        }
+
+        return res.status(201).json({
+          success: true,
+          product: data?.product ?? null,
+          codes: Array.isArray(data?.codes) ? data.codes : codes,
+          quantity: initialQuantity,
+          receiptCode
+        });
+      }
+
       const { data, error } = await supabase
         .from(SUPABASE_PRODUCTS_TABLE)
         .insert(parsedProduct.record)
@@ -5844,6 +6031,60 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo sản phẩm.' });
     }
+  });
+
+  app.get('/api/san-pham/:id/ma-chi-tiet', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const productId = String(req.params.id || '').trim();
+      if (!productId) return res.status(400).json({ error: 'Thiếu ID sản phẩm.' });
+
+      const { data, error } = await supabase
+        .from(SUPABASE_PRODUCT_CODES_TABLE)
+        .select('*')
+        .eq('san_pham_id', productId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        const missingMigration = isMissingTableError(error);
+        return res.status(500).json({
+          error: missingMigration
+            ? 'Chưa có bảng mã sản phẩm chi tiết. Hãy chạy file supabase-san-pham-ma-chi-tiet.sql.'
+            : error.message || 'Không thể tải mã sản phẩm chi tiết.'
+        });
+      }
+
+      return res.json({ records: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải mã sản phẩm chi tiết.' });
+    }
+  });
+
+  app.post('/api/ma-san-pham/danh-dau-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    const codes = Array.isArray(req.body?.codes)
+      ? req.body.codes.map((code: unknown) => String(code ?? '').trim()).filter(Boolean)
+      : [];
+    if (codes.length === 0) {
+      return res.status(400).json({ error: 'Không có mã QR để đánh dấu in.' });
+    }
+
+    const { data, error } = await supabase.rpc('danh_dau_in_ma_san_pham', { p_codes: codes });
+    if (error) {
+      return res.status(500).json({
+        error: /danh_dau_in_ma_san_pham/i.test(error.message || '') || error.code === 'PGRST202'
+          ? 'Thiếu hàm lưu lịch sử in. Hãy chạy lại file supabase-san-pham-ma-chi-tiet.sql.'
+          : error.message || 'Không thể lưu lịch sử in QR.'
+      });
+    }
+
+    return res.json({ success: true, updated: Number(data) || 0 });
   });
 
   app.delete('/api/san-pham', async (req, res) => {
@@ -7677,6 +7918,9 @@ export function createApp() {
       if (parsed.loaiKho === 'nvl') {
         const nvlCodes = [...new Set(parsed.items.map(item => item.code.trim()).filter(Boolean))];
         await Promise.all(nvlCodes.map(code => syncMaterialInventoryFromMovements(code)));
+      } else {
+        const productCodes = [...new Set(parsed.items.map(item => item.code.trim()).filter(Boolean))];
+        await Promise.all(productCodes.map(code => syncProductDetailCodeFromMovements(code)));
       }
 
       return res.status(201).json({
@@ -7753,7 +7997,7 @@ export function createApp() {
 
       const { data: existing, error: fetchError } = await supabase
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-        .select('ma_npl, loai_kho')
+        .select('ma_npl, ma_sp, loai_kho')
         .eq('ma_phieu', slipCode);
 
       if (fetchError) {
@@ -7768,16 +8012,26 @@ export function createApp() {
       }
 
       const affectedNvlCodes = new Set<string>();
+      const affectedProductCodes = new Set<string>();
       existing.forEach(row => {
         const code = String(row.ma_npl || '').trim();
         if (code && String(row.loai_kho || 'nvl') !== 'san_pham') {
           affectedNvlCodes.add(code);
+        }
+        const productCode = String(row.ma_sp || '').trim();
+        if (productCode && String(row.loai_kho || '') === 'san_pham') {
+          affectedProductCodes.add(productCode);
         }
       });
       if (parsed.loaiKho === 'nvl') {
         parsed.items.forEach(item => {
           const code = item.code.trim();
           if (code) affectedNvlCodes.add(code);
+        });
+      } else {
+        parsed.items.forEach(item => {
+          const code = item.code.trim();
+          if (code) affectedProductCodes.add(code);
         });
       }
 
@@ -7806,6 +8060,9 @@ export function createApp() {
       if (affectedNvlCodes.size > 0) {
         await Promise.all([...affectedNvlCodes].map(code => syncMaterialInventoryFromMovements(code)));
       }
+      if (affectedProductCodes.size > 0) {
+        await Promise.all([...affectedProductCodes].map(code => syncProductDetailCodeFromMovements(code)));
+      }
 
       return res.json({
         success: true,
@@ -7830,7 +8087,7 @@ export function createApp() {
 
       const { data: existing, error: fetchError } = await supabase
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-        .select('id, ma_npl, loai_kho')
+        .select('id, ma_npl, ma_sp, loai_kho')
         .eq('ma_phieu', slipCode);
 
       if (fetchError) {
@@ -7843,10 +8100,15 @@ export function createApp() {
       }
 
       const affectedNvlCodes = new Set<string>();
+      const affectedProductCodes = new Set<string>();
       existing.forEach(row => {
         const code = String(row.ma_npl || '').trim();
         if (code && String(row.loai_kho || 'nvl') !== 'san_pham') {
           affectedNvlCodes.add(code);
+        }
+        const productCode = String(row.ma_sp || '').trim();
+        if (productCode && String(row.loai_kho || '') === 'san_pham') {
+          affectedProductCodes.add(productCode);
         }
       });
 
@@ -7862,6 +8124,9 @@ export function createApp() {
 
       if (affectedNvlCodes.size > 0) {
         await Promise.all([...affectedNvlCodes].map(code => syncMaterialInventoryFromMovements(code)));
+      }
+      if (affectedProductCodes.size > 0) {
+        await Promise.all([...affectedProductCodes].map(code => syncProductDetailCodeFromMovements(code)));
       }
 
       return res.json({ success: true, deletedCount: existing.length });
@@ -7885,7 +8150,7 @@ export function createApp() {
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .delete()
         .eq('id', id)
-        .select('id, ma_npl, loai_kho')
+        .select('id, ma_npl, ma_sp, loai_kho')
         .maybeSingle();
 
       if (error) {
@@ -7899,6 +8164,9 @@ export function createApp() {
 
       if (data.ma_npl && String(data.loai_kho || 'nvl') !== 'san_pham') {
         await syncMaterialInventoryFromMovements(String(data.ma_npl));
+      }
+      if (data.ma_sp && String(data.loai_kho || '') === 'san_pham') {
+        await syncProductDetailCodeFromMovements(String(data.ma_sp));
       }
 
       return res.json({ success: true });
@@ -10340,6 +10608,42 @@ export function createApp() {
       .sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
   }
 
+  function normalizeTonKhoCatalogCode(value: unknown): string {
+    return String(value ?? '').trim().replace(/\s+/g, '').toUpperCase();
+  }
+
+  /**
+   * Mã serial không có dòng riêng trong danh mục san_pham. Luôn mượn tên/ĐVT/kho
+   * từ mã gốc trước dấu `_`, kể cả khi RPC cũ chưa xử lý được khoảng trắng/case.
+   */
+  async function enrichProductTonKhoRows(rows: TonKhoGopRow[]): Promise<TonKhoGopRow[]> {
+    if (!supabase || rows.length === 0) return rows;
+
+    const catalogRows = await loadAllTonKhoRows((from, to) =>
+      supabase
+        .from(SUPABASE_PRODUCTS_TABLE)
+        .select('ma_sp, ten_sp, don_vi, ten_kho')
+        .range(from, to)
+    );
+    const catalogByCode = new Map<string, Record<string, unknown>>();
+    catalogRows.forEach(record => {
+      const key = normalizeTonKhoCatalogCode(record.ma_sp);
+      if (key) catalogByCode.set(key, record);
+    });
+
+    return rows.map(row => {
+      const prefix = extractTonKhoPrefix(row.ma) || row.ma;
+      const catalog = catalogByCode.get(normalizeTonKhoCatalogCode(prefix));
+      if (!catalog) return row;
+      return {
+        ...row,
+        ten: String(catalog.ten_sp ?? '').trim() || row.ten,
+        don_vi: String(catalog.don_vi ?? '').trim() || row.don_vi,
+        ten_kho: String(catalog.ten_kho ?? '').trim() || row.ten_kho
+      };
+    });
+  }
+
   let hasWarnedMissingTonKhoRpc = false;
 
   async function loadTonKhoGop(
@@ -10354,7 +10658,14 @@ export function createApp() {
       p_tu_ngay: tuNgay,
       p_den_ngay: denNgay
     });
-    if (!result.error || result.error.code !== 'PGRST202') return result;
+    if (!result.error) {
+      if (loaiKho !== 'san_pham' || !Array.isArray(result.data)) return result;
+      return {
+        ...result,
+        data: await enrichProductTonKhoRows(result.data as TonKhoGopRow[])
+      };
+    }
+    if (result.error.code !== 'PGRST202') return result;
 
     if (!hasWarnedMissingTonKhoRpc) {
       console.warn(
@@ -10364,7 +10675,10 @@ export function createApp() {
       hasWarnedMissingTonKhoRpc = true;
     }
 
-    const data = await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay);
+    const fallbackData = await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay);
+    const data = loaiKho === 'san_pham'
+      ? await enrichProductTonKhoRows(fallbackData)
+      : fallbackData;
     return { data, error: null };
   }
 

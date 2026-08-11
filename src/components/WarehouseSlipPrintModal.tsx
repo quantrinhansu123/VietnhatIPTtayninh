@@ -13,6 +13,8 @@ export type WarehouseSlipPrintLine = {
   documentQuantity?: number | null;
   unitPrice: number;
   lineAmount: number;
+  /** SL đã quy đổi về kg (nếu quy được). */
+  weightKg?: number | null;
   quotaQuantity?: number | null;
   suggestedQuantity?: number | null;
   lineNote?: string;
@@ -22,7 +24,7 @@ export type WarehouseSlipPrintLine = {
 export type WarehouseSlipPrintData = {
   slipCode: string;
   slipType: 'nhap' | 'xuat';
-  warehouseKind: 'nvl' | 'san_pham';
+  warehouseKind: 'nvl' | 'san_pham' | 'tai_che';
   slipDate: string;
   reason: string;
   note: string;
@@ -42,7 +44,7 @@ function isNhapKhoPrintLayout(data: WarehouseSlipPrintData) {
 }
 
 function isNvlExportPrintLayout(data: WarehouseSlipPrintData) {
-  return data.slipType === 'xuat' && data.warehouseKind === 'nvl';
+  return data.slipType === 'xuat' && data.warehouseKind !== 'san_pham';
 }
 
 function slipTypeTitle(data: WarehouseSlipPrintData) {
@@ -95,19 +97,24 @@ function formatPrintQty(value: number | null | undefined, fractionDigits = 2) {
 
 function sumPrintQty(
   lines: WarehouseSlipPrintLine[],
-  key: 'quotaQuantity' | 'quantity' | 'documentQuantity' | 'suggestedQuantity'
+  field: 'quantity' | 'documentQuantity' = 'quantity'
 ) {
   return lines.reduce((sum, line) => {
-    const value =
-      key === 'quantity'
-        ? line.quantity
-        : key === 'documentQuantity'
-          ? line.documentQuantity
-          : key === 'suggestedQuantity'
-            ? line.suggestedQuantity
-            : line.quotaQuantity;
-    return Number.isFinite(value) && value! > 0 ? sum + (value as number) : sum;
+    const value = field === 'documentQuantity' ? line.documentQuantity : line.quantity;
+    return Number.isFinite(value) && (value as number) > 0 ? sum + (value as number) : sum;
   }, 0);
+}
+
+function sumPrintWeightKg(lines: WarehouseSlipPrintLine[]) {
+  return lines.reduce((sum, line) => {
+    const value = line.weightKg;
+    return Number.isFinite(value) && (value as number) > 0 ? sum + (value as number) : sum;
+  }, 0);
+}
+
+function formatPrintWeightKg(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '';
+  return formatNumber(value, 3);
 }
 
 function formatNhapKhoDateParts(value: string) {
@@ -309,8 +316,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
 }
 
 function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
-  const totalQuota = sumPrintQty(data.lines, 'quotaQuantity');
-  const totalActual = sumPrintQty(data.lines, 'quantity');
+  const totalWeightKg = sumPrintWeightKg(data.lines);
   const printShift = formatPrintShift(data.shift);
 
   return (
@@ -348,6 +354,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th>PN nhập / giá</th>
             <th>SL định mức xuất</th>
             <th>SL thực xuất</th>
+            <th>Quy về kg</th>
             <th>Thành tiền</th>
             <th>Ghi chú</th>
           </tr>
@@ -366,6 +373,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               </td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quotaQuantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
+              <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td className="warehouse-slip-print-right">
                 {line.lineAmount > 0 ? formatMoney(line.lineAmount, 0) : ''}
               </td>
@@ -375,14 +383,11 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={5} className="warehouse-slip-print-total-label">
-              TỔNG CỘNG
+            <td colSpan={7} className="warehouse-slip-print-total-label">
+              TỔNG CỘNG (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalQuota > 0 ? formatNumber(totalQuota, 3) : '0'}
-            </td>
-            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalActual > 0 ? formatNumber(totalActual, 3) : '0'}
+              {totalWeightKg > 0 ? `${formatNumber(totalWeightKg, 3)} kg` : '0'}
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
               {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : '0'}
@@ -393,7 +398,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
       </table>
 
       <p className="warehouse-slip-print-footnote">
-        <strong>Ghi chú:</strong> Phiếu xuất NVL phải có đủ SL định mức xuất và SL thực xuất trước khi in để giao nhận.
+        <strong>Ghi chú:</strong> Không cộng SL khác ĐVT. Cột «Quy về kg» và tổng kg dùng để đối chiếu khối lượng.
       </p>
 
       <div className="warehouse-slip-print-signatures warehouse-slip-print-signatures--nvl-export">

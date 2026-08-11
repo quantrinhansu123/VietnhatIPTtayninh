@@ -27,7 +27,7 @@
 
 **Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP).
 
-Form tạo/sửa phiếu bắt buộc chọn kho vật lý từ `/api/quan-ly-kho` và gửi `tenKho` cho mọi dòng của phiếu.
+Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` (tab **Kho tái chế** — gồm `loai_kho=tai_che` hoặc `ten_kho` chứa «tái chế»).
 
 
 ## Script

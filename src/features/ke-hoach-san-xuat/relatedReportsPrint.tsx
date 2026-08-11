@@ -45,6 +45,12 @@ import {
   normalizeWarehouseMovements,
   type WarehouseMovementRow
 } from '../phieu-xuat-nhap-kho';
+import { normalizeMaterialsInventory } from '../kho-nvl';
+import {
+  convertWarehouseQuantityToKg,
+  mapMaterialToWeightCatalogItem,
+  type WarehouseWeightCatalogItem
+} from '../../utils/warehouseWeight';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
 
 function splitOrderRefCodes(value: string): string[] {
@@ -274,15 +280,17 @@ export async function loadProductionPlanRelatedReports(
   const encodedDate = encodeURIComponent(planDate);
   const shiftOptions = await loadShiftOptions();
 
-  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, warehouseRes] = await Promise.all([
-    fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
-    fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
-    fetchJson(`/api/phieu-can-dinh-ki?ngay=${encodedDate}`),
-    fetchJson(`/api/phieu-bao-dung-may?ngay=${encodedDate}`),
-    fetchJson(`/api/bao-cao-hang-hong?ngay=${encodedDate}`),
-    fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
-    fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`)
-  ]);
+  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, warehouseRes, materialCatalogRes] =
+    await Promise.all([
+      fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
+      fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
+      fetchJson(`/api/phieu-can-dinh-ki?ngay=${encodedDate}`),
+      fetchJson(`/api/phieu-bao-dung-may?ngay=${encodedDate}`),
+      fetchJson(`/api/bao-cao-hang-hong?ngay=${encodedDate}`),
+      fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
+      fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
+      fetchJson('/api/kho-nvl')
+    ]);
 
   const machineNvlAll = nvlRes.ok ? normalizeMachineNvlReports(nvlRes.data) : [];
   const machineNvl = machineNvlAll.filter(report =>
@@ -330,7 +338,10 @@ export async function loadProductionPlanRelatedReports(
     shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
   );
   if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
-  const warehouseSlips = buildWarehouseExportSlips(warehouseMovements);
+  const materialWeightCatalog = materialCatalogRes.ok
+    ? normalizeMaterialsInventory(materialCatalogRes.data).map(mapMaterialToWeightCatalogItem)
+    : [];
+  const warehouseSlips = buildWarehouseExportSlips(warehouseMovements, materialWeightCatalog);
 
   const isEmpty =
     machineNvl.length === 0 &&
@@ -354,7 +365,10 @@ export async function loadProductionPlanRelatedReports(
   return { machineNvl, mixing, weighing, downtime, damaged, acceptance, warehouseSlips, isEmpty, errors, diagnostics };
 }
 
-function buildWarehouseExportSlips(rows: WarehouseMovementRow[]): WarehouseSlipPrintData[] {
+function buildWarehouseExportSlips(
+  rows: WarehouseMovementRow[],
+  materials: WarehouseWeightCatalogItem[] = []
+): WarehouseSlipPrintData[] {
   const map = new Map<string, WarehouseMovementRow[]>();
   const order: string[] = [];
 
@@ -392,7 +406,15 @@ function buildWarehouseExportSlips(rows: WarehouseMovementRow[]): WarehouseSlipP
           quantity: row.quantity,
           documentQuantity: row.documentQuantity ?? null,
           unitPrice: row.unitPrice,
-          lineAmount: row.lineAmount
+          lineAmount: row.lineAmount,
+          weightKg: convertWarehouseQuantityToKg({
+            quantity: row.quantity,
+            unit: row.unit,
+            itemCode: row.itemCode,
+            warehouseKind: row.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
+            materials,
+            products: []
+          })
         }))
       };
     });

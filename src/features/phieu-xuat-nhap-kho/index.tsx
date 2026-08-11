@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  Recycle,
   Save,
   ScanBarcode,
   Search,
@@ -63,7 +64,7 @@ import {
 } from '../../utils/warehouseWeight';
 
 export type WarehouseSlipType = 'nhap' | 'xuat';
-export type WarehouseKind = 'nvl' | 'san_pham';
+export type WarehouseKind = 'nvl' | 'san_pham' | 'tai_che';
 
 export interface WarehouseMovementRow {
   id: string;
@@ -234,8 +235,21 @@ export function warehouseSlipTypeLabel(type: WarehouseSlipType) {
   return type === 'nhap' ? 'Nhập kho' : 'Xuất kho';
 }
 
+export function isRecycleWarehouseName(value?: string | null) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+  if (!key) return false;
+  return key.includes('tai che') || key.includes('recycle') || key.includes('tai_che') || key.includes('tai-che');
+}
+
 export function warehouseKindLabel(kind: WarehouseKind) {
-  return kind === 'san_pham' ? 'Kho Sản phẩm' : 'Kho NVL';
+  if (kind === 'san_pham') return 'Kho Sản phẩm';
+  if (kind === 'tai_che') return 'Kho tái chế';
+  return 'Kho NVL';
 }
 
 export function warehouseItemCodeLabel(kind: WarehouseKind) {
@@ -350,21 +364,35 @@ export function buildWarehouseSlipPrintData(
     recipient?: string;
     deliverer?: string;
     warehouseLocation?: string;
+    materials?: WarehouseWeightCatalogItem[];
+    products?: WarehouseWeightCatalogItem[];
   }
 ): WarehouseSlipPrintData {
-  const printLines = items.map(item => ({
-    code: item.code,
-    name: item.name,
-    unit: item.unit,
-    quantity: item.quantity,
-    documentQuantity: item.documentQuantity ?? item.suggestedQuantity ?? null,
-    unitPrice: item.unitPrice,
-    lineAmount: Math.round(item.quantity * item.unitPrice * 100) / 100,
-    quotaQuantity: item.quotaQuantity ?? null,
-    suggestedQuantity: item.suggestedQuantity ?? null,
-    lineNote: item.lineNote,
-    sourceInboundSlipCode: item.sourceInboundSlipCode
-  }));
+  const weightKind = options.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl';
+  const printLines = items.map(item => {
+    const weightKg = convertWarehouseQuantityToKg({
+      quantity: item.quantity,
+      unit: item.unit,
+      itemCode: item.code,
+      warehouseKind: weightKind,
+      materials: options.materials ?? [],
+      products: options.products ?? []
+    });
+    return {
+      code: item.code,
+      name: item.name,
+      unit: item.unit,
+      quantity: item.quantity,
+      documentQuantity: item.documentQuantity ?? item.suggestedQuantity ?? null,
+      unitPrice: item.unitPrice,
+      lineAmount: Math.round(item.quantity * item.unitPrice * 100) / 100,
+      weightKg,
+      quotaQuantity: item.quotaQuantity ?? null,
+      suggestedQuantity: item.suggestedQuantity ?? null,
+      lineNote: item.lineNote,
+      sourceInboundSlipCode: item.sourceInboundSlipCode
+    };
+  });
 
   return {
     slipCode: options.slipCode,
@@ -461,9 +489,18 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
       const tenSp = String(record.ten_sp ?? record.productName ?? '').trim();
       const tenNpl = String(record.ten_npl ?? record.materialName ?? '').trim();
       const warehouseKindRaw = String(record.loai_kho ?? record.warehouseKind ?? '').trim().toLowerCase();
+      const warehouseName = String(record.ten_kho ?? record.warehouseName ?? '').trim();
       // Có mã SP (không có mã NPL) → thành phẩm, kể cả bản ghi cũ thiếu/sai loai_kho
+      // Kho tái chế: loai_kho=tai_che hoặc tên kho chứa "tái chế"
       const warehouseKind: WarehouseKind =
-        warehouseKindRaw === 'san_pham' || (Boolean(maSp) && !maNpl) ? 'san_pham' : 'nvl';
+        warehouseKindRaw === 'san_pham' || (Boolean(maSp) && !maNpl)
+          ? 'san_pham'
+          : warehouseKindRaw === 'tai_che' ||
+              warehouseKindRaw === 'tai-che' ||
+              warehouseKindRaw === 'recycle' ||
+              isRecycleWarehouseName(warehouseName)
+            ? 'tai_che'
+            : 'nvl';
       const quantity = Number(record.so_luong ?? record.quantity);
       const documentQuantity = Number(record.so_luong_chung_tu ?? record.documentQuantity);
       const unitPrice = Number(record.don_gia ?? record.unitPrice ?? record.price ?? 0);
@@ -487,7 +524,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         slipCode: String(record.ma_phieu ?? record.slipCode ?? '').trim(),
         slipType,
         warehouseKind,
-        warehouseName: String(record.ten_kho ?? record.warehouseName ?? '').trim(),
+        warehouseName,
         slipDate: String(record.ngay_phieu ?? record.slipDate ?? '').trim(),
         shift: String(record.ca ?? record.shift ?? record.ca_san_xuat ?? '').trim(),
         itemCode,
@@ -1293,8 +1330,8 @@ export function WarehouseSlipPanel({
       quantity: parsePercentInput(line.quantity),
       unit: line.unit,
       itemCode: line.code,
-      warehouseKind,
-      materials: warehouseKind === 'nvl' ? weightCatalog : [],
+      warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
+      materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
       products: warehouseKind === 'san_pham' ? weightCatalog : []
     });
 
@@ -1306,8 +1343,8 @@ export function WarehouseSlipPanel({
         quantity: parsePercentInput(line.quantity),
         unit: line.unit,
         itemCode: line.code,
-        warehouseKind,
-        materials: warehouseKind === 'nvl' ? weightCatalog : [],
+        warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
+        materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
         products: warehouseKind === 'san_pham' ? weightCatalog : []
       });
       if (weight !== null) {
@@ -1397,7 +1434,9 @@ export function WarehouseSlipPanel({
           shift: shiftLabel,
           recipient: recipient.trim(),
           deliverer: deliverer.trim(),
-          warehouseLocation: warehouseLocation.trim()
+          warehouseLocation: warehouseLocation.trim(),
+          materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
+          products: warehouseKind === 'san_pham' ? weightCatalog : []
         })
       );
       setPrintAutoTrigger(false);
@@ -2125,7 +2164,7 @@ export function WarehouseHistoryPanel({
       quantity: row.quantity,
       unit: row.unit,
       itemCode: row.itemCode,
-      warehouseKind: row.warehouseKind,
+      warehouseKind: row.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
       materials: weightCatalogMaterials,
       products: weightCatalogProducts
     });
@@ -2152,7 +2191,8 @@ export function WarehouseHistoryPanel({
         throw new Error(data.error || 'Không thể tải lịch sử xuất nhập kho.');
       }
 
-      setMovements(normalizeWarehouseMovements(data));
+      const rows = normalizeWarehouseMovements(data).filter(row => row.warehouseKind === warehouseTab);
+      setMovements(rows);
     } catch (loadError: any) {
       setMovements([]);
       setError(loadError.message || 'Không thể tải lịch sử xuất nhập kho.');
@@ -2319,6 +2359,7 @@ export function WarehouseHistoryPanel({
         documentQuantity: row.documentQuantity ?? null,
         unitPrice: row.unitPrice,
         lineAmount: row.lineAmount,
+        weightKg: resolveWarehouseRowWeightKg(row),
         sourceInboundSlipCode: row.sourceInboundSlipCode
       }))
     });
@@ -2399,7 +2440,8 @@ export function WarehouseHistoryPanel({
         <div className="flex gap-1 border-b border-zinc-200 px-4">
           {([
             ['nvl', 'Kho NVL', Boxes],
-            ['san_pham', 'Kho Sản phẩm', Package]
+            ['san_pham', 'Kho Sản phẩm', Package],
+            ['tai_che', 'Kho tái chế', Recycle]
           ] as const).map(([tab, label, Icon]) => (
             <button
               key={tab}
@@ -2439,7 +2481,13 @@ export function WarehouseHistoryPanel({
         <TableSearchInput
           value={searchText}
           onChange={setSearchText}
-          placeholder={warehouseTab === 'san_pham' ? 'Tìm mã phiếu, SP, lý do...' : 'Tìm mã phiếu, NPL, lý do...'}
+          placeholder={
+            warehouseTab === 'san_pham'
+              ? 'Tìm mã phiếu, SP, lý do...'
+              : warehouseTab === 'tai_che'
+                ? 'Tìm mã phiếu, NPL tái chế, lý do...'
+                : 'Tìm mã phiếu, NPL, lý do...'
+          }
           disabled={isLoading}
         />
 
@@ -2646,7 +2694,13 @@ export function WarehouseHistoryPanel({
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết từng dòng</h3>
             <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-              Cuộn để xem {warehouseTab === 'san_pham' ? 'từng dòng SP' : 'từng dòng NVL'} · {sortedMovementLines.length} dòng
+              Cuộn để xem{' '}
+              {warehouseTab === 'san_pham'
+                ? 'từng dòng SP'
+                : warehouseTab === 'tai_che'
+                  ? 'từng dòng NVL tái chế'
+                  : 'từng dòng NVL'}{' '}
+              · {sortedMovementLines.length} dòng
             </p>
           </div>
         </div>
@@ -2669,7 +2723,13 @@ export function WarehouseHistoryPanel({
               <TableEmptyRow colSpan={10}>Đang tải dữ liệu...</TableEmptyRow>
             ) : sortedMovementLines.length === 0 ? (
               <TableEmptyRow colSpan={10}>
-                Chưa có dòng {warehouseTab === 'san_pham' ? 'sản phẩm' : 'NVL'}.
+                Chưa có dòng{' '}
+                {warehouseTab === 'san_pham'
+                  ? 'sản phẩm'
+                  : warehouseTab === 'tai_che'
+                    ? 'NVL tái chế'
+                    : 'NVL'}
+                .
               </TableEmptyRow>
             ) : (
               sortedMovementLines.map((row, index) => (
@@ -2724,7 +2784,8 @@ export function WarehouseHistoryPanel({
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết phiếu</h3>
                 <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                  {viewingSlipCode} · {viewingRows.length} dòng {warehouseTab === 'san_pham' ? 'SP' : 'NVL'}
+                  {viewingSlipCode} · {viewingRows.length} dòng{' '}
+                  {warehouseTab === 'san_pham' ? 'SP' : warehouseTab === 'tai_che' ? 'NVL tái chế' : 'NVL'}
                 </p>
               </div>
               <BackButton onClick={() => setViewingSlipCode(null)} />

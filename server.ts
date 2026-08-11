@@ -4449,10 +4449,22 @@ function parseWarehouseSlipType(value: unknown): 'nhap' | 'xuat' | null {
   return null;
 }
 
-function parseWarehouseStorageType(value: unknown): 'nvl' | 'san_pham' | null {
+function parseWarehouseStorageType(value: unknown): 'nvl' | 'san_pham' | 'tai_che' | null {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (normalized === 'nvl' || normalized === 'kho_nvl' || normalized === 'material') return 'nvl';
-  if (normalized === 'san_pham' || normalized === 'san-pham' || normalized === 'product' || normalized === 'sp') return 'san_pham';
+  if (normalized === 'san_pham' || normalized === 'san-pham' || normalized === 'product' || normalized === 'sp') {
+    return 'san_pham';
+  }
+  if (
+    normalized === 'tai_che' ||
+    normalized === 'tai-che' ||
+    normalized === 'tai che' ||
+    normalized === 'recycle' ||
+    normalized === 'kho_tai_che' ||
+    normalized === 'kho-tai-che'
+  ) {
+    return 'tai_che';
+  }
   return null;
 }
 
@@ -7856,6 +7868,11 @@ export function createApp() {
       if (loaiFilter) query = query.eq('loai_phieu', loaiFilter);
       if (khoFilter === 'san_pham') {
         query = query.eq('loai_kho', 'san_pham');
+      } else if (khoFilter === 'tai_che') {
+        // Kho tái chế: loai_kho riêng hoặc ten_kho chứa "tái chế" (phiếu cũ gắn nvl)
+        query = query.or(
+          'loai_kho.eq.tai_che,ten_kho.ilike.%tái chế%,ten_kho.ilike.%tai che%,ten_kho.ilike.%Tai che%,ten_kho.ilike.%recycle%'
+        );
       } else if (khoFilter === 'nvl') {
         query = query.or('loai_kho.eq.nvl,loai_kho.is.null');
       }

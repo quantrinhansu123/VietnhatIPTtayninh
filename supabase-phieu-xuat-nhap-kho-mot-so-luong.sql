@@ -4,6 +4,8 @@
 -- Cột so_luong vốn là số lượng thực tế dùng để tính tồn kho. Với dữ liệu cũ
 -- bị thiếu so_luong, lấy so_luong_chung_tu làm giá trị dự phòng trước khi xóa.
 
+begin;
+
 do $$
 begin
   if exists (
@@ -103,3 +105,5 @@ $$;
 
 grant execute on function public.tao_san_pham_voi_ma_chi_tiet(jsonb, jsonb, text, date, text)
   to anon, authenticated, service_role;
+
+commit;

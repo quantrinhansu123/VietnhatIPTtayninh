@@ -37,7 +37,8 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: nhúng iframe `https://tram-can-qr-pilot.onrender.com/` (không mở tab mới). Type `CanTuDongRecord` vẫn export cho `/phan-tich-tu-dong` |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **danh sách Cân AI cũ** (`can_tu_dong`) — bảng lọc/ảnh/tổng kg; Type `CanTuDongRecord` dùng chung `/phan-tich-tu-dong` |
+| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: nhúng iframe `https://tram-can-qr-pilot.onrender.com/` |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` — dùng chung `/can-tu-dong` và `/phan-tich-tu-dong` |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Tab «Báo cáo sản lượng» trên `/phan-tich-tu-dong` — cùng công thức; **Tổng nhựa thành phẩm** = tổng cột Trọng lượng nhựa |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |

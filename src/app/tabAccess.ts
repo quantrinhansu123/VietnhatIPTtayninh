@@ -46,6 +46,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'mixing-report-list',
     'weighing-summary-list',
     'can-tu-dong',
+    'can-tu-dong-pilot',
     'kiem-kho',
     'damaged-goods-report-list',
     'acceptance-report-list',

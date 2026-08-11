@@ -76,6 +76,7 @@ import { ControlBoardPanel } from './features/control-board';
 import { HumanResourcesPanel } from './features/nhan-su';
 import { VehiclesPanel } from './features/danh-sach-xe';
 import { CanTuDongPanel } from './features/can-tu-dong';
+import { CanTuDongPilotPanel } from './features/can-tu-dong/pilot';
 import { KiemKhoPanel } from './features/kiem-kho';
 import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
@@ -1078,7 +1079,17 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <CanTuDongPanel onBack={() => goBack('report-forms')} />
+                <CanTuDongPanel onBack={() => goBack('report-lists')} />
+              </motion.div>
+            ) : resolvedTab === 'can-tu-dong-pilot' ? (
+              <motion.div
+                key="can-tu-dong-pilot"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <CanTuDongPilotPanel />
               </motion.div>
             ) : resolvedTab === 'kiem-kho' ? (
               <motion.div

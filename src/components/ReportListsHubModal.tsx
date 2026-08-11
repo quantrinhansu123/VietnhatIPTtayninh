@@ -13,6 +13,7 @@ import MachineRunLogPanel from './MachineRunLogPanel';
 import MixingReportListView from './MixingReportListView';
 import WeighingShiftSummary from './WeighingShiftSummary';
 import { CanTuDongPanel } from '../features/can-tu-dong';
+import { CanTuDongPilotPanel } from '../features/can-tu-dong/pilot';
 import { KiemKhoPanel } from '../features/kiem-kho';
 import { WarehouseHistoryPanel } from '../features/phieu-xuat-nhap-kho';
 
@@ -213,6 +214,7 @@ export default function ReportListsHubModal({
           {activeTab === 'can-tu-dong' ? (
             <CanTuDongPanel key={panelKey} initialFilters={hubFilters} onBack={onClose} />
           ) : null}
+          {activeTab === 'can-tu-dong-pilot' ? <CanTuDongPilotPanel key={panelKey} /> : null}
           {activeTab === 'kiem-kho' ? <KiemKhoPanel onBack={onClose} /> : null}
           {activeTab === 'damaged-goods-report-list' ? (
             <WeighingShiftSummary

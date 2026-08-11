@@ -171,8 +171,8 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary'
   },
   {
-    title: 'Phiếu cân tự động',
-    desc: 'Xem dữ liệu cân tự động (can_tu_dong); bấm ảnh để mở modal xem.',
+    title: 'Phiếu cân AI cũ',
+    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
@@ -306,11 +306,18 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary-list'
   },
   {
-    title: 'Cân tự động',
-    desc: 'Xem dữ liệu cân tự động (can_tu_dong); bấm ảnh để mở modal.',
+    title: 'Cân AI cũ',
+    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
+  },
+  {
+    title: 'Trạm cân QR',
+    desc: 'Mở tram cân QR pilot ngay trong app (không mở tab mới).',
+    icon: Scale,
+    icon3d: robot3d,
+    tab: 'can-tu-dong-pilot'
   },
   {
     title: 'Báo cáo kiểm kho',
@@ -553,11 +560,18 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary-list'
   },
   {
-    title: 'Dữ liệu cân tự động',
-    desc: 'Xem dữ liệu cân tự động (can_tu_dong); bấm ảnh để mở modal.',
+    title: 'Cân AI cũ',
+    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
+  },
+  {
+    title: 'Trạm cân QR',
+    desc: 'Mở tram cân QR pilot ngay trong app (không mở tab mới).',
+    icon: Scale,
+    icon3d: robot3d,
+    tab: 'can-tu-dong-pilot'
   },
   {
     title: 'Kiểm tra kho thành phẩm',
@@ -906,7 +920,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'BOM và tỷ lệ phối trộn', tab: 'mixing-report-list' },
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },
-      { label: 'Dữ liệu cân tự động', tab: 'can-tu-dong' },
+      { label: 'Cân AI cũ', tab: 'can-tu-dong' },
       { label: 'Kiểm tra kho thành phẩm', tab: 'acceptance-report-list' },
       { label: 'Báo cáo chất lượng', tab: 'factory-qc', disabled: true }
     ]
@@ -962,7 +976,8 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary': { group: 'Công nhân', sub: 'Phiếu cân' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
-  'can-tu-dong': { group: 'Công nhân', sub: 'Phiếu cân tự động' },
+  'can-tu-dong': { group: 'Công nhân', sub: 'Cân AI cũ' },
+  'can-tu-dong-pilot': { group: 'Công nhân', sub: 'Trạm cân QR' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },
   'quan-ly-kho': { group: 'Kho', sub: 'Danh mục kho' },
   'damaged-goods-report': { group: 'Công nhân', sub: 'Báo cáo hàng hư' },

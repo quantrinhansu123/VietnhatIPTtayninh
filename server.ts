@@ -6153,10 +6153,10 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_ORDERS_TABLE)
         .select('*')
-        // created_at là ngày người dùng chọn; mã đơn được sinh tuần tự nên phản ánh đúng thứ tự tạo.
-        .order('ma_don_hang', { ascending: false })
+        // Ngày tạo mới nhất luôn hiển thị trước; id chỉ phân định các dòng cùng thời điểm.
+        .order('created_at', { ascending: false, nullsFirst: false })
         .order('id', { ascending: false })
-        .order('created_at', { ascending: false, nullsFirst: false });
+        .order('ma_don_hang', { ascending: false });
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_ORDERS_TABLE, { orders: [], total: 0 });

@@ -128,12 +128,17 @@ export function normalizeOrders(data: unknown): OrderRow[] {
     })
     .filter((order): order is OrderRow => Boolean(order))
     .sort((left, right) => {
-      const byOrderCode = right.orderCode.localeCompare(left.orderCode, 'vi', { numeric: true });
-      if (byOrderCode !== 0) return byOrderCode;
+      const leftCreatedAt = Date.parse(left.createdAt);
+      const rightCreatedAt = Date.parse(right.createdAt);
+      if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+      if (Number.isFinite(rightCreatedAt) !== Number.isFinite(leftCreatedAt)) {
+        return Number.isFinite(rightCreatedAt) ? 1 : -1;
+      }
       const byId = right.id.localeCompare(left.id, 'vi', { numeric: true });
       if (byId !== 0) return byId;
-      const byCreated = right.createdAt.localeCompare(left.createdAt);
-      return byCreated;
+      return right.orderCode.localeCompare(left.orderCode, 'vi', { numeric: true });
     });
 }
 

@@ -131,10 +131,10 @@ begin
 
     insert into public.phieu_xuat_nhap_kho (
       ma_phieu, loai_phieu, ngay_phieu, ma_sp, ten_sp, don_vi, so_luong,
-      so_luong_chung_tu, ly_do, ghi_chu, nguoi_lap, loai_kho, ten_kho
+      ly_do, ghi_chu, nguoi_lap, loai_kho, ten_kho
     ) values (
       p_ma_phieu, 'nhap', coalesce(p_ngay_phieu, current_date), v_code,
-      v_product.ten_sp, v_product.don_vi, 1, 1,
+      v_product.ten_sp, v_product.don_vi, 1,
       'Nhập kho khởi tạo khi thêm sản phẩm', 'Tạo tự động theo mã QR chi tiết',
       p_nguoi_tao, 'san_pham', v_product.ten_kho
     );

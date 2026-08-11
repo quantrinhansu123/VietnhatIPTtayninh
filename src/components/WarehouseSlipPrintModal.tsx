@@ -10,7 +10,6 @@ export type WarehouseSlipPrintLine = {
   name: string;
   unit: string;
   quantity: number;
-  documentQuantity?: number | null;
   unitPrice: number;
   lineAmount: number;
   /** SL đã quy đổi về kg (nếu quy được). */
@@ -129,12 +128,9 @@ function formatPrintQty(value: number | null | undefined, fractionDigits = 2) {
   return formatNumber(value, fractionDigits);
 }
 
-function sumPrintQty(
-  lines: WarehouseSlipPrintLine[],
-  field: 'quantity' | 'documentQuantity' = 'quantity'
-) {
+function sumPrintQty(lines: WarehouseSlipPrintLine[]) {
   return lines.reduce((sum, line) => {
-    const value = field === 'documentQuantity' ? line.documentQuantity : line.quantity;
+    const value = line.quantity;
     return Number.isFinite(value) && (value as number) > 0 ? sum + (value as number) : sum;
   }, 0);
 }
@@ -177,8 +173,7 @@ function nhapKhoAccountingCodes(kind: WarehouseSlipPrintData['warehouseKind']) {
 function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
   const dateParts = formatNhapKhoDateParts(data.slipDate);
   const accounts = nhapKhoAccountingCodes(data.warehouseKind);
-  const totalQtyDoc = sumPrintQty(data.lines, 'documentQuantity');
-  const totalQtyActual = sumPrintQty(data.lines, 'quantity');
+  const totalQuantity = sumPrintQty(data.lines);
   const deliverer = data.deliverer || data.recipient || '';
   const location = data.warehouseLocation || '';
   const referenceText = data.productionOrderRef || data.reason || '';
@@ -186,7 +181,6 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
     line =>
       Boolean(line.code || line.name) ||
       line.quantity > 0 ||
-      (line.documentQuantity ?? 0) > 0 ||
       line.unitPrice > 0 ||
       line.lineAmount > 0
   );
@@ -243,45 +237,34 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
       <table className="warehouse-nhap-kho-print-table">
         <thead>
           <tr>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-stt">
+            <th className="warehouse-nhap-kho-col-stt">
               STT
             </th>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-name">
+            <th className="warehouse-nhap-kho-col-name">
               Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ sản phẩm, hàng hóa
             </th>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-code">
+            <th className="warehouse-nhap-kho-col-code">
               Mã số
             </th>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-unit">
+            <th className="warehouse-nhap-kho-col-unit">
               Đơn vị tính
             </th>
-            <th colSpan={2}>Số lượng</th>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-price">
+            <th className="warehouse-nhap-kho-col-qty">Số lượng</th>
+            <th className="warehouse-nhap-kho-col-price">
               Đơn giá
             </th>
-            <th rowSpan={2} className="warehouse-nhap-kho-col-amount">
+            <th className="warehouse-nhap-kho-col-amount">
               Thành tiền
             </th>
           </tr>
-          <tr>
-            <th className="warehouse-nhap-kho-col-qty">Theo chứng từ</th>
-            <th className="warehouse-nhap-kho-col-qty">Thực nhập</th>
-          </tr>
         </thead>
         <tbody>
-          {printRows.map((line, index) => {
-            const docQty = line.documentQuantity;
-            return (
+          {printRows.map((line, index) => (
               <tr key={`${line.code}-${index}`}>
                 <td className="warehouse-slip-print-center">{index + 1}</td>
                 <td>{line.name || ''}</td>
                 <td className="warehouse-slip-print-center">{line.code || ''}</td>
                 <td className="warehouse-slip-print-center">{line.unit || ''}</td>
-                <td className="warehouse-slip-print-right">
-                  {docQty !== null && docQty !== undefined && docQty > 0
-                    ? formatPrintQty(docQty, 2)
-                    : ''}
-                </td>
                 <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity, 2)}</td>
                 <td className="warehouse-slip-print-right">
                   {line.unitPrice > 0 ? formatMoney(line.unitPrice, 0) : ''}
@@ -290,8 +273,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
                   {line.lineAmount > 0 ? formatMoney(line.lineAmount, 0) : ''}
                 </td>
               </tr>
-            );
-          })}
+          ))}
         </tbody>
         <tfoot>
           <tr>
@@ -299,10 +281,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               Cộng
             </td>
             <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">
-              {totalQtyDoc > 0 ? formatNumber(totalQtyDoc, 2) : ''}
-            </td>
-            <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">
-              {totalQtyActual > 0 ? formatNumber(totalQtyActual, 2) : ''}
+              {totalQuantity > 0 ? formatNumber(totalQuantity, 2) : ''}
             </td>
             <td />
             <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">

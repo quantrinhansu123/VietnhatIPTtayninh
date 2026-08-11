@@ -78,7 +78,6 @@ export interface WarehouseMovementRow {
   itemName: string;
   unit: string;
   quantity: number;
-  documentQuantity?: number;
   unitPrice: number;
   lineAmount: number;
   reason: string;
@@ -95,7 +94,6 @@ export interface WarehouseSlipLineDraft {
   name: string;
   unit: string;
   quantity: string;
-  documentQuantity?: string;
   unitPrice: string;
   quotaQuantity?: string;
   suggestedQuantity?: string;
@@ -141,7 +139,6 @@ export type WarehouseSlipPrefillDraft = {
       | 'name'
       | 'unit'
       | 'quantity'
-      | 'documentQuantity'
       | 'unitPrice'
       | 'quotaQuantity'
       | 'suggestedQuantity'
@@ -180,10 +177,6 @@ export function buildWarehouseSlipDraftFromHistoryRows(
       name: row.itemName,
       unit: row.unit,
       quantity: formatNumber(row.quantity, 2),
-      documentQuantity:
-        row.documentQuantity != null && Number.isFinite(row.documentQuantity)
-          ? formatNumber(row.documentQuantity, 2)
-          : '',
       unitPrice: row.unitPrice > 0 ? String(row.unitPrice) : '',
       sourceInboundLineId: row.sourceInboundLineId || '',
       sourceInboundSlipCode: row.sourceInboundSlipCode || ''
@@ -203,16 +196,10 @@ const warehouseLineLabelClass =
 const warehouseLineHeaderClass =
   'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
-const warehouseNhapLineGridClass =
-  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
-
-const warehouseXuatLineGridClass =
+const warehouseLineGridClass =
   'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
 
-const warehouseNhapHeaderGridClass =
-  'hidden min-w-[54rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
-
-const warehouseXuatHeaderGridClass =
+const warehouseHeaderGridClass =
   'hidden min-w-[48rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
@@ -323,7 +310,6 @@ export type WarehouseSlipPayloadItem = {
   name: string;
   unit: string;
   quantity: number;
-  documentQuantity?: number;
   unitPrice: number;
   quotaQuantity?: number;
   suggestedQuantity?: number;
@@ -345,7 +331,6 @@ export function parseWarehouseSlipPayloadItems(
   const payloadItems = lines
     .map(line => {
       const quantity = parsePercentInput(line.quantity);
-      const documentQuantity = parsePercentInput(line.documentQuantity ?? line.suggestedQuantity ?? '');
       const unitPrice = parseMoneyInput(line.unitPrice);
       const quotaQuantity = parsePercentInput(line.quotaQuantity ?? '');
       const suggestedQuantity = parsePercentInput(line.suggestedQuantity ?? '');
@@ -356,8 +341,6 @@ export function parseWarehouseSlipPayloadItems(
         name: line.name.trim(),
         unit: line.unit.trim(),
         quantity,
-        documentQuantity:
-          Number.isFinite(documentQuantity) && documentQuantity > 0 ? documentQuantity : undefined,
         unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : 0,
         quotaQuantity: Number.isFinite(quotaQuantity) && quotaQuantity > 0 ? quotaQuantity : undefined,
         suggestedQuantity:
@@ -427,7 +410,6 @@ export function buildWarehouseSlipPrintData(
       name: item.name,
       unit: item.unit,
       quantity: item.quantity,
-      documentQuantity: item.documentQuantity ?? item.suggestedQuantity ?? null,
       unitPrice: item.unitPrice,
       lineAmount: Math.round(item.quantity * item.unitPrice * 100) / 100,
       weightKg,
@@ -477,7 +459,6 @@ export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
     name: '',
     unit: '',
     quantity: '',
-    documentQuantity: '',
     unitPrice: '',
     sourceInboundLineId: '',
     sourceInboundSlipCode: ''
@@ -491,7 +472,6 @@ export function createWarehouseLineDraftFromPrefill(
     | 'name'
     | 'unit'
     | 'quantity'
-    | 'documentQuantity'
     | 'unitPrice'
     | 'quotaQuantity'
     | 'suggestedQuantity'
@@ -506,7 +486,6 @@ export function createWarehouseLineDraftFromPrefill(
     name: line.name || '',
     unit: line.unit || '',
     quantity: line.quantity || '',
-    documentQuantity: line.documentQuantity || line.suggestedQuantity || '',
     unitPrice: line.unitPrice || '',
     quotaQuantity: line.quotaQuantity || '',
     suggestedQuantity: line.suggestedQuantity || '',
@@ -557,7 +536,6 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
             ? 'tai_che'
             : 'nvl';
       const quantity = Number(record.so_luong ?? record.quantity);
-      const documentQuantity = Number(record.so_luong_chung_tu ?? record.documentQuantity);
       const unitPrice = Number(record.don_gia ?? record.unitPrice ?? record.price ?? 0);
       const lineAmountRaw = Number(record.thanh_tien ?? record.lineAmount ?? record.amount);
       const lineAmount = Number.isFinite(lineAmountRaw)
@@ -586,7 +564,6 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         itemName,
         unit: String(record.don_vi ?? record.unit ?? '').trim() || '-',
         quantity: Number.isFinite(quantity) ? quantity : 0,
-        documentQuantity: Number.isFinite(documentQuantity) && documentQuantity > 0 ? documentQuantity : undefined,
         unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
         lineAmount: Number.isFinite(lineAmount) ? lineAmount : 0,
         reason: String(record.ly_do ?? record.reason ?? '').trim(),
@@ -1180,7 +1157,6 @@ export function WarehouseSlipPanel({
               name: line.name,
               unit: line.unit,
               quantity: line.quantity != null ? formatNumber(line.quantity, 2) : '',
-              documentQuantity: line.quantity != null ? formatNumber(line.quantity, 2) : '',
               unitPrice: ''
             })
           )
@@ -1202,7 +1178,6 @@ export function WarehouseSlipPanel({
             name: line.name,
             unit: line.unit,
             quantity: line.quantity > 0 ? formatNumber(line.quantity, 2) : '',
-            documentQuantity: line.quantity > 0 ? formatNumber(line.quantity, 2) : '',
             unitPrice: ''
           })
         )
@@ -1262,7 +1237,6 @@ export function WarehouseSlipPanel({
           name: line.name,
           unit: line.unit,
           quantity: formatNumber(line.quantity, 2),
-          documentQuantity: formatNumber(line.quantity, 2),
           quotaQuantity: formatNumber(line.quotaQuantity, 2),
           suggestedQuantity: formatNumber(line.quantity, 2),
           unitPrice: ''
@@ -1987,31 +1961,22 @@ export function WarehouseSlipPanel({
           </div>
 
           <div className="-mx-0.5 overflow-x-auto">
-            <div
-              className={slipType === 'nhap' ? warehouseNhapHeaderGridClass : warehouseXuatHeaderGridClass}
-            >
+            <div className={warehouseHeaderGridClass}>
               <span className={warehouseLineHeaderClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
               <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
               <span className={warehouseLineHeaderClass}>ĐVT</span>
-              {slipType === 'nhap' ? (
-                <>
-                  <span className={warehouseLineHeaderClass}>Theo CT</span>
-                  <span className={warehouseLineHeaderClass}>Thực nhập *</span>
-                </>
-              ) : (
-                <span className={warehouseLineHeaderClass}>Số lượng *</span>
-              )}
+              <span className={warehouseLineHeaderClass}>Số lượng *</span>
               <span className={warehouseLineHeaderClass}>Quy đổi kg</span>
               <span className={warehouseLineHeaderClass}>Giá</span>
               <span className={`${warehouseLineHeaderClass} text-right`}>Thành tiền</span>
               <span />
             </div>
 
-            <div className={`space-y-2 ${slipType === 'nhap' ? 'lg:min-w-[54rem] lg:space-y-0' : 'lg:min-w-[48rem] lg:space-y-0'}`}>
+            <div className="space-y-2 lg:min-w-[48rem] lg:space-y-0">
               {lines.map((line, lineIndex) => (
                 <div
                   key={line.key}
-                  className={slipType === 'nhap' ? warehouseNhapLineGridClass : warehouseXuatLineGridClass}
+                  className={warehouseLineGridClass}
                 >
                   <div className="-mx-2 -mt-2 mb-1.5 col-span-3 flex items-center justify-between gap-2 rounded-t-lg bg-[#ef1b2d] px-2.5 py-1.5 lg:hidden">
                     <span className="text-[10px] font-black uppercase tracking-wider text-white">
@@ -2066,44 +2031,17 @@ export function WarehouseSlipPanel({
                       placeholder="ĐVT"
                     />
                   </div>
-                  {slipType === 'nhap' ? (
-                    <>
-                      <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>Theo CT</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={line.documentQuantity || ''}
-                          onChange={event => updateLine(line.key, { documentQuantity: event.target.value })}
-                          className={warehouseLineFieldClass}
-                          placeholder="SL CT"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>Thực nhập *</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={line.quantity}
-                          onChange={event => updateLine(line.key, { quantity: event.target.value })}
-                          className={warehouseLineFieldClass}
-                          placeholder="SL thực"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="min-w-0">
-                      <span className={warehouseLineLabelClass}>Số lượng *</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={line.quantity}
-                        onChange={event => updateLine(line.key, { quantity: event.target.value })}
-                        className={warehouseLineFieldClass}
-                        placeholder="SL"
-                      />
-                    </div>
-                  )}
+                  <div className="min-w-0">
+                    <span className={warehouseLineLabelClass}>Số lượng *</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={line.quantity}
+                      onChange={event => updateLine(line.key, { quantity: event.target.value })}
+                      className={warehouseLineFieldClass}
+                      placeholder="SL"
+                    />
+                  </div>
                   <div className="min-w-0">
                     <span className={warehouseLineLabelClass}>Quy đổi kg</span>
                     <div
@@ -2486,7 +2424,6 @@ export function WarehouseHistoryPanel({
         name: row.itemName,
         unit: row.unit,
         quantity: row.quantity,
-        documentQuantity: row.documentQuantity ?? null,
         unitPrice: row.unitPrice,
         lineAmount: row.lineAmount,
         weightKg: resolveWarehouseRowWeightKg(row),

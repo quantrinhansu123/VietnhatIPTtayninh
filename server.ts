@@ -6868,14 +6868,13 @@ export function createApp() {
       const { data, error } = await supabase
         .from(SUPABASE_CUSTOMERS_TABLE)
         .select('*')
-        .order('created_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false });
+        .order('created_at', { ascending: false, nullsFirst: false });
 
       if (error && isMissingColumnError(error)) {
         const fallback = await supabase
           .from(SUPABASE_CUSTOMERS_TABLE)
           .select('*')
-          .order('id', { ascending: false });
+          .order('ma_khach_hang', { ascending: true, nullsFirst: false });
         if (fallback.error) {
           console.error('Supabase khach_hang query error:', fallback.error);
           return res.status(500).json({

@@ -201,13 +201,19 @@ const warehouseLineLabelClass =
   'mb-0.5 block text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:hidden';
 
 const warehouseLineHeaderClass =
-  'px-1.5 text-[10px] font-black uppercase tracking-wider text-white';
+  'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
 const warehouseNhapLineGridClass =
-  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5rem_5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
 
 const warehouseXuatLineGridClass =
-  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5.5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+
+const warehouseNhapHeaderGridClass =
+  'hidden min-w-[54rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
+
+const warehouseXuatHeaderGridClass =
+  'hidden min-w-[48rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -425,7 +431,7 @@ export function buildWarehouseSlipPrintData(
       unitPrice: item.unitPrice,
       lineAmount: Math.round(item.quantity * item.unitPrice * 100) / 100,
       weightKg,
-      quotaQuantity: item.quotaQuantity ?? null,
+      quotaQuantity: item.quotaQuantity ?? item.quantity ?? null,
       suggestedQuantity: item.suggestedQuantity ?? null,
       lineNote: item.lineNote,
       sourceInboundSlipCode: item.sourceInboundSlipCode
@@ -1982,11 +1988,7 @@ export function WarehouseSlipPanel({
 
           <div className="-mx-0.5 overflow-x-auto">
             <div
-              className={
-                slipType === 'nhap'
-                  ? 'hidden min-w-[52rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5rem_5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2'
-                  : 'hidden min-w-[46rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(9rem,1.15fr)_minmax(8rem,1fr)_4.25rem_5.5rem_5.25rem_6rem_6.5rem_2.25rem] lg:items-center lg:gap-2 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2'
-              }
+              className={slipType === 'nhap' ? warehouseNhapHeaderGridClass : warehouseXuatHeaderGridClass}
             >
               <span className={warehouseLineHeaderClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
               <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
@@ -2005,7 +2007,7 @@ export function WarehouseSlipPanel({
               <span />
             </div>
 
-            <div className={`space-y-2 ${slipType === 'nhap' ? 'lg:min-w-[52rem] lg:space-y-0' : 'lg:min-w-[46rem] lg:space-y-0'}`}>
+            <div className={`space-y-2 ${slipType === 'nhap' ? 'lg:min-w-[54rem] lg:space-y-0' : 'lg:min-w-[48rem] lg:space-y-0'}`}>
               {lines.map((line, lineIndex) => (
                 <div
                   key={line.key}

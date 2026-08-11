@@ -407,7 +407,8 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
                   .filter(Boolean)
                   .join(' · ')}
               </td>
-              <td className="warehouse-slip-print-right">{formatPrintQty(line.quotaQuantity)}</td>
+              {/* Cột định mức = SL thực xuất; giữ cả 2 cột trên Chi tiết NVL */}
+              <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td className="warehouse-slip-print-right">

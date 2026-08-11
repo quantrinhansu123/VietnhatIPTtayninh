@@ -642,6 +642,9 @@ export function XuLyChenhLechPanel({
           ma_phieu_dieu_chinh: xuLy?.ma_phieu_dieu_chinh || null
         } satisfies PendingRow;
       })
+      // Tab phiếu điều chỉnh chỉ hiển thị các mã thực sự cần lập phiếu.
+      // Dòng đã khớp (chênh lệch = 0, loai_phieu = null) vẫn còn nguyên ở các tab kiểm kho khác.
+      .filter(row => row.loai_phieu !== null)
       .filter(row => !normalizedSearch || `${row.ma_sp} ${row.ten_sp}`.toLowerCase().includes(normalizedSearch))
       .sort((a, b) => a.ma_sp.localeCompare(b.ma_sp, 'vi'));
   }, [detailLines, heThongChiTiet, normalizedSearch, xuLyChiTiet]);

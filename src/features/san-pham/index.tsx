@@ -791,7 +791,7 @@ export function ProductViewModal({
                   <div className="overflow-x-auto p-2">
                     <table className="min-w-full border-collapse text-left text-xs">
                       <thead>
-                        <tr className="bg-zinc-950 text-[9px] uppercase tracking-wider text-white">
+                        <tr className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white">
                           {normSpecCells.map(cell => (
                             <th key={cell.label} className="px-2 py-2 font-black whitespace-nowrap">
                               {cell.label}
@@ -2384,7 +2384,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell align="center">Xuất</TableHeadCell>
           <TableHeadCell align="center">Tồn</TableHeadCell>
           <TableHeadCell align="center">Tồn tối thiểu</TableHeadCell>
-          <TableHeadCell align="center" className="sticky right-0 z-10 border-l border-zinc-800 bg-zinc-950">
+          <TableHeadCell align="center" className="sticky right-0 z-10 border-l border-red-700/40 bg-[#ef1b2d]">
             Thao tác
           </TableHeadCell>
         </TableHead>

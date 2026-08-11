@@ -964,7 +964,7 @@ export default function MixingReportListView({
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-xs">
-                    <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+                    <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                       <tr>
                         <th className="w-10 px-3 py-2 text-center font-black">
                           <input

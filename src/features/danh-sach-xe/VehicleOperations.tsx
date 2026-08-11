@@ -1587,7 +1587,7 @@ export function VehicleExpensesView({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[1120px] text-left text-xs">
-            <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
               <tr>
                 <th className="px-3 py-2.5 font-black">ID</th>
                 <th className="px-3 py-2.5 font-black">Ngày giờ</th>
@@ -2013,7 +2013,7 @@ export function VehicleLogsView({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-xs">
-            <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
               <tr>
                 <th className="px-3 py-2.5 font-black">ID</th>
                 <th className="px-3 py-2.5 font-black">Ngày giờ</th>
@@ -2526,7 +2526,7 @@ export function VehicleKmLogsView({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px] text-left text-xs">
-            <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
               <tr>
                 <th className="px-3 py-2.5 font-black">Lái xe</th>
                 <th className="px-3 py-2.5 font-black">BSX</th>
@@ -2925,7 +2925,7 @@ export function CustomerPaymentsView({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[1100px] text-left text-xs">
-            <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
               <tr>
                 <th className="px-3 py-2.5 font-black">Ngày thu</th>
                 <th className="px-3 py-2.5 font-black">Khách hàng</th>

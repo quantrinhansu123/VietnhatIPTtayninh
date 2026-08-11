@@ -29,6 +29,8 @@
 
 Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` (tab **Kho tái chế** — gồm `loai_kho=tai_che` hoặc `ten_kho` chứa «tái chế»).
 
+Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
+
 
 ## Script
 

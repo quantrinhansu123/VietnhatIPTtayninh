@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /**
- * Khung bảng dùng chung: viền bo tròn, header đen chữ trắng dính (sticky), thân cuộn dọc.
+ * Khung bảng dùng chung: viền bo tròn, header đỏ chữ trắng dính (sticky), thân cuộn dọc.
  * Mẫu dùng chung được trích xuất từ trang Lệnh sản xuất (src/features/lenh-sx).
  *
  * Dùng cùng <TablePagination> ở footer để có bộ đôi bảng + phân trang thống nhất.
@@ -31,10 +31,10 @@ export function TableShell({
   );
 }
 
-/** <thead> đen chữ trắng, dính khi cuộn — dùng bên trong TableShell. */
+/** <thead> đỏ chữ trắng, dính khi cuộn — dùng bên trong TableShell. */
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead className="sticky top-0 z-10 bg-zinc-950 text-xs uppercase tracking-wider text-white">
+    <thead className="sticky top-0 z-10 bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
       <tr>{children}</tr>
     </thead>
   );

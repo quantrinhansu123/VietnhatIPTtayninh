@@ -235,15 +235,37 @@ export function warehouseSlipTypeLabel(type: WarehouseSlipType) {
   return type === 'nhap' ? 'Nhập kho' : 'Xuất kho';
 }
 
-export function isRecycleWarehouseName(value?: string | null) {
-  const key = String(value || '')
+function normalizeWarehouseNameKey(value?: string | null) {
+  return String(value || '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ');
+}
+
+export function isRecycleWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
   if (!key) return false;
   return key.includes('tai che') || key.includes('recycle') || key.includes('tai_che') || key.includes('tai-che');
+}
+
+export function isFinishedGoodsWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  if (!key) return false;
+  return (
+    key.includes('thanh pham') ||
+    key.includes('san pham') ||
+    key.includes('finished') ||
+    key.includes('kho sp')
+  );
+}
+
+/** Suy loại kho từ tên kho trong Quản lý kho. */
+export function inferWarehouseKindFromName(value?: string | null): WarehouseKind {
+  if (isFinishedGoodsWarehouseName(value)) return 'san_pham';
+  if (isRecycleWarehouseName(value)) return 'tai_che';
+  return 'nvl';
 }
 
 export function warehouseKindLabel(kind: WarehouseKind) {
@@ -364,6 +386,7 @@ export function buildWarehouseSlipPrintData(
     recipient?: string;
     deliverer?: string;
     warehouseLocation?: string;
+    warehouseName?: string;
     materials?: WarehouseWeightCatalogItem[];
     products?: WarehouseWeightCatalogItem[];
   }
@@ -408,6 +431,7 @@ export function buildWarehouseSlipPrintData(
     recipient: options.recipient,
     deliverer: options.deliverer,
     warehouseLocation: options.warehouseLocation,
+    warehouseName: options.warehouseName,
     totalAmount: printLines.reduce((sum, line) => sum + line.lineAmount, 0),
     lines: printLines
   };
@@ -757,7 +781,9 @@ export function WarehouseSlipPanel({
         if (!res.ok) return;
         const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
         setWarehouseOptions(
-          Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+          Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean))).sort((a, b) =>
+            a.localeCompare(b, 'vi')
+          )
         );
       } catch {
         setWarehouseOptions([]);
@@ -807,8 +833,17 @@ export function WarehouseSlipPanel({
       if (!draft || !Array.isArray(draft.lines) || draft.lines.length === 0) return;
       if (!draft.createdAt || Date.now() - draft.createdAt > WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS) return;
 
-      setWarehouseKind(draft.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl');
-      setWarehouseName(String(draft.warehouseName || '').trim());
+      {
+        const draftName = String(draft.warehouseName || '').trim();
+        const draftKind: WarehouseKind =
+          draft.warehouseKind === 'san_pham' || draft.warehouseKind === 'tai_che'
+            ? draft.warehouseKind
+            : draft.warehouseKind === 'nvl'
+              ? 'nvl'
+              : inferWarehouseKindFromName(draftName);
+        setWarehouseName(draftName);
+        setWarehouseKind(draftName ? inferWarehouseKindFromName(draftName) : draftKind);
+      }
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
       if (draft.slipDate) setSlipDate(draft.slipDate);
       setReason(stripProductionOrderCodesFromReason(draft.reason || ''));
@@ -883,13 +918,26 @@ export function WarehouseSlipPanel({
     loadItems();
   }, [warehouseKind]);
 
-  const handleWarehouseKindChange = (kind: WarehouseKind) => {
-    setWarehouseKind(kind);
-    setLines([createWarehouseLineDraft()]);
-    setAvgInboundPriceByKey({});
+  const handleWarehouseNameChange = (name: string) => {
+    const nextName = name.trim();
+    const nextKind = nextName ? inferWarehouseKindFromName(nextName) : warehouseKind;
+    const kindChanged = nextKind !== warehouseKind;
+    setWarehouseName(nextName);
+    if (kindChanged) {
+      setWarehouseKind(nextKind);
+      setLines([createWarehouseLineDraft()]);
+      setAvgInboundPriceByKey({});
+    }
     setFormError('');
     setActionMessage('');
   };
+
+  const warehouseSelectOptions = useMemo(() => {
+    const names = [...warehouseOptions];
+    const current = warehouseName.trim();
+    if (current && !names.includes(current)) names.unshift(current);
+    return names;
+  }, [warehouseOptions, warehouseName]);
 
   const updateLine = (key: string, patch: Partial<WarehouseSlipLineDraft>) => {
     setLines(current => current.map(line => (line.key === key ? { ...line, ...patch } : line)));
@@ -964,7 +1012,7 @@ export function WarehouseSlipPanel({
    */
   const resolveLinePatchForCode = (fullCode: string) => {
     const item = itemOptions.find(option => option.code === warehouseCodePrefix(fullCode));
-    const isExportNvl = warehouseKind === 'nvl' && slipType === 'xuat';
+    const isExportNvl = (warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat';
     const cachedAvg =
       isExportNvl && fullCode ? avgInboundPriceByKey[avgPriceCacheKey(fullCode, slipDate)] : undefined;
     const immediatePrice =
@@ -987,7 +1035,7 @@ export function WarehouseSlipPanel({
 
   const pickItem = (key: string, code: string) => {
     const materialCode = code.trim();
-    const isExportNvl = warehouseKind === 'nvl' && slipType === 'xuat';
+    const isExportNvl = (warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat';
     updateLine(key, resolveLinePatchForCode(materialCode));
     if (isExportNvl && materialCode) {
       void loadNvlAvgInboundPrice(materialCode, slipDate, {
@@ -1028,7 +1076,7 @@ export function WarehouseSlipPanel({
     linesRef.current = nextLines;
     setLines(nextLines);
 
-    if (warehouseKind === 'nvl' && slipType === 'xuat') {
+    if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
       void loadNvlAvgInboundPrice(fullCode, slipDate, {
         lineKey: targetKey,
         applySuggestion: true,
@@ -1038,8 +1086,9 @@ export function WarehouseSlipPanel({
     return true;
   };
 
-  const isNvlExport = warehouseKind === 'nvl' && slipType === 'xuat';
-  const isNvlInbound = warehouseKind === 'nvl' && slipType === 'nhap';
+  const isMaterialWarehouse = warehouseKind === 'nvl' || warehouseKind === 'tai_che';
+  const isNvlExport = isMaterialWarehouse && slipType === 'xuat';
+  const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -1363,7 +1412,7 @@ export function WarehouseSlipPanel({
 
   const handleSave = async () => {
     if (!warehouseName.trim()) {
-      setFormError('Vui lòng chọn kho cho phiếu.');
+      setFormError('Vui lòng chọn tên kho từ danh sách Quản lý kho.');
       return;
     }
     const linesForSave = isNvlExport
@@ -1435,6 +1484,7 @@ export function WarehouseSlipPanel({
           recipient: recipient.trim(),
           deliverer: deliverer.trim(),
           warehouseLocation: warehouseLocation.trim(),
+          warehouseName: warehouseName.trim(),
           materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
           products: warehouseKind === 'san_pham' ? weightCatalog : []
         })
@@ -1509,30 +1559,34 @@ export function WarehouseSlipPanel({
 
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm space-y-4">
         <div>
-          <p className="text-sm font-black text-zinc-950">Loại kho</p>
-          <p className="mt-0.5 text-xs font-semibold text-zinc-500">Chọn kho NVL hoặc kho Sản phẩm trước khi lập phiếu</p>
+          <p className="text-sm font-black text-zinc-950">Tên kho</p>
+          <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+            Chọn kho từ Quản lý kho — hệ thống tự xác định loại (NVL / thành phẩm / tái chế)
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          {([
-            ['nvl', 'Kho NVL', Boxes],
-            ['san_pham', 'Kho Sản phẩm', Package]
-          ] as const).map(([kind, label, Icon]) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => handleWarehouseKindChange(kind)}
-              className={`flex h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-extrabold transition ${
-                warehouseKind === kind
-                  ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                  : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
+        <label className="block max-w-xl space-y-1.5">
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tên kho *</span>
+          <select
+            value={warehouseName}
+            onChange={event => handleWarehouseNameChange(event.target.value)}
+            className={warehouseFieldClass}
+          >
+            <option value="">-- Chọn tên kho --</option>
+            {warehouseSelectOptions.map(name => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          {warehouseName ? (
+            <p className="text-[11px] font-semibold text-zinc-500">Loại: {warehouseKindLabel(warehouseKind)}</p>
+          ) : warehouseOptions.length === 0 ? (
+            <p className="text-[11px] font-semibold text-amber-700">
+              Chưa có tên kho — thêm tại mục Quản lý kho.
+            </p>
+          ) : null}
+        </label>
       </section>
 
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm space-y-4">
@@ -1560,7 +1614,7 @@ export function WarehouseSlipPanel({
         <div>
           <p className="text-sm font-black text-zinc-950">Thông tin phiếu</p>
           <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-            {warehouseSlipTypeLabel(slipType)} · {warehouseKindLabel(warehouseKind)}
+            {warehouseSlipTypeLabel(slipType)} · {warehouseName || warehouseKindLabel(warehouseKind)}
           </p>
         </div>
 
@@ -1586,19 +1640,6 @@ export function WarehouseSlipPanel({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block space-y-1.5">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Kho *</span>
-            <select
-              value={warehouseName}
-              onChange={event => setWarehouseName(event.target.value)}
-              className={warehouseFieldClass}
-            >
-              <option value="">-- Chọn kho --</option>
-              {warehouseOptions.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </label>
           <label className="block space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
@@ -2350,6 +2391,7 @@ export function WarehouseHistoryPanel({
       reason: header.reason,
       note: header.note,
       createdBy: header.createdBy,
+      warehouseName: header.warehouseName,
       totalAmount,
       lines: rows.map(row => ({
         code: row.itemCode,
@@ -2811,7 +2853,7 @@ export function WarehouseHistoryPanel({
               </div>
               <div className="border-t border-zinc-200 px-4 py-3">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+                <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>
                     <th className="py-2 pr-3 font-black">{warehouseItemCodeLabel(viewingRows[0].warehouseKind)}</th>
                     <th className="py-2 pr-3 font-black">{warehouseItemNameLabel(viewingRows[0].warehouseKind)}</th>

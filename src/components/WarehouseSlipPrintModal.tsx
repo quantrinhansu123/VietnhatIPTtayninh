@@ -36,6 +36,8 @@ export type WarehouseSlipPrintData = {
   recipient?: string;
   deliverer?: string;
   warehouseLocation?: string;
+  /** Tên kho vật lý (từ Quản lý kho). */
+  warehouseName?: string;
   lines: WarehouseSlipPrintLine[];
 };
 
@@ -128,10 +130,12 @@ function formatNhapKhoDateParts(value: string) {
   };
 }
 
-function warehouseImportLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
-  return kind === 'san_pham'
-    ? `Kho Thành phẩm - ${COMPANY_BRANCH_NAME}`
-    : `Kho NVL - ${COMPANY_BRANCH_NAME}`;
+function warehouseImportLabel(data: WarehouseSlipPrintData) {
+  const name = String(data.warehouseName || '').trim();
+  if (name) return name;
+  if (data.warehouseKind === 'san_pham') return `Kho Thành phẩm - ${COMPANY_BRANCH_NAME}`;
+  if (data.warehouseKind === 'tai_che') return `Kho tái chế - ${COMPANY_BRANCH_NAME}`;
+  return `Kho NVL - ${COMPANY_BRANCH_NAME}`;
 }
 
 function nhapKhoAccountingCodes(kind: WarehouseSlipPrintData['warehouseKind']) {
@@ -197,7 +201,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           .........................................................
         </p>
         <p>
-          <span>- Nhập tại kho:</span> {warehouseImportLabel(data.warehouseKind)}
+          <span>- Nhập tại kho:</span> {warehouseImportLabel(data)}
         </p>
         <p>
           <span>Địa điểm:</span> {location || '.................................................................'}

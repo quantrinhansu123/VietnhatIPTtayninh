@@ -1071,7 +1071,7 @@ export function ProductionPlanMaterialAccountingModal({
                             <col className="w-[15%]" />
                             <col className="w-[15%]" />
                           </colgroup>
-                          <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+                          <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                             <tr>
                               <th className="px-2 py-1.5 font-black">STT</th>
                               <th className="px-2 py-1.5 font-black">Mã NVL</th>
@@ -1549,7 +1549,7 @@ export function ProductionPlanQrPrintModal({
                 </p>
                 <div className="overflow-x-auto rounded-xl border border-zinc-200">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+                    <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                       <tr>
                         <th className="px-3 py-2 font-black">Mã SP</th>
                         <th className="px-3 py-2 font-black">Tên sản phẩm</th>
@@ -2034,13 +2034,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                   const dateOrderTotal = datePlans.reduce((sum, plan) => sum + (plan.orderCount || 0), 0);
                   return (
                   <div key={date}>
-                    <div className="sticky top-0 flex items-center justify-between gap-2 bg-zinc-950 px-4 py-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-red-300">{date}</span>
+                    <div className="sticky top-0 flex items-center justify-between gap-2 bg-[#ef1b2d] px-4 py-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-white">{date}</span>
                       <span className="text-right">
-                        <span className="mr-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
+                        <span className="mr-1.5 text-[9px] font-black uppercase tracking-wider text-white/80">
                           Tổng ngày
                         </span>
-                        <span className="font-mono text-xs font-black text-emerald-200">
+                        <span className="font-mono text-xs font-black text-white">
                           {dateOrderTotal} lệnh SX
                         </span>
                       </span>
@@ -2101,7 +2101,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-[920px] w-full text-left text-sm">
-                <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+                <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>
                     <th className="px-3 py-2 font-black">STT</th>
                     <th className="px-3 py-2 font-black">Mã lệnh</th>
@@ -2873,7 +2873,7 @@ export function ProductionPlanModal({
             ) : (
               <div className="overflow-x-auto rounded-xl border border-zinc-200">
                 <table className="min-w-[980px] w-full text-left text-sm">
-                  <thead className="bg-zinc-950 text-[11px] uppercase tracking-wider text-white">
+                  <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wider text-white">
                     <tr>
                       <th className="px-2 py-2 font-black">STT</th>
                       <th className="px-2 py-2 font-black">Tên máy</th>
@@ -5430,7 +5430,7 @@ export function ProductionOrderViewModal({
           </p>
           <div className="overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-950 text-[10px] uppercase tracking-wider text-white">
+              <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                 <tr>
                   <th className="px-3 py-2 font-black">Mã hàng</th>
                   <th className="px-3 py-2 font-black">Tên sản phẩm</th>

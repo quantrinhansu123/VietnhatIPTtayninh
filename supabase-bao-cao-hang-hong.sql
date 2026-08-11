@@ -30,7 +30,8 @@ alter table public.bao_cao_hang_hong
   add column if not exists trong_luong_nhua_dinh_mang text,
   add column if not exists loai_hang_hong text,
   add column if not exists ma_vat_tu text,
-  add column if not exists so_luong_vat_tu text;
+  add column if not exists so_luong_vat_tu text,
+  add column if not exists don_vi_vat_tu text;
 
 alter table public.bao_cao_hang_hong enable row level security;
 
@@ -71,6 +72,7 @@ comment on column public.bao_cao_hang_hong.ghi_chu is 'Ghi chu tung lan can.';
 comment on column public.bao_cao_hang_hong.trong_luong_nhua_khong_mang is 'TL nhua khong mang loi hong (kg).';
 comment on column public.bao_cao_hang_hong.trong_luong_nhua_dau_nong is 'TL nhua cuc dau nong loi hong (kg).';
 comment on column public.bao_cao_hang_hong.trong_luong_nhua_dinh_mang is 'TL nhua loi dinh mang (kg).';
-comment on column public.bao_cao_hang_hong.loai_hang_hong is 'Loai hang hong: nhua hoac vat_tu_khac.';
+comment on column public.bao_cao_hang_hong.loai_hang_hong is 'Trang thai vat tu: nhua_khong_mang, nhua_dau_nong, nhua_dinh_mang, kl_mang, tl_loi_dinh_hh, vat_tu_khac (cu: nhua).';
 comment on column public.bao_cao_hang_hong.ma_vat_tu is 'Ma vat tu khac, chon tu kho NVL.';
-comment on column public.bao_cao_hang_hong.so_luong_vat_tu is 'So luong vat tu khac.';
+comment on column public.bao_cao_hang_hong.so_luong_vat_tu is 'So luong theo don vi da chon.';
+comment on column public.bao_cao_hang_hong.don_vi_vat_tu is 'Don vi so luong: kg, cai, ...';

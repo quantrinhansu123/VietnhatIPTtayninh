@@ -398,6 +398,7 @@ function buildWarehouseExportSlips(
         note: header.note,
         createdBy: header.createdBy,
         shift: header.shift,
+        warehouseName: header.warehouseName,
         totalAmount: group.reduce((sum, row) => sum + row.lineAmount, 0),
         lines: group.map(row => ({
           code: row.itemCode,

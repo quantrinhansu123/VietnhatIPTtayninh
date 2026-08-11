@@ -282,7 +282,7 @@ export function DriverPolicyView({ onBack }: { onBack?: () => void } = {}) {
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-xs">
-              <thead className="bg-zinc-950 text-[11px] uppercase tracking-wide text-white">
+              <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wide text-white">
                 <tr>
                   <th className="px-3 py-2 font-extrabold">Stt</th>
                   <th className="px-3 py-2 font-extrabold">Khoản mục</th>
@@ -312,7 +312,7 @@ export function DriverPolicyView({ onBack }: { onBack?: () => void } = {}) {
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-xs">
-              <thead className="bg-zinc-950 text-[11px] uppercase tracking-wide text-white">
+              <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wide text-white">
                 <tr>
                   <th className="px-3 py-2 font-extrabold">Stt</th>
                   <th className="px-3 py-2 font-extrabold">Km / chuyến (2 chiều)</th>
@@ -350,7 +350,7 @@ export function DriverPolicyView({ onBack }: { onBack?: () => void } = {}) {
         </header>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-left text-xs">
-            <thead className="bg-zinc-950 text-[11px] uppercase tracking-wide text-white">
+            <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wide text-white">
               <tr>
                 <th className="px-3 py-2 font-extrabold">Stt</th>
                 <th className="px-3 py-2 font-extrabold">Loại khoán</th>

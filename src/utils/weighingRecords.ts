@@ -39,10 +39,12 @@ export interface WeighingRecord {
   plasticNozzleWeight?: string;
   /** TL nhựa lỗi dính màng (kg) */
   plasticFilmAdhesionWeight?: string;
-  /** Loại hàng hỏng: nhựa hoặc vật tư khác. */
+  /** Loại / trạng thái hàng hỏng (vd. nhua_khong_mang, vat_tu_khac). */
   materialType?: string;
   materialCode?: string;
   materialQuantity?: string;
+  /** Đơn vị của số lượng (kg, cái, …). */
+  materialUnit?: string;
   acceptanceStatus: string;
   note: string;
   imageUrl?: string;
@@ -64,6 +66,56 @@ function isDamagedGoodsNozzleNote(note: string) {
   return /đầu\s*n[oô]ng|cục\s*đầu|dau\s*nong|cuc\s*dau/.test(normalized);
 }
 
+export type DamagedGoodsStatusCode =
+  | 'nhua_khong_mang'
+  | 'nhua_dau_nong'
+  | 'nhua_dinh_mang'
+  | 'kl_mang'
+  | 'tl_loi_dinh_hh'
+  | 'vat_tu_khac';
+
+export const DAMAGED_GOODS_STATUS_OPTIONS: ReadonlyArray<{ value: DamagedGoodsStatusCode; label: string }> = [
+  { value: 'nhua_khong_mang', label: 'Nhựa không màng' },
+  { value: 'nhua_dau_nong', label: 'Nhựa đầu nòng' },
+  { value: 'nhua_dinh_mang', label: 'Nhựa dính màng' },
+  { value: 'kl_mang', label: 'KL màng' },
+  { value: 'tl_loi_dinh_hh', label: 'TL lõi dính HH' },
+  { value: 'vat_tu_khac', label: 'Vật tư khác' }
+];
+
+/** Nhóm loại vật tư trên form (lọc trạng thái chi tiết). */
+export const DAMAGED_GOODS_KIND_OPTIONS: ReadonlyArray<{ value: 'nhua' | 'vat_tu_khac'; label: string }> = [
+  { value: 'nhua', label: 'Nhựa' },
+  { value: 'vat_tu_khac', label: 'Vật tư khác' }
+];
+
+export const DAMAGED_GOODS_PLASTIC_STATUS_OPTIONS = DAMAGED_GOODS_STATUS_OPTIONS.filter(
+  option => option.value !== 'vat_tu_khac'
+);
+
+export const DAMAGED_GOODS_UNIT_OPTIONS = ['kg', 'cái', 'cuộn', 'mét', 'tờ', 'bao', 'thùng'] as const;
+
+export function resolveDamagedGoodsKind(
+  materialType?: string
+): '' | 'nhua' | 'vat_tu_khac' {
+  const raw = String(materialType || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return '';
+  if (raw === 'vat_tu_khac') return 'vat_tu_khac';
+  if (
+    raw === 'nhua' ||
+    raw === 'nhua_khong_mang' ||
+    raw === 'nhua_dau_nong' ||
+    raw === 'nhua_dinh_mang' ||
+    raw === 'kl_mang' ||
+    raw === 'tl_loi_dinh_hh'
+  ) {
+    return 'nhua';
+  }
+  return '';
+}
+
 export function isDamagedOtherMaterial(
   row: Pick<WeighingRecord, 'materialType'> | { materialType?: string }
 ) {
@@ -72,13 +124,163 @@ export function isDamagedOtherMaterial(
     .toLowerCase() === 'vat_tu_khac';
 }
 
+export function isDamagedPlasticStatus(materialType?: string) {
+  const raw = String(materialType || '')
+    .trim()
+    .toLowerCase();
+  return (
+    raw === 'nhua' ||
+    raw === 'nhua_khong_mang' ||
+    raw === 'nhua_dau_nong' ||
+    raw === 'nhua_dinh_mang' ||
+    raw === 'kl_mang' ||
+    raw === 'tl_loi_dinh_hh'
+  );
+}
+
 export function damagedGoodsMaterialTypeLabel(materialType?: string) {
   const raw = String(materialType || '')
     .trim()
     .toLowerCase();
+  const matched = DAMAGED_GOODS_STATUS_OPTIONS.find(option => option.value === raw);
+  if (matched) return matched.label;
   if (raw === 'vat_tu_khac') return 'Vật tư khác';
   if (raw === 'nhua') return 'Nhựa';
   return String(materialType || '').trim() || '—';
+}
+
+export function resolveDamagedGoodsEnteredQuantity(
+  row: Pick<
+    WeighingRecord,
+    | 'materialType'
+    | 'materialQuantity'
+    | 'plasticNoFilmWeight'
+    | 'plasticNozzleWeight'
+    | 'plasticFilmAdhesionWeight'
+    | 'shellWeight'
+    | 'coreWeight'
+    | 'weight'
+  >
+): string {
+  const fromQty = String(row.materialQuantity || '').trim();
+  if (fromQty) return fromQty;
+  const status = String(row.materialType || '')
+    .trim()
+    .toLowerCase();
+  if (status === 'nhua_khong_mang') return String(row.plasticNoFilmWeight || '').trim();
+  if (status === 'nhua_dau_nong') return String(row.plasticNozzleWeight || '').trim();
+  if (status === 'nhua_dinh_mang') return String(row.plasticFilmAdhesionWeight || '').trim();
+  if (status === 'kl_mang') return String(row.shellWeight || '').trim();
+  if (status === 'tl_loi_dinh_hh') return String(row.coreWeight || '').trim();
+  if (status === 'vat_tu_khac') return String(row.weight || row.materialQuantity || '').trim();
+  if (status === 'nhua') {
+    return (
+      String(row.plasticNoFilmWeight || '').trim() ||
+      String(row.plasticNozzleWeight || '').trim() ||
+      String(row.plasticFilmAdhesionWeight || '').trim() ||
+      String(row.shellWeight || '').trim() ||
+      String(row.coreWeight || '').trim()
+    );
+  }
+  return '';
+}
+
+/** Suy trạng thái + SL + ĐVT khi sửa dòng cũ (nhiều ô kg hoặc chỉ «nhựa»). */
+export function inferDamagedGoodsFormFields(
+  row: Pick<
+    WeighingRecord,
+    | 'materialType'
+    | 'materialQuantity'
+    | 'materialUnit'
+    | 'materialCode'
+    | 'plasticNoFilmWeight'
+    | 'plasticNozzleWeight'
+    | 'plasticFilmAdhesionWeight'
+    | 'shellWeight'
+    | 'coreWeight'
+    | 'weight'
+  >
+) {
+  let materialType = String(row.materialType || '')
+    .trim()
+    .toLowerCase();
+  if (!materialType || materialType === 'nhua') {
+    if (String(row.plasticNoFilmWeight || '').trim()) materialType = 'nhua_khong_mang';
+    else if (String(row.plasticNozzleWeight || '').trim()) materialType = 'nhua_dau_nong';
+    else if (String(row.plasticFilmAdhesionWeight || '').trim()) materialType = 'nhua_dinh_mang';
+    else if (String(row.shellWeight || '').trim()) materialType = 'kl_mang';
+    else if (String(row.coreWeight || '').trim()) materialType = 'tl_loi_dinh_hh';
+    else if (String(row.materialCode || '').trim() || String(row.weight || '').trim()) {
+      materialType = 'vat_tu_khac';
+    } else {
+      materialType = '';
+    }
+  }
+
+  return {
+    materialType,
+    materialQuantity: resolveDamagedGoodsEnteredQuantity({ ...row, materialType }),
+    materialUnit: String(row.materialUnit || '').trim() || 'kg',
+    materialCode: String(row.materialCode || '').trim()
+  };
+}
+
+/** Gán SL vào đúng cột kg theo trạng thái đã chọn (một trạng thái / một dòng). */
+export function applyDamagedGoodsStatusToWeightFields(input: {
+  materialType: string;
+  materialQuantity: string;
+  materialUnit?: string;
+  materialCode?: string;
+  weight?: string;
+}) {
+  const status = String(input.materialType || '')
+    .trim()
+    .toLowerCase();
+  const quantity = String(input.materialQuantity || '').trim();
+  const unit = String(input.materialUnit || 'kg').trim() || 'kg';
+  const base = {
+    materialType: status,
+    materialQuantity: quantity,
+    materialUnit: unit,
+    materialCode: status === 'vat_tu_khac' ? String(input.materialCode || '').trim() : '',
+    plasticNoFilmWeight: '',
+    plasticNozzleWeight: '',
+    plasticFilmAdhesionWeight: '',
+    shellWeight: '',
+    coreWeight: '',
+    weight: status === 'vat_tu_khac' ? String(input.weight || '').trim() : ''
+  };
+
+  if (status === 'vat_tu_khac') return base;
+
+  const normalizedUnit = unit
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const isKgUnit =
+    !normalizedUnit ||
+    normalizedUnit === 'kg' ||
+    normalizedUnit === 'kgs' ||
+    normalizedUnit.startsWith('kg/') ||
+    normalizedUnit.startsWith('kg ');
+
+  // Chỉ ghi vào các cột kg khi ĐVT là kg (báo cáo BB vẫn đọc các cột này).
+  if (!isKgUnit || !quantity) return base;
+
+  switch (status) {
+    case 'nhua_khong_mang':
+      return { ...base, plasticNoFilmWeight: quantity };
+    case 'nhua_dau_nong':
+      return { ...base, plasticNozzleWeight: quantity };
+    case 'nhua_dinh_mang':
+      return { ...base, plasticFilmAdhesionWeight: quantity };
+    case 'kl_mang':
+      return { ...base, shellWeight: quantity };
+    case 'tl_loi_dinh_hh':
+      return { ...base, coreWeight: quantity };
+    default:
+      return base;
+  }
 }
 
 /**
@@ -453,6 +655,7 @@ export function normalizeWeighingRecords(data: unknown): WeighingRecord[] {
         materialType: String(row.materialType ?? row.loai_hang_hong ?? '').trim(),
         materialCode: String(row.materialCode ?? row.ma_vat_tu ?? '').trim(),
         materialQuantity: String(row.materialQuantity ?? row.so_luong_vat_tu ?? '').trim(),
+        materialUnit: String(row.materialUnit ?? row.don_vi_vat_tu ?? '').trim(),
         imageUrl: String(row.imageUrl ?? row.anh_url ?? '').trim() || undefined,
         coreWeightImageUrl: String(row.coreWeightImageUrl ?? row.anh_trong_luong_loi_url ?? '').trim() || undefined,
         createdAt: String(row.createdAt ?? row.created_at ?? '').trim() || undefined

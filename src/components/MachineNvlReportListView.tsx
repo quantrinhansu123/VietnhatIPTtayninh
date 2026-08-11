@@ -370,7 +370,7 @@ function MachineNvlSection({
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[880px] border-collapse text-left text-[11px] sm:text-xs">
-                      <thead className="bg-zinc-950 text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
+                      <thead className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
                         <tr className="border-b border-zinc-200">
                           <th className="w-11 px-3 py-2.5 text-center font-black">
                             {canDelete ? (

@@ -502,7 +502,7 @@ export default function ActualMixingSheetTab() {
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-xs">
-                <thead className="bg-zinc-950 text-white">
+                <thead className="bg-[#ef1b2d] text-white">
                   <tr>
                     <th className="px-3 py-2">Mã NVL</th>
                     <th className="px-3 py-2">Tên NVL</th>

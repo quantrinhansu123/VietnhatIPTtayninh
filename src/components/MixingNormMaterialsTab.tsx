@@ -859,7 +859,7 @@ export default function MixingNormMaterialsTab() {
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-left text-sm">
-            <thead className="bg-zinc-950 text-xs uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
               <tr>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Ngày</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Ca</th>

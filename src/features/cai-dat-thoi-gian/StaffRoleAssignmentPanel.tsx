@@ -356,7 +356,7 @@ export function StaffRoleAssignmentPanel({
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[860px] w-full text-left text-sm">
-            <thead className="bg-zinc-950 text-xs uppercase tracking-wider text-white">
+            <thead className="bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
               <tr>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Mã NV</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Tên hiển thị</th>

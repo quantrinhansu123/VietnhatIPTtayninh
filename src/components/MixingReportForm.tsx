@@ -1220,7 +1220,7 @@ export default function MixingReportForm({
         chiTiet = prev.chi_tiet.map(line => {
           let phoiTron = line.lan_su_dung;
           ROUND_KEYS.forEach(roundKey => {
-            phoiTron = setRoundBatchWeight(phoiTron, roundKey, String(machine.batchWeightKg));
+            phoiTron = setRoundBatchWeight(phoiTron, roundKey, quantityInputText(machine.batchWeightKg));
           });
           return { ...line, lan_su_dung: phoiTron };
         });
@@ -1235,7 +1235,9 @@ export default function MixingReportForm({
     });
     if (machine.batchWeightKg && machine.batchWeightKg > 0) {
       setRoundBatchWeightDrafts(
-        Object.fromEntries(ROUND_KEYS.map(roundKey => [roundKey, String(machine.batchWeightKg)])) as Partial<Record<RoundKey, string>>
+        Object.fromEntries(
+          ROUND_KEYS.map(roundKey => [roundKey, quantityInputText(machine.batchWeightKg)])
+        ) as Partial<Record<RoundKey, string>>
       );
     }
   };
@@ -1588,7 +1590,7 @@ export default function MixingReportForm({
       return roundBatchWeightDrafts[roundKey] ?? '';
     }
     const fromLines = getRoundBatchWeightFromLines(form.chi_tiet, roundKey);
-    return fromLines !== null ? String(fromLines) : '';
+    return fromLines !== null ? quantityInputText(fromLines) : '';
   };
 
   const handleRoundBatchWeightChange = (roundKey: RoundKey, value: string) => {

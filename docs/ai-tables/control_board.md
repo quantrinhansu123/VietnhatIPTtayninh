@@ -4,7 +4,7 @@ Tab `control-board` → `/bang-dieu-khien` — **đọc nhiều bảng**, không
 
 Tab `dashboard` → `/phan-tich` — cùng **Báo cáo tổng hợp máy BB** (`ControlBoardPanel` `mode="report-only"`), không dùng `AnalyticsDashboard` / bảng `reports` legacy.
 
-Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`, UI y hệt `/phan-tich`; tab **Dữ liệu trong báo cáo sản lượng** lấy `can_tu_dong` theo **ngày + ca lệnh sản xuất** (mọi máy, không chỉ Bao Bì). **Tổng nhựa thành phẩm** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) — cùng công thức `/can-tu-dong`.
+Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`, UI y hệt `/phan-tich`; tab **Dữ liệu trong báo cáo sản lượng** lấy `bao_cao_nghiem_thu` (cùng `/bao-cao-san-luong`) khớp **ngày + ca + máy**. Tab **Dữ liệu trong phiếu xuất kho vật tư** lấy `phieu_xuat_nhap_kho` (xuất NVL) khớp **ngày + ca + máy** — cùng nguồn `/lich-su-xuat-nhap-kho` (máy từ cột `may` hoặc suy từ lệnh SX gắn trên lý do/ghi chú). `/phan-tich-tu-dong` lấy lệnh/xuất của **mọi máy** (không chỉ Bao Bì).
 
 ## UI
 
@@ -29,6 +29,6 @@ Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trê
 
 ## Bảng liên quan
 
-`phieu_can_dinh_ki`, `kho_nvl`, `phieu_xuat_nhap_kho`, `ke_hoach_san_xuat`, `lenh_sx`, `nhan_su`, `don_hang`, `san_pham`, `danh_sach_may`
+`bao_cao_nghiem_thu`, `phieu_can_dinh_ki`, `kho_nvl`, `phieu_xuat_nhap_kho`, `ke_hoach_san_xuat`, `lenh_sx`, `nhan_su`, `don_hang`, `san_pham`, `danh_sach_may`
 
 Khi sửa bảng điều khiển: đọc manifest từng bảng con trước.

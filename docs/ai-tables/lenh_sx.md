@@ -48,4 +48,6 @@ Cột «Nhân sự» tự tổng hợp theo các vai trò đã chọn.
 
 Mỗi dòng lệnh: cột **Mã hàng / Tên hàng / Số lượng** trình bày bảng con (mỗi SP một dòng), không ghép bằng `|`.
 
+Cột **tickbox** đầu dòng + tick chọn cả nhóm theo ngày; nút **In lệnh** in các lệnh đã chọn (batch). Menu thao tác vẫn in từng lệnh.
+
 **Bộ lọc:** Từ ngày · Đến ngày · **Ca** (checkbox nhiều) · **Lệnh SX** (checkbox nhiều) · Trạng thái · Máy · Sắp xếp.

@@ -784,6 +784,13 @@ input[type="number"] {
     overflow: visible !important;
   }
 
+  /* Tránh clip phiếu in nằm trong app shell (#root overflow:hidden). */
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -1203,15 +1210,17 @@ input[type="number"] {
 
   .production-order-print-sheet {
     display: block !important;
-    position: absolute;
-    inset: 0;
-    left: 0;
-    top: 0;
-    width: 100%;
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
     z-index: 9999;
     background: #ffffff;
     color: #111111;
     padding: 0;
+    margin: 0;
+    overflow: visible !important;
   }
 
   .production-order-print-batch .production-order-print-sheet {
@@ -1383,42 +1392,82 @@ input[type="number"] {
   display: none;
 }
 
+.production-plan-history-print-root {
+  display: none;
+}
+
+@media print {
+  body.production-plan-history-print-active #root,
+  body.production-plan-modal-print-active #root {
+    display: none !important;
+  }
+
+  body.production-plan-history-print-active .production-plan-history-print-root,
+  body.production-plan-history-print-active .production-plan-history-print-root *,
+  body.production-plan-history-print-active .production-plan-print-sheet,
+  body.production-plan-history-print-active .production-plan-print-sheet *,
+  body.production-plan-modal-print-active .production-plan-print-sheet,
+  body.production-plan-modal-print-active .production-plan-print-sheet *,
+  body.production-plan-modal-print-active .production-plan-nvl-print-sheet,
+  body.production-plan-modal-print-active .production-plan-nvl-print-sheet * {
+    visibility: visible !important;
+  }
+
+  body.production-plan-history-print-active .production-plan-history-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.production-plan-history-print-active .production-plan-print-sheet,
+  body.production-plan-modal-print-active .production-plan-print-sheet,
+  body.production-plan-modal-print-active .production-plan-nvl-print-sheet {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+  }
+}
+
 .production-plan-print-doc {
   width: 100%;
   max-width: 100%;
   margin: 0;
   box-sizing: border-box;
   font-family: 'Times New Roman', Times, serif;
-  font-size: 11pt;
-  line-height: 1.35;
-  color: #111111;
+  font-size: 9.5pt;
+  line-height: 1.4;
+  color: #172033;
 }
 
 .production-plan-print-header {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "brand date"
     "title title";
   align-items: start;
-  gap: 3mm;
-  margin-bottom: 4mm;
-  border-bottom: 1.5px solid #111111;
-  padding-bottom: 2mm;
+  column-gap: 8mm;
+  row-gap: 4mm;
+  margin-bottom: 5mm;
+  border-bottom: 2px solid #1e3a5f;
+  padding: 0 0 3mm;
 }
 
 .production-plan-print-brand {
   display: flex;
   align-items: center;
-  gap: 4mm;
+  gap: 3mm;
   min-width: 0;
   grid-area: brand;
 }
 
 .production-plan-print-logo {
-  height: 14mm;
+  height: 18mm;
   width: auto;
-  max-width: 36mm;
+  max-width: 48mm;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -1429,8 +1478,8 @@ input[type="number"] {
 
 .production-plan-print-company-name {
   margin: 0;
-  font-size: 10.5pt;
-  font-weight: 700;
+  font-size: 11pt;
+  font-weight: 800;
   line-height: 1.15;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1445,35 +1494,47 @@ input[type="number"] {
 
 .production-plan-print-title-wrap {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 10mm;
+  min-height: 12mm;
   grid-area: title;
+  gap: 1mm;
 }
 
 .production-plan-print-header h1 {
   margin: 0;
   font-family: 'Times New Roman', Times, serif;
-  font-size: 16pt;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 17pt;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   text-align: center;
+  color: #102a43;
 }
 
-.production-plan-print-header p {
-  margin: 1mm 0 0;
-  font-size: 11pt;
-  font-weight: 400;
-  color: #333333;
+.production-plan-print-title-wrap p {
+  margin: 0;
+  font-size: 8pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #52667a;
 }
 
 .production-plan-print-date {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2mm;
   margin: 0;
-  font-size: 11pt;
-  font-weight: 400;
+  font-size: 8.5pt;
   white-space: nowrap;
   grid-area: date;
   text-align: right;
+  color: #52667a;
+}
+
+.production-plan-print-date strong {
+  color: #172033;
+  font-size: 9.5pt;
 }
 
 .production-plan-print-table {
@@ -1482,20 +1543,47 @@ input[type="number"] {
   table-layout: fixed;
 }
 
-.production-plan-print-table th:nth-child(1) { width: 5%; }
-.production-plan-print-table th:nth-child(2) { width: 13%; }
+.production-plan-print-sheet .production-plan-nvl-print-meta-table {
+  margin-bottom: 5mm;
+  border: 1px solid #536579;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.production-plan-print-sheet .production-plan-nvl-print-meta-table th,
+.production-plan-print-sheet .production-plan-nvl-print-meta-table td {
+  border: 1px solid #8b99a8;
+  padding: 2mm 2.5mm;
+  font-size: 8.8pt;
+}
+
+.production-plan-print-sheet .production-plan-nvl-print-meta-table th {
+  width: 14%;
+  background: #eaf0f6;
+  color: #334e68;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.production-plan-print-sheet .production-plan-nvl-print-meta-table td {
+  width: 36%;
+  color: #172033;
+  font-weight: 700;
+}
+
+.production-plan-print-table th:nth-child(1) { width: 4%; }
+.production-plan-print-table th:nth-child(2) { width: 14%; }
 .production-plan-print-table th:nth-child(3) { width: 8%; }
 .production-plan-print-table th:nth-child(4) { width: 16%; }
-.production-plan-print-table th:nth-child(5) { width: 13%; }
-.production-plan-print-table th:nth-child(6) { width: 33%; }
-.production-plan-print-table th:nth-child(7) { width: 12%; }
+.production-plan-print-table th:nth-child(5) { width: 14%; }
+.production-plan-print-table th:nth-child(6) { width: 34%; }
+.production-plan-print-table th:nth-child(7) { width: 10%; }
 
 .production-plan-print-table th,
 .production-plan-print-table td {
-  border: 1px solid #222222;
-  padding: 2.4mm 2.2mm;
+  border: 1px solid #536579;
+  padding: 2.2mm 2mm;
   font-family: 'Times New Roman', Times, serif;
-  font-size: 11pt;
+  font-size: 9pt;
   text-align: left;
   vertical-align: middle;
   word-wrap: break-word;
@@ -1503,10 +1591,13 @@ input[type="number"] {
 }
 
 .production-plan-print-table th {
-  background: #f2f2f2;
-  font-size: 10.5pt;
-  font-weight: 700;
+  background: #eaf0f6;
+  color: #102a43;
+  font-size: 8.5pt;
+  font-weight: 800;
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .production-plan-print-center {
@@ -1517,12 +1608,12 @@ input[type="number"] {
   vertical-align: middle;
   text-align: center;
   font-weight: 700;
-  background: #fafafa;
+  background: #f6f8fa;
 }
 
 .production-plan-print-product-name {
-  font-weight: 600;
-  color: #333333;
+  font-weight: 700;
+  color: #102a43;
 }
 
 .production-plan-print-order-code {
@@ -1542,13 +1633,13 @@ input[type="number"] {
 
 .production-plan-print-material-item {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 2mm;
-  padding: 1mm 0;
-  border-bottom: 1px dotted #bbbbbb;
-  font-size: 9.3pt;
-  line-height: 1.25;
+  padding: 1.2mm 0;
+  border-bottom: 1px dotted #aeb9c4;
+  font-size: 8.2pt;
+  line-height: 1.3;
 }
 
 .production-plan-print-material-item:first-child {
@@ -1585,7 +1676,7 @@ input[type="number"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18mm;
-  margin-top: 14mm;
+  margin-top: 10mm;
 }
 
 .production-plan-print-signatures div {
@@ -1594,16 +1685,45 @@ input[type="number"] {
 
 .production-plan-print-signatures p {
   margin: 0;
-  font-size: 12pt;
-  font-weight: 700;
+  font-size: 10pt;
+  font-weight: 800;
 }
 
 .production-plan-print-signatures span {
   display: block;
   margin-top: 2mm;
-  font-size: 10.5pt;
+  font-size: 8.5pt;
   font-style: italic;
   color: #333333;
+}
+
+@media print {
+  @page production-plan-page {
+    size: A4 landscape;
+    margin: 9mm 10mm;
+  }
+
+  .production-plan-print-sheet {
+    page: production-plan-page;
+  }
+
+  .production-plan-print-table thead {
+    display: table-header-group;
+  }
+
+  .production-plan-print-table tr,
+  .production-plan-print-material-item,
+  .production-plan-print-signatures {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .production-plan-print-doc,
+  .production-plan-print-doc * {
+    font-family: 'Times New Roman', Times, serif !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 .production-plan-nvl-print-sheet {
@@ -1836,15 +1956,17 @@ input[type="number"] {
 
   .production-order-print-sheet {
     display: block !important;
-    position: absolute;
-    inset: 0;
-    left: 0;
-    top: 0;
-    width: 100%;
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
     z-index: 9999;
     background: #ffffff;
     color: #111111;
     padding: 0;
+    margin: 0;
+    overflow: visible !important;
   }
 
   .weighing-slip-print-sheet {
@@ -2031,6 +2153,20 @@ input[type="number"] {
     width: 100% !important;
     overflow: visible !important;
   }
+
+  body.production-order-print-active #root {
+    display: none !important;
+  }
+
+  body.production-order-print-active .production-order-print-batch,
+  body.production-order-print-active .production-order-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
 }
 
 .production-order-print-sheet {
@@ -2039,6 +2175,23 @@ input[type="number"] {
 
 .production-order-print-batch {
   display: none;
+}
+
+.bb-machine-report-preview .production-order-print-batch,
+.bb-machine-report-preview .production-order-print-sheet {
+  display: block;
+}
+
+.bb-machine-report-preview .bb-machine-report-print-page {
+  width: 297mm;
+  min-height: 210mm;
+  padding: 10mm;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+.bb-machine-report-preview .bb-machine-report-print-page + .bb-machine-report-print-page {
+  border-top: 12px solid #334155;
 }
 
 .mixing-report-print-batch {
@@ -3559,11 +3712,40 @@ input[type="number"] {
 
 .warehouse-slip-print-table--nvl-export {
   font-size: 10pt;
+  table-layout: fixed;
 }
+
+.warehouse-slip-print-table--nvl-export th:nth-child(1) { width: 5%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(2) { width: 17%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(3) { width: 24%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(4) { width: 6%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(5) { width: 10%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(6) { width: 7%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(7) { width: 8%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(8) { width: 9%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(9) { width: 8%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(10) { width: 6%; }
 
 .warehouse-slip-print-table--nvl-export th,
 .warehouse-slip-print-table--nvl-export td {
   padding: 1.5mm 1.5mm;
+}
+
+.warehouse-slip-print-table--nvl-export tbody td:nth-child(5),
+.warehouse-slip-print-table--nvl-export tbody td:nth-child(6),
+.warehouse-slip-print-table--nvl-export tbody td:nth-child(7),
+.warehouse-slip-print-table--nvl-export tbody td:nth-child(8),
+.warehouse-slip-print-table--nvl-export tbody td:nth-child(9),
+.warehouse-slip-print-table--nvl-export .warehouse-slip-print-total-value {
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+.warehouse-slip-print-table--nvl-export .warehouse-slip-print-grand-total-row td {
+  border-top: 2px solid #111111;
+  background: #eeeeee;
+  font-weight: 900;
 }
 
 .warehouse-slip-print-footnote {

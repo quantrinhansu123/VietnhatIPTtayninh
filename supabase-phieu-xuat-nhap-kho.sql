@@ -12,6 +12,7 @@ alter table public.phieu_xuat_nhap_kho
   add column if not exists loai_phieu text,
   add column if not exists ngay_phieu date,
   add column if not exists ca text,
+  add column if not exists may text,
   add column if not exists ma_npl text,
   add column if not exists ten_npl text,
   add column if not exists don_vi text,
@@ -31,6 +32,7 @@ alter table public.phieu_xuat_nhap_kho
 
 create index if not exists phieu_xuat_nhap_kho_ma_phieu_idx on public.phieu_xuat_nhap_kho (ma_phieu);
 create index if not exists phieu_xuat_nhap_kho_ngay_phieu_idx on public.phieu_xuat_nhap_kho (ngay_phieu desc);
+create index if not exists phieu_xuat_nhap_kho_may_idx on public.phieu_xuat_nhap_kho (may);
 create index if not exists phieu_xuat_nhap_kho_loai_phieu_idx on public.phieu_xuat_nhap_kho (loai_phieu);
 create index if not exists phieu_xuat_nhap_kho_loai_kho_idx on public.phieu_xuat_nhap_kho (loai_kho);
 create index if not exists phieu_xuat_nhap_kho_ma_npl_loai_idx on public.phieu_xuat_nhap_kho (ma_npl, loai_phieu);
@@ -57,6 +59,7 @@ comment on table public.phieu_xuat_nhap_kho is 'Phieu xuat nhap kho NVL — moi 
 comment on column public.phieu_xuat_nhap_kho.ma_phieu is 'Ma phieu gom nhieu dong chi tiet.';
 comment on column public.phieu_xuat_nhap_kho.loai_phieu is 'nhap hoac xuat.';
 comment on column public.phieu_xuat_nhap_kho.ca is 'Ca san xuat / ca xuat nhap kho.';
+comment on column public.phieu_xuat_nhap_kho.may is 'May san xuat / may xuat nhap kho.';
 comment on column public.phieu_xuat_nhap_kho.loai_kho is 'nvl hoac san_pham.';
 comment on column public.phieu_xuat_nhap_kho.ma_sp is 'Ma san pham khi loai_kho = san_pham.';
 comment on column public.phieu_xuat_nhap_kho.ten_sp is 'Ten san pham khi loai_kho = san_pham.';

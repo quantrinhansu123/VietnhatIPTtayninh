@@ -12,6 +12,8 @@
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
+Tab **Báo cáo sản lượng** trên `/phan-tich` và `/phan-tich-tu-dong` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`).
+
 ## Menu
 
 - QC `/nha-may/qc` → card **Kiểm tra kho thành phẩm** → `acceptance-report-list`

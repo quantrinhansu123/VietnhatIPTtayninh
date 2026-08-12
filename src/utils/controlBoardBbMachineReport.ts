@@ -33,6 +33,7 @@ import {
   movementLinksProductionOrderCode,
   resolveMachineNvlLineMaterialType,
   resolveShiftSummaryGiaNhuaFromWarehouse,
+  resolveWarehouseMovementMachineCandidates,
   TI_LE_LOI_HONG_DINH_MUC_PERCENT
 } from './controlBoardShiftSummary';
 import type { MixingReport } from '../components/MixingReportForm';
@@ -578,15 +579,30 @@ function movementMatchesOrderCode(movement: ShiftSummaryWarehouseMovement, order
   return movementLinksProductionOrderCode(movement, orderCode);
 }
 
-/** Phiếu XK có gắn ngày+ca header; nếu phiếu có mã lệnh thì phải khớp mã. */
+/** Phiếu XK khớp ngày+ca header; máy nếu có; nếu phiếu có mã lệnh thì phải khớp mã. */
 function movementAppliesToBbOrderHeader(
   movement: ShiftSummaryWarehouseMovement,
-  header: { ngay: string; shift: string; orderCode?: string },
+  header: { ngay: string; shift: string; orderCode?: string; machine?: string },
   shiftOptions: ReturnType<typeof getProductionShiftOptions>
 ): boolean {
   if (!matchesShiftSummaryBucket(header.ngay, header.shift, movement.slipDate, movement.shift, shiftOptions)) {
     return false;
   }
+
+  const machineCandidates = resolveWarehouseMovementMachineCandidates(movement, []);
+  const headerMachine = String(header.machine || '').trim();
+  if (machineCandidates.length > 0 && headerMachine) {
+    if (
+      !machineValueMatchesFilter(
+        headerMachine,
+        { code: headerMachine, name: headerMachine },
+        ...machineCandidates
+      )
+    ) {
+      return false;
+    }
+  }
+
   if (!movementHasLinkedProductionOrderCodes(movement)) return true;
   const orderCode = String(header.orderCode || '').trim();
   if (!orderCode) return false;
@@ -614,6 +630,8 @@ export function buildBbWarehouseExportLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  /** `/phan-tich-tu-dong`: lấy phiếu xuất của mọi máy, không giới hạn nhóm máy BB. */
+  includeAllMachines?: boolean;
 }): BbWarehouseExportLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -628,7 +646,7 @@ export function buildBbWarehouseExportLineRows(input: {
   const seenOrderKeys = new Set<string>();
 
   for (const order of input.productionOrders) {
-    if (!isBbProductionOrder(order, input.machines)) continue;
+    if (!input.includeAllMachines && !isBbProductionOrder(order, input.machines)) continue;
     const ngay = parseProductionOrderFilterDate(order.startDate);
     if (!matchesControlBoardDateRange(ngay || order.startDate, input.dateFrom, input.dateTo)) continue;
     const machineLabel = resolveProductionOrderMachine(order, input.machines);
@@ -669,9 +687,22 @@ export function buildBbWarehouseExportLineRows(input: {
       if (!shiftNamesMatch(movement.shift, input.shiftFilter)) continue;
     }
 
-    const relatedOrders = headers.filter(order =>
-      matchesShiftSummaryBucket(order.ngay, order.shift, movement.slipDate, movement.shift, shiftOptions)
-    );
+    const relatedOrders = headers.filter(order => {
+      if (!matchesShiftSummaryBucket(order.ngay, order.shift, movement.slipDate, movement.shift, shiftOptions)) {
+        return false;
+      }
+      const machineCandidates = resolveWarehouseMovementMachineCandidates(
+        movement,
+        input.productionOrders,
+        linked => resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines)
+      );
+      if (machineCandidates.length === 0) return true;
+      return machineValueMatchesFilter(
+        order.machine || 'all',
+        { code: order.machine, name: order.machine },
+        ...machineCandidates
+      );
+    });
     if (relatedOrders.length === 0) continue;
 
     const explicitMatches = relatedOrders.filter(order => movementMatchesOrderCode(movement, order.orderCode));
@@ -681,7 +712,13 @@ export function buildBbWarehouseExportLineRows(input: {
     const matchedOrders = explicitMatches.length > 0 ? explicitMatches : relatedOrders;
     const matchedByOrder = explicitMatches.length > 0;
     const orderCode = [...new Set(matchedOrders.map(order => order.orderCode).filter(Boolean))].join(', ');
-    const machine = [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))].join(', ');
+    const machine =
+      [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))].join(', ') ||
+      resolveWarehouseMovementMachineCandidates(
+        movement,
+        input.productionOrders,
+        linked => resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines)
+      ).join(', ');
 
     const slipLineKey = `${movement.id || movement.slipCode}|${movement.itemCode}|${movement.slipDate}`;
     const quantity = Number.isFinite(movement.quantity) ? movement.quantity : 0;
@@ -2089,6 +2126,7 @@ function collectBbOrderHeaders(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }) {
   const headers: Array<{
     ngay: string;
@@ -2099,7 +2137,7 @@ function collectBbOrderHeaders(input: {
   const seen = new Set<string>();
 
   for (const order of input.productionOrders) {
-    if (!isBbProductionOrder(order, input.machines)) continue;
+    if (!isBbProductionOrder(order, input.machines, input.includeAllMachines)) continue;
     const ngay = parseProductionOrderFilterDate(order.startDate);
     if (!matchesControlBoardDateRange(ngay || order.startDate, input.dateFrom, input.dateTo)) continue;
     const machineLabel = resolveProductionOrderMachine(order, input.machines);
@@ -3665,6 +3703,7 @@ export function buildBbSanLuongGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbSanLuongGroup[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -3689,6 +3728,7 @@ export function buildBbSanLuongGroups(input: {
     ) {
       return false;
     }
+    if (input.includeAllMachines) return true;
     return isBbMachineText(report.ma_may, report.ten_may);
   });
   if (acceptanceReports.length === 0) return [];
@@ -3727,7 +3767,9 @@ export function buildBbSanLuongGroups(input: {
       }
       return (
         machineValueMatchesFilter(header.machine, null, report.ma_may, report.ten_may) ||
-        (isBbMachineText(header.machine) && isBbMachineText(report.ma_may, report.ten_may))
+        (!input.includeAllMachines &&
+          isBbMachineText(header.machine) &&
+          isBbMachineText(report.ma_may, report.ten_may))
       );
     });
     if (matchedReports.length === 0) continue;

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { useTabAccess } from '../../app/useTabAccess';
+import type { AuthUser } from '../../app/authUser';
 import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import ProductQrScanner from '../../components/ProductQrScanner';
@@ -62,7 +63,9 @@ import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/ap
 import type { MaterialOption } from '../san-pham/types';
 import {
   convertWarehouseQuantityToKg,
+  findMaterialTongKgPerUnit,
   formatWarehouseWeightKg,
+  isWarehouseKgUnit as isWarehouseWeightKgUnit,
   mapMaterialToWeightCatalogItem,
   mapProductToWeightCatalogItem,
   type WarehouseWeightCatalogItem
@@ -96,6 +99,7 @@ export interface WarehouseMovementRow {
   warehouseName: string;
   slipDate: string;
   shift: string;
+  machine: string;
   itemCode: string;
   itemName: string;
   unit: string;
@@ -220,6 +224,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
     note: header.note || '',
     createdBy: header.createdBy || '',
     productionOrderRef: formatWarehouseProductionOrderSelection(linkedOrderCodes),
+    machine: header.machine || '',
     shift: header.shift || '',
     editSlipCode: slipCode,
     lines: rows.map(row => ({
@@ -275,6 +280,33 @@ export function parseWarehouseShiftSelection(value: string | string[] | undefine
 
 export function formatWarehouseShiftSelection(shifts: string[]): string {
   return shifts.join(', ');
+}
+
+/** ĐVT kg (không phân biệt hoa thường) → ưu tiên xếp đầu danh sách xuất kho. */
+export function isWarehouseKgUnit(unit?: string | null) {
+  return isWarehouseWeightKgUnit(String(unit || ''));
+}
+
+/** Xuất kho: ĐVT kg lên đầu, trong mỗi nhóm xếp khối lượng quy đổi giảm dần, rồi theo mã. */
+export function sortWarehouseLinesKgFirst<T extends { unit?: string; code?: string }>(
+  lines: T[],
+  options?: { getWeightKg?: (line: T) => number | null }
+): T[] {
+  return [...lines].sort((a, b) => {
+    const aKg = isWarehouseKgUnit(a.unit);
+    const bKg = isWarehouseKgUnit(b.unit);
+    if (aKg !== bKg) return aKg ? -1 : 1;
+
+    if (options?.getWeightKg) {
+      const aWeight = options.getWeightKg(a);
+      const bWeight = options.getWeightKg(b);
+      const aVal = aWeight !== null && Number.isFinite(aWeight) && aWeight > 0 ? aWeight : -1;
+      const bVal = bWeight !== null && Number.isFinite(bWeight) && bWeight > 0 ? bWeight : -1;
+      if (aVal !== bVal) return bVal - aVal;
+    }
+
+    return String(a.code || '').localeCompare(String(b.code || ''), 'vi');
+  });
 }
 
 export function toggleWarehouseShiftSelection(current: string[], shiftValue: string): string[] {
@@ -527,7 +559,8 @@ export function buildWarehouseSlipPrintData(
       itemCode: item.code,
       warehouseKind: weightKind,
       materials: options.materials ?? [],
-      products: options.products ?? []
+      products: options.products ?? [],
+      preferTongKgOnly: true
     });
     return {
       code: item.code,
@@ -703,6 +736,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         warehouseName,
         slipDate: String(record.ngay_phieu ?? record.slipDate ?? '').trim(),
         shift: String(record.ca ?? record.shift ?? record.ca_san_xuat ?? '').trim(),
+        machine: String(record.may ?? record.ma_may ?? record.ten_may ?? record.machine ?? '').trim(),
         itemCode,
         itemName,
         unit: String(record.don_vi ?? record.unit ?? '').trim() || '-',
@@ -730,6 +764,7 @@ export function mapWarehouseMovementsForShiftSummary(rows: WarehouseMovementRow[
     slipCode: row.slipCode,
     slipDate: row.slipDate,
     shift: row.shift,
+    machine: row.machine || '',
     slipType: row.slipType,
     warehouseKind: row.warehouseKind,
     itemCode: row.itemCode,
@@ -902,11 +937,14 @@ function mergeWarehouseProductLinesFromOrders(orders: WarehouseProductionOrderOp
 
 export function WarehouseSlipPanel({
   onBack,
-  onOpenHistory
+  onOpenHistory,
+  currentUser
 }: {
   onBack: () => void;
   onOpenHistory: () => void;
+  currentUser?: AuthUser | null;
 }) {
+  const loginName = String(currentUser?.name ?? '').trim();
   const [warehouseKind, setWarehouseKind] = useState<WarehouseKind>('nvl');
   const warehouseAccess = useWarehouseSlipAccess();
   const { canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseKind);
@@ -970,6 +1008,12 @@ export function WarehouseSlipPanel({
   const [reviewingDamagedReportKey, setReviewingDamagedReportKey] = useState('');
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+
+  useEffect(() => {
+    if (editSlipCode) return;
+    if (!loginName) return;
+    setCreatedBy(prev => (prev.trim() ? prev : loginName));
+  }, [editSlipCode, loginName]);
 
   const loadPendingDamagedReports = async () => {
     setIsLoadingDamagedReports(true);
@@ -1116,7 +1160,7 @@ export function WarehouseSlipPanel({
       if (draft.slipDate) setSlipDate(draft.slipDate);
       setReason(stripProductionOrderCodesFromReason(draft.reason || ''));
       setNote(draft.note || '');
-      setCreatedBy(draft.createdBy || '');
+      setCreatedBy(draft.createdBy?.trim() || loginName);
       {
         const fromRef = parseWarehouseProductionOrderSelection(draft.productionOrderRef);
         const fromText = extractLinkedProductionOrderCodes(draft.reason, draft.note);
@@ -1128,7 +1172,9 @@ export function WarehouseSlipPanel({
       setRecipient(draft.recipient || '');
       setDeliverer(draft.deliverer || draft.recipient || '');
       setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
-      setLines(draft.lines.map(createWarehouseLineDraftFromPrefill));
+      const draftLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
+      setLines(draft.slipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
+      // Catalog Tổng kg có thể chưa kịp load — xếp lại theo khối lượng khi weightCatalog sẵn sàng.
       const editingCode = String(draft.editSlipCode || '').trim();
       if (editingCode) {
         setEditSlipCode(editingCode);
@@ -1500,9 +1546,9 @@ export function WarehouseSlipPanel({
       }
     }
 
-    const materialLines = [...materialMap.values()]
-      .filter(line => line.quantity > 0)
-      .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+    const materialLines = sortWarehouseLinesKgFirst(
+      [...materialMap.values()].filter(line => line.quantity > 0)
+    );
 
     if (materialLines.length === 0) {
       const productCodes = [
@@ -1518,17 +1564,19 @@ export function WarehouseSlipPanel({
     }
 
     setLines(
-      materialLines.map(line =>
-        createWarehouseLineDraftFromPrefill({
-          code: line.code,
-          name: line.name,
-          unit: line.unit,
-          quantity: formatNumber(line.quantity, 2),
-          documentQuantity: formatNumber(line.quantity, 2),
-          quotaQuantity: formatNumber(line.quotaQuantity, 2),
-          suggestedQuantity: formatNumber(line.quantity, 2),
-          unitPrice: ''
-        })
+      reorderExportLinesKgFirst(
+        materialLines.map(line =>
+          createWarehouseLineDraftFromPrefill({
+            code: line.code,
+            name: line.name,
+            unit: line.unit,
+            quantity: String(line.quantity),
+            documentQuantity: String(line.quantity),
+            quotaQuantity: String(line.quotaQuantity),
+            suggestedQuantity: String(line.quantity),
+            unitPrice: ''
+          })
+        )
       )
     );
     return materialLines.length;
@@ -1690,8 +1738,61 @@ export function WarehouseSlipPanel({
       itemCode: line.code,
       warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
       materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
-      products: warehouseKind === 'san_pham' ? weightCatalog : []
+      products: warehouseKind === 'san_pham' ? weightCatalog : [],
+      // ĐVT ≠ kg: chỉ nhân Tổng kg trong danh mục kho NVL (không suy từ tên).
+      preferTongKgOnly: true
     });
+
+  /** Xếp xuất kho: ĐVT kg lên đầu, rồi theo quy đổi kg giảm dần. */
+  const reorderExportLinesKgFirst = (list: WarehouseSlipLineDraft[]) =>
+    sortWarehouseLinesKgFirst(list, { getWeightKg: resolveLineWeightKg });
+
+  const applyExportLineOrder = () => {
+    setLines(current => reorderExportLinesKgFirst(current));
+    setActionMessage('Đã xếp lại: ĐVT kg lên đầu, các ĐVT khác theo khối lượng quy đổi.');
+  };
+
+  // Phiếu xuất: khi đã có catalog Tổng kg thì xếp lại (draft/autofill thường tới trước lúc load catalog).
+  useEffect(() => {
+    if (slipType !== 'xuat') return;
+    if (weightCatalog.length === 0) return;
+    if (lines.length === 0) return;
+    setLines(current => {
+      const next = sortWarehouseLinesKgFirst(current, {
+        getWeightKg: line =>
+          convertWarehouseQuantityToKg({
+            quantity: parsePercentInput(line.quantity),
+            unit: line.unit,
+            itemCode: line.code,
+            warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
+            materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
+            products: warehouseKind === 'san_pham' ? weightCatalog : [],
+            preferTongKgOnly: true
+          })
+      });
+      const unchanged =
+        next.length === current.length && next.every((line, index) => line.key === current[index]?.key);
+      return unchanged ? current : next;
+    });
+    // Chỉ chạy lại khi catalog/load loại kho đổi — không sort theo từng lần sửa SL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slipType, warehouseKind, weightCatalog]);
+
+
+  const resolveLineWeightHint = (line: WarehouseSlipLineDraft) => {
+    const quantity = parsePercentInput(line.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) return undefined;
+    const unit = String(line.unit || '').trim();
+    if (!unit || unit === '-') return undefined;
+    if (isWarehouseWeightKgUnit(unit)) {
+      return `ĐVT kg → quy đổi = SL thực (${formatNumber(quantity, 3)} kg)`;
+    }
+    const tongKg = findMaterialTongKgPerUnit(line.code, weightCatalog);
+    if (tongKg === null) {
+      return `ĐVT ${unit}: chưa có Tổng kg trong kho NVL cho mã ${line.code || '—'} → không quy đổi`;
+    }
+    return `ĐVT ${unit} → SL × Tổng kg kho = ${formatNumber(quantity, 3)} × ${formatNumber(tongKg, 6)} = ${formatWarehouseWeightKg(quantity * tongKg)}`;
+  };
 
   const slipTotalWeightKg = useMemo(() => {
     let total = 0;
@@ -1703,7 +1804,8 @@ export function WarehouseSlipPanel({
         itemCode: line.code,
         warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
         materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
-        products: warehouseKind === 'san_pham' ? weightCatalog : []
+        products: warehouseKind === 'san_pham' ? weightCatalog : [],
+        preferTongKgOnly: true
       });
       if (weight !== null) {
         total += weight;
@@ -1795,9 +1897,11 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(lines) : lines;
+    if (slipType === 'xuat') setLines(orderedLines);
     const linesForSave = isNvlExport
-      ? lines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
-      : lines;
+      ? orderedLines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
+      : orderedLines;
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
       allowMissingUnitPrice: isNvlExport,
       requireInboundLot: false,
@@ -1828,6 +1932,7 @@ export function WarehouseSlipPanel({
       ghiChu: note.trim(),
       nguoiLap: createdBy.trim(),
       ca: shiftLabel || null,
+      may: machine.trim() || null,
       items: payloadItems
     };
 
@@ -1908,6 +2013,7 @@ export function WarehouseSlipPanel({
       setReason('');
       setNote('');
       setDeliverer('');
+      setCreatedBy(loginName);
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       setLines([createWarehouseLineDraft()]);
@@ -2054,7 +2160,12 @@ export function WarehouseSlipPanel({
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setSlipType(type)}
+                  onClick={() => {
+                    setSlipType(type);
+                    if (type === 'xuat') {
+                      setLines(current => reorderExportLinesKgFirst(current));
+                    }
+                  }}
                   className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition ${
                     slipType === type
                       ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
@@ -2164,7 +2275,14 @@ export function WarehouseSlipPanel({
 
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
-            <input value={createdBy} onChange={event => setCreatedBy(event.target.value)} className={warehouseFieldClass} placeholder="Tên người lập phiếu" />
+            <input
+              value={createdBy}
+              onChange={event => setCreatedBy(event.target.value)}
+              className={warehouseFieldClass}
+              placeholder={loginName || 'Tên người lập phiếu'}
+              readOnly={Boolean(loginName) && !editSlipCode}
+              title={loginName ? `Theo tài khoản đăng nhập: ${loginName}` : undefined}
+            />
           </label>
           {slipType === 'nhap' ? (
             <label className="block space-y-1.5">
@@ -2341,12 +2459,22 @@ export function WarehouseSlipPanel({
               </p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
                 {isNvlExport
-                  ? 'Giá tự gợi ý theo BQ nhập trong tháng của ngày phiếu — có thể sửa tay.'
-                  : `Mỗi dòng là một ${warehouseKind === 'san_pham' ? 'mã SP' : 'mã NPL'} trong phiếu`}
+                  ? 'Quy đổi kg: ĐVT kg giữ SL; ĐVT khác = SL × Tổng kg kho NVL. Giá gợi ý theo BQ nhập tháng — có thể sửa tay.'
+                  : `Mỗi dòng là một ${warehouseKind === 'san_pham' ? 'mã SP' : 'mã NPL'} trong phiếu. Quy đổi kg: ĐVT ≠ kg thì nhân Tổng kg kho.`}
               </p>
             </div>
             {(editSlipCode ? canEdit : canCreate) ? (
               <div className="flex items-center gap-1.5">
+                {slipType === 'xuat' ? (
+                  <button
+                    type="button"
+                    onClick={applyExportLineOrder}
+                    className="flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100"
+                    title="ĐVT kg lên đầu, các ĐVT khác xếp theo khối lượng quy đổi"
+                  >
+                    Xếp kg lên đầu
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setQrScannerOpen(true)}
@@ -2490,6 +2618,7 @@ export function WarehouseSlipPanel({
                     <span className={warehouseLineLabelClass}>Quy đổi kg</span>
                     <div
                       className={`${warehouseLineFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}
+                      title={resolveLineWeightHint(line)}
                     >
                       {formatWarehouseWeightKg(resolveLineWeightKg(line))}
                     </div>
@@ -2714,7 +2843,8 @@ export function WarehouseHistoryPanel({
       itemCode: row.itemCode,
       warehouseKind: row.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
       materials: weightCatalogMaterials,
-      products: weightCatalogProducts
+      products: weightCatalogProducts,
+      preferTongKgOnly: true
     });
 
   useEffect(() => {
@@ -2744,14 +2874,33 @@ export function WarehouseHistoryPanel({
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
 
-      const res = await fetch(`/api/phieu-xuat-nhap-kho?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
+      const [res, orderRes] = await Promise.all([
+        fetch(`/api/phieu-xuat-nhap-kho?${params.toString()}`),
+        fetch('/api/lenh-sx')
+      ]);
+      const [data, orderData] = await Promise.all([
+        res.json().catch(() => ({})),
+        orderRes.json().catch(() => ({}))
+      ]);
 
       if (!res.ok) {
         throw new Error(data.error || 'Không thể tải lịch sử xuất nhập kho.');
       }
 
-      const rows = normalizeWarehouseMovements(data).filter(row => row.warehouseKind === warehouseTab);
+      const orderMachineByCode = new Map(
+        (orderRes.ok ? normalizeWarehouseProductionOrders(orderData) : [])
+          .map(order => [order.orderCode.trim().toUpperCase(), order.machine] as const)
+      );
+      const rows = normalizeWarehouseMovements(data)
+        .filter(row => row.warehouseKind === warehouseTab)
+        .map(row => {
+          if (row.machine) return row;
+          const linkedCodes = extractLinkedProductionOrderCodes(row.reason, row.note);
+          const machines = [...new Set(
+            linkedCodes.map(code => orderMachineByCode.get(code.trim().toUpperCase()) || '').filter(Boolean)
+          )];
+          return machines.length > 0 ? { ...row, machine: machines.join(', ') } : row;
+        });
       setMovements(rows);
     } catch (loadError: any) {
       setMovements([]);
@@ -2780,7 +2929,7 @@ export function WarehouseHistoryPanel({
   const filteredMovements = useMemo(() => {
     return movements.filter(row => {
       if (!normalizedSearch) return true;
-      return `${row.slipCode} ${row.shift} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
+      return `${row.slipCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
         .toLowerCase()
         .includes(normalizedSearch);
     });
@@ -2883,9 +3032,10 @@ export function WarehouseHistoryPanel({
         quantity: row.quantity,
         unit: row.unit,
         itemCode: row.itemCode,
-        warehouseKind: row.warehouseKind,
+        warehouseKind: row.warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
         materials: weightCatalogMaterials,
-        products: weightCatalogProducts
+        products: weightCatalogProducts,
+        preferTongKgOnly: true
       });
       if (weight !== null) {
         total += weight;
@@ -2907,6 +3057,7 @@ export function WarehouseHistoryPanel({
       warehouseKind: header.warehouseKind,
       slipDate: header.slipDate,
       shift: header.shift,
+      machine: header.machine,
       reason: header.reason,
       note: header.note,
       createdBy: header.createdBy,
@@ -3137,11 +3288,12 @@ export function WarehouseHistoryPanel({
             <TableHeadCell>Mã phiếu</TableHeadCell>
             <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
+            <TableHeadCell>Máy</TableHeadCell>
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={6}>Đang tải Supabase...</TableEmptyRow>
+            <TableEmptyRow colSpan={7}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
       ) : slipDateGroups.length === 0 ? (
@@ -3153,11 +3305,12 @@ export function WarehouseHistoryPanel({
             <TableHeadCell>Mã phiếu</TableHeadCell>
             <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
+            <TableHeadCell>Máy</TableHeadCell>
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={6}>
+            <TableEmptyRow colSpan={7}>
               Chưa có lịch sử {warehouseKindLabel(warehouseTab).toLowerCase()}.
             </TableEmptyRow>
           </TableBody>
@@ -3198,6 +3351,7 @@ export function WarehouseHistoryPanel({
                   <TableHeadCell>Mã phiếu</TableHeadCell>
                   <TableHeadCell>Loại</TableHeadCell>
                   <TableHeadCell>Ca</TableHeadCell>
+                  <TableHeadCell>Máy</TableHeadCell>
                   <TableHeadCell>Người lập</TableHeadCell>
                   <TableHeadCell align="center">Thao tác</TableHeadCell>
                 </TableHead>
@@ -3236,6 +3390,7 @@ export function WarehouseHistoryPanel({
                             />
                           </td>
                           <td className="px-4 py-3 font-semibold text-zinc-700">{header.shift || '-'}</td>
+                          <td className="px-4 py-3 font-semibold text-zinc-700">{header.machine || '-'}</td>
                           <td className="px-4 py-3 font-semibold text-zinc-600">{header.createdBy || '-'}</td>
                           <td className="px-4 py-3">
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
@@ -3325,6 +3480,7 @@ export function WarehouseHistoryPanel({
             <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ngày</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
+            <TableHeadCell>Máy</TableHeadCell>
             <TableHeadCell>{warehouseItemCodeLabel(warehouseTab)}</TableHeadCell>
             <TableHeadCell>{warehouseItemNameLabel(warehouseTab)}</TableHeadCell>
             <TableHeadCell className="text-right">SL</TableHeadCell>
@@ -3334,9 +3490,9 @@ export function WarehouseHistoryPanel({
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableEmptyRow colSpan={10}>Đang tải dữ liệu...</TableEmptyRow>
+              <TableEmptyRow colSpan={11}>Đang tải dữ liệu...</TableEmptyRow>
             ) : sortedMovementLines.length === 0 ? (
-              <TableEmptyRow colSpan={10}>
+              <TableEmptyRow colSpan={11}>
                 Chưa có dòng{' '}
                 {warehouseTab === 'san_pham'
                   ? 'sản phẩm'
@@ -3377,6 +3533,7 @@ export function WarehouseHistoryPanel({
                       {row.slipDate || '—'}
                     </td>
                     <td className="px-3 py-2.5 font-semibold text-zinc-600">{row.shift || '—'}</td>
+                    <td className="px-3 py-2.5 font-semibold text-zinc-600">{row.machine || '—'}</td>
                     <td className="px-3 py-2.5 font-bold text-zinc-900">{row.itemCode || '—'}</td>
                     <td className="max-w-[200px] truncate px-3 py-2.5 font-semibold text-zinc-700" title={row.itemName || undefined}>
                       {row.itemName || '—'}
@@ -3419,6 +3576,7 @@ export function WarehouseHistoryPanel({
                   ['Loại', warehouseSlipTypeLabel(viewingRows[0].slipType)],
                   ['Ngày', viewingRows[0].slipDate || '-'],
                   ['Ca', viewingRows[0].shift || '-'],
+                  ['Máy', viewingRows[0].machine || '-'],
                   ['Tổng tiền', `${formatWarehouseMoney(viewingSlipTotal)} đ`],
                   ['Tổng trọng lượng', formatWarehouseWeightKg(viewingSlipTotalWeightKg > 0 ? viewingSlipTotalWeightKg : null)],
                   ['Lý do', viewingRows[0].reason || '-'],

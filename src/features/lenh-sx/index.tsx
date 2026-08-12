@@ -24,13 +24,17 @@ import {
 import {
   AddProductionOrderModal,
   EditProductionOrderModal,
-  formatProductionOrderProductsSummary,
   getProductionOrderProductLines,
+  loadProductionOrderPrintMaterials,
+  loadProductionOrderProductCatalog,
   normalizeProductionOrders,
   PRODUCTION_ORDER_STATUS_OPTIONS,
+  ProductionOrderBatchPrintSheets,
   ProductionOrderPrintSheet,
   ProductionOrderViewModal,
+  resolveProductionOrderMachineLabel,
   useProductionOrderPrint,
+  type PrintableProductionOrder,
   type ProductionOrderRow
 } from '../ke-hoach-san-xuat';
 import { normalizeOrders } from '../don-hang';
@@ -40,6 +44,7 @@ import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
+import { waitForPrintImagesReady } from '../../utils/printReady';
 import {
   Eye,
   Loader2,
@@ -134,6 +139,11 @@ export function ProductionOrdersPanel({
     x: number;
     y: number;
   } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [printingBatchOrders, setPrintingBatchOrders] = useState<PrintableProductionOrder[]>([]);
+  const [printingBatchProductCatalog, setPrintingBatchProductCatalog] = useState<ProductRow[]>([]);
+  const [pendingBatchPrint, setPendingBatchPrint] = useState(false);
+  const [isBatchPrinting, setIsBatchPrinting] = useState(false);
   const { printingOrder, printingMaterials, printingProduct, printingProductCatalog, printingMachineLabel, shiftSettings, isLoadingPrint, printProductionOrder } = useProductionOrderPrint();
 
   const loadProductionOrders = async () => {
@@ -381,6 +391,79 @@ export function ProductionOrdersPanel({
     }));
   }, [filteredRows]);
 
+  const visibleIds = useMemo(() => filteredRows.map(row => row.id), [filteredRows]);
+  const selectedVisibleIds = useMemo(
+    () => visibleIds.filter(id => selectedIds.includes(id)),
+    [visibleIds, selectedIds]
+  );
+  const hasSelectedVisible = selectedVisibleIds.length > 0;
+
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => rows.some(row => row.id === id)));
+  }, [rows]);
+
+  const toggleRowSelected = (orderId: string) => {
+    setSelectedIds(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
+  };
+
+  const handlePrintSelected = async () => {
+    const rowsToPrint = filteredRows.filter(row => selectedIds.includes(row.id));
+    if (rowsToPrint.length === 0) return;
+
+    setIsBatchPrinting(true);
+    try {
+      const productCatalog = await loadProductionOrderProductCatalog();
+      const printableItems = await Promise.all(
+        rowsToPrint.map(async order => {
+          const [{ materials, product }, machineLabel] = await Promise.all([
+            loadProductionOrderPrintMaterials(order),
+            resolveProductionOrderMachineLabel(order.machine)
+          ]);
+          return { order, materials, machineLabel, product };
+        })
+      );
+      setPrintingBatchProductCatalog(productCatalog);
+      setPrintingBatchOrders(printableItems);
+      setPendingBatchPrint(true);
+    } catch (error) {
+      console.error('Không thể in nhiều lệnh SX:', error);
+      window.alert('Không thể tải dữ liệu để in các lệnh SX đã chọn.');
+    } finally {
+      setIsBatchPrinting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingBatchPrint || printingBatchOrders.length === 0) return;
+
+    let cancelled = false;
+    document.body.classList.add('production-order-print-active');
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        window.print();
+        setPendingBatchPrint(false);
+      });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('production-order-print-active');
+    };
+  }, [pendingBatchPrint, printingBatchOrders]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove('production-order-print-active');
+      setPrintingBatchOrders([]);
+      setPrintingBatchProductCatalog([]);
+      setPendingBatchPrint(false);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-none space-y-4">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
@@ -394,6 +477,16 @@ export function ProductionOrdersPanel({
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handlePrintSelected}
+                disabled={!hasSelectedVisible || isBatchPrinting}
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title={hasSelectedVisible ? `In ${selectedVisibleIds.length} lệnh đã chọn` : 'Chọn lệnh bằng tickbox để in'}
+              >
+                {isBatchPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                In lệnh{selectedVisibleIds.length > 0 ? ` (${selectedVisibleIds.length})` : ''}
+              </button>
               {canCreate ? (
                 <button
                   type="button"
@@ -523,14 +616,18 @@ export function ProductionOrdersPanel({
       {!isLoading && dateGroups.length === 0 ? (
         <TableShell minWidthClassName="min-w-0">
           <TableBody>
-            <TableEmptyRow colSpan={11}>
+            <TableEmptyRow colSpan={12}>
               Bảng lenh_sx chưa có dữ liệu hoặc không có lệnh phù hợp bộ lọc.
             </TableEmptyRow>
           </TableBody>
         </TableShell>
       ) : (
         <div className="space-y-3">
-          {dateGroups.map(group => (
+          {dateGroups.map(group => {
+            const groupIds = group.rows.map(row => row.id);
+            const selectedInGroup = groupIds.filter(id => selectedIds.includes(id));
+            const allGroupSelected = groupIds.length > 0 && selectedInGroup.length === groupIds.length;
+            return (
             <div key={group.date} className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
                 <div className="flex items-baseline gap-2">
@@ -539,6 +636,11 @@ export function ProductionOrdersPanel({
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
                     {group.rows.length} lệnh
                   </span>
+                  {selectedInGroup.length > 0 ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 ring-1 ring-emerald-200">
+                      Đã chọn {selectedInGroup.length}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng SL ngày</p>
@@ -546,18 +648,32 @@ export function ProductionOrdersPanel({
                 </div>
               </div>
               <div className="hover-scrollbar overflow-x-auto">
-                <table className="w-full min-w-[1380px] table-fixed border-collapse text-left text-[11px]">
+                <table className="w-full min-w-[1780px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
-                    <col className="w-[7%]" /><col className="w-[5%]" /><col className="w-[28%]" />
-                    <col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[8%]" />
-                    <col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[6%]" />
-                    <col className="w-[9%]" /><col className="w-[5%]" />
+                    <col style={{ width: 44 }} /><col style={{ width: 110 }} /><col style={{ width: 70 }} /><col style={{ width: 460 }} />
+                    <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} /><col style={{ width: 120 }} /><col style={{ width: 220 }} />
+                    <col style={{ width: 160 }} /><col style={{ width: 80 }} />
                   </colgroup>
                   <TableHead>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-center text-[10px]">
+                      <input
+                        type="checkbox"
+                        checked={allGroupSelected}
+                        onChange={() => {
+                          setSelectedIds(prev => {
+                            if (allGroupSelected) return prev.filter(id => !groupIds.includes(id));
+                            return [...new Set([...prev, ...groupIds])];
+                          });
+                        }}
+                        aria-label={`Chọn tất cả lệnh ngày ${group.date}`}
+                        className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                      />
+                    </TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Mã lệnh</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Ca</TableHeadCell>
                     <TableHeadCell className="min-w-[320px] px-2 py-2 text-[10px]">
-                      <div className="grid grid-cols-[minmax(80px,0.85fr)_minmax(120px,1.5fr)_64px] gap-2">
+                      <div className="grid grid-cols-[120px_minmax(0,1fr)_86px] gap-0">
                         <span>Mã hàng</span>
                         <span>Tên hàng</span>
                         <span className="text-right">Số lượng</span>
@@ -578,22 +694,36 @@ export function ProductionOrdersPanel({
                       return (
                       <React.Fragment key={row.id}>
                       <TableRow>
+                        <td className="px-2 py-2 text-center align-top">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(row.id)}
+                            onChange={() => toggleRowSelected(row.id)}
+                            aria-label={`Chọn ${row.code || row.name || 'lệnh sản xuất'}`}
+                            className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                          />
+                        </td>
                         <td className="whitespace-nowrap px-2 py-2 align-top font-black text-zinc-950">{row.code || '-'}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
                         <td className="px-2 py-2 align-top">
                           {productLines.length > 0 ? (
                             <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-                              <table className="w-full border-collapse text-left text-[10px]">
+                              <table className="w-full table-fixed border-collapse text-left text-[10px]">
+                                <colgroup>
+                                  <col style={{ width: 120 }} />
+                                  <col />
+                                  <col style={{ width: 86 }} />
+                                </colgroup>
                                 <tbody className="divide-y divide-zinc-100">
                                   {productLines.map((product, index) => (
                                     <tr key={`${row.id}-${product.productCode}-${index}`}>
-                                      <td className="w-[28%] whitespace-nowrap px-2 py-1 font-black text-zinc-950">
+                                      <td className="whitespace-nowrap px-2 py-1.5 align-top font-black text-zinc-950">
                                         {product.productCode || '-'}
                                       </td>
-                                      <td className="whitespace-nowrap px-2 py-1 font-semibold text-zinc-700">
+                                      <td className="break-words px-2 py-1.5 align-top font-semibold leading-4 text-zinc-700">
                                         {product.productName || '-'}
                                       </td>
-                                      <td className="w-[22%] whitespace-nowrap px-2.5 py-1.5 text-right font-mono font-bold text-zinc-900">
+                                      <td className="whitespace-nowrap px-2.5 py-1.5 text-right align-top font-mono font-bold text-zinc-900">
                                         {product.quantity || '-'}
                                         {product.unit && product.unit !== '-' ? (
                                           <span className="ml-1 font-sans text-[10px] font-semibold text-zinc-500">
@@ -617,10 +747,10 @@ export function ProductionOrdersPanel({
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.startDate}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.endDate}</td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top font-semibold text-zinc-700">
+                        <td className="break-words px-2 py-2 align-top font-semibold leading-4 text-zinc-700">
                           {productionOrderStaffDisplay(row)}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.machine}</td>
+                        <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
                           <button
                             type="button"
@@ -646,7 +776,8 @@ export function ProductionOrdersPanel({
                 </table>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -680,6 +811,14 @@ export function ProductionOrdersPanel({
           product={printingProduct}
           productCatalog={printingProductCatalog}
           shiftSettings={shiftSettings}
+        />
+      )}
+
+      {printingBatchOrders.length > 0 && (
+        <ProductionOrderBatchPrintSheets
+          items={printingBatchOrders}
+          shiftSettings={shiftSettings}
+          productCatalog={printingBatchProductCatalog}
         />
       )}
     </div>

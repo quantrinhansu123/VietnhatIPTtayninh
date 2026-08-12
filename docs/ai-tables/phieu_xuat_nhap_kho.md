@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `phieu_xuat_nhap_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
-| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`) |
+| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`) |
 
 ## API (`server.ts`)
 
@@ -30,7 +30,9 @@
 
 Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
 
-Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
+- Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
+- **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).
+- Form phiếu lưu **Ca** (`ca`) và **Máy** (`may`) — dùng khớp dữ liệu XK trên `/phan-tich-tu-dong` theo ngày + ca + máy (phiếu cũ không có `may` suy máy từ lệnh SX gắn trên lý do/ghi chú, giống `/lich-su-xuat-nhap-kho`).
 
 ## Phân quyền theo loại kho (Vật tư / Thành phẩm)
 

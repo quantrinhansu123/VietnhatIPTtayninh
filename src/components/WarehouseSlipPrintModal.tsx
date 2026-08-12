@@ -143,6 +143,39 @@ function sumPrintWeightKg(lines: WarehouseSlipPrintLine[]) {
   }, 0);
 }
 
+function normalizePrintUnit(value: string) {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('vi')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isPlasticKgPrintLine(line: WarehouseSlipPrintLine) {
+  return ['kg', 'kgs', 'kilogram'].includes(normalizePrintUnit(line.unit));
+}
+
+function sortPrintLinesByUnit(lines: WarehouseSlipPrintLine[]) {
+  const firstUnitIndex = new Map<string, number>();
+  lines.forEach((line, index) => {
+    const unit = normalizePrintUnit(line.unit);
+    if (!firstUnitIndex.has(unit)) firstUnitIndex.set(unit, index);
+  });
+  return lines
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => {
+      const unitA = normalizePrintUnit(a.line.unit);
+      const unitB = normalizePrintUnit(b.line.unit);
+      const unitCompare = (firstUnitIndex.get(unitA) ?? 0) - (firstUnitIndex.get(unitB) ?? 0);
+      return unitCompare || a.index - b.index;
+    })
+    .map(item => item.line);
+}
+
+function sumPrintAmount(lines: WarehouseSlipPrintLine[]) {
+  return lines.reduce((sum, line) => sum + (Number.isFinite(line.lineAmount) ? line.lineAmount : 0), 0);
+}
+
 function formatPrintWeightKg(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '';
   return formatNumber(value, 3);
@@ -336,7 +369,14 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
 }
 
 function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
-  const totalWeightKg = sumPrintWeightKg(data.lines);
+  const sortedLines = sortPrintLinesByUnit(data.lines);
+  const plasticLines = sortedLines.filter(isPlasticKgPrintLine);
+  const otherMaterialLines = sortedLines.filter(line => !isPlasticKgPrintLine(line));
+  const totalPlasticKg = sumPrintWeightKg(plasticLines) || sumPrintQty(plasticLines);
+  const totalOtherMaterialKg = sumPrintWeightKg(otherMaterialLines);
+  const grandTotalKg = totalPlasticKg + totalOtherMaterialKg;
+  const totalPlasticAmount = sumPrintAmount(plasticLines);
+  const totalOtherAmount = sumPrintAmount(otherMaterialLines);
   const printShift = formatPrintShift(data.shift);
 
   return (
@@ -380,7 +420,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           </tr>
         </thead>
         <tbody>
-          {data.lines.map((line, index) => (
+          {sortedLines.map((line, index) => (
             <tr key={`${line.code}-${index}`}>
               <td className="warehouse-slip-print-center">{index + 1}</td>
               <td>{line.code || ''}</td>
@@ -402,15 +442,39 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           ))}
         </tbody>
         <tfoot>
-          <tr>
+          {plasticLines.length > 0 ? <tr>
             <td colSpan={7} className="warehouse-slip-print-total-label">
-              TỔNG CỘNG (kg)
+              TỔNG NHỰA (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalWeightKg > 0 ? `${formatNumber(totalWeightKg, 3)} kg` : '0'}
+              {totalPlasticKg > 0 ? `${formatNumber(totalPlasticKg, 3)} kg` : '0 kg'}
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : '0'}
+              {totalPlasticAmount > 0 ? formatMoney(totalPlasticAmount, 0) : ''}
+            </td>
+            <td />
+          </tr> : null}
+          {otherMaterialLines.length > 0 ? <tr>
+            <td colSpan={7} className="warehouse-slip-print-total-label">
+              TỔNG VẬT TƯ KHÁC (kg)
+            </td>
+            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
+              {totalOtherMaterialKg > 0 ? `${formatNumber(totalOtherMaterialKg, 3)} kg` : '0 kg'}
+            </td>
+            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
+              {totalOtherAmount > 0 ? formatMoney(totalOtherAmount, 0) : ''}
+            </td>
+            <td />
+          </tr> : null}
+          <tr className="warehouse-slip-print-grand-total-row">
+            <td colSpan={7} className="warehouse-slip-print-total-label">
+              TỔNG KG
+            </td>
+            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
+              {grandTotalKg > 0 ? `${formatNumber(grandTotalKg, 3)} kg` : '0 kg'}
+            </td>
+            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
+              {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : ''}
             </td>
             <td />
           </tr>
@@ -418,7 +482,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
       </table>
 
       <p className="warehouse-slip-print-footnote">
-        <strong>Ghi chú:</strong> Không cộng SL khác ĐVT. Cột «Quy về kg» và tổng kg dùng để đối chiếu khối lượng.
+        <strong>Ghi chú:</strong> Tổng nhựa và tổng vật tư khác được cộng riêng theo cột «Quy về kg»; không cộng chung số lượng khác ĐVT.
       </p>
 
       <div className="warehouse-slip-print-signatures warehouse-slip-print-signatures--nvl-export">

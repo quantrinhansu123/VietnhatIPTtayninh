@@ -174,11 +174,18 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary'
   },
   {
-    title: 'Trạm cân',
-    desc: 'Mở trạm cân cũ ngay trong ứng dụng.',
+    title: 'Danh sách cân AI',
+    desc: 'Xem danh sách dữ liệu cân AI đã ghi nhận và ảnh cân ngay trong ứng dụng.',
+    icon: ClipboardList,
+    icon3d: cardIndexDividers3d,
+    tab: 'can-tu-dong'
+  },
+  {
+    title: 'Trạm cân AI',
+    desc: 'Mở liên kết trạm cân AI để nhập dữ liệu cân.',
     icon: Scale,
     icon3d: robot3d,
-    tab: 'can-tu-dong',
+    tab: 'can-tu-dong-pilot',
     modalUrl: 'https://tram-can-qr-pilot.onrender.com/'
   },
   {

@@ -343,6 +343,7 @@ export default function ControlBoardBbMachineReportTable({
   acceptanceReports = [],
   canTuDongRecords = [],
   sanLuongSource = 'acceptance',
+  includeAllMachines = false,
   shiftSettings,
   isLoading,
   dateFrom,
@@ -361,8 +362,10 @@ export default function ControlBoardBbMachineReportTable({
   mixingReports?: MixingReport[];
   acceptanceReports?: AcceptanceReport[];
   canTuDongRecords?: CanTuDongRecord[];
-  /** `/phan-tich-tu-dong`: tab sản lượng lấy từ can_tu_dong theo ngày/ca. */
+  /** Nguồn tab/bộ đếm Báo cáo sản lượng — mặc định phiếu `bao_cao_nghiem_thu`. */
   sanLuongSource?: 'acceptance' | 'can-tu-dong';
+  /** `/phan-tich-tu-dong`: lấy lệnh/xuất kho mọi máy, không giới hạn nhóm BB. */
+  includeAllMachines?: boolean;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   isLoading?: boolean;
   dateFrom: string;
@@ -374,7 +377,6 @@ export default function ControlBoardBbMachineReportTable({
   const [activeTab, setActiveTab] = useState<BbMachineReportTabId>(() =>
     sanLuongSource === 'can-tu-dong' ? 'bao_cao_san_luong' : 'lenh_sx'
   );
-  const includeAllMachines = sanLuongSource === 'can-tu-dong';
 
   useEffect(() => {
     if (sanLuongSource === 'can-tu-dong') {
@@ -400,6 +402,7 @@ export default function ControlBoardBbMachineReportTable({
   const [showPrintSheet, setShowPrintSheet] = useState(false);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [printStaffByOrder, setPrintStaffByOrder] = useState<Record<string, BbPrintConfirmSelection>>({});
   const [printOrderGroups, setPrintOrderGroups] = useState<BbProductionOrderGroup[]>([]);
   const [printNoteByOrder, setPrintNoteByOrder] = useState<Record<string, string>>({});
@@ -543,7 +546,8 @@ export default function ControlBoardBbMachineReportTable({
         dateTo,
         shiftFilter,
         machineFilter,
-        selectedMachine
+        selectedMachine,
+        includeAllMachines
       }),
     [
       scopedProductionOrders,
@@ -555,7 +559,8 @@ export default function ControlBoardBbMachineReportTable({
       dateTo,
       shiftFilter,
       machineFilter,
-      selectedMachine
+      selectedMachine,
+      includeAllMachines
     ]
   );
 
@@ -729,7 +734,8 @@ export default function ControlBoardBbMachineReportTable({
         dateTo,
         shiftFilter,
         machineFilter,
-        selectedMachine
+        selectedMachine,
+        includeAllMachines
       }),
     [
       scopedProductionOrders,
@@ -746,7 +752,8 @@ export default function ControlBoardBbMachineReportTable({
       dateTo,
       shiftFilter,
       machineFilter,
-      selectedMachine
+      selectedMachine,
+      includeAllMachines
     ]
   );
   const inboundRows = useMemo(
@@ -1278,7 +1285,26 @@ export default function ControlBoardBbMachineReportTable({
     setPrintOrderGroups(nextGroups);
     setPrintConfirmOpen(false);
     setShowPrintSheet(true);
+    setPrintPreviewOpen(true);
+  };
+
+  const printFromPreview = () => {
+    setPrintPreviewOpen(false);
     setPendingPrint(true);
+  };
+
+  const closePrintPreview = () => {
+    if (pendingPrint) return;
+    setPrintPreviewOpen(false);
+    setShowPrintSheet(false);
+    setPrintOrderGroups([]);
+    setPrintNoteByOrder({});
+  };
+
+  const editPrintDetails = () => {
+    setPrintPreviewOpen(false);
+    setShowPrintSheet(false);
+    setPrintConfirmOpen(true);
   };
 
   const closePrintConfirm = () => {
@@ -5204,11 +5230,57 @@ export default function ControlBoardBbMachineReportTable({
               className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-sky-700 px-4 text-xs font-extrabold text-white hover:bg-sky-800"
             >
               <Printer className="h-4 w-4" />
-              Xác nhận &amp; In
+              Xem trước
             </button>
           </div>
         </div>
       </div>
+    ) : null}
+    {printPreviewOpen ? createPortal(
+      <div
+        className="fixed inset-0 z-[10050] flex flex-col bg-slate-950/70 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Xem trước báo cáo máy BB"
+      >
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/15 bg-slate-900 px-4 py-3 text-white shadow-lg">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Xem trước khi in</p>
+            <h4 className="text-sm font-black sm:text-base">Báo cáo kết quả theo từng lệnh sản xuất</h4>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={editPrintDetails} className="h-10 rounded-lg border border-slate-500 bg-white/10 px-4 text-xs font-black hover:bg-white/20">
+              Quay lại chỉnh sửa
+            </button>
+            <button type="button" onClick={closePrintPreview} className="h-10 rounded-lg border border-slate-500 bg-white/10 px-4 text-xs font-black hover:bg-white/20">
+              Đóng
+            </button>
+            <button type="button" onClick={printFromPreview} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-sky-600 px-4 text-xs font-black hover:bg-sky-500">
+              <Printer className="h-4 w-4" /> In báo cáo
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-6">
+          <div className="bb-machine-report-preview mx-auto w-fit bg-white shadow-2xl">
+            <ControlBoardBbMachineReportPrintBatch
+              orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
+              exportGroups={exportGroups}
+              dauCaGroups={dauCaGroups}
+              cuoiCaGroups={cuoiCaGroups}
+              damagedGroups={damagedGroups}
+              mixingGroups={mixingGroups}
+              danhGiaGroups={danhGiaGroups}
+              inboundRows={inboundRows}
+              acceptanceReports={acceptanceReports}
+              products={products}
+              materials={materials}
+              phanTichMap={phanTichMap}
+              noteByOrder={printNoteByOrder}
+            />
+          </div>
+        </div>
+      </div>,
+      document.body
     ) : null}
     {showPrintSheet
       ? createPortal(

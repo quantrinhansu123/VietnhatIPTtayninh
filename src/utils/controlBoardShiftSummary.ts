@@ -27,6 +27,8 @@ export type ShiftSummaryWarehouseMovement = {
   slipCode: string;
   slipDate: string;
   shift: string;
+  /** Máy trên phiếu XK (cột `may`) hoặc suy từ lệnh SX gắn trên lý do/ghi chú */
+  machine?: string;
   slipType: 'nhap' | 'xuat';
   warehouseKind: 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
   itemCode: string;
@@ -142,6 +144,36 @@ export function movementHasLinkedProductionOrderCodes(
   movement: Pick<ShiftSummaryWarehouseMovement, 'reason' | 'note'>
 ): boolean {
   return extractLinkedProductionOrderCodes(movement.reason, movement.note).length > 0;
+}
+
+/** Token máy từ cột `may` phiếu + máy lệnh SX gắn trên lý do/ghi chú (giống lịch sử XK). */
+export function resolveWarehouseMovementMachineCandidates(
+  movement: Pick<ShiftSummaryWarehouseMovement, 'machine' | 'reason' | 'note'>,
+  productionOrders: Array<{ code: string; machine?: string; position?: string }>,
+  resolveOrderMachineLabel?: (order: { code: string; machine?: string; position?: string }) => string
+): string[] {
+  const out: string[] = [];
+  const push = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw || raw === '-') return;
+    for (const part of raw.split(/[,;/|]+/)) {
+      const token = part.trim();
+      if (token && token !== '-') out.push(token);
+    }
+  };
+
+  push(movement.machine);
+  const orderByCode = new Map(
+    productionOrders.map(order => [String(order.code || '').trim().toUpperCase(), order] as const)
+  );
+  for (const code of extractLinkedProductionOrderCodes(movement.reason, movement.note)) {
+    const order = orderByCode.get(code.trim().toUpperCase());
+    if (!order) continue;
+    push(order.machine);
+    push(order.position);
+    if (resolveOrderMachineLabel) push(resolveOrderMachineLabel(order));
+  }
+  return [...new Set(out)];
 }
 
 export type ShiftSummaryFilterSources = {

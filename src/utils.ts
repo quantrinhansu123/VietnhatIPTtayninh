@@ -120,10 +120,22 @@ export function formatPercent(val: number): string {
 
 export function parsePercentInput(value: string): number {
   const cleaned = String(value ?? '').trim().replace(/\s/g, '');
-  // Định dạng vi-VN "3.000,00": dấu chấm là phân tách hàng nghìn, dấu phẩy là thập phân.
-  const normalized =
-    cleaned.includes('.') && cleaned.includes(',')
-      ? cleaned.replace(/\./g, '').replace(',', '.')
-      : cleaned.replace(',', '.');
-  return Number(normalized);
+  if (!cleaned) return NaN;
+
+  // vi-VN có cả dấu chấm nghìn + phẩy thập phân: "1.250,5" → 1250.5
+  if (cleaned.includes('.') && cleaned.includes(',')) {
+    return Number(cleaned.replace(/\./g, '').replace(',', '.'));
+  }
+
+  // Chỉ phẩy → thập phân: "185,71" → 185.71
+  if (cleaned.includes(',') && !cleaned.includes('.')) {
+    return Number(cleaned.replace(',', '.'));
+  }
+
+  // Chỉ chấm: "6.200" / "1.234.567" (nhóm 3 số) = nghìn; "6.2" / "0.0238" = thập phân.
+  if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+    return Number(cleaned.replace(/\./g, ''));
+  }
+
+  return Number(cleaned);
 }

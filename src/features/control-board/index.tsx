@@ -6,13 +6,13 @@ import ControlBoardBbMachineReportTable from '../../components/ControlBoardBbMac
 import { ControlBoardCommonFilters } from '../../components/ControlBoardCommonFilters';
 import ReportListsHubModal from '../../components/ReportListsHubModal';
 import { ClipboardList } from 'lucide-react';
-import type { CanTuDongRecord } from '../can-tu-dong';
 import {
   buildControlBoardShiftSummary,
   defaultShiftSummaryDateRange,
   matchesControlBoardDateRange,
   matchesShiftSummaryBucket,
-  machineValueMatchesFilter
+  machineValueMatchesFilter,
+  resolveWarehouseMovementMachineCandidates
 } from '../../utils/controlBoardShiftSummary';
 import {
   getProductionShiftOptions,
@@ -105,11 +105,11 @@ export function ControlBoardPanel({
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
   onEditMachineNvlReport?: (report: MachineNvlSavedReport) => void;
   onEditAcceptanceReport?: (report: AcceptanceReport) => void;
-  /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (sản lượng từ can_tu_dong). */
+  /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (mọi máy; sản lượng từ báo cáo sản lượng). */
   mode?: 'full' | 'report-only' | 'report-only-auto';
 }) {
   const reportOnly = mode === 'report-only' || mode === 'report-only-auto';
-  const useCanTuDongSanLuong = mode === 'report-only-auto';
+  const isAutoReport = mode === 'report-only-auto';
   const { canCreate, canEdit, canDelete } = useTabAccess(reportOnly ? 'dashboard' : 'control-board');
   const [showReportListsModal, setShowReportListsModal] = useState(false);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -125,7 +125,6 @@ export function ControlBoardPanel({
   const [damagedRecords, setDamagedRecords] = useState<WeighingRecord[]>([]);
   const [machineNvlReports, setMachineNvlReports] = useState<MachineNvlSavedReport[]>([]);
   const [shiftSummaryWarehouseMovements, setShiftSummaryWarehouseMovements] = useState<WarehouseMovementRow[]>([]);
-  const [canTuDongRecords, setCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const defaultShiftSummaryRange = defaultShiftSummaryDateRange(14);
   const [shiftSummaryDateFrom, setShiftSummaryDateFrom] = useState(defaultShiftSummaryRange.from);
   const [shiftSummaryDateTo, setShiftSummaryDateTo] = useState(defaultShiftSummaryRange.to);
@@ -161,7 +160,7 @@ export function ControlBoardPanel({
   } = useProductionOrderPrint();
 
   useEffect(() => {
-    if (!useCanTuDongSanLuong) return;
+    if (!isAutoReport) return;
     const defaultRange = defaultShiftSummaryDateRange(14);
     setShiftSummaryDateFrom(defaultRange.from);
     setShiftSummaryDateTo(defaultRange.to);
@@ -169,7 +168,7 @@ export function ControlBoardPanel({
     setBoardFilterMachine('all');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
-  }, [useCanTuDongSanLuong]);
+  }, [isAutoReport]);
 
   const loadBoard = async () => {
     setIsLoading(true);
@@ -180,7 +179,6 @@ export function ControlBoardPanel({
       const summaryTo = shiftSummaryDateTo || defaultShiftSummaryRange.to;
       // Tỉ lệ TB thực tế lấy phiếu trộn ca liền trước (12C1 → 12C2 ngày hôm trước) → tải thêm 1 ngày trước.
       const mixingFrom = shiftIsoDateByDays(summaryFrom, -1) || summaryFrom;
-      const canTuDongUrl = `/api/can-tu-dong?limit=2000&from=${encodeURIComponent(summaryFrom)}&to=${encodeURIComponent(summaryTo)}`;
       const [
         orderRes,
         productRes,
@@ -194,8 +192,7 @@ export function ControlBoardPanel({
         weighingRes,
         damagedRes,
         machineNvlRes,
-        warehouseMovementRes,
-        canTuDongRes
+        warehouseMovementRes
       ] = await Promise.all([
         fetch('/api/don-hang'),
         fetch('/api/san-pham?format=table'),
@@ -215,8 +212,7 @@ export function ControlBoardPanel({
         ),
         fetch(
           `/api/phieu-xuat-nhap-kho?from=${encodeURIComponent(summaryFrom)}&to=${encodeURIComponent(summaryTo)}`
-        ),
-        useCanTuDongSanLuong ? fetch(canTuDongUrl) : Promise.resolve(null)
+        )
       ]);
 
       const orderData = await orderRes.json().catch(() => ({}));
@@ -232,7 +228,6 @@ export function ControlBoardPanel({
       const damagedData = await damagedRes.json().catch(() => ([]));
       const machineNvlData = await machineNvlRes.json().catch(() => ({}));
       const warehouseMovementData = await warehouseMovementRes.json().catch(() => ({}));
-      const canTuDongData = canTuDongRes ? await canTuDongRes.json().catch(() => ([])) : [];
 
       if (!orderRes.ok) throw new Error(orderData.error || 'Không thể tải đơn hàng.');
       if (!productRes.ok) throw new Error(productData.error || 'Không thể tải sản phẩm.');
@@ -289,25 +284,6 @@ export function ControlBoardPanel({
         setShiftSummaryWarehouseMovements([]);
       }
 
-      if (useCanTuDongSanLuong && canTuDongRes) {
-        if (!canTuDongRes.ok) {
-          const errMsg =
-            (canTuDongData as { error?: string })?.error ||
-            `Không tải được cân tự động (HTTP ${canTuDongRes.status}).`;
-          setCanTuDongRecords([]);
-          setLoadError(prev => (prev ? `${prev} ${errMsg}` : errMsg));
-        } else {
-          const list = Array.isArray(canTuDongData)
-            ? canTuDongData
-            : Array.isArray((canTuDongData as { records?: unknown }).records)
-              ? (canTuDongData as { records: CanTuDongRecord[] }).records
-              : [];
-          setCanTuDongRecords(list as CanTuDongRecord[]);
-        }
-      } else {
-        setCanTuDongRecords([]);
-      }
-
       const localPayloads = [machineData, orderData, materialData, productionData].filter(
         payload => payload && typeof payload === 'object' && (payload as { source?: string }).source === 'local'
       ) as Array<{ source?: string; warning?: string }>;
@@ -336,7 +312,6 @@ export function ControlBoardPanel({
       setDamagedRecords([]);
       setMachineNvlReports([]);
       setShiftSummaryWarehouseMovements([]);
-      setCanTuDongRecords([]);
       setLoadError(error.message || 'Không thể tải dữ liệu bảng điều khiển.');
     } finally {
       setIsLoading(false);
@@ -345,12 +320,23 @@ export function ControlBoardPanel({
 
   useEffect(() => {
     loadBoard();
-  }, [shiftSummaryDateFrom, shiftSummaryDateTo, useCanTuDongSanLuong]);
+  }, [shiftSummaryDateFrom, shiftSummaryDateTo, isAutoReport]);
 
-  const shiftSummaryWarehouseMovementRefs = useMemo(
-    () => mapWarehouseMovementsForShiftSummary(shiftSummaryWarehouseMovements),
-    [shiftSummaryWarehouseMovements]
-  );
+  const shiftSummaryWarehouseMovementRefs = useMemo(() => {
+    const mapped = mapWarehouseMovementsForShiftSummary(shiftSummaryWarehouseMovements);
+    return mapped.map(movement => {
+      const candidates = resolveWarehouseMovementMachineCandidates(
+        movement,
+        productionOrders,
+        order => resolveProductionOrderMachine(order as ProductionOrderRow, machines)
+      );
+      if (!candidates.length) return movement;
+      return {
+        ...movement,
+        machine: String(movement.machine || '').trim() || candidates.join(', ')
+      };
+    });
+  }, [shiftSummaryWarehouseMovements, productionOrders, machines]);
 
   const selectedBoardMachine = useMemo(() => {
     if (!boardFilterMachine || boardFilterMachine === 'all') return null;
@@ -472,14 +458,25 @@ export function ControlBoardPanel({
 
   const boardScopedWarehouseMovements = useMemo(() => {
     if (!hasBoardProductionOrderFilter) return shiftSummaryWarehouseMovementRefs;
-    return shiftSummaryWarehouseMovementRefs.filter(movement =>
-      matchesBoardProductionOrderBucket(movement.slipDate, movement.shift)
-    );
+    return shiftSummaryWarehouseMovementRefs.filter(movement => {
+      const machineCandidates = resolveWarehouseMovementMachineCandidates(
+        movement,
+        productionOrders,
+        order => resolveProductionOrderMachine(order as ProductionOrderRow, machines)
+      );
+      return matchesBoardProductionOrderBucket(
+        movement.slipDate,
+        movement.shift,
+        ...machineCandidates
+      );
+    });
   }, [
     shiftSummaryWarehouseMovementRefs,
     hasBoardProductionOrderFilter,
     boardMatchedProductionOrders,
-    boardShiftOptions
+    boardShiftOptions,
+    productionOrders,
+    machines
   ]);
 
   const boardScopedWeighingRecords = useMemo(() => {
@@ -874,6 +871,7 @@ export function ControlBoardPanel({
     if (!pendingBatchPrint || printingBatchOrders.length === 0) return;
 
     let cancelled = false;
+    document.body.classList.add('production-order-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -885,11 +883,13 @@ export function ControlBoardPanel({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('production-order-print-active');
     };
   }, [pendingBatchPrint, printingBatchOrders]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('production-order-print-active');
       setPrintingBatchOrders([]);
       setPrintingBatchProductCatalog([]);
       setPendingBatchPrint(false);
@@ -952,8 +952,8 @@ export function ControlBoardPanel({
         machineNvlReports={boardScopedMachineNvlReports}
         mixingReports={boardScopedMixingReports}
         acceptanceReports={boardScopedAcceptanceReports}
-        canTuDongRecords={useCanTuDongSanLuong ? canTuDongRecords : []}
-        sanLuongSource={useCanTuDongSanLuong ? 'can-tu-dong' : 'acceptance'}
+        sanLuongSource="acceptance"
+        includeAllMachines={isAutoReport}
         shiftSettings={productionOrderSettings}
         isLoading={isLoading}
         dateFrom={shiftSummaryDateFrom}
@@ -1234,7 +1234,8 @@ export function ControlBoardPanel({
         onClose={() => setShowProductionPlan(false)}
         onSaved={loadBoard}
         onOpenWarehouseSlip={() => onNavigate('warehouse-slip')}
-        productionOrders={selectedProductionOrdersForPlan}
+        productionOrders={productionOrders}
+        seedOrderIds={selectedProductionOrderIds}
         machines={machines}
       />
 

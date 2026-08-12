@@ -37,10 +37,10 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **danh sách Cân AI cũ** (`can_tu_dong`) — bảng lọc/ảnh/tổng kg; Type `CanTuDongRecord` dùng chung `/phan-tich-tu-dong` |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **danh sách Cân AI cũ** (`can_tu_dong`) — bảng lọc/ảnh/tổng kg |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: nhúng iframe `https://tram-can-qr-pilot.onrender.com/` |
-| `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals`; `/phan-tich-tu-dong` lọc cân theo ngày+ca lệnh SX |
-| `src/components/BbCanTuDongSanLuongPanel.tsx` | Tab «Báo cáo sản lượng» trên `/phan-tich-tu-dong` — cùng công thức; **Tổng nhựa thành phẩm** = tổng cột Trọng lượng nhựa |
+| `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` |
+| `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel cân tự động (dùng khi `sanLuongSource='can-tu-dong'`; `/phan-tich-tu-dong` hiện lấy sản lượng từ `bao_cao_nghiem_thu`) |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |
 | `src/App.tsx` | Import + route tab |
 

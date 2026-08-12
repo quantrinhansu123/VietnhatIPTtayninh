@@ -4601,6 +4601,7 @@ function parseWarehouseSlipBody(body: unknown): {
   ghiChu: string | null;
   nguoiLap: string | null;
   ca: string | null;
+  may: string | null;
   tenKho: string | null;
   items: WarehouseSlipLineInput[];
 } {
@@ -4628,6 +4629,7 @@ function parseWarehouseSlipBody(body: unknown): {
     ghiChu: String(source.ghiChu ?? source.ghi_chu ?? source.note ?? '').trim() || null,
     nguoiLap: String(source.nguoiLap ?? source.nguoi_lap ?? source.createdBy ?? '').trim() || null,
     ca: String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim() || null,
+    may: String(source.may ?? source.machine ?? source.ten_may ?? '').trim() || null,
     tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
     items: parsedItems.items
   };
@@ -4642,6 +4644,7 @@ function buildWarehouseSlipInsertRecords(
     ghiChu: string | null;
     nguoiLap: string | null;
     ca: string | null;
+    may: string | null;
     tenKho: string | null;
     items: WarehouseSlipLineInput[];
   },
@@ -4665,6 +4668,7 @@ function buildWarehouseSlipInsertRecords(
       nguoi_lap: parsed.nguoiLap || nhanSu,
       nhan_su: nhanSu,
       ca: parsed.ca || '',
+      may: parsed.may || '',
       id_dong_nhap_nguon:
         parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' && item.sourceInboundLineId
           ? item.sourceInboundLineId
@@ -4840,6 +4844,10 @@ function warehouseSlipWriteErrorMessage(error: { code?: string; message?: string
     return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} chưa tồn tại trên Supabase. Hãy chạy supabase-phieu-xuat-nhap-kho.sql.`;
   }
   if (isMissingColumnError(error)) {
+    const msg = String(error.message || '');
+    if (/may/i.test(msg)) {
+      return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} đang thiếu cột may. Hãy chạy supabase-phieu-xuat-nhap-kho-may.sql trong Supabase SQL Editor.`;
+    }
     return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} đang thiếu cột (${error.message}).`;
   }
   if (String(error.message || '').includes('invalid input syntax for type integer')) {
@@ -6800,16 +6808,25 @@ export function createApp() {
       const planNote = typeof source.ghi_chu === 'string' ? source.ghi_chu.trim() : '';
       const createdBy = pickRowField(source, ['nguoi_lap', 'createdBy', 'staff'], '');
 
-      const updates: Array<{ id: string; vi_tri: string | null; thu_tu_uu_tien: number; ghi_chu: string }> = [];
+      const updates: Array<{
+        id: string;
+        orderCode: string;
+        vi_tri: string | null;
+        thu_tu_uu_tien: number;
+        ghi_chu: string;
+      }> = [];
       const snapshotLines: ProductionPlanSnapshotLine[] = [];
       for (const raw of items) {
         if (!raw || typeof raw !== 'object') continue;
         const item = raw as Record<string, unknown>;
-        const id = String(item.id ?? item.lenh_sx_id ?? '').trim();
+        const rawId = String(item.id ?? item.lenh_sx_id ?? '').trim();
+        const id = rawId && rawId !== '0' && rawId.toLowerCase() !== 'null' ? rawId : '';
+        const orderCode = String(item.ma_lenh_sx ?? item.code ?? '').trim();
         const thu_tu_uu_tien = Number(item.thu_tu_uu_tien ?? item.priority);
-        if (!id || !Number.isFinite(thu_tu_uu_tien) || thu_tu_uu_tien <= 0) continue;
+        if ((!id && !orderCode) || !Number.isFinite(thu_tu_uu_tien) || thu_tu_uu_tien <= 0) continue;
         updates.push({
           id,
+          orderCode,
           vi_tri: typeof item.vi_tri === 'string' && item.vi_tri.trim() ? item.vi_tri.trim() : null,
           thu_tu_uu_tien: Math.round(thu_tu_uu_tien),
           ghi_chu: typeof item.ghi_chu === 'string' ? item.ghi_chu.trim() : ''
@@ -6824,14 +6841,19 @@ export function createApp() {
       }
 
       for (const item of updates) {
-        const { error: updateError } = await supabase
+        let updateQuery = supabase
           .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
           .update({
             vi_tri: item.vi_tri,
             thu_tu_uu_tien: item.thu_tu_uu_tien,
             ghi_chu: item.ghi_chu
-          })
-          .eq('id', item.id);
+          });
+        // Mã lệnh có trong snapshot kể cả dữ liệu cũ bị lưu lenh_sx_id = 0 hoặc ID dòng snapshot.
+        // Ưu tiên mã lệnh để cập nhật đúng bản ghi lenh_sx thực tế.
+        updateQuery = item.orderCode
+          ? updateQuery.eq('ma_lenh_sx', item.orderCode)
+          : updateQuery.eq('id', item.id);
+        const { error: updateError } = await updateQuery;
 
         if (updateError) {
           console.error('Supabase ke_hoach_sx update error:', updateError);

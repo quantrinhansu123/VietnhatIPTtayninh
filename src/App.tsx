@@ -1362,6 +1362,7 @@ export default function App() {
                 <WarehouseSlipPanel
                   onBack={() => goBack('factory-kho')}
                   onOpenHistory={() => navigateToTab('warehouse-history')}
+                  currentUser={authUser}
                 />
               </motion.div>
             ) : activeTab === 'warehouse-history' ? (

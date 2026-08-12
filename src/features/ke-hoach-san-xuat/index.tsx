@@ -22,7 +22,7 @@ import {
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftOption } from '../../utils/shiftSettings';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
-import type { WarehouseSlipPrefillDraft } from '../phieu-xuat-nhap-kho';
+import { sortWarehouseLinesKgFirst, type WarehouseSlipPrefillDraft } from '../phieu-xuat-nhap-kho';
 import { STANDARD_SHIFTS } from '../../types';
 import { normalizeHrBranches, type HrBranch, type HrMember } from '../_shared/hr';
 import { ControlBoardShiftSummaryPrintBatch } from '../../components/ControlBoardShiftSummaryPrintSheet';
@@ -258,12 +258,34 @@ export function productionOrderToPlanLine(
 
 export function buildInitialProductionPlanLines(
   productionOrders: ProductionOrderRow[],
-  machines: MachineRow[] = []
+  machines: MachineRow[] = [],
+  planDate = ''
 ): ProductionPlanLine[] {
+  const targetDate = String(planDate || '').trim();
   return productionOrders
     .filter(isActiveProductionPlanOrder)
+    .filter(row => {
+      if (!targetDate) return true;
+      const orderDate = parseProductionOrderFilterDate(row.startDate);
+      return Boolean(orderDate) && orderDate === targetDate;
+    })
     .sort(compareProductionOrderPriority)
     .map((row, index) => productionOrderToPlanLine(row, row.priority > 0 ? row.priority : index + 1, machines));
+}
+
+/** Ngày kế hoạch mặc định = ngày xuất hiện nhiều nhất trong lệnh SX đã chọn. */
+export function resolveDefaultProductionPlanDate(
+  productionOrders: ProductionOrderRow[],
+  fallback = todayDateInputValue()
+): string {
+  const counts = new Map<string, number>();
+  for (const row of productionOrders) {
+    const date = parseProductionOrderFilterDate(row.startDate);
+    if (!date) continue;
+    counts.set(date, (counts.get(date) || 0) + 1);
+  }
+  if (counts.size === 0) return fallback;
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0][0];
 }
 
 export function enrichProductionPlanLines(
@@ -342,7 +364,7 @@ function formatProductionPlanPrintDate(value: string) {
 
 export function ProductionPlanPrintSheet({
   lines,
-  materialsByLine,
+  materialsByLine: _materialsByLine,
   planDate = '',
   planNote = ''
 }: {
@@ -370,8 +392,12 @@ export function ProductionPlanPrintSheet({
           </div>
           <div className="production-plan-print-title-wrap">
             <h1>KẾ HOẠCH SẢN XUẤT</h1>
+            <p>PHIẾU PHÂN CÔNG SẢN XUẤT THEO NGÀY</p>
           </div>
-          <p className="production-plan-print-date">Ngày: {printDate}</p>
+          <div className="production-plan-print-date">
+            <span>Ngày lập</span>
+            <strong>{printDate}</strong>
+          </div>
         </header>
 
         <table className="production-plan-nvl-print-meta-table">
@@ -405,13 +431,14 @@ export function ProductionPlanPrintSheet({
               <th>Ca làm việc</th>
               <th>Nhân sự</th>
               <th>Lệnh sản xuất</th>
-              <th>Vật tư / định mức tạm tính</th>
+              <th>Sản phẩm</th>
               <th>Ghi chú</th>
             </tr>
           </thead>
           <tbody>
             {printRows.map(row => {
-              const materials = getProductionPlanLineMaterials(row.line, materialsByLine);
+              const products = getProductionOrderProductLines(row.line);
+              const orderCode = String(row.line.code || '').trim() || '-';
 
               return (
                 <tr key={row.line.id}>
@@ -423,32 +450,31 @@ export function ProductionPlanPrintSheet({
                   )}
                   <td>{row.line.shift && row.line.shift !== '-' ? row.line.shift : '-'}</td>
                   <td>{row.line.staff && row.line.staff !== '-' ? row.line.staff : '-'}</td>
+                  <td className="production-plan-print-order-code">{orderCode}</td>
                   <td>
-                    {getProductionPlanProductCodes(row.line).map(code => (
-                      <div key={`${row.line.id}-${code}`} className="production-plan-print-product-name font-mono">
-                        {code}
-                      </div>
-                    ))}
-                    {getProductionPlanProductCodes(row.line).length === 0 ? '-' : null}
-                  </td>
-                  <td>
-                    {materials.length === 0 ? (
-                      <span className="production-plan-print-empty-material">
-                        Chưa khai báo thành phần NPL
-                      </span>
+                    {products.length === 0 ? (
+                      <span className="production-plan-print-empty-material">-</span>
                     ) : (
                       <div className="production-plan-print-material-list">
-                        {materials.map((material, index) => (
-                          <div key={`${row.line.id}-${material.code}-${index}`} className="production-plan-print-material-item">
-                            <span className="production-plan-print-material-name">
-                              {index + 1}. {material.code}{material.name ? ` - ${material.name}` : ''}
-                            </span>
-                            <span className="production-plan-print-material-qty">
-                              {formatProductionOrderPrintQuantity(material.proposedQuantity)}
-                              {material.unit ? ` ${material.unit}` : ''} ({material.normLabel})
-                            </span>
-                          </div>
-                        ))}
+                        {products.map((product, index) => {
+                          const qty =
+                            product.quantity && product.quantity !== '-'
+                              ? `${product.quantity}${product.unit && product.unit !== '-' ? ` ${product.unit}` : ''}`
+                              : '';
+                          return (
+                            <div
+                              key={`${row.line.id}-${product.productCode || index}`}
+                              className="production-plan-print-material-item"
+                            >
+                              <span className="production-plan-print-material-name">
+                                {products.length > 1 ? `${index + 1}. ` : ''}
+                                {product.productCode || '-'}
+                                {product.productName ? ` - ${product.productName}` : ''}
+                              </span>
+                              {qty ? <span className="production-plan-print-material-qty">{qty}</span> : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </td>
@@ -1704,7 +1730,10 @@ export function normalizeProductionPlanHistoryLines(data: unknown): ProductionPl
 
       return {
         id: String(record.id ?? '').trim() || `${record.ma_lenh_sx}-${record.thu_tu_uu_tien}`,
-        productionOrderId: String(record.lenh_sx_id ?? '').trim(),
+        productionOrderId: (() => {
+          const value = String(record.lenh_sx_id ?? '').trim();
+          return value && value !== '0' && value.toLowerCase() !== 'null' ? value : '';
+        })(),
         priority: Number(record.thu_tu_uu_tien ?? 0) || 0,
         position: pickText(record, ['vi_tri', 'position'], '-'),
         note: pickText(record, ['ghi_chu', 'note'], ''),
@@ -1734,6 +1763,10 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [plans, setPlans] = useState<ProductionPlanHistorySummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [selectedLines, setSelectedLines] = useState<ProductionPlanHistoryLine[]>([]);
+  const [selectedPrintLineIds, setSelectedPrintLineIds] = useState<string[]>([]);
+  const [historyPrintLines, setHistoryPrintLines] = useState<ProductionPlanLine[]>([]);
+  const [historyPrintMaterials, setHistoryPrintMaterials] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
+  const [isPrintingSelected, setIsPrintingSelected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -1791,7 +1824,9 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       }
 
       setSelectedPlanId(planId);
-      setSelectedLines(normalizeProductionPlanHistoryLines(data));
+      const nextLines = normalizeProductionPlanHistoryLines(data);
+      setSelectedLines(nextLines);
+      setSelectedPrintLineIds(nextLines.map(line => line.id));
     } catch (error: any) {
       setSelectedLines([]);
       setLoadError(error.message || 'Không thể tải chi tiết kế hoạch.');
@@ -1805,6 +1840,73 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   }, []);
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+  const allSelectedLinesChecked = selectedLines.length > 0 && selectedLines.every(line => selectedPrintLineIds.includes(line.id));
+
+  const togglePrintLine = (lineId: string) => {
+    setSelectedPrintLineIds(current => current.includes(lineId)
+      ? current.filter(id => id !== lineId)
+      : [...current, lineId]);
+  };
+
+  const printSelectedLines = async () => {
+    if (!selectedPlan) return;
+    const chosen = selectedLines.filter(line => selectedPrintLineIds.includes(line.id));
+    if (chosen.length === 0) return;
+    const printable: ProductionPlanLine[] = chosen.map(line => ({
+      id: line.productionOrderId || line.id,
+      code: line.orderCode,
+      name: line.orderCode,
+      productCode: line.products[0]?.productCode || '',
+      productName: line.products[0]?.productName || '',
+      quantity: line.products[0]?.quantity || '',
+      unit: line.products[0]?.unit || '',
+      products: line.products,
+      status: '',
+      orderRef: line.orderRef,
+      position: line.machine !== '-' ? line.machine : line.position,
+      staff: line.staff,
+      shift: line.shift,
+      priority: line.priority,
+      note: line.note
+    }));
+    setIsPrintingSelected(true);
+    setLoadError('');
+    try {
+      setHistoryPrintMaterials({});
+      setHistoryPrintLines(printable);
+    } catch (error: any) {
+      setLoadError(error.message || 'Không thể chuẩn bị dữ liệu in các lệnh đã chọn.');
+    } finally {
+      setIsPrintingSelected(false);
+    }
+  };
+
+  useEffect(() => {
+    if (historyPrintLines.length === 0) return;
+    let cancelled = false;
+    document.body.classList.add('production-plan-history-print-active');
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        window.print();
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('production-plan-history-print-active');
+    };
+  }, [historyPrintLines]);
+
+  useEffect(() => {
+    const handleAfterHistoryPrint = () => {
+      document.body.classList.remove('production-plan-history-print-active');
+      setHistoryPrintLines([]);
+      setHistoryPrintMaterials({});
+    };
+    window.addEventListener('afterprint', handleAfterHistoryPrint);
+    return () => window.removeEventListener('afterprint', handleAfterHistoryPrint);
+  }, []);
   const plansByDate = useMemo(() => {
     const map = new Map<string, ProductionPlanHistorySummary[]>();
     plans.forEach(plan => {
@@ -2080,15 +2182,28 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         </section>
 
         <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
-          <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-            <h3 className="text-sm font-black text-zinc-950">Chi tiết kế hoạch</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-black text-zinc-950">Chi tiết kế hoạch</h3>
+              {selectedPlan ? (
+                <p className="mt-1 text-xs font-semibold text-zinc-600">
+                  {selectedPlan.code} · {selectedPlan.planDate} · {selectedPlan.orderCount} lệnh
+                </p>
+              ) : (
+                <p className="mt-1 text-xs font-semibold text-zinc-500">Chọn một bản ghi bên trái để xem chi tiết.</p>
+              )}
+            </div>
             {selectedPlan ? (
-              <p className="mt-1 text-xs font-semibold text-zinc-600">
-                {selectedPlan.code} · {selectedPlan.planDate} · {selectedPlan.orderCount} lệnh
-              </p>
-            ) : (
-              <p className="mt-1 text-xs font-semibold text-zinc-500">Chọn một bản ghi bên trái để xem chi tiết.</p>
-            )}
+              <button
+                type="button"
+                onClick={() => void printSelectedLines()}
+                disabled={selectedPrintLineIds.length === 0 || isPrintingSelected}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPrintingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                In {selectedPrintLineIds.length} lệnh đã chọn
+              </button>
+            ) : null}
           </div>
 
           {!selectedPlan ? (
@@ -2103,6 +2218,15 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
               <table className="min-w-[920px] w-full text-left text-sm">
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>
+                    <th className="w-12 px-3 py-2 text-center font-black">
+                      <input
+                        type="checkbox"
+                        aria-label="Chọn tất cả lệnh để in"
+                        checked={allSelectedLinesChecked}
+                        onChange={() => setSelectedPrintLineIds(allSelectedLinesChecked ? [] : selectedLines.map(line => line.id))}
+                        className="h-4 w-4 cursor-pointer accent-white"
+                      />
+                    </th>
                     <th className="px-3 py-2 font-black">STT</th>
                     <th className="px-3 py-2 font-black">Mã lệnh</th>
                     <th className="px-3 py-2 font-black">Máy</th>
@@ -2115,6 +2239,15 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                 <tbody className="divide-y divide-zinc-100">
                   {selectedLines.map(line => (
                     <tr key={line.id}>
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Chọn lệnh ${line.orderCode} để in`}
+                          checked={selectedPrintLineIds.includes(line.id)}
+                          onChange={() => togglePrintLine(line.id)}
+                          className="h-4 w-4 cursor-pointer accent-[#ef1b2d]"
+                        />
+                      </td>
                       <td className="px-3 py-2 font-black text-emerald-700">{line.priority}</td>
                       <td className="px-3 py-2">
                         <p className="font-mono font-bold text-zinc-900">{line.orderCode}</p>
@@ -2131,7 +2264,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                   ))}
                   {selectedLines.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center font-semibold text-zinc-500">
+                      <td colSpan={8} className="px-3 py-8 text-center font-semibold text-zinc-500">
                         Kế hoạch này chưa có dòng chi tiết.
                       </td>
                     </tr>
@@ -2142,6 +2275,17 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           )}
         </section>
       </div>
+      {historyPrintLines.length > 0 ? createPortal(
+        <div className="production-plan-history-print-root">
+          <ProductionPlanPrintSheet
+            lines={historyPrintLines}
+            materialsByLine={historyPrintMaterials}
+            planDate={selectedPlan?.planDate || ''}
+            planNote={selectedPlan?.note || ''}
+          />
+        </div>,
+        document.body
+      ) : null}
       <ProductionPlanModal
         open={showCreateModal}
         onClose={() => { setShowCreateModal(false); setEditingPlan(null); setEditLines([]); }}
@@ -2171,7 +2315,8 @@ export function ProductionPlanModal({
   editPlanId,
   initialLines,
   initialPlanDate,
-  initialNote
+  initialNote,
+  seedOrderIds
 }: {
   open: boolean;
   onClose: () => void;
@@ -2183,6 +2328,8 @@ export function ProductionPlanModal({
   initialLines?: ProductionPlanLine[];
   initialPlanDate?: string;
   initialNote?: string;
+  /** Lệnh đang tick trên bảng điều khiển — dùng suy ngày kế hoạch mặc định. */
+  seedOrderIds?: string[];
 }) {
   const { canCreate } = useTabAccess('production-plan-history');
   const [planLines, setPlanLines] = useState<ProductionPlanLine[]>([]);
@@ -2229,9 +2376,22 @@ export function ProductionPlanModal({
     [planLines, productionOrders, machines]
   );
 
+  const isEditingExistingPlan = Boolean(editPlanId || (initialLines && initialLines.length > 0));
+
   useEffect(() => {
     if (!open) return;
-    setPlanLines(initialLines?.length ? initialLines : buildInitialProductionPlanLines(productionOrders, machines));
+    const seedIdSet = new Set((seedOrderIds || []).filter(Boolean));
+    const seedOrders =
+      seedIdSet.size > 0 ? productionOrders.filter(order => seedIdSet.has(order.id)) : productionOrders;
+    const nextDate =
+      initialPlanDate ||
+      resolveDefaultProductionPlanDate(seedOrders.length > 0 ? seedOrders : productionOrders, todayDateInputValue());
+    setPlanDate(nextDate);
+    setPlanLines(
+      initialLines?.length
+        ? initialLines
+        : buildInitialProductionPlanLines(productionOrders, machines, nextDate)
+    );
     setFormError('');
     setDragIndex(null);
     setPendingPrint(false);
@@ -2247,7 +2407,6 @@ export function ProductionPlanModal({
     setAccountingMaterialsByLine({});
     setAccountingInventoryMaterials([]);
     setShowQrPrintModal(false);
-    setPlanDate(initialPlanDate || todayDateInputValue());
     setPlanHeaderNote(initialNote || '');
     setPendingStaffAssignmentPrint(false);
     setIsLoadingRelatedPrint(false);
@@ -2264,7 +2423,13 @@ export function ProductionPlanModal({
       .then(res => (res.ok ? res.json() : null))
       .then(data => setRelatedShiftOptions(data ? getProductionShiftOptions(normalizeShiftSettings(data)) : []))
       .catch(() => setRelatedShiftOptions([]));
-  }, [open, productionOrders, machines, initialLines, initialPlanDate, initialNote]);
+  }, [open, productionOrders, machines, initialLines, initialPlanDate, initialNote, seedOrderIds]);
+
+  /** Đổi ngày kế hoạch → chỉ giữ lệnh SX đúng ngày đó (không áp khi sửa kế hoạch đã lưu). */
+  useEffect(() => {
+    if (!open || isEditingExistingPlan) return;
+    setPlanLines(buildInitialProductionPlanLines(productionOrders, machines, planDate));
+  }, [open, isEditingExistingPlan, planDate, productionOrders, machines]);
 
   useEffect(() => {
     if (!open) return;
@@ -2326,6 +2491,19 @@ export function ProductionPlanModal({
     });
   }, [displayLines]);
 
+  const isModalPlanPrintActive =
+    (pendingPrint && displayLines.length > 0) ||
+    (pendingNvlPrint && displayLines.length > 0) ||
+    pendingStaffAssignmentPrint;
+
+  useEffect(() => {
+    if (!isModalPlanPrintActive) return;
+    document.body.classList.add('production-plan-modal-print-active');
+    return () => {
+      document.body.classList.remove('production-plan-modal-print-active');
+    };
+  }, [isModalPlanPrintActive]);
+
   useEffect(() => {
     if (!pendingPrint || displayLines.length === 0) return;
     let cancelled = false;
@@ -2350,6 +2528,7 @@ export function ProductionPlanModal({
         if (cancelled) return;
         window.print();
         setPendingNvlPrint(false);
+        setShowNvlPrintSheet(false);
       });
     }, 150);
     return () => {
@@ -2467,17 +2646,9 @@ export function ProductionPlanModal({
 
   const handlePrint = async () => {
     if (displayLines.length === 0) return;
-    setIsLoadingPlanPrint(true);
     setFormError('');
-
-    try {
-      setPrintMaterialsByLine(await loadProductionPlanMaterials(displayLines));
-      setPendingPrint(true);
-    } catch (error: any) {
-      setFormError(error.message || 'Không thể tải thành phần sản phẩm để in kế hoạch.');
-    } finally {
-      setIsLoadingPlanPrint(false);
-    }
+    setPrintMaterialsByLine({});
+    setPendingPrint(true);
   };
 
   const handlePrintNvl = async () => {
@@ -2744,7 +2915,7 @@ export function ProductionPlanModal({
       machine: [...new Set(shiftLines.map(line => line.position).filter(value => value && value !== '-'))].join(', '),
       shift: resolvedShift,
       recipient: [...new Set(shiftLines.map(line => line.staff).filter(value => value && value !== '-'))].join(', '),
-      lines: materialLines.map(line => ({
+      lines: sortWarehouseLinesKgFirst(materialLines).map(line => ({
         code: line.code,
         name: line.name,
         unit: line.unit,
@@ -2804,6 +2975,9 @@ export function ProductionPlanModal({
                   onChange={event => setPlanDate(event.target.value)}
                   className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
+                <span className="block text-[11px] font-semibold text-zinc-500">
+                  Bảng dưới chỉ hiện lệnh SX có ngày bắt đầu trùng ngày này.
+                </span>
               </label>
               <label className="space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú kế hoạch</span>
@@ -2868,7 +3042,7 @@ export function ProductionPlanModal({
 
             {displayLines.length === 0 ? (
               <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm font-semibold text-zinc-500">
-                Không có lệnh SX đang chờ hoặc đang sản xuất.
+                Không có lệnh SX đang chờ / đang sản xuất cho ngày {planDate || "đã chọn"}.
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-zinc-200">
@@ -3020,9 +3194,12 @@ export function ProductionPlanModal({
         </div>
       </div>
 
-      {pendingStaffAssignmentPrint && (
-        <StaffAssignmentPrintSheet rows={staffAssignmentRows} planDate={planDate} planNote={planHeaderNote} />
-      )}
+      {pendingStaffAssignmentPrint
+        ? createPortal(
+            <StaffAssignmentPrintSheet rows={staffAssignmentRows} planDate={planDate} planNote={planHeaderNote} />,
+            document.body
+          )
+        : null}
 
       {(relatedPrintOrders.length > 0 || relatedPrintCustomerOrders.length > 0 || relatedPrintData) &&
         createPortal(
@@ -3056,6 +3233,7 @@ export function ProductionPlanModal({
                   product={item.product}
                   productCatalog={relatedPrintCatalog}
                   showActualQuantity
+                  portal={false}
                 />
               </div>
             ))}
@@ -3073,22 +3251,28 @@ export function ProductionPlanModal({
           document.body
         )}
 
-      {pendingPrint && displayLines.length > 0 && (
-        <ProductionPlanPrintSheet
-          lines={displayLines}
-          materialsByLine={printMaterialsByLine}
-          planDate={planDate}
-          planNote={planHeaderNote}
-        />
-      )}
+      {pendingPrint && displayLines.length > 0
+        ? createPortal(
+            <ProductionPlanPrintSheet
+              lines={displayLines}
+              materialsByLine={printMaterialsByLine}
+              planDate={planDate}
+              planNote={planHeaderNote}
+            />,
+            document.body
+          )
+        : null}
 
-      {showNvlPrintSheet && displayLines.length > 0 && (
-        <ProductionPlanNvlPrintSheet
-          planDate={planDate}
-          planNote={planHeaderNote}
-          shiftGroups={buildProductionPlanNvlPrintGroups(displayLines, nvlPrintMaterialsByLine)}
-        />
-      )}
+      {showNvlPrintSheet && displayLines.length > 0
+        ? createPortal(
+            <ProductionPlanNvlPrintSheet
+              planDate={planDate}
+              planNote={planHeaderNote}
+              shiftGroups={buildProductionPlanNvlPrintGroups(displayLines, nvlPrintMaterialsByLine)}
+            />,
+            document.body
+          )
+        : null}
 
       <ProductionPlanMaterialAccountingModal
         open={showMaterialAccountingModal}
@@ -3462,7 +3646,8 @@ export function ProductionOrderPrintSheet({
   product,
   productCatalog = [],
   shiftSettings = [],
-  showActualQuantity = false
+  showActualQuantity = false,
+  portal = true
 }: {
   order: ProductionOrderRow;
   materials: ProductionOrderMaterialLine[];
@@ -3472,9 +3657,10 @@ export function ProductionOrderPrintSheet({
   shiftSettings?: ProductionOrderLookupSetting[];
   /** Hiện cột KL thực tế lấy từ Lệnh xuất vật tư cùng ngày + ca. */
   showActualQuantity?: boolean;
+  /** Portal ra body để tránh #root overflow:hidden làm phiếu in trắng. */
+  portal?: boolean;
 }) {
   const printDate = formatProductionOrderPrintDate(order.startDate);
-  const orderQuantity = parseProductionOrderQuantity(order.quantity);
   const shiftLabel = formatProductionOrderShiftLabel(order.shift, shiftSettings);
   const productLines = getProductionOrderProductLines(order);
   const staffLabel =
@@ -3489,7 +3675,7 @@ export function ProductionOrderPrintSheet({
         : '-';
   const costObject = machineName;
 
-  return (
+  const sheet = (
     <div className="production-order-print-sheet">
       <div className="production-order-print-doc">
         <header className="production-order-print-letterhead">
@@ -3646,6 +3832,9 @@ export function ProductionOrderPrintSheet({
       </div>
     </div>
   );
+
+  if (!portal || typeof document === 'undefined') return sheet;
+  return createPortal(sheet, document.body);
 }
 
 export type PrintableProductionOrder = {
@@ -3666,7 +3855,7 @@ export function ProductionOrderBatchPrintSheets({
 }) {
   if (items.length === 0) return null;
 
-  return (
+  const content = (
     <div className="production-order-print-batch">
       {items.map(item => (
         <div key={item.order.id} className="production-order-print-page">
@@ -3677,11 +3866,14 @@ export function ProductionOrderBatchPrintSheets({
             product={item.product}
             productCatalog={productCatalog}
             shiftSettings={shiftSettings}
+            portal={false}
           />
         </div>
       ))}
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }
 
 export function useProductionOrderPrint() {
@@ -3727,6 +3919,7 @@ export function useProductionOrderPrint() {
     if (!pendingPrint || !printingOrder) return;
 
     let cancelled = false;
+    document.body.classList.add('production-order-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -3738,11 +3931,13 @@ export function useProductionOrderPrint() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('production-order-print-active');
     };
   }, [pendingPrint, printingOrder, printingMaterials, printingProduct, printingMachineLabel]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('production-order-print-active');
       setPrintingOrder(null);
       setPrintingMaterials([]);
       setPrintingProduct(null);

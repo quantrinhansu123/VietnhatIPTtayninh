@@ -484,21 +484,8 @@ export default function AcceptanceReportForm({
     [shiftSettings]
   );
 
-  const orderShiftOptions = useMemo(() => {
-    const shifts = ordersForSelectedDay
-      .map(order => order.shift)
-      .filter(shift => shift && shift !== '-');
-    return [...new Set(shifts)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
-  }, [ordersForSelectedDay]);
-
-  /** Ca lấy từ lệnh SX theo ngày; thiếu lệnh thì fallback cài đặt thời gian. */
-  const shiftOptions = useMemo(() => {
-    if (orderShiftOptions.length === 0) {
-      const merged = [...new Set([...settingShiftOptions, ...orderShiftOptions])];
-      return merged.sort((a, b) => String(a).localeCompare(String(b), 'vi'));
-    }
-    return orderShiftOptions;
-  }, [orderShiftOptions, settingShiftOptions]);
+  /** Nguồn Ca duy nhất: trang Cài đặt (`/api/cai-dat`). */
+  const shiftOptions = settingShiftOptions;
 
   const teamOptions = useMemo(
     () =>
@@ -1082,14 +1069,10 @@ export default function AcceptanceReportForm({
                 value={form.ca}
                 onChange={e => handleShiftChange(e.target.value)}
                 className={inputClass}
-                disabled={!form.teamId && orderShiftOptions.length === 0 && settingShiftOptions.length === 0}
+                disabled={settingShiftOptions.length === 0}
               >
                 <option value="">
-                  {orderShiftOptions.length === 0
-                    ? settingShiftOptions.length > 0
-                      ? 'Chọn ca...'
-                      : 'Không có ca (thiếu lệnh SX)'
-                    : 'Chọn ca...'}
+                  {settingShiftOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
                 </option>
                 {shiftOptions.map(shift => (
                   <option key={shift} value={shift}>
@@ -1377,10 +1360,7 @@ export default function AcceptanceReportForm({
                   className={inputClass}
                 >
                   <option value="">Chọn ca...</option>
-                  {[...new Set([
-                    ...productionOrders.filter(order => order.startDate === autoReportFilter.ngay).map(order => order.shift),
-                    ...settingShiftOptions
-                  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')).map(shift => (
+                  {settingShiftOptions.map(shift => (
                     <option key={shift} value={shift}>{shift}</option>
                   ))}
                 </select>

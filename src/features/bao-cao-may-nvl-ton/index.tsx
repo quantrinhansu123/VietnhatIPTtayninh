@@ -22,7 +22,6 @@ import {
   type MachineNvlSavedLine,
   type MachineNvlSavedReport
 } from '../../utils/machineNvlReports';
-import { STANDARD_SHIFTS } from '../../types';
 import { normalizeProductCodeKey } from '../san-pham/types';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import {
@@ -549,7 +548,7 @@ export function MachineNvlReportPanel({
       .map(setting => setting.name || setting.code)
       .filter((name, index, arr) => name && arr.indexOf(name) === index);
 
-    return fromSettings.length > 0 ? fromSettings : [...STANDARD_SHIFTS];
+    return fromSettings;
   }, [shiftSettings]);
   const staffOptions = useMemo(() => {
     if (!date || !shift || !machineRef.trim()) return [];

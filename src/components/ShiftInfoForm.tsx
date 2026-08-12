@@ -1,6 +1,7 @@
-import React from 'react';
-import { ShiftInfo, STANDARD_MACHINES, STANDARD_SHIFTS } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShiftInfo, STANDARD_MACHINES } from '../types';
 import { Cpu, Users, CalendarDays, UserCheck } from 'lucide-react';
+import { getProductionShiftOptions, normalizeShiftSettings } from '../utils/shiftSettings';
 
 interface ShiftInfoFormProps {
   data: ShiftInfo;
@@ -8,6 +9,16 @@ interface ShiftInfoFormProps {
 }
 
 export default function ShiftInfoForm({ data, onChange }: ShiftInfoFormProps) {
+  const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/cai-dat')
+      .then(response => response.json())
+      .then(payload => { if (!cancelled) setShiftSettings(normalizeShiftSettings(payload)); })
+      .catch(() => { if (!cancelled) setShiftSettings([]); });
+    return () => { cancelled = true; };
+  }, []);
+  const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
   return (
     <div className="space-y-6" id="shift-info-section">
       <div className="border-b border-slate-100 pb-3">
@@ -54,27 +65,27 @@ export default function ShiftInfoForm({ data, onChange }: ShiftInfoFormProps) {
           Ca Trực <span className="text-rose-500">*</span>
         </label>
         <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
-          {STANDARD_SHIFTS.map((shift) => {
-            const isSelected = data.shiftName === shift;
+          {shiftOptions.map((shift) => {
+            const isSelected = data.shiftName === shift.value;
             return (
               <button
-                key={shift}
+                key={shift.value}
                 type="button"
-                id={`shift-opt-${shift.replace(/\s+/g, '-')}`}
+                id={`shift-opt-${shift.value.replace(/\s+/g, '-')}`}
                 className={`flex text-left items-center p-3.5 rounded-xl border transition-all text-sm font-medium ${
                   isSelected
                     ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800 ring-1 ring-emerald-500'
                     : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                 }`}
                 style={{ minHeight: '44px' }}
-                onClick={() => onChange({ shiftName: shift })}
+                onClick={() => onChange({ shiftName: shift.value })}
               >
                 <span className={`w-4 h-4 rounded-full border mr-3 flex items-center justify-center transition-all ${
                   isSelected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white'
                 }`}>
                   {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                 </span>
-                {shift}
+                {shift.label}
               </button>
             );
           })}

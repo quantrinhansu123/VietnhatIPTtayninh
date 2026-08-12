@@ -12,7 +12,6 @@ import {
   buildMachineDowntimePrintSlip,
   type MachineDowntimePrintSlip
 } from './MachineDowntimePrintSheet';
-import { STANDARD_SHIFTS } from '../types';
 import { formatNumber } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
@@ -314,7 +313,7 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
       )
       .map(setting => setting.name || setting.code)
       .filter((name, index, arr) => name && arr.indexOf(name) === index);
-    return fromSettings.length > 0 ? fromSettings : [...STANDARD_SHIFTS];
+    return fromSettings;
   }, [settings]);
 
   const filteredStaffOptions = useMemo(() => {

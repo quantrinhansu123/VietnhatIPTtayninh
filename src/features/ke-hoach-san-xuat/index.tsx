@@ -2839,7 +2839,7 @@ export function ProductionPlanModal({
               </div>
 
               <div className="mt-2 flex flex-wrap gap-2">
-                {(relatedShiftOptions.length > 0 ? relatedShiftOptions : STANDARD_SHIFTS.map(shift => ({ value: shift, label: shift }))).map(opt => {
+                {relatedShiftOptions.map(opt => {
                   const checked = selectedRelatedShifts.some(item => shiftNamesMatch(item, opt.value));
                   return (
                     <label
@@ -4322,7 +4322,7 @@ export function AddProductionOrderModal({
       .map(setting => setting.name || setting.code)
       .filter((name, index, arr) => name && arr.indexOf(name) === index);
 
-    return fromSettings.length > 0 ? fromSettings : [...STANDARD_SHIFTS];
+    return fromSettings;
   }, [settings]);
 
   const assignedMachineKeys = useMemo(() => {

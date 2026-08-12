@@ -1,5 +1,3 @@
-import { STANDARD_SHIFTS } from '../types';
-
 export type ShiftSetting = {
   id: string;
   code: string;
@@ -106,7 +104,9 @@ export function getProductionShiftOptions(settings: ShiftSetting[]): ShiftOption
 
   if (fallbackFromSettings.length > 0) return fallbackFromSettings;
 
-  return STANDARD_SHIFTS.map(shift => ({ value: shift, label: shift }));
+  // Cài đặt là nguồn duy nhất cho trường Ca trên toàn hệ thống.
+  // Không tự sinh ca cố định vì sẽ làm form lệch với trang /cai-dat.
+  return [];
 }
 
 export function shiftNamesMatch(left: string, right: string) {

@@ -12,7 +12,7 @@ import {
 } from '../_shared/recordHelpers';
 import type { HrBranch, HrMember } from '../_shared/hr';
 import { normalizeHrBranches } from '../_shared/hr';
-import { STANDARD_SHIFTS } from '../../types';
+import { getProductionShiftOptions, normalizeShiftSettings } from '../../utils/shiftSettings';
 import {
   STAFF_MENU_VIEW_TREE,
   defaultStaffViewPermissions,
@@ -1153,7 +1153,7 @@ export function emptyStaffForm(defaults?: { branch?: string; department?: string
     branch: defaults?.branch || 'Đà Nẵng',
     department: defaults?.department || 'Sản xuất',
     role: 'Nhân sự',
-    shift: STANDARD_SHIFTS[0] || 'Ca 1',
+    shift: '',
     status: 'Đang làm',
     username: '',
     password: '',
@@ -1185,6 +1185,19 @@ export function AddStaffModal({
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [shiftOptions, setShiftOptions] = useState<Array<{ value: string; label: string }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch('/api/cai-dat')
+      .then(response => response.json())
+      .then(payload => {
+        if (!cancelled) setShiftOptions(getProductionShiftOptions(normalizeShiftSettings(payload)));
+      })
+      .catch(() => { if (!cancelled) setShiftOptions([]); });
+    return () => { cancelled = true; };
+  }, [open]);
 
   const isEditing = Boolean(editTarget);
 
@@ -1204,7 +1217,7 @@ export function AddStaffModal({
         branch: branchName || branchOptions[0] || 'Đà Nẵng',
         department: departmentName || departmentOptions[0] || 'Sản xuất',
         role: member.role || 'Nhân sự',
-        shift: member.shift || STANDARD_SHIFTS[0] || 'Ca 1',
+        shift: member.shift || '',
         status: member.status || 'Đang làm',
         username: member.username || '',
         password: member.password || '',
@@ -1396,9 +1409,10 @@ export function AddStaffModal({
               onChange={event => setForm(prev => ({ ...prev, shift: event.target.value }))}
               className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
             >
-              {STANDARD_SHIFTS.map(shift => (
-                <option key={shift} value={shift}>
-                  {shift}
+              <option value="">{shiftOptions.length > 0 ? 'Chọn ca' : 'Chưa có ca trong Cài đặt'}</option>
+              {shiftOptions.map(shift => (
+                <option key={shift.value} value={shift.value}>
+                  {shift.label}
                 </option>
               ))}
             </select>

@@ -148,6 +148,7 @@ interface MachineOption {
   code: string;
   name: string;
   branch: string;
+  batchWeightKg: number | null;
 }
 
 interface MaterialOption {
@@ -1070,7 +1071,8 @@ export default function MixingReportForm({
         id: String(row.id ?? ''),
         code: String(row.ma_may ?? row.code ?? '').trim(),
         name: String(row.ten_may ?? row.name ?? '').trim(),
-        branch: String(row.chi_nhanh ?? row.branch ?? '').trim()
+        branch: String(row.chi_nhanh ?? row.branch ?? '').trim(),
+        batchWeightKg: parseOptionalNumber(row.dinh_luong)
       }))
     );
 
@@ -1199,12 +1201,30 @@ export default function MixingReportForm({
     const machine = machines.find(item => item.id === machineId);
     if (!machine) return;
     setNhanSuManual(false);
-    setForm(prev => ({
-      ...prev,
-      ma_may: machine.code,
-      ten_may: machine.name,
-      chi_nhanh: machine.branch || prev.chi_nhanh
-    }));
+    setForm(prev => {
+      let chiTiet = prev.chi_tiet;
+      if (machine.batchWeightKg && machine.batchWeightKg > 0) {
+        chiTiet = prev.chi_tiet.map(line => {
+          let phoiTron = line.lan_su_dung;
+          ROUND_KEYS.forEach(roundKey => {
+            phoiTron = setRoundBatchWeight(phoiTron, roundKey, String(machine.batchWeightKg));
+          });
+          return { ...line, lan_su_dung: phoiTron };
+        });
+      }
+      return {
+        ...prev,
+        ma_may: machine.code,
+        ten_may: machine.name,
+        chi_nhanh: machine.branch || prev.chi_nhanh,
+        chi_tiet: chiTiet
+      };
+    });
+    if (machine.batchWeightKg && machine.batchWeightKg > 0) {
+      setRoundBatchWeightDrafts(
+        Object.fromEntries(ROUND_KEYS.map(roundKey => [roundKey, String(machine.batchWeightKg)])) as Partial<Record<RoundKey, string>>
+      );
+    }
   };
 
   useEffect(() => {

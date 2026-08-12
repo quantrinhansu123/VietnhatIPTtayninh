@@ -37,6 +37,7 @@ export type AcceptanceReport = {
   gio: string;
   ma_may: string;
   ten_may: string;
+  loai_vat_tu: string;
   mat_hang: string;
   /** Tên SP — điền thêm khi in / hiển thị nếu khác mat_hang */
   ten_sp?: string;
@@ -282,6 +283,7 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     gio: String(record.gio ?? '').slice(0, 5),
     ma_may: String(record.ma_may ?? ''),
     ten_may: String(record.ten_may ?? ''),
+    loai_vat_tu: String(record.loai_vat_tu ?? 'Thành phẩm'),
     mat_hang: String(record.mat_hang ?? ''),
     don_vi: String(record.don_vi ?? ''),
     so_luong:
@@ -316,6 +318,7 @@ function newReportForm(overrides?: Partial<{ ngay: string; ca: string }>) {
     gio: nowTimeValue(),
     ma_may: '',
     ten_may: '',
+    loai_vat_tu: 'Thành phẩm',
     machineRef: '',
     teamId: '',
     lines: [newProductLine()],
@@ -784,6 +787,7 @@ export default function AcceptanceReportForm({
       gio: report.gio || nowTimeValue(),
       ma_may: report.ma_may,
       ten_may: report.ten_may,
+      loai_vat_tu: report.loai_vat_tu || 'Thành phẩm',
       machineRef,
       teamId: linked?.id ?? '',
       lines: [
@@ -814,6 +818,10 @@ export default function AcceptanceReportForm({
     }
     if (!form.ma_may.trim() && !form.ten_may.trim()) {
       setError(showSaveFailure('Vui lòng chọn máy.'));
+      return null;
+    }
+    if (!form.loai_vat_tu.trim()) {
+      setError(showSaveFailure('Vui lòng chọn loại vật tư.'));
       return null;
     }
     if (!form.lan.trim()) {
@@ -874,6 +882,7 @@ export default function AcceptanceReportForm({
         gio: form.gio,
         ma_may: form.ma_may,
         ten_may: form.ten_may,
+        loai_vat_tu: form.loai_vat_tu,
         hinh_anh: resolvedImage.hinh_anh,
         hinh_anh_public_id: resolvedImage.hinh_anh_public_id
       };
@@ -1090,7 +1099,20 @@ export default function AcceptanceReportForm({
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <label className="field-cell col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại vật tư *</span>
+              <select
+                value={form.loai_vat_tu}
+                onChange={e => setForm(prev => ({ ...prev, loai_vat_tu: e.target.value }))}
+                className={inputClass}
+                required
+              >
+                <option value="Thành phẩm">Thành phẩm</option>
+                <option value="SP lỗi">SP lỗi</option>
+                <option value="SP rác">SP rác</option>
+              </select>
+            </label>
             <label className="field-cell">
               <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 <Clock3 className="h-3.5 w-3.5 text-[#ef1b2d]" /> Giờ

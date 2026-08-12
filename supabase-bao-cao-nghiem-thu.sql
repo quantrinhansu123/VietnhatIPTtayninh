@@ -14,6 +14,7 @@ alter table public.bao_cao_nghiem_thu
   add column if not exists gio time,
   add column if not exists ma_may text,
   add column if not exists ten_may text,
+  add column if not exists loai_vat_tu text default 'Thành phẩm',
   add column if not exists mat_hang text,
   add column if not exists don_vi text,
   add column if not exists so_luong numeric,
@@ -40,3 +41,4 @@ create policy "bao_cao_nghiem_thu_delete_all"
 
 comment on table public.bao_cao_nghiem_thu is 'Bao cao nghiem thu san pham theo ca / lan.';
 comment on column public.bao_cao_nghiem_thu.hinh_anh is 'URL anh tren Cloudinary.';
+comment on column public.bao_cao_nghiem_thu.loai_vat_tu is 'Loai vat tu: Thanh pham, SP loi, SP rac.';

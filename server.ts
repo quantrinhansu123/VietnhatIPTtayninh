@@ -3786,6 +3786,7 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   const ca = String(source.ca ?? '').trim();
   const lan = String(source.lan ?? '').trim();
   const mat_hang = String(source.mat_hang ?? source.product ?? '').trim();
+  const loai_vat_tu = String(source.loai_vat_tu ?? 'Thành phẩm').trim();
   const so_luong = parseAcceptanceNumber(source.so_luong ?? source.quantity);
 
   if (!ngay) return { error: 'Vui lòng chọn ngày.' };
@@ -3795,6 +3796,7 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   const ten_may = String(source.ten_may ?? source.machineName ?? source.may ?? '').trim();
   if (!ma_may && !ten_may) return { error: 'Vui lòng chọn máy.' };
   if (!mat_hang) return { error: 'Vui lòng nhập mặt hàng.' };
+  if (!['Thành phẩm', 'SP lỗi', 'SP rác'].includes(loai_vat_tu)) return { error: 'Loại vật tư không hợp lệ.' };
   if (so_luong === null || so_luong <= 0) return { error: 'Số lượng phải lớn hơn 0.' };
 
   const hinh_anh = String(source.hinh_anh ?? source.imageUrl ?? '').trim();
@@ -3808,6 +3810,7 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
       gio: String(source.gio ?? '').trim() || null,
       ma_may: ma_may || null,
       ten_may: ten_may || null,
+      loai_vat_tu,
       mat_hang,
       don_vi: String(source.don_vi ?? source.unit ?? '').trim() || null,
       so_luong,

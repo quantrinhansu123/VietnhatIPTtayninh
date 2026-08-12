@@ -197,7 +197,7 @@ function compareAcceptanceReports(a: AcceptanceReport, b: AcceptanceReport) {
 }
 
 function normalizeProductKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '');
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function normalizeProductNames(data: unknown): ProductNameOption[] {

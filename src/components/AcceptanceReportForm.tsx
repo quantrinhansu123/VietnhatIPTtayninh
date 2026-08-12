@@ -120,14 +120,14 @@ function nowTimeValue() {
 }
 
 function extractIsoDate(value: string) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed || trimmed === '-') return '';
   const match = trimmed.match(/\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : '';
 }
 
 function normalizeKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '');
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {

@@ -82,7 +82,7 @@ function todayIso() {
 }
 
 function parseLineNumber(value: string): number | null {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed) return null;
   const num = Number(trimmed.replace(',', '.'));
   return Number.isFinite(num) ? num : null;

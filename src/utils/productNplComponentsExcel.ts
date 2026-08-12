@@ -57,7 +57,7 @@ function cellToText(value: unknown) {
 }
 
 function parseNumber(value: string) {
-  const normalized = value.trim().replace(/\s/g, '').replace(',', '.');
+  const normalized = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
   if (!normalized) return NaN;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : NaN;

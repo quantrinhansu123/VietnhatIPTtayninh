@@ -158,11 +158,11 @@ interface MaterialOption {
 }
 
 function normalizeKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '');
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function extractIsoDate(value: string) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed || trimmed === '-') return '';
   const match = trimmed.match(/\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : '';
@@ -232,10 +232,23 @@ function nowTimeValue() {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
-function parseOptionalNumber(value: string) {
-  if (!value || !String(value).trim()) return null;
-  const num = parseMoneyInput(value);
+function parseOptionalNumber(value: unknown) {
+  if (value === null || value === undefined || !String(value).trim()) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+  }
+  const num = parseMoneyInput(String(value));
   return Number.isFinite(num) ? Math.round(num * 100) / 100 : null;
+}
+
+function parseMachineBatchWeight(value: unknown) {
+  if (typeof value === 'number') return parseOptionalNumber(value);
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  // Dữ liệu numeric từ API có thể trả về chuỗi dùng dấu chấm thập phân (12.5).
+  const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+  const parsed = Number(normalized.replace(/\s/g, ''));
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null;
 }
 
 function quantityInputText(value: number | null | undefined) {
@@ -1072,7 +1085,7 @@ export default function MixingReportForm({
         code: String(row.ma_may ?? row.code ?? '').trim(),
         name: String(row.ten_may ?? row.name ?? '').trim(),
         branch: String(row.chi_nhanh ?? row.branch ?? '').trim(),
-        batchWeightKg: parseOptionalNumber(row.dinh_luong)
+        batchWeightKg: parseMachineBatchWeight(row.dinh_luong)
       }))
     );
 

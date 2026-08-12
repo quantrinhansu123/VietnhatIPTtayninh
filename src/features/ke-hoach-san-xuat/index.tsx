@@ -3803,7 +3803,7 @@ export function toDatetimeLocalValue(date = new Date()) {
 }
 
 export function toDatetimeLocalInputValue(value: string) {
-  const raw = value.trim();
+  const raw = String(value ?? '').trim();
   if (!raw || raw === '-') return '';
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return raw;
 
@@ -3850,7 +3850,7 @@ export function formatProductionOrderShiftLabel(shift: string, settings: Product
 
   const matchedSetting = settings.find(setting => {
     const candidates = [setting.name, setting.code].filter(value => value && value !== '-');
-    return candidates.some(value => value.trim().toLowerCase() === normalized);
+    return candidates.some(value => String(value ?? '').trim().toLowerCase() === normalized);
   });
   const timeFrame = matchedSetting?.timeFrame && matchedSetting.timeFrame !== '-' ? matchedSetting.timeFrame : '';
   if (timeFrame) return `${trimmed} (${timeFrame})`;

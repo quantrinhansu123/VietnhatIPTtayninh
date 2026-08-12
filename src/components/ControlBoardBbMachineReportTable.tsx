@@ -5048,7 +5048,7 @@ export default function ControlBoardBbMachineReportTable({
               const staffSelectClass =
                 'h-10 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15';
               const ensureOption = (value: string) => {
-                const trimmed = value.trim();
+                const trimmed = String(value ?? '').trim();
                 if (!trimmed) return printStaffOptions;
                 return printStaffOptions.includes(trimmed)
                   ? printStaffOptions

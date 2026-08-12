@@ -110,14 +110,14 @@ export function getProductionShiftOptions(settings: ShiftSetting[]): ShiftOption
 }
 
 export function shiftNamesMatch(left: string, right: string) {
-  const a = left.trim().toLowerCase();
-  const b = right.trim().toLowerCase();
+  const a = String(left ?? '').trim().toLowerCase();
+  const b = String(right ?? '').trim().toLowerCase();
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
 }
 
 export function resolveShiftName(rawName: string, options: ShiftOption[]): string {
-  const trimmed = rawName.trim();
+  const trimmed = String(rawName ?? '').trim();
   if (!trimmed || options.length === 0) return trimmed;
 
   for (const option of options) {

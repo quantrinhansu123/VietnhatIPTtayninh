@@ -263,11 +263,11 @@ export function buildPreviousShiftQuantityMap(report: MachineNvlSavedReport | nu
 }
 
 export function machineNvlTextKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '');
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 export function machineNvlShiftKey(value: string) {
-  return machineNvlTextKey(value.replace(/\([^)]*\)/g, '').replace(/^ca\s*/i, 'ca'));
+  return machineNvlTextKey(String(value ?? '').replace(/\([^)]*\)/g, '').replace(/^ca\s*/i, 'ca'));
 }
 
 export function machineNvlShiftMatches(orderShift: string, selectedShift: string) {

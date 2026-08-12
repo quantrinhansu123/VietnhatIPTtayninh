@@ -470,7 +470,7 @@ export function countWeighingRounds(rows: WeighingRecord[]) {
 }
 
 export function parseWeighingWeight(value: string): number | null {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed || trimmed === '—' || trimmed === '-') return null;
   const normalized = trimmed.replace(/\./g, '').replace(',', '.');
   const num = Number(normalized);

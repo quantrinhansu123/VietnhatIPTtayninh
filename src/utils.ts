@@ -101,7 +101,7 @@ export function formatMoney(val: number, fractionDigits: number = 0): string {
 
 /** Đọc số tiền nhập tay: 25.000 -> 25000, 1.250,5 -> 1250.5 */
 export function parseMoneyInput(value: string): number {
-  const trimmed = value.trim().replace(/\s/g, '');
+  const trimmed = String(value ?? '').trim().replace(/\s/g, '');
   if (!trimmed) return NaN;
   const normalized = trimmed.replace(/\./g, '').replace(',', '.');
   return Number(normalized);
@@ -119,7 +119,7 @@ export function formatPercent(val: number): string {
 }
 
 export function parsePercentInput(value: string): number {
-  const cleaned = value.trim().replace(/\s/g, '');
+  const cleaned = String(value ?? '').trim().replace(/\s/g, '');
   // Định dạng vi-VN "3.000,00": dấu chấm là phân tách hàng nghìn, dấu phẩy là thập phân.
   const normalized =
     cleaned.includes('.') && cleaned.includes(',')

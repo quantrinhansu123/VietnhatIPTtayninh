@@ -3,7 +3,7 @@ import { Check, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 function normalizeOption(value: string) {
-  return value.trim();
+  return String(value ?? '').trim();
 }
 
 export default function SearchableMultiSelect({

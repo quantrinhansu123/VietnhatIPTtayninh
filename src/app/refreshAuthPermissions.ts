@@ -6,7 +6,7 @@ import {
 import { grantResolvedAccess, type AuthUser } from './authUser';
 
 function normalizeUsername(value: string) {
-  return value.trim().toLowerCase();
+  return String(value ?? '').trim().toLowerCase();
 }
 
 function mapSettingsRows(raw: unknown) {

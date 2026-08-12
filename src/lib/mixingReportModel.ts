@@ -278,7 +278,7 @@ export function updateMaterialActualWeightInRound(
 }
 
 function normalizeMaterialKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '');
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function materialItemKey(item: MixingRoundItem) {

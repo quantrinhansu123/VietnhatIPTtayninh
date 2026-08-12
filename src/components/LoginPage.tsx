@@ -19,7 +19,7 @@ const FALLBACK_ADMIN = {
 };
 
 function normalizeUsername(value: string) {
-  return value.trim().toLowerCase();
+  return String(value ?? '').trim().toLowerCase();
 }
 
 export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {

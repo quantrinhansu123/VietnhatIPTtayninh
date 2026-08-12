@@ -33,7 +33,7 @@ function formatPrintDate(iso: string) {
 }
 
 function formatPrintTime(value: string) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed) return '-';
   const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return trimmed;

@@ -3015,7 +3015,9 @@ export default function WeighingReportForm({
                               }}
                               resolveSelectedItem={(options, value) =>
                                 (options as MaterialOption[]).find(
-                                  material => material.code.toLowerCase() === value.trim().toLowerCase()
+                                  material =>
+                                    material.code.toLowerCase() ===
+                                    String(value ?? '').trim().toLowerCase()
                                 ) ?? null
                               }
                             />

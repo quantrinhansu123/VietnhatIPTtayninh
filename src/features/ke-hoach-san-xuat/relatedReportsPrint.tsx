@@ -117,7 +117,7 @@ export type ProductionPlanRelatedReports = {
 };
 
 function addShiftToken(tokens: Set<string>, value: string) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed) return;
   const lower = trimmed.toLowerCase();
   tokens.add(lower);

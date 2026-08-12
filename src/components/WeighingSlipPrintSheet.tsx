@@ -26,7 +26,7 @@ function formatPrintDate(iso: string) {
 }
 
 function formatPrintTime(value: string) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed) return '—';
   const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
   if (!match) return trimmed;
@@ -44,7 +44,7 @@ function trimTrailingDecimalZeros(formatted: string) {
 function formatPrintWeight(value: string) {
   const num = parsePrintWeight(value);
   if (num === null) {
-    const trimmed = value.trim();
+    const trimmed = String(value ?? '').trim();
     return trimmed && trimmed !== '—' ? trimmed : '—';
   }
   const formatted = new Intl.NumberFormat('vi-VN', {
@@ -55,7 +55,7 @@ function formatPrintWeight(value: string) {
 }
 
 function parsePrintWeight(value: string): number | null {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? '').trim();
   if (!trimmed || trimmed === '—') return null;
   const normalized = trimmed.replace(/\./g, '').replace(',', '.');
   const num = Number(normalized);

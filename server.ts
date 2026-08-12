@@ -9513,6 +9513,60 @@ export function createApp() {
     }
   });
 
+  app.put('/api/can-tu-dong/:id', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({ error: 'Chưa cấu hình DB cân tự động.' });
+    }
+    const idText = String(req.params.id ?? '').trim();
+    if (!idText) return res.status(400).json({ error: 'Thiếu ID cân tự động.' });
+    const idNumber = Number(idText);
+    const id: string | number = Number.isFinite(idNumber) && String(idNumber) === idText ? idNumber : idText;
+    const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+    const numberOrNull = (value: unknown) => {
+      if (value === '' || value == null) return null;
+      const parsed = Number(String(value).replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : NaN;
+    };
+    const tareWeight = numberOrNull(body.tare_weight);
+    const weight = numberOrNull(body.weight);
+    if (Number.isNaN(tareWeight) || Number.isNaN(weight)) {
+      return res.status(400).json({ error: 'Trọng lượng phải là số hợp lệ.' });
+    }
+    try {
+      const { data: existing, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('metadata')
+        .eq('id', id)
+        .maybeSingle();
+      if (readError) return res.status(500).json({ error: readError.message || 'Không thể đọc dòng cân tự động.' });
+      if (!existing) return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động.' });
+      const currentMetadata = existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+        ? existing.metadata as Record<string, unknown>
+        : {};
+      const shift = String(body.ca ?? '').trim();
+      const payload = {
+        qr_code: String(body.qr_code ?? '').trim() || null,
+        tare_weight: tareWeight,
+        weight,
+        unit: String(body.unit ?? '').trim() || 'kg',
+        status: String(body.status ?? '').trim() || null,
+        device_id: String(body.device_id ?? '').trim() || null,
+        metadata: { ...currentMetadata, SOURCE_SHIFT: shift || null }
+      };
+      const { data, error } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .update(payload)
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật dòng cân tự động.' });
+      if (!data) return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động.' });
+      return res.json({ success: true, record: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi cập nhật dòng cân tự động.' });
+    }
+  });
+
   app.get('/api/kiem-kho', async (req, res) => {
     const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
     if (!resolved) {

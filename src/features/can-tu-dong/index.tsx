@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, RefreshCw, Scale, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, RefreshCw, Scale, Trash2, X } from 'lucide-react';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
@@ -182,6 +182,9 @@ export function CanTuDongPanel({
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
+  const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -340,6 +343,57 @@ export function CanTuDongPanel({
       showAppToast(message, 'error');
     } finally {
       setIsBulkDeleting(false);
+    }
+  };
+
+  const openEdit = (row: CanTuDongRecord) => {
+    setEditingRecord(row);
+    setEditForm({
+      qr_code: String(row.qr_code ?? ''),
+      ca: String(row.ca ?? ''),
+      tare_weight: String(row.tare_weight ?? row.can_loi ?? ''),
+      weight: String(row.weight ?? row.can_san_pham ?? ''),
+      unit: String(row.unit ?? 'kg'),
+      device_id: String(row.device_id ?? ''),
+      status: String(row.status ?? '')
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRecord) return;
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/can-tu-dong/${encodeURIComponent(String(editingRecord.id))}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể cập nhật dòng cân tự động.');
+      showAppToast('Đã cập nhật dòng cân tự động.');
+      setEditingRecord(null);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể cập nhật dòng cân tự động.', 'error');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteRow = async (row: CanTuDongRecord) => {
+    if (!window.confirm(`Xóa dòng ${row.qr_code || row.id}?\n\nHành động này không thể hoàn tác.`)) return;
+    try {
+      const res = await fetch('/api/can-tu-dong/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [row.id] })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể xóa dòng cân tự động.');
+      showAppToast('Đã xóa dòng cân tự động.');
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể xóa dòng cân tự động.', 'error');
     }
   };
 
@@ -518,17 +572,18 @@ export function CanTuDongPanel({
           <TableHeadCell title="Cân SP − Cân lõi − Trọng lượng bì">Trọng lượng nhựa</TableHeadCell>
           <TableHeadCell>Thiết bị</TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
+          <TableHeadCell>Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={12}>
+            <TableEmptyRow colSpan={13}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={12}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={13}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
           ) : (
             filteredRecords.map(row => {
               const idKey = rowIdKey(row.id);
@@ -599,12 +654,69 @@ export function CanTuDongPanel({
                       {row.status || '—'}
                     </span>
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(row)}
+                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-bold text-sky-700 hover:bg-sky-100"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Sửa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteRow(row)}
+                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-bold text-rose-700 hover:bg-rose-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Xóa
+                      </button>
+                    </div>
+                  </td>
                 </TableRow>
               );
             })
           )}
         </TableBody>
       </TableShell>
+
+      {editingRecord ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 className="text-base font-black text-zinc-950">Sửa dòng cân tự động</h3>
+                <p className="text-xs font-semibold text-zinc-500">ID: {editingRecord.id}</p>
+              </div>
+              <button type="button" onClick={() => setEditingRecord(null)} disabled={isSavingEdit} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
+              {([
+                ['qr_code', 'Mã QR'], ['ca', 'Ca'], ['tare_weight', 'Cân lõi'],
+                ['weight', 'Cân sản phẩm'], ['unit', 'Đơn vị'], ['device_id', 'Thiết bị'], ['status', 'Trạng thái']
+              ] as const).map(([key, label]) => (
+                <label key={key} className={key === 'qr_code' ? 'sm:col-span-2' : ''}>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{label}</span>
+                  <input
+                    value={editForm[key]}
+                    onChange={e => setEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    inputMode={key === 'tare_weight' || key === 'weight' ? 'decimal' : undefined}
+                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold outline-none focus:border-[#ef1b2d]"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button type="button" onClick={() => setEditingRecord(null)} disabled={isSavingEdit} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700">Hủy</button>
+              <button type="button" onClick={() => void handleSaveEdit()} disabled={isSavingEdit} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-60">
+                {isSavingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+                {isSavingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
     </div>

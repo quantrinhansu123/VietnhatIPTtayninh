@@ -9,6 +9,7 @@ import {
   Loader2,
   Save,
   ScanBarcode,
+  Scale,
   X
 } from 'lucide-react';
 import ProductQrScanner from './ProductQrScanner';
@@ -66,6 +67,12 @@ interface ProductSelectOption {
   code: string;
   name: string;
   unit: string;
+}
+
+interface AiWeighingRecord {
+  qr_code?: string | null;
+  ca?: string | null;
+  unit?: string | null;
 }
 
 const inputClass =
@@ -353,6 +360,9 @@ export default function AcceptanceReportForm({
   const [message, setMessage] = useState('');
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('hardware');
+  const [isAutoReportOpen, setIsAutoReportOpen] = useState(false);
+  const [isLoadingAutoReport, setIsLoadingAutoReport] = useState(false);
+  const [autoReportFilter, setAutoReportFilter] = useState({ ngay: todayIso(), ca: '' });
   const [highlightLineId, setHighlightLineId] = useState('');
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -922,6 +932,83 @@ export default function AcceptanceReportForm({
     machines.find(machine => machine.code === form.ma_may || machine.name === form.ten_may)?.id ||
     '';
 
+  const openAutoReport = () => {
+    setAutoReportFilter({ ngay: form.ngay || todayIso(), ca: form.ca });
+    setError('');
+    setIsAutoReportOpen(true);
+  };
+
+  const handleAutoReport = async () => {
+    const { ngay, ca } = autoReportFilter;
+    if (!ngay || !ca) {
+      setError('Vui lòng chọn đủ ngày và ca.');
+      return;
+    }
+
+    setIsLoadingAutoReport(true);
+    setError('');
+    setMessage('');
+    try {
+      const params = new URLSearchParams({ from: ngay, to: ngay, limit: '2000' });
+      const response = await fetch(`/api/can-tu-dong?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(readApiErrorMessage(response, data, 'Không thể tải phiếu cân AI.'));
+      }
+
+      const records = Array.isArray(data.records) ? (data.records as AiWeighingRecord[]) : [];
+      const matched = records.filter(record => shiftMatches(String(record.ca ?? ''), ca));
+      if (matched.length === 0) {
+        throw new Error('Không có phiếu cân AI phù hợp với ngày và ca đã chọn.');
+      }
+
+      const quantities = new Map<string, { code: string; unit: string; quantity: number }>();
+      let skipped = 0;
+      matched.forEach(record => {
+        const qrProductCode = parseQrProductCode(String(record.qr_code ?? ''));
+        if (!qrProductCode) {
+          skipped += 1;
+          return;
+        }
+        const product = findProductOption(qrProductCode, productSelectOptions);
+        const code = product?.code || qrProductCode;
+        const key = normalizeKey(code);
+        const current = quantities.get(key);
+        quantities.set(key, {
+          code,
+          unit: product?.unit || current?.unit || String(record.unit ?? '').trim(),
+          quantity: (current?.quantity ?? 0) + 1
+        });
+      });
+      if (quantities.size === 0) {
+        throw new Error('Phiếu cân AI không có mã QR sản phẩm hợp lệ.');
+      }
+
+      const lines = [...quantities.values()].map(({ code, unit, quantity }) => ({
+        ...newProductLine(),
+        mat_hang: code,
+        don_vi: unit,
+        so_luong: String(quantity)
+      }));
+      setForm(prev => ({
+        ...prev,
+        ngay,
+        ca,
+        lines
+      }));
+      setIsAutoReportOpen(false);
+      setMessage(
+        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI${
+          skipped ? `; bỏ qua ${skipped} bản ghi không có QR hợp lệ` : ''
+        }.`
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Không thể tạo báo cáo tự động.');
+    } finally {
+      setIsLoadingAutoReport(false);
+    }
+  };
+
   return (
     <div className="space-y-3 pb-24 sm:space-y-4">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -1042,16 +1129,13 @@ export default function AcceptanceReportForm({
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setScannerMode('hardware');
-                      setIsQrScannerOpen(true);
-                    }}
+                    onClick={openAutoReport}
                     className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                    aria-label="Quét mã bằng máy BT-A700"
-                    title="Bật đầu đọc laser trên máy BT-A700"
+                    aria-label="Tạo báo cáo tự động từ phiếu cân AI"
+                    title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
                   >
-                    <ScanBarcode className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden min-[380px]:inline">Quét máy</span>
+                    <Scale className="h-3.5 w-3.5 shrink-0" />
+                    <span>Tự động BC</span>
                   </button>
                   <button
                     type="button"
@@ -1059,7 +1143,7 @@ export default function AcceptanceReportForm({
                       setScannerMode('camera');
                       setIsQrScannerOpen(true);
                     }}
-                    className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
+                    className="hidden"
                     aria-label="Quét QR mã SP bằng camera"
                     title="Quét QR mã SP bằng camera"
                   >
@@ -1232,6 +1316,77 @@ export default function AcceptanceReportForm({
       {message && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
           {message}
+        </div>
+      )}
+
+      {isAutoReportOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 className="text-base font-black text-zinc-950">Tự động báo cáo sản lượng</h3>
+                <p className="mt-0.5 text-xs font-semibold text-zinc-500">Lấy mã SP và cộng số lượng từ phiếu cân AI.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAutoReportOpen(false)}
+                disabled={isLoadingAutoReport}
+                className="grid h-9 w-9 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-100"
+                aria-label="Đóng"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-4">
+              <label className="field-cell">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
+                <input
+                  type="date"
+                  value={autoReportFilter.ngay}
+                  onChange={event => setAutoReportFilter(prev => ({ ...prev, ngay: event.target.value, ca: '' }))}
+                  className={inputClass}
+                />
+              </label>
+              <label className="field-cell">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
+                <select
+                  value={autoReportFilter.ca}
+                  onChange={event => setAutoReportFilter(prev => ({ ...prev, ca: event.target.value }))}
+                  className={inputClass}
+                >
+                  <option value="">Chọn ca...</option>
+                  {[...new Set([
+                    ...productionOrders.filter(order => order.startDate === autoReportFilter.ngay).map(order => order.shift),
+                    ...settingShiftOptions
+                  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')).map(shift => (
+                    <option key={shift} value={shift}>{shift}</option>
+                  ))}
+                </select>
+              </label>
+              <p className="rounded-xl bg-blue-50 px-3 py-2.5 text-xs font-semibold leading-5 text-blue-800">
+                Mỗi QR cân AI được tính là 1 sản phẩm. Các QR cùng mã SP sẽ được cộng thành một dòng số lượng.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setIsAutoReportOpen(false)}
+                disabled={isLoadingAutoReport}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAutoReport()}
+                disabled={isLoadingAutoReport || !autoReportFilter.ngay || !autoReportFilter.ca}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-50"
+              >
+                {isLoadingAutoReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+                {isLoadingAutoReport ? 'Đang lấy dữ liệu...' : 'Tự động điền'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

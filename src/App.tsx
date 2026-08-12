@@ -749,7 +749,7 @@ export default function App() {
             ? 'p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
               ? 'overflow-hidden p-0'
-              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'ton-kho'
+              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
                 ? 'p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'
                   ? 'p-2 md:p-4 pb-4'
@@ -1364,6 +1364,20 @@ export default function App() {
                 <WarehouseHistoryPanel
                   onBack={() => goBack('factory-kho')}
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
+                />
+              </motion.div>
+            ) : activeTab === 'damaged-goods-warehouse' ? (
+              <motion.div
+                key="damaged-goods-warehouse"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <WarehouseHistoryPanel
+                  onBack={() => goBack('factory-kho')}
+                  onOpenSlip={() => navigateToTab('warehouse-slip')}
+                  initialWarehouseTab="hang_hong"
                 />
               </motion.div>
             ) : activeTab === 'ton-kho' ? (

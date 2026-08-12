@@ -4451,7 +4451,16 @@ function parseWarehouseSlipType(value: unknown): 'nhap' | 'xuat' | null {
   return null;
 }
 
-function parseWarehouseStorageType(value: unknown): 'nvl' | 'san_pham' | 'tai_che' | null {
+type WarehouseStorageType =
+  | 'nvl'
+  | 'san_pham'
+  | 'tai_che'
+  | 'hang_hong'
+  | 'hang_hoa'
+  | 'cong_cu_dung_cu'
+  | 'gia_cong';
+
+function parseWarehouseStorageType(value: unknown): WarehouseStorageType | null {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (normalized === 'nvl' || normalized === 'kho_nvl' || normalized === 'material') return 'nvl';
   if (normalized === 'san_pham' || normalized === 'san-pham' || normalized === 'product' || normalized === 'sp') {
@@ -4467,6 +4476,30 @@ function parseWarehouseStorageType(value: unknown): 'nvl' | 'san_pham' | 'tai_ch
   ) {
     return 'tai_che';
   }
+  if (
+    normalized === 'hang_hong' ||
+    normalized === 'hang-hong' ||
+    normalized === 'hang hong' ||
+    normalized === 'damaged' ||
+    normalized === 'kho_hang_hong' ||
+    normalized === 'kho-hang-hong'
+  ) {
+    return 'hang_hong';
+  }
+  if (normalized === 'hang_hoa' || normalized === 'hang-hoa' || normalized === 'hang hoa' || normalized === 'goods') {
+    return 'hang_hoa';
+  }
+  if (
+    normalized === 'cong_cu_dung_cu' ||
+    normalized === 'cong-cu-dung-cu' ||
+    normalized === 'cong cu dung cu' ||
+    normalized === 'tools'
+  ) {
+    return 'cong_cu_dung_cu';
+  }
+  if (normalized === 'gia_cong' || normalized === 'gia-cong' || normalized === 'gia cong' || normalized === 'processing') {
+    return 'gia_cong';
+  }
   return null;
 }
 
@@ -4481,7 +4514,7 @@ function parseWarehouseSlipDate(value: unknown): string | null {
 
 function parseWarehouseSlipLines(
   raw: unknown,
-  loaiKho: 'nvl' | 'san_pham',
+  loaiKho: WarehouseStorageType,
   loaiPhieu: 'nhap' | 'xuat' | null
 ): { error: string } | { items: WarehouseSlipLineInput[] } {
   const list = Array.isArray(raw) ? raw : [];
@@ -4554,7 +4587,7 @@ function parseWarehouseSlipBody(body: unknown): {
   error: string;
 } | {
   loaiPhieu: 'nhap' | 'xuat';
-  loaiKho: 'nvl' | 'san_pham';
+  loaiKho: WarehouseStorageType;
   ngayPhieu: string;
   lyDo: string | null;
   ghiChu: string | null;
@@ -4595,7 +4628,7 @@ function parseWarehouseSlipBody(body: unknown): {
 function buildWarehouseSlipInsertRecords(
   parsed: {
     loaiPhieu: 'nhap' | 'xuat';
-    loaiKho: 'nvl' | 'san_pham';
+    loaiKho: WarehouseStorageType;
     ngayPhieu: string;
     lyDo: string | null;
     ghiChu: string | null;
@@ -7811,6 +7844,18 @@ export function createApp() {
       if (loaiFilter) query = query.eq('loai_phieu', loaiFilter);
       if (khoFilter === 'san_pham') {
         query = query.eq('loai_kho', 'san_pham');
+      } else if (khoFilter === 'hang_hong') {
+        query = query.or(
+          'loai_kho.eq.hang_hong,ten_kho.ilike.%hàng hỏng%,ten_kho.ilike.%hang hong%,ten_kho.ilike.%damaged%'
+        );
+      } else if (khoFilter === 'hang_hoa') {
+        query = query.or('loai_kho.eq.hang_hoa,ten_kho.ilike.%hàng hóa%,ten_kho.ilike.%hang hoa%');
+      } else if (khoFilter === 'cong_cu_dung_cu') {
+        query = query.or(
+          'loai_kho.eq.cong_cu_dung_cu,ten_kho.ilike.%công cụ dụng cụ%,ten_kho.ilike.%cong cu dung cu%'
+        );
+      } else if (khoFilter === 'gia_cong') {
+        query = query.or('loai_kho.eq.gia_cong,ten_kho.ilike.%gia công%,ten_kho.ilike.%gia cong%');
       } else if (khoFilter === 'tai_che') {
         // Kho tái chế: loai_kho riêng hoặc ten_kho chứa "tái chế" (phiếu cũ gắn nvl)
         query = query.or(

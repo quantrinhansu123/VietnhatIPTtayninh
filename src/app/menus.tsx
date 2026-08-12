@@ -275,6 +275,13 @@ export const FACILITY_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'warehouse-history'
   },
   {
+    title: 'Kho hàng hỏng',
+    desc: 'Hàng hỏng tự động nhập kho khi lưu báo cáo hàng hỏng.',
+    icon: PackageX,
+    icon3d: prohibited3d,
+    tab: 'damaged-goods-warehouse'
+  },
+  {
     title: 'Quản lý kho',
     desc: 'Danh mục kho: tên kho, vị trí, tên vị trí và người phụ trách.',
     icon: Warehouse,
@@ -637,6 +644,13 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'products'
   },
   {
+    title: 'Kho hàng hỏng',
+    desc: 'Hàng hỏng tự động nhập kho khi lưu báo cáo hàng hỏng.',
+    icon: PackageX,
+    icon3d: prohibited3d,
+    tab: 'damaged-goods-warehouse'
+  },
+  {
     title: 'Phiếu xuất nhập kho',
     desc: 'Lập phiếu nhập hoặc xuất NVL theo từng mã NPL.',
     icon: ArrowDownToLine,
@@ -943,6 +957,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Danh mục kho', tab: 'quan-ly-kho' },
       { label: 'Kho nguyên vật liệu', tab: 'materials' },
       { label: 'Kho thành phẩm', tab: 'products' },
+      { label: 'Kho hàng hỏng', tab: 'damaged-goods-warehouse' },
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
@@ -1000,6 +1015,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'machines': { group: 'Trang chủ', sub: 'Quản lý máy' },
   'warehouse-slip': { group: 'Kho', sub: 'Phiếu xuất nhập kho' },
   'warehouse-history': { group: 'Kho', sub: 'Lịch sử xuất nhập' },
+  'damaged-goods-warehouse': { group: 'Kho', sub: 'Kho hàng hỏng' },
   'ton-kho': { group: 'Kho', sub: 'Tồn kho' },
   'settings': { group: 'Quản trị', sub: 'Người dùng và phân quyền / Cấu hình hệ thống' },
   'hr': { group: 'HCNS', sub: 'Hồ sơ nhân sự' },

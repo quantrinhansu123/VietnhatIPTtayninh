@@ -28,7 +28,7 @@ export type ShiftSummaryWarehouseMovement = {
   slipDate: string;
   shift: string;
   slipType: 'nhap' | 'xuat';
-  warehouseKind: 'nvl' | 'san_pham';
+  warehouseKind: 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
   itemCode: string;
   itemName: string;
   unit: string;

@@ -24,7 +24,7 @@ export type WarehouseSlipPrintLine = {
 export type WarehouseSlipPrintData = {
   slipCode: string;
   slipType: 'nhap' | 'xuat';
-  warehouseKind: 'nvl' | 'san_pham' | 'tai_che';
+  warehouseKind: 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
   slipDate: string;
   reason: string;
   note: string;
@@ -163,6 +163,10 @@ function warehouseImportLabel(data: WarehouseSlipPrintData) {
   const name = String(data.warehouseName || '').trim();
   if (name) return name;
   if (data.warehouseKind === 'san_pham') return `Kho Thành phẩm - ${COMPANY_BRANCH_NAME}`;
+  if (data.warehouseKind === 'hang_hong') return `Kho hàng hỏng - ${COMPANY_BRANCH_NAME}`;
+  if (data.warehouseKind === 'hang_hoa') return `Kho hàng hóa - ${COMPANY_BRANCH_NAME}`;
+  if (data.warehouseKind === 'cong_cu_dung_cu') return `Kho công cụ dụng cụ - ${COMPANY_BRANCH_NAME}`;
+  if (data.warehouseKind === 'gia_cong') return `Kho gia công - ${COMPANY_BRANCH_NAME}`;
   if (data.warehouseKind === 'tai_che') return `Kho tái chế - ${COMPANY_BRANCH_NAME}`;
   return `Kho NVL - ${COMPANY_BRANCH_NAME}`;
 }

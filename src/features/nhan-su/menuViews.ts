@@ -79,7 +79,8 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'quan-ly-kho', label: 'Danh mục kho' },
       { tab: 'materials', label: 'Kho nguyên vật liệu' },
       { tab: 'products', label: 'Kho thành phẩm' },
-      { tab: 'warehouse-slip', label: 'Phiếu xuất nhập kho' },
+      { tab: 'warehouse-slip-vat-tu', label: 'Phiếu xuất nhập kho - Vật tư' },
+      { tab: 'warehouse-slip-thanh-pham', label: 'Phiếu xuất nhập kho - Thành phẩm' },
       { tab: 'kiem-kho', label: 'Kiểm kho' },
       { tab: 'kiem-kho-chenh-lech', label: 'Xử lý chênh lệch' },
       { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },
@@ -103,7 +104,8 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'materials', label: 'Kho NVL' },
       { tab: 'products', label: 'Sản phẩm' },
       { tab: 'machines', label: 'Máy móc' },
-      { tab: 'warehouse-slip', label: 'Phiếu xuất nhập kho' }
+      { tab: 'warehouse-slip-vat-tu', label: 'Phiếu xuất nhập kho - Vật tư' },
+      { tab: 'warehouse-slip-thanh-pham', label: 'Phiếu xuất nhập kho - Thành phẩm' }
     ]
   }
 ];

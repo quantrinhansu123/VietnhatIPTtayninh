@@ -27,9 +27,22 @@
 
 **Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP).
 
-Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` (tab **Kho tái chế** — gồm `loai_kho=tai_che` hoặc `ten_kho` chứa «tái chế»).
+Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công; hàng hỏng nhận phiếu nhập tự động từ `bao_cao_hang_hong`.
 
 Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
+
+## Phân quyền theo loại kho (Vật tư / Thành phẩm)
+
+Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → tách quyền Thêm/Sửa/Xóa theo `loai_kho`, không dùng chung 1 quyền `warehouse-slip` nữa (xem `docs/phan-quyen-phieu-xuat-nhap-kho.md`):
+
+- **`warehouse-slip-vat-tu`** ("Phiếu xuất nhập kho - Vật tư"): `nvl` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`.
+- **`warehouse-slip-thanh-pham`** ("Phiếu xuất nhập kho - Thành phẩm"): `san_pham`.
+- 2 dòng này thay cho dòng `warehouse-slip` cũ trong `STAFF_MENU_VIEW_TREE` (`src/features/nhan-su/menuViews.ts`, nhóm `factory-kho` và `facility-management`) — hiện trong ma trận Phân quyền tại `/cai-dat`.
+- `src/app/tabAccess.ts` → `hubHasAllowedChild()` cho phép vào hai route dùng chung nếu có 1 trong 2 quyền con; quyền cũ `warehouse-slip` không được suy rộng thành cả hai quyền mới.
+- `src/features/phieu-xuat-nhap-kho/index.tsx` → `useWarehouseSlipAccess()` + `pickWarehouseSlipAccess(access, kind)` chọn đúng bộ quyền theo `warehouseKind` (form tạo/sửa) hoặc `warehouseTab` (Lịch sử xuất nhập) đang thao tác.
+- Dropdown **Tên kho**, các tab lịch sử và Thêm/Sửa/Xóa chỉ hiện đúng nhóm kho được cấp; các handler kiểm tra quyền lại trước khi gọi API.
+- Migration `scripts/migrate-warehouse-slip-permissions.mjs`: quyền xem cũ chuyển sang xem hai nhóm; riêng `Thủ kho vật tư, kế toán sản xuất` chỉ nhận quyền Vật tư và `Thủ kho thành phẩm` chỉ nhận quyền Thành phẩm. Chỉ hai vai trò này nhận Thêm/Sửa/Xóa.
+- Tài khoản vận hành đã gán trực tiếp qua `nhan_su.vi_tri_gan`: `NV003-3` → Vật tư, `NV006-4` → Thành phẩm. Đã kiểm thử đăng nhập thực tế ngày 2026-08-12; mỗi tài khoản chỉ thấy dropdown và tab lịch sử thuộc kho phụ trách.
 
 - Phiếu **Nhập** chỉ có một trường **Số lượng**, lưu tại `so_luong`; `so_luong_chung_tu` luôn `NULL`.
 - Phiếu **Xuất** có **SL CT** (`so_luong_chung_tu`) và **SL THỰC** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.

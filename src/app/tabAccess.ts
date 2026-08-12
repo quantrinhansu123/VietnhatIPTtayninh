@@ -13,6 +13,7 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'machine-downtime-report': 'machine-downtime-list',
   'acceptance-report': 'acceptance-report-list',
   'machine-run-log': 'machine-run-log-list',
+  'damaged-goods-warehouse': 'warehouse-history',
   /** Cùng quyền Dashboard /phan-tich */
   'dashboard-auto': 'dashboard'
 };
@@ -109,6 +110,12 @@ export function buildKnownPermissionTabSet(): Set<string> {
 /** Hub menu cha: được vào nếu có quyền cha hoặc bất kỳ menu con. */
 export function hubHasAllowedChild(hubTab: string, allowed: Set<string>): boolean {
   if (allowed.has(hubTab)) return true;
+  // Hai route kho dùng chung giao diện, nhưng quyền nghiệp vụ phải giữ riêng theo loại kho.
+  // Chỉ dùng phép suy ngược này để mở route; không đưa vào expandImpliedHubTabs vì quyền
+  // warehouse-slip cũ tuyệt đối không được tự biến thành quyền sửa/xóa cả hai kho mới.
+  if (hubTab === 'warehouse-slip' || hubTab === 'warehouse-history') {
+    return ['warehouse-slip-vat-tu', 'warehouse-slip-thanh-pham'].some(tab => allowed.has(tab));
+  }
   const group = STAFF_MENU_VIEW_TREE.find(item => item.menu === hubTab);
   if (group) {
     return group.children.some(child => allowed.has(child.tab));

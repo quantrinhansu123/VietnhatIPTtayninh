@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Eye,
+  Factory,
   History,
   Loader2,
   Package,
@@ -20,7 +21,9 @@ import {
   Save,
   ScanBarcode,
   Search,
-  Trash2
+  TriangleAlert,
+  Trash2,
+  Wrench
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { useTabAccess } from '../../app/useTabAccess';
@@ -66,7 +69,24 @@ import {
 } from '../../utils/warehouseWeight';
 
 export type WarehouseSlipType = 'nhap' | 'xuat';
-export type WarehouseKind = 'nvl' | 'san_pham' | 'tai_che';
+export type WarehouseKind =
+  | 'nvl'
+  | 'san_pham'
+  | 'tai_che'
+  | 'hang_hong'
+  | 'hang_hoa'
+  | 'cong_cu_dung_cu'
+  | 'gia_cong';
+
+const WAREHOUSE_HISTORY_TABS = [
+  ['nvl', 'Kho NVL', Boxes],
+  ['san_pham', 'Kho Sản phẩm', Package],
+  ['hang_hong', 'Kho hàng hỏng', TriangleAlert],
+  ['hang_hoa', 'Kho hàng hóa', Package],
+  ['cong_cu_dung_cu', 'Kho công cụ dụng cụ', Wrench],
+  ['gia_cong', 'Kho gia công', Factory],
+  ['tai_che', 'Kho tái chế', Recycle]
+] as const satisfies ReadonlyArray<readonly [WarehouseKind, string, React.ComponentType<{ className?: string }>]>;
 
 export interface WarehouseMovementRow {
   id: string;
@@ -273,6 +293,27 @@ export function isRecycleWarehouseName(value?: string | null) {
   return key.includes('tai che') || key.includes('recycle') || key.includes('tai_che') || key.includes('tai-che');
 }
 
+export function isDamagedGoodsWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  if (!key) return false;
+  return key.includes('hang hong') || key.includes('hang_hong') || key.includes('hang-hong') || key.includes('damaged');
+}
+
+export function isGoodsWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  return key.includes('hang hoa') || key.includes('hang_hoa') || key.includes('hang-hoa') || key.includes('goods');
+}
+
+export function isToolsWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  return key.includes('cong cu dung cu') || key.includes('cong_cu_dung_cu') || key.includes('cong-cu-dung-cu') || key.includes('tools');
+}
+
+export function isProcessingWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  return key.includes('gia cong') || key.includes('gia_cong') || key.includes('gia-cong') || key.includes('processing');
+}
+
 export function isFinishedGoodsWarehouseName(value?: string | null) {
   const key = normalizeWarehouseNameKey(value);
   if (!key) return false;
@@ -287,12 +328,44 @@ export function isFinishedGoodsWarehouseName(value?: string | null) {
 /** Suy loại kho từ tên kho trong Quản lý kho. */
 export function inferWarehouseKindFromName(value?: string | null): WarehouseKind {
   if (isFinishedGoodsWarehouseName(value)) return 'san_pham';
+  if (isDamagedGoodsWarehouseName(value)) return 'hang_hong';
+  if (isGoodsWarehouseName(value)) return 'hang_hoa';
+  if (isToolsWarehouseName(value)) return 'cong_cu_dung_cu';
+  if (isProcessingWarehouseName(value)) return 'gia_cong';
   if (isRecycleWarehouseName(value)) return 'tai_che';
   return 'nvl';
 }
 
+/**
+ * Kho vật tư (NVL, tái chế, hàng hỏng, hàng hóa, công cụ dụng cụ, gia công) và Kho thành phẩm
+ * do 2 người phụ trách khác nhau theo luồng nghiệp vụ → tách quyền Thêm/Sửa/Xóa theo loại kho.
+ */
+export function warehouseKindPermissionTab(kind: WarehouseKind): 'warehouse-slip-vat-tu' | 'warehouse-slip-thanh-pham' {
+  return kind === 'san_pham' ? 'warehouse-slip-thanh-pham' : 'warehouse-slip-vat-tu';
+}
+
+/** Quyền Thêm/Sửa/Xóa của người phụ trách Vật tư và người phụ trách Thành phẩm. */
+export function useWarehouseSlipAccess() {
+  return {
+    vatTu: useTabAccess('warehouse-slip-vat-tu'),
+    thanhPham: useTabAccess('warehouse-slip-thanh-pham')
+  };
+}
+
+/** Chọn bộ quyền tương ứng với loại kho đang thao tác. */
+export function pickWarehouseSlipAccess(
+  access: ReturnType<typeof useWarehouseSlipAccess>,
+  kind: WarehouseKind
+) {
+  return warehouseKindPermissionTab(kind) === 'warehouse-slip-thanh-pham' ? access.thanhPham : access.vatTu;
+}
+
 export function warehouseKindLabel(kind: WarehouseKind) {
   if (kind === 'san_pham') return 'Kho Sản phẩm';
+  if (kind === 'hang_hong') return 'Kho hàng hỏng';
+  if (kind === 'hang_hoa') return 'Kho hàng hóa';
+  if (kind === 'cong_cu_dung_cu') return 'Kho công cụ dụng cụ';
+  if (kind === 'gia_cong') return 'Kho gia công';
   if (kind === 'tai_che') return 'Kho tái chế';
   return 'Kho NVL';
 }
@@ -555,6 +628,17 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
       const warehouseKind: WarehouseKind =
         warehouseKindRaw === 'san_pham' || (Boolean(maSp) && !maNpl)
           ? 'san_pham'
+          : warehouseKindRaw === 'hang_hong' ||
+              warehouseKindRaw === 'hang-hong' ||
+              warehouseKindRaw === 'damaged' ||
+              isDamagedGoodsWarehouseName(warehouseName)
+            ? 'hang_hong'
+          : warehouseKindRaw === 'hang_hoa' || isGoodsWarehouseName(warehouseName)
+            ? 'hang_hoa'
+          : warehouseKindRaw === 'cong_cu_dung_cu' || isToolsWarehouseName(warehouseName)
+            ? 'cong_cu_dung_cu'
+          : warehouseKindRaw === 'gia_cong' || isProcessingWarehouseName(warehouseName)
+            ? 'gia_cong'
           : warehouseKindRaw === 'tai_che' ||
               warehouseKindRaw === 'tai-che' ||
               warehouseKindRaw === 'recycle' ||
@@ -789,8 +873,9 @@ export function WarehouseSlipPanel({
   onBack: () => void;
   onOpenHistory: () => void;
 }) {
-  const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
   const [warehouseKind, setWarehouseKind] = useState<WarehouseKind>('nvl');
+  const warehouseAccess = useWarehouseSlipAccess();
+  const { canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseKind);
   const [warehouseName, setWarehouseName] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
@@ -911,13 +996,29 @@ export function WarehouseSlipPanel({
       {
         const draftName = String(draft.warehouseName || '').trim();
         const draftKind: WarehouseKind =
-          draft.warehouseKind === 'san_pham' || draft.warehouseKind === 'tai_che'
+          draft.warehouseKind === 'san_pham' ||
+          draft.warehouseKind === 'tai_che' ||
+          draft.warehouseKind === 'hang_hong' ||
+          draft.warehouseKind === 'hang_hoa' ||
+          draft.warehouseKind === 'cong_cu_dung_cu' ||
+          draft.warehouseKind === 'gia_cong'
             ? draft.warehouseKind
             : draft.warehouseKind === 'nvl'
               ? 'nvl'
               : inferWarehouseKindFromName(draftName);
+        const resolvedKind = draftName ? inferWarehouseKindFromName(draftName) : draftKind;
+        const draftAccess = pickWarehouseSlipAccess(warehouseAccess, resolvedKind);
+        const editingCode = String(draft.editSlipCode || '').trim();
+        if (!(editingCode ? draftAccess.canEdit : draftAccess.canCreate)) {
+          setFormError(
+            editingCode
+              ? 'Bạn không có quyền sửa phiếu thuộc kho này.'
+              : 'Bạn không có quyền lập phiếu thuộc kho này.'
+          );
+          return;
+        }
         setWarehouseName(draftName);
-        setWarehouseKind(draftName ? inferWarehouseKindFromName(draftName) : draftKind);
+        setWarehouseKind(resolvedKind);
       }
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
       if (draft.slipDate) setSlipDate(draft.slipDate);
@@ -1008,11 +1109,22 @@ export function WarehouseSlipPanel({
   };
 
   const warehouseSelectOptions = useMemo(() => {
-    const names = [...warehouseOptions];
-    const current = warehouseName.trim();
-    if (current && !names.includes(current)) names.unshift(current);
+    // Chỉ gợi ý những kho người dùng có quyền lập phiếu (Vật tư / Thành phẩm đúng người phụ trách).
+    const names = warehouseOptions.filter(
+      name => {
+        const access = pickWarehouseSlipAccess(warehouseAccess, inferWarehouseKindFromName(name));
+        return editSlipCode ? access.canEdit : access.canCreate;
+      }
+    );
     return names;
-  }, [warehouseOptions, warehouseName]);
+  }, [
+    warehouseOptions,
+    editSlipCode,
+    warehouseAccess.vatTu.canCreate,
+    warehouseAccess.vatTu.canEdit,
+    warehouseAccess.thanhPham.canCreate,
+    warehouseAccess.thanhPham.canEdit
+  ]);
 
   const updateLine = (key: string, patch: Partial<WarehouseSlipLineDraft>) => {
     setLines(current => current.map(line => (line.key === key ? { ...line, ...patch } : line)));
@@ -1567,6 +1679,17 @@ export function WarehouseSlipPanel({
   };
 
   const handleSave = async () => {
+    if (!(editSlipCode ? canEdit : canCreate)) {
+      setFormError(
+        showSaveFailure(
+          editSlipCode
+            ? 'Bạn không có quyền sửa phiếu thuộc kho này.'
+            : 'Bạn không có quyền lập phiếu thuộc kho này.'
+        )
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1795,6 +1918,10 @@ export function WarehouseSlipPanel({
               ) : warehouseOptions.length === 0 ? (
                 <p className="text-[11px] font-semibold text-amber-700">
                   Chưa có tên kho — thêm tại mục Quản lý kho.
+                </p>
+              ) : warehouseSelectOptions.length === 0 ? (
+                <p className="text-[11px] font-semibold text-amber-700">
+                  Bạn chưa được phân quyền lập phiếu cho kho vật tư hoặc kho thành phẩm nào.
                 </p>
               ) : null}
             </label>
@@ -2355,7 +2482,8 @@ export function WarehouseSlipPanel({
 export function WarehouseHistoryPanel({
   onBack,
   onOpenSlip,
-  initialFilters
+  initialFilters,
+  initialWarehouseTab = 'nvl'
 }: {
   onBack: () => void;
   onOpenSlip: () => void;
@@ -2363,9 +2491,18 @@ export function WarehouseHistoryPanel({
     dateFrom?: string;
     dateTo?: string;
   };
+  initialWarehouseTab?: WarehouseKind;
 }) {
-  const { canCreate, canEdit, canDelete } = useTabAccess('warehouse-slip');
-  const [warehouseTab, setWarehouseTab] = useState<WarehouseKind>('nvl');
+  const warehouseAccess = useWarehouseSlipAccess();
+  const accessibleWarehouseTabs = WAREHOUSE_HISTORY_TABS.filter(([kind]) =>
+    pickWarehouseSlipAccess(warehouseAccess, kind).canView
+  );
+  const [warehouseTab, setWarehouseTab] = useState<WarehouseKind>(() =>
+    accessibleWarehouseTabs.some(([kind]) => kind === initialWarehouseTab)
+      ? initialWarehouseTab
+      : accessibleWarehouseTabs[0]?.[0] ?? initialWarehouseTab
+  );
+  const { canView, canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseTab);
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<'all' | WarehouseSlipType>('all');
@@ -2425,7 +2562,19 @@ export function WarehouseHistoryPanel({
     void loadWeightCatalog();
   }, []);
 
+  useEffect(() => {
+    if (canView) return;
+    const firstAllowed = accessibleWarehouseTabs[0]?.[0];
+    if (firstAllowed && firstAllowed !== warehouseTab) setWarehouseTab(firstAllowed);
+  }, [canView, warehouseTab, warehouseAccess.vatTu.canView, warehouseAccess.thanhPham.canView]);
+
   const loadMovements = async () => {
+    if (!canView) {
+      setMovements([]);
+      setIsLoading(false);
+      setError('Bạn không có quyền xem dữ liệu kho này.');
+      return;
+    }
     setIsLoading(true);
     setError('');
 
@@ -2659,6 +2808,10 @@ export function WarehouseHistoryPanel({
   };
 
   const handleEditSlip = (slipCode: string) => {
+    if (!canEdit) {
+      setError('Bạn không có quyền sửa phiếu thuộc kho này.');
+      return;
+    }
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
     const draft = buildWarehouseSlipDraftFromHistoryRows(rows, slipCode);
     if (!draft) return;
@@ -2669,6 +2822,10 @@ export function WarehouseHistoryPanel({
   };
 
   const handleDeleteSlip = async (slipCode: string, lineCount: number) => {
+    if (!canDelete) {
+      setError('Bạn không có quyền xóa phiếu thuộc kho này.');
+      return;
+    }
     if (!slipCode) return;
     if (!window.confirm(`Xóa toàn bộ phiếu ${slipCode} (${lineCount} dòng)?`)) return;
 
@@ -2695,6 +2852,10 @@ export function WarehouseHistoryPanel({
   };
 
   const handleBulkDelete = async () => {
+    if (!canDelete) {
+      setError('Bạn không có quyền xóa phiếu thuộc kho này.');
+      return;
+    }
     if (selectedCount === 0) return;
     if (!window.confirm(`Bạn có chắc muốn xóa ${selectedCount} phiếu đã chọn?`)) return;
 
@@ -2723,17 +2884,13 @@ export function WarehouseHistoryPanel({
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
       <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
-        <div className="flex gap-1 border-b border-zinc-200 px-4">
-          {([
-            ['nvl', 'Kho NVL', Boxes],
-            ['san_pham', 'Kho Sản phẩm', Package],
-            ['tai_che', 'Kho tái chế', Recycle]
-          ] as const).map(([tab, label, Icon]) => (
+        <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 px-4">
+          {accessibleWarehouseTabs.map(([tab, label, Icon]) => (
             <button
               key={tab}
               type="button"
               onClick={() => setWarehouseTab(tab)}
-              className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
+              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
                 warehouseTab === tab ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
               }`}
             >
@@ -2770,6 +2927,14 @@ export function WarehouseHistoryPanel({
           placeholder={
             warehouseTab === 'san_pham'
               ? 'Tìm mã phiếu, SP, lý do...'
+              : warehouseTab === 'hang_hong'
+                ? 'Tìm mã phiếu, hàng hỏng, máy...'
+              : warehouseTab === 'hang_hoa'
+                ? 'Tìm mã phiếu, hàng hóa, lý do...'
+              : warehouseTab === 'cong_cu_dung_cu'
+                ? 'Tìm mã phiếu, công cụ dụng cụ...'
+              : warehouseTab === 'gia_cong'
+                ? 'Tìm mã phiếu, hàng gia công...'
               : warehouseTab === 'tai_che'
                 ? 'Tìm mã phiếu, NPL tái chế, lý do...'
                 : 'Tìm mã phiếu, NPL, lý do...'
@@ -2983,6 +3148,14 @@ export function WarehouseHistoryPanel({
               Cuộn để xem{' '}
               {warehouseTab === 'san_pham'
                 ? 'từng dòng SP'
+                : warehouseTab === 'hang_hong'
+                  ? 'từng dòng hàng hỏng'
+                : warehouseTab === 'hang_hoa'
+                  ? 'từng dòng hàng hóa'
+                : warehouseTab === 'cong_cu_dung_cu'
+                  ? 'từng dòng công cụ dụng cụ'
+                : warehouseTab === 'gia_cong'
+                  ? 'từng dòng hàng gia công'
                 : warehouseTab === 'tai_che'
                   ? 'từng dòng NVL tái chế'
                   : 'từng dòng NVL'}{' '}
@@ -3012,6 +3185,14 @@ export function WarehouseHistoryPanel({
                 Chưa có dòng{' '}
                 {warehouseTab === 'san_pham'
                   ? 'sản phẩm'
+                  : warehouseTab === 'hang_hong'
+                    ? 'hàng hỏng'
+                  : warehouseTab === 'hang_hoa'
+                    ? 'hàng hóa'
+                  : warehouseTab === 'cong_cu_dung_cu'
+                    ? 'công cụ dụng cụ'
+                  : warehouseTab === 'gia_cong'
+                    ? 'hàng gia công'
                   : warehouseTab === 'tai_che'
                     ? 'NVL tái chế'
                     : 'NVL'}
@@ -3071,7 +3252,7 @@ export function WarehouseHistoryPanel({
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết phiếu</h3>
                 <p className="mt-0.5 text-xs font-semibold text-zinc-500">
                   {viewingSlipCode} · {viewingRows.length} dòng{' '}
-                  {warehouseTab === 'san_pham' ? 'SP' : warehouseTab === 'tai_che' ? 'NVL tái chế' : 'NVL'}
+                  {warehouseTab === 'san_pham' ? 'SP' : warehouseTab === 'hang_hong' ? 'hàng hỏng' : warehouseTab === 'tai_che' ? 'NVL tái chế' : 'NVL'}
                 </p>
               </div>
               <BackButton onClick={() => setViewingSlipCode(null)} />

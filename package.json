@@ -11,7 +11,9 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "migrate:warehouse-numeric": "node scripts/migrate-warehouse-numeric.mjs"
+    "migrate:warehouse-numeric": "node scripts/migrate-warehouse-numeric.mjs",
+    "migrate:kho-setup": "node scripts/run-kho-setup-sql.mjs",
+    "migrate:warehouse-slip-permissions": "node scripts/migrate-warehouse-slip-permissions.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

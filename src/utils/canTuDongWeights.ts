@@ -1,7 +1,9 @@
+import { normalizeProductCodeKey } from '../features/san-pham/types';
 import { shiftNamesMatch } from './shiftSettings';
 
 /** Bản ghi tối thiểu để tính trọng lượng nhựa / lọc lần cân. */
 export type CanTuDongWeightRow = {
+  qr_code?: string | null;
   can_loi?: number | string | null;
   tare_weight?: number | string | null;
   can_san_pham?: number | string | null;
@@ -11,6 +13,13 @@ export type CanTuDongWeightRow = {
   created_at?: string | null;
   device_id?: string | null;
   metadata?: unknown;
+};
+
+type CanTuDongProductAlias = {
+  code?: string | null;
+  newCode?: string | null;
+  amisCode?: string | null;
+  name?: string | null;
 };
 
 /** Trọng lượng bì mặc định (kg). */
@@ -92,6 +101,72 @@ export function resolveCanTuDongBusinessDate(row: CanTuDongWeightRow): string | 
 }
 
 /**
+ * Tem QR: `MãSP_ddmmyy` + serial (vd MT-MN009_3107268472) hoặc `MãSP+LSX...`.
+ * Trả về mã SP để khớp lệnh sản xuất.
+ */
+export function parseCanTuDongQrProductCode(raw?: string | null): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  const plusIdx = trimmed.indexOf('+');
+  if (plusIdx > 0) return trimmed.slice(0, plusIdx).trim();
+  const serialMatch = trimmed.match(/^(.+)[_-](\d{6})([0-9A-Za-z]{2,})$/);
+  if (serialMatch?.[1]) return serialMatch[1].trim();
+  return trimmed;
+}
+
+function addProductMatchKey(keys: Set<string>, value?: string | null) {
+  const key = normalizeProductCodeKey(String(value || ''));
+  if (key && key !== '-') keys.add(key);
+}
+
+function findCatalogProductForCanTuDong(
+  catalog: CanTuDongProductAlias[],
+  productCode?: string | null,
+  productName?: string | null
+) {
+  const codeKey = normalizeProductCodeKey(String(productCode || ''));
+  const nameKey = normalizeProductCodeKey(String(productName || ''));
+  return catalog.find(product => {
+    const aliases = [product.code, product.newCode, product.amisCode, product.name].map(value =>
+      normalizeProductCodeKey(String(value || ''))
+    );
+    if (codeKey && aliases.includes(codeKey)) return true;
+    if (nameKey && aliases.includes(nameKey)) return true;
+    return false;
+  });
+}
+
+/** Tập mã SP (kèm mã mới / AMIS / tên) của lệnh SX đang lọc — dùng khớp QR cân tự động. */
+export function collectCanTuDongProductMatchKeys(
+  lines: Array<{ productCode?: string | null; productName?: string | null }>,
+  catalog: CanTuDongProductAlias[] = []
+): Set<string> {
+  const keys = new Set<string>();
+  for (const line of lines) {
+    addProductMatchKey(keys, line.productCode);
+    addProductMatchKey(keys, line.productName);
+    const product = findCatalogProductForCanTuDong(catalog, line.productCode, line.productName);
+    if (!product) continue;
+    addProductMatchKey(keys, product.code);
+    addProductMatchKey(keys, product.newCode);
+    addProductMatchKey(keys, product.amisCode);
+    addProductMatchKey(keys, product.name);
+  }
+  return keys;
+}
+
+export function canTuDongQrMatchesProductKeys(
+  qrCode: string | null | undefined,
+  productCodeKeys: Set<string>
+): boolean {
+  if (productCodeKeys.size === 0) return false;
+  const parsedKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(qrCode));
+  if (parsedKey && productCodeKeys.has(parsedKey)) return true;
+  const fullKey = normalizeProductCodeKey(String(qrCode || ''));
+  return Boolean(fullKey && productCodeKeys.has(fullKey));
+}
+
+/**
  * Khớp ca: bằng nhau (không phân biệt hoa thường), hoặc token đầy đủ.
  * Tránh `includes` kiểu "C1" khớp nhầm "HC1"/"12C1".
  */
@@ -115,22 +190,58 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
     shiftFilter?: string;
     dateFrom?: string;
     dateTo?: string;
+    /** Khi truyền: chỉ giữ lần cân có ngày+ca trùng một lệnh SX đang lọc. */
+    orderShiftBuckets?: Array<{ ngay?: string | null; shift?: string | null }> | null;
+    /** Khi truyền (kể cả Set rỗng): chỉ giữ lần cân có QR khớp mã SP lệnh SX. */
+    productCodeKeys?: Iterable<string> | null;
   } = {}
 ): T[] {
   const shiftFilter = String(opts.shiftFilter || '').trim();
   const dateFrom = String(opts.dateFrom || '').trim();
   const dateTo = String(opts.dateTo || '').trim();
+  const buckets = Array.isArray(opts.orderShiftBuckets)
+    ? opts.orderShiftBuckets
+        .map(bucket => ({
+          ngay: String(bucket.ngay || '').trim(),
+          shift: String(bucket.shift || '').trim()
+        }))
+        .filter(bucket => bucket.ngay || bucket.shift)
+    : null;
+  const productKeys =
+    opts.productCodeKeys == null
+      ? null
+      : new Set(
+          [...opts.productCodeKeys]
+            .map(value => normalizeProductCodeKey(String(value || '')))
+            .filter(key => key && key !== '-')
+        );
 
   return records.filter(row => {
     if (shiftFilter && shiftFilter !== 'all' && !canTuDongShiftMatches(String(row.ca || ''), shiftFilter)) {
       return false;
     }
 
+    const businessDate = dateFrom || dateTo || buckets ? resolveCanTuDongBusinessDate(row) : null;
+
     if (dateFrom || dateTo) {
-      const businessDate = resolveCanTuDongBusinessDate(row);
       if (!businessDate) return false;
       if (dateFrom && businessDate < dateFrom) return false;
       if (dateTo && businessDate > dateTo) return false;
+    }
+
+    if (buckets) {
+      if (buckets.length === 0) return false;
+      const rowCa = String(row.ca || '');
+      const matched = buckets.some(bucket => {
+        if (bucket.ngay && businessDate !== bucket.ngay) return false;
+        if (bucket.shift && !canTuDongShiftMatches(rowCa, bucket.shift)) return false;
+        return true;
+      });
+      if (!matched) return false;
+    }
+
+    if (productKeys && !canTuDongQrMatchesProductKeys(row.qr_code, productKeys)) {
+      return false;
     }
 
     return true;

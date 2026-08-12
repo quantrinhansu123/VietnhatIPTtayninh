@@ -374,6 +374,7 @@ export default function ControlBoardBbMachineReportTable({
   const [activeTab, setActiveTab] = useState<BbMachineReportTabId>(() =>
     sanLuongSource === 'can-tu-dong' ? 'bao_cao_san_luong' : 'lenh_sx'
   );
+  const includeAllMachines = sanLuongSource === 'can-tu-dong';
 
   useEffect(() => {
     if (sanLuongSource === 'can-tu-dong') {
@@ -472,9 +473,20 @@ export default function ControlBoardBbMachineReportTable({
         dateTo,
         shiftFilter,
         machineFilter,
-        selectedMachine
+        selectedMachine,
+        includeAllMachines
       }),
-    [productionOrders, machines, shiftSettings, dateFrom, dateTo, shiftFilter, machineFilter, selectedMachine]
+    [
+      productionOrders,
+      machines,
+      shiftSettings,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
+    ]
   );
 
   const orderOptionCodes = useMemo(() => new Set(orderOptions.map(option => option.code)), [orderOptions]);
@@ -502,7 +514,8 @@ export default function ControlBoardBbMachineReportTable({
         dateTo,
         shiftFilter,
         machineFilter,
-        selectedMachine
+        selectedMachine,
+        includeAllMachines
       }),
     [
       scopedProductionOrders,
@@ -513,7 +526,8 @@ export default function ControlBoardBbMachineReportTable({
       dateTo,
       shiftFilter,
       machineFilter,
-      selectedMachine
+      selectedMachine,
+      includeAllMachines
     ]
   );
 
@@ -969,15 +983,31 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
-  /** Cùng tập dòng với `/can-tu-dong` theo ngày + ca (không lọc máy — trang cân cũng vậy). */
+  /** Ngày + ca của lệnh SX đang lọc — cân tự động khớp theo lệnh, không bắt buộc trùng mã SP trên QR. */
+  const canTuDongOrderShiftBuckets = useMemo(() => {
+    if (sanLuongSource !== 'can-tu-dong') return null;
+    const seen = new Set<string>();
+    const buckets: Array<{ ngay: string; shift: string }> = [];
+    for (const row of orderRows) {
+      const ngay = String(row.ngay || '').trim();
+      const shift = String(row.shift || '').trim();
+      if (!ngay && !shift) continue;
+      const key = `${ngay}|${shift}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      buckets.push({ ngay, shift });
+    }
+    return buckets;
+  }, [sanLuongSource, orderRows]);
   const scopedCanTuDongRecords = useMemo(
     () =>
       filterCanTuDongRecordsForBoard(canTuDongRecords, {
         shiftFilter,
         dateFrom,
-        dateTo
+        dateTo,
+        orderShiftBuckets: canTuDongOrderShiftBuckets
       }),
-    [canTuDongRecords, shiftFilter, dateFrom, dateTo]
+    [canTuDongRecords, shiftFilter, dateFrom, dateTo, canTuDongOrderShiftBuckets]
   );
   const canTuDongSanLuongTotals = useMemo(
     () => sumCanTuDongSanLuongTotals(scopedCanTuDongRecords),
@@ -1459,7 +1489,7 @@ export default function ControlBoardBbMachineReportTable({
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title={
               sanLuongSource === 'can-tu-dong'
-                ? 'Số lần cân trên /can-tu-dong và tổng trọng lượng nhựa (SP − lõi − bì) theo bộ lọc ngày/ca'
+                ? 'Số lần cân và tổng trọng lượng nhựa (SP − lõi − bì) khớp ngày/ca lệnh sản xuất'
                 : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng'
             }
           >
@@ -1470,7 +1500,7 @@ export default function ControlBoardBbMachineReportTable({
               <div
                 title={
                   sanLuongSource === 'can-tu-dong'
-                    ? 'Số lần cân = số dòng trên /can-tu-dong theo cùng ngày/ca'
+                    ? 'Số lần cân = số dòng can_tu_dong khớp ngày/ca lệnh sản xuất'
                     : 'Tổng cột «SL sản lượng»'
                 }
               >
@@ -1570,7 +1600,7 @@ export default function ControlBoardBbMachineReportTable({
                   label: 'Tổng nhựa thành phẩm',
                   title:
                     sanLuongSource === 'can-tu-dong'
-                      ? 'Σ cột «Trọng lượng nhựa» trên /can-tu-dong (và tab sản lượng) theo cùng ngày/ca — SP − lõi − bì 0,16'
+                      ? 'Σ cột «Trọng lượng nhựa» của lần cân khớp ngày/ca lệnh sản xuất — SP − lõi − bì 0,16'
                       : 'Trọng lượng thực tế tab sản lượng',
                   display: isLoading
                     ? '…'
@@ -2408,6 +2438,7 @@ export default function ControlBoardBbMachineReportTable({
               shiftFilter={shiftFilter}
               dateFrom={dateFrom}
               dateTo={dateTo}
+              orderShiftBuckets={canTuDongOrderShiftBuckets}
             />
           ) : (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">

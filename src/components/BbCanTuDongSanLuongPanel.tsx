@@ -70,13 +70,15 @@ export default function BbCanTuDongSanLuongPanel({
   isLoading,
   shiftFilter = 'all',
   dateFrom = '',
-  dateTo = ''
+  dateTo = '',
+  orderShiftBuckets = null
 }: {
   records: CanTuDongRecord[];
   isLoading?: boolean;
   shiftFilter?: string;
   dateFrom?: string;
   dateTo?: string;
+  orderShiftBuckets?: Array<{ ngay?: string | null; shift?: string | null }> | null;
 }) {
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const filtered = useMemo(
@@ -84,9 +86,10 @@ export default function BbCanTuDongSanLuongPanel({
       filterCanTuDongRecordsForBoard(records, {
         shiftFilter,
         dateFrom,
-        dateTo
+        dateTo,
+        orderShiftBuckets
       }),
-    [records, shiftFilter, dateFrom, dateTo]
+    [records, shiftFilter, dateFrom, dateTo, orderShiftBuckets]
   );
   const totals = useMemo(() => sumCanTuDongSanLuongTotals(filtered), [filtered]);
 
@@ -133,7 +136,7 @@ export default function BbCanTuDongSanLuongPanel({
           ) : filtered.length === 0 ? (
             <tr>
               <td colSpan={11} className="px-3 py-10 text-center font-bold text-zinc-400">
-                Chưa có dữ liệu cân tự động theo ngày/ca đã lọc.
+                Chưa có dữ liệu cân tự động khớp ngày/ca lệnh sản xuất đã lọc.
               </td>
             </tr>
           ) : (

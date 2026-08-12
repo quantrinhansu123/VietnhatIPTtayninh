@@ -4,7 +4,7 @@ Tab `control-board` → `/bang-dieu-khien` — **đọc nhiều bảng**, không
 
 Tab `dashboard` → `/phan-tich` — cùng **Báo cáo tổng hợp máy BB** (`ControlBoardPanel` `mode="report-only"`), không dùng `AnalyticsDashboard` / bảng `reports` legacy.
 
-Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`, UI y hệt `/phan-tich`; tab **Dữ liệu trong báo cáo sản lượng** lấy `can_tu_dong` theo ngày/ca. **Tổng nhựa thành phẩm** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) — cùng công thức `/can-tu-dong`.
+Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`, UI y hệt `/phan-tich`; tab **Dữ liệu trong báo cáo sản lượng** lấy `can_tu_dong` theo **ngày + ca lệnh sản xuất** (mọi máy, không chỉ Bao Bì). **Tổng nhựa thành phẩm** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) — cùng công thức `/can-tu-dong`.
 
 ## UI
 

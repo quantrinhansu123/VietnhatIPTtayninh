@@ -3143,7 +3143,12 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
         customer: pickText(record, ['khach_hang', 'customer', 'ten_khach_hang'], '-'),
         orderRef: pickText(record, ['ma_don_hang', 'don_hang', 'order_code'], '-'),
         startDate: formatProductionOrderDate(
-          record.ngay_gio_bat_dau ?? record.ngay_bat_dau ?? record.ngay_san_xuat ?? record.ngay_sx ?? record.start_date
+          record.ngay ??
+            record.ngay_san_xuat ??
+            record.ngay_sx ??
+            record.ngay_bat_dau ??
+            record.ngay_gio_bat_dau ??
+            record.start_date
         ),
         endDate: formatProductionOrderDate(record.ngay_gio_ket_thuc ?? record.ngay_ket_thuc ?? record.end_date),
         createdAt: String(record.created_at ?? record.createdAt ?? '').trim(),

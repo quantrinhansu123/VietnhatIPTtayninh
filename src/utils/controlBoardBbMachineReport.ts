@@ -326,7 +326,12 @@ function findBbMachineByLabel(machines: MachineRow[], label: string): MachineRow
   );
 }
 
-export function isBbProductionOrder(order: ProductionOrderRow, machines: MachineRow[]) {
+export function isBbProductionOrder(
+  order: ProductionOrderRow,
+  machines: MachineRow[],
+  includeAllMachines = false
+) {
+  if (includeAllMachines) return true;
   const resolved = resolveProductionOrderMachine(order, machines);
   const matched = findMachineForOrder(order, machines);
   return isBbMachineText(order.machine, order.position, resolved, matched?.code, matched?.name, matched?.type);
@@ -342,12 +347,13 @@ export function buildBbProductionOrderLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbProductionOrderLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ProductionOrderLookupSetting[];
   const rows: BbProductionOrderLineRow[] = [];
 
   for (const order of input.productionOrders) {
-    if (!isBbProductionOrder(order, input.machines)) continue;
+    if (!isBbProductionOrder(order, input.machines, input.includeAllMachines)) continue;
 
     const ngay = parseProductionOrderFilterDate(order.startDate);
     if (!matchesControlBoardDateRange(ngay || order.startDate, input.dateFrom, input.dateTo)) continue;
@@ -2175,13 +2181,14 @@ export function buildBbOrderCodeOptions(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbOrderCodeOption[] {
   const lookupSettings = (input.shiftSettings || []) as ProductionOrderLookupSetting[];
   const seen = new Set<string>();
   const options: BbOrderCodeOption[] = [];
 
   for (const order of input.productionOrders) {
-    if (!isBbProductionOrder(order, input.machines)) continue;
+    if (!isBbProductionOrder(order, input.machines, input.includeAllMachines)) continue;
     const code = String(order.code || '').trim();
     if (!code || seen.has(code)) continue;
     const ngay = parseProductionOrderFilterDate(order.startDate);

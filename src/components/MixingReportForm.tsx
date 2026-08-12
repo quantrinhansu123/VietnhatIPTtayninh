@@ -2178,17 +2178,6 @@ export default function MixingReportForm({
                 className={`${inputClass} h-8 text-center`}
               />
             </label>
-            <label className="min-w-[104px] space-y-1">
-              <span className="block text-[10px] font-black uppercase tracking-wider text-zinc-500">Số lần</span>
-              <input
-                type="number"
-                min={1}
-                max={Math.min(MIXING_MAX_ROUNDS, MAX_MIXING_SESSIONS_PER_SHIFT - sessionRoundStart + 1)}
-                value={displayedRoundCount}
-                onChange={e => applyRoundCount(Number(e.target.value || 1))}
-                className={`${inputClass} h-8 text-center`}
-              />
-            </label>
             <button
               type="button"
               onClick={() => applyRoundCount(displayedRoundCount + 1)}

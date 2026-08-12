@@ -57,6 +57,7 @@ import {
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
   ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight
+  , X
 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
@@ -71,6 +72,8 @@ export type MenuCardConfig = {
   tab: AppTab;
   /** Mục chưa có trang — hiển thị tên/icon nhưng không cho bấm vào (làm sau). */
   disabled?: boolean;
+  /** Mở nội dung nhúng trong modal thay vì điều hướng sang tab khác. */
+  modalUrl?: string;
 };
 
 export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
@@ -171,11 +174,12 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary'
   },
   {
-    title: 'Phiếu cân AI cũ',
-    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
+    title: 'Trạm cân',
+    desc: 'Mở trạm cân cũ ngay trong ứng dụng.',
     icon: Scale,
     icon3d: robot3d,
-    tab: 'can-tu-dong'
+    tab: 'can-tu-dong',
+    modalUrl: 'https://tram-can-qr-pilot.onrender.com/'
   },
   {
     title: 'Phiếu báo dừng máy',
@@ -687,7 +691,9 @@ export function MenuCardGrid({
   items: MenuCardConfig[];
   onNavigate: (tab: AppTab) => void;
 }) {
+  const [modalItem, setModalItem] = React.useState<MenuCardConfig | null>(null);
   return (
+    <>
     <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
       {items.map(item => {
         const Icon = item.icon;
@@ -697,7 +703,7 @@ export function MenuCardGrid({
             key={item.title}
             type="button"
             aria-disabled={disabled}
-            onClick={() => !disabled && onNavigate(item.tab)}
+            onClick={() => !disabled && (item.modalUrl ? setModalItem(item) : onNavigate(item.tab))}
             className={`group relative min-h-[80px] overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 md:p-4 text-left transition hover:border-brand-200 hover:shadow-elevated focus-visible:ring-2 focus-visible:ring-brand-500/25 ${
               disabled ? 'cursor-not-allowed' : 'active:scale-[0.99]'
             }`}
@@ -723,6 +729,29 @@ export function MenuCardGrid({
         );
       })}
     </section>
+    {modalItem?.modalUrl ? (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-2 sm:p-4" role="dialog" aria-modal="true">
+        <div className="flex h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div>
+              <h3 className="font-display text-base font-bold text-slate-950">{modalItem.title}</h3>
+              <p className="text-xs font-semibold text-slate-500">Trạm cân cũ</p>
+            </div>
+            <button type="button" onClick={() => setModalItem(null)} className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100" aria-label="Đóng">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <iframe
+            title={modalItem.title}
+            src={modalItem.modalUrl}
+            className="min-h-0 w-full flex-1 border-0 bg-white"
+            referrerPolicy="no-referrer-when-downgrade"
+            allow="camera; microphone; clipboard-read; clipboard-write"
+          />
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

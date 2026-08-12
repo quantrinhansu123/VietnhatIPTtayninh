@@ -214,7 +214,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
 }
 
 const warehouseFieldClass =
-  'h-11 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+  'h-9 w-full rounded-lg border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
 
 const warehouseLineFieldClass =
   'h-9 w-full rounded-md border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -1922,16 +1922,16 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
-      <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="grid gap-2 sm:grid-cols-2">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-3 py-1.5">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">Tổng tiền</p>
               <p className="text-lg font-black leading-tight text-zinc-950">{formatWarehouseMoney(slipTotal)} đ</p>
             </div>
             <p className="text-[10px] font-semibold text-zinc-400">Giá × SL</p>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-600/20 bg-emerald-50 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-600/20 bg-emerald-50 px-3 py-1.5">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Khối lượng</p>
               <p className="text-lg font-black leading-tight text-zinc-950">{formatWarehouseWeightKg(slipTotalWeightKg)}</p>
@@ -1940,14 +1940,14 @@ export function WarehouseSlipPanel({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 border-b border-zinc-100 pb-2">
+        <div className="flex items-center gap-2 border-b border-zinc-100 pb-1.5">
           <p className="text-sm font-black text-zinc-950">Thông tin phiếu</p>
           <p className="text-xs font-semibold text-zinc-400">
             {warehouseSlipTypeLabel(slipType)} · {warehouseName || warehouseKindLabel(warehouseKind)}
           </p>
         </div>
 
-        <div className="grid gap-x-3 gap-y-2 sm:grid-cols-2">
+        <div className="grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-6">
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
@@ -1981,11 +1981,6 @@ export function WarehouseSlipPanel({
                 </option>
               ))}
             </select>
-            {isNvlInbound && selectedShifts.length === 0 ? (
-              <p className="text-[11px] font-semibold text-zinc-400">
-                Có thể bỏ trống ca khi nhập kho NVL.
-              </p>
-            ) : null}
           </label>
 
           <label className="block space-y-1">
@@ -2024,19 +2019,19 @@ export function WarehouseSlipPanel({
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
                 <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài..." />
               </label>
-              <label className="block space-y-1.5 sm:col-span-2">
+              <label className="block space-y-1 sm:col-span-2">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
                 <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Số chứng từ gốc kèm theo..." />
               </label>
             </>
           ) : (
-            <label className="block space-y-1.5 sm:col-span-2">
+            <label className="block space-y-1 sm:col-span-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
               <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
             </label>
           )}
 
-          <div className="relative block space-y-1.5 sm:col-span-2">
+          <div className="relative block space-y-1 sm:col-span-2 lg:col-span-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Mã đơn hàng / Lệnh SX{' '}
@@ -2059,10 +2054,6 @@ export function WarehouseSlipPanel({
                 Tự động điền theo lệnh SX
               </button>
             </div>
-            <p className="text-[11px] font-semibold text-zinc-500">
-              Chọn Ngày phiếu + Ca rồi bấm nút để lấy lệnh SX khớp và điền{' '}
-              {warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL định mức'}.
-            </p>
             <button
               type="button"
               ref={productionOrderTriggerRef}

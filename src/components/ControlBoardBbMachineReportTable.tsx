@@ -52,11 +52,11 @@ import {
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
   sumBbDamagedGoodsWeightKg,
-  sumBbDamagedGoodsTotals,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
   sumBbDauCaWeightKgByKind,
   sumBbInboundReportTotals,
+  sumBbProductionOrderPlasticRequiredKg,
   sumBbProductionOrderTotals,
   sumBbSanLuongTotals,
   sumBbThucDungWeightKg,
@@ -916,8 +916,11 @@ export default function ControlBoardBbMachineReportTable({
     () => sumBbWarehouseExportWeightKgByKind(exportRows),
     [exportRows]
   );
-  /** Trọng lượng nhựa yêu cầu = tổng cột «Tổng (kg)» ở tab Dữ liệu trong lệnh sản xuất. */
-  const plasticRequiredWeightKg = orderTotals.totalNormKg;
+  /** Lấy toàn bộ KG: tổng tất cả dòng cột «Tổng (kg)» trong Lệnh sản xuất theo bộ lọc. */
+  const plasticRequiredWeightKg = useMemo(
+    () => sumBbProductionOrderPlasticRequiredKg(orderRows),
+    [orderRows]
+  );
   const exportMaterialTotals = useMemo(
     () => aggregateBbWarehouseExportByMaterial(exportRows),
     [exportRows]
@@ -943,7 +946,16 @@ export default function ControlBoardBbMachineReportTable({
     [inboundNormGroups]
   );
   const damagedTotalKg = useMemo(() => sumBbDamagedGoodsWeightKg(damagedRows), [damagedRows]);
-  const damagedTotals = useMemo(() => sumBbDamagedGoodsTotals(damagedRows), [damagedRows]);
+  const damagedWeightByKind = useMemo(() => {
+    let plasticKg = 0;
+    let otherKg = 0;
+    damagedRows.forEach(row => {
+      const kg = row.weightKg > 0 ? row.weightKg : 0;
+      if (String(row.materialCode || '').trim().toUpperCase().startsWith('NHUA-')) plasticKg += kg;
+      else otherKg += kg;
+    });
+    return { plasticKg, otherKg };
+  }, [damagedRows]);
   const cuoiCaTotalKg = useMemo(() => sumBbCuoiCaWeightKg(cuoiCaRows), [cuoiCaRows]);
   const cuoiCaWeightByKind = useMemo(() => sumBbCuoiCaWeightKgByKind(cuoiCaRows), [cuoiCaRows]);
   const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
@@ -1294,7 +1306,7 @@ export default function ControlBoardBbMachineReportTable({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Tổng SL và Tổng (kg) trong tab Dữ liệu trong lệnh sản xuất (theo bộ lọc)"
+            title="Lấy toàn bộ KG: tổng cột «Tổng (kg)» của tất cả dòng trong Lệnh sản xuất theo bộ lọc"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng nhựa yêu cầu
@@ -1310,7 +1322,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'}
                 </p>
               </div>
-              <div title="Tổng cột «Tổng (kg)» lệnh sản xuất">
+              <div title="Lấy hết KG từ cột «Tổng (kg)» trong Lệnh sản xuất">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
@@ -1488,29 +1500,29 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Tổng số phiếu và trọng lượng lỗi hỏng (kg) trên tab Dữ liệu trong báo cáo hàng lỗi hỏng"
+            title="Trọng lượng lỗi hỏng tách riêng nhựa và các vật tư còn lại"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo lỗi hỏng
             </p>
             <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
-              <div title="Số phiếu hàng lỗi hỏng (theo bộ lọc)">
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Số lượng</p>
+              <div title="Các dòng lỗi hỏng có mã vật tư nhóm nhựa">
+                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
-                    : damagedTotals.quantity > 0
-                      ? formatNumber(damagedTotals.quantity, 0)
+                    : damagedWeightByKind.plasticKg > 0
+                      ? `${formatKg(damagedWeightByKind.plasticKg, 2)} kg`
                       : '—'}
                 </p>
               </div>
-              <div title="Tổng cột «Lỗi hỏng (kg)»">
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng</p>
+              <div title="Màng, lõi và các vật tư lỗi hỏng không thuộc nhóm nhựa">
+                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
                     ? '…'
-                    : damagedTotals.weightKg > 0
-                      ? `${formatKg(damagedTotals.weightKg, 2)} kg`
+                    : damagedWeightByKind.otherKg > 0
+                      ? `${formatKg(damagedWeightByKind.otherKg, 2)} kg`
                       : '—'}
                 </p>
               </div>

@@ -744,8 +744,8 @@ export function MenuCardGrid({
       })}
     </section>
     {modalItem?.modalUrl ? (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-2 sm:p-4" role="dialog" aria-modal="true">
-        <div className="flex h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="fixed inset-0 z-[100] bg-white" role="dialog" aria-modal="true">
+        <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div>
               <h3 className="font-display text-base font-bold text-slate-950">{modalItem.title}</h3>

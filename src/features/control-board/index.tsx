@@ -160,6 +160,17 @@ export function ControlBoardPanel({
     printProductionOrder
   } = useProductionOrderPrint();
 
+  useEffect(() => {
+    if (!useCanTuDongSanLuong) return;
+    const defaultRange = defaultShiftSummaryDateRange(14);
+    setShiftSummaryDateFrom(defaultRange.from);
+    setShiftSummaryDateTo(defaultRange.to);
+    setBoardFilterShift('all');
+    setBoardFilterMachine('all');
+    setBoardFilterProductionOrder('all');
+    setBoardFilterProductionOrderQuery('');
+  }, [useCanTuDongSanLuong]);
+
   const loadBoard = async () => {
     setIsLoading(true);
     setLoadError('');

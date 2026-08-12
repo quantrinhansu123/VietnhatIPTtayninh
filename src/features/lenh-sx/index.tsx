@@ -24,7 +24,6 @@ import {
 import {
   AddProductionOrderModal,
   EditProductionOrderModal,
-  formatProductionOrderDate,
   formatProductionOrderProductsSummary,
   getProductionOrderProductLines,
   normalizeProductionOrders,
@@ -263,6 +262,14 @@ export function ProductionOrdersPanel({
     return Number.isFinite(time) ? time : null;
   };
 
+  const parseDateInput = (value: string): number | null => {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const [, year, month, day] = match;
+    const time = new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+    return Number.isFinite(time) ? time : null;
+  };
+
   const hasActiveFilters =
     selectedStatus !== 'all' ||
     selectedMachines.length > 0 ||
@@ -289,8 +296,8 @@ export function ProductionOrdersPanel({
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredRows = useMemo(() => {
-    const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
-    const toTime = dateTo ? new Date(dateTo).getTime() : null;
+    const fromTime = dateFrom ? parseDateInput(dateFrom) : null;
+    const toTime = dateTo ? parseDateInput(dateTo) : null;
     const personName = currentUser?.name || '';
 
     return rows
@@ -359,7 +366,7 @@ export function ProductionOrdersPanel({
   const dateGroups = useMemo(() => {
     const map = new Map<string, ProductionOrderRow[]>();
     filteredRows.forEach(row => {
-      const date = formatProductionOrderDate(row.createdAt) || 'Chưa có ngày';
+      const date = row.startDate && row.startDate !== '-' ? row.startDate : 'Chưa có ngày bắt đầu';
       const list = map.get(date) ?? [];
       list.push(row);
       map.set(date, list);
@@ -538,8 +545,8 @@ export function ProductionOrdersPanel({
                   <p className="font-mono text-sm font-black text-emerald-800">{formatNumber(group.totalQuantity)}</p>
                 </div>
               </div>
-              <div className="hover-scrollbar max-h-[70vh] overflow-auto">
-                <table className="w-full min-w-[1080px] table-fixed border-collapse text-left text-sm">
+              <div className="hover-scrollbar overflow-x-auto">
+                <table className="w-full min-w-[1380px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
                     <col className="w-[7%]" /><col className="w-[5%]" /><col className="w-[28%]" />
                     <col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[8%]" />
@@ -547,23 +554,23 @@ export function ProductionOrdersPanel({
                     <col className="w-[9%]" /><col className="w-[5%]" />
                   </colgroup>
                   <TableHead>
-                    <TableHeadCell>Mã lệnh</TableHeadCell>
-                    <TableHeadCell>Ca</TableHeadCell>
-                    <TableHeadCell className="min-w-[320px]">
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Mã lệnh</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Ca</TableHeadCell>
+                    <TableHeadCell className="min-w-[320px] px-2 py-2 text-[10px]">
                       <div className="grid grid-cols-[minmax(80px,0.85fr)_minmax(120px,1.5fr)_64px] gap-2">
                         <span>Mã hàng</span>
                         <span>Tên hàng</span>
                         <span className="text-right">Số lượng</span>
                       </div>
                     </TableHeadCell>
-                    <TableHeadCell className="w-32 min-w-32 whitespace-nowrap">Trạng thái</TableHeadCell>
-                    <TableHeadCell>Khách hàng</TableHeadCell>
-                    <TableHeadCell>Đơn hàng</TableHeadCell>
-                    <TableHeadCell>Bắt đầu</TableHeadCell>
-                    <TableHeadCell>Kết thúc</TableHeadCell>
-                    <TableHeadCell>Nhân sự phụ trách</TableHeadCell>
-                    <TableHeadCell>Máy</TableHeadCell>
-                    <TableHeadCell align="center">Thao tác</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Bắt đầu</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Kết thúc</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Nhân sự phụ trách</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Máy</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]" align="center">Thao tác</TableHeadCell>
                   </TableHead>
                   <TableBody>
                     {group.rows.map(row => {
@@ -571,19 +578,19 @@ export function ProductionOrdersPanel({
                       return (
                       <React.Fragment key={row.id}>
                       <TableRow>
-                        <td className="px-4 py-3 align-top font-black text-zinc-950">{row.code || '-'}</td>
-                        <td className="px-4 py-3 align-top text-zinc-700">{row.shift || '-'}</td>
-                        <td className="px-4 py-3 align-top">
+                        <td className="whitespace-nowrap px-2 py-2 align-top font-black text-zinc-950">{row.code || '-'}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
+                        <td className="px-2 py-2 align-top">
                           {productLines.length > 0 ? (
                             <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-                              <table className="w-full border-collapse text-left text-xs">
+                              <table className="w-full border-collapse text-left text-[10px]">
                                 <tbody className="divide-y divide-zinc-100">
                                   {productLines.map((product, index) => (
                                     <tr key={`${row.id}-${product.productCode}-${index}`}>
-                                      <td className="w-[28%] px-2.5 py-1.5 font-black text-zinc-950">
+                                      <td className="w-[28%] whitespace-nowrap px-2 py-1 font-black text-zinc-950">
                                         {product.productCode || '-'}
                                       </td>
-                                      <td className="px-2.5 py-1.5 font-semibold text-zinc-700">
+                                      <td className="whitespace-nowrap px-2 py-1 font-semibold text-zinc-700">
                                         {product.productName || '-'}
                                       </td>
                                       <td className="w-[22%] whitespace-nowrap px-2.5 py-1.5 text-right font-mono font-bold text-zinc-900">
@@ -603,18 +610,18 @@ export function ProductionOrdersPanel({
                             <span className="text-zinc-400">-</span>
                           )}
                         </td>
-                        <td className="w-32 min-w-32 whitespace-nowrap px-4 py-3 align-top">
+                        <td className="whitespace-nowrap px-2 py-2 align-top">
                           <StatusBadge label={row.status} color="amber" />
                         </td>
-                        <td className="px-4 py-3 align-top text-zinc-700">{row.customer}</td>
-                        <td className="px-4 py-3 align-top text-zinc-600">{row.orderRef}</td>
-                        <td className="px-4 py-3 align-top text-zinc-600">{row.startDate}</td>
-                        <td className="px-4 py-3 align-top text-zinc-600">{row.endDate}</td>
-                        <td className="px-4 py-3 align-top font-semibold text-zinc-700">
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.customer}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.startDate}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.endDate}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top font-semibold text-zinc-700">
                           {productionOrderStaffDisplay(row)}
                         </td>
-                        <td className="px-4 py-3 align-top text-zinc-600">{row.machine}</td>
-                        <td className="px-4 py-3 align-top text-center">
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.machine}</td>
+                        <td className="px-2 py-2 align-top text-center">
                           <button
                             type="button"
                             onClick={(event) => {

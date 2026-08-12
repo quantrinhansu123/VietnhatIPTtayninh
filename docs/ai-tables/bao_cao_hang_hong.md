@@ -7,7 +7,7 @@
 **API:** `server.ts` 5276–5282 — `registerWeighingSlipRoutes` với `/api/bao-cao-hang-hong`  
 **UI:** Dùng chung `WeighingShiftSummary` + `WeighingReportForm` với config `DAMAGED_GOODS_SLIP_CONFIG` trong `weighingSlipConfig.ts`
 
-**Tự động nhập kho:** `supabase-bao-cao-hang-hong-tu-dong-nhap-kho.sql` — trigger đồng bộ từng dòng báo cáo sang phiếu nhập `Kho hàng hỏng` (`loai_kho=hang_hong`); sửa/xóa báo cáo cũng sửa/xóa dòng kho nguồn.
+**Chờ thủ kho duyệt:** `supabase-bao-cao-hang-hong-cho-thu-kho-duyet.sql` — tắt trigger nhập kho tự động. `GET /api/bao-cao-hang-hong/cho-nhap-kho` trả danh sách báo cáo chưa có phiếu nhập; chỉ khi thủ kho kiểm tra và lưu phiếu thì mới ghi `phieu_xuat_nhap_kho`, liên kết bằng `id_bao_cao_hang_hong`.
 
 Cấu trúc giống phiếu cân ca.
 

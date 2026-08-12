@@ -13,6 +13,7 @@
 | GET | `/api/phieu-xuat-nhap-kho` | ~5212 |
 | GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`) |
 | GET | `/api/phieu-xuat-nhap-kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
+| GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho |
 | POST | `/api/phieu-xuat-nhap-kho` | ~5263 |
 | PUT | `/api/phieu-xuat-nhap-kho/:slipCode` | ~5377 |
 | DELETE | slip / id | ~5495+ |
@@ -27,7 +28,7 @@
 
 **Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP).
 
-Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công; hàng hỏng nhận phiếu nhập tự động từ `bao_cao_hang_hong`.
+Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
 
 Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 

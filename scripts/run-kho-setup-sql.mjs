@@ -7,7 +7,7 @@ dotenv.config();
 
 const files = [
   'supabase-bo-sung-kho-hang-hoa-cong-cu-gia-cong.sql',
-  'supabase-bao-cao-hang-hong-tu-dong-nhap-kho.sql'
+  'supabase-bao-cao-hang-hong-cho-thu-kho-duyet.sql'
 ];
 
 function projectRef() {

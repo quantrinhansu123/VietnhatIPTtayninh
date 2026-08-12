@@ -109,6 +109,7 @@ export interface WarehouseMovementRow {
   createdAt: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
+  damagedReportRowId?: string;
 }
 
 export interface WarehouseSlipLineDraft {
@@ -124,7 +125,30 @@ export interface WarehouseSlipLineDraft {
   lineNote?: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
+  damagedReportRowId?: string;
 }
+
+type PendingDamagedReportItem = {
+  reportRowId: string;
+  materialType: string;
+  code: string;
+  name: string;
+  unit: string;
+  quantity: number;
+};
+
+type PendingDamagedReport = {
+  key: string;
+  documentNo: string;
+  reportDate: string;
+  productionDate: string;
+  shift: string;
+  weigher: string;
+  machine: string;
+  note: string;
+  createdAt: string;
+  items: PendingDamagedReportItem[];
+};
 
 export type NvlInboundLotOption = {
   id: string;
@@ -170,6 +194,7 @@ export type WarehouseSlipPrefillDraft = {
       | 'lineNote'
       | 'sourceInboundLineId'
       | 'sourceInboundSlipCode'
+      | 'damagedReportRowId'
     >
   >;
 };
@@ -208,7 +233,8 @@ export function buildWarehouseSlipDraftFromHistoryRows(
           : '',
       unitPrice: row.unitPrice > 0 ? String(row.unitPrice) : '',
       sourceInboundLineId: row.sourceInboundLineId || '',
-      sourceInboundSlipCode: row.sourceInboundSlipCode || ''
+      sourceInboundSlipCode: row.sourceInboundSlipCode || '',
+      damagedReportRowId: row.damagedReportRowId || ''
     }))
   };
 }
@@ -405,6 +431,7 @@ export type WarehouseSlipPayloadItem = {
   lineNote?: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
+  damagedReportRowId?: string;
 };
 
 export function parseWarehouseSlipPayloadItems(
@@ -427,6 +454,7 @@ export function parseWarehouseSlipPayloadItems(
       const suggestedQuantity = parsePercentInput(line.suggestedQuantity ?? '');
       const sourceInboundLineId = String(line.sourceInboundLineId || '').trim();
       const sourceInboundSlipCode = String(line.sourceInboundSlipCode || '').trim();
+      const damagedReportRowId = String(line.damagedReportRowId || '').trim();
       return {
         code: line.code.trim(),
         name: line.name.trim(),
@@ -442,7 +470,8 @@ export function parseWarehouseSlipPayloadItems(
           Number.isFinite(suggestedQuantity) && suggestedQuantity > 0 ? suggestedQuantity : undefined,
         lineNote: line.lineNote?.trim() || undefined,
         sourceInboundLineId: sourceInboundLineId || undefined,
-        sourceInboundSlipCode: sourceInboundSlipCode || undefined
+        sourceInboundSlipCode: sourceInboundSlipCode || undefined,
+        damagedReportRowId: damagedReportRowId || undefined
       };
     })
     .filter(line => line.code || line.quantity);
@@ -558,7 +587,8 @@ export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
     documentQuantity: '',
     unitPrice: '',
     sourceInboundLineId: '',
-    sourceInboundSlipCode: ''
+    sourceInboundSlipCode: '',
+    damagedReportRowId: ''
   };
 }
 
@@ -576,6 +606,7 @@ export function createWarehouseLineDraftFromPrefill(
     | 'lineNote'
     | 'sourceInboundLineId'
     | 'sourceInboundSlipCode'
+    | 'damagedReportRowId'
   >
 ): WarehouseSlipLineDraft {
   return {
@@ -590,7 +621,8 @@ export function createWarehouseLineDraftFromPrefill(
     suggestedQuantity: line.suggestedQuantity || '',
     lineNote: line.lineNote || '',
     sourceInboundLineId: line.sourceInboundLineId || '',
-    sourceInboundSlipCode: line.sourceInboundSlipCode || ''
+    sourceInboundSlipCode: line.sourceInboundSlipCode || '',
+    damagedReportRowId: line.damagedReportRowId || ''
   };
 }
 
@@ -684,7 +716,9 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         createdAt: String(record.created_at ?? record.createdAt ?? '').trim(),
         sourceInboundLineId: String(record.id_dong_nhap_nguon ?? record.sourceInboundLineId ?? '').trim() || undefined,
         sourceInboundSlipCode:
-          String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined
+          String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined,
+        damagedReportRowId:
+          String(record.id_bao_cao_hang_hong ?? record.damagedReportRowId ?? '').trim() || undefined
       };
     })
     .filter((row): row is WarehouseMovementRow => Boolean(row.id || row.slipCode));
@@ -930,8 +964,66 @@ export function WarehouseSlipPanel({
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
+  const [pendingDamagedReports, setPendingDamagedReports] = useState<PendingDamagedReport[]>([]);
+  const [isLoadingDamagedReports, setIsLoadingDamagedReports] = useState(true);
+  const [damagedReportsError, setDamagedReportsError] = useState('');
+  const [reviewingDamagedReportKey, setReviewingDamagedReportKey] = useState('');
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+
+  const loadPendingDamagedReports = async () => {
+    setIsLoadingDamagedReports(true);
+    setDamagedReportsError('');
+    try {
+      const res = await fetch('/api/bao-cao-hang-hong/cho-nhap-kho');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo hàng hỏng chờ nhập kho.'));
+      }
+      setPendingDamagedReports(Array.isArray(data?.records) ? data.records : []);
+    } catch (error: any) {
+      setPendingDamagedReports([]);
+      setDamagedReportsError(error?.message || 'Không thể tải báo cáo hàng hỏng chờ nhập kho.');
+    } finally {
+      setIsLoadingDamagedReports(false);
+    }
+  };
+
+  const handleReviewDamagedReport = (report: PendingDamagedReport) => {
+    const damagedWarehouseName =
+      warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) || 'Kho hàng hỏng';
+    setSlipType('nhap');
+    setWarehouseKind('hang_hong');
+    setWarehouseName(damagedWarehouseName);
+    setSlipDate(report.productionDate || report.reportDate || new Date().toISOString().slice(0, 10));
+    setSelectedShifts(report.shift ? [report.shift] : []);
+    setReason(`Nhập kho từ báo cáo hàng hỏng ${report.documentNo}`);
+    setNote([report.machine, report.note].filter(Boolean).join(' · '));
+    setMachine(report.machine || '');
+    setDeliverer(report.weigher || '');
+    setLines(
+      report.items.map(item => ({
+        ...createWarehouseLineDraft(),
+        code: item.code,
+        name: item.name,
+        unit: item.unit || 'kg',
+        quantity: String(item.quantity),
+        unitPrice: '',
+        damagedReportRowId: item.reportRowId
+      }))
+    );
+    setReviewingDamagedReportKey(report.key);
+    setEditSlipCode(null);
+    setFormError('');
+    setActionMessage(`Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu & in phiếu nhập kho.`);
+    window.setTimeout(() => {
+      document.querySelector('[data-warehouse-slip-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  useEffect(() => {
+    void loadPendingDamagedReports();
+  }, []);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -1690,6 +1782,14 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    if (
+      reviewingDamagedReportKey &&
+      (slipType !== 'nhap' || warehouseKind !== 'hang_hong' || !isDamagedGoodsWarehouseName(warehouseName))
+    ) {
+      setFormError(showSaveFailure('Báo cáo hàng hỏng chỉ được lưu bằng phiếu Nhập kho vào Kho hàng hỏng.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1799,6 +1899,11 @@ export function WarehouseSlipPanel({
           : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
       setActionMessage(okMsg);
       showAppToast(okMsg);
+      if (reviewingDamagedReportKey) {
+        setPendingDamagedReports(current => current.filter(report => report.key !== reviewingDamagedReportKey));
+        setReviewingDamagedReportKey('');
+        void loadPendingDamagedReports();
+      }
       setEditSlipCode(null);
       setReason('');
       setNote('');
@@ -1817,25 +1922,99 @@ export function WarehouseSlipPanel({
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-        <div className="bg-white p-3 text-slate-700 border-b border-slate-200">
-          <div className="flex items-start justify-end gap-3">
-            <div className="hidden">
-              <p className="text-xs font-black uppercase tracking-wider text-red-300">Quản lý kho</p>
-              <h2 className="mt-1 text-2xl font-black leading-tight">Phiếu xuất nhập kho</h2>
-              <p className="mt-2 text-sm font-medium leading-6 text-zinc-300">
-                Lập phiếu nhập hoặc xuất cho kho NVL hoặc kho Sản phẩm.
+        <div className="border-b border-slate-200 bg-white p-4 text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-[#ef1b2d]" />
+                <h2 className="text-base font-black text-slate-900">Báo cáo hàng hỏng chờ nhập kho</h2>
+                {!isLoadingDamagedReports && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">
+                    {pendingDamagedReports.length}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu. Chưa lưu thì tồn kho chưa thay đổi.
               </p>
             </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void loadPendingDamagedReports()}
+                disabled={isLoadingDamagedReports}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
+              >
+                <Loader2 className={`h-3.5 w-3.5 ${isLoadingDamagedReports ? 'animate-spin' : ''}`} />
+                Tải lại
+              </button>
               <button
                 type="button"
                 onClick={onOpenHistory}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 text-xs font-bold text-white transition hover:border-[#ef1b2d] hover:bg-[#ef1b2d]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
               >
                 <History className="h-4 w-4" />
                 Lịch sử
               </button>
             </div>
+          </div>
+
+          <div className="mt-3">
+            {isLoadingDamagedReports ? (
+              <div className="flex h-16 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải danh sách báo cáo...
+              </div>
+            ) : damagedReportsError ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-bold text-rose-700">
+                {damagedReportsError}
+              </p>
+            ) : pendingDamagedReports.length === 0 ? (
+              <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
+                Không có báo cáo hàng hỏng nào đang chờ nhập kho.
+              </div>
+            ) : (
+              <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
+                {pendingDamagedReports.map(report => {
+                  const isReviewing = reviewingDamagedReportKey === report.key;
+                  return (
+                    <div
+                      key={report.key}
+                      className={`rounded-xl border p-3 transition ${
+                        isReviewing ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-900">{report.documentNo}</p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                            {report.productionDate || report.reportDate || 'Chưa có ngày'}
+                            {report.shift ? ` · ${report.shift}` : ''}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleReviewDamagedReport(report)}
+                          className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
+                            isReviewing
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-[#ef1b2d] text-white hover:bg-[#d91526]'
+                          }`}
+                        >
+                          {isReviewing ? 'Đang kiểm tra' : 'Kiểm tra'}
+                        </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                        <span className="truncate text-slate-600">Người báo: <b>{report.weigher || '—'}</b></span>
+                        <span className="truncate text-slate-600">Máy: <b>{report.machine || '—'}</b></span>
+                        <span className="col-span-2 text-slate-600">
+                          {report.items.length} dòng vật tư · {report.items.map(item => `${item.name}: ${formatNumber(item.quantity)} ${item.unit}`).join('; ')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -1861,7 +2040,7 @@ export function WarehouseSlipPanel({
         </section>
       )}
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-2">
             <div>
@@ -2863,36 +3042,32 @@ export function WarehouseHistoryPanel({
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
-      <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
-        <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 px-4">
-          {accessibleWarehouseTabs.map(([tab, label, Icon]) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setWarehouseTab(tab)}
-              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
-                warehouseTab === tab ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <FilterCombobox
+            label="Chọn kho"
+            options={accessibleWarehouseTabs.map(([kind]) => kind)}
+            value={warehouseTab}
+            onChange={value => setWarehouseTab(value as WarehouseKind)}
+            formatOption={value =>
+              WAREHOUSE_HISTORY_TABS.find(([kind]) => kind === value)?.[1] || warehouseKindLabel(value as WarehouseKind)
+            }
+            searchPlaceholder="Tìm kho..."
+            includeAll={false}
+            dropdownWidth="w-72"
+          />
         </div>
-
-        <div className="flex justify-end p-3">
-          {canCreate ? (
-            <button
-              type="button"
-              onClick={onOpenSlip}
-              className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] sm:w-auto"
-            >
-              <Plus className="h-4 w-4" />
-              Lập phiếu
-            </button>
-          ) : null}
-        </div>
-      </section>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={onOpenSlip}
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            Lập phiếu
+          </button>
+        ) : null}
+      </div>
 
       <TableToolbar
         isLoading={isLoading}
@@ -3068,7 +3243,7 @@ export function WarehouseHistoryPanel({
                               <button
                                 type="button"
                                 onClick={() => setViewingSlipCode(group.slipCode)}
-                                title="Xem chi tiết NVL"
+                                title="Xem chi tiết"
                                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
                               >
                                 <Eye className="h-4 w-4" />

@@ -4189,6 +4189,7 @@ type WarehouseSlipLineInput = {
   lineAmount: number;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
+  damagedReportRowId?: string;
 };
 
 type NvlInboundLot = {
@@ -4552,6 +4553,9 @@ function parseWarehouseSlipLines(
     const sourceInboundSlipCode = String(
       record.sourceInboundSlipCode ?? record.ma_phieu_nhap_nguon ?? record.inboundSlipCode ?? ''
     ).trim();
+    const damagedReportRowId = String(
+      record.damagedReportRowId ?? record.id_bao_cao_hang_hong ?? record.damagedGoodsReportId ?? ''
+    ).trim();
 
     if (!code) {
       return { error: loaiKho === 'san_pham' ? 'Mỗi dòng cần có mã sản phẩm.' : 'Mỗi dòng cần có mã NPL.' };
@@ -4575,7 +4579,8 @@ function parseWarehouseSlipLines(
       unitPrice: roundWarehouseMoney(unitPrice),
       lineAmount: roundWarehouseMoney(quantity * unitPrice),
       ...(sourceInboundLineId ? { sourceInboundLineId } : {}),
-      ...(sourceInboundSlipCode ? { sourceInboundSlipCode } : {})
+      ...(sourceInboundSlipCode ? { sourceInboundSlipCode } : {}),
+      ...(damagedReportRowId ? { damagedReportRowId } : {})
     });
   }
 
@@ -4667,6 +4672,10 @@ function buildWarehouseSlipInsertRecords(
       ma_phieu_nhap_nguon:
         parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' && item.sourceInboundSlipCode
           ? item.sourceInboundSlipCode
+          : null,
+      id_bao_cao_hang_hong:
+        parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
+          ? item.damagedReportRowId
           : null
     };
 
@@ -8023,6 +8032,25 @@ export function createApp() {
         });
       }
 
+      const damagedReportRowIds = parsed.items
+        .map(item => String(item.damagedReportRowId ?? '').trim())
+        .filter(Boolean);
+      if (damagedReportRowIds.length > 0) {
+        const { data: alreadyImported, error: linkCheckError } = await supabase
+          .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+          .select('id_bao_cao_hang_hong')
+          .in('id_bao_cao_hang_hong', damagedReportRowIds)
+          .limit(1);
+        if (linkCheckError) {
+          return res.status(500).json({ error: warehouseSlipWriteErrorMessage(linkCheckError) });
+        }
+        if (alreadyImported && alreadyImported.length > 0) {
+          return res.status(409).json({
+            error: 'Báo cáo hàng hỏng này đã được nhập kho. Hãy tải lại danh sách chờ kiểm tra.'
+          });
+        }
+      }
+
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
       const { data, error } = await supabase
@@ -10619,6 +10647,8 @@ export function createApp() {
     ton_cuoi_ky: number;
   };
 
+  type TonKhoLoaiKho = 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
+
   async function loadAllTonKhoRows(
     buildQuery: (from: number, to: number) => PromiseLike<{ data: Record<string, unknown>[] | null; error: any }>
   ) {
@@ -10635,7 +10665,7 @@ export function createApp() {
   }
 
   async function loadTonKhoGopFallback(
-    loaiKho: 'nvl' | 'san_pham',
+    loaiKho: TonKhoLoaiKho,
     tenKho: string | null,
     tuNgay: string | null,
     denNgay: string | null
@@ -10656,7 +10686,11 @@ export function createApp() {
         let query = supabase!
           .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
           .select('ma_npl, ma_sp, so_luong, ngay_phieu, loai_phieu, loai_kho, ten_kho');
-        query = isProduct ? query.eq('loai_kho', 'san_pham') : query.or('loai_kho.eq.nvl,loai_kho.is.null');
+        query = isProduct
+          ? query.eq('loai_kho', 'san_pham')
+          : loaiKho === 'nvl'
+            ? query.or('loai_kho.eq.nvl,loai_kho.is.null')
+            : query.eq('loai_kho', loaiKho);
         if (tenKho) query = query.eq('ten_kho', tenKho);
         if (denNgay) query = query.lte('ngay_phieu', denNgay);
         return query.range(from, to);
@@ -10821,11 +10855,14 @@ export function createApp() {
   let hasWarnedMissingTonKhoRpc = false;
 
   async function loadTonKhoGop(
-    loaiKho: 'nvl' | 'san_pham',
+    loaiKho: TonKhoLoaiKho,
     tenKho: string | null,
     tuNgay: string | null,
     denNgay: string | null
   ) {
+    if (loaiKho !== 'nvl' && loaiKho !== 'san_pham') {
+      return { data: await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay), error: null };
+    }
     const rpcName = loaiKho === 'san_pham' ? 'ton_kho_san_pham_gop' : 'ton_kho_nvl_gop';
     const result = await supabase!.rpc(rpcName, {
       p_ten_kho: tenKho,
@@ -10865,11 +10902,18 @@ export function createApp() {
       const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
       const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      const requestedKind = String(req.query.loai_kho ?? '').trim();
+      const supportedKinds = new Set<TonKhoLoaiKho>([
+        'nvl', 'san_pham', 'tai_che', 'hang_hong', 'hang_hoa', 'cong_cu_dung_cu', 'gia_cong'
+      ]);
+      const loaiKho: TonKhoLoaiKho = supportedKinds.has(requestedKind as TonKhoLoaiKho)
+        ? requestedKind as TonKhoLoaiKho
+        : 'san_pham';
 
       // Danh sách chi tiết phải là từng mã lô/serial còn tồn ở cuối khoảng ngày đã chọn,
       // không phải mọi mã từng phát sinh phiếu trong kỳ. Không gọi hàm group theo tiền tố
       // ở đây để `MT-L30cm 0.1kg_3701190208G` vẫn là một dòng độc lập.
-      const result = await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay);
+      const result = await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay);
       if (result.error) {
         console.error('Supabase ton-kho chi-tiet RPC error:', result.error);
         return res.status(500).json({
@@ -10882,7 +10926,7 @@ export function createApp() {
         .map(row => ({
           ...row,
           ma_goc: extractTonKhoPrefix(row.ma),
-          loai_sp: 'Thành phẩm'
+          loai_sp: loaiKho === 'san_pham' ? 'Thành phẩm' : 'Nguyên vật liệu'
         }))
         .sort((left, right) => left.ma.localeCompare(right.ma, 'vi'));
 
@@ -10905,8 +10949,15 @@ export function createApp() {
       const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim() || null;
       const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      const requestedKind = String(req.query.loai_kho ?? '').trim();
+      const supportedKinds = new Set<TonKhoLoaiKho>([
+        'nvl', 'san_pham', 'tai_che', 'hang_hong', 'hang_hoa', 'cong_cu_dung_cu', 'gia_cong'
+      ]);
+      const loaiKho: TonKhoLoaiKho = supportedKinds.has(requestedKind as TonKhoLoaiKho)
+        ? requestedKind as TonKhoLoaiKho
+        : 'san_pham';
 
-      const results = [await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay)];
+      const results = [await loadTonKhoGop(loaiKho, tenKho, tuNgay, denNgay)];
       const failedResult = results.find(result => result.error);
       const error = failedResult?.error;
       if (error) {
@@ -10922,6 +10973,107 @@ export function createApp() {
       return res.json({ records, total: records.length, source: 'supabase' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải bảng tổng hợp tồn kho.' });
+    }
+  });
+
+  app.get('/api/bao-cao-hang-hong/cho-nhap-kho', async (_req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const [{ data: reportRows, error: reportError }, { data: linkedRows, error: linkedError }, { data: materialRows }] =
+        await Promise.all([
+          supabase
+            .from(SUPABASE_DAMAGED_GOODS_TABLE)
+            .select(
+              'id,created_at,document_no,report_date,ngay_san_xuat,ca_san_xuat,ten_nguoi_can,ten_may_san_xuat,ghi_chu,loai_hang_hong,ma_vat_tu,so_luong_vat_tu,don_vi_vat_tu'
+            )
+            .order('created_at', { ascending: false, nullsFirst: false })
+            .limit(1000),
+          supabase
+            .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+            .select('id_bao_cao_hang_hong')
+            .not('id_bao_cao_hang_hong', 'is', null),
+          supabase.from(SUPABASE_MATERIALS_TABLE).select('ma_npl,ten_npl')
+        ]);
+
+      if (reportError) {
+        console.error('Supabase pending damaged goods reports query error:', reportError);
+        return res.status(500).json({ error: reportError.message || 'Không thể tải báo cáo hàng hỏng chờ nhập kho.' });
+      }
+      if (linkedError) {
+        console.error('Supabase damaged goods report links query error:', linkedError);
+        return res.status(500).json({
+          error: isMissingColumnError(linkedError)
+            ? 'Thiếu cột id_bao_cao_hang_hong. Hãy chạy migration báo cáo hàng hỏng chờ thủ kho duyệt.'
+            : linkedError.message || 'Không thể kiểm tra báo cáo hàng hỏng đã nhập kho.'
+        });
+      }
+
+      const linkedIds = new Set(
+        (linkedRows || []).map(row => String(row.id_bao_cao_hang_hong ?? '').trim()).filter(Boolean)
+      );
+      const materialNames = new Map(
+        (materialRows || []).map(row => [String(row.ma_npl ?? '').trim(), String(row.ten_npl ?? '').trim()])
+      );
+      const materialLabels: Record<string, { code: string; name: string }> = {
+        nhua_khong_mang: { code: 'HH-NHUA-KHONG-MANG', name: 'Nhựa không màng' },
+        nhua_dau_nong: { code: 'HH-NHUA-DAU-NONG', name: 'Nhựa đầu nòng' },
+        nhua_dinh_mang: { code: 'HH-NHUA-DINH-MANG', name: 'Nhựa dính màng' },
+        kl_mang: { code: 'HH-MANG', name: 'Màng hỏng' },
+        tl_loi_dinh_hh: { code: 'HH-LOI-DINH', name: 'Lõi dính hàng hỏng' }
+      };
+      const groups = new Map<string, Record<string, any>>();
+
+      for (const row of reportRows || []) {
+        const reportRowId = String(row.id ?? '').trim();
+        if (!reportRowId || linkedIds.has(reportRowId)) continue;
+        const quantityText = String(row.so_luong_vat_tu ?? '').trim().replace(',', '.');
+        const quantity = Number(quantityText);
+        if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+        const materialType = String(row.loai_hang_hong ?? '').trim();
+        const customCode = String(row.ma_vat_tu ?? '').trim();
+        const fixed = materialLabels[materialType];
+        const code = fixed?.code || customCode || 'HH-KHAC';
+        const name = fixed?.name || materialNames.get(customCode) || customCode || 'Hàng hỏng khác';
+        const documentNo = String(row.document_no ?? '').trim();
+        const groupKey = documentNo || `BCHH-${reportRowId}`;
+        const existing = groups.get(groupKey);
+        const item = {
+          reportRowId,
+          materialType,
+          code,
+          name,
+          unit: String(row.don_vi_vat_tu ?? '').trim() || 'kg',
+          quantity
+        };
+
+        if (existing) {
+          existing.items.push(item);
+        } else {
+          groups.set(groupKey, {
+            key: groupKey,
+            documentNo: documentNo || groupKey,
+            reportDate: String(row.report_date ?? '').trim(),
+            productionDate: String(row.ngay_san_xuat ?? '').trim(),
+            shift: String(row.ca_san_xuat ?? '').trim(),
+            weigher: String(row.ten_nguoi_can ?? '').trim(),
+            machine: String(row.ten_may_san_xuat ?? '').trim(),
+            note: String(row.ghi_chu ?? '').trim(),
+            createdAt: String(row.created_at ?? '').trim(),
+            items: [item]
+          });
+        }
+      }
+
+      const records = [...groups.values()].sort((left, right) =>
+        String(right.createdAt).localeCompare(String(left.createdAt))
+      );
+      return res.json({ records, total: records.length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải báo cáo hàng hỏng chờ nhập kho.' });
     }
   });
 

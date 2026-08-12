@@ -279,13 +279,6 @@ export const FACILITY_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'warehouse-history'
   },
   {
-    title: 'Kho hàng hỏng',
-    desc: 'Hàng hỏng tự động nhập kho khi lưu báo cáo hàng hỏng.',
-    icon: PackageX,
-    icon3d: prohibited3d,
-    tab: 'damaged-goods-warehouse'
-  },
-  {
     title: 'Quản lý kho',
     desc: 'Danh mục kho: tên kho, vị trí, tên vị trí và người phụ trách.',
     icon: Warehouse,
@@ -634,25 +627,11 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'quan-ly-kho'
   },
   {
-    title: 'Kho nguyên vật liệu',
-    desc: 'Quản lý nguyên phụ liệu, trọng lượng, khổ cuộn và tồn nhập xuất.',
+    title: 'Kho hàng',
+    desc: 'Quản lý nguyên vật liệu, thành phẩm và kho lưu trữ của từng mặt hàng.',
     icon: Boxes,
     icon3d: inventory3d,
-    tab: 'materials'
-  },
-  {
-    title: 'Kho thành phẩm',
-    desc: 'Danh mục sản phẩm, mã hàng, đơn vị và tồn kho.',
-    icon: Package,
-    icon3d: bentoBox3d,
-    tab: 'products'
-  },
-  {
-    title: 'Kho hàng hỏng',
-    desc: 'Hàng hỏng tự động nhập kho khi lưu báo cáo hàng hỏng.',
-    icon: PackageX,
-    icon3d: prohibited3d,
-    tab: 'damaged-goods-warehouse'
+    tab: 'inventory-catalog'
   },
   {
     title: 'Phiếu xuất nhập kho',
@@ -984,8 +963,7 @@ export const PRIMARY_NAV_GROUPS: {
     tab: 'factory-kho',
     children: [
       { label: 'Danh mục kho', tab: 'quan-ly-kho' },
-      { label: 'Kho nguyên vật liệu', tab: 'materials' },
-      { label: 'Kho thành phẩm', tab: 'products' },
+      { label: 'Kho hàng', tab: 'inventory-catalog' },
       { label: 'Kho hàng hỏng', tab: 'damaged-goods-warehouse' },
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
@@ -1041,6 +1019,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'materials': { group: 'Kho', sub: 'Kho nguyên vật liệu' },
   'materials-inventory': { group: 'Kho', sub: 'Kho nguyên vật liệu' },
   'products': { group: 'Kho', sub: 'Kho thành phẩm' },
+  'inventory-catalog': { group: 'Kho', sub: 'Kho hàng' },
   'machines': { group: 'Trang chủ', sub: 'Quản lý máy' },
   'warehouse-slip': { group: 'Kho', sub: 'Phiếu xuất nhập kho' },
   'warehouse-history': { group: 'Kho', sub: 'Lịch sử xuất nhập' },

@@ -64,6 +64,7 @@ import {
 import { ProductsPanel } from './features/san-pham';
 import { MachinesPanel } from './features/danh-sach-may';
 import { MaterialsInventoryPanel } from './features/kho-nvl';
+import { InventoryCatalogPanel } from './features/kho-hang';
 import { WarehouseSlipPanel, WarehouseHistoryPanel } from './features/phieu-xuat-nhap-kho';
 import { CustomersPanel } from './features/khach-hang';
 import { ShippingOrdersPanel } from './features/lenh-xuat-hang';
@@ -1309,6 +1310,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <VehiclesPanel onBack={() => goBack('menu')} currentUser={authUser} />
+              </motion.div>
+            ) : activeTab === 'inventory-catalog' ? (
+              <motion.div
+                key="inventory-catalog"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <InventoryCatalogPanel onBack={() => goBack('factory-kho')} />
               </motion.div>
             ) : activeTab === 'products' ? (
               <motion.div

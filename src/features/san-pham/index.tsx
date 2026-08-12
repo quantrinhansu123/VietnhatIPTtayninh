@@ -33,6 +33,7 @@ import {
   productCatalogRowToPayload
 } from '../../utils/productCatalogExcel';
 import { showAppToast } from '../../lib/appToast';
+import type { InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 
 const PRODUCT_QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Công nhân sx', 'Ngày sản xuất'] as const;
@@ -1286,6 +1287,7 @@ export function ProductEditModal({
   mode,
   product,
   warehouseOptions,
+  defaultWarehouse,
   isSaving,
   formError,
   onClose,
@@ -1294,18 +1296,19 @@ export function ProductEditModal({
   mode: 'add' | 'edit';
   product: ProductRow | null;
   warehouseOptions: string[];
+  defaultWarehouse?: string;
   isSaving: boolean;
   formError: string;
   onClose: () => void;
   onSave: (form: ProductFormState) => Promise<void>;
 }) {
   const [form, setForm] = useState<ProductFormState>(() =>
-    mode === 'edit' && product ? productToForm(product) : emptyProductForm()
+    mode === 'edit' && product ? productToForm(product) : { ...emptyProductForm(), warehouse: defaultWarehouse || '' }
   );
 
   useEffect(() => {
-    setForm(mode === 'edit' && product ? productToForm(product) : emptyProductForm());
-  }, [mode, product?.id]);
+    setForm(mode === 'edit' && product ? productToForm(product) : { ...emptyProductForm(), warehouse: defaultWarehouse || '' });
+  }, [defaultWarehouse, mode, product?.id]);
 
   const fields: Array<{ key: keyof ProductFormState; label: string; required?: boolean; span?: boolean }> = [
     { key: 'code', label: 'Mã SP', required: true },
@@ -1315,7 +1318,7 @@ export function ProductEditModal({
     { key: 'nature', label: 'Tính chất' },
     { key: 'group', label: 'Nhóm VTHH' },
     { key: 'unit', label: 'Đơn vị tính' },
-    { key: 'warehouse', label: 'Kho' },
+    { key: 'warehouse', label: 'Kho lưu trữ', required: true },
     { key: 'totalWeight', label: 'Tổng trọng lượng TP (kg)' },
     { key: 'rollWidth', label: 'Khổ cuộn (m)' },
     { key: 'rollLength', label: 'Chiều dài mét/cuộn (m)' },
@@ -1360,16 +1363,18 @@ export function ProductEditModal({
                 {field.label}{field.required ? ' *' : ''}
               </span>
               {field.key === 'warehouse' ? (
-                <select
+                <SearchableSelect
                   value={form.warehouse}
-                  onChange={event => setForm(prev => ({ ...prev, warehouse: event.target.value }))}
-                  className={productFieldClass}
-                >
-                  <option value="">-- Chưa chọn kho --</option>
-                  {warehouseOptions.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
+                  onChange={value => setForm(prev => ({ ...prev, warehouse: value }))}
+                  options={warehouseOptions}
+                  placeholder="Chọn kho lưu trữ"
+                  searchPlaceholder="Tìm kho..."
+                  getLabel={item => String(item)}
+                  getValue={item => String(item)}
+                  inputClassName={productFieldClass}
+                  allowEmpty={false}
+                  comboboxMode
+                />
               ) : (
                 <input
                   type="text"
@@ -1398,7 +1403,19 @@ export function ProductEditModal({
   );
 }
 
-export function ProductsPanel({ onBack }: { onBack: () => void }) {
+export function ProductsPanel({
+  onBack,
+  warehouseFilter = '',
+  includeUnassigned = false,
+  asOfDate = '',
+  balanceRows = []
+}: {
+  onBack: () => void;
+  warehouseFilter?: string;
+  includeUnassigned?: boolean;
+  asOfDate?: string;
+  balanceRows?: InventoryBalanceRow[];
+}) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -1550,6 +1567,10 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
       setProductFormError('Vui lòng nhập mã SP hoặc tên sản phẩm.');
       return;
     }
+    if (!form.warehouse.trim()) {
+      setProductFormError('Vui lòng chọn kho lưu trữ.');
+      return;
+    }
 
     setIsSavingProduct(true);
     setProductFormError('');
@@ -1580,6 +1601,10 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
     if (!editingProduct) return;
     if (!form.code.trim() && !form.name.trim()) {
       setProductFormError('Vui lòng nhập mã SP hoặc tên sản phẩm.');
+      return;
+    }
+    if (!form.warehouse.trim()) {
+      setProductFormError('Vui lòng chọn kho lưu trữ.');
       return;
     }
 
@@ -1882,17 +1907,36 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const datedProducts = useMemo(() => {
+    if (!asOfDate) return [];
+    const balances = new Map(balanceRows.map(row => [normalizeProductCodeKey(row.ma), row]));
+    return products.flatMap(product => {
+      const balance = balances.get(normalizeProductCodeKey(product.code));
+      if (!balance || balance.ton_cuoi_ky <= 0) return [];
+      return [{
+        ...product,
+        openingStock: String(balance.ton_dau_ky),
+        inbound: String(balance.nhap_trong_ky),
+        outbound: String(balance.xuat_trong_ky),
+        stock: String(balance.ton_cuoi_ky)
+      }];
+    });
+  }, [asOfDate, balanceRows, products]);
+
   const productGroups = useMemo(
-    () => ['all', ...Array.from(new Set(products.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
-    [products]
+    () => ['all', ...Array.from(new Set(datedProducts.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
+    [datedProducts]
   );
   const productNatures = useMemo(
-    () => Array.from(new Set(products.map(product => product.nature))).sort((a, b) => String(a).localeCompare(String(b), 'vi')),
-    [products]
+    () => Array.from(new Set(datedProducts.map(product => product.nature))).sort((a, b) => String(a).localeCompare(String(b), 'vi')),
+    [datedProducts]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
-    return products.filter(product => {
+    return datedProducts.filter(product => {
+      const isUnassigned = !product.warehouse || product.warehouse === '-';
+      const matchesWarehouse =
+        !warehouseFilter || product.warehouse === warehouseFilter || (includeUnassigned && isUnassigned);
       const matchesGroup = selectedGroup === 'all' || product.group === selectedGroup;
       const matchesNature = selectedNatures.size === 0 || selectedNatures.has(product.nature);
       const matchesSearch =
@@ -1900,9 +1944,18 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         `${product.code} ${product.newCode} ${product.name} ${product.nature} ${product.group} ${product.origin} ${formatProductNplSummary(product.nplItems)}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesGroup && matchesNature && matchesSearch;
+      return matchesWarehouse && matchesGroup && matchesNature && matchesSearch;
     });
-  }, [normalizedSearch, products, selectedGroup, selectedNatures]);
+  }, [datedProducts, includeUnassigned, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
+
+  const totalProductQuantity = useMemo(
+    () => datedProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
+    [datedProducts]
+  );
+  const productUnitCount = useMemo(
+    () => new Set(datedProducts.map(product => product.unit).filter(unit => unit && unit !== '-')).size,
+    [datedProducts]
+  );
 
   const selectedProducts = useMemo(
     () => products.filter(product => selectedProductIds.has(product.id)),
@@ -2135,45 +2188,60 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="w-full space-y-4">
-      <section className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
-        <button
-          type="button"
-          onClick={handleDownloadProductCatalogTemplate}
-          disabled={isImportingProductCatalog || isLoadingProducts}
-          className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-          title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
-        >
-          <Download className="h-4 w-4" />
-          Tải mẫu Excel SP
-        </button>
-        {canCreate || canEdit ? (
+      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={() => catalogFileInputRef.current?.click()}
+            onClick={handleDownloadProductCatalogTemplate}
             disabled={isImportingProductCatalog || isLoadingProducts}
-            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+            title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
           >
-            {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
+            <Download className="h-4 w-4" />
+            Tải mẫu Excel SP
           </button>
-        ) : null}
-        <input
-          ref={catalogFileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          className="hidden"
-          onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
-        />
-        {canCreate ? (
-          <button
-            type="button"
-            onClick={openProductCreate}
-            className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm mới
-          </button>
-        ) : null}
+          {canCreate || canEdit ? (
+            <button
+              type="button"
+              onClick={() => catalogFileInputRef.current?.click()}
+              disabled={isImportingProductCatalog || isLoadingProducts}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
+            </button>
+          ) : null}
+          <input
+            ref={catalogFileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
+          />
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openProductCreate}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm mới
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+          {[
+            ['Mã SP', datedProducts.length],
+            ['Tổng SL', formatNumber(totalProductQuantity, 2)],
+            ['Đơn vị', productUnitCount]
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <span className="block font-bold text-slate-500">{label}</span>
+              <span className="mt-1 block text-xl font-black text-slate-900">{value}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <TableToolbar
@@ -2289,7 +2357,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
         </div>
       </section>
 
-      <TableShell minWidthClassName="min-w-[1500px]">
+      <TableShell minWidthClassName="min-w-[1250px]">
         <TableHead>
           <TableHeadCell align="center" className="w-14">
             <input
@@ -2308,19 +2376,15 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           <TableHeadCell align="center">Đơn vị</TableHeadCell>
           <TableHeadCell align="center">Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng TL (kg)</TableHeadCell>
-          <TableHeadCell align="center">Tồn đầu</TableHeadCell>
-          <TableHeadCell align="center">Nhập</TableHeadCell>
-          <TableHeadCell align="center">Xuất</TableHeadCell>
-          <TableHeadCell align="center">Tồn</TableHeadCell>
-          <TableHeadCell align="center">Tồn tối thiểu</TableHeadCell>
-          <TableHeadCell align="center" className="sticky right-0 z-10 border-l border-red-700/40 bg-[#ef1b2d]">
+          <TableHeadCell align="center">Tổng SL</TableHeadCell>
+          <TableHeadCell align="center" className="sticky right-0 z-10 bg-[#ef1b2d]">
             Thao tác
           </TableHeadCell>
         </TableHead>
         <TableBody>
           {filteredProducts.map(product => (
             <React.Fragment key={`${product.code}-${product.name}`}>
-              <TableRow>
+              <TableRow className="group">
                 <td className="px-3 py-3.5 text-center">
                   <input
                     type="checkbox"
@@ -2355,12 +2419,8 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-emerald-800">
                   {formatProductSpecDisplay(product.totalWeight)}
                 </td>
-                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.openingStock}</td>
-                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.inbound}</td>
-                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.outbound}</td>
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
-                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.minStock}</td>
-                <td className="sticky right-0 z-[1] border-l border-zinc-100 bg-white px-3 py-3.5">
+                <td className="sticky right-0 z-[1] bg-white px-3 py-3.5 transition group-hover:bg-red-50/40">
                   <RowActionsMenu label={`Thao tác ${product.code || product.name}`}>
                   <div className="flex items-center justify-center gap-1">
                     <button
@@ -2400,7 +2460,9 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           ))}
 
           {!isLoadingProducts && filteredProducts.length === 0 && (
-            <TableEmptyRow colSpan={15}>Không có sản phẩm phù hợp bộ lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={11}>
+              {asOfDate ? 'Không có thành phẩm còn tồn đến ngày đã chọn.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
+            </TableEmptyRow>
           )}
         </TableBody>
       </TableShell>
@@ -2411,6 +2473,7 @@ export function ProductsPanel({ onBack }: { onBack: () => void }) {
           mode={productFormMode}
           product={editingProduct}
           warehouseOptions={warehouseOptions}
+          defaultWarehouse={warehouseFilter}
           isSaving={isSavingProduct}
           formError={productFormError}
           onClose={closeProductForm}

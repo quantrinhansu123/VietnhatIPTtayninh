@@ -134,7 +134,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     apiPrefix: '/api/san-pham',
     serverLines: '3507–3695',
     appTab: 'products',
-    appLines: 'src/features/san-pham/index.tsx, src/features/san-pham/types.ts, src/features/san-pham/productFieldClass.ts',
+    appLines: 'src/features/kho-hang/index.tsx, src/features/san-pham/index.tsx, src/features/san-pham/types.ts, src/features/san-pham/productFieldClass.ts',
     components: ['src/components/ProductQrScanner.tsx', 'src/components/LineEditorSheet.tsx'],
     utils: ['src/utils/productNplComponentsExcel.ts', 'src/utils/productCatalogExcel.ts']
   },
@@ -167,7 +167,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     apiPrefix: '/api/kho-nvl',
     serverLines: '4605–4784',
     appTab: 'materials',
-    appLines: 'src/features/kho-nvl/index.tsx',
+    appLines: 'src/features/kho-hang/index.tsx, src/features/kho-nvl/index.tsx',
     components: ['src/components/MaterialsForm.tsx'],
     utils: [
       'src/utils/bulkOpeningStockExcel.ts',

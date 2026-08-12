@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bảng** | `san_pham` |
-| **Tab** | `products` → `/san-pham` |
+| **Tab** | `inventory-catalog` → `/kho-hang` (route cũ: `products` → `/san-pham`) |
 | **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-ten-kho.sql`, `supabase-san-pham-ma-chi-tiet.sql` |
 
 ## API (`server.ts`)
@@ -21,10 +21,13 @@
 | File | Nội dung |
 |------|----------|
 | `src/features/san-pham/index.tsx` | Panel / logic chính |
+| `src/features/kho-hang/index.tsx` | Màn hình gộp Kho hàng, chọn Nguyên vật liệu / Thành phẩm |
 | `src/features/san-pham/types.ts` | Panel / logic chính |
 | `src/features/san-pham/productFieldClass.ts` | Panel / logic chính |
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
+
+UI danh sách sản phẩm không hiển thị riêng Tồn đầu / Nhập / Xuất / Tồn; thay bằng một cột **Tổng SL** hiển thị `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Phần đầu Kho thành phẩm có ba ô thống kê **Mã SP / Tổng SL / Đơn vị** theo kho và ngày đang chọn.
 
 
 ## Cột quan trọng

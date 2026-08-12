@@ -11,7 +11,7 @@
 | Method | Path | Nội dung |
 |---|---|---|
 | GET | `/api/ton-kho/chi-tiet` | Trả từng mã thành phẩm còn tồn dương ở cuối khoảng ngày; giữ nguyên hậu tố và không gộp mã |
-| GET | `/api/ton-kho/tong-hop` | Gọi RPC và trả số liệu tổng hợp tồn; tự tính từ bảng nếu RPC chưa được cài |
+| GET | `/api/ton-kho/tong-hop` | Trả số liệu tồn đến ngày; nhận `loai_kho` cho NVL, thành phẩm và các kho vật tư khác; tự tính từ bảng nếu RPC chưa được cài |
 
 ## Frontend
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
+import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
 import {
   downloadBulkMaterialTotalWeightTemplate,
@@ -31,6 +32,7 @@ import {
 import { showAppToast } from '../../lib/appToast';
 import { productFieldClass } from '../san-pham/productFieldClass';
 import { readUnitSuggestions, saveUnitSuggestion } from '../_shared/orderHelpers';
+import type { InventoryBalanceRow } from '../kho-hang';
 import {
   FilterCombobox,
   TableToolbar,
@@ -786,7 +788,19 @@ export function MaterialViewModal({
   );
 }
 
-export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
+export function MaterialsInventoryPanel({
+  onBack,
+  warehouseFilter = '',
+  includeUnassigned = false,
+  asOfDate = '',
+  balanceRows = []
+}: {
+  onBack: () => void;
+  warehouseFilter?: string;
+  includeUnassigned?: boolean;
+  asOfDate?: string;
+  balanceRows?: InventoryBalanceRow[];
+}) {
   const { canCreate, canEdit, canDelete } = useTabAccess('materials');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -848,9 +862,24 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
     loadMaterials();
   }, []);
 
+  const datedMaterials = useMemo(() => {
+    if (!asOfDate) return [];
+    const balances = new Map(balanceRows.map(row => [normalizeMaterialCodeKey(row.ma), row]));
+    return materials.flatMap(material => {
+      const balance = balances.get(normalizeMaterialCodeKey(material.code));
+      if (!balance || balance.ton_cuoi_ky <= 0) return [];
+      return [{
+        ...material,
+        openingStock: String(balance.ton_dau_ky),
+        inbound: String(balance.nhap_trong_ky),
+        outbound: String(balance.xuat_trong_ky)
+      }];
+    });
+  }, [asOfDate, balanceRows, materials]);
+
   const units = useMemo(
-    () => ['all', ...Array.from(new Set(materials.map(material => material.unit).filter(unit => unit !== '-'))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
-    [materials]
+    () => ['all', ...Array.from(new Set(datedMaterials.map(material => material.unit).filter(unit => unit !== '-'))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
+    [datedMaterials]
   );
   const materialUnitSuggestions = useMemo(() => {
     const fromMaterials = materials.map(material => material.unit).filter(unit => unit && unit !== '-');
@@ -859,14 +888,17 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
   const unitFilterOptions = useMemo(() => units.filter(unit => unit !== 'all'), [units]);
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMaterials = useMemo(() => {
-    return materials.filter(material => {
+    return datedMaterials.filter(material => {
+      const isUnassigned = !material.warehouse || material.warehouse === '-';
+      const matchesWarehouse =
+        !warehouseFilter || material.warehouse === warehouseFilter || (includeUnassigned && isUnassigned);
       const matchesUnit = selectedUnit === 'all' || material.unit === selectedUnit;
       const matchesSearch =
         !normalizedSearch ||
         `${material.code} ${material.name} ${material.unit}`.toLowerCase().includes(normalizedSearch);
-      return matchesUnit && matchesSearch;
+      return matchesWarehouse && matchesUnit && matchesSearch;
     });
-  }, [materials, normalizedSearch, selectedUnit]);
+  }, [datedMaterials, includeUnassigned, normalizedSearch, selectedUnit, warehouseFilter]);
 
   const hasActiveFilters = selectedUnit !== 'all' || Boolean(searchText);
   const resetFilters = () => {
@@ -875,9 +907,9 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
   };
 
   const totalWeightAllText = useMemo(() => {
-    const sum = sumDecimalStrings(materials.map(material => material.totalWeight));
+    const sum = sumDecimalStrings(datedMaterials.map(material => material.totalWeight));
     return formatKgNoRounding(sum);
-  }, [materials]);
+  }, [datedMaterials]);
 
   const handleDownloadTotalWeightTemplate = () => {
     downloadBulkMaterialTotalWeightTemplate(
@@ -989,7 +1021,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
     setFormError('');
     setActionMessage('');
     setEditingId(null);
-    setMaterialForm(emptyMaterialForm());
+    setMaterialForm({ ...emptyMaterialForm(), warehouse: warehouseFilter });
     setFormMode('add');
   };
 
@@ -1016,6 +1048,10 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
     }
     if (!materialForm.name.trim()) {
       setFormError('Vui lòng nhập tên nguyên phụ liệu.');
+      return;
+    }
+    if (!materialForm.warehouse.trim()) {
+      setFormError('Vui lòng chọn kho lưu trữ.');
       return;
     }
 
@@ -1091,10 +1127,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
     { key: 'bagWeight', label: 'Kg túi' },
     { key: 'coreWeight', label: 'Kg lõi' },
     { key: 'rollWidth', label: 'Khổ cuộn' },
-    { key: 'unitLength', label: 'Chiều dài ĐV' },
-    { key: 'openingStock', label: 'Tồn đầu kỳ' },
-    { key: 'inbound', label: 'Nhập trong kỳ' },
-    { key: 'outbound', label: 'Xuất trong kỳ' }
+    { key: 'unitLength', label: 'Chiều dài ĐV' }
   ];
 
   return (
@@ -1166,7 +1199,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
 
           <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
             {[
-              ['Mã NVL', materials.length],
+              ['Mã NVL', datedMaterials.length],
               ['Tổng kg', totalWeightAllText],
               ['Đơn vị', units.length > 0 ? units.length - 1 : 0]
             ].map(([label, value]) => (
@@ -1251,19 +1284,19 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
                 </datalist>
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Kho</span>
-                <select
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Kho lưu trữ *</span>
+                <SearchableSelect
                   value={materialForm.warehouse}
-                  onChange={e => setMaterialForm(prev => ({ ...prev, warehouse: e.target.value }))}
-                  className={materialFieldClass}
-                >
-                  <option value="">— Chưa gán kho —</option>
-                  {warehouseOptions.map(name => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={value => setMaterialForm(prev => ({ ...prev, warehouse: value }))}
+                  options={warehouseOptions}
+                  placeholder="Chọn kho lưu trữ"
+                  searchPlaceholder="Tìm kho..."
+                  getLabel={item => String(item)}
+                  getValue={item => String(item)}
+                  inputClassName={materialFieldClass}
+                  allowEmpty={false}
+                  comboboxMode
+                />
               </label>
               {materialFormFields.map(field => (
                 <label key={field.key} className="space-y-1.5">
@@ -1320,17 +1353,14 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
         }}
       />
 
-      <TableShell minWidthClassName="min-w-[900px]">
+      <TableShell minWidthClassName="min-w-[800px]">
         <TableHead>
           <TableHeadCell>Mã NPL</TableHeadCell>
           <TableHeadCell>Tên nguyên phụ liệu</TableHeadCell>
           <TableHeadCell>ĐV</TableHeadCell>
           <TableHeadCell>Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng kg</TableHeadCell>
-          <TableHeadCell>Tồn đầu</TableHeadCell>
-          <TableHeadCell>Nhập</TableHeadCell>
-          <TableHeadCell>Xuất</TableHeadCell>
-          <TableHeadCell>Tồn cuối</TableHeadCell>
+          <TableHeadCell align="center">Tổng SL</TableHeadCell>
           <TableHeadCell align="center">Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
@@ -1342,10 +1372,7 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
                 <td className="px-4 py-3 text-zinc-700">{material.unit}</td>
                 <td className="px-4 py-3 text-zinc-700">{material.warehouse || '—'}</td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-zinc-800">{material.totalWeight}</td>
-                <td className="px-4 py-3 font-mono font-bold text-zinc-700">{material.openingStock}</td>
-                <td className="px-4 py-3 font-mono font-bold text-zinc-700">{material.inbound}</td>
-                <td className="px-4 py-3 font-mono font-bold text-zinc-700">{material.outbound}</td>
-                <td className="px-4 py-3 font-mono font-bold text-zinc-900">
+                <td className="px-4 py-3 text-right font-mono font-bold text-zinc-800">
                   {computeClosingStock(material.openingStock, material.inbound, material.outbound)}
                 </td>
                 <td className="px-4 py-3 text-center">
@@ -1392,8 +1419,8 @@ export function MaterialsInventoryPanel({ onBack }: { onBack: () => void }) {
           ))}
 
           {!isLoadingMaterials && filteredMaterials.length === 0 && (
-            <TableEmptyRow colSpan={10}>
-              Không có nguyên phụ liệu phù hợp bộ lọc.
+            <TableEmptyRow colSpan={7}>
+              {asOfDate ? 'Không có nguyên phụ liệu còn tồn đến ngày đã chọn.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
             </TableEmptyRow>
           )}
         </TableBody>

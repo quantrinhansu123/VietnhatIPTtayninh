@@ -104,12 +104,16 @@ export function buildKnownPermissionTabSet(): Set<string> {
   tabs.add('factory');
   tabs.add('menu');
   tabs.add('form');
+  tabs.add('inventory-catalog');
   return tabs;
 }
 
 /** Hub menu cha: được vào nếu có quyền cha hoặc bất kỳ menu con. */
 export function hubHasAllowedChild(hubTab: string, allowed: Set<string>): boolean {
   if (allowed.has(hubTab)) return true;
+  if (hubTab === 'inventory-catalog') {
+    return ['materials', 'products'].some(tab => allowed.has(tab));
+  }
   // Hai route kho dùng chung giao diện, nhưng quyền nghiệp vụ phải giữ riêng theo loại kho.
   // Chỉ dùng phép suy ngược này để mở route; không đưa vào expandImpliedHubTabs vì quyền
   // warehouse-slip cũ tuyệt đối không được tự biến thành quyền sửa/xóa cả hai kho mới.

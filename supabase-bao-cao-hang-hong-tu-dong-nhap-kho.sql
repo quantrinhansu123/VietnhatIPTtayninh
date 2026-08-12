@@ -1,5 +1,6 @@
--- Chạy trong Supabase SQL Editor (DB chính hệ thống).
--- Mỗi dòng báo cáo hàng hỏng tự tạo/cập nhật/xóa một dòng nhập Kho hàng hỏng.
+-- MIGRATION CŨ, KHÔNG CHẠY LẠI.
+-- Quy trình hiện tại dùng supabase-bao-cao-hang-hong-cho-thu-kho-duyet.sql:
+-- thủ kho kiểm tra báo cáo rồi lưu phiếu nhập, không tự động nhập kho.
 
 insert into public.quan_ly_kho (ten_kho, vi_tri, ten_vi_tri)
 select 'Kho hàng hỏng', 'KHH', 'Khu vực hàng hỏng'

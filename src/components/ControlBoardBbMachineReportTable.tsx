@@ -371,7 +371,15 @@ export default function ControlBoardBbMachineReportTable({
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
 }) {
-  const [activeTab, setActiveTab] = useState<BbMachineReportTabId>('lenh_sx');
+  const [activeTab, setActiveTab] = useState<BbMachineReportTabId>(() =>
+    sanLuongSource === 'can-tu-dong' ? 'bao_cao_san_luong' : 'lenh_sx'
+  );
+
+  useEffect(() => {
+    if (sanLuongSource === 'can-tu-dong') {
+      setActiveTab('bao_cao_san_luong');
+    }
+  }, [sanLuongSource]);
   /** Đánh dấu tab đã rà soát xong (chỉ tạm trong phiên làm việc, không lưu lại). */
   const [checkedTabs, setCheckedTabs] = useState<Set<BbMachineReportTabId>>(() => new Set());
   const toggleTabChecked = (tabId: BbMachineReportTabId, event: React.MouseEvent) => {

@@ -656,26 +656,37 @@ export default function MachineNvlReportListView({
   useEffect(() => {
     if (!pendingPrint || !printReport) return;
     let cancelled = false;
+    document.body.classList.add('machine-nvl-report-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          document.body.classList.remove('machine-nvl-report-print-active');
+          setPrintReport(null);
+          setPendingPrint(false);
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('machine-nvl-report-print-active');
     };
   }, [pendingPrint, printReport]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('machine-nvl-report-print-active');
       setPrintReport(null);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('machine-nvl-report-print-active');
+    };
   }, []);
 
   const handleDelete = async (id: string) => {
@@ -966,11 +977,9 @@ export default function MachineNvlReportListView({
         />
       ) : null}
 
-      {printReport ? (
-        <div className="production-order-print-root hidden print:block">
-          <MachineNvlPrintBatch reports={[printReport]} />
-        </div>
-      ) : null}
+      {printReport && typeof document !== 'undefined'
+        ? createPortal(<MachineNvlPrintBatch reports={[printReport]} />, document.body)
+        : null}
     </div>
   );
 }

@@ -343,8 +343,13 @@ export default function MixingReportListView({
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          document.body.classList.remove('mixing-report-print-active');
+          setPrintReports([]);
+          setPendingPrint(false);
+        }
       });
     }, 120);
     return () => {
@@ -355,22 +360,28 @@ export default function MixingReportListView({
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('mixing-report-print-active');
       setPrintReports([]);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('mixing-report-print-active');
+    };
   }, []);
 
   const handlePrintFilteredReports = () => {
-    if (sortedReports.length === 0) {
-      setError('Không có phiếu nào để in.');
+    const selectedReports = sortedReports.filter(report => selectedIds.has(report.id));
+    if (selectedReports.length === 0) {
+      setError('Chưa chọn phiếu phối trộn để in.');
       setMessage('');
       return;
     }
     setError('');
     setMessage('');
-    setPrintReports(sortedReports);
+    // Tạo snapshot mới từ selection hiện tại cho mỗi lần mở preview.
+    setPrintReports(selectedReports);
     setPendingPrint(true);
   };
 
@@ -456,9 +467,7 @@ export default function MixingReportListView({
     }
   };
 
-  const allReportIds = useMemo(() => reports.map(report => report.id).filter(Boolean), [reports]);
   const selectedCount = selectedIds.size;
-  const allSelected = allReportIds.length > 0 && selectedIds.size === allReportIds.length;
 
   const toggleSelected = (id: string) => {
     setSelectedIds(prev => {
@@ -469,8 +478,17 @@ export default function MixingReportListView({
     });
   };
 
-  const toggleSelectAll = () => {
-    setSelectedIds(() => (allSelected ? new Set() : new Set(allReportIds)));
+  const toggleSelectAll = (reportIds: string[]) => {
+    const validIds = reportIds.filter(Boolean);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const isGroupSelected = validIds.length > 0 && validIds.every(id => next.has(id));
+      validIds.forEach(id => {
+        if (isGroupSelected) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -785,11 +803,11 @@ export default function MixingReportListView({
               <button
                 type="button"
                 onClick={handlePrintFilteredReports}
-                disabled={sortedReports.length === 0}
+                disabled={selectedCount === 0 || pendingPrint}
                 className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Printer className="h-4 w-4" />
-                In danh sách
+                In phiếu ({selectedCount})
               </button>
               {canCreate ? (
                 <button
@@ -953,7 +971,11 @@ export default function MixingReportListView({
           </div>
         ) : (
           <div className="space-y-3 p-3 sm:p-4">
-            {dateGroups.map(group => (
+            {dateGroups.map(group => {
+              const groupReportIds = group.reports.map(report => report.id).filter(Boolean);
+              const isGroupSelected =
+                groupReportIds.length > 0 && groupReportIds.every(id => selectedIds.has(id));
+              return (
               <div key={group.ngay} className="overflow-hidden rounded-xl border border-zinc-200">
                 <div className="flex items-baseline justify-between gap-1.5 border-b border-zinc-200 bg-zinc-100 px-3 py-1.5">
                   <div className="flex items-baseline gap-1.5">
@@ -969,9 +991,9 @@ export default function MixingReportListView({
                         <th className="w-10 px-3 py-2 text-center font-black">
                           <input
                             type="checkbox"
-                            checked={allSelected}
-                            onChange={toggleSelectAll}
-                            aria-label="Chọn tất cả"
+                            checked={isGroupSelected}
+                            onChange={() => toggleSelectAll(groupReportIds)}
+                            aria-label={`Chọn tất cả phiếu ngày ${group.ngay}`}
                             className="h-4 w-4 accent-[#ef1b2d]"
                           />
                         </th>
@@ -1098,7 +1120,8 @@ export default function MixingReportListView({
                   </table>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

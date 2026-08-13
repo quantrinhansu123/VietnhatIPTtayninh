@@ -311,9 +311,15 @@ export default function AcceptanceReportListView({
     setSearchText('');
   };
   const dateGroups = useMemo(() => buildDateGroups(filteredReports), [filteredReports]);
-  const allReportIds = useMemo(() => filteredReports.map(report => report.id).filter(Boolean), [filteredReports]);
   const selectedCount = selectedIds.size;
-  const allSelected = allReportIds.length > 0 && selectedIds.size === allReportIds.length;
+  const selectedReportsForPrint = useMemo(
+    () => filteredReports.filter(report => selectedIds.has(report.id)),
+    [filteredReports, selectedIds]
+  );
+  const selectedPrintSlipCount = useMemo(
+    () => buildAcceptancePrintSlips(selectedReportsForPrint).length,
+    [selectedReportsForPrint]
+  );
 
   const addProductNamesForPrint = (sourceReports: AcceptanceReport[]) =>
     sourceReports.map(report => ({
@@ -328,8 +334,15 @@ export default function AcceptanceReportListView({
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          // window.print() trả về khi hộp thoại in đã đóng (kể cả khi người dùng hủy).
+          // Xóa toàn bộ phiên in để lần mở sau không render lại dữ liệu cũ.
+          document.body.classList.remove('acceptance-report-print-active');
+          setActivePrintSlips([]);
+          setPendingPrint(false);
+        }
       });
     }, 150);
     return () => {
@@ -418,7 +431,8 @@ export default function AcceptanceReportListView({
   };
 
   const handlePrint = () => {
-    startPrint(buildAcceptancePrintSlips(addProductNamesForPrint(filteredReports)));
+    // Chụp đúng selection hiện tại; mỗi id báo cáo là một phiếu in độc lập.
+    startPrint(buildAcceptancePrintSlips(addProductNamesForPrint(selectedReportsForPrint)));
   };
 
   const handleDelete = async (id: string) => {
@@ -454,8 +468,17 @@ export default function AcceptanceReportListView({
     });
   };
 
-  const toggleSelectAll = () => {
-    setSelectedIds(() => (allSelected ? new Set() : new Set(allReportIds)));
+  const toggleSelectAll = (reportIds: string[]) => {
+    const validIds = reportIds.filter(Boolean);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const isGroupSelected = validIds.length > 0 && validIds.every(id => next.has(id));
+      validIds.forEach(id => {
+        if (isGroupSelected) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -589,11 +612,11 @@ export default function AcceptanceReportListView({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={filteredReports.length === 0}
+              disabled={selectedPrintSlipCount === 0 || pendingPrint}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Printer className="h-4 w-4" />
-              In phiếu
+              In phiếu ({selectedPrintSlipCount})
             </button>
           </div>
         </div>
@@ -631,6 +654,9 @@ export default function AcceptanceReportListView({
         ) : (
           <div className="space-y-3 p-3 sm:p-4">
             {dateGroups.map(group => {
+              const groupReportIds = group.reports.map(report => report.id).filter(Boolean);
+              const isGroupSelected =
+                groupReportIds.length > 0 && groupReportIds.every(id => selectedIds.has(id));
               const totalsByUnit = sumByUnit(
                 group.reports.map(report => ({
                   mat_hang: report.mat_hang,
@@ -650,15 +676,13 @@ export default function AcceptanceReportListView({
                   <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[520px]">
                     <TableHead>
                       <TableHeadCell align="center" className="w-10">
-                        {canDelete ? (
-                          <input
-                            type="checkbox"
-                            checked={allSelected}
-                            onChange={toggleSelectAll}
-                            aria-label="Chọn tất cả"
-                            className="h-4 w-4 accent-[#ef1b2d]"
-                          />
-                        ) : null}
+                        <input
+                          type="checkbox"
+                          checked={isGroupSelected}
+                          onChange={() => toggleSelectAll(groupReportIds)}
+                          aria-label={`Chọn tất cả báo cáo ngày ${group.date}`}
+                          className="h-4 w-4 accent-[#ef1b2d]"
+                        />
                       </TableHeadCell>
                       <TableHeadCell align="center" className="w-12">STT</TableHeadCell>
                       <TableHeadCell>Ảnh</TableHeadCell>
@@ -676,15 +700,13 @@ export default function AcceptanceReportListView({
                         <React.Fragment key={report.id}>
                           <TableRow>
                             <td className="px-3 py-2 text-center">
-                              {canDelete ? (
-                                <input
-                                  type="checkbox"
-                                  checked={selectedIds.has(report.id)}
-                                  onChange={() => toggleSelected(report.id)}
-                                  aria-label="Chọn dòng"
-                                  className="h-4 w-4 accent-[#ef1b2d]"
-                                />
-                              ) : null}
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(report.id)}
+                                onChange={() => toggleSelected(report.id)}
+                                aria-label="Chọn dòng"
+                                className="h-4 w-4 accent-[#ef1b2d]"
+                              />
                             </td>
                             <td className="px-3 py-2 text-center font-mono font-bold text-zinc-600">
                               {reportIndex + 1}

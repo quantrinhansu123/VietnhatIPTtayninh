@@ -324,6 +324,7 @@ export default function AcceptanceReportListView({
   useEffect(() => {
     if (!pendingPrint || activePrintSlips.length === 0) return;
     let cancelled = false;
+    document.body.classList.add('acceptance-report-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -334,16 +335,21 @@ export default function AcceptanceReportListView({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('acceptance-report-print-active');
     };
   }, [pendingPrint, activePrintSlips]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('acceptance-report-print-active');
       setActivePrintSlips([]);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('acceptance-report-print-active');
+    };
   }, []);
 
   useEffect(() => {

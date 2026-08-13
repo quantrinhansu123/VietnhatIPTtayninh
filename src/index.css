@@ -2158,6 +2158,22 @@ input[type="number"] {
     display: none !important;
   }
 
+  /* Phiếu báo cáo sản lượng được portal cạnh #root. Loại app shell khỏi
+     print layout để toàn bộ batch được trình duyệt phân thành nhiều trang. */
+  body.acceptance-report-print-active #root {
+    display: none !important;
+  }
+
+  body.acceptance-report-print-active .production-order-print-batch,
+  body.acceptance-report-print-active .production-order-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
+
   body.production-order-print-active .production-order-print-batch,
   body.production-order-print-active .production-order-print-sheet {
     display: block !important;

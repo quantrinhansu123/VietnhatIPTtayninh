@@ -1130,7 +1130,6 @@ input[type="number"] {
     color: #111111;
     padding: 0;
     margin: 0;
-    page: mixing-report-page;
     overflow: visible !important;
   }
 
@@ -1146,7 +1145,6 @@ input[type="number"] {
     color: #111111;
     padding: 0;
     margin: 0;
-    page: mixing-report-page;
     overflow: visible !important;
   }
 
@@ -1165,7 +1163,6 @@ input[type="number"] {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    page: mixing-report-page;
   }
 
   body.mixing-report-print-active html,
@@ -1862,7 +1859,6 @@ input[type="number"] {
     color: #111111;
     padding: 0 !important;
     margin: 0 !important;
-    page: mixing-report-page;
     overflow: visible !important;
   }
 
@@ -1878,7 +1874,6 @@ input[type="number"] {
     color: #111111;
     padding: 0 !important;
     margin: 0 !important;
-    page: mixing-report-page;
     overflow: visible !important;
   }
 
@@ -1894,7 +1889,18 @@ input[type="number"] {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    page: mixing-report-page;
+    box-sizing: border-box !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  .mixing-report-print-page + .mixing-report-print-page {
+    break-before: page !important;
+    page-break-before: always !important;
+    break-after: auto !important;
+    page-break-after: auto !important;
   }
 
   body.mixing-report-print-active html,
@@ -2174,6 +2180,23 @@ input[type="number"] {
     visibility: visible !important;
   }
 
+  /* Preview báo cáo máy NVL tồn dùng cùng print layout cân đối với báo cáo
+     sản lượng: sheet nằm cạnh #root và bắt đầu từ đầu vùng in. */
+  body.machine-nvl-report-print-active #root {
+    display: none !important;
+  }
+
+  body.machine-nvl-report-print-active .production-order-print-batch,
+  body.machine-nvl-report-print-active .production-order-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
+
   body.production-order-print-active .production-order-print-batch,
   body.production-order-print-active .production-order-print-sheet {
     display: block !important;
@@ -2214,17 +2237,17 @@ input[type="number"] {
   display: none;
 }
 
-.mixing-report-print-page,
-.mixing-report-print-sheet {
-  page: mixing-report-page;
-}
-
 .mixing-report-print-page {
-  break-after: page;
-  page-break-after: always;
+  box-sizing: border-box;
+  break-before: auto;
+  page-break-before: auto;
+  break-after: auto;
+  page-break-after: auto;
 }
 
-.mixing-report-print-page:last-child {
+.mixing-report-print-page + .mixing-report-print-page {
+  break-before: page;
+  page-break-before: always;
   break-after: auto;
   page-break-after: auto;
 }

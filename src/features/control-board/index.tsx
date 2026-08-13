@@ -5,6 +5,7 @@ import { useTabAccess } from '../../app/useTabAccess';
 import ControlBoardBbMachineReportTable from '../../components/ControlBoardBbMachineReportTable';
 import { ControlBoardCommonFilters } from '../../components/ControlBoardCommonFilters';
 import ReportListsHubModal from '../../components/ReportListsHubModal';
+import { RowActionsMenu } from '../../components/shared/table';
 import { ClipboardList } from 'lucide-react';
 import {
   buildControlBoardShiftSummary,
@@ -71,7 +72,6 @@ import {
 import {
   Factory,
   Eye,
-  MoreHorizontal,
   Pencil,
   Trash2,
   Printer,
@@ -1139,58 +1139,33 @@ export function ControlBoardPanel({
                     {row.note && row.note !== '-' ? row.note : '-'}
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <details className="relative inline-block text-left">
-                      <summary
-                        className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
-                        title="Mở thao tác"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </summary>
-                      <div className="absolute right-0 top-9 z-20 min-w-[132px] overflow-hidden rounded-xl border border-zinc-200 bg-white p-1 shadow-xl">
-                        <button
-                          type="button"
-                          onClick={() => setViewingProductionOrder(row)}
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
-                        >
-                          <Eye className="h-4 w-4" />
-                          Xem
-                        </button>
-                        {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => setEditingProductionOrder(row)}
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#ef1b2d] transition hover:bg-red-50"
-                        >
+                    <RowActionsMenu label={`Thao tác ${row.code || row.name}`}>
+                      <button type="button" title="Xem" onClick={() => setViewingProductionOrder(row)}>
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      {canEdit ? (
+                        <button type="button" title="Sửa" onClick={() => setEditingProductionOrder(row)}>
                           <Pencil className="h-4 w-4" />
-                          Sửa
                         </button>
-                        ) : null}
-                        {canDelete ? (
+                      ) : null}
+                      {canDelete ? (
                         <button
                           type="button"
+                          title="Xóa"
                           onClick={() => handleDeleteProductionOrder(row)}
                           disabled={deletingProductionOrderId === row.id}
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {deletingProductionOrderId === row.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Trash2 className="h-4 w-4" />
                           )}
-                          Xóa
                         </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => printProductionOrder(row)}
-                          disabled={isLoadingPrint}
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Printer className="h-4 w-4" />
-                          In
-                        </button>
-                      </div>
-                    </details>
+                      ) : null}
+                      <button type="button" title="In" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint}>
+                        <Printer className="h-4 w-4" />
+                      </button>
+                    </RowActionsMenu>
                   </td>
                 </tr>
               ))}

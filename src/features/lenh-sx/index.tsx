@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
@@ -19,7 +18,8 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
-  StatusBadge
+  StatusBadge,
+  RowActionsMenu
 } from '../../components/shared/table';
 import {
   AddProductionOrderModal,
@@ -48,7 +48,6 @@ import { waitForPrintImagesReady } from '../../utils/printReady';
 import {
   Eye,
   Loader2,
-  MoreHorizontal,
   Pencil,
   Plus,
   Printer,
@@ -97,6 +96,18 @@ function productionOrderStaffDisplay(row: ProductionOrderRow) {
   )].join(', ') || '-';
 }
 
+function productionOrderStaffNames(row: ProductionOrderRow) {
+  const staff = productionOrderStaffDisplay(row);
+  if (staff === '-') return [];
+
+  return [...new Set(
+    staff
+      .split(/[,;|/\n]+/)
+      .map(name => name.trim())
+      .filter(Boolean)
+  )];
+}
+
 export function ProductionOrdersPanel({
   onBack,
   currentUser,
@@ -134,11 +145,6 @@ export function ProductionOrdersPanel({
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState('');
-  const [actionMenu, setActionMenu] = useState<{
-    row: ProductionOrderRow;
-    x: number;
-    y: number;
-  } | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [printingBatchOrders, setPrintingBatchOrders] = useState<PrintableProductionOrder[]>([]);
   const [printingBatchProductCatalog, setPrintingBatchProductCatalog] = useState<ProductRow[]>([]);
@@ -648,12 +654,12 @@ export function ProductionOrdersPanel({
                 </div>
               </div>
               <div className="hover-scrollbar overflow-x-auto">
-                <table className="w-full min-w-[1780px] table-fixed border-collapse text-left text-[11px]">
+                <table className="w-full min-w-[1834px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
-                    <col style={{ width: 44 }} /><col style={{ width: 110 }} /><col style={{ width: 70 }} /><col style={{ width: 460 }} />
+                    <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} /><col style={{ width: 460 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 120 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 120 }} /><col style={{ width: 220 }} />
-                    <col style={{ width: 160 }} /><col style={{ width: 80 }} />
+                    <col style={{ width: 160 }} /><col style={{ width: 100 }} />
                   </colgroup>
                   <TableHead>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-center text-[10px]">
@@ -691,6 +697,7 @@ export function ProductionOrdersPanel({
                   <TableBody>
                     {group.rows.map(row => {
                       const productLines = getProductionOrderProductLines(row);
+                      const staffNames = productionOrderStaffNames(row);
                       return (
                       <React.Fragment key={row.id}>
                       <TableRow>
@@ -747,26 +754,35 @@ export function ProductionOrdersPanel({
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.startDate}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.endDate}</td>
-                        <td className="break-words px-2 py-2 align-top font-semibold leading-4 text-zinc-700">
-                          {productionOrderStaffDisplay(row)}
+                        <td className="px-2 py-2 align-top font-semibold text-zinc-700">
+                          {staffNames.length > 0 ? (
+                            <div className="space-y-1 leading-tight">
+                              {staffNames.map(name => (
+                                <div key={name} className="whitespace-nowrap">{name}</div>
+                              ))}
+                            </div>
+                          ) : '-'}
                         </td>
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              const rect = event.currentTarget.getBoundingClientRect();
-                              setActionMenu(current => current?.row.id === row.id
-                                ? null
-                                : { row, x: rect.right, y: rect.bottom });
-                            }}
-                            title="Thao tác"
-                            aria-label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`}
-                            aria-expanded={actionMenu?.row.id === row.id}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
+                          <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`}>
+                            <button type="button" title="Xem chi tiết" onClick={() => setViewingRow(row)}>
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint}>
+                              <Printer className="h-4 w-4" />
+                            </button>
+                            {canEdit && (
+                              <button type="button" title="Sửa lệnh SX" onClick={() => openEditModal(row)} disabled={isLoadingEdit}>
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button type="button" title="Xóa lệnh SX" onClick={() => deleteProductionOrder(row)} disabled={deletingId === row.id}>
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </RowActionsMenu>
                         </td>
                       </TableRow>
                       </React.Fragment>
@@ -779,28 +795,6 @@ export function ProductionOrdersPanel({
             );
           })}
         </div>
-      )}
-
-      {actionMenu && createPortal(
-        <div
-          className="fixed z-50 w-44 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-xl"
-          style={{ left: Math.max(8, actionMenu.x - 176), top: actionMenu.y + 6 }}
-          role="menu"
-        >
-          <button type="button" role="menuitem" onClick={() => { setViewingRow(actionMenu.row); setActionMenu(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50">
-            <Eye className="h-4 w-4" /> Xem chi tiết
-          </button>
-          <button type="button" role="menuitem" onClick={() => { printProductionOrder(actionMenu.row); setActionMenu(null); }} disabled={isLoadingPrint} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">
-            <Printer className="h-4 w-4" /> In lệnh SX
-          </button>
-          {canEdit && <button type="button" role="menuitem" onClick={() => { openEditModal(actionMenu.row); setActionMenu(null); }} disabled={isLoadingEdit} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50">
-            <Pencil className="h-4 w-4" /> Sửa lệnh SX
-          </button>}
-          {canDelete && <button type="button" role="menuitem" onClick={() => { deleteProductionOrder(actionMenu.row); setActionMenu(null); }} disabled={deletingId === actionMenu.row.id} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">
-            <Trash2 className="h-4 w-4" /> Xóa lệnh SX
-          </button>}
-        </div>,
-        document.body
       )}
 
       {printingOrder && (

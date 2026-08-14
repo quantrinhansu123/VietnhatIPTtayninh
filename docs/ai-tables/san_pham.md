@@ -27,8 +27,15 @@
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
-UI danh sách sản phẩm không hiển thị riêng Tồn đầu / Nhập / Xuất / Tồn; thay bằng một cột **Tổng SL** hiển thị `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Phần đầu Kho thành phẩm có ba ô thống kê **Mã SP / Tổng SL / Đơn vị** theo kho và ngày đang chọn.
+UI danh sách sản phẩm có **hai chế độ**:
 
+- **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT; thống kê Sản phẩm · Nhóm VTHH · Đơn vị.
+- **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị.
+
+## Menu
+
+- QC `/nha-may/qc` → card **Danh sách sản phẩm** → `products` (`/san-pham`)
+- Kho → **Kho hàng** → Thành phẩm (cùng panel)
 
 ## Cột quan trọng
 

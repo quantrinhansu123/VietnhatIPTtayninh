@@ -107,7 +107,7 @@ export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'QC',
-    desc: 'BOM/tỷ lệ phối trộn, kiểm soát hàng hỏng, kiểm soát cân và chất lượng.',
+    desc: 'Danh mục sản phẩm, BOM/tỷ lệ phối trộn, kiểm soát hàng hỏng, kiểm soát cân và chất lượng.',
     icon: ShieldCheck,
     icon3d: shield3d,
     tab: 'factory-qc'
@@ -489,7 +489,7 @@ export const FACTORY_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'QC',
-    desc: 'Quản lý chất lượng: sản lượng, hàng hỏng và phiếu cân ca.',
+    desc: 'Danh mục sản phẩm, quản lý chất lượng: sản lượng, hàng hỏng và phiếu cân ca.',
     icon: ShieldCheck,
     icon3d: shield3d,
     tab: 'factory-qc'
@@ -549,6 +549,13 @@ export const FACTORY_QUAN_DOC_MENU_ITEMS: MenuCardConfig[] = [
 ];
 
 export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
+  {
+    title: 'Danh sách sản phẩm',
+    desc: 'Xem danh mục mã hàng, nhóm VTHH, đơn vị, định mức và tồn kho.',
+    icon: Package,
+    icon3d: bentoBox3d,
+    tab: 'products'
+  },
   {
     title: 'BOM và tỷ lệ phối trộn',
     desc: 'Tỷ lệ trộn theo mặt hàng, theo lệnh và theo mẻ.',
@@ -946,6 +953,7 @@ export const PRIMARY_NAV_GROUPS: {
     icon: ShieldCheck,
     tab: 'factory-qc',
     children: [
+      { label: 'Danh sách sản phẩm', tab: 'products' },
       { label: 'BOM và tỷ lệ phối trộn', tab: 'mixing-report-list' },
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },

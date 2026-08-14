@@ -55,6 +55,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     menu: 'factory-qc',
     label: 'QC',
     children: [
+      { tab: 'products', label: 'Danh sách sản phẩm' },
       { tab: 'mixing-report-list', label: 'BOM và tỷ lệ phối trộn' },
       { tab: 'damaged-goods-report-list', label: 'Kiểm soát hàng hỏng' },
       { tab: 'weighing-summary-list', label: 'Phiếu cân ca' },

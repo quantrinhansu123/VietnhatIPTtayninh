@@ -1907,8 +1907,11 @@ export function ProductsPanel({
     }
   };
 
-  const datedProducts = useMemo(() => {
-    if (!asOfDate) return [];
+  // Không có ngày = danh mục từ bảng san_pham (QC /san-pham). Có ngày = tồn theo phiếu kho (Kho hàng).
+  const isCatalogMode = !asOfDate;
+
+  const displayProducts = useMemo(() => {
+    if (isCatalogMode) return products;
     const balances = new Map(balanceRows.map(row => [normalizeProductCodeKey(row.ma), row]));
     return products.flatMap(product => {
       const balance = balances.get(normalizeProductCodeKey(product.code));
@@ -1921,19 +1924,19 @@ export function ProductsPanel({
         stock: String(balance.ton_cuoi_ky)
       }];
     });
-  }, [asOfDate, balanceRows, products]);
+  }, [asOfDate, balanceRows, isCatalogMode, products]);
 
   const productGroups = useMemo(
-    () => ['all', ...Array.from(new Set(datedProducts.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
-    [datedProducts]
+    () => ['all', ...Array.from(new Set(displayProducts.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
+    [displayProducts]
   );
   const productNatures = useMemo(
-    () => Array.from(new Set(datedProducts.map(product => product.nature))).sort((a, b) => String(a).localeCompare(String(b), 'vi')),
-    [datedProducts]
+    () => Array.from(new Set(displayProducts.map(product => product.nature))).sort((a, b) => String(a).localeCompare(String(b), 'vi')),
+    [displayProducts]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
-    return datedProducts.filter(product => {
+    return displayProducts.filter(product => {
       const isUnassigned = !product.warehouse || product.warehouse === '-';
       const matchesWarehouse =
         !warehouseFilter || product.warehouse === warehouseFilter || (includeUnassigned && isUnassigned);
@@ -1946,15 +1949,19 @@ export function ProductsPanel({
           .includes(normalizedSearch);
       return matchesWarehouse && matchesGroup && matchesNature && matchesSearch;
     });
-  }, [datedProducts, includeUnassigned, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
+  }, [displayProducts, includeUnassigned, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
 
   const totalProductQuantity = useMemo(
-    () => datedProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
-    [datedProducts]
+    () => displayProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
+    [displayProducts]
   );
   const productUnitCount = useMemo(
-    () => new Set(datedProducts.map(product => product.unit).filter(unit => unit && unit !== '-')).size,
-    [datedProducts]
+    () => new Set(displayProducts.map(product => product.unit).filter(unit => unit && unit !== '-')).size,
+    [displayProducts]
+  );
+  const productNatureCount = useMemo(
+    () => new Set(displayProducts.map(product => product.nature).filter(Boolean)).size,
+    [displayProducts]
   );
 
   const selectedProducts = useMemo(
@@ -2231,11 +2238,18 @@ export function ProductsPanel({
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-          {[
-            ['Mã SP', datedProducts.length],
-            ['Tổng SL', formatNumber(totalProductQuantity, 2)],
-            ['Đơn vị', productUnitCount]
-          ].map(([label, value]) => (
+          {(isCatalogMode
+            ? [
+                ['Sản phẩm', displayProducts.length],
+                ['Nhóm VTHH', productGroups.length > 0 ? productGroups.length - 1 : 0],
+                ['Đơn vị', productUnitCount || productNatureCount]
+              ]
+            : [
+                ['Mã SP', displayProducts.length],
+                ['Tổng SL', formatNumber(totalProductQuantity, 2)],
+                ['Đơn vị', productUnitCount]
+              ]
+          ).map(([label, value]) => (
             <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <span className="block font-bold text-slate-500">{label}</span>
               <span className="mt-1 block text-xl font-black text-slate-900">{value}</span>
@@ -2357,7 +2371,7 @@ export function ProductsPanel({
         </div>
       </section>
 
-      <TableShell minWidthClassName="min-w-[1250px]">
+      <TableShell minWidthClassName={isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'}>
         <TableHead>
           <TableHeadCell align="center" className="w-14">
             <input
@@ -2374,9 +2388,19 @@ export function ProductsPanel({
           <TableHeadCell>Tính chất</TableHeadCell>
           <TableHeadCell align="center">Nhóm</TableHeadCell>
           <TableHeadCell align="center">Đơn vị</TableHeadCell>
-          <TableHeadCell align="center">Kho</TableHeadCell>
+          {!isCatalogMode ? <TableHeadCell align="center">Kho</TableHeadCell> : null}
           <TableHeadCell align="center">Tổng TL (kg)</TableHeadCell>
-          <TableHeadCell align="center">Tổng SL</TableHeadCell>
+          {isCatalogMode ? (
+            <>
+              <TableHeadCell align="center">Tồn đầu</TableHeadCell>
+              <TableHeadCell align="center">Nhập</TableHeadCell>
+              <TableHeadCell align="center">Xuất</TableHeadCell>
+              <TableHeadCell align="center">Tồn</TableHeadCell>
+              <TableHeadCell align="center">Tồn tối thiểu</TableHeadCell>
+            </>
+          ) : (
+            <TableHeadCell align="center">Tổng SL</TableHeadCell>
+          )}
           <TableHeadCell align="center" className="sticky right-0 z-10 bg-[#ef1b2d]">
             Thao tác
           </TableHeadCell>
@@ -2415,11 +2439,23 @@ export function ProductsPanel({
                 </td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.group}</td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.unit}</td>
-                <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.warehouse || '—'}</td>
+                {!isCatalogMode ? (
+                  <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.warehouse || '—'}</td>
+                ) : null}
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-emerald-800">
                   {formatProductSpecDisplay(product.totalWeight)}
                 </td>
-                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
+                {isCatalogMode ? (
+                  <>
+                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.openingStock}</td>
+                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.inbound}</td>
+                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.outbound}</td>
+                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
+                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.minStock}</td>
+                  </>
+                ) : (
+                  <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
+                )}
                 <td className="sticky right-0 z-[1] bg-white px-3 py-3.5 transition group-hover:bg-red-50/40">
                   <RowActionsMenu label={`Thao tác ${product.code || product.name}`}>
                   <div className="flex items-center justify-center gap-1">
@@ -2460,8 +2496,12 @@ export function ProductsPanel({
           ))}
 
           {!isLoadingProducts && filteredProducts.length === 0 && (
-            <TableEmptyRow colSpan={11}>
-              {asOfDate ? 'Không có thành phẩm còn tồn đến ngày đã chọn.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
+            <TableEmptyRow colSpan={isCatalogMode ? 14 : 11}>
+              {isCatalogMode
+                ? 'Không có sản phẩm phù hợp bộ lọc.'
+                : asOfDate
+                  ? 'Không có thành phẩm còn tồn đến ngày đã chọn.'
+                  : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
             </TableEmptyRow>
           )}
         </TableBody>

@@ -947,7 +947,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
                 className="space-y-3"
               >
-                <MenuPageHeader title="QC — Quản lý chất lượng" desc="Theo dõi sản lượng, hàng hỏng và phiếu cân ca." />
+                <MenuPageHeader title="QC — Quản lý chất lượng" desc="Danh mục sản phẩm, theo dõi sản lượng, hàng hỏng và phiếu cân ca." />
                 <MenuCardGrid items={filterMenuItems(FACTORY_QC_MENU_ITEMS)} onNavigate={navigateToTab} />
               </motion.div>
             ) : activeTab === 'factory-cong-nhan' ? (

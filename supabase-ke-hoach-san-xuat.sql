@@ -33,6 +33,10 @@ alter table public.ke_hoach_san_xuat_dong
   add column if not exists ca text,
   add column if not exists may text,
   add column if not exists nhan_su text,
+  add column if not exists truong_ca text,
+  add column if not exists nhan_su_chinh text,
+  add column if not exists tho_phu text,
+  add column if not exists hoc_viec text,
   add column if not exists san_pham jsonb not null default '[]'::jsonb;
 
 create index if not exists ke_hoach_san_xuat_ngay_idx

@@ -12,7 +12,8 @@ export function MultiSelectFilter({
   emptyLabel = 'Không tìm thấy kết quả',
   options,
   values,
-  onChange
+  onChange,
+  alignDropdown = 'left'
 }: {
   /** Nhãn hiển thị khi chưa chọn gì, vd. "Máy" */
   label: string;
@@ -23,6 +24,8 @@ export function MultiSelectFilter({
   options: string[];
   values: string[];
   onChange: (values: string[]) => void;
+  /** Canh menu xổ sang cạnh trái hoặc phải của nút lọc. */
+  alignDropdown?: 'left' | 'right';
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -67,7 +70,9 @@ export function MultiSelectFilter({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-72 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
+        <div className={`absolute top-[calc(100%+6px)] z-30 w-max min-w-full max-w-[calc(100vw-1rem)] rounded-xl border border-zinc-200 bg-white p-2 shadow-lg ${
+          alignDropdown === 'right' ? 'right-0' : 'left-0'
+        }`}>
           <label className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5">
             <Search className="h-4 w-4 shrink-0 text-zinc-400" />
             <input
@@ -80,7 +85,7 @@ export function MultiSelectFilter({
           </label>
 
           <div className="mt-2 max-h-64 overflow-y-auto">
-            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-zinc-700 hover:bg-red-50">
+            <label className="flex cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-semibold text-zinc-700 hover:bg-red-50">
               <input
                 type="checkbox"
                 checked={values.length === 0}
@@ -92,7 +97,7 @@ export function MultiSelectFilter({
             {filteredOptions.map(item => (
               <label
                 key={item}
-                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-zinc-700 hover:bg-red-50"
+                className="flex cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-semibold text-zinc-700 hover:bg-red-50"
               >
                 <input
                   type="checkbox"
@@ -100,7 +105,7 @@ export function MultiSelectFilter({
                   onChange={() => toggleValue(item)}
                   className="h-4 w-4 accent-[#ef1b2d]"
                 />
-                <span className="min-w-0 flex-1 truncate">{item}</span>
+                <span>{item}</span>
               </label>
             ))}
             {filteredOptions.length === 0 && (

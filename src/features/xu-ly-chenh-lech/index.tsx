@@ -974,7 +974,6 @@ export function XuLyChenhLechPanel({
                 onChange={value => setDetailPresenceFilter(value as DetailPresenceFilter)}
                 formatOption={formatDetailPresenceFilter}
                 searchable={false}
-                dropdownWidth="w-56"
                 alignDropdown="right"
               />
             </TableToolbar>

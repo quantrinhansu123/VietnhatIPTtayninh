@@ -749,28 +749,70 @@ input[type="number"] {
 
 @media print {
   @page {
-    size: A4;
+    size: A4 landscape;
     margin: 8mm;
   }
 
   @page shift-summary-page {
-    size: A4;
+    size: A4 landscape;
     margin: 5mm;
   }
 
   @page bb-machine-report-page {
-    size: A4 portrait;
+    size: A4 landscape;
     margin: 7mm;
   }
 
   @page mixing-report-page {
-    size: A4;
+    size: A4 landscape;
     margin: 0;
   }
 
   @page weighing-slip-page {
-    size: A4;
+    size: A4 landscape;
     margin: 0;
+  }
+
+  /* Phiếu tồn máy có 11 cột: gắn một trang in riêng để Chrome luôn nhận
+     đúng kích thước ngang A4, không phụ thuộc vào trang in trước đó. */
+  @page machine-nvl-report-page {
+    size: 297mm 210mm;
+    margin: 7mm;
+  }
+
+  .machine-nvl-print-batch,
+  .machine-nvl-print-page,
+  .machine-nvl-print-sheet {
+    page: machine-nvl-report-page;
+  }
+
+  /* Các bảng trong phiếu luôn bị giới hạn theo vùng in. Cột sẽ co và nội
+     dung dài sẽ xuống dòng thay vì làm tràn chiều ngang của A4. */
+  .production-order-print-doc table,
+  .order-print-doc table,
+  .production-plan-print-doc table,
+  .mixing-report-print-doc table,
+  .weighing-slip-print-doc table,
+  .warehouse-slip-print-doc table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed;
+  }
+
+  .production-order-print-doc th,
+  .production-order-print-doc td,
+  .order-print-doc th,
+  .order-print-doc td,
+  .production-plan-print-doc th,
+  .production-plan-print-doc td,
+  .mixing-report-print-doc th,
+  .mixing-report-print-doc td,
+  .weighing-slip-print-doc th,
+  .weighing-slip-print-doc td,
+  .warehouse-slip-print-doc th,
+  .warehouse-slip-print-doc td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   body {
@@ -1555,8 +1597,8 @@ input[type="number"] {
 
 .production-plan-print-sheet .production-plan-nvl-print-meta-table th {
   width: 14%;
-  background: #eaf0f6;
-  color: #334e68;
+  background: #ffffff;
+  color: #172033;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -1568,12 +1610,15 @@ input[type="number"] {
 }
 
 .production-plan-print-table th:nth-child(1) { width: 4%; }
-.production-plan-print-table th:nth-child(2) { width: 14%; }
-.production-plan-print-table th:nth-child(3) { width: 8%; }
-.production-plan-print-table th:nth-child(4) { width: 16%; }
-.production-plan-print-table th:nth-child(5) { width: 14%; }
-.production-plan-print-table th:nth-child(6) { width: 34%; }
-.production-plan-print-table th:nth-child(7) { width: 10%; }
+.production-plan-print-table th:nth-child(2) { width: 13%; }
+.production-plan-print-table th:nth-child(3) { width: 10%; }
+.production-plan-print-table th:nth-child(4) { width: 24%; }
+.production-plan-print-table th:nth-child(5) { width: 13%; }
+.production-plan-print-table th:nth-child(6) { width: 36%; }
+
+.production-plan-print-product-column {
+  display: none;
+}
 
 .production-plan-print-table th,
 .production-plan-print-table td {
@@ -1588,8 +1633,8 @@ input[type="number"] {
 }
 
 .production-plan-print-table th {
-  background: #eaf0f6;
-  color: #102a43;
+  background: #ffffff;
+  color: #172033;
   font-size: 8.5pt;
   font-weight: 800;
   text-align: center;
@@ -1605,7 +1650,7 @@ input[type="number"] {
   vertical-align: middle;
   text-align: center;
   font-weight: 700;
-  background: #f6f8fa;
+  background: #ffffff;
 }
 
 .production-plan-print-product-name {

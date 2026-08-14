@@ -16,7 +16,7 @@ export function FilterCombobox({
   formatOption = (option: string) => option,
   searchable = true,
   alignDropdown = 'left',
-  dropdownWidth = 'w-64'
+  dropdownWidth = 'w-max min-w-full max-w-[calc(100vw-1rem)]'
 }: {
   label: string;
   options: string[];
@@ -96,7 +96,7 @@ export function FilterCombobox({
                 onChange('all');
                 setOpen(false);
               }}
-              className={`block w-full rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-red-50 ${
+              className={`block w-full whitespace-nowrap rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-red-50 ${
                 value === 'all' ? 'font-black text-[#ef1b2d]' : 'font-semibold text-zinc-700'
               }`}
             >
@@ -110,7 +110,7 @@ export function FilterCombobox({
                   onChange(option);
                   setOpen(false);
                 }}
-                className={`block w-full rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-red-50 ${
+                className={`block w-full whitespace-nowrap rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-red-50 ${
                   value === option ? 'font-black text-[#ef1b2d]' : 'font-semibold text-zinc-700'
                 }`}
               >

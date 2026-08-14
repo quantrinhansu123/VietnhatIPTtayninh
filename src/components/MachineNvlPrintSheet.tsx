@@ -181,8 +181,8 @@ export function MachineNvlPrintSheet({ report }: { report: MachineNvlPrintReport
   );
 
   return (
-    <div className="production-order-print-sheet">
-      <div className="production-order-print-doc">
+    <div className="production-order-print-sheet machine-nvl-print-sheet">
+      <div className="production-order-print-doc machine-nvl-print-doc">
         <header className="production-order-print-letterhead">
           <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="production-order-print-logo" />
           <div className="production-order-print-company">
@@ -317,9 +317,9 @@ export function MachineNvlPrintBatch({ reports }: { reports: MachineNvlPrintRepo
   if (reports.length === 0) return null;
 
   return (
-    <div className="production-order-print-batch">
+    <div className="production-order-print-batch machine-nvl-print-batch">
       {reports.map((report, index) => (
-        <div key={`${report.ngay}-${report.maMay}-${report.ca}-${index}`} className="production-order-print-page">
+        <div key={`${report.ngay}-${report.maMay}-${report.ca}-${index}`} className="production-order-print-page machine-nvl-print-page">
           <MachineNvlPrintSheet report={report} />
         </div>
       ))}

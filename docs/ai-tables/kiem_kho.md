@@ -48,7 +48,7 @@ Việc `GROUP BY ma_nvl` chạy hẳn trong Postgres (không kéo dòng thô v�
 |------|---------|
 | `GET /api/kiem-kho` | Query: `tenKho`, `dotKiemKho`, `maSp`, `from`, `to` |
 | `POST /api/kiem-kho` | Body: `dot_kiem_kho`, `nguoi_kiem_kho` (tự động), `ngay_gio_kiem_kho` (tự động), `lines[]`; `ten_kho` không bắt buộc |
-| `DELETE /api/kiem-kho/:id` | Xóa một dòng |
+| `DELETE /api/kiem-kho/:id` | Xóa một dòng, chỉ khi đợt kiểm kho chưa chốt (`thoi_gian_xac_nhan is null`) |
 | `GET /api/kiem-kho/dot-mo` | Chỉ đợt **chưa chốt** — dùng cho combobox tab "Thực hiện kiểm kho": `{ dot_kiem_kho, ngay_bat_dau }[]` |
 | `GET /api/kiem-kho/dot` | **Toàn bộ** đợt (đã chốt lẫn chưa) — dùng cho combobox tìm kiếm tab "Danh sách chi tiết" và tab "Bảng tổng hợp": `{ dot_kiem_kho, ngay_bat_dau, thoi_gian_xac_nhan, da_xac_nhan, so_dong }[]`, sắp xếp mới nhất trước |
 | `POST /api/kiem-kho/dot-xac-nhan` | Body: `dot_kiem_kho`, `nguoi_xac_nhan`. Chốt đợt — gọi RPC `kiem_kho_chot_dot` |

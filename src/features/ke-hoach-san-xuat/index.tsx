@@ -156,6 +156,10 @@ export type ProductionPlanLine = {
   orderRef: string;
   position: string;
   staff: string;
+  shiftLead: string;
+  mainStaff: string;
+  assistantStaff: string;
+  traineeStaff: string;
   shift: string;
   priority: number;
   note: string;
@@ -250,6 +254,10 @@ export function productionOrderToPlanLine(
     orderRef: row.orderRef,
     position: resolveProductionOrderMachine(row, machines),
     staff: row.staff,
+    shiftLead: row.shiftLead,
+    mainStaff: row.mainStaff,
+    assistantStaff: row.assistantStaff,
+    traineeStaff: row.traineeStaff,
     shift: row.shift,
     priority,
     note: row.note
@@ -431,7 +439,6 @@ export function ProductionPlanPrintSheet({
               <th>Ca làm việc</th>
               <th>Nhân sự</th>
               <th>Lệnh sản xuất</th>
-              <th>Sản phẩm</th>
               <th>Ghi chú</th>
             </tr>
           </thead>
@@ -449,9 +456,23 @@ export function ProductionPlanPrintSheet({
                     </td>
                   )}
                   <td>{row.line.shift && row.line.shift !== '-' ? row.line.shift : '-'}</td>
-                  <td>{row.line.staff && row.line.staff !== '-' ? row.line.staff : '-'}</td>
-                  <td className="production-plan-print-order-code">{orderCode}</td>
                   <td>
+                    {(() => {
+                      const staffLines = [
+                        ...splitProductionOrderStaffNames(row.line.shiftLead).map(name => 'Trưởng ca: ' + name),
+                        ...splitProductionOrderStaffNames(row.line.mainStaff).map(name => 'Thợ chính: ' + name),
+                        ...splitProductionOrderStaffNames(row.line.assistantStaff).map(name => 'Thợ phụ: ' + name),
+                        ...splitProductionOrderStaffNames(row.line.traineeStaff).map(name => 'Học việc: ' + name)
+                      ];
+                      return staffLines.length > 0
+                        ? staffLines.map((staffLine, index) => <div key={index}>{staffLine}</div>)
+                        : splitProductionOrderStaffNames(row.line.staff).length > 0
+                          ? splitProductionOrderStaffNames(row.line.staff).map((name, index) => <div key={index}>Nhân sự: {name}</div>)
+                          : '-';
+                    })()}
+                  </td>
+                  <td className="production-plan-print-order-code">{orderCode}</td>
+                  <td className="production-plan-print-product-column">
                     {products.length === 0 ? (
                       <span className="production-plan-print-empty-material">-</span>
                     ) : (
@@ -1650,6 +1671,10 @@ export function buildProductionPlanSaveItems(lines: ProductionPlanLine[]) {
       ca: line.shift && line.shift !== '-' ? line.shift : '',
       may: line.position && line.position !== '-' ? line.position : '',
       nhan_su: line.staff && line.staff !== '-' ? line.staff : '',
+      truong_ca: line.shiftLead && line.shiftLead !== '-' ? line.shiftLead : '',
+      nhan_su_chinh: line.mainStaff && line.mainStaff !== '-' ? line.mainStaff : '',
+      tho_phu: line.assistantStaff && line.assistantStaff !== '-' ? line.assistantStaff : '',
+      hoc_viec: line.traineeStaff && line.traineeStaff !== '-' ? line.traineeStaff : '',
       san_pham: products.map(product => ({
         ma_sp: product.productCode,
         ten_sp: product.productName,
@@ -1682,6 +1707,10 @@ export type ProductionPlanHistoryLine = {
   shift: string;
   machine: string;
   staff: string;
+  shiftLead: string;
+  mainStaff: string;
+  assistantStaff: string;
+  traineeStaff: string;
   products: OrderProductLine[];
 };
 
@@ -1742,6 +1771,10 @@ export function normalizeProductionPlanHistoryLines(data: unknown): ProductionPl
         shift: pickText(record, ['ca', 'shift'], '-'),
         machine: pickText(record, ['may', 'machine'], '-'),
         staff: pickText(record, ['nhan_su', 'staff'], '-'),
+        shiftLead: pickText(record, ['truong_ca', 'shiftLead'], '-'),
+        mainStaff: pickText(record, ['nhan_su_chinh', 'mainStaff'], '-'),
+        assistantStaff: pickText(record, ['tho_phu', 'assistantStaff'], '-'),
+        traineeStaff: pickText(record, ['hoc_viec', 'traineeStaff'], '-'),
         products
       };
     })
@@ -1865,6 +1898,10 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       orderRef: line.orderRef,
       position: line.machine !== '-' ? line.machine : line.position,
       staff: line.staff,
+      shiftLead: line.shiftLead,
+      mainStaff: line.mainStaff,
+      assistantStaff: line.assistantStaff,
+      traineeStaff: line.traineeStaff,
       shift: line.shift,
       priority: line.priority,
       note: line.note
@@ -2332,6 +2369,7 @@ export function ProductionPlanModal({
   seedOrderIds?: string[];
 }) {
   const { canCreate } = useTabAccess('production-plan-history');
+  const { canEdit: canEditProductionOrder } = useTabAccess('production-orders');
   const [planLines, setPlanLines] = useState<ProductionPlanLine[]>([]);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -2370,10 +2408,20 @@ export function ProductionPlanModal({
     staffLabel: string;
     machineLabel?: string;
   } | null>(null);
+  const [editingProductionOrder, setEditingProductionOrder] = useState<ProductionOrderRow | null>(null);
+  const [editOrderLookups, setEditOrderLookups] = useState<OrderRow[]>([]);
+  const [editProductLookups, setEditProductLookups] = useState<ProductRow[]>([]);
+  const [loadingEditLineId, setLoadingEditLineId] = useState('');
+  const [productionOrderOverrides, setProductionOrderOverrides] = useState<Record<string, ProductionOrderRow>>({});
+
+  const effectiveProductionOrders = useMemo(
+    () => productionOrders.map(order => productionOrderOverrides[order.id] ?? order),
+    [productionOrders, productionOrderOverrides]
+  );
 
   const displayLines = useMemo(
-    () => enrichProductionPlanLines(planLines, productionOrders, machines),
-    [planLines, productionOrders, machines]
+    () => enrichProductionPlanLines(planLines, effectiveProductionOrders, machines),
+    [planLines, effectiveProductionOrders, machines]
   );
 
   const isEditingExistingPlan = Boolean(editPlanId || (initialLines && initialLines.length > 0));
@@ -2418,6 +2466,11 @@ export function ProductionPlanModal({
     setSelectedRelatedShifts([]);
     setRelatedShiftSummaryRows([]);
     setRelatedShiftSummaryFilters(null);
+    setEditingProductionOrder(null);
+    setEditOrderLookups([]);
+    setEditProductLookups([]);
+    setLoadingEditLineId('');
+    setProductionOrderOverrides({});
 
     fetch('/api/cai-dat')
       .then(res => (res.ok ? res.json() : null))
@@ -2937,6 +2990,55 @@ export function ProductionPlanModal({
     setPlanLines(prev => prev.map(line => (line.id === lineId ? { ...line, note } : line)));
   };
 
+  const openProductionOrderEdit = async (line: ProductionPlanLine) => {
+    const sourceOrder = effectiveProductionOrders.find(order => order.id === line.id);
+    if (!sourceOrder) {
+      setFormError('Không tìm thấy lệnh sản xuất để sửa.');
+      return;
+    }
+
+    setLoadingEditLineId(line.id);
+    setFormError('');
+    try {
+      const [orderRes, productRes] = await Promise.all([
+        fetch('/api/don-hang'),
+        fetch('/api/san-pham?format=table')
+      ]);
+      const [orderData, productData] = await Promise.all([
+        orderRes.json().catch(() => ({})),
+        productRes.json().catch(() => ({}))
+      ]);
+      if (!orderRes.ok || !productRes.ok) {
+        throw new Error('Không thể tải đơn hàng và danh mục sản phẩm để sửa lệnh sản xuất.');
+      }
+
+      setEditOrderLookups(normalizeOrders(orderData));
+      setEditProductLookups(normalizeProducts(productData));
+      setEditingProductionOrder(sourceOrder);
+    } catch (error: any) {
+      setFormError(error.message || 'Không thể mở form sửa lệnh sản xuất.');
+    } finally {
+      setLoadingEditLineId('');
+    }
+  };
+
+  const refreshEditedProductionOrder = async () => {
+    const editedId = editingProductionOrder?.id;
+    if (!editedId) return;
+
+    try {
+      const res = await fetch('/api/lenh-sx');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const updatedOrder = normalizeProductionOrders(data).find(order => order.id === editedId);
+      if (updatedOrder) {
+        setProductionOrderOverrides(current => ({ ...current, [editedId]: updatedOrder }));
+      }
+    } catch {
+      // Lệnh đã được lưu; giữ modal kế hoạch hoạt động nếu lần làm mới tức thời thất bại.
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -3091,6 +3193,21 @@ export function ProductionPlanModal({
                         <td className="px-2 py-2">
                           <RowActionsMenu label={`Thao tác dòng ${index + 1}`}>
                           <div className="flex items-center gap-1">
+                            {canEditProductionOrder ? (
+                              <button
+                                type="button"
+                                onClick={() => void openProductionOrderEdit(line)}
+                                disabled={Boolean(loadingEditLineId)}
+                                className="flex h-7 w-7 items-center justify-center rounded border border-amber-200 text-amber-700 disabled:opacity-40"
+                                title="Sửa"
+                              >
+                                {loadingEditLineId === line.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Pencil className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => moveLine(index, -1)}
@@ -3291,6 +3408,17 @@ export function ProductionPlanModal({
         onClose={() => setShowQrPrintModal(false)}
         lines={displayLines}
         planDate={planDate}
+      />
+
+      <EditProductionOrderModal
+        open={Boolean(editingProductionOrder)}
+        row={editingProductionOrder}
+        orders={editOrderLookups}
+        productionOrders={effectiveProductionOrders}
+        catalogProducts={editProductLookups}
+        machines={machines}
+        onClose={() => setEditingProductionOrder(null)}
+        onSaved={refreshEditedProductionOrder}
       />
     </>
   );

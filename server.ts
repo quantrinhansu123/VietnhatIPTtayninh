@@ -5397,6 +5397,10 @@ type ProductionPlanSnapshotLine = {
   ca: string;
   may: string;
   nhan_su: string;
+  truong_ca: string;
+  nhan_su_chinh: string;
+  tho_phu: string;
+  hoc_viec: string;
   san_pham: unknown[];
 };
 
@@ -5426,6 +5430,10 @@ function parseProductionPlanSnapshotLine(raw: unknown): ProductionPlanSnapshotLi
     ca: pickRowField(item, ['ca', 'shift'], ''),
     may: pickRowField(item, ['may', 'machine'], ''),
     nhan_su: pickRowField(item, ['nhan_su', 'staff'], ''),
+    truong_ca: pickRowField(item, ['truong_ca', 'shiftLead'], ''),
+    nhan_su_chinh: pickRowField(item, ['nhan_su_chinh', 'mainStaff'], ''),
+    tho_phu: pickRowField(item, ['tho_phu', 'assistantStaff'], ''),
+    hoc_viec: pickRowField(item, ['hoc_viec', 'traineeStaff'], ''),
     san_pham
   };
 }
@@ -5487,10 +5495,19 @@ async function saveProductionPlanSnapshot(options: {
     ca: line.ca,
     may: line.may,
     nhan_su: line.nhan_su,
+    truong_ca: line.truong_ca,
+    nhan_su_chinh: line.nhan_su_chinh,
+    tho_phu: line.tho_phu,
+    hoc_viec: line.hoc_viec,
     san_pham: line.san_pham
   }));
 
-  const { error: detailError } = await supabase.from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE).insert(detailRows);
+  let { error: detailError } = await supabase.from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE).insert(detailRows);
+  // Tương thích các cơ sở dữ liệu chưa chạy migration thêm 2 cột phân công.
+  if (detailError && isMissingColumnError(detailError)) {
+    const legacyRows = detailRows.map(({ truong_ca: _shiftLead, nhan_su_chinh: _mainStaff, tho_phu: _assistantStaff, hoc_viec: _traineeStaff, ...line }) => line);
+    ({ error: detailError } = await supabase.from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE).insert(legacyRows));
+  }
   if (detailError) {
     console.error('Supabase ke_hoach_san_xuat_dong insert error:', detailError);
     if (!options.planId) await supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).delete().eq('id', planId);
@@ -6758,7 +6775,53 @@ export function createApp() {
           return res.status(500).json({ error: productionPlanWriteErrorMessage(linesError) });
         }
 
-        return res.json({ plan, lines: lines || [] });
+        // Kế hoạch cũ chưa lưu riêng thợ chính/thợ phụ. Lấy từ lệnh SX để
+        // phiếu in vẫn phân công đúng theo ca; kế hoạch mới dùng snapshot.
+        const lineRows = (lines || []) as Record<string, unknown>[];
+        const productionOrderIds = lineRows
+          .map(line => String(line.lenh_sx_id ?? '').trim())
+          .filter(Boolean);
+        const productionOrderCodes = lineRows
+          .map(line => String(line.ma_lenh_sx ?? '').trim())
+          .filter(Boolean);
+        let staffRolesByOrderId = new Map<string, Record<string, unknown>>();
+        let staffRolesByOrderCode = new Map<string, Record<string, unknown>>();
+        if (productionOrderIds.length > 0) {
+          const { data: orderStaffRows, error: orderStaffError } = await supabase
+            .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
+            .select('id, truong_ca, nhan_su_chinh, tho_phu, hoc_viec')
+            .in('id', productionOrderIds);
+          if (!orderStaffError) {
+            staffRolesByOrderId = new Map(
+              ((orderStaffRows || []) as Record<string, unknown>[]).map(order => [String(order.id ?? '').trim(), order])
+            );
+          }
+        }
+        if (productionOrderCodes.length > 0) {
+          const { data: orderStaffRows, error: orderStaffError } = await supabase
+            .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
+            .select('ma_lenh_sx, truong_ca, nhan_su_chinh, tho_phu, hoc_viec')
+            .in('ma_lenh_sx', productionOrderCodes);
+          if (!orderStaffError) {
+            staffRolesByOrderCode = new Map(
+              ((orderStaffRows || []) as Record<string, unknown>[]).map(order => [String(order.ma_lenh_sx ?? '').trim(), order])
+            );
+          }
+        }
+        const enrichedLines = lineRows.map(line => {
+          const roleSource =
+            staffRolesByOrderId.get(String(line.lenh_sx_id ?? '').trim()) ||
+            staffRolesByOrderCode.get(String(line.ma_lenh_sx ?? '').trim());
+          return {
+            ...line,
+            truong_ca: line.truong_ca || roleSource?.truong_ca || '',
+            nhan_su_chinh: line.nhan_su_chinh || roleSource?.nhan_su_chinh || '',
+            tho_phu: line.tho_phu || roleSource?.tho_phu || '',
+            hoc_viec: line.hoc_viec || roleSource?.hoc_viec || ''
+          };
+        });
+
+        return res.json({ plan, lines: enrichedLines });
       }
 
       let query = supabase
@@ -6883,6 +6946,10 @@ export function createApp() {
             ca: '',
             may: item.vi_tri ?? '',
             nhan_su: '',
+            truong_ca: '',
+            nhan_su_chinh: '',
+            tho_phu: '',
+            hoc_viec: '',
             san_pham: []
           }))
         })) as Record<string, unknown>;
@@ -10041,10 +10108,22 @@ export function createApp() {
     if (!id) return res.status(400).json({ error: 'Thiếu ID kiểm kho.' });
 
     try {
-      const { error } = await resolved.client.from(SUPABASE_KIEM_KHO_TABLE).delete().eq('id', id);
+      const { data, error } = await resolved.client
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .delete()
+        .eq('id', id)
+        .is('thoi_gian_xac_nhan', null)
+        .select('id')
+        .maybeSingle();
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không xóa được dòng kiểm kho.',
+          db: resolved.label
+        });
+      }
+      if (!data) {
+        return res.status(409).json({
+          error: 'Chỉ được xóa sản phẩm thuộc đợt kiểm kho chưa chốt.',
           db: resolved.label
         });
       }

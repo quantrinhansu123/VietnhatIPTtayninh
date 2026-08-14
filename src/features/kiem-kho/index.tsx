@@ -234,6 +234,7 @@ export function KiemKhoPanel({
   const [dotDetailLines, setDotDetailLines] = useState<KiemKhoDetailRow[]>([]);
   const [loadingDotDetail, setLoadingDotDetail] = useState(false);
   const [confirmingDot, setConfirmingDot] = useState(false);
+  const [deletingDetailId, setDeletingDetailId] = useState<string | null>(null);
 
   // Tab "Bảng tổng hợp"
   const [summaryRows, setSummaryRows] = useState<KiemKhoTongHopRow[]>([]);
@@ -366,6 +367,30 @@ export function KiemKhoPanel({
     () => allBatches.find(b => b.dot_kiem_kho === selectedDot) ?? null,
     [allBatches, selectedDot]
   );
+
+  const handleDeleteDetailLine = async (line: KiemKhoDetailRow) => {
+    if (!canDelete || !selectedDotGroup || selectedDotGroup.da_xac_nhan) return;
+    const id = String(line.id ?? '').trim();
+    if (!id) return;
+
+    const productCode = String(line.ma_sp || line.ma_nvl || '').trim() || 'sản phẩm này';
+    if (!window.confirm(`Xóa mã "${productCode}" khỏi đợt kiểm kho này?`)) return;
+
+    setDeletingDetailId(id);
+    try {
+      const res = await fetch(`/api/kiem-kho/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không xóa được sản phẩm khỏi đợt kiểm kho.'));
+
+      setDotDetailLines(current => current.filter(item => String(item.id) !== id));
+      showAppToast(`Đã xóa mã "${productCode}" khỏi đợt kiểm kho.`, 'success');
+      await Promise.all([loadAllBatches(), loadOpenBatches()]);
+    } catch (err: any) {
+      showAppToast(err?.message || 'Không xóa được sản phẩm khỏi đợt kiểm kho.', 'error');
+    } finally {
+      setDeletingDetailId(null);
+    }
+  };
 
   const handleConfirmDot = async () => {
     if (!selectedDot) return;
@@ -920,6 +945,9 @@ export function KiemKhoPanel({
             <TableHeadCell>Loại SP</TableHeadCell>
             <TableHeadCell>Người kiểm</TableHeadCell>
             <TableHeadCell>Thời điểm lưu</TableHeadCell>
+            {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
+              <TableHeadCell align="center">Xóa</TableHeadCell>
+            ) : null}
           </TableHead>
           <TableBody>
             {dotDetailLines.map((line, index) => (
@@ -934,12 +962,30 @@ export function KiemKhoPanel({
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatDateTime(line.ngay_gio_kiem_kho)}
                   </td>
+                  {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteDetailLine(line)}
+                        disabled={deletingDetailId !== null}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={`Xóa mã ${line.ma_sp || line.ma_nvl || ''}`}
+                        aria-label={`Xóa mã ${line.ma_sp || line.ma_nvl || ''}`}
+                      >
+                        {deletingDetailId === String(line.id) ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </td>
+                  ) : null}
                 </TableRow>
               </React.Fragment>
             ))}
 
             {dotDetailLines.length === 0 && (
-              <TableEmptyRow colSpan={7}>
+              <TableEmptyRow colSpan={canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? 8 : 7}>
                 {loadingDotDetail
                   ? 'Đang tải dữ liệu...'
                   : 'Đợt này chưa có sản phẩm nào được quét.'}

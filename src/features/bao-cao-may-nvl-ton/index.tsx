@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
-import { ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
+import { ClipboardList, Loader2, Plus, Printer, Trash2, Wand2, X } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
@@ -12,9 +13,12 @@ import {
   type MachineNvlPrintReport
 } from '../../components/MachineNvlPrintSheet';
 import {
+  buildPreviousShiftQuantityMap,
   findDuplicateMachineNvlTonReport,
+  findLatestPreviousCuoiCaReport,
   formatMachineNvlDuplicateSaveMessage,
   guessMachineNvlMaterialType,
+  machineNvlReportMatchesMachine,
   normalizeMachineNvlReports,
   MACHINE_NVL_MATERIAL_TYPE_OPTIONS,
   type MachineNvlMaterialType,
@@ -209,58 +213,7 @@ function resolveMachineNvlLineActualKg(
   return factor > 0 ? qty * factor : 0;
 }
 
-export function machineNvlReportMatchesMachine(
-  report: Pick<MachineNvlSavedReport, 'maMay' | 'tenMay'>,
-  machineCode: string,
-  machineName: string,
-  machineRef: string
-) {
-  const ref = machineRef.trim().toLowerCase();
-  const code = machineCode.trim().toLowerCase();
-  const name = machineName.trim().toLowerCase();
-  const reportCode = report.maMay.trim().toLowerCase();
-  const reportName = report.tenMay.trim().toLowerCase();
-  if (!ref && !code && !name) return false;
-  if (ref && (ref === reportCode || ref === reportName || reportCode.includes(ref) || reportName.includes(ref))) {
-    return true;
-  }
-  if (code && (code === reportCode || reportCode.includes(code) || code.includes(reportCode))) return true;
-  if (name && (name === reportName || reportName.includes(name) || name.includes(reportName))) return true;
-  return false;
-}
-
-export function findLatestPreviousCuoiCaReport(
-  reports: MachineNvlSavedReport[],
-  machineCode: string,
-  machineName: string,
-  machineRef: string,
-  ngay: string,
-  ca: string
-) {
-  const shiftKey = ca.trim().toLowerCase();
-  return (
-    reports
-      .filter(report => report.reportKind === 'cuoi_ca')
-      .filter(report => machineNvlReportMatchesMachine(report, machineCode, machineName, machineRef))
-      .filter(report => !(report.ngay === ngay && report.ca.trim().toLowerCase() === shiftKey))
-      .sort((a, b) => {
-        const dateCompare = b.ngay.localeCompare(a.ngay);
-        if (dateCompare !== 0) return dateCompare;
-        return b.createdAt.localeCompare(a.createdAt);
-      })[0] ?? null
-  );
-}
-
-export function buildPreviousShiftQuantityMap(report: MachineNvlSavedReport | null) {
-  const map = new Map<string, number>();
-  if (!report) return map;
-  report.lines.forEach(line => {
-    const codeKey = normalizeProductCodeKey(line.maNvl);
-    if (!codeKey) return;
-    map.set(codeKey, line.soLuongTon);
-  });
-  return map;
-}
+export { machineNvlReportMatchesMachine, findLatestPreviousCuoiCaReport, buildPreviousShiftQuantityMap };
 
 export function machineNvlTextKey(value: string) {
   return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
@@ -792,8 +745,9 @@ export function MachineNvlReportPanel({
     });
   };
 
-  const saveReport = async () => {
+  const saveReport = async ({ printAfterSave = false }: { printAfterSave?: boolean } = {}) => {
     setMessage('');
+    const reportToPrint = printAfterSave ? buildCurrentPrintReport() : null;
     const materialLines = lines
       .map((line, index) => {
         const row: Record<string, unknown> = {
@@ -921,7 +875,14 @@ export function MachineNvlReportPanel({
         setLines([]);
       }
       setNote('');
-      await loadReports(activeKind);
+      try {
+        await loadReports(activeKind);
+      } catch {
+        // Báo cáo đã được máy chủ lưu thành công; lỗi làm mới danh sách không được phép ngăn bước in.
+      }
+      if (reportToPrint) {
+        printReportPayload(reportToPrint);
+      }
     } catch (error: any) {
       setMessage(showSaveFailure(error, 'Không thể lưu báo cáo.'));
     } finally {
@@ -954,19 +915,10 @@ export function MachineNvlReportPanel({
       lines
     });
 
-  const canPrintCurrentReport = lines.some(line => {
-    if (line.code.trim() || line.name.trim()) return true;
-    return Boolean(
-      line.inMachineQuantity.trim() ||
-        line.inMixerQuantity.trim() ||
-        line.unblendedQuantity.trim() ||
-        line.outsideQuantity.trim()
-    );
-  });
-
   useEffect(() => {
     if (!pendingPrint || !printReport) return;
     let cancelled = false;
+    document.body.classList.add('machine-nvl-report-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -977,16 +929,21 @@ export function MachineNvlReportPanel({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('machine-nvl-report-print-active');
     };
   }, [pendingPrint, printReport]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('machine-nvl-report-print-active');
       setPrintReport(null);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('machine-nvl-report-print-active');
+    };
   }, []);
 
   return (
@@ -1453,28 +1410,22 @@ export function MachineNvlReportPanel({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => printReportPayload(buildCurrentPrintReport())}
-                  disabled={!canPrintCurrentReport}
-                  className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-extrabold text-zinc-700 transition hover:border-zinc-400 disabled:opacity-60"
-                >
-                  <Printer className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">In phiếu</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={saveReport}
+                  onClick={() => void saveReport({ printAfterSave: true })}
                   disabled={isSaving}
                   className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60"
                 >
-                  {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Save className="h-3.5 w-3.5 shrink-0" />}
-                  <span className="truncate">{editingReportId ? 'Cập nhật' : 'Lưu báo cáo'}</span>
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Printer className="h-3.5 w-3.5 shrink-0" />}
+                  <span className="truncate normal-case">Lưu và in báo cáo</span>
                 </button>
               </div>
             </div>
           </section>
         </div>
-        {printReport && <MachineNvlPrintBatch reports={[printReport]} />}
       </div>
+
+      {printReport && typeof document !== 'undefined'
+        ? createPortal(<MachineNvlPrintBatch reports={[printReport]} />, document.body)
+        : null}
 
       {showCuoiCaPicker ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">

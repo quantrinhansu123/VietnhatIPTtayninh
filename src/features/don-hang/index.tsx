@@ -933,7 +933,6 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
             onChange={setSelectedType}
             compact
             searchable={false}
-            dropdownWidth="w-full"
           />
         </TableToolbar>
 

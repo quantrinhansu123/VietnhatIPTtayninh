@@ -5,6 +5,7 @@ import { MoreHorizontal } from 'lucide-react';
 type RowActionsMenuProps = {
   children: React.ReactNode;
   label?: string;
+  colorful?: boolean;
 };
 
 type MenuPosition = {
@@ -61,7 +62,7 @@ function collectActions(node: React.ReactNode): React.ReactElement<Record<string
   });
 }
 
-export function RowActionsMenu({ children, label = 'Thao tác' }: RowActionsMenuProps) {
+export function RowActionsMenu({ children, label = 'Thao tác', colorful = false }: RowActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ left: VIEWPORT_GAP, top: VIEWPORT_GAP });
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -153,6 +154,15 @@ export function RowActionsMenu({ children, label = 'Thao tác' }: RowActionsMenu
             const isNativeAction = action.type === 'button' || action.type === 'a';
             const isDanger = action.props.danger === true || /xóa|xoá/i.test(actionLabel);
             const actionVisuals = collectActionVisuals(action.props.children as React.ReactNode);
+            const actionTone = !colorful
+              ? isDanger ? 'text-rose-700 hover:bg-rose-50' : 'text-zinc-700 hover:bg-zinc-50'
+              : /xóa|xoá/i.test(actionLabel)
+                ? 'text-rose-500 hover:bg-rose-50'
+                : /in\s/i.test(actionLabel)
+                  ? 'text-[#ef1b2d] hover:bg-red-50'
+                  : /sửa|edit/i.test(actionLabel)
+                    ? 'text-amber-600 hover:bg-amber-50'
+                    : 'text-zinc-600 hover:bg-zinc-50';
 
             if (!isNativeAction) {
               return (
@@ -165,7 +175,7 @@ export function RowActionsMenu({ children, label = 'Thao tác' }: RowActionsMenu
                     originalOnClick?.(event);
                     if (!event.defaultPrevented) setOpen(false);
                   }}
-                  className={`flex min-h-10 w-full items-center justify-start gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 ${isDanger ? 'text-rose-700 hover:bg-rose-50' : 'text-zinc-700'}`}
+                  className={`flex min-h-10 w-full items-center justify-start gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${actionTone}`}
                 >
                   {actionVisuals}
                   <span className="min-w-0 flex-1 truncate">{actionLabel}</span>
@@ -177,7 +187,7 @@ export function RowActionsMenu({ children, label = 'Thao tác' }: RowActionsMenu
               key: action.key ?? `${actionLabel}-${index}`,
               role: 'menuitem',
               title: undefined,
-              className: `${originalClassName} !flex !h-auto !min-h-10 !w-full !items-center !justify-start !gap-2 !rounded-xl !border-0 !bg-transparent !px-3 !py-2 !text-left !text-sm !font-semibold !shadow-none hover:!bg-zinc-50`,
+              className: `${originalClassName} !flex !h-auto !min-h-10 !w-full !items-center !justify-start !gap-2 !rounded-xl !border-0 !bg-transparent !px-3 !py-2 !text-left !text-sm !font-semibold !shadow-none ${actionTone}` ,
               onClick: (event: React.MouseEvent<HTMLElement>) => {
                 originalOnClick?.(event);
                 if (!event.defaultPrevented) setOpen(false);

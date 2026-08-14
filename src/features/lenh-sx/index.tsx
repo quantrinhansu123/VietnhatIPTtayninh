@@ -133,7 +133,6 @@ export function ProductionOrdersPanel({
   const [selectedOrderCodes, setSelectedOrderCodes] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [viewingRow, setViewingRow] = useState<ProductionOrderRow | null>(null);
@@ -352,9 +351,7 @@ export function ProductionOrdersPanel({
         const rightTime = Date.parse(right.createdAt);
         const leftValid = Number.isFinite(leftTime);
         const rightValid = Number.isFinite(rightTime);
-        if (leftValid && rightValid) {
-          return sortOrder === 'newest' ? rightTime - leftTime : leftTime - rightTime;
-        }
+        if (leftValid && rightValid) return rightTime - leftTime;
         if (leftValid) return -1;
         if (rightValid) return 1;
         return left.id.localeCompare(right.id, 'vi');
@@ -369,8 +366,7 @@ export function ProductionOrdersPanel({
     selectedShifts,
     selectedOrderCodes,
     dateFrom,
-    dateTo,
-    sortOrder
+    dateTo
   ]);
 
   const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
@@ -583,21 +579,9 @@ export function ProductionOrdersPanel({
           options={machineFilters}
           values={selectedMachines}
           onChange={setSelectedMachines}
+          alignDropdown="right"
         />
 
-        <FilterCombobox
-          label="Sắp xếp"
-          options={['newest', 'oldest']}
-          value={sortOrder}
-          onChange={value => setSortOrder(value as 'newest' | 'oldest')}
-          searchPlaceholder="Tìm kiểu sắp xếp..."
-          includeAll={false}
-          compact
-          searchable={false}
-          alignDropdown="right"
-          dropdownWidth="w-full"
-          formatOption={value => (value === 'newest' ? 'Mới nhất' : 'Cũ nhất')}
-        />
       </TableToolbar>
 
       <AddProductionOrderModal
@@ -765,7 +749,7 @@ export function ProductionOrdersPanel({
                         </td>
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
-                          <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`}>
+                          <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`} colorful>
                             <button type="button" title="Xem chi tiết" onClick={() => setViewingRow(row)}>
                               <Eye className="h-4 w-4" />
                             </button>

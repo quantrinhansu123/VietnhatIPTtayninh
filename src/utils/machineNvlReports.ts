@@ -1,3 +1,5 @@
+import { normalizeProductCodeKey } from '../features/san-pham/types';
+
 export type MachineNvlReportKind = 'dau_ca' | 'cuoi_ca';
 
 export type MachineNvlMaterialType = 'nhua' | 'mang' | 'loi' | 'bao_bi';
@@ -441,4 +443,136 @@ export function buildMachineNvlReportGroups(
         left.shifts[0]?.machines[0]?.reports[0]?.createdAt || ''
       )
     );
+}
+
+export function machineNvlReportMatchesMachine(
+  report: Pick<MachineNvlSavedReport, 'maMay' | 'tenMay'>,
+  machineCode: string,
+  machineName: string,
+  machineRef: string
+) {
+  const ref = machineRef.trim().toLowerCase();
+  const code = machineCode.trim().toLowerCase();
+  const name = machineName.trim().toLowerCase();
+  const reportCode = report.maMay.trim().toLowerCase();
+  const reportName = report.tenMay.trim().toLowerCase();
+  if (!ref && !code && !name) return false;
+  if (ref && (ref === reportCode || ref === reportName || reportCode.includes(ref) || reportName.includes(ref))) {
+    return true;
+  }
+  if (code && (code === reportCode || reportCode.includes(code) || code.includes(reportCode))) return true;
+  if (name && (name === reportName || reportName.includes(name) || name.includes(reportName))) return true;
+  return false;
+}
+
+export function findLatestPreviousCuoiCaReport(
+  reports: MachineNvlSavedReport[],
+  machineCode: string,
+  machineName: string,
+  machineRef: string,
+  ngay: string,
+  ca: string
+) {
+  const shiftKey = ca.trim().toLowerCase();
+  return (
+    reports
+      .filter(report => report.reportKind === 'cuoi_ca')
+      .filter(report => machineNvlReportMatchesMachine(report, machineCode, machineName, machineRef))
+      .filter(report => !(report.ngay === ngay && report.ca.trim().toLowerCase() === shiftKey))
+      .sort((a, b) => {
+        const dateCompare = b.ngay.localeCompare(a.ngay);
+        if (dateCompare !== 0) return dateCompare;
+        return b.createdAt.localeCompare(a.createdAt);
+      })[0] ?? null
+  );
+}
+
+export function buildPreviousShiftQuantityMap(report: MachineNvlSavedReport | null) {
+  const map = new Map<string, number>();
+  if (!report) return map;
+  report.lines.forEach(line => {
+    const codeKey = normalizeProductCodeKey(line.maNvl);
+    if (!codeKey) return;
+    map.set(codeKey, line.soLuongTon);
+  });
+  return map;
+}
+
+const MACHINE_NVL_DISCREPANCY_TOLERANCE = 0.01;
+
+export type MachineNvlDiscrepancyDiff = {
+  code: string;
+  name: string;
+  unit: string;
+  /** Tồn cuối ca trước (ca liền kề gần nhất cùng máy). */
+  expected: number;
+  /** Tồn đầu ca hiện tại đã nhập. */
+  actual: number;
+};
+
+export type MachineNvlDiscrepancy = {
+  previous: MachineNvlSavedReport;
+  diffs: MachineNvlDiscrepancyDiff[];
+};
+
+/**
+ * So khớp tồn đầu ca với tồn cuối ca của phiên gần nhất trước đó cùng máy (theo mã NVL).
+ * Lệch quá ngưỡng (kể cả NVL có ở ca trước nhưng không được kê ở đầu ca này) → coi là chênh lệch.
+ *
+ * `findLatestPreviousCuoiCaReport` chỉ chọn theo ngày/giờ tạo mới nhất trong toàn bộ danh sách —
+ * đúng cho form tạo mới (mọi phiếu cuối ca sẵn có đều nghiễm nhiên ở quá khứ), nhưng khi rà soát lại
+ * danh sách đã lưu (có cả phiếu tương lai so với phiếu đầu ca đang xét) thì phải tự lọc bỏ trước
+ * các phiếu cuối ca được tạo SAU phiếu đầu ca này, nếu không sẽ so sánh nhầm với dữ liệu tương lai.
+ */
+export function computeMachineNvlDauCaDiscrepancy(
+  report: MachineNvlSavedReport,
+  cuoiCaReports: MachineNvlSavedReport[]
+): MachineNvlDiscrepancy | null {
+  if (!report.createdAt) return null;
+  const priorCuoiCaReports = cuoiCaReports.filter(
+    candidate => Boolean(candidate.createdAt) && candidate.createdAt < report.createdAt
+  );
+  const previous = findLatestPreviousCuoiCaReport(
+    priorCuoiCaReports,
+    report.maMay,
+    report.tenMay,
+    report.maMay || report.tenMay,
+    report.ngay,
+    report.ca
+  );
+  if (!previous) return null;
+
+  const prevMap = new Map<string, { qty: number; name: string; unit: string }>();
+  previous.lines.forEach(line => {
+    const key = normalizeProductCodeKey(line.maNvl);
+    if (!key) return;
+    prevMap.set(key, { qty: line.soLuongTon, name: line.tenNvl || line.maNvl, unit: line.donVi });
+  });
+
+  const diffs: MachineNvlDiscrepancyDiff[] = [];
+  const seen = new Set<string>();
+  report.lines.forEach(line => {
+    const key = normalizeProductCodeKey(line.maNvl);
+    if (!key) return;
+    seen.add(key);
+    const prev = prevMap.get(key);
+    if (!prev) return;
+    if (Math.abs(prev.qty - line.soLuongTon) > MACHINE_NVL_DISCREPANCY_TOLERANCE) {
+      diffs.push({
+        code: line.maNvl || key,
+        name: line.tenNvl || prev.name,
+        unit: line.donVi || prev.unit,
+        expected: prev.qty,
+        actual: line.soLuongTon
+      });
+    }
+  });
+  prevMap.forEach((info, key) => {
+    if (seen.has(key)) return;
+    if (info.qty > MACHINE_NVL_DISCREPANCY_TOLERANCE) {
+      diffs.push({ code: key, name: info.name, unit: info.unit, expected: info.qty, actual: 0 });
+    }
+  });
+
+  return { previous, diffs };
 }

@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Boxes, ChevronLeft, Eye, Loader2, Pencil, Plus, Printer, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Boxes, ChevronLeft, Eye, Loader2, Pencil, Plus, Printer, Trash2, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useTabAccess } from '../app/useTabAccess';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import {
   buildMachineNvlReportGroups,
+  computeMachineNvlDauCaDiscrepancy,
   MACHINE_NVL_MATERIAL_TYPE_OPTIONS,
   normalizeMachineNvlReports,
   sumMachineNvlCuoiCaLineTotal,
   sumMachineNvlCuoiCaReportTotal,
   sumMachineNvlDauCaLineTotal,
   sumMachineNvlDauCaReportTotal,
+  type MachineNvlDiscrepancy,
   type MachineNvlReportDateGroup,
   type MachineNvlReportKind,
   type MachineNvlSavedLine,
@@ -72,18 +74,29 @@ function formatQty(value: number | null | undefined) {
   return formatNumber(value, 3);
 }
 
+function formatMachineNvlDiscrepancyTooltip(discrepancy: MachineNvlDiscrepancy) {
+  const header = `So với tồn cuối ca ${discrepancy.previous.ngay} · ${discrepancy.previous.ca || '—'}:`;
+  const lines = discrepancy.diffs.map(
+    diff =>
+      `${diff.code || diff.name}: cuối ca trước ${formatQty(diff.expected)} → đầu ca này ${formatQty(diff.actual)} ${diff.unit || ''}`.trim()
+  );
+  return [header, ...lines].join('\n');
+}
+
 function MachineNvlReportDetailModal({
   report,
   onClose,
   onEdit,
   onPrint,
-  canEdit = false
+  canEdit = false,
+  discrepancy = null
 }: {
   report: MachineNvlSavedReport;
   onClose: () => void;
   onEdit: (report: MachineNvlSavedReport) => void;
   onPrint: (report: MachineNvlSavedReport) => void;
   canEdit?: boolean;
+  discrepancy?: MachineNvlDiscrepancy | null;
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const totalKg = reportTotal(report);
@@ -144,6 +157,26 @@ function MachineNvlReportDetailModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-2 py-3 sm:px-5">
+          {discrepancy && discrepancy.diffs.length > 0 ? (
+            <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-black text-amber-800">
+                  Chênh lệch với tồn cuối ca trước ({discrepancy.previous.ngay} · {discrepancy.previous.ca || '—'})
+                </p>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {discrepancy.diffs.map(diff => (
+                  <li key={diff.code || diff.name} className="text-[11px] font-semibold text-amber-800">
+                    <span className="font-mono font-black">{diff.code || diff.name}</span>
+                    {diff.name && diff.code ? <span className="text-amber-700"> — {diff.name}</span> : null}: cuối
+                    ca trước <span className="font-mono font-black">{formatQty(diff.expected)}</span> → đầu ca này{' '}
+                    <span className="font-mono font-black">{formatQty(diff.actual)}</span> {diff.unit}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full min-w-[760px] border-collapse text-left text-[11px] sm:text-xs">
               <thead className="sticky top-0 bg-zinc-900 text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
@@ -265,7 +298,8 @@ function MachineNvlSection({
   onClearSelection,
   bulkDeleting,
   canEdit = false,
-  canDelete = false
+  canDelete = false,
+  discrepancies
 }: {
   kind: MachineNvlReportKind;
   title: string;
@@ -285,6 +319,7 @@ function MachineNvlSection({
   bulkDeleting: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  discrepancies?: Map<string, MachineNvlDiscrepancy>;
 }) {
   const reportIds = useMemo(
     () =>
@@ -352,6 +387,9 @@ function MachineNvlSection({
                 )
               );
               const dateTotal = dateRows.reduce((sum, { report }) => sum + reportTotal(report), 0);
+              const dateDiscrepancyCount = discrepancies
+                ? dateRows.filter(({ report }) => discrepancies.has(report.id)).length
+                : 0;
 
               return (
                 <div key={dateGroup.ngay} className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm">
@@ -362,6 +400,12 @@ function MachineNvlSection({
                       <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
                         {dateRows.length} phiếu
                       </span>
+                      {dateDiscrepancyCount > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-200">
+                          <AlertTriangle className="h-3 w-3" />
+                          {dateDiscrepancyCount} chênh lệch
+                        </span>
+                      ) : null}
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng ngày</p>
@@ -394,7 +438,9 @@ function MachineNvlSection({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
-                        {dateRows.map(({ shiftGroup, machineGroup, report }) => (
+                        {dateRows.map(({ shiftGroup, machineGroup, report }) => {
+                          const discrepancy = discrepancies?.get(report.id);
+                          return (
                           <tr
                             key={report.id || `${report.ngay}-${report.maMay}-${report.ca}`}
                             className="align-middle transition hover:bg-red-50/20"
@@ -425,7 +471,18 @@ function MachineNvlSection({
                             <td className="px-3 py-2.5 font-mono text-zinc-500">{report.gio || '—'}</td>
                             <td className="px-3 py-2.5 text-right font-mono font-bold text-zinc-700">{report.lines.length}</td>
                             <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
-                              {formatNumber(reportTotal(report), 3)}
+                              <div className="flex items-center justify-end gap-1.5">
+                                <span>{formatNumber(reportTotal(report), 3)}</span>
+                                {discrepancy ? (
+                                  <span
+                                    title={formatMachineNvlDiscrepancyTooltip(discrepancy)}
+                                    className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 ring-1 ring-amber-200"
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Chênh lệch
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="max-w-[180px] px-3 py-2.5">
                               <span className="block truncate text-zinc-500" title={report.note || undefined}>
@@ -484,7 +541,8 @@ function MachineNvlSection({
                               </RowActionsMenu>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -588,6 +646,16 @@ export default function MachineNvlReportListView({
     () => buildMachineNvlReportGroups(filteredCuoiCaReports, shiftOrder),
     [filteredCuoiCaReports, shiftOptions]
   );
+
+  const dauCaDiscrepancies = useMemo(() => {
+    const map = new Map<string, MachineNvlDiscrepancy>();
+    filteredDauCaReports.forEach(report => {
+      if (!report.id) return;
+      const discrepancy = computeMachineNvlDauCaDiscrepancy(report, cuoiCaReports);
+      if (discrepancy && discrepancy.diffs.length > 0) map.set(report.id, discrepancy);
+    });
+    return map;
+  }, [filteredDauCaReports, cuoiCaReports]);
 
   const machineOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -943,6 +1011,7 @@ export default function MachineNvlReportListView({
           bulkDeleting={bulkDeleting}
           canEdit={canEdit}
           canDelete={canDelete}
+          discrepancies={dauCaDiscrepancies}
         />
       ) : (
         <MachineNvlSection
@@ -974,6 +1043,9 @@ export default function MachineNvlReportListView({
           onEdit={onEdit}
           onPrint={handlePrint}
           canEdit={canEdit}
+          discrepancy={
+            viewingReport.reportKind === 'dau_ca' ? dauCaDiscrepancies.get(viewingReport.id) ?? null : null
+          }
         />
       ) : null}
 

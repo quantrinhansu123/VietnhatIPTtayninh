@@ -456,7 +456,6 @@ export function ShippingOrdersPanel({
           onChange={setSelectedStatus}
           compact
           searchable={false}
-          dropdownWidth="w-full"
         />
       </TableToolbar>
 

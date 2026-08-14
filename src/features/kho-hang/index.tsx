@@ -150,7 +150,6 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           formatOption={value => value}
           includeAll={false}
           searchPlaceholder="Tìm kho..."
-          dropdownWidth="w-72"
         />
         <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
         {isLoadingBalances ? (

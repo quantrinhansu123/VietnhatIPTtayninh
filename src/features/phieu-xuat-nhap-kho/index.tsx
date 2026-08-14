@@ -3205,7 +3205,6 @@ export function WarehouseHistoryPanel({
             }
             searchPlaceholder="Tìm kho..."
             includeAll={false}
-            dropdownWidth="w-72"
           />
         </div>
         {canCreate ? (

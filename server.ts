@@ -110,6 +110,8 @@ const SUPABASE_MACHINE_NVL_REPORTS_TABLE =
   process.env.SUPABASE_MACHINE_NVL_REPORTS_TABLE || 'bao_cao_may_nvl_ton';
 const SUPABASE_MACHINE_DOWNTIME_TABLE =
   process.env.SUPABASE_MACHINE_DOWNTIME_TABLE || 'phieu_bao_dung_may';
+const SUPABASE_SHIFT_HANDOVER_TABLE =
+  process.env.SUPABASE_SHIFT_HANDOVER_TABLE || 'phieu_giao_ca';
 const SUPABASE_MACHINE_RUN_LOG_TABLE =
   process.env.SUPABASE_MACHINE_RUN_LOG_TABLE || 'nhat_ky_chay_may';
 const SUPABASE_STAFF_DEPARTMENT = process.env.SUPABASE_STAFF_DEPARTMENT || 'Sản xuất';
@@ -3639,6 +3641,92 @@ function machineDowntimeWriteError(error: { code?: string; message?: string }) {
   return `Không thể lưu phiếu báo dừng máy. ${error.message || ''}`.trim();
 }
 
+function generateShiftHandoverCode() {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const time =
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0') +
+    String(now.getSeconds()).padStart(2, '0');
+  return `BGC-${date}-${time}`;
+}
+
+function parseShiftHandoverLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const noi_dung = String(record.noi_dung ?? record.content ?? '').trim();
+  const muc_do = String(record.muc_do ?? record.priority ?? '').trim();
+  const nguoi_phu_trach = String(record.nguoi_phu_trach ?? record.assignee ?? '').trim();
+  const trang_thai = String(record.trang_thai ?? record.status ?? '').trim();
+  const ghi_chu = String(record.ghi_chu ?? record.note ?? '').trim();
+
+  if (!noi_dung && !muc_do && !nguoi_phu_trach && !trang_thai && !ghi_chu) return null;
+
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    noi_dung,
+    muc_do,
+    nguoi_phu_trach,
+    trang_thai,
+    ghi_chu
+  };
+}
+
+function parseShiftHandoverBody(body: unknown): { error: string } | { record: Record<string, unknown> } {
+  const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const ngay = String(source.ngay ?? '').trim();
+  const ca_giao = String(source.ca_giao ?? source.shift ?? '').trim();
+  const ca_nhan = String(source.ca_nhan ?? source.nextShift ?? '').trim();
+  const ma_may = String(source.ma_may ?? source.machineCode ?? '').trim();
+  const ten_may = String(source.ten_may ?? source.machineName ?? '').trim();
+  const nguoi_giao_ca = String(source.nguoi_giao_ca ?? source.handoverBy ?? '').trim();
+  const nguoi_nhan_ca = String(source.nguoi_nhan_ca ?? source.receivedBy ?? '').trim();
+
+  if (!ngay) return { error: 'Vui lòng chọn ngày.' };
+  if (!ca_giao) return { error: 'Vui lòng chọn ca giao.' };
+  if (!nguoi_giao_ca) return { error: 'Vui lòng nhập người giao ca.' };
+  if (!nguoi_nhan_ca) return { error: 'Vui lòng nhập người nhận ca.' };
+
+  const rawLines = source.chi_tiet ?? source.lines ?? source.items;
+  const list = Array.isArray(rawLines) ? rawLines : [];
+  const chi_tiet = list
+    .map((line, index) => parseShiftHandoverLine(line, index))
+    .filter((line): line is NonNullable<typeof line> => Boolean(line));
+
+  const so_phieu = String(source.so_phieu ?? source.slipCode ?? '').trim() || generateShiftHandoverCode();
+
+  return {
+    record: {
+      so_phieu,
+      ngay,
+      ca_giao,
+      ca_nhan: ca_nhan || null,
+      ma_may: ma_may || null,
+      ten_may: ten_may || null,
+      nguoi_giao_ca,
+      nguoi_nhan_ca,
+      tinh_hinh_san_xuat: String(source.tinh_hinh_san_xuat ?? source.productionStatus ?? '').trim() || null,
+      san_luong_dat_duoc: String(source.san_luong_dat_duoc ?? source.output ?? '').trim() || null,
+      tinh_trang_may_moc: String(source.tinh_trang_may_moc ?? source.machineStatus ?? '').trim() || null,
+      ton_kho_cuoi_ca: String(source.ton_kho_cuoi_ca ?? source.endingStock ?? '').trim() || null,
+      ghi_chu_chung: String(source.ghi_chu_chung ?? source.note ?? '').trim() || null,
+      chi_tiet,
+      nguoi_giao_ky: String(source.nguoi_giao_ky ?? '').trim() || null,
+      nguoi_nhan_ky: String(source.nguoi_nhan_ky ?? '').trim() || null
+    }
+  };
+}
+
+function shiftHandoverWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_SHIFT_HANDOVER_TABLE} chưa tồn tại. Hãy chạy supabase-phieu-giao-ca.sql.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_SHIFT_HANDOVER_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-phieu-giao-ca.sql.`;
+  }
+  return `Không thể lưu phiếu giao ca. ${error.message || ''}`.trim();
+}
+
 function generateMachineRunLogCode() {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -4359,6 +4447,7 @@ async function buildNvlInboundLots(
     .eq('ma_npl', code)
     .eq('loai_phieu', 'xuat')
     .or('loai_kho.eq.nvl,loai_kho.is.null')
+    .eq('treo', false)
     .not('id_dong_nhap_nguon', 'is', null);
 
   if (outboundError) {
@@ -4603,6 +4692,7 @@ function parseWarehouseSlipBody(body: unknown): {
   ca: string | null;
   may: string | null;
   tenKho: string | null;
+  treo: boolean;
   items: WarehouseSlipLineInput[];
 } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -4610,6 +4700,8 @@ function parseWarehouseSlipBody(body: unknown): {
   const loaiKho = parseWarehouseStorageType(source.loaiKho ?? source.loai_kho ?? source.kho) ?? 'nvl';
   const ngayPhieu = parseWarehouseSlipDate(source.ngayPhieu ?? source.ngay_phieu ?? source.date);
   const parsedItems = parseWarehouseSlipLines(source.items ?? source.lines ?? source.chi_tiet, loaiKho, loaiPhieu);
+  const treoRaw = source.treo;
+  const treo = treoRaw === true || treoRaw === 'true' || treoRaw === 1;
 
   if (!loaiPhieu) {
     return { error: 'Loại phiếu phải là nhập hoặc xuất.' };
@@ -4631,6 +4723,8 @@ function parseWarehouseSlipBody(body: unknown): {
     ca: String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim() || null,
     may: String(source.may ?? source.machine ?? source.ten_may ?? '').trim() || null,
     tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
+    // "Phiếu xuất kho treo" — chỉ áp dụng cho phiếu xuất, chờ thủ kho xác nhận mới tính vào tồn kho.
+    treo: loaiPhieu === 'xuat' ? treo : false,
     items: parsedItems.items
   };
 }
@@ -4646,6 +4740,7 @@ function buildWarehouseSlipInsertRecords(
     ca: string | null;
     may: string | null;
     tenKho: string | null;
+    treo?: boolean;
     items: WarehouseSlipLineInput[];
   },
   maPhieu: string
@@ -4658,6 +4753,7 @@ function buildWarehouseSlipInsertRecords(
       loai_kho: parsed.loaiKho,
       ten_kho: parsed.tenKho || null,
       ngay_phieu: parsed.ngayPhieu,
+      treo: parsed.loaiPhieu === 'xuat' && parsed.treo === true,
       don_vi: item.unit || '',
       so_luong: item.quantity,
       so_luong_chung_tu: parsed.loaiPhieu === 'xuat' ? item.documentQuantity ?? null : null,
@@ -4678,7 +4774,7 @@ function buildWarehouseSlipInsertRecords(
           ? item.sourceInboundSlipCode
           : null,
       id_bao_cao_hang_hong:
-        parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
+        parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
           ? item.damagedReportRowId
           : null
     };
@@ -4799,7 +4895,8 @@ async function buildMaterialMovementTotals(): Promise<Map<string, { nhap: number
   const { data, error } = await supabase
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('ma_npl, loai_phieu, so_luong')
-    .or('loai_kho.eq.nvl,loai_kho.is.null');
+    .or('loai_kho.eq.nvl,loai_kho.is.null')
+    .eq('treo', false);
 
   if (error) {
     console.error('Supabase material movement totals error:', error);
@@ -7935,12 +8032,20 @@ export function createApp() {
       const slipCode = String(req.query.ma_phieu ?? req.query.slipCode ?? '').trim();
       const maNpl = String(req.query.ma_npl ?? req.query.materialCode ?? '').trim();
       const maSp = String(req.query.ma_sp ?? req.query.productCode ?? '').trim();
+      const treoFilter = String(req.query.treo ?? '').trim().toLowerCase();
 
       let query = supabase
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
         .order('id', { ascending: false });
+
+      // Phiếu xuất kho treo (chờ xác nhận) không hiện trong lịch sử mặc định — chỉ hiện khi lọc treo=true.
+      if (treoFilter === 'true' || treoFilter === '1') {
+        query = query.eq('treo', true);
+      } else if (treoFilter !== 'all') {
+        query = query.eq('treo', false);
+      }
 
       if (loaiFilter) query = query.eq('loai_phieu', loaiFilter);
       if (khoFilter === 'san_pham') {
@@ -8167,6 +8272,107 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo phiếu xuất nhập kho.' });
+    }
+  });
+
+  app.post('/api/phieu-xuat-nhap-kho/:slipCode/xac-nhan-treo', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const slipCode = String(req.params.slipCode || '').trim();
+      if (!slipCode) {
+        return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+      }
+
+      const { data: existing, error: fetchError } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .select('id, ma_npl, ten_npl, ma_sp, ten_sp, don_vi, don_gia, so_luong, id_dong_nhap_nguon, ma_phieu_nhap_nguon, loai_kho, loai_phieu, treo')
+        .eq('ma_phieu', slipCode);
+
+      if (fetchError) {
+        console.error('Supabase phieu_xuat_nhap_kho fetch for confirm error:', fetchError);
+        return res.status(500).json({
+          error: `Không thể tải phiếu cần xác nhận từ ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE}. ${fetchError.message}`
+        });
+      }
+
+      if (!existing || existing.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy phiếu xuất kho treo cần xác nhận.' });
+      }
+      if (existing.some(row => String(row.loai_phieu || '') !== 'xuat')) {
+        return res.status(400).json({ error: 'Chỉ phiếu xuất kho mới có thể xác nhận từ trạng thái treo.' });
+      }
+      if (!existing.some(row => row.treo === true)) {
+        return res.status(409).json({ error: 'Phiếu này đã được xác nhận trước đó.' });
+      }
+
+      const nvlRows = existing.filter(row => String(row.loai_kho || 'nvl') !== 'san_pham');
+      if (nvlRows.length > 0) {
+        const lotError = await validateNvlExportLots(
+          nvlRows.map(row => ({
+            code: String(row.ma_npl || '').trim(),
+            name: String(row.ten_npl || '').trim(),
+            unit: String(row.don_vi || '').trim(),
+            quantity: Number(row.so_luong) || 0,
+            documentQuantity: Number(row.so_luong) || 0,
+            unitPrice: Number(row.don_gia) || 0,
+            lineAmount: roundWarehouseMoney((Number(row.so_luong) || 0) * (Number(row.don_gia) || 0)),
+            sourceInboundLineId: String(row.id_dong_nhap_nguon || '').trim() || undefined,
+            sourceInboundSlipCode: String(row.ma_phieu_nhap_nguon || '').trim() || undefined
+          }))
+        );
+        if (lotError) {
+          return res.status(409).json({
+            error: `Không thể xác nhận phiếu ${slipCode}: ${lotError.error}`
+          });
+        }
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .update({ treo: false })
+        .eq('ma_phieu', slipCode)
+        .eq('treo', true)
+        .select('*');
+
+      if (updateError) {
+        console.error('Supabase phieu_xuat_nhap_kho confirm treo error:', updateError);
+        return res.status(500).json({ error: warehouseSlipWriteErrorMessage(updateError) });
+      }
+      if (!updated || updated.length !== existing.length) {
+        return res.status(409).json({
+          error: 'Phiếu đã được người khác xác nhận hoặc thay đổi. Hãy tải lại danh sách.'
+        });
+      }
+
+      const affectedNvlCodes = new Set<string>();
+      const affectedProductCodes = new Set<string>();
+      existing.forEach(row => {
+        const code = String(row.ma_npl || '').trim();
+        if (code && String(row.loai_kho || 'nvl') !== 'san_pham') {
+          affectedNvlCodes.add(code);
+        }
+        const productCode = String(row.ma_sp || '').trim();
+        if (productCode && String(row.loai_kho || '') === 'san_pham') {
+          affectedProductCodes.add(productCode);
+        }
+      });
+      if (affectedNvlCodes.size > 0) {
+        await Promise.all([...affectedNvlCodes].map(code => syncMaterialInventoryFromMovements(code)));
+      }
+      if (affectedProductCodes.size > 0) {
+        await Promise.all([...affectedProductCodes].map(code => syncProductDetailCodeFromMovements(code)));
+      }
+
+      return res.json({
+        success: true,
+        slipCode,
+        movements: updated || []
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xác nhận phiếu xuất kho treo.' });
     }
   });
 
@@ -10792,6 +10998,7 @@ export function createApp() {
           : loaiKho === 'nvl'
             ? query.or('loai_kho.eq.nvl,loai_kho.is.null')
             : query.eq('loai_kho', loaiKho);
+        query = query.eq('treo', false);
         if (tenKho) query = query.eq('ten_kho', tenKho);
         if (denNgay) query = query.lte('ngay_phieu', denNgay);
         return query.range(from, to);
@@ -11958,6 +12165,95 @@ export function createApp() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa phiếu báo dừng máy.' });
+    }
+  });
+
+  app.get('/api/phieu-giao-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maMay = typeof req.query.ma_may === 'string' ? req.query.ma_may.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 300) : 100;
+
+      let query = supabase
+        .from(SUPABASE_SHIFT_HANDOVER_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(limit);
+
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maMay) query = query.eq('ma_may', maMay);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase shift handover query error:', error);
+        return res.status(500).json({ error: shiftHandoverWriteError(error) });
+      }
+
+      return res.json({ slips: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phiếu giao ca.' });
+    }
+  });
+
+  app.post('/api/phieu-giao-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const parsed = parseShiftHandoverBody(req.body);
+      if ('error' in parsed) {
+        return res.status(400).json({ error: parsed.error });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_SHIFT_HANDOVER_TABLE)
+        .insert(parsed.record)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Supabase shift handover insert error:', error);
+        return res.status(500).json({ error: shiftHandoverWriteError(error) });
+      }
+
+      return res.status(201).json({ success: true, slip: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu phiếu giao ca.' });
+    }
+  });
+
+  app.delete('/api/phieu-giao-ca/:id', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'Thiếu ID phiếu.' });
+
+      const { data, error } = await supabase
+        .from(SUPABASE_SHIFT_HANDOVER_TABLE)
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Supabase shift handover delete error:', error);
+        return res.status(500).json({ error: shiftHandoverWriteError(error) });
+      }
+
+      if (!data) return res.status(404).json({ error: 'Không tìm thấy phiếu.' });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa phiếu giao ca.' });
     }
   });
 

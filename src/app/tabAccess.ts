@@ -11,6 +11,7 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'mixing-report': 'mixing-report-list',
   'machine-nvl-report': 'machine-nvl-report-list',
   'machine-downtime-report': 'machine-downtime-list',
+  'shift-handover-report': 'shift-handover-list',
   'acceptance-report': 'acceptance-report-list',
   'machine-run-log': 'machine-run-log-list',
   'damaged-goods-warehouse': 'warehouse-history',
@@ -29,6 +30,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'weighing-summary',
     'can-tu-dong',
     'machine-downtime-report',
+    'shift-handover-report',
     'machine-run-log',
     'damaged-goods-report',
     'acceptance-report',
@@ -38,6 +40,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'mixing-report-list',
     'weighing-summary-list',
     'machine-downtime-list',
+    'shift-handover-list',
     'machine-run-log-list',
     'damaged-goods-report-list',
     'acceptance-report-list'
@@ -53,6 +56,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'acceptance-report-list',
     'warehouse-history',
     'machine-downtime-list',
+    'shift-handover-list',
     'machine-run-log-list'
   ],
   'production-reports': ['report-forms', 'report-lists']

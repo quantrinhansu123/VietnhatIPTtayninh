@@ -4,17 +4,18 @@
 |---|---|
 | **Bảng** | `phieu_xuat_nhap_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
-| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`) |
+| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`; treo: `supabase-phieu-xuat-nhap-kho-treo.sql`) |
 
 ## API (`server.ts`)
 
 | Method | Path | Dòng |
 |--------|------|------|
-| GET | `/api/phieu-xuat-nhap-kho` | ~5212 |
-| GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`) |
+| GET | `/api/phieu-xuat-nhap-kho` | Danh sách phiếu chính thức; tham số `treo` chỉ giữ để tương thích dữ liệu cũ |
+| GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
 | GET | `/api/phieu-xuat-nhap-kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
-| GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho |
-| POST | `/api/phieu-xuat-nhap-kho` | ~5263 |
+| GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng chung cho tab Nhập kho lẫn tab Xuất kho treo) |
+| POST | `/api/phieu-xuat-nhap-kho` | ~5263 (body có thể kèm `treo: true` khi lưu phiếu xuất kho treo) |
+| POST | `/api/phieu-xuat-nhap-kho/:slipCode/xac-nhan-treo` | Endpoint tương thích cho phiếu treo cũ; giao diện mới không còn tạo phiếu chờ xác nhận |
 | PUT | `/api/phieu-xuat-nhap-kho/:slipCode` | ~5377 |
 | DELETE | slip / id | ~5495+ |
 
@@ -29,6 +30,11 @@
 **Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP).
 
 Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
+
+**Loại phiếu** trên form có 3 lựa chọn: **Nhập kho** · **Xuất kho treo** · **Xuất kho**.
+- **Xuất kho treo** là form chờ lấy dữ liệu từ **Báo cáo hàng hỏng chờ xuất kho**, không phải một trạng thái phiếu đã lưu. Bấm **Kiểm tra** để điền báo cáo xuống form; bấm **Lưu phiếu xuất kho treo** sẽ lưu ngay `treo=false` thành phiếu xuất chính thức, cập nhật tồn kho, lịch sử và mở mẫu in.
+- Card **Báo cáo hàng hỏng chờ nhập kho** chỉ hiện ở tab Nhập kho; card **Báo cáo hàng hỏng chờ xuất kho** (cùng nguồn dữ liệu `/api/bao-cao-hang-hong/cho-nhap-kho`) chỉ hiện ở tab Xuất kho treo — báo cáo nào được **Kiểm tra** ở tab nào thì biến mất khỏi cả hai (đã gắn `id_bao_cao_hang_hong`).
+- Không còn card **Phiếu xuất kho treo chờ xác nhận** và không có bước Xác nhận riêng.
 
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 - **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).

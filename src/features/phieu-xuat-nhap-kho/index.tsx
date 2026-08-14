@@ -8,6 +8,7 @@ import {
   Boxes,
   ChevronDown,
   ClipboardCheck,
+  Clock,
   Eye,
   Factory,
   History,
@@ -114,6 +115,8 @@ export interface WarehouseMovementRow {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  /** true = phiếu xuất kho treo, chờ thủ kho xác nhận; chưa tính vào tồn kho. */
+  treo?: boolean;
 }
 
 export interface WarehouseSlipLineDraft {
@@ -752,7 +755,8 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         sourceInboundSlipCode:
           String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined,
         damagedReportRowId:
-          String(record.id_bao_cao_hang_hong ?? record.damagedReportRowId ?? '').trim() || undefined
+          String(record.id_bao_cao_hang_hong ?? record.damagedReportRowId ?? '').trim() || undefined,
+        treo: record.treo === true
       };
     })
     .filter((row): row is WarehouseMovementRow => Boolean(row.id || row.slipCode));
@@ -951,6 +955,8 @@ export function WarehouseSlipPanel({
   const [warehouseName, setWarehouseName] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
+  /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
+  const [isXuatTreoMode, setIsXuatTreoMode] = useState(false);
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -1033,18 +1039,24 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const handleReviewDamagedReport = (report: PendingDamagedReport) => {
+  const handleReviewDamagedReport = (report: PendingDamagedReport, mode: 'nhap' | 'xuat_treo' = 'nhap') => {
     const damagedWarehouseName =
       warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) || 'Kho hàng hỏng';
-    setSlipType('nhap');
+    const isXuatTreo = mode === 'xuat_treo';
+    setSlipType(isXuatTreo ? 'xuat' : 'nhap');
+    setIsXuatTreoMode(isXuatTreo);
     setWarehouseKind('hang_hong');
     setWarehouseName(damagedWarehouseName);
     setSlipDate(report.productionDate || report.reportDate || new Date().toISOString().slice(0, 10));
     setSelectedShifts(report.shift ? [report.shift] : []);
-    setReason(`Nhập kho từ báo cáo hàng hỏng ${report.documentNo}`);
+    setReason(
+      isXuatTreo
+        ? `Xuất kho treo từ báo cáo hàng hỏng ${report.documentNo}`
+        : `Nhập kho từ báo cáo hàng hỏng ${report.documentNo}`
+    );
     setNote([report.machine, report.note].filter(Boolean).join(' · '));
     setMachine(report.machine || '');
-    setDeliverer(report.weigher || '');
+    if (!isXuatTreo) setDeliverer(report.weigher || '');
     setLines(
       report.items.map(item => ({
         ...createWarehouseLineDraft(),
@@ -1052,6 +1064,7 @@ export function WarehouseSlipPanel({
         name: item.name,
         unit: item.unit || 'kg',
         quantity: String(item.quantity),
+        documentQuantity: isXuatTreo ? String(item.quantity) : undefined,
         unitPrice: '',
         damagedReportRowId: item.reportRowId
       }))
@@ -1059,7 +1072,11 @@ export function WarehouseSlipPanel({
     setReviewingDamagedReportKey(report.key);
     setEditSlipCode(null);
     setFormError('');
-    setActionMessage(`Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu & in phiếu nhập kho.`);
+    setActionMessage(
+      isXuatTreo
+        ? `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu xuất kho treo để tạo phiếu xuất chính thức.`
+        : `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu & in phiếu nhập kho.`
+    );
     window.setTimeout(() => {
       document.querySelector('[data-warehouse-slip-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 0);
@@ -1157,6 +1174,7 @@ export function WarehouseSlipPanel({
         setWarehouseKind(resolvedKind);
       }
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
+      setIsXuatTreoMode(false);
       if (draft.slipDate) setSlipDate(draft.slipDate);
       setReason(stripProductionOrderCodesFromReason(draft.reason || ''));
       setNote(draft.note || '');
@@ -1884,13 +1902,17 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (
-      reviewingDamagedReportKey &&
-      (slipType !== 'nhap' || warehouseKind !== 'hang_hong' || !isDamagedGoodsWarehouseName(warehouseName))
-    ) {
-      setFormError(showSaveFailure('Báo cáo hàng hỏng chỉ được lưu bằng phiếu Nhập kho vào Kho hàng hỏng.'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
+    if (reviewingDamagedReportKey) {
+      const validNhapReview = !isXuatTreoMode && slipType === 'nhap';
+      const validXuatTreoReview = isXuatTreoMode && slipType === 'xuat';
+      const validWarehouse = warehouseKind === 'hang_hong' && isDamagedGoodsWarehouseName(warehouseName);
+      if (!validWarehouse || (!validNhapReview && !validXuatTreoReview)) {
+        setFormError(
+          showSaveFailure('Báo cáo hàng hỏng chỉ được lưu bằng phiếu Nhập kho hoặc Xuất kho treo vào Kho hàng hỏng.')
+        );
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
     }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
@@ -1923,6 +1945,7 @@ export function WarehouseSlipPanel({
 
     const isEditing = Boolean(editSlipCode);
     const printSlipType: WarehouseSlipType = slipType === 'xuat' ? 'xuat' : 'nhap';
+    const isXuatTreoFlow = isXuatTreoMode && slipType === 'xuat';
     const slipPayload = {
       loaiPhieu: printSlipType,
       loaiKho: warehouseKind,
@@ -1933,6 +1956,8 @@ export function WarehouseSlipPanel({
       nguoiLap: createdBy.trim(),
       ca: shiftLabel || null,
       may: machine.trim() || null,
+      // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
+      treo: false,
       items: payloadItems
     };
 
@@ -1977,31 +2002,33 @@ export function WarehouseSlipPanel({
 
       setPrintSlip(
         buildWarehouseSlipPrintData(payloadItems, {
-          slipCode: savedSlipCode,
-          slipType: printSlipType,
-          warehouseKind,
-          slipDate,
-          reason: savedReason,
-          note: note.trim(),
-          createdBy: createdBy.trim(),
-          productionOrderRef: productionOrderLabel,
-          machine: machine.trim(),
-          shift: shiftLabel,
-          recipient: recipient.trim(),
-          deliverer: deliverer.trim(),
-          warehouseLocation: warehouseLocation.trim(),
-          warehouseName: warehouseName.trim(),
-          materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
-          products: warehouseKind === 'san_pham' ? weightCatalog : []
+            slipCode: savedSlipCode,
+            slipType: printSlipType,
+            warehouseKind,
+            slipDate,
+            reason: savedReason,
+            note: note.trim(),
+            createdBy: createdBy.trim(),
+            productionOrderRef: productionOrderLabel,
+            machine: machine.trim(),
+            shift: shiftLabel,
+            recipient: recipient.trim(),
+            deliverer: deliverer.trim(),
+            warehouseLocation: warehouseLocation.trim(),
+            warehouseName: warehouseName.trim(),
+            materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
+            products: warehouseKind === 'san_pham' ? weightCatalog : []
         })
       );
       setPrintAutoTrigger(true);
       setPrintModalOpen(true);
       const okMsg = isEditing
         ? `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Xem tại Lịch sử xuất nhập kho.`
-        : savedQrLabels.length > 0
-          ? `Đã lưu phiếu ${savedSlipCode} và sinh ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
-          : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
+        : isXuatTreoFlow
+          ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
+          : savedQrLabels.length > 0
+            ? `Đã lưu phiếu ${savedSlipCode} và sinh ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
+            : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
       setActionMessage(okMsg);
       showAppToast(okMsg);
       if (reviewingDamagedReportKey) {
@@ -2025,105 +2052,123 @@ export function WarehouseSlipPanel({
     }
   };
 
+  const damagedReportsCardConfig =
+    slipType === 'nhap'
+      ? {
+          mode: 'nhap' as const,
+          title: 'Báo cáo hàng hỏng chờ nhập kho',
+          subtitle: 'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu. Chưa lưu thì tồn kho chưa thay đổi.',
+          emptyText: 'Không có báo cáo hàng hỏng nào đang chờ nhập kho.'
+        }
+      : slipType === 'xuat' && isXuatTreoMode
+        ? {
+            mode: 'xuat_treo' as const,
+            title: 'Báo cáo hàng hỏng chờ xuất kho',
+            subtitle:
+              'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu xuất kho treo. Bấm Lưu để tạo ngay phiếu xuất chính thức.',
+            emptyText: 'Không có báo cáo hàng hỏng nào đang chờ xuất kho.'
+          }
+        : null;
+
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-        <div className="border-b border-slate-200 bg-white p-4 text-slate-700">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
+      {damagedReportsCardConfig && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+          <div className="border-b border-slate-200 bg-white p-4 text-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="h-5 w-5 text-[#ef1b2d]" />
+                  <h2 className="text-base font-black text-slate-900">{damagedReportsCardConfig.title}</h2>
+                  {!isLoadingDamagedReports && (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">
+                      {pendingDamagedReports.length}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs font-medium text-slate-500">{damagedReportsCardConfig.subtitle}</p>
+              </div>
               <div className="flex items-center gap-2">
-                <ClipboardCheck className="h-5 w-5 text-[#ef1b2d]" />
-                <h2 className="text-base font-black text-slate-900">Báo cáo hàng hỏng chờ nhập kho</h2>
-                {!isLoadingDamagedReports && (
-                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">
-                    {pendingDamagedReports.length}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => void loadPendingDamagedReports()}
+                  disabled={isLoadingDamagedReports}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
+                >
+                  <Loader2 className={`h-3.5 w-3.5 ${isLoadingDamagedReports ? 'animate-spin' : ''}`} />
+                  Tải lại
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenHistory}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+                >
+                  <History className="h-4 w-4" />
+                  Lịch sử
+                </button>
               </div>
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu. Chưa lưu thì tồn kho chưa thay đổi.
-              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void loadPendingDamagedReports()}
-                disabled={isLoadingDamagedReports}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
-              >
-                <Loader2 className={`h-3.5 w-3.5 ${isLoadingDamagedReports ? 'animate-spin' : ''}`} />
-                Tải lại
-              </button>
-              <button
-                type="button"
-                onClick={onOpenHistory}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
-              >
-                <History className="h-4 w-4" />
-                Lịch sử
-              </button>
-            </div>
-          </div>
 
-          <div className="mt-3">
-            {isLoadingDamagedReports ? (
-              <div className="flex h-16 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải danh sách báo cáo...
-              </div>
-            ) : damagedReportsError ? (
-              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-bold text-rose-700">
-                {damagedReportsError}
-              </p>
-            ) : pendingDamagedReports.length === 0 ? (
-              <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
-                Không có báo cáo hàng hỏng nào đang chờ nhập kho.
-              </div>
-            ) : (
-              <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
-                {pendingDamagedReports.map(report => {
-                  const isReviewing = reviewingDamagedReportKey === report.key;
-                  return (
-                    <div
-                      key={report.key}
-                      className={`rounded-xl border p-3 transition ${
-                        isReviewing ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-slate-900">{report.documentNo}</p>
-                          <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                            {report.productionDate || report.reportDate || 'Chưa có ngày'}
-                            {report.shift ? ` · ${report.shift}` : ''}
-                          </p>
+            <div className="mt-3">
+              {isLoadingDamagedReports ? (
+                <div className="flex h-16 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tải danh sách báo cáo...
+                </div>
+              ) : damagedReportsError ? (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-bold text-rose-700">
+                  {damagedReportsError}
+                </p>
+              ) : pendingDamagedReports.length === 0 ? (
+                <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
+                  {damagedReportsCardConfig.emptyText}
+                </div>
+              ) : (
+                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
+                  {pendingDamagedReports.map(report => {
+                    const isReviewing = reviewingDamagedReportKey === report.key;
+                    return (
+                      <div
+                        key={report.key}
+                        className={`rounded-xl border p-3 transition ${
+                          isReviewing ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-900">{report.documentNo}</p>
+                            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                              {report.productionDate || report.reportDate || 'Chưa có ngày'}
+                              {report.shift ? ` · ${report.shift}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleReviewDamagedReport(report, damagedReportsCardConfig.mode)}
+                            className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
+                              isReviewing
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-[#ef1b2d] text-white hover:bg-[#d91526]'
+                            }`}
+                          >
+                            {isReviewing ? 'Đang kiểm tra' : 'Kiểm tra'}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleReviewDamagedReport(report)}
-                          className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
-                            isReviewing
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-[#ef1b2d] text-white hover:bg-[#d91526]'
-                          }`}
-                        >
-                          {isReviewing ? 'Đang kiểm tra' : 'Kiểm tra'}
-                        </button>
+                        <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                          <span className="truncate text-slate-600">Người báo: <b>{report.weigher || '—'}</b></span>
+                          <span className="truncate text-slate-600">Máy: <b>{report.machine || '—'}</b></span>
+                          <span className="col-span-2 text-slate-600">
+                            {report.items.length} dòng vật tư · {report.items.map(item => `${item.name}: ${formatNumber(item.quantity)} ${item.unit}`).join('; ')}
+                          </span>
+                        </div>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                        <span className="truncate text-slate-600">Người báo: <b>{report.weigher || '—'}</b></span>
-                        <span className="truncate text-slate-600">Máy: <b>{report.machine || '—'}</b></span>
-                        <span className="col-span-2 text-slate-600">
-                          {report.items.length} dòng vật tư · {report.items.map(item => `${item.name}: ${formatNumber(item.quantity)} ${item.unit}`).join('; ')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {(formError || actionMessage) && (
         <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
@@ -2152,30 +2197,37 @@ export function WarehouseSlipPanel({
             <div>
               <p className="text-xs font-black uppercase tracking-wide text-zinc-700">Loại phiếu</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {([
-                ['nhap', 'Nhập kho', ArrowDownToLine],
-                ['xuat', 'Xuất kho', ArrowUpFromLine]
-              ] as const).map(([type, label, Icon]) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => {
-                    setSlipType(type);
-                    if (type === 'xuat') {
-                      setLines(current => reorderExportLinesKgFirst(current));
-                    }
-                  }}
-                  className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition ${
-                    slipType === type
-                      ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                      : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </button>
-              ))}
+                { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const, treoMode: false },
+                { key: 'xuat_treo', label: 'Xuất kho treo', Icon: Clock, slipType: 'xuat' as const, treoMode: true },
+                { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const, treoMode: false }
+              ] as const).map(option => {
+                const isActive = slipType === option.slipType && isXuatTreoMode === option.treoMode;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => {
+                      setSlipType(option.slipType);
+                      setIsXuatTreoMode(option.treoMode);
+                      if (option.slipType === 'xuat') {
+                        setLines(current => reorderExportLinesKgFirst(current));
+                      }
+                    }}
+                    className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
+                      isActive
+                        ? option.treoMode
+                          ? 'border-amber-400 bg-amber-50 text-amber-700'
+                          : 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                        : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
+                    }`}
+                  >
+                    <option.Icon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -2233,7 +2285,8 @@ export function WarehouseSlipPanel({
         <div className="flex items-center gap-2 border-b border-zinc-100 pb-1.5">
           <p className="text-sm font-black text-zinc-950">Thông tin phiếu</p>
           <p className="text-xs font-semibold text-zinc-400">
-            {warehouseSlipTypeLabel(slipType)} · {warehouseName || warehouseKindLabel(warehouseKind)}
+            {slipType === 'xuat' && isXuatTreoMode ? 'Xuất kho treo' : warehouseSlipTypeLabel(slipType)} ·{' '}
+            {warehouseName || warehouseKindLabel(warehouseKind)}
           </p>
         </div>
 
@@ -2717,7 +2770,9 @@ export function WarehouseSlipPanel({
                   : 'Đang lưu...'
                 : editSlipCode
                   ? `Cập nhật phiếu ${editSlipCode}`
-                  : `Lưu & in phiếu ${warehouseSlipTypeLabel(slipType).toLowerCase()}`}
+                  : slipType === 'xuat' && isXuatTreoMode
+                    ? 'Lưu phiếu xuất kho treo'
+                    : `Lưu & in phiếu ${warehouseSlipTypeLabel(slipType).toLowerCase()}`}
             </button>
           ) : null}
         </div>

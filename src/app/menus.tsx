@@ -222,6 +222,12 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: ClipboardList,
     icon3d: reportList3d,
     tab: 'kiem-kho'
+  },
+  {
+    title: 'Phiếu giao ca',
+    desc: 'Bàn giao tình hình sản xuất, tình trạng máy và sự cố tồn đọng giữa ca ngày/đêm.',
+    icon: ArrowLeftRight,
+    tab: 'shift-handover-report'
   }
 ];
 
@@ -371,6 +377,12 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     icon: Activity,
     icon3d: notebookCover3d,
     tab: 'machine-run-log-list'
+  },
+  {
+    title: 'Danh sách phiếu giao ca',
+    desc: 'Xem các phiếu bàn giao ca đã lưu và việc bàn giao chưa xử lý.',
+    icon: ArrowLeftRight,
+    tab: 'shift-handover-list'
   }
 ];
 
@@ -1026,6 +1038,8 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'acceptance-report': { group: 'Công nhân', sub: 'Phiếu nghiệm thu' },
   'machine-downtime-report': { group: 'Công nhân', sub: 'Báo cáo máy dừng' },
   'machine-downtime-list': { group: 'Quản Đốc', sub: 'DS máy dừng' },
+  'shift-handover-report': { group: 'Công nhân', sub: 'Phiếu giao ca' },
+  'shift-handover-list': { group: 'Quản Đốc', sub: 'DS phiếu giao ca' },
   'machine-run-log': { group: 'Công nhân', sub: 'Nhật ký chạy máy' },
   'machine-run-log-list': { group: 'Quản Đốc', sub: 'DS nhật ký chạy máy' },
   'production-plan-history': { group: 'Quản Đốc', sub: 'Kế hoạch sản xuất' },

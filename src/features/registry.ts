@@ -34,6 +34,7 @@ export type TableId =
   | 'bao_cao_nghiem_thu'
   | 'bao_cao_may_nvl_ton'
   | 'phieu_bao_dung_may'
+  | 'phieu_giao_ca'
   | 'nhat_ky_chay_may'
   | 'control_board';
 
@@ -421,6 +422,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'machine-downtime-report | machine-downtime-list',
     appLines: 'src/components/MachineDowntimeReportPanel.tsx',
     components: ['src/components/MachineDowntimeReportPanel.tsx', 'src/components/MachineDowntimeReportListView.tsx', 'src/components/MachineDowntimePrintSheet.tsx', 'src/components/icons/MachineDowntimeIcon.tsx'],
+    utils: []
+  },
+  phieu_giao_ca: {
+    table: 'phieu_giao_ca',
+    label: 'Phiếu giao ca',
+    sql: ['supabase-phieu-giao-ca.sql'],
+    apiPrefix: '/api/phieu-giao-ca',
+    serverLines: 'sau /api/phieu-bao-dung-may',
+    appTab: 'shift-handover-report | shift-handover-list',
+    appLines: 'src/components/ShiftHandoverPanel.tsx',
+    components: ['src/components/ShiftHandoverPanel.tsx', 'src/components/ShiftHandoverListView.tsx', 'src/components/ShiftHandoverPrintSheet.tsx'],
     utils: []
   },
   nhat_ky_chay_may: {

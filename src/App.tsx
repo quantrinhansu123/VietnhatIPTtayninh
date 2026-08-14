@@ -33,6 +33,8 @@ import { normalizeMixingReport } from './lib/mixingReportModel';
 import type { MixingReport } from './components/MixingReportForm';
 import MachineDowntimeReportPanel from './components/MachineDowntimeReportPanel';
 import MachineDowntimeReportListView from './components/MachineDowntimeReportListView';
+import ShiftHandoverPanel from './components/ShiftHandoverPanel';
+import ShiftHandoverListView from './components/ShiftHandoverListView';
 import MachineRunLogPanel from './components/MachineRunLogPanel';
 import AppToastHost from './components/AppToastHost';
 import { AppTab, pathFromTab, tabFromPath, isWeighingFormPath, isWeighingListPath } from './routes';
@@ -1269,6 +1271,29 @@ export default function App() {
                 <MachineDowntimeReportListView
                   onBack={() => goBack('report-lists')}
                   onCreate={() => navigateToTab('machine-downtime-report')}
+                />
+              </motion.div>
+            ) : activeTab === 'shift-handover-report' ? (
+              <motion.div
+                key="shift-handover-report"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <ShiftHandoverPanel onBack={() => goBack('report-forms')} />
+              </motion.div>
+            ) : activeTab === 'shift-handover-list' ? (
+              <motion.div
+                key="shift-handover-list"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <ShiftHandoverListView
+                  onBack={() => goBack('report-lists')}
+                  onCreate={() => navigateToTab('shift-handover-report')}
                 />
               </motion.div>
             ) : activeTab === 'machine-run-log' ? (

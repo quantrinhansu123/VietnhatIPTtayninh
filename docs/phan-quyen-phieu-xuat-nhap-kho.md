@@ -62,6 +62,7 @@ Quyền **Xem/Thêm/Sửa/Xóa** đều tách theo loại kho. Hai route `/phieu
    - `WarehouseSlipPanel` (form tạo/sửa phiếu): `canCreate/canEdit/canDelete` giờ phụ thuộc `warehouseKind` hiện tại của form (đổi theo "Tên kho" đang chọn).
    - `WarehouseHistoryPanel` (lịch sử xuất nhập): `canCreate/canEdit/canDelete` phụ thuộc `warehouseTab` (tab loại kho đang xem) — nút Sửa/Xóa từng dòng, nút "+ Thêm phiếu", bulk-delete đều theo đúng tab đang mở.
    - Dropdown **Tên kho** khi tạo phiếu chỉ hiện các kho mà người dùng có quyền **Thêm** tương ứng (vật tư/thành phẩm) — nhân viên vật tư sẽ không thấy/tạo nhầm phiếu kho thành phẩm và ngược lại. Có thông báo riêng khi danh sách rỗng vì thiếu quyền (khác với thông báo "chưa có tên kho" khi danh mục kho trống).
+   - Tab **Xuất kho treo** dùng quyền **Thêm** của nhóm kho tương ứng. Bấm Lưu tạo ngay phiếu xuất chính thức; thao tác Sửa/Xóa sau đó thực hiện tại Lịch sử xuất nhập kho theo quyền hiện có.
 
 4. **`docs/ai-tables/phieu_xuat_nhap_kho.md`** — đã bổ sung mục "Phân quyền theo loại kho" mô tả lại thiết kế này.
 

@@ -753,6 +753,11 @@ input[type="number"] {
     margin: 8mm;
   }
 
+  @page warehouse-slip-page {
+    size: A4 landscape;
+    margin: 5mm;
+  }
+
   @page shift-summary-page {
     size: A4 landscape;
     margin: 5mm;
@@ -3574,6 +3579,10 @@ input[type="number"] {
   white-space: nowrap;
 }
 
+.shift-handover-print-signatures {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .machine-run-log-print-form-code {
   margin-left: auto;
   text-align: right;
@@ -4060,13 +4069,17 @@ input[type="number"] {
     display: block !important;
     position: relative;
     inset: auto;
-    width: auto;
+    page: warehouse-slip-page;
+    width: 100% !important;
+    max-width: none !important;
     background: #ffffff;
     padding: 0;
   }
 
   .warehouse-slip-print-batch .warehouse-slip-print-doc {
-    width: 190mm;
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
   }

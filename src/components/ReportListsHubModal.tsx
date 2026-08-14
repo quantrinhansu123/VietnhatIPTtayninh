@@ -8,6 +8,7 @@ import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import AcceptanceReportListView from './AcceptanceReportListView';
 import MachineDowntimeReportListView from './MachineDowntimeReportListView';
+import ShiftHandoverListView from './ShiftHandoverListView';
 import MachineNvlReportListView from './MachineNvlReportListView';
 import MachineRunLogPanel from './MachineRunLogPanel';
 import MixingReportListView from './MixingReportListView';
@@ -258,6 +259,14 @@ export default function ReportListsHubModal({
             />
           ) : null}
           {activeTab === 'machine-run-log-list' ? <MachineRunLogPanel onBack={onClose} /> : null}
+          {activeTab === 'shift-handover-list' ? (
+            <ShiftHandoverListView
+              key={panelKey}
+              initialFilters={hubFilters}
+              onBack={onClose}
+              onCreate={() => goAndClose('shift-handover-report')}
+            />
+          ) : null}
         </div>
       </div>
     </div>,

@@ -28,7 +28,8 @@ alter table public.phieu_xuat_nhap_kho
   add column if not exists ten_sp text,
   add column if not exists so_luong_chung_tu numeric,
   add column if not exists id_dong_nhap_nguon uuid,
-  add column if not exists ma_phieu_nhap_nguon text;
+  add column if not exists ma_phieu_nhap_nguon text,
+  add column if not exists can_cu_bao_cao text;
 
 create index if not exists phieu_xuat_nhap_kho_ma_phieu_idx on public.phieu_xuat_nhap_kho (ma_phieu);
 create index if not exists phieu_xuat_nhap_kho_ngay_phieu_idx on public.phieu_xuat_nhap_kho (ngay_phieu desc);
@@ -71,3 +72,5 @@ comment on column public.phieu_xuat_nhap_kho.id_dong_nhap_nguon is
   'Id dong phieu nhap NVL ma dong xuat nay tru ton. Null voi nhap hoac xuat cu.';
 comment on column public.phieu_xuat_nhap_kho.ma_phieu_nhap_nguon is
   'Ma phieu nhap nguon (de in/hien thi nhanh).';
+comment on column public.phieu_xuat_nhap_kho.can_cu_bao_cao is
+  'Ma/so bao cao nguon dung lam can cu lap phieu xuat nhap kho.';

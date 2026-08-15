@@ -4,7 +4,7 @@
 | **Tab** | `production-plan-history` → `/ke-hoach-san-xuat` |
 | **SQL** | `supabase-ke-hoach-sx.sql`, `supabase-ke-hoach-san-xuat.sql` |
 
-**API:** `server.ts` 4200–4360 — `GET/PUT /api/ke-hoach-sx`  
+**API:** `server.ts` 6842–7070 — `GET/PUT /api/ke-hoach-sx`
 **UI:** `src/features/ke-hoach-san-xuat/` (+ lịch sử/shell trong `src/App.tsx` nếu còn)  
 **Components:** `ProductionPlanNvlPrintSheet.tsx`, `ControlBoardShiftSummaryTable.tsx`  
 **Utils:** `controlBoardShiftSummary.ts`, `controlBoardShiftSummaryDetails.ts`

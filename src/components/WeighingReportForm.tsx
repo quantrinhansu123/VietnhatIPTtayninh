@@ -6,7 +6,7 @@ import {
   convertWarehouseQuantityToKg,
   mapMaterialToWeightCatalogItem
 } from '../utils/warehouseWeight';
-import SearchableSelect from './SearchableSelect';
+import { SearchableSelect } from './shared/SearchableSelect';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
@@ -69,6 +69,7 @@ import {
   getProductionShiftOptions,
   normalizeShiftSettings,
   shiftNamesMatch,
+  type ShiftOption,
   type ShiftSetting
 } from '../utils/shiftSettings';
 import {
@@ -359,21 +360,96 @@ function normalizeMachines(data: unknown): MachineOption[] {
     .filter((item): item is MachineOption => Boolean(item));
 }
 
+function ShiftSelect({
+  value,
+  onChange,
+  options,
+  className,
+  comboboxMode = false
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: ShiftOption[];
+  className?: string;
+  comboboxMode?: boolean;
+}) {
+  const availableOptions = useMemo(() => {
+    if (!value || options.some(option => option.value === value)) return options;
+    return [{ value, label: value }, ...options];
+  }, [options, value]);
+
+  if (comboboxMode) {
+    return (
+      <SearchableSelect
+        value={value}
+        onChange={onChange}
+        options={availableOptions}
+        placeholder="Chọn ca"
+        searchPlaceholder="Tìm ca sản xuất..."
+        inputClassName={className}
+        comboboxMode
+        getValue={item => (item as ShiftOption).value}
+        getLabel={item => (item as ShiftOption).label}
+        getSearchText={item => {
+          const shift = item as ShiftOption;
+          return `${shift.value} ${shift.label}`;
+        }}
+      />
+    );
+  }
+
+  return (
+    <select value={value} onChange={event => onChange(event.target.value)} className={className}>
+      <option value="">Chọn ca</option>
+      {availableOptions.map(option => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  );
+}
+
 function MachineSelect({
   value,
   onChange,
   machines,
   isLoading,
-  className
+  className,
+  comboboxMode = false
 }: {
   value: string;
   onChange: (value: string) => void;
   machines: MachineOption[];
   isLoading?: boolean;
   className?: string;
+  comboboxMode?: boolean;
 }) {
   const machineNames = useMemo(() => new Set(machines.map(machine => machine.name)), [machines]);
   const selectedValue = !isLoading && value && machineNames.has(value) ? value : '';
+
+  if (comboboxMode) {
+    return (
+      <SearchableSelect
+        value={selectedValue}
+        onChange={onChange}
+        options={machines}
+        placeholder="Chọn tên máy"
+        searchPlaceholder="Tìm mã hoặc tên máy..."
+        isLoading={isLoading}
+        disabled={isLoading || machines.length === 0}
+        inputClassName={className}
+        comboboxMode
+        getValue={item => (item as MachineOption).name}
+        getLabel={item => {
+          const machine = item as MachineOption;
+          return machine.code ? `${machine.code} · ${machine.name}` : machine.name;
+        }}
+        getSearchText={item => {
+          const machine = item as MachineOption;
+          return `${machine.code} ${machine.name}`.trim();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="relative">
@@ -429,7 +505,8 @@ function StaffSelect({
   staff,
   isLoading,
   placeholder,
-  className
+  className,
+  comboboxMode = false
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -437,9 +514,28 @@ function StaffSelect({
   isLoading?: boolean;
   placeholder: string;
   className?: string;
+  comboboxMode?: boolean;
 }) {
   const staffNames = useMemo(() => new Set(staff.map(person => person.name)), [staff]);
   const selectedValue = !isLoading && value && staffNames.has(value) ? value : '';
+
+  if (comboboxMode) {
+    return (
+      <SearchableSelect
+        value={selectedValue}
+        onChange={onChange}
+        options={staff}
+        placeholder={placeholder}
+        searchPlaceholder={`Tìm ${placeholder.toLowerCase()}...`}
+        isLoading={isLoading}
+        disabled={isLoading || staff.length === 0}
+        inputClassName={className}
+        comboboxMode
+        getValue={item => (item as StaffOption).name}
+        getLabel={item => (item as StaffOption).name}
+      />
+    );
+  }
 
   return (
     <div className="relative">
@@ -2558,6 +2654,7 @@ export default function WeighingReportForm({
                   isLoading={isLoadingStaff}
                   placeholder="Chọn người nhập liệu"
                   className={modalInputClass}
+                  comboboxMode={splitDamagedPlasticDefectWeights}
                 />
               </label>
               {!showSlipFields && !editingRow && modalSlipInfo && (
@@ -2588,20 +2685,13 @@ export default function WeighingReportForm({
                       <FileText className="h-3.5 w-3.5 text-[#ef1b2d]" />
                       Ca SX
                     </span>
-                    <select
+                    <ShiftSelect
                       value={newRow.shiftName}
-                      onChange={e => changeProductionContext('shiftName', e.target.value)}
+                      onChange={value => changeProductionContext('shiftName', value)}
+                      options={shiftOptions}
                       className={modalInputClass}
-                    >
-                      <option value="">Chọn ca</option>
-                      {newRow.shiftName &&
-                        !shiftOptions.some(shift => shift.value === newRow.shiftName) && (
-                          <option value={newRow.shiftName}>{newRow.shiftName}</option>
-                        )}
-                      {shiftOptions.map(shift => (
-                        <option key={shift.value} value={shift.value}>{shift.label}</option>
-                      ))}
-                    </select>
+                      comboboxMode={splitDamagedPlasticDefectWeights}
+                    />
                   </label>
                   {modalSlipInfo && (
                     <div className="col-span-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[11px] font-semibold text-zinc-600">
@@ -2629,16 +2719,13 @@ export default function WeighingReportForm({
                   <FileText className="h-3.5 w-3.5 text-[#ef1b2d]" />
                   Ca SX
                 </span>
-                <select
+                <ShiftSelect
                   value={newRow.shiftName}
-                  onChange={e => changeProductionContext('shiftName', e.target.value)}
+                  onChange={value => changeProductionContext('shiftName', value)}
+                  options={shiftOptions}
                   className={modalInputClass}
-                >
-                  <option value="">Chọn ca</option>
-                  {shiftOptions.map(shift => (
-                    <option key={shift.value} value={shift.value}>{shift.label}</option>
-                  ))}
-                </select>
+                  comboboxMode={splitDamagedPlasticDefectWeights}
+                />
               </label>
               <label className="field-cell col-span-2">
                 <span className={`flex items-center gap-1 ${modalLabelClass}`}>
@@ -2651,6 +2738,7 @@ export default function WeighingReportForm({
                   machines={machines}
                   isLoading={isLoadingMachines}
                   className={modalInputClass}
+                  comboboxMode={splitDamagedPlasticDefectWeights}
                 />
                 {machinesError && (
                   <p className="text-[11px] font-bold text-rose-600">{machinesError}</p>
@@ -2684,6 +2772,8 @@ export default function WeighingReportForm({
                   isLoading={isLoadingProductionOrders}
                   disabled={isLoadingProductionOrders}
                   inputClassName={modalInputClass}
+                  comboboxMode={splitDamagedPlasticDefectWeights}
+                  searchPlaceholder="Tìm lệnh sản xuất..."
                   getValue={item => (item as MixingProductionOrder).orderCode}
                   getLabel={item => {
                     const order = item as MixingProductionOrder;
@@ -2718,6 +2808,7 @@ export default function WeighingReportForm({
                       isLoading={isLoadingStaff}
                       placeholder="CN 1"
                       className={modalInputClass}
+                      comboboxMode={splitDamagedPlasticDefectWeights}
                     />
                   </label>
                   <label className="field-cell">
@@ -2732,6 +2823,7 @@ export default function WeighingReportForm({
                       isLoading={isLoadingStaff}
                       placeholder="CN 2"
                       className={modalInputClass}
+                      comboboxMode={splitDamagedPlasticDefectWeights}
                     />
                   </label>
                 </>
@@ -2794,6 +2886,8 @@ export default function WeighingReportForm({
                       isLoading={isOtherOrderSelected ? isLoadingMaterials : isLoadingProductionOrders}
                       disabled={productCodeSelectDisabled}
                       inputClassName={modalInputClass}
+                      comboboxMode={splitDamagedPlasticDefectWeights}
+                      searchPlaceholder="Tìm mã hoặc tên sản phẩm..."
                       getValue={item => (item as ProductOption).productCode}
                       getLabel={item => {
                         const product = item as ProductOption;
@@ -2905,10 +2999,10 @@ export default function WeighingReportForm({
                           <span className={modalCompactLabelClass}>
                             Loại vật tư <span className="text-[#ef1b2d]">*</span>
                           </span>
-                          <select
+                          <SearchableSelect
                             value={line.materialKind}
-                            onChange={e => {
-                              const materialKind = e.target.value as DamagedDraftLine['materialKind'];
+                            onChange={value => {
+                              const materialKind = value as DamagedDraftLine['materialKind'];
                               if (materialKind === 'vat_tu_khac') {
                                 updateDamagedDraftLine(line.key, {
                                   materialKind,
@@ -2926,42 +3020,38 @@ export default function WeighingReportForm({
                                 materialUnit: line.materialUnit?.trim() || 'kg'
                               });
                             }}
-                            className={modalInputClass}
-                            required
-                          >
-                            <option value="">-- Chọn loại --</option>
-                            {DAMAGED_GOODS_KIND_OPTIONS.map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                            options={[...DAMAGED_GOODS_KIND_OPTIONS]}
+                            placeholder="Chọn loại vật tư"
+                            searchPlaceholder="Tìm loại vật tư..."
+                            inputClassName={modalInputClass}
+                            comboboxMode
+                            getValue={item => (item as (typeof DAMAGED_GOODS_KIND_OPTIONS)[number]).value}
+                            getLabel={item => (item as (typeof DAMAGED_GOODS_KIND_OPTIONS)[number]).label}
+                          />
                         </label>
                         {line.materialKind === 'nhua' ? (
                           <label className="field-cell sm:col-span-2">
                             <span className={modalCompactLabelClass}>
                               Trạng thái vật tư <span className="text-[#ef1b2d]">*</span>
                             </span>
-                            <select
+                            <SearchableSelect
                               value={line.materialType === 'vat_tu_khac' ? '' : line.materialType}
-                              onChange={e => {
+                              onChange={value => {
                                 updateDamagedDraftLine(line.key, {
-                                  materialType: e.target.value,
+                                  materialType: value,
                                   materialCode: '',
                                   weight: '',
                                   materialUnit: line.materialUnit?.trim() || 'kg'
                                 });
                               }}
-                              className={modalInputClass}
-                              required
-                            >
-                              <option value="">-- Chọn trạng thái --</option>
-                              {DAMAGED_GOODS_PLASTIC_STATUS_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                              options={DAMAGED_GOODS_PLASTIC_STATUS_OPTIONS}
+                              placeholder="Chọn trạng thái"
+                              searchPlaceholder="Tìm trạng thái vật tư..."
+                              inputClassName={modalInputClass}
+                              comboboxMode
+                              getValue={item => (item as (typeof DAMAGED_GOODS_PLASTIC_STATUS_OPTIONS)[number]).value}
+                              getLabel={item => (item as (typeof DAMAGED_GOODS_PLASTIC_STATUS_OPTIONS)[number]).label}
+                            />
                           </label>
                         ) : null}
                         {line.materialKind === 'vat_tu_khac' ? (
@@ -3001,6 +3091,8 @@ export default function WeighingReportForm({
                               isLoading={isLoadingMaterials}
                               disabled={isLoadingMaterials}
                               inputClassName={modalInputClass}
+                              comboboxMode
+                              searchPlaceholder="Tìm mã hoặc tên vật tư..."
                               getValue={item => (item as MaterialOption).code}
                               getLabel={item => {
                                 const material = item as MaterialOption;
@@ -3008,7 +3100,7 @@ export default function WeighingReportForm({
                                   ? `${material.code} — ${material.name}`
                                   : material.code;
                               }}
-                              getDisplayLabel={item => (item as MaterialOption).code}
+                              displaySelectedAsValue
                               getSearchText={item => {
                                 const material = item as MaterialOption;
                                 return `${material.code} ${material.name || ''}`;
@@ -3029,20 +3121,18 @@ export default function WeighingReportForm({
                           <span className={modalCompactLabelClass}>
                             Đơn vị <span className="text-[#ef1b2d]">*</span>
                           </span>
-                          <select
+                          <SearchableSelect
                             value={line.materialUnit || 'kg'}
-                            onChange={e =>
-                              updateDamagedDraftLine(line.key, { materialUnit: e.target.value })
-                            }
-                            className={modalInputClass}
-                            required
-                          >
-                            {DAMAGED_GOODS_UNIT_OPTIONS.map(unit => (
-                              <option key={unit} value={unit}>
-                                {unit}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={materialUnit => updateDamagedDraftLine(line.key, { materialUnit })}
+                            options={[...DAMAGED_GOODS_UNIT_OPTIONS]}
+                            placeholder="Chọn đơn vị"
+                            searchPlaceholder="Tìm đơn vị..."
+                            inputClassName={modalInputClass}
+                            comboboxMode
+                            allowEmpty={false}
+                            getValue={item => String(item)}
+                            getLabel={item => String(item)}
+                          />
                         </label>
                         <label className="field-cell">
                           <span className={modalCompactLabelClass}>

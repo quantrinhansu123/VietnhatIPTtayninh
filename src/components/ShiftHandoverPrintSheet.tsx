@@ -35,8 +35,8 @@ function formatPrintDate(iso: string) {
 
 export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip }) {
   return (
-    <div className="production-order-print-sheet">
-      <div className="production-order-print-doc">
+    <div className="production-order-print-sheet shift-handover-print-sheet">
+      <div className="production-order-print-doc shift-handover-print-doc">
         <header className="production-order-print-letterhead">
           <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="production-order-print-logo" />
           <div className="production-order-print-company">
@@ -51,7 +51,7 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
           <span>Ngày: {formatPrintDate(slip.date)}</span>
         </div>
 
-        <table className="production-order-print-grid-table production-order-print-params-table">
+        <table className="production-order-print-grid-table production-order-print-params-table shift-handover-print-info-table">
           <thead>
             <tr>
               <th>Ca giao</th>
@@ -72,7 +72,7 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
           </tbody>
         </table>
 
-        <table className="production-order-print-grid-table production-order-print-params-table">
+        <table className="production-order-print-grid-table production-order-print-params-table shift-handover-print-summary-table">
           <thead>
             <tr>
               <th>Tình hình sản xuất trong ca</th>
@@ -92,7 +92,7 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
         </table>
 
         <h2 className="production-order-print-section-title">Công việc / sự cố bàn giao</h2>
-        <table className="production-order-print-grid-table">
+        <table className="production-order-print-grid-table shift-handover-print-details-table">
           <thead>
             <tr>
               <th>STT</th>
@@ -149,9 +149,9 @@ export function ShiftHandoverPrintBatch({ slips }: { slips: ShiftHandoverPrintSl
   if (slips.length === 0) return null;
 
   return (
-    <div className="production-order-print-batch">
+    <div className="production-order-print-batch shift-handover-print-batch">
       {slips.map((slip, index) => (
-        <div key={`${slip.slipCode}-${index}`} className="production-order-print-page">
+        <div key={`${slip.slipCode}-${index}`} className="production-order-print-page shift-handover-print-page">
           <ShiftHandoverPrintSheet slip={slip} />
         </div>
       ))}

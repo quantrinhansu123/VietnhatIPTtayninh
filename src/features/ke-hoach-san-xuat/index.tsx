@@ -314,6 +314,23 @@ export function enrichProductionPlanLines(
   });
 }
 
+function findProductionOrderForPlanLine(
+  line: Pick<ProductionPlanLine, 'id' | 'code'>,
+  productionOrders: ProductionOrderRow[]
+): ProductionOrderRow | undefined {
+  const lineId = String(line.id || '').trim();
+  if (lineId) {
+    const byId = productionOrders.find(order => order.id === lineId);
+    if (byId) return byId;
+  }
+
+  const lineCode = String(line.code || '').trim().toLocaleLowerCase('vi');
+  if (!lineCode || lineCode === '-') return undefined;
+  return productionOrders.find(
+    order => String(order.code || '').trim().toLocaleLowerCase('vi') === lineCode
+  );
+}
+
 export type ProductionPlanPrintGroup = {
   machine: string;
   lines: ProductionPlanLine[];
@@ -2013,20 +2030,27 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       ]);
       if (!detailRes.ok || !orderRes.ok || !machineRes.ok) throw new Error('Không thể tải dữ liệu để sửa kế hoạch.');
       const historyLines = normalizeProductionPlanHistoryLines(detailData);
-      setCreateOrders(normalizeProductionOrders(orderData));
+      const normalizedOrders = normalizeProductionOrders(orderData);
+      setCreateOrders(normalizedOrders);
       setCreateMachines(normalizeMachines(machineData));
-      setEditLines(historyLines.map(line => ({
-        id: line.productionOrderId,
-        code: line.orderCode,
-        name: line.orderCode,
-        productCode: line.products[0]?.productCode || '',
-        productName: line.products[0]?.productName || '',
-        quantity: line.products[0]?.quantity || '',
-        unit: line.products[0]?.unit || '',
-        products: line.products,
-        status: '', orderRef: line.orderRef, position: line.machine !== '-' ? line.machine : line.position,
-        staff: line.staff, shift: line.shift, priority: line.priority, note: line.note
-      })));
+      setEditLines(historyLines.map(line => {
+        const sourceOrder = findProductionOrderForPlanLine(
+          { id: line.productionOrderId, code: line.orderCode },
+          normalizedOrders
+        );
+        return {
+          id: sourceOrder?.id || line.productionOrderId,
+          code: line.orderCode,
+          name: line.orderCode,
+          productCode: line.products[0]?.productCode || '',
+          productName: line.products[0]?.productName || '',
+          quantity: line.products[0]?.quantity || '',
+          unit: line.products[0]?.unit || '',
+          products: line.products,
+          status: '', orderRef: line.orderRef, position: line.machine !== '-' ? line.machine : line.position,
+          staff: line.staff, shift: line.shift, priority: line.priority, note: line.note
+        };
+      }));
       setEditingPlan(plan);
       setShowCreateModal(true);
     } catch (error: any) {
@@ -2991,7 +3015,7 @@ export function ProductionPlanModal({
   };
 
   const openProductionOrderEdit = async (line: ProductionPlanLine) => {
-    const sourceOrder = effectiveProductionOrders.find(order => order.id === line.id);
+    const sourceOrder = findProductionOrderForPlanLine(line, effectiveProductionOrders);
     if (!sourceOrder) {
       setFormError('Không tìm thấy lệnh sản xuất để sửa.');
       return;

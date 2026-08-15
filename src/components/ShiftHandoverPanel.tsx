@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeftRight,
   ChevronLeft,
   Loader2,
   Printer,
   Save,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 import {
   ShiftHandoverPrintBatch,
@@ -14,6 +16,7 @@ import {
 } from './ShiftHandoverPrintSheet';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
+import { SearchableSelect } from './shared/SearchableSelect';
 import { waitForPrintImagesReady } from '../utils/printReady';
 
 const fieldClass =
@@ -251,6 +254,18 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   const [printSlip, setPrintSlip] = useState<ShiftHandoverPrintSlip | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
 
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(''), 7000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   const selectedMachine = useMemo(() => {
     const ref = machineRef.trim();
     if (!ref) return null;
@@ -276,6 +291,12 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     const filtered = staffOptions.filter(member => shiftMatches(member.shift, shift));
     return filtered.length > 0 ? filtered : staffOptions;
   }, [staffOptions, shift]);
+
+  const receivedStaffOptions = useMemo(() => {
+    if (!nextShift) return staffOptions;
+    const filtered = staffOptions.filter(member => shiftMatches(member.shift, nextShift));
+    return filtered.length > 0 ? filtered : staffOptions;
+  }, [staffOptions, nextShift]);
 
   const loadSlips = async () => {
     const res = await fetch('/api/phieu-giao-ca?limit=50');
@@ -321,6 +342,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (!pendingPrint || !printSlip) return;
     let cancelled = false;
+    document.body.classList.add('shift-handover-print-active');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -331,16 +353,21 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.body.classList.remove('shift-handover-print-active');
     };
   }, [pendingPrint, printSlip]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
+      document.body.classList.remove('shift-handover-print-active');
       setPrintSlip(null);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
+    return () => {
+      document.body.classList.remove('shift-handover-print-active');
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
   }, []);
 
   const updateLine = (key: string, patch: Partial<HandoverLine>) => {
@@ -445,16 +472,20 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     const res = await fetch(`/api/phieu-giao-ca/${encodeURIComponent(id)}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      setMessage('');
       setError(data.error || 'Không thể xóa phiếu.');
       return;
     }
     setSlips(prev => prev.filter(slip => slip.id !== id));
+    setError('');
     setMessage('Đã xóa phiếu.');
   };
 
   return (
     <div className="flex h-full flex-col bg-zinc-50">
-      {printSlip && <ShiftHandoverPrintBatch slips={[printSlip]} />}
+      {printSlip && typeof document !== 'undefined'
+        ? createPortal(<ShiftHandoverPrintBatch slips={[printSlip]} />, document.body)
+        : null}
 
       <div className="border-b border-zinc-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -485,13 +516,31 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
             </div>
 
             {error && (
-              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                {error}
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                <span className="min-w-0">{error}</span>
+                <button
+                  type="button"
+                  onClick={() => setError('')}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-rose-500 transition hover:bg-rose-100 hover:text-rose-700"
+                  title="Đóng thông báo"
+                  aria-label="Đóng thông báo lỗi"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
             {message && (
-              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-                {message}
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                <span className="min-w-0">{message}</span>
+                <button
+                  type="button"
+                  onClick={() => setMessage('')}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-emerald-600 transition hover:bg-emerald-100 hover:text-emerald-800"
+                  title="Đóng thông báo"
+                  aria-label="Đóng thông báo thành công"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
 
@@ -502,51 +551,103 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Ca giao *
-                <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn ca</option>
-                  {shiftOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={shift}
+                    onChange={setShift}
+                    options={shiftOptions}
+                    placeholder="Chọn ca"
+                    searchPlaceholder="Tìm ca..."
+                    isLoading={isLoading}
+                    inputClassName={fieldClass}
+                    comboboxMode
+                    getValue={item => String(item)}
+                    getLabel={item => String(item)}
+                  />
+                </div>
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Ca nhận
-                <select value={nextShift} onChange={e => setNextShift(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn ca nhận</option>
-                  {shiftOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={nextShift}
+                    onChange={setNextShift}
+                    options={shiftOptions}
+                    placeholder="Chọn ca nhận"
+                    searchPlaceholder="Tìm ca nhận..."
+                    isLoading={isLoading}
+                    inputClassName={fieldClass}
+                    comboboxMode
+                    getValue={item => String(item)}
+                    getLabel={item => String(item)}
+                  />
+                </div>
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Máy / Chuyền
-                <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn máy (tuỳ chọn)</option>
-                  {machines.map(machine => (
-                    <option key={machine.id} value={machine.code}>
-                      {machine.code ? `${machine.code} · ${machine.name}` : machine.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={machineRef}
+                    onChange={setMachineRef}
+                    options={machines}
+                    placeholder="Chọn máy (tuỳ chọn)"
+                    searchPlaceholder="Tìm mã hoặc tên máy..."
+                    isLoading={isLoading}
+                    inputClassName={fieldClass}
+                    comboboxMode
+                    getValue={item => (item as MachineOption).code}
+                    getLabel={item => {
+                      const machine = item as MachineOption;
+                      return machine.code ? `${machine.code} · ${machine.name}` : machine.name;
+                    }}
+                    getSearchText={item => {
+                      const machine = item as MachineOption;
+                      return `${machine.code} ${machine.name}`.trim();
+                    }}
+                  />
+                </div>
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Người giao ca *
-                <select value={handoverBy} onChange={e => setHandoverBy(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn nhân sự</option>
-                  {filteredStaffOptions.map(staff => (
-                    <option key={staff.id} value={staff.name}>
-                      {staff.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={handoverBy}
+                    onChange={setHandoverBy}
+                    options={filteredStaffOptions}
+                    placeholder="Chọn nhân sự"
+                    searchPlaceholder="Tìm người giao ca..."
+                    isLoading={isLoading}
+                    inputClassName={fieldClass}
+                    comboboxMode
+                    getValue={item => (item as StaffOption).name}
+                    getLabel={item => (item as StaffOption).name}
+                    getSearchText={item => {
+                      const staff = item as StaffOption;
+                      return `${staff.name} ${staff.shift}`.trim();
+                    }}
+                  />
+                </div>
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Người nhận ca *
-                <input value={receivedBy} onChange={e => setReceivedBy(e.target.value)} className={`${fieldClass} mt-1`} placeholder="Tên người nhận ca" />
+                <div className="mt-1">
+                  <SearchableSelect
+                    value={receivedBy}
+                    onChange={setReceivedBy}
+                    options={receivedStaffOptions}
+                    placeholder="Chọn nhân sự"
+                    searchPlaceholder="Tìm người nhận ca..."
+                    isLoading={isLoading}
+                    inputClassName={fieldClass}
+                    comboboxMode
+                    getValue={item => (item as StaffOption).name}
+                    getLabel={item => (item as StaffOption).name}
+                    getSearchText={item => {
+                      const staff = item as StaffOption;
+                      return `${staff.name} ${staff.shift}`.trim();
+                    }}
+                  />
+                </div>
               </label>
             </div>
 
@@ -613,7 +714,22 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                       </select>
                     </div>
                     <div className="min-w-0 flex-[0.9]">
-                      <input value={line.assignee} onChange={e => updateLine(line.key, { assignee: e.target.value })} className={fieldClass} placeholder="Người phụ trách" />
+                      <SearchableSelect
+                        value={line.assignee}
+                        onChange={assignee => updateLine(line.key, { assignee })}
+                        options={staffOptions}
+                        placeholder="Người phụ trách"
+                        searchPlaceholder="Tìm người phụ trách..."
+                        isLoading={isLoading}
+                        inputClassName={fieldClass}
+                        comboboxMode
+                        getValue={item => (item as StaffOption).name}
+                        getLabel={item => (item as StaffOption).name}
+                        getSearchText={item => {
+                          const staff = item as StaffOption;
+                          return `${staff.name} ${staff.shift}`.trim();
+                        }}
+                      />
                     </div>
                     <div className="w-32 shrink-0">
                       <select value={line.status} onChange={e => updateLine(line.key, { status: e.target.value })} className={fieldClass}>
@@ -647,21 +763,12 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => handlePrint(buildCurrentPrintSlip())}
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-black text-zinc-700 transition hover:border-zinc-400 disabled:opacity-60"
-              >
-                <Printer className="h-4 w-4" />
-                In phiếu
-              </button>
-              <button
-                type="button"
                 onClick={saveSlip}
                 disabled={isSaving || isLoading}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#ef1b2d] px-5 py-2.5 text-sm font-black text-white shadow-sm disabled:opacity-60"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Lưu phiếu
+                {isSaving ? 'Đang lưu phiếu...' : 'Lưu và in phiếu'}
               </button>
             </div>
           </section>

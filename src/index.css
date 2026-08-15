@@ -763,6 +763,11 @@ input[type="number"] {
     margin: 5mm;
   }
 
+  @page shift-handover-page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
   @page bb-machine-report-page {
     size: A4 landscape;
     margin: 7mm;
@@ -2256,6 +2261,39 @@ input[type="number"] {
     overflow: visible !important;
     visibility: visible !important;
   }
+
+  body.shift-handover-print-active #root {
+    display: none !important;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-batch,
+  body.shift-handover-print-active .shift-handover-print-page,
+  body.shift-handover-print-active .shift-handover-print-sheet,
+  body.shift-handover-print-active .shift-handover-print-batch * {
+    visibility: visible !important;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-batch,
+  body.shift-handover-print-active .shift-handover-print-page,
+  body.shift-handover-print-active .shift-handover-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+    page: shift-handover-page;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-doc {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }
 
 .production-order-print-sheet {
@@ -2955,6 +2993,45 @@ input[type="number"] {
 
 .production-order-print-params-table th {
   text-align: center;
+}
+
+.shift-handover-print-info-table th:nth-child(1),
+.shift-handover-print-info-table td:nth-child(1) { width: 13%; }
+.shift-handover-print-info-table th:nth-child(2),
+.shift-handover-print-info-table td:nth-child(2) { width: 13%; }
+.shift-handover-print-info-table th:nth-child(3),
+.shift-handover-print-info-table td:nth-child(3) { width: 28%; }
+.shift-handover-print-info-table th:nth-child(4),
+.shift-handover-print-info-table td:nth-child(4) { width: 23%; }
+.shift-handover-print-info-table th:nth-child(5),
+.shift-handover-print-info-table td:nth-child(5) { width: 23%; }
+
+.shift-handover-print-summary-table th:nth-child(1),
+.shift-handover-print-summary-table td:nth-child(1) { width: 28%; }
+.shift-handover-print-summary-table th:nth-child(2),
+.shift-handover-print-summary-table td:nth-child(2) { width: 24%; }
+.shift-handover-print-summary-table th:nth-child(3),
+.shift-handover-print-summary-table td:nth-child(3) { width: 28%; }
+.shift-handover-print-summary-table th:nth-child(4),
+.shift-handover-print-summary-table td:nth-child(4) { width: 20%; }
+
+.shift-handover-print-details-table th:nth-child(1),
+.shift-handover-print-details-table td:nth-child(1) { width: 6%; }
+.shift-handover-print-details-table th:nth-child(2),
+.shift-handover-print-details-table td:nth-child(2) { width: 38%; }
+.shift-handover-print-details-table th:nth-child(3),
+.shift-handover-print-details-table td:nth-child(3) { width: 10%; }
+.shift-handover-print-details-table th:nth-child(4),
+.shift-handover-print-details-table td:nth-child(4) { width: 16%; }
+.shift-handover-print-details-table th:nth-child(5),
+.shift-handover-print-details-table td:nth-child(5) { width: 15%; }
+.shift-handover-print-details-table th:nth-child(6),
+.shift-handover-print-details-table td:nth-child(6) { width: 15%; }
+
+.shift-handover-print-details-table th,
+.shift-handover-print-details-table td {
+  padding: 1.6mm 1.5mm;
+  font-size: 10pt;
 }
 
 .production-order-print-signatures {

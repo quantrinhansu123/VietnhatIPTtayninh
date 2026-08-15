@@ -269,7 +269,7 @@ export function SearchableSelect({
       return createPortal(
         <div
           ref={menuRef}
-          className={`${dropdownPanelClass} overflow-hidden`}
+          className="fixed z-[200] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
           style={menuStyle}
         >
           {comboboxSearchable ? (
@@ -287,6 +287,17 @@ export function SearchableSelect({
             </div>
           ) : null}
           <div className={`${comboboxSearchable ? 'max-h-44' : 'max-h-52'} overflow-y-auto py-1`}>
+            {allowEmpty && !query.trim() ? (
+              <button
+                type="button"
+                onClick={() => commitValue('', null)}
+                className={`block w-full px-3 py-2.5 text-left text-sm transition hover:bg-red-50 ${
+                  value ? 'font-semibold text-zinc-500' : 'bg-red-50 font-black text-[#ef1b2d]'
+                }`}
+              >
+                {placeholder}
+              </button>
+            ) : null}
             {filteredOptions.length > 0 ? (
               filteredOptions.map((item, index) => {
                 const optionValue = getValue(item);

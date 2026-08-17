@@ -140,9 +140,9 @@ export function WeighingSlipPrintSheet({
               <td>{formatPrintDate(slip.reportDate)}</td>
             </tr>
             <tr>
-              <th>Công nhân 1</th>
+              <th>Sản xuất 1</th>
               <td>{slip.worker1 || '—'}</td>
-              <th>Công nhân 2</th>
+              <th>Sản xuất 2</th>
               <td>{slip.worker2 || '—'}</td>
             </tr>
             <tr>
@@ -284,11 +284,11 @@ export function WeighingSlipPrintSheet({
 
         <div className="weighing-slip-print-signatures">
           <div>
-            <p>Công nhân 1</p>
+            <p>Sản xuất 1</p>
             <span>(Ký, ghi rõ họ tên)</span>
           </div>
           <div>
-            <p>Công nhân 2</p>
+            <p>Sản xuất 2</p>
             <span>(Ký, ghi rõ họ tên)</span>
           </div>
           <div>

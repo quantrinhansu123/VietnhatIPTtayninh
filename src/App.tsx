@@ -961,7 +961,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
                 className="space-y-3"
               >
-                <MenuPageHeader title="Công nhân" desc="Nhập và xem báo cáo theo ca sản xuất." />
+                <MenuPageHeader title="Sản xuất" desc="Nhập và xem báo cáo theo ca sản xuất." />
                 <MenuCardGrid items={filterMenuItems(FACTORY_CONG_NHAN_MENU_ITEMS)} onNavigate={navigateToTab} />
               </motion.div>
             ) : activeTab === 'factory-kho' ? (

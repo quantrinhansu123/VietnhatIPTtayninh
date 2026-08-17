@@ -522,8 +522,8 @@ function BbMachineOrderPrintSheet({ order, props }: { order: BbProductionOrderGr
 
         <div className="bb-machine-report-print-signatures">
           <div><p>Quản đốc sản xuất</p><span>(Ký và ghi rõ họ tên)</span></div>
-          <div><p>Công nhân phụ máy</p><span>(Ký và ghi rõ họ tên)</span></div>
-          <div><p>Công nhân chính máy</p><span>(Ký và ghi rõ họ tên)</span></div>
+          <div><p>Sản xuất phụ máy</p><span>(Ký và ghi rõ họ tên)</span></div>
+          <div><p>Sản xuất chính máy</p><span>(Ký và ghi rõ họ tên)</span></div>
         </div>
       </div>
     </div>

@@ -170,7 +170,7 @@ export function MixingReportPrintSheet({
             <tr>
               <th>Máy</th>
               <td>{machineLabel}</td>
-              <th>Công nhân</th>
+              <th>Sản xuất</th>
               <td>{context.nhanSu || '-'}</td>
             </tr>
           </tbody>
@@ -261,7 +261,7 @@ export function MixingReportPrintSheet({
 
         <div className="mixing-report-print-signatures">
           <div>
-            <p>Công nhân</p>
+            <p>Sản xuất</p>
             <span>(Ký, ghi rõ họ tên)</span>
           </div>
           <div>

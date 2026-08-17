@@ -127,7 +127,7 @@ export function downloadStaffExcelTemplate() {
       'Nguyễn Văn A',
       'Đà Nẵng',
       'Sản xuất',
-      'Công nhân',
+      'Sản xuất',
       'Ca 1',
       'Đang làm',
       'nv001',

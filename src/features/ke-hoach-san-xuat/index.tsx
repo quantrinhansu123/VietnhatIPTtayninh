@@ -1366,7 +1366,7 @@ export function ProductionPlanQrPrintSheet({
         {labels.map(label => {
           const footerRows: Array<{ label: string; value: string }> = [
             { label: 'Ca sản xuất', value: label.shift || '—' },
-            { label: 'Công nhân sx', value: label.staff || '—' },
+            { label: 'Sản xuất', value: label.staff || '—' },
             { label: 'Ngày sản xuất', value: label.productionDate || '—' }
           ];
           return (

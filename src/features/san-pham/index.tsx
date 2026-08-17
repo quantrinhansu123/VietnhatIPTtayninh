@@ -36,7 +36,7 @@ import { showAppToast } from '../../lib/appToast';
 import type { InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 
-const PRODUCT_QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Công nhân sx', 'Ngày sản xuất'] as const;
+const PRODUCT_QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Sản xuất', 'Ngày sản xuất'] as const;
 
 type ProductQrPrintLabel = {
   key: string;

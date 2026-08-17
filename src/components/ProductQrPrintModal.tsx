@@ -4,7 +4,7 @@ import { Loader2, Printer, QrCode, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { waitForPrintImagesReady } from '../utils/printReady';
 
-const QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Công nhân sx', 'Ngày sản xuất'] as const;
+const QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Sản xuất', 'Ngày sản xuất'] as const;
 
 export type ProductQrPrintLabel = {
   key: string;

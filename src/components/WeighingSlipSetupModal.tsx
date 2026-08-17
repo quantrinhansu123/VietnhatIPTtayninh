@@ -240,7 +240,7 @@ export default function WeighingSlipSetupModal({
           <label className="space-y-1.5">
             <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-zinc-500">
               <Users className="h-4 w-4 text-[#ef1b2d]" />
-              Công nhân 1
+              Sản xuất 1
             </span>
             <div className="relative">
               <select
@@ -263,7 +263,7 @@ export default function WeighingSlipSetupModal({
           <label className="space-y-1.5">
             <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-zinc-500">
               <Users className="h-4 w-4 text-[#ef1b2d]" />
-              Công nhân 2
+              Sản xuất 2
             </span>
             <div className="relative">
               <select

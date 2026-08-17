@@ -66,7 +66,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
   },
   {
     menu: 'factory-cong-nhan',
-    label: 'Công nhân',
+    label: 'Sản xuất',
     children: [
       { tab: 'production-orders', label: 'Công việc được giao' },
       { tab: 'report-forms', label: 'Nhập báo cáo ca' },

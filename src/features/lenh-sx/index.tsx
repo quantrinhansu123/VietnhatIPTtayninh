@@ -38,6 +38,7 @@ import {
   type ProductionOrderRow
 } from '../ke-hoach-san-xuat';
 import { normalizeOrders } from '../don-hang';
+import { OrderFormModal } from '../don-hang/OrderFormModal';
 import { normalizeProducts } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
 import { normalizeMachines, type MachineRow } from '../danh-sach-may';
@@ -138,6 +139,8 @@ export function ProductionOrdersPanel({
   const [viewingRow, setViewingRow] = useState<ProductionOrderRow | null>(null);
   const [editingRow, setEditingRow] = useState<ProductionOrderRow | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [seedOrderForAdd, setSeedOrderForAdd] = useState<OrderRow | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<ProductRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
@@ -490,14 +493,27 @@ export function ProductionOrdersPanel({
                 In lệnh{selectedVisibleIds.length > 0 ? ` (${selectedVisibleIds.length})` : ''}
               </button>
               {canCreate ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(true)}
-                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Thêm mới
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateOrderModal(true)}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm đơn hàng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSeedOrderForAdd(null);
+                      setShowAddForm(true);
+                    }}
+                    className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm lệnh SX
+                  </button>
+                </>
               ) : null}
 
             </div>
@@ -586,8 +602,25 @@ export function ProductionOrdersPanel({
 
       <AddProductionOrderModal
         open={showAddForm}
-        onClose={() => setShowAddForm(false)}
+        seedOrder={seedOrderForAdd}
+        onClose={() => {
+          setShowAddForm(false);
+          setSeedOrderForAdd(null);
+        }}
         onCreated={loadProductionOrders}
+      />
+
+      <OrderFormModal
+        open={showCreateOrderModal}
+        mode="add"
+        existingOrderCodes={orders.map(order => order.orderCode)}
+        onClose={() => setShowCreateOrderModal(false)}
+        onSaved={createdOrder => {
+          setShowCreateOrderModal(false);
+          setOrders(prev => [createdOrder, ...prev.filter(item => item.id !== createdOrder.id)]);
+          setSeedOrderForAdd(createdOrder);
+          setShowAddForm(true);
+        }}
       />
 
       <ProductionOrderViewModal row={viewingRow} onClose={() => setViewingRow(null)} />

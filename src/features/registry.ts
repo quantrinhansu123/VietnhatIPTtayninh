@@ -210,7 +210,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     apiPrefix: '/api/don-hang',
     serverLines: '3872–3999',
     appTab: 'orders',
-    appLines: 'src/features/don-hang/index.tsx, src/features/_shared/orderHelpers.ts',
+    appLines: 'src/features/don-hang/index.tsx, src/features/don-hang/OrderFormModal.tsx, src/features/_shared/orderHelpers.ts',
     components: [],
     utils: []
   },

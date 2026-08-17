@@ -62,6 +62,7 @@ import {
   type MachineRow
 } from '../danh-sach-may';
 import { normalizeOrders } from '../don-hang';
+import { OrderFormModal } from '../don-hang/OrderFormModal';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
 import { orderFieldClass } from '../_shared/orderHelpers';
 import {
@@ -4287,6 +4288,53 @@ export function buildProductionEntryLine(
   };
 }
 
+function parseProductionEntryQuantity(value: string): number {
+  const parsed = Number(String(value || '').trim().replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function mergeProductionOrderRefs(...refs: string[]): string {
+  return [...new Set(refs.flatMap(ref => splitProductionOrderRefs(ref)))].join(', ');
+}
+
+/** Gộp các dòng trùng mã hàng: cộng số lượng, gộp mã đơn. */
+export function mergeProductionOrderEntryLinesByProductCode(
+  lines: ProductionOrderEntryLine[]
+): ProductionOrderEntryLine[] {
+  const merged: ProductionOrderEntryLine[] = [];
+  const indexByCode = new Map<string, number>();
+
+  for (const line of lines) {
+    const productCode = String(line.productCode || '').trim();
+    if (!productCode || productCode === '-') {
+      merged.push(line);
+      continue;
+    }
+
+    const codeKey = normalizeProductCodeKey(productCode);
+    const existingIndex = indexByCode.get(codeKey);
+    if (existingIndex === undefined) {
+      indexByCode.set(codeKey, merged.length);
+      merged.push({ ...line, productCode });
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    const totalQty =
+      parseProductionEntryQuantity(existing.quantity) + parseProductionEntryQuantity(line.quantity);
+
+    merged[existingIndex] = {
+      ...existing,
+      orderRef: mergeProductionOrderRefs(existing.orderRef, line.orderRef),
+      productName: existing.productName.trim() || line.productName,
+      unit: existing.unit.trim() || line.unit,
+      quantity: totalQty > 0 ? String(totalQty) : existing.quantity || line.quantity
+    };
+  }
+
+  return merged;
+}
+
 export function autofillProductKey(orderRef: string, productCode: string) {
   return `${orderRef}::${productCode}`;
 }
@@ -4542,11 +4590,13 @@ export function productionOrderFormToPayload(
 export function AddProductionOrderModal({
   open,
   onClose,
-  onCreated
+  onCreated,
+  seedOrder = null
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: () => void | Promise<void>;
+  seedOrder?: OrderRow | null;
 }) {
   const [form, setForm] = useState<ProductionOrderFormState>(emptyProductionOrderForm);
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
@@ -4570,6 +4620,7 @@ export function AddProductionOrderModal({
   const [lineDraftProductCode, setLineDraftProductCode] = useState('');
   const [lineDraftQuantity, setLineDraftQuantity] = useState('');
   const [lineDraftError, setLineDraftError] = useState('');
+  const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -4588,6 +4639,7 @@ export function AddProductionOrderModal({
     setLineDraftProductCode('');
     setLineDraftQuantity('');
     setLineDraftError('');
+    setShowCreateOrderModal(false);
     setIsLoadingLookups(true);
 
     const loadLookups = async () => {
@@ -4608,7 +4660,38 @@ export function AddProductionOrderModal({
         const staffData = await staffRes.json().catch(() => ({}));
         const productData = await productRes.json().catch(() => ({}));
 
-        if (orderRes.ok) setOrders(normalizeOrders(orderData));
+        if (orderRes.ok) {
+          const loadedOrders = normalizeOrders(orderData);
+          const nextOrders = seedOrder
+            ? [seedOrder, ...loadedOrders.filter(item => item.id !== seedOrder.id)]
+            : loadedOrders;
+          setOrders(nextOrders);
+          if (seedOrder) {
+            const orderDate = parseProductionOrderFilterDate(seedOrder.orderDate || seedOrder.createdAt || '');
+            const productLines = getOrderProductLines(seedOrder);
+            const linesFromOrder =
+              productLines.length > 0
+                ? productLines.map(line => ({
+                    key: `entry-${seedOrder.orderCode}-${line.productCode}-${Math.random().toString(36).slice(2, 7)}`,
+                    orderRef: seedOrder.orderCode,
+                    ...buildProductionEntryLine(
+                      nextOrders,
+                      productionRes.ok ? normalizeProductionOrders(productionData) : [],
+                      seedOrder.orderCode,
+                      line.productCode,
+                      line.productName,
+                      line.unit && line.unit !== '-' ? line.unit : ''
+                    )
+                  }))
+                : [{ ...newProductionOrderEntryLine(), orderRef: seedOrder.orderCode }];
+            setForm(prev => ({
+              ...prev,
+              startDate: orderDate || prev.startDate,
+              startDateTime: mergeProductionOrderDateTime(orderDate || prev.startDate, prev.startDateTime),
+              entryLines: mergeProductionOrderEntryLinesByProductCode(linesFromOrder)
+            }));
+          }
+        }
         if (productionRes.ok) setProductionOrders(normalizeProductionOrders(productionData));
         if (machineRes.ok) setMachines(normalizeMachines(machineData));
         if (settingRes.ok) setSettings(mapProductionOrderSettings(settingData));
@@ -4622,7 +4705,7 @@ export function AddProductionOrderModal({
     };
 
     loadLookups();
-  }, [open]);
+  }, [open, seedOrder]);
 
   useEffect(() => {
     setSelectedAutofillOrderCodes([]);
@@ -4826,18 +4909,20 @@ export function AddProductionOrderModal({
       return;
     }
 
-    const nextLines = selectedProducts.map(product => ({
-      key: `entry-${product.orderRef}-${product.productCode}-${Math.random().toString(36).slice(2, 7)}`,
-      orderRef: product.orderRef,
-      ...buildProductionEntryLine(
-        orders,
-        productionOrders,
-        product.orderRef,
-        product.productCode,
-        product.productName,
-        product.unit
-      )
-    }));
+    const nextLines = mergeProductionOrderEntryLinesByProductCode(
+      selectedProducts.map(product => ({
+        key: `entry-${product.orderRef}-${product.productCode}-${Math.random().toString(36).slice(2, 7)}`,
+        orderRef: product.orderRef,
+        ...buildProductionEntryLine(
+          orders,
+          productionOrders,
+          product.orderRef,
+          product.productCode,
+          product.productName,
+          product.unit
+        )
+      }))
+    );
 
     setForm(prev => ({
       ...prev,
@@ -4845,6 +4930,52 @@ export function AddProductionOrderModal({
     }));
     setFormError('');
     setShowAutofillOrders(false);
+  };
+
+  const handleCreatedSalesOrder = (createdOrder: OrderRow) => {
+    const orderDate = parseProductionOrderFilterDate(createdOrder.orderDate || createdOrder.createdAt || '');
+    const nextOrders = [createdOrder, ...orders.filter(item => item.id !== createdOrder.id)];
+    setOrders(nextOrders);
+
+    const productLines = getOrderProductLines(createdOrder);
+    const linesFromOrder =
+      productLines.length > 0
+        ? productLines.map(line => ({
+            key: `entry-${createdOrder.orderCode}-${line.productCode}-${Math.random().toString(36).slice(2, 7)}`,
+            orderRef: createdOrder.orderCode,
+            ...buildProductionEntryLine(
+              nextOrders,
+              productionOrders,
+              createdOrder.orderCode,
+              line.productCode,
+              line.productName,
+              line.unit && line.unit !== '-' ? line.unit : ''
+            )
+          }))
+        : [
+            {
+              ...newProductionOrderEntryLine(),
+              orderRef: createdOrder.orderCode
+            }
+          ];
+
+    setForm(prev => {
+      const startDate = orderDate || prev.startDate;
+      const hasFilledLines = prev.entryLines.some(line => line.orderRef.trim() || line.productCode.trim());
+      const combined = hasFilledLines
+        ? [
+            ...prev.entryLines.filter(line => line.orderRef.trim() || line.productCode.trim()),
+            ...linesFromOrder
+          ]
+        : linesFromOrder;
+      return {
+        ...prev,
+        startDate,
+        startDateTime: mergeProductionOrderDateTime(startDate, prev.startDateTime),
+        entryLines: mergeProductionOrderEntryLinesByProductCode(combined)
+      };
+    });
+    setFormError('');
   };
 
   const openAddLine = () => {
@@ -4899,7 +5030,10 @@ export function AddProductionOrderModal({
 
     setForm(prev => ({
       ...prev,
-      entryLines: [...prev.entryLines, newLine]
+      entryLines: mergeProductionOrderEntryLinesByProductCode([
+        ...prev.entryLines.filter(line => line.orderRef.trim() || line.productCode.trim()),
+        newLine
+      ])
     }));
     setShowAddLine(false);
     setLineDraftError('');
@@ -4908,7 +5042,9 @@ export function AddProductionOrderModal({
   const updateEntryLine = (key: string, patch: Partial<ProductionOrderEntryLine>) => {
     setForm(prev => ({
       ...prev,
-      entryLines: prev.entryLines.map(line => (line.key === key ? { ...line, ...patch } : line))
+      entryLines: mergeProductionOrderEntryLinesByProductCode(
+        prev.entryLines.map(line => (line.key === key ? { ...line, ...patch } : line))
+      )
     }));
   };
 
@@ -4962,7 +5098,9 @@ export function AddProductionOrderModal({
   if (!open) return null;
 
   const handleSubmit = async () => {
-    const filledLines = form.entryLines.filter(line => line.orderRef.trim() && line.productCode.trim());
+    const filledLines = mergeProductionOrderEntryLinesByProductCode(
+      form.entryLines.filter(line => line.orderRef.trim() && line.productCode.trim())
+    );
 
     if (filledLines.length === 0) {
       setFormError('Vui lòng thêm ít nhất một dòng đơn hàng và mã hàng.');
@@ -5110,15 +5248,26 @@ export function AddProductionOrderModal({
             required
             onAdd={openAddLine}
             extraHeaderButtons={
-              <button
-                type="button"
-                onClick={() => setShowAutofillOrders(true)}
-                disabled={isLoadingLookups}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ClipboardCheck className="h-3.5 w-3.5" />
-                Tự điền từ đơn hàng
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateOrderModal(true)}
+                  disabled={isLoadingLookups || isSaving}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm đơn mới
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAutofillOrders(true)}
+                  disabled={isLoadingLookups}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                  Tự điền từ đơn hàng
+                </button>
+              </>
             }
             columns={[
               { key: 'order', label: 'Mã đơn', className: 'min-w-0 flex-[1.1]', required: true },
@@ -5706,6 +5855,16 @@ export function AddProductionOrderModal({
           </div>
         </div>
       )}
+
+      <OrderFormModal
+        open={showCreateOrderModal}
+        mode="add"
+        existingOrderCodes={orders.map(order => order.orderCode)}
+        defaultCreatedAt={form.startDate}
+        zIndexClassName="z-[80]"
+        onClose={() => setShowCreateOrderModal(false)}
+        onSaved={handleCreatedSalesOrder}
+      />
     </div>
   );
 }
@@ -5921,7 +6080,9 @@ export function EditProductionOrderModal({
   const updateEntryLine = (key: string, patch: Partial<ProductionOrderEntryLine>) => {
     setForm(prev => ({
       ...prev,
-      entryLines: prev.entryLines.map(line => (line.key === key ? { ...line, ...patch } : line))
+      entryLines: mergeProductionOrderEntryLinesByProductCode(
+        prev.entryLines.map(line => (line.key === key ? { ...line, ...patch } : line))
+      )
     }));
   };
 
@@ -5968,7 +6129,9 @@ export function EditProductionOrderModal({
   if (!open || !row) return null;
 
   const handleSubmit = async () => {
-    const filledLines = form.entryLines.filter(line => line.orderRef.trim() && line.productCode.trim());
+    const filledLines = mergeProductionOrderEntryLinesByProductCode(
+      form.entryLines.filter(line => line.orderRef.trim() && line.productCode.trim())
+    );
 
     if (filledLines.length === 0) {
       setFormError('Vui lòng thêm ít nhất một dòng đơn hàng và mã hàng.');

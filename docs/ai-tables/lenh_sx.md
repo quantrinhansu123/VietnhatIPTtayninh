@@ -38,6 +38,12 @@ từ nhân sự phòng **PHÂN XƯỞNG SẢN XUẤT** (nhận thêm biến th�
 API tải ` /api/nhan-su?format=groups&scope=all` rồi lọc phòng trên client (tránh mất NV vì filter chi nhánh mặc định).
 Cột «Nhân sự» tự tổng hợp theo các vai trò đã chọn.
 
+Trang `/lenh-san-xuat`: nút **Thêm đơn hàng** mở `OrderFormModal` trực tiếp; sau khi lưu đơn tự mở modal **Thêm lệnh SX** và điền sẵn đơn/mã hàng.
+
+Nút **Thêm đơn mới** trong form thêm lệnh SX cũng mở `OrderFormModal` rồi tự điền dòng đơn/mã hàng.
+
+**Trùng mã hàng:** các dòng cùng `ma_sp` được gộp thành 1 dòng — cộng số lượng, gộp mã đơn (`DH001, DH002`). Áp dụng khi tự điền / thêm đơn / thêm dòng / chọn mã / lúc lưu.
+
 ### Lọc theo đăng nhập
 
 - Nếu `cong_viec` / chức vụ đăng nhập đúng **Nhân Viên** (không phân biệt hoa thường, bỏ dấu khi so):

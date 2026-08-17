@@ -171,7 +171,7 @@ export type OrderFormState = {
   createdAt: string;
 };
 
-const emptyOrderForm = (): OrderFormState => ({
+export const emptyOrderForm = (): OrderFormState => ({
   orderCode: '',
   orderType: ORDER_TYPE_OPTIONS[0],
   staffName: '',

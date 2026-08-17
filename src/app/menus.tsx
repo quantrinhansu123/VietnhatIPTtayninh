@@ -21,7 +21,6 @@ import testTube3d from '@iconify-icons/fluent-emoji/test-tube';
 import scale3d from '@iconify-icons/fluent-emoji/balance-scale';
 import stopwatch3d from '@iconify-icons/fluent-emoji/stopwatch';
 import notebook3d from '@iconify-icons/fluent-emoji/notebook';
-import prohibited3d from '@iconify-icons/fluent-emoji/prohibited';
 import chartIncreasing3d from '@iconify-icons/fluent-emoji/chart-increasing';
 import buildingConstruction3d from '@iconify-icons/fluent-emoji/building-construction';
 import spiralCalendar3d from '@iconify-icons/fluent-emoji/spiral-calendar';
@@ -201,13 +200,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: Activity,
     icon3d: notebook3d,
     tab: 'machine-run-log'
-  },
-  {
-    title: 'Báo cáo hàng hỏng',
-    desc: 'Lập phiếu hàng hỏng với các cột và chức năng giống phiếu cân ca.',
-    icon: PackageX,
-    icon3d: prohibited3d,
-    tab: 'damaged-goods-report'
   },
   {
     title: 'Báo cáo sản lượng',

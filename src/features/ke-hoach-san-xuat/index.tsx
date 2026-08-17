@@ -2796,7 +2796,7 @@ export function ProductionPlanModal({
         }
         if (customerOrders.length === 0) {
           // Không khớp được mã đơn hàng cụ thể — vẫn in kèm đơn hàng cùng ngày kế hoạch thay vì bỏ trống.
-          customerOrders = filterOrdersForProductionDate(allOrders, ordersToPrint, planDate);
+          customerOrders = filterOrdersForProductionDate(allOrders, planDate);
         }
       }
 
@@ -4300,36 +4300,17 @@ export function splitProductionOrderRefs(orderRef: string): string[] {
 
 export function filterOrdersForProductionDate(
   orders: OrderRow[],
-  productionOrders: ProductionOrderRow[],
   selectedDate: string
 ): OrderRow[] {
   const date = selectedDate.trim();
-  if (!date || orders.length === 0) return orders;
+  if (!date || orders.length === 0) return [];
 
-  const orderCodesOnDate = new Set<string>();
-  for (const row of productionOrders) {
-    if (parseProductionOrderFilterDate(row.startDate) !== date) continue;
-    splitProductionOrderRefs(row.orderRef).forEach(code => orderCodesOnDate.add(code));
-  }
-
-  const filtered = orders.filter(order => {
-    if (!order.orderCode || order.orderCode === '-') return false;
-
-    const orderDate = parseProductionOrderFilterDate(order.orderDate || '');
-    const matchesOrderDate = Boolean(orderDate && orderDate === date);
-    const linkedOnDate = orderCodesOnDate.has(order.orderCode);
-    const hasRemaining = getOrderProductLines(order).some(line => {
-      const code = line.productCode?.trim();
-      if (!code || code === '-') return false;
-      return getRemainingProductionQuantity(orders, productionOrders, order.orderCode, code) > 0;
-    });
-
-    return matchesOrderDate || linkedOnDate || (!orderDate && hasRemaining);
-  });
-
-  return filtered.length > 0
-    ? filtered.sort((a, b) => a.orderCode.localeCompare(b.orderCode, 'vi'))
-    : orders;
+  return orders
+    .filter(order => {
+      if (!order.orderCode || order.orderCode === '-') return false;
+      return parseProductionOrderFilterDate(order.orderDate || '') === date;
+    })
+    .sort((a, b) => a.orderCode.localeCompare(b.orderCode, 'vi'));
 }
 
 export function listProductOptionsForOrder(
@@ -4652,8 +4633,8 @@ export function AddProductionOrderModal({
   }, [form.startDate]);
 
   const ordersForSelectedDate = useMemo(
-    () => filterOrdersForProductionDate(orders, productionOrders, form.startDate),
-    [orders, productionOrders, form.startDate]
+    () => filterOrdersForProductionDate(orders, form.startDate),
+    [orders, form.startDate]
   );
 
   const orderCodeOptions = useMemo(() => {
@@ -5132,7 +5113,7 @@ export function AddProductionOrderModal({
               <button
                 type="button"
                 onClick={() => setShowAutofillOrders(true)}
-                disabled={isLoadingLookups || ordersForSelectedDate.length === 0}
+                disabled={isLoadingLookups}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ClipboardCheck className="h-3.5 w-3.5" />

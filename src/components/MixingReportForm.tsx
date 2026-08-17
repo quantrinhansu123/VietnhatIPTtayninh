@@ -1057,7 +1057,7 @@ export default function MixingReportForm({
   } | null>(null);
   const [form, setForm] = useState(newReportForm());
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [nhanSuManual, setNhanSuManual] = useState(false);
+  const [, setNhanSuManual] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -1197,22 +1197,36 @@ export default function MixingReportForm({
     }
   }, [form.ca, shiftOptions]);
 
-  useEffect(() => {
-    if (nhanSuManual || !form.ca.trim()) return;
-    if (!form.ma_may.trim() && !form.ten_may.trim()) return;
+  const productionOrdersForDateShift = useMemo(() => {
+    const ca = normalizeMixingCaInput(form.ca);
+    if (!ca) return [];
+    return productionOrdersForDate.filter(order => shiftMatches(order.shift, ca));
+  }, [form.ca, productionOrdersForDate]);
 
-    const staff = resolveStaffFromProductionOrders(
-      productionOrders,
-      form.ngay,
-      form.ca,
-      form.ma_may,
-      form.ten_may,
-      machines
-    );
-    if (!staff) return;
+  const machineSelectOptions = useMemo(() => {
+    const options = new Map<string, MachineOption>();
+    productionOrdersForDateShift.forEach(order => {
+      const machine = resolveMachineFromProductionRef(order.machine, machines);
+      if (machine) options.set(machine.id, machine);
+    });
+    if (editingId && (form.ma_may || form.ten_may)) {
+      const current =
+        machines.find(machine => machine.code === form.ma_may) ??
+        machines.find(machine => machine.name === form.ten_may);
+      if (current) options.set(current.id, current);
+    }
+    return [...options.values()];
+  }, [editingId, form.ma_may, form.ten_may, machines, productionOrdersForDateShift]);
 
-    setForm(prev => (prev.nhan_su === staff ? prev : { ...prev, nhan_su: staff }));
-  }, [form.ca, form.ma_may, form.ten_may, form.ngay, productionOrders, machines, nhanSuManual]);
+  const staffSelectOptions = useMemo(() => {
+    const options = new Set<string>();
+    productionOrdersForDateShift.forEach(order => {
+      const staff = order.staff.trim();
+      if (staff && staff !== '-') options.add(staff);
+    });
+    if (editingId && form.nhan_su.trim()) options.add(form.nhan_su.trim());
+    return [...options].sort((left, right) => left.localeCompare(right, 'vi'));
+  }, [editingId, form.nhan_su, productionOrdersForDateShift]);
 
   const computedLines = useMemo(
     () =>
@@ -1253,7 +1267,10 @@ export default function MixingReportForm({
 
   const pickMachine = (machineId: string) => {
     const machine = machines.find(item => item.id === machineId);
-    if (!machine) return;
+    if (!machine) {
+      setForm(prev => ({ ...prev, ma_may: '', ten_may: '' }));
+      return;
+    }
     setNhanSuManual(false);
     setForm(prev => {
       let chiTiet = prev.chi_tiet;
@@ -1296,21 +1313,13 @@ export default function MixingReportForm({
 
   const pickShift = (ca: string) => {
     setNhanSuManual(false);
-    const matchedOrders = productionOrdersForDate.filter(order => shiftMatches(order.shift, ca));
-    const matchedMachine = matchedOrders
-      .map(order => resolveMachineFromProductionRef(order.machine, machines))
-      .find((machine): machine is MachineOption => Boolean(machine));
-
     setForm(prev => ({
       ...prev,
       ca,
-      ma_may: matchedMachine?.code || '',
-      ten_may: matchedMachine?.name || '',
-      chi_nhanh: matchedMachine?.branch || prev.chi_nhanh,
+      ma_may: '',
+      ten_may: '',
       nhan_su: ''
     }));
-
-    if (matchedMachine) pickMachine(matchedMachine.id);
   };
 
   const handleDateChange = (ngay: string) => {
@@ -2114,7 +2123,7 @@ export default function MixingReportForm({
           className={inputClass}
         >
           <option value="">Chọn máy...</option>
-          {machines.map(machine => (
+          {machineSelectOptions.map(machine => (
             <option key={machine.id} value={machine.id}>
               {machine.code} · {machine.name}
             </option>
@@ -2125,15 +2134,19 @@ export default function MixingReportForm({
         <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
           <Users className="h-3.5 w-3.5 text-[#ef1b2d]" /> Nhân sự
         </span>
-        <input
+        <select
           value={form.nhan_su}
           onChange={e => {
             setNhanSuManual(true);
             setForm(prev => ({ ...prev, nhan_su: e.target.value }));
           }}
           className={inputClass}
-          placeholder="Tự điền theo Ca + Máy từ lệnh SX"
-        />
+        >
+          <option value="">Chọn nhân sự theo ngày + ca...</option>
+          {staffSelectOptions.map(staff => (
+            <option key={staff} value={staff}>{staff}</option>
+          ))}
+        </select>
       </label>
     </div>
   );
@@ -2180,70 +2193,6 @@ export default function MixingReportForm({
           {headerFields}
         </div>
       )}
-
-      {form.ngay.trim() && normalizeMixingCaInput(form.ca) ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-3 shadow-sm sm:px-4">
-          <div className="mb-2 flex items-start gap-2">
-            <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <div className="min-w-0">
-              <p className="text-sm font-black text-zinc-900">Gợi ý từ phiếu trộn định mức QC</p>
-              <p className="text-[11px] font-medium text-zinc-600">
-                Theo ngày {form.ngay} · ca {form.ca}. Bấm Áp dụng để đổ NVL vào bảng trộn.
-              </p>
-            </div>
-          </div>
-          {normSuggestionsLoading ? (
-            <p className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-600">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Đang tìm phiếu định mức...
-            </p>
-          ) : normSuggestions.length === 0 ? (
-            <p className="text-xs font-semibold text-zinc-500">
-              Không có phiếu định mức QC khớp ngày/ca này.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {normSuggestions.map(norm => {
-                const productLabels = norm.products
-                  .map(product => product.ma_sp || product.ten_sp)
-                  .filter(Boolean)
-                  .slice(0, 3)
-                  .join(', ');
-                return (
-                  <li
-                    key={norm.id}
-                    className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-zinc-900">
-                        {norm.ma_lenh_sx || 'Không có mã lệnh'} · {norm.nvlCount} NVL
-                        {norm.products.length > 1 ? ` · ${norm.products.length} SP` : ''}
-                      </p>
-                      <p className="truncate text-[11px] font-medium text-zinc-500">
-                        {productLabels || '—'}
-                        {norm.ghi_chu ? ` · ${norm.ghi_chu}` : ''}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => applyNormSuggestion(norm)}
-                      disabled={applyingNormId === norm.id}
-                      className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-                    >
-                      {applyingNormId === norm.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      )}
-                      Áp dụng
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      ) : null}
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

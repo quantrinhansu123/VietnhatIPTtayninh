@@ -24,7 +24,7 @@ import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appTo
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
 
 const productLineGridClass =
-  'grid-cols-1 sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_2.5rem]';
+  'grid-cols-1 sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
 
 const mobileFieldLabelClass =
   'mb-0.5 block text-[9px] font-black uppercase tracking-wider text-zinc-500 sm:hidden';
@@ -43,6 +43,8 @@ export type AcceptanceReport = {
   ten_sp?: string;
   don_vi: string;
   so_luong: number | null;
+  trong_luong: number | null;
+  don_vi_trong_luong: string;
   hinh_anh: string;
   hinh_anh_public_id?: string;
   created_at?: string;
@@ -68,6 +70,7 @@ interface ProductSelectOption {
   code: string;
   name: string;
   unit: string;
+  totalWeightKg: number | null;
 }
 
 interface AiWeighingRecord {
@@ -128,6 +131,25 @@ function extractIsoDate(value: string) {
 
 function normalizeKey(value: string) {
   return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function isKgUnit(value: string) {
+  return ['kg', 'kilogram', 'kilograms'].includes(String(value ?? '').trim().toLowerCase());
+}
+
+function formatAutoWeight(value: number) {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+function calculateProductWeight(product: ProductSelectOption | null, quantityValue: string) {
+  if (!product) return '';
+  const quantity = Number(String(quantityValue).replace(',', '.'));
+  if (!Number.isFinite(quantity)) return '';
+  if (isKgUnit(product.unit)) return formatAutoWeight(quantity);
+  if (product.totalWeightKg !== null && product.totalWeightKg >= 0) {
+    return formatAutoWeight(quantity * product.totalWeightKg);
+  }
+  return '';
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
@@ -198,8 +220,12 @@ function normalizeCatalogProducts(data: unknown): ProductSelectOption[] {
         record.ten_sp ?? record.ten_san_pham ?? record.productName ?? record.name ?? ''
       ).trim();
       const unit = String(record.don_vi ?? record.unit ?? '').trim();
+      const totalWeightRaw = record.tong_trong_luong ?? record.totalWeight;
+      const totalWeightText = String(totalWeightRaw ?? '').trim();
+      const totalWeightNumber = Number(totalWeightText.replace(',', '.'));
+      const totalWeightKg = totalWeightText && Number.isFinite(totalWeightNumber) ? totalWeightNumber : null;
       if (!code) return null;
-      return { code, name, unit };
+      return { code, name, unit, totalWeightKg };
     })
     .filter((item): item is ProductSelectOption => Boolean(item));
 }
@@ -288,6 +314,9 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     don_vi: String(record.don_vi ?? ''),
     so_luong:
       record.so_luong === null || record.so_luong === undefined ? null : Number(record.so_luong),
+    trong_luong:
+      record.trong_luong === null || record.trong_luong === undefined ? null : Number(record.trong_luong),
+    don_vi_trong_luong: String(record.don_vi_trong_luong ?? 'Kg'),
     hinh_anh: String(record.hinh_anh ?? ''),
     hinh_anh_public_id: String(record.hinh_anh_public_id ?? ''),
     created_at: String(record.created_at ?? '')
@@ -299,6 +328,8 @@ interface ProductLine {
   mat_hang: string;
   don_vi: string;
   so_luong: string;
+  trong_luong: string;
+  don_vi_trong_luong: string;
 }
 
 function newProductLine(): ProductLine {
@@ -306,7 +337,9 @@ function newProductLine(): ProductLine {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     mat_hang: '',
     don_vi: '',
-    so_luong: ''
+    so_luong: '',
+    trong_luong: '',
+    don_vi_trong_luong: 'Kg'
   };
 }
 
@@ -507,7 +540,8 @@ export default function AcceptanceReportForm({
       .map(order => ({
         code: productCodeFromOrder(order),
         name: order.productName,
-        unit: order.unit && order.unit !== '-' ? order.unit : ''
+        unit: order.unit && order.unit !== '-' ? order.unit : '',
+        totalWeightKg: null
       }))
       .filter(item => item.code && item.code !== '-');
   }, [ordersForSelectedDay, form.ca, form.ma_may, form.ten_may, form.machineRef]);
@@ -528,7 +562,8 @@ export default function AcceptanceReportForm({
       byCode.set(key, {
         code: product.code,
         name: product.name || existing?.name || '',
-        unit: product.unit || existing?.unit || ''
+        unit: product.unit || existing?.unit || '',
+        totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
       });
     });
 
@@ -594,7 +629,14 @@ export default function AcceptanceReportForm({
     setForm(prev => ({
       ...prev,
       lines: prev.lines.map(line =>
-        line.id === lineId ? { ...line, mat_hang, don_vi: match?.unit || '' } : line
+        line.id === lineId
+          ? {
+              ...line,
+              mat_hang,
+              don_vi: match?.unit || '',
+              trong_luong: calculateProductWeight(match, line.so_luong)
+            }
+          : line
       )
     }));
     setError('');
@@ -603,7 +645,18 @@ export default function AcceptanceReportForm({
   const handleLineQuantityChange = (lineId: string, so_luong: string) => {
     setForm(prev => ({
       ...prev,
-      lines: prev.lines.map(line => (line.id === lineId ? { ...line, so_luong } : line))
+      lines: prev.lines.map(line => {
+        if (line.id !== lineId) return line;
+        const product = findProductOption(line.mat_hang, productSelectOptions);
+        return { ...line, so_luong, trong_luong: calculateProductWeight(product, so_luong) };
+      })
+    }));
+  };
+
+  const handleLineWeightChange = (lineId: string, trong_luong: string) => {
+    setForm(prev => ({
+      ...prev,
+      lines: prev.lines.map(line => (line.id === lineId ? { ...line, trong_luong } : line))
     }));
   };
 
@@ -657,7 +710,13 @@ export default function AcceptanceReportForm({
         const targetLine = currentLines[emptyLineIndex];
         const nextLines = currentLines.map((line, index) =>
           index === emptyLineIndex
-            ? { ...line, mat_hang: productCode, don_vi: unit || line.don_vi, so_luong: '1' }
+            ? {
+                ...line,
+                mat_hang: productCode,
+                don_vi: unit || line.don_vi,
+                so_luong: '1',
+                trong_luong: calculateProductWeight(matchedProduct, '1')
+              }
             : line
         );
         formLinesRef.current = nextLines;
@@ -672,7 +731,8 @@ export default function AcceptanceReportForm({
         ...newProductLine(),
         mat_hang: productCode,
         don_vi: unit,
-        so_luong: '1'
+        so_luong: '1',
+        trong_luong: calculateProductWeight(matchedProduct, '1')
       };
       const nextLines = [...currentLines, nextLine];
       formLinesRef.current = nextLines;
@@ -782,7 +842,9 @@ export default function AcceptanceReportForm({
           id: report.id,
           mat_hang: report.mat_hang,
           don_vi: report.don_vi,
-          so_luong: report.so_luong === null ? '' : String(report.so_luong)
+          so_luong: report.so_luong === null ? '' : String(report.so_luong),
+          trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
+          don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
         }
       ],
       hinh_anh: report.hinh_anh,
@@ -819,7 +881,8 @@ export default function AcceptanceReportForm({
     const validLines = form.lines
       .map(line => {
         const soLuong = parseLineQuantity(line.so_luong);
-        return { ...line, soLuong };
+        const trongLuong = line.trong_luong.trim() ? parseLineQuantity(line.trong_luong) : null;
+        return { ...line, soLuong, trongLuong };
       })
       .filter(line => line.mat_hang.trim() || line.so_luong.trim());
 
@@ -835,6 +898,10 @@ export default function AcceptanceReportForm({
       }
       if (!Number.isFinite(line.soLuong) || line.soLuong <= 0) {
         setError(showSaveFailure(`Số lượng phải lớn hơn 0 (${line.mat_hang}).`));
+        return null;
+      }
+      if (line.trongLuong !== null && (!Number.isFinite(line.trongLuong) || line.trongLuong < 0)) {
+        setError(showSaveFailure(`Trọng lượng không hợp lệ (${line.mat_hang}).`));
         return null;
       }
     }
@@ -883,7 +950,9 @@ export default function AcceptanceReportForm({
             ...sharedPayload,
             mat_hang: line.mat_hang,
             don_vi: line.don_vi,
-            so_luong: line.soLuong
+            so_luong: line.soLuong,
+            trong_luong: line.trongLuong,
+            don_vi_trong_luong: 'Kg'
           })
         });
         const data = await res.json().catch(() => ({}));
@@ -901,7 +970,9 @@ export default function AcceptanceReportForm({
               ...sharedPayload,
               mat_hang: line.mat_hang,
               don_vi: line.don_vi,
-              so_luong: line.soLuong
+              so_luong: line.soLuong,
+              trong_luong: line.trongLuong,
+              don_vi_trong_luong: 'Kg'
             })
           });
           const data = await res.json().catch(() => ({}));
@@ -984,7 +1055,11 @@ export default function AcceptanceReportForm({
         ...newProductLine(),
         mat_hang: code,
         don_vi: unit,
-        so_luong: String(quantity)
+        so_luong: String(quantity),
+        trong_luong: calculateProductWeight(
+          findProductOption(code, productSelectOptions),
+          String(quantity)
+        )
       }));
       setForm(prev => ({
         ...prev,
@@ -1164,6 +1239,8 @@ export default function AcceptanceReportForm({
               { key: 'ten_sp', label: 'Tên SP' },
               { key: 'don_vi', label: 'ĐVT' },
               { key: 'so_luong', label: 'SL', required: true },
+              { key: 'trong_luong', label: 'Trọng lượng' },
+              { key: 'don_vi_trong_luong', label: 'Đơn vị' },
               { key: 'actions', label: '' }
             ]}
           >
@@ -1177,8 +1254,8 @@ export default function AcceptanceReportForm({
                 className={line.id === highlightLineId ? 'line-added-flash rounded-lg px-1' : ''}
               >
                 {/* Mobile: 2 dòng — (1) mã/ĐVT/SL, (2) tên SP full. Desktop: grid cột. */}
-                <div className="flex flex-col gap-1.5 sm:col-span-6">
-                  <div className="flex min-w-0 flex-wrap items-end gap-1.5 sm:grid sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_2.5rem] sm:gap-2">
+                <div className="flex flex-col gap-1.5 sm:col-span-8">
+                  <div className="flex min-w-0 flex-wrap items-end gap-1.5 sm:grid sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_7rem_4rem_2.5rem] sm:gap-2">
                     <div className="flex shrink-0 items-center justify-center self-end pb-1.5 sm:col-start-1 sm:self-center sm:pb-0">
                       <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#ef1b2d] text-[11px] font-black text-white">
                         {index + 1}
@@ -1227,8 +1304,28 @@ export default function AcceptanceReportForm({
                         aria-label="Số lượng"
                       />
                     </div>
+                    <div className="w-24 shrink-0 sm:col-start-6 sm:w-auto sm:shrink">
+                      <span className={mobileFieldLabelClass}>Trọng lượng</span>
+                      <input
+                        value={line.trong_luong}
+                        onChange={e => handleLineWeightChange(line.id, e.target.value)}
+                        className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
+                        inputMode="decimal"
+                        placeholder="0"
+                        aria-label="Trọng lượng"
+                      />
+                    </div>
+                    <div className="w-14 shrink-0 sm:col-start-7 sm:w-auto sm:shrink">
+                      <span className={mobileFieldLabelClass}>Đơn vị</span>
+                      <input
+                        value="Kg"
+                        readOnly
+                        className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
+                        aria-label="Đơn vị trọng lượng"
+                      />
+                    </div>
                     {!editingId && form.lines.length > 1 ? (
-                      <div className="shrink-0 self-end sm:col-start-6">
+                      <div className="shrink-0 self-end sm:col-start-8">
                         <button
                           type="button"
                           onClick={() => removeProductLine(line.id)}

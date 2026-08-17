@@ -320,7 +320,7 @@ export function normalizeMixingProductionOrders(data: unknown): MixingProduction
         machine: pickText(record, ['may', 'ma_may', 'ten_may', 'machine'], ''),
         startDate: pickText(
           record,
-          ['ngay', 'ngay_san_xuat', 'ngay_sx', 'ngay_bat_dau', 'ngay_gio_bat_dau', 'start_date'],
+          ['ngay_gio_bat_dau', 'ngay_bat_dau', 'start_date', 'ngay_san_xuat', 'ngay_sx', 'ngay'],
           ''
         ).slice(0, 10),
         staff: pickText(record, ['nhan_su', 'staff', 'cong_nhan'], ''),

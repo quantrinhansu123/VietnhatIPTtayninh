@@ -3876,6 +3876,7 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   const mat_hang = String(source.mat_hang ?? source.product ?? '').trim();
   const loai_vat_tu = String(source.loai_vat_tu ?? 'Thành phẩm').trim();
   const so_luong = parseAcceptanceNumber(source.so_luong ?? source.quantity);
+  const trong_luong = parseAcceptanceNumber(source.trong_luong ?? source.weight);
 
   if (!ngay) return { error: 'Vui lòng chọn ngày.' };
   if (!ca) return { error: 'Vui lòng chọn ca.' };
@@ -3902,6 +3903,8 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
       mat_hang,
       don_vi: String(source.don_vi ?? source.unit ?? '').trim() || null,
       so_luong,
+      trong_luong,
+      don_vi_trong_luong: String(source.don_vi_trong_luong ?? source.weightUnit ?? 'Kg').trim() || 'Kg',
       hinh_anh,
       hinh_anh_public_id: String(source.hinh_anh_public_id ?? source.imagePublicId ?? '').trim() || null
     }

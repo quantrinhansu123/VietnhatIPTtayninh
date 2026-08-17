@@ -1420,37 +1420,20 @@ export function ProductionPlanQrPrintSheet({
   return (
     <div className="production-plan-qr-print-sheet">
       <div className="production-plan-qr-print-page">
-        {labels.map(label => {
-          const footerRows: Array<{ label: string; value: string }> = [
-            { label: 'Ca sản xuất', value: label.shift || '—' },
-            { label: 'Sản xuất', value: label.staff || '—' },
-            { label: 'Ngày sản xuất', value: label.productionDate || '—' }
-          ];
-          return (
+        {labels.map(label => (
             <div key={label.id} className="production-plan-qr-print-card">
-              <p className="production-plan-qr-print-code">{label.displayCode}</p>
-              <p className="production-plan-qr-print-name">{label.displayName}</p>
               <div className="production-plan-qr-print-code-wrap">
                 {qrImages[label.qrPayload] && (
                   <img src={qrImages[label.qrPayload]} alt={`QR ${label.qrPayload}`} />
                 )}
               </div>
-              <p className="production-plan-qr-print-payload">{label.qrPayload}</p>
-              <table className="production-plan-qr-print-footer">
-                <tbody>
-                  {footerRows.map(row => (
-                    <tr key={row.label}>
-                      <th>{row.label}</th>
-                      <td>
-                        <span className="production-plan-qr-print-footer-field">{row.value}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="production-plan-qr-print-info">
+                <p className="production-plan-qr-print-info-label">Tên sản phẩm</p>
+                <p className="production-plan-qr-print-name">{label.displayName}</p>
+                <p className="production-plan-qr-print-code">{label.displayCode}</p>
+              </div>
             </div>
-          );
-        })}
+          ))}
       </div>
     </div>
   );
@@ -1874,6 +1857,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [historyPrintLines, setHistoryPrintLines] = useState<ProductionPlanLine[]>([]);
   const [historyPrintMaterials, setHistoryPrintMaterials] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
   const [isPrintingSelected, setIsPrintingSelected] = useState(false);
+  const [showHistoryQrPrintModal, setShowHistoryQrPrintModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -1954,6 +1938,33 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       ? current.filter(id => id !== lineId)
       : [...current, lineId]);
   };
+
+  const selectedQrPrintLines = useMemo<ProductionPlanLine[]>(() =>
+    selectedLines
+      .filter(line => selectedPrintLineIds.includes(line.id))
+      .map(line => ({
+        id: line.productionOrderId || line.id,
+        code: line.orderCode,
+        name: line.orderCode,
+        productCode: line.products[0]?.productCode || '',
+        productName: line.products[0]?.productName || '',
+        quantity: line.products[0]?.quantity || '',
+        unit: line.products[0]?.unit || '',
+        products: line.products,
+        status: '',
+        orderRef: line.orderRef,
+        position: line.machine !== '-' ? line.machine : line.position,
+        staff: line.staff,
+        shiftLead: line.shiftLead,
+        mainStaff: line.mainStaff,
+        assistantStaff: line.assistantStaff,
+        traineeStaff: line.traineeStaff,
+        shift: line.shift,
+        priority: line.priority,
+        note: line.note
+      })),
+    [selectedLines, selectedPrintLineIds]
+  );
 
   const printSelectedLines = async () => {
     if (!selectedPlan) return;
@@ -2130,33 +2141,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-        <div className="bg-white p-3 text-slate-700 border-b border-slate-200">
-          <div className="flex items-start justify-end gap-3">
-            <div className="hidden">
-              <p className="text-xs font-black uppercase tracking-wider text-red-300">Báo cáo sản xuất</p>
-              <h2 className="mt-1 text-2xl font-black leading-tight">Kế hoạch sản xuất theo ngày</h2>
-              <p className="mt-2 text-sm font-medium leading-6 text-zinc-300">
-                Tra cứu snapshot kế hoạch đã lưu từ bảng ke_hoach_san_xuat.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
-            {[
-              ['Bản ghi', plans.length],
-              ['Ngày có KH', plansByDate.length],
-              ['Đang xem', selectedPlan ? 1 : 0]
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <span className="block font-bold text-zinc-400">{label}</span>
-                <span className="mt-1 block text-xl font-black text-white">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-end gap-2">
           {canCreate ? (
@@ -2312,15 +2296,26 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
               )}
             </div>
             {selectedPlan ? (
-              <button
-                type="button"
-                onClick={() => void printSelectedLines()}
-                disabled={selectedPrintLineIds.length === 0 || isPrintingSelected}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isPrintingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                In {selectedPrintLineIds.length} lệnh đã chọn
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryQrPrintModal(true)}
+                  disabled={selectedQrPrintLines.length === 0}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <QrCode className="h-4 w-4" />
+                  In QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void printSelectedLines()}
+                  disabled={selectedPrintLineIds.length === 0 || isPrintingSelected}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isPrintingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                  In {selectedPrintLineIds.length} lệnh đã chọn
+                </button>
+              </div>
             ) : null}
           </div>
 
@@ -2418,6 +2413,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         initialLines={editingPlan ? editLines : undefined}
         initialPlanDate={editingPlan?.planDate}
         initialNote={editingPlan?.note}
+      />
+      <ProductionPlanQrPrintModal
+        open={showHistoryQrPrintModal}
+        onClose={() => setShowHistoryQrPrintModal(false)}
+        lines={selectedQrPrintLines}
+        planDate={selectedPlan?.planDate || ''}
       />
     </div>
   );

@@ -18,6 +18,8 @@ alter table public.bao_cao_nghiem_thu
   add column if not exists mat_hang text,
   add column if not exists don_vi text,
   add column if not exists so_luong numeric,
+  add column if not exists trong_luong numeric,
+  add column if not exists don_vi_trong_luong text default 'Kg',
   add column if not exists hinh_anh text,
   add column if not exists hinh_anh_public_id text;
 

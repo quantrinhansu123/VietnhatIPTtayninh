@@ -1009,11 +1009,17 @@ export function WarehouseSlipPanel({
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
   const [pendingDamagedReports, setPendingDamagedReports] = useState<PendingDamagedReport[]>([]);
-  const [isLoadingDamagedReports, setIsLoadingDamagedReports] = useState(true);
+  const [isLoadingDamagedReports, setIsLoadingDamagedReports] = useState(false);
   const [damagedReportsError, setDamagedReportsError] = useState('');
   const [reviewingDamagedReportKey, setReviewingDamagedReportKey] = useState('');
+  const damagedReportsRequestSeqRef = useRef(0);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+  const selectedWarehouseName = warehouseName.trim();
+  const selectedWarehouseHasDamagedReports =
+    Boolean(selectedWarehouseName) &&
+    warehouseKind === 'hang_hong' &&
+    isDamagedGoodsWarehouseName(warehouseName);
 
   useEffect(() => {
     if (editSlipCode) return;
@@ -1022,26 +1028,33 @@ export function WarehouseSlipPanel({
   }, [editSlipCode, loginName]);
 
   const loadPendingDamagedReports = async () => {
+    const requestSeq = ++damagedReportsRequestSeqRef.current;
     setIsLoadingDamagedReports(true);
     setDamagedReportsError('');
     try {
       const res = await fetch('/api/bao-cao-hang-hong/cho-nhap-kho');
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo hàng hỏng chờ nhập kho.'));
+          throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo hàng hỏng chờ nhập kho.'));
       }
+      if (requestSeq !== damagedReportsRequestSeqRef.current) return;
       setPendingDamagedReports(Array.isArray(data?.records) ? data.records : []);
     } catch (error: any) {
+      if (requestSeq !== damagedReportsRequestSeqRef.current) return;
       setPendingDamagedReports([]);
       setDamagedReportsError(error?.message || 'Không thể tải báo cáo hàng hỏng chờ nhập kho.');
     } finally {
-      setIsLoadingDamagedReports(false);
+      if (requestSeq === damagedReportsRequestSeqRef.current) {
+        setIsLoadingDamagedReports(false);
+      }
     }
   };
 
   const handleReviewDamagedReport = (report: PendingDamagedReport, mode: 'nhap' | 'xuat_treo' = 'nhap') => {
     const damagedWarehouseName =
-      warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) || 'Kho hàng hỏng';
+      (isDamagedGoodsWarehouseName(warehouseName) ? warehouseName : '') ||
+      warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) ||
+      'Kho hàng hỏng';
     const isXuatTreo = mode === 'xuat_treo';
     setSlipType(isXuatTreo ? 'xuat' : 'nhap');
     setIsXuatTreoMode(isXuatTreo);
@@ -1083,8 +1096,15 @@ export function WarehouseSlipPanel({
   };
 
   useEffect(() => {
+    if (!selectedWarehouseHasDamagedReports) {
+      damagedReportsRequestSeqRef.current += 1;
+      setPendingDamagedReports([]);
+      setDamagedReportsError('');
+      setIsLoadingDamagedReports(false);
+      return;
+    }
     void loadPendingDamagedReports();
-  }, []);
+  }, [selectedWarehouseHasDamagedReports]);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -2000,46 +2020,61 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const damagedReportsCardConfig =
-    slipType === 'nhap'
+  const pendingReportsCardConfig =
+    selectedWarehouseName && slipType === 'nhap'
       ? {
           mode: 'nhap' as const,
-          title: 'Báo cáo hàng hỏng chờ nhập kho',
+          title: selectedWarehouseHasDamagedReports
+            ? 'Báo cáo hàng hỏng chờ nhập kho'
+            : `Báo cáo ${selectedWarehouseName} chờ nhập kho`,
           subtitle: 'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu. Chưa lưu thì tồn kho chưa thay đổi.',
-          emptyText: 'Không có báo cáo hàng hỏng nào đang chờ nhập kho.'
+          emptyText: selectedWarehouseHasDamagedReports
+            ? 'Không có báo cáo hàng hỏng nào đang chờ nhập kho.'
+            : `Không có báo cáo nào của ${selectedWarehouseName} đang chờ nhập kho.`
         }
-      : slipType === 'xuat' && isXuatTreoMode
+      : selectedWarehouseName && slipType === 'xuat' && isXuatTreoMode
         ? {
             mode: 'xuat_treo' as const,
-            title: 'Báo cáo hàng hỏng chờ xuất kho',
+            title: selectedWarehouseHasDamagedReports
+              ? 'Báo cáo hàng hỏng chờ xuất kho'
+              : `Báo cáo ${selectedWarehouseName} chờ xuất kho`,
             subtitle:
               'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu xuất kho treo. Bấm Lưu để tạo ngay phiếu xuất chính thức.',
-            emptyText: 'Không có báo cáo hàng hỏng nào đang chờ xuất kho.'
+            emptyText: selectedWarehouseHasDamagedReports
+              ? 'Không có báo cáo hàng hỏng nào đang chờ xuất kho.'
+              : `Không có báo cáo nào của ${selectedWarehouseName} đang chờ xuất kho.`
           }
         : null;
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
-      {damagedReportsCardConfig && (
+      {pendingReportsCardConfig && (
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
           <div className="border-b border-slate-200 bg-white p-4 text-slate-700">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 text-[#ef1b2d]" />
-                  <h2 className="text-base font-black text-slate-900">{damagedReportsCardConfig.title}</h2>
+                  <h2 className="text-base font-black text-slate-900">{pendingReportsCardConfig.title}</h2>
                   {!isLoadingDamagedReports && (
                     <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">
                       {pendingDamagedReports.length}
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-xs font-medium text-slate-500">{damagedReportsCardConfig.subtitle}</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">{pendingReportsCardConfig.subtitle}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void loadPendingDamagedReports()}
+                  onClick={() => {
+                    if (selectedWarehouseHasDamagedReports) {
+                      void loadPendingDamagedReports();
+                    } else {
+                      setPendingDamagedReports([]);
+                      setDamagedReportsError('');
+                    }
+                  }}
                   disabled={isLoadingDamagedReports}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
                 >
@@ -2068,7 +2103,7 @@ export function WarehouseSlipPanel({
                 </p>
               ) : pendingDamagedReports.length === 0 ? (
                 <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
-                  {damagedReportsCardConfig.emptyText}
+                  {pendingReportsCardConfig.emptyText}
                 </div>
               ) : (
                 <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
@@ -2091,7 +2126,7 @@ export function WarehouseSlipPanel({
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleReviewDamagedReport(report, damagedReportsCardConfig.mode)}
+                            onClick={() => handleReviewDamagedReport(report, pendingReportsCardConfig.mode)}
                             className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
                               isReviewing
                                 ? 'bg-emerald-600 text-white'
@@ -2165,9 +2200,7 @@ export function WarehouseSlipPanel({
                     }}
                     className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
                       isActive
-                        ? option.treoMode
-                          ? 'border-amber-400 bg-amber-50 text-amber-700'
-                          : 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                        ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
                         : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
                     }`}
                   >

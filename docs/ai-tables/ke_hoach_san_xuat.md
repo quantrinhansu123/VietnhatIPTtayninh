@@ -9,4 +9,4 @@
 **Components:** `ProductionPlanNvlPrintSheet.tsx`, `ControlBoardShiftSummaryTable.tsx`  
 **Utils:** `controlBoardShiftSummary.ts`, `controlBoardShiftSummaryDetails.ts`
 
-**Modal tạo kế hoạch:** bảng lệnh chỉ hiện lệnh SX có `startDate` trùng **Ngày kế hoạch**; đổi ngày → danh sách cập nhật theo ngày.
+**Modal tạo kế hoạch:** tick chọn lệnh SX (không tự lấy tất cả); chỉ hiện lệnh đúng **Ngày kế hoạch** và chưa nằm trong KH đã lưu (`GET /api/ke-hoach-sx?usedLenhSx=1`).

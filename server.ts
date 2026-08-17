@@ -6845,6 +6845,38 @@ export function createApp() {
     }
 
     try {
+      const usedLenhSxFlag = String(req.query.usedLenhSx ?? req.query.used_lenh_sx ?? '').trim();
+      if (usedLenhSxFlag === '1' || usedLenhSxFlag.toLowerCase() === 'true') {
+        const excludePlanId = String(req.query.excludePlanId ?? req.query.exclude_plan_id ?? '').trim();
+        let usedLinesQuery = supabase
+          .from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE)
+          .select('lenh_sx_id, ma_lenh_sx');
+        if (excludePlanId) {
+          usedLinesQuery = usedLinesQuery.neq('ke_hoach_id', excludePlanId);
+        }
+        const { data: usedLines, error: usedLinesError } = await usedLinesQuery;
+        if (usedLinesError) {
+          console.error('Supabase ke_hoach_san_xuat_dong used-lenh error:', usedLinesError);
+          return res.status(500).json({ error: productionPlanWriteErrorMessage(usedLinesError) });
+        }
+
+        const usedLenhSxIds = new Set<string>();
+        const usedOrderCodes = new Set<string>();
+        for (const rawLine of (usedLines || []) as Record<string, unknown>[]) {
+          const lenhSxId = String(rawLine.lenh_sx_id ?? '').trim();
+          if (lenhSxId && lenhSxId !== '0' && lenhSxId.toLowerCase() !== 'null') {
+            usedLenhSxIds.add(lenhSxId);
+          }
+          const orderCode = String(rawLine.ma_lenh_sx ?? '').trim();
+          if (orderCode) usedOrderCodes.add(orderCode);
+        }
+
+        return res.json({
+          usedLenhSxIds: Array.from(usedLenhSxIds),
+          usedOrderCodes: Array.from(usedOrderCodes)
+        });
+      }
+
       const id = String(req.query.id ?? '').trim();
       if (id) {
         const { data: plan, error: planError } = await supabase

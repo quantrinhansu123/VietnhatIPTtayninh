@@ -282,6 +282,62 @@ export function buildInitialProductionPlanLines(
     .map((row, index) => productionOrderToPlanLine(row, row.priority > 0 ? row.priority : index + 1, machines));
 }
 
+export function isProductionOrderUsedInSavedPlan(
+  row: Pick<ProductionOrderRow, 'id' | 'code'>,
+  usedLenhSxIds: Set<string>,
+  usedOrderCodes: Set<string>
+) {
+  const orderId = String(row.id || '').trim();
+  if (orderId && usedLenhSxIds.has(orderId)) return true;
+  const orderCode = String(row.code || '').trim();
+  return Boolean(orderCode) && usedOrderCodes.has(orderCode);
+}
+
+/** Lệnh SX còn có thể chọn khi lập kế hoạch mới (đúng ngày, chưa nằm trong KH đã lưu). */
+export function getAvailableProductionPlanOrders(
+  productionOrders: ProductionOrderRow[],
+  planDate: string,
+  usedLenhSxIds: Set<string>,
+  usedOrderCodes: Set<string>,
+  alwaysIncludeIds: Set<string> = new Set()
+): ProductionOrderRow[] {
+  const targetDate = String(planDate || '').trim();
+  return productionOrders
+    .filter(isActiveProductionPlanOrder)
+    .filter(row => {
+      if (!targetDate) return true;
+      const orderDate = parseProductionOrderFilterDate(row.startDate);
+      return Boolean(orderDate) && orderDate === targetDate;
+    })
+    .filter(row => alwaysIncludeIds.has(row.id) || !isProductionOrderUsedInSavedPlan(row, usedLenhSxIds, usedOrderCodes))
+    .sort(compareProductionOrderPriority);
+}
+
+export async function loadUsedProductionPlanOrderRefs(excludePlanId = ''): Promise<{
+  usedLenhSxIds: Set<string>;
+  usedOrderCodes: Set<string>;
+}> {
+  const params = new URLSearchParams({ usedLenhSx: '1' });
+  if (excludePlanId) params.set('excludePlanId', excludePlanId);
+  const res = await fetch(`/api/ke-hoach-sx?${params.toString()}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Không thể tải danh sách lệnh đã lập kế hoạch.');
+  }
+  return {
+    usedLenhSxIds: new Set(
+      (Array.isArray(data.usedLenhSxIds) ? data.usedLenhSxIds : [])
+        .map((value: unknown) => String(value ?? '').trim())
+        .filter(Boolean)
+    ),
+    usedOrderCodes: new Set(
+      (Array.isArray(data.usedOrderCodes) ? data.usedOrderCodes : [])
+        .map((value: unknown) => String(value ?? '').trim())
+        .filter(Boolean)
+    )
+  };
+}
+
 /** Ngày kế hoạch mặc định = ngày xuất hiện nhiều nhất trong lệnh SX đã chọn. */
 export function resolveDefaultProductionPlanDate(
   productionOrders: ProductionOrderRow[],
@@ -2438,18 +2494,80 @@ export function ProductionPlanModal({
   const [editProductLookups, setEditProductLookups] = useState<ProductRow[]>([]);
   const [loadingEditLineId, setLoadingEditLineId] = useState('');
   const [productionOrderOverrides, setProductionOrderOverrides] = useState<Record<string, ProductionOrderRow>>({});
+  const [usedLenhSxIds, setUsedLenhSxIds] = useState<Set<string>>(() => new Set());
+  const [usedOrderCodes, setUsedOrderCodes] = useState<Set<string>>(() => new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(() => new Set());
+  const [isLoadingUsedOrders, setIsLoadingUsedOrders] = useState(false);
 
   const effectiveProductionOrders = useMemo(
     () => productionOrders.map(order => productionOrderOverrides[order.id] ?? order),
     [productionOrders, productionOrderOverrides]
   );
 
+  const isEditingExistingPlan = Boolean(editPlanId || (initialLines && initialLines.length > 0));
+
+  const availableOrders = useMemo(
+    () =>
+      isEditingExistingPlan
+        ? []
+        : getAvailableProductionPlanOrders(
+            effectiveProductionOrders,
+            planDate,
+            usedLenhSxIds,
+            usedOrderCodes
+          ),
+    [isEditingExistingPlan, effectiveProductionOrders, planDate, usedLenhSxIds, usedOrderCodes]
+  );
+
+  const allAvailableOrdersSelected =
+    availableOrders.length > 0 && availableOrders.every(order => selectedOrderIds.has(order.id));
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setIsLoadingUsedOrders(true);
+    loadUsedProductionPlanOrderRefs(editPlanId || '')
+      .then(used => {
+        if (cancelled) return;
+        setUsedLenhSxIds(used.usedLenhSxIds);
+        setUsedOrderCodes(used.usedOrderCodes);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUsedLenhSxIds(new Set());
+        setUsedOrderCodes(new Set());
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingUsedOrders(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editPlanId]);
+
   const displayLines = useMemo(
     () => enrichProductionPlanLines(planLines, effectiveProductionOrders, machines),
     [planLines, effectiveProductionOrders, machines]
   );
 
-  const isEditingExistingPlan = Boolean(editPlanId || (initialLines && initialLines.length > 0));
+  const createModeTableRows = useMemo(() => {
+    if (isEditingExistingPlan) return [];
+    return availableOrders.map(order => {
+      const existingLine = planLines.find(line => line.id === order.id);
+      const line =
+        existingLine ||
+        productionOrderToPlanLine(
+          order,
+          order.priority > 0 ? order.priority : availableOrders.findIndex(item => item.id === order.id) + 1,
+          machines
+        );
+      return {
+        order,
+        line,
+        selected: selectedOrderIds.has(order.id)
+      };
+    });
+  }, [isEditingExistingPlan, availableOrders, planLines, selectedOrderIds, machines]);
 
   useEffect(() => {
     if (!open) return;
@@ -2460,11 +2578,13 @@ export function ProductionPlanModal({
       initialPlanDate ||
       resolveDefaultProductionPlanDate(seedOrders.length > 0 ? seedOrders : productionOrders, todayDateInputValue());
     setPlanDate(nextDate);
-    setPlanLines(
-      initialLines?.length
-        ? initialLines
-        : buildInitialProductionPlanLines(productionOrders, machines, nextDate)
-    );
+    if (initialLines?.length) {
+      setPlanLines(initialLines);
+      setSelectedOrderIds(new Set(initialLines.map(line => line.id).filter(Boolean)));
+    } else {
+      setPlanLines([]);
+      setSelectedOrderIds(new Set(seedIdSet));
+    }
     setFormError('');
     setDragIndex(null);
     setPendingPrint(false);
@@ -2503,11 +2623,35 @@ export function ProductionPlanModal({
       .catch(() => setRelatedShiftOptions([]));
   }, [open, productionOrders, machines, initialLines, initialPlanDate, initialNote, seedOrderIds]);
 
-  /** Đổi ngày kế hoạch → chỉ giữ lệnh SX đúng ngày đó (không áp khi sửa kế hoạch đã lưu). */
+  /** Đổi ngày kế hoạch → bỏ chọn lệnh không thuộc ngày mới (không áp khi sửa kế hoạch đã lưu). */
   useEffect(() => {
     if (!open || isEditingExistingPlan) return;
-    setPlanLines(buildInitialProductionPlanLines(productionOrders, machines, planDate));
-  }, [open, isEditingExistingPlan, planDate, productionOrders, machines]);
+    setSelectedOrderIds(prev => {
+      const availableIdSet = new Set(
+        getAvailableProductionPlanOrders(
+          effectiveProductionOrders,
+          planDate,
+          usedLenhSxIds,
+          usedOrderCodes
+        ).map(order => order.id)
+      );
+      return new Set([...prev].filter(id => availableIdSet.has(id)));
+    });
+  }, [open, isEditingExistingPlan, planDate, effectiveProductionOrders, usedLenhSxIds, usedOrderCodes]);
+
+  useEffect(() => {
+    if (!open || isEditingExistingPlan) return;
+    setPlanLines(prev => {
+      const prevById = new Map<string, ProductionPlanLine>(prev.map(line => [line.id, line]));
+      const selectedOrders = availableOrders.filter(order => selectedOrderIds.has(order.id));
+      return selectedOrders.map((order, index) => {
+        const existing = prevById.get(order.id);
+        const priority = index + 1;
+        const baseLine = productionOrderToPlanLine(order, priority, machines);
+        return existing ? { ...baseLine, note: existing.note, priority } : baseLine;
+      });
+    });
+  }, [open, isEditingExistingPlan, availableOrders, selectedOrderIds, machines]);
 
   useEffect(() => {
     if (!open) return;
@@ -2688,9 +2832,30 @@ export function ProductionPlanModal({
     reorderLine(index, index + direction);
   };
 
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const toggleAllAvailableOrders = () => {
+    if (allAvailableOrdersSelected) {
+      setSelectedOrderIds(new Set());
+      return;
+    }
+    setSelectedOrderIds(new Set(availableOrders.map(order => order.id)));
+  };
+
   const handleSave = async () => {
     if (displayLines.length === 0) {
-      setFormError('Không có lệnh SX đang chờ/đang sản xuất để lập kế hoạch.');
+      setFormError(
+        isEditingExistingPlan
+          ? 'Không có lệnh SX đang chờ/đang sản xuất để lập kế hoạch.'
+          : 'Vui lòng tick chọn ít nhất một lệnh SX để lập kế hoạch.'
+      );
       return;
     }
 
@@ -3103,7 +3268,9 @@ export function ProductionPlanModal({
                   className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
                 <span className="block text-[11px] font-semibold text-zinc-500">
-                  Bảng dưới chỉ hiện lệnh SX có ngày bắt đầu trùng ngày này.
+                  {isEditingExistingPlan
+                    ? 'Bảng dưới chỉ hiện lệnh SX có ngày bắt đầu trùng ngày này.'
+                    : 'Chỉ hiện lệnh SX đúng ngày và chưa nằm trong kế hoạch đã lưu. Tick để chọn lệnh đưa vào kế hoạch.'}
                 </span>
               </label>
               <label className="space-y-1.5">
@@ -3167,15 +3334,145 @@ export function ProductionPlanModal({
               </div>
             </section>
 
-            {displayLines.length === 0 ? (
+            {!isEditingExistingPlan && createModeTableRows.length > 0 ? (
+              <section className="mb-4 rounded-xl border border-zinc-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Chọn lệnh SX ({selectedOrderIds.size}/{createModeTableRows.length} đã chọn)
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleAllAvailableOrders}
+                      className="h-8 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                      {allAvailableOrdersSelected ? 'Bỏ chọn' : 'Chọn tất cả'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {isLoadingUsedOrders && !isEditingExistingPlan ? (
               <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm font-semibold text-zinc-500">
-                Không có lệnh SX đang chờ / đang sản xuất cho ngày {planDate || "đã chọn"}.
+                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                Đang tải danh sách lệnh chưa lập kế hoạch...
+              </p>
+            ) : isEditingExistingPlan ? (
+              displayLines.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm font-semibold text-zinc-500">
+                  Không có lệnh SX đang chờ / đang sản xuất cho ngày {planDate || 'đã chọn'}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-zinc-200">
+                  <table className="min-w-[980px] w-full text-left text-sm">
+                    <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wider text-white">
+                      <tr>
+                        <th className="px-2 py-2 font-black">STT</th>
+                        <th className="px-2 py-2 font-black">Tên máy</th>
+                        <th className="px-2 py-2 font-black">Ca làm việc</th>
+                        <th className="px-2 py-2 font-black">Nhân sự</th>
+                        <th className="px-2 py-2 font-black">Lệnh sản xuất</th>
+                        <th className="px-2 py-2 font-black">Ghi chú</th>
+                        <th className="px-2 py-2 font-black">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {displayLines.map((line, index) => (
+                        <tr
+                          key={line.id}
+                          draggable
+                          onDragStart={() => setDragIndex(index)}
+                          onDragOver={event => event.preventDefault()}
+                          onDrop={() => {
+                            if (dragIndex === null) return;
+                            reorderLine(dragIndex, index);
+                            setDragIndex(null);
+                          }}
+                          className={dragIndex === index ? 'bg-emerald-50' : 'hover:bg-zinc-50'}
+                        >
+                          <td className="px-2 py-2 font-black text-emerald-700">{index + 1}</td>
+                          <td className="px-2 py-2 font-semibold text-zinc-800">{line.position || '-'}</td>
+                          <td className="px-2 py-2 text-zinc-700">{line.shift && line.shift !== '-' ? line.shift : '-'}</td>
+                          <td className="px-2 py-2 text-zinc-600">{line.staff && line.staff !== '-' ? line.staff : '-'}</td>
+                          <td className="px-2 py-2 font-mono text-xs font-bold text-zinc-900">
+                            {formatProductionPlanProductCodes(line)}
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <textarea
+                              value={line.note}
+                              onChange={event => updateLineNote(line.id, event.target.value)}
+                              rows={3}
+                              className="w-full min-w-[220px] rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                              placeholder="Nhập ghi chú cho lệnh này"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <RowActionsMenu label={`Thao tác dòng ${index + 1}`}>
+                              <div className="flex items-center gap-1">
+                                {canEditProductionOrder ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void openProductionOrderEdit(line)}
+                                    disabled={Boolean(loadingEditLineId)}
+                                    className="flex h-7 w-7 items-center justify-center rounded border border-amber-200 text-amber-700 disabled:opacity-40"
+                                    title="Sửa"
+                                  >
+                                    {loadingEditLineId === line.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => moveLine(index, -1)}
+                                  disabled={index === 0}
+                                  className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
+                                  title="Lên"
+                                >
+                                  <ArrowUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveLine(index, 1)}
+                                  disabled={index === displayLines.length - 1}
+                                  className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
+                                  title="Xuống"
+                                >
+                                  <ArrowDown className="h-3.5 w-3.5" />
+                                </button>
+                                <span className="flex h-7 w-7 items-center justify-center text-zinc-400">
+                                  <GripVertical className="h-4 w-4" />
+                                </span>
+                              </div>
+                            </RowActionsMenu>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : createModeTableRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm font-semibold text-zinc-500">
+                Không còn lệnh SX đang chờ / đang sản xuất nào chưa lập kế hoạch cho ngày {planDate || 'đã chọn'}.
               </p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-zinc-200">
                 <table className="min-w-[980px] w-full text-left text-sm">
                   <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wider text-white">
                     <tr>
+                      <th className="w-12 px-2 py-2 text-center font-black">
+                        <input
+                          type="checkbox"
+                          aria-label="Chọn tất cả lệnh SX"
+                          checked={allAvailableOrdersSelected}
+                          onChange={toggleAllAvailableOrders}
+                          className="h-4 w-4 cursor-pointer accent-white"
+                        />
+                      </th>
                       <th className="px-2 py-2 font-black">STT</th>
                       <th className="px-2 py-2 font-black">Tên máy</th>
                       <th className="px-2 py-2 font-black">Ca làm việc</th>
@@ -3186,79 +3483,110 @@ export function ProductionPlanModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {displayLines.map((line, index) => (
-                      <tr
-                        key={line.id}
-                        draggable
-                        onDragStart={() => setDragIndex(index)}
-                        onDragOver={event => event.preventDefault()}
-                        onDrop={() => {
-                          if (dragIndex === null) return;
-                          reorderLine(dragIndex, index);
-                          setDragIndex(null);
-                        }}
-                        className={dragIndex === index ? 'bg-emerald-50' : 'hover:bg-zinc-50'}
-                      >
-                        <td className="px-2 py-2 font-black text-emerald-700">{index + 1}</td>
-                        <td className="px-2 py-2 font-semibold text-zinc-800">{line.position || '-'}</td>
-                        <td className="px-2 py-2 text-zinc-700">{line.shift && line.shift !== '-' ? line.shift : '-'}</td>
-                        <td className="px-2 py-2 text-zinc-600">{line.staff && line.staff !== '-' ? line.staff : '-'}</td>
-                        <td className="px-2 py-2 font-mono text-xs font-bold text-zinc-900">
-                          {formatProductionPlanProductCodes(line)}
-                        </td>
-                        <td className="px-2 py-2 align-top">
-                          <textarea
-                            value={line.note}
-                            onChange={event => updateLineNote(line.id, event.target.value)}
-                            rows={3}
-                            className="w-full min-w-[220px] rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                            placeholder="Nhập ghi chú cho lệnh này"
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <RowActionsMenu label={`Thao tác dòng ${index + 1}`}>
-                          <div className="flex items-center gap-1">
-                            {canEditProductionOrder ? (
-                              <button
-                                type="button"
-                                onClick={() => void openProductionOrderEdit(line)}
-                                disabled={Boolean(loadingEditLineId)}
-                                className="flex h-7 w-7 items-center justify-center rounded border border-amber-200 text-amber-700 disabled:opacity-40"
-                                title="Sửa"
-                              >
-                                {loadingEditLineId === line.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Pencil className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => moveLine(index, -1)}
-                              disabled={index === 0}
-                              className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
-                              title="Lên"
-                            >
-                              <ArrowUp className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveLine(index, 1)}
-                              disabled={index === displayLines.length - 1}
-                              className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
-                              title="Xuống"
-                            >
-                              <ArrowDown className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="flex h-7 w-7 items-center justify-center text-zinc-400">
-                              <GripVertical className="h-4 w-4" />
-                            </span>
-                          </div>
-                          </RowActionsMenu>
-                        </td>
-                      </tr>
-                    ))}
+                    {createModeTableRows.map((row, index) => {
+                      const selectedIndex = row.selected
+                        ? displayLines.findIndex(line => line.id === row.line.id)
+                        : -1;
+                      const line = row.selected && selectedIndex >= 0 ? displayLines[selectedIndex] : row.line;
+                      return (
+                        <tr
+                          key={row.line.id}
+                          draggable={row.selected}
+                          onDragStart={() => {
+                            if (!row.selected || selectedIndex < 0) return;
+                            setDragIndex(selectedIndex);
+                          }}
+                          onDragOver={event => event.preventDefault()}
+                          onDrop={() => {
+                            if (!row.selected || dragIndex === null || selectedIndex < 0) return;
+                            reorderLine(dragIndex, selectedIndex);
+                            setDragIndex(null);
+                          }}
+                          className={
+                            !row.selected
+                              ? 'bg-zinc-50/80 opacity-70'
+                              : dragIndex === selectedIndex
+                                ? 'bg-emerald-50'
+                                : 'hover:bg-zinc-50'
+                          }
+                        >
+                          <td className="px-2 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label={`Chọn lệnh ${row.order.code}`}
+                              checked={row.selected}
+                              onChange={() => toggleOrderSelection(row.line.id)}
+                              className="h-4 w-4 cursor-pointer accent-[#ef1b2d]"
+                            />
+                          </td>
+                          <td className="px-2 py-2 font-black text-emerald-700">
+                            {row.selected && selectedIndex >= 0 ? selectedIndex + 1 : '-'}
+                          </td>
+                          <td className="px-2 py-2 font-semibold text-zinc-800">{line.position || '-'}</td>
+                          <td className="px-2 py-2 text-zinc-700">{line.shift && line.shift !== '-' ? line.shift : '-'}</td>
+                          <td className="px-2 py-2 text-zinc-600">{line.staff && line.staff !== '-' ? line.staff : '-'}</td>
+                          <td className="px-2 py-2 font-mono text-xs font-bold text-zinc-900">
+                            {formatProductionPlanProductCodes(line)}
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            <textarea
+                              value={line.note}
+                              onChange={event => updateLineNote(line.id, event.target.value)}
+                              rows={3}
+                              disabled={!row.selected}
+                              className="w-full min-w-[220px] rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100"
+                              placeholder={row.selected ? 'Nhập ghi chú cho lệnh này' : 'Tick chọn lệnh để thêm ghi chú'}
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            {row.selected && selectedIndex >= 0 ? (
+                              <RowActionsMenu label={`Thao tác dòng ${selectedIndex + 1}`}>
+                                <div className="flex items-center gap-1">
+                                  {canEditProductionOrder ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void openProductionOrderEdit(line)}
+                                      disabled={Boolean(loadingEditLineId)}
+                                      className="flex h-7 w-7 items-center justify-center rounded border border-amber-200 text-amber-700 disabled:opacity-40"
+                                      title="Sửa"
+                                    >
+                                      {loadingEditLineId === line.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => moveLine(selectedIndex, -1)}
+                                    disabled={selectedIndex === 0}
+                                    className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
+                                    title="Lên"
+                                  >
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveLine(selectedIndex, 1)}
+                                    disabled={selectedIndex === displayLines.length - 1}
+                                    className="flex h-7 w-7 items-center justify-center rounded border border-zinc-200 text-zinc-600 disabled:opacity-40"
+                                    title="Xuống"
+                                  >
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  </button>
+                                  <span className="flex h-7 w-7 items-center justify-center text-zinc-400">
+                                    <GripVertical className="h-4 w-4" />
+                                  </span>
+                                </div>
+                              </RowActionsMenu>
+                            ) : (
+                              <span className="text-xs font-semibold text-zinc-400">Chưa chọn</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

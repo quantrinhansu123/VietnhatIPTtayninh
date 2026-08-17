@@ -318,10 +318,11 @@ export function normalizeMixingProductionOrders(data: unknown): MixingProduction
         orderCode,
         shift: pickText(record, ['ca', 'shift'], ''),
         machine: pickText(record, ['may', 'ma_may', 'ten_may', 'machine'], ''),
-        startDate: pickText(record, ['ngay_gio_bat_dau', 'ngay_bat_dau', 'ngay_san_xuat', 'start_date'], '').slice(
-          0,
-          10
-        ),
+        startDate: pickText(
+          record,
+          ['ngay', 'ngay_san_xuat', 'ngay_sx', 'ngay_bat_dau', 'ngay_gio_bat_dau', 'start_date'],
+          ''
+        ).slice(0, 10),
         staff: pickText(record, ['nhan_su', 'staff', 'cong_nhan'], ''),
         productLines
       };
@@ -358,11 +359,16 @@ function machineMatches(
   if (machineName) candidates.add(normalizeKey(machineName));
   if (machineCode && machineName) candidates.add(normalizeKey(`${machineCode} · ${machineName}`));
 
-  machines.forEach(machine => {
-    if (machine.code) candidates.add(normalizeKey(machine.code));
-    if (machine.name) candidates.add(normalizeKey(machine.name));
-    if (machine.code && machine.name) candidates.add(normalizeKey(`${machine.code} · ${machine.name}`));
+  const selectedMachine = machines.find(machine => {
+    const codeKey = normalizeKey(machine.code);
+    const nameKey = normalizeKey(machine.name);
+    return candidates.has(codeKey) || candidates.has(nameKey);
   });
+  if (selectedMachine) {
+    candidates.add(normalizeKey(selectedMachine.code));
+    candidates.add(normalizeKey(selectedMachine.name));
+    candidates.add(normalizeKey(`${selectedMachine.code} · ${selectedMachine.name}`));
+  }
 
   const refKey = normalizeKey(ref);
   return [...candidates].some(key => key && (key === refKey || key.includes(refKey) || refKey.includes(key)));
@@ -379,7 +385,7 @@ export function filterMixingProductionOrders(
 
   return orders.filter(order => {
     const orderDate = extractIsoDate(order.startDate);
-    if (filters.ngay && orderDate && orderDate !== filters.ngay) return false;
+    if (filters.ngay && orderDate !== filters.ngay) return false;
     if (!shiftMatches(order.shift, selectedCa)) return false;
     if (!machineMatches(order.machine, filters.maMay, filters.tenMay, machines)) return false;
     return order.productLines.some(line => line.productCode.trim());

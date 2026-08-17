@@ -189,13 +189,37 @@ function machineMatches(
   if (machineName) candidates.add(normalizeKey(machineName));
   if (machineCode && machineName) candidates.add(normalizeKey(`${machineCode} · ${machineName}`));
 
-  machines.forEach(machine => {
-    candidates.add(normalizeKey(machine.code));
-    candidates.add(normalizeKey(machine.name));
+  const selectedMachine = machines.find(machine => {
+    const codeKey = normalizeKey(machine.code);
+    const nameKey = normalizeKey(machine.name);
+    return candidates.has(codeKey) || candidates.has(nameKey);
   });
+  if (selectedMachine) {
+    candidates.add(normalizeKey(selectedMachine.code));
+    candidates.add(normalizeKey(selectedMachine.name));
+    candidates.add(normalizeKey(`${selectedMachine.code} · ${selectedMachine.name}`));
+  }
 
   const refKey = normalizeKey(ref);
   return [...candidates].some(key => key && (key === refKey || key.includes(refKey) || refKey.includes(key)));
+}
+
+function resolveMachineFromProductionRef(orderMachine: string, machines: MachineOption[]) {
+  const refKey = normalizeKey(orderMachine);
+  if (!refKey) return null;
+
+  return (
+    machines.find(machine => normalizeKey(machine.code) === refKey || normalizeKey(machine.name) === refKey) ??
+    machines.find(machine => {
+      const codeKey = normalizeKey(machine.code);
+      const nameKey = normalizeKey(machine.name);
+      return (
+        (codeKey && (refKey.includes(codeKey) || codeKey.includes(refKey))) ||
+        (nameKey && (refKey.includes(nameKey) || nameKey.includes(refKey)))
+      );
+    }) ??
+    null
+  );
 }
 
 function resolveStaffFromProductionOrders(
@@ -208,7 +232,7 @@ function resolveStaffFromProductionOrders(
 ) {
   const matched = orders.filter(order => {
     const orderDate = extractIsoDate(order.startDate);
-    if (ngay && orderDate && orderDate !== ngay) return false;
+    if (ngay && orderDate !== ngay) return false;
     if (ca && !shiftMatches(order.shift, ca)) return false;
     return machineMatches(order.machine, maMay, tenMay, machines);
   });
@@ -1138,14 +1162,31 @@ export default function MixingReportForm({
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
+  const productionOrdersForDate = useMemo(() => {
+    const selectedDate = form.ngay.trim();
+    if (!selectedDate) return [];
+    return productionOrders.filter(order => extractIsoDate(order.startDate) === selectedDate);
+  }, [form.ngay, productionOrders]);
+
   const shiftSelectOptions = useMemo(() => {
-    const options = [...shiftOptions];
+    const options: Array<{ value: string; label: string }> = [];
+    productionOrdersForDate.forEach(order => {
+      const rawShift = normalizeMixingCaInput(order.shift);
+      if (!rawShift) return;
+      const value = resolveShiftName(rawShift, shiftOptions) || rawShift;
+      if (options.some(option => shiftMatches(option.value, value))) return;
+      const configured = shiftOptions.find(
+        option => shiftMatches(option.value, value) || shiftMatches(option.label, value)
+      );
+      options.push({ value, label: configured?.label || value });
+    });
+
     const current = normalizeMixingCaInput(form.ca);
-    if (current && !options.some(option => option.value === current || option.label === current)) {
+    if (editingId && current && !options.some(option => shiftMatches(option.value, current))) {
       options.unshift({ value: current, label: current });
     }
     return options;
-  }, [form.ca, shiftOptions]);
+  }, [editingId, form.ca, productionOrdersForDate, shiftOptions]);
 
   useEffect(() => {
     const current = normalizeMixingCaInput(form.ca);
@@ -1255,7 +1296,21 @@ export default function MixingReportForm({
 
   const pickShift = (ca: string) => {
     setNhanSuManual(false);
-    setForm(prev => ({ ...prev, ca }));
+    const matchedOrders = productionOrdersForDate.filter(order => shiftMatches(order.shift, ca));
+    const matchedMachine = matchedOrders
+      .map(order => resolveMachineFromProductionRef(order.machine, machines))
+      .find((machine): machine is MachineOption => Boolean(machine));
+
+    setForm(prev => ({
+      ...prev,
+      ca,
+      ma_may: matchedMachine?.code || '',
+      ten_may: matchedMachine?.name || '',
+      chi_nhanh: matchedMachine?.branch || prev.chi_nhanh,
+      nhan_su: ''
+    }));
+
+    if (matchedMachine) pickMachine(matchedMachine.id);
   };
 
   const handleDateChange = (ngay: string) => {
@@ -1263,6 +1318,9 @@ export default function MixingReportForm({
     setForm(prev => ({
       ...prev,
       ngay,
+      ca: '',
+      ma_may: '',
+      ten_may: '',
       nhan_su: ''
     }));
   };

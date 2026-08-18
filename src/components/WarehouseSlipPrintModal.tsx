@@ -83,10 +83,30 @@ function isNvlExportPrintLayout(data: WarehouseSlipPrintData) {
   );
 }
 
+function warehouseKindTitleLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
+  switch (kind) {
+    case 'san_pham':
+      return 'SẢN PHẨM';
+    case 'tai_che':
+      return 'TÁI CHẾ';
+    case 'hang_hong':
+      return 'HÀNG HỎNG';
+    case 'hang_hoa':
+      return 'HÀNG HÓA';
+    case 'cong_cu_dung_cu':
+      return 'CÔNG CỤ DỤNG CỤ';
+    case 'gia_cong':
+      return 'GIA CÔNG';
+    case 'nvl':
+    default:
+      return 'VẬT TƯ';
+  }
+}
+
 function slipTypeTitle(data: WarehouseSlipPrintData) {
-  if (isNhapKhoPrintLayout(data)) return 'PHIẾU NHẬP KHO';
-  if (isNvlExportPrintLayout(data)) return 'PHIẾU XUẤT KHO VẬT TƯ';
-  return 'PHIẾU XUẤT KHO SẢN PHẨM';
+  const kindLabel = warehouseKindTitleLabel(data.warehouseKind);
+  const base = isNhapKhoPrintLayout(data) ? 'PHIẾU NHẬP KHO' : 'PHIẾU XUẤT KHO';
+  return `${base} ${kindLabel}`;
 }
 
 function codeColumnLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
@@ -243,7 +263,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
       </div>
 
       <div className="warehouse-nhap-kho-print-heading">
-        <h1 className="warehouse-nhap-kho-print-title">PHIẾU NHẬP KHO</h1>
+        <h1 className="warehouse-nhap-kho-print-title">{slipTypeTitle(data)}</h1>
         <p className="warehouse-nhap-kho-print-date">
           <em>
             Ngày {dateParts.day || '……'} tháng {dateParts.month || '……'} năm {dateParts.year || '……'}

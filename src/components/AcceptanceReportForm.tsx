@@ -389,6 +389,7 @@ export default function AcceptanceReportForm({
   const [form, setForm] = useState(newReportForm());
   const formLinesRef = useRef(form.lines);
   formLinesRef.current = form.lines;
+  const isAutoReportMaterialType = form.loai_vat_tu === 'Thành phẩm';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -1167,8 +1168,9 @@ export default function AcceptanceReportForm({
                 required
               >
                 <option value="Thành phẩm">Thành phẩm</option>
-                <option value="SP lỗi">SP lỗi</option>
-                <option value="SP rác">SP rác</option>
+                <option value="Gia công">Gia công</option>
+                <option value="SP lỗi">SP lỗi (Hàng hỏng)</option>
+                <option value="SP rác">SP rác (Kho rác)</option>
               </select>
             </label>
             <label className="field-cell">
@@ -1207,16 +1209,18 @@ export default function AcceptanceReportForm({
             extraHeaderButtons={
               !editingId ? (
                 <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={openAutoReport}
-                    className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                    aria-label="Tạo báo cáo tự động từ phiếu cân AI"
-                    title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
-                  >
-                    <Scale className="h-3.5 w-3.5 shrink-0" />
-                    <span>Tự động BC</span>
-                  </button>
+                  {isAutoReportMaterialType ? (
+                    <button
+                      type="button"
+                      onClick={openAutoReport}
+                      className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                      aria-label="Tạo báo cáo tự động từ phiếu cân AI"
+                      title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
+                    >
+                      <Scale className="h-3.5 w-3.5 shrink-0" />
+                      <span>Tự động BC</span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {

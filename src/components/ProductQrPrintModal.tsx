@@ -24,6 +24,9 @@ export type ProductQrPrintLabel = {
   payload: string;
   productCode: string;
   productName?: string;
+  itemLabel?: string;
+  quantity?: number;
+  unit?: string;
 };
 
 async function createQrDataUrl(payload: string) {
@@ -53,8 +56,11 @@ function ProductQrCards({
               {images[label.payload] ? <img src={images[label.payload]} alt={`QR ${label.payload}`} /> : null}
             </div>
             <div className="qr-print-tag-info">
-              <p className="qr-print-tag-label">Tên sản phẩm</p>
+              <p className="qr-print-tag-label">{label.itemLabel || 'Tên sản phẩm'}</p>
               <p className="qr-print-tag-name">{label.productName || '-'}</p>
+              {label.quantity !== undefined ? (
+                <p className="qr-print-tag-quantity">Số lượng: {label.quantity}{label.unit ? ` ${label.unit}` : ''}</p>
+              ) : null}
               <p className="qr-print-tag-code">{label.productCode || '-'}</p>
             </div>
           </div>
@@ -85,11 +91,18 @@ export default function ProductQrPrintModal({
   open,
   labels,
   autoPrint = false,
+  trackProductPrint = true,
+  title = 'Mã QR sản phẩm nhập kho',
+  description,
   onClose
 }: {
   open: boolean;
   labels: ProductQrPrintLabel[];
   autoPrint?: boolean;
+  /** QR NVL không phải serial thành phẩm nên không ghi lịch sử in ở bảng mã sản phẩm. */
+  trackProductPrint?: boolean;
+  title?: string;
+  description?: string;
   onClose: () => void;
 }) {
   const [images, setImages] = useState<Record<string, string>>({});
@@ -128,13 +141,15 @@ export default function ProductQrPrintModal({
     setIsPreparing(true);
     setError('');
     try {
-      const response = await fetch('/api/ma-san-pham/danh-dau-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codes: labels.map(label => label.payload) })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Không thể lưu lịch sử in QR.');
+      if (trackProductPrint) {
+        const response = await fetch('/api/ma-san-pham/danh-dau-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codes: labels.map(label => label.payload) })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Không thể lưu lịch sử in QR.');
+      }
 
       enablePortraitQrPrintPage();
       document.body.classList.add('product-qr-print-active');
@@ -169,8 +184,12 @@ export default function ProductQrPrintModal({
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-4 sm:px-5">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">File 2/2</p>
-              <h3 className="text-lg font-black text-zinc-950">Mã QR sản phẩm nhập kho</h3>
-              <p className="mt-1 text-sm font-medium text-zinc-500">{labels.length} tem · mỗi tem là một serial đã lưu trong CSDL</p>
+              <h3 className="text-lg font-black text-zinc-950">{title}</h3>
+              <p className="mt-1 text-sm font-medium text-zinc-500">
+                {description || (trackProductPrint
+                  ? `${labels.length} tem · mỗi tem là một serial đã lưu trong CSDL`
+                  : `${labels.length} tem · mỗi mã NVL in một lần`)}
+              </p>
             </div>
             <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50">
               <X className="h-4 w-4" />

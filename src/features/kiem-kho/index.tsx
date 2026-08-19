@@ -694,7 +694,7 @@ export function KiemKhoPanel({
     }
   };
 
-  const lineCountLabel = useMemo(() => `${lines.length} mã SP`, [lines.length]);
+  const scannedQrCount = lines.length;
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 py-2 md:py-3">
@@ -772,14 +772,14 @@ export function KiemKhoPanel({
       {view === 'thuc-hien' ? (
       <>
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-black text-zinc-900">Thông tin phiếu</h2>
           {canCreate ? (
             <button
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+              className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Lưu phiếu
@@ -826,14 +826,19 @@ export function KiemKhoPanel({
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-          <div>
-            <h2 className="text-sm font-black text-zinc-900">Danh sách mã SP</h2>
+        <div className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-2.5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-sm font-black text-zinc-900">Danh sách mã SP</h2>
+              <p className="w-full rounded-lg bg-zinc-100 px-2.5 py-1.5 text-lg font-black leading-tight text-black sm:w-auto sm:bg-transparent sm:px-0 sm:py-0">
+                SL mã QR đã quét: {scannedQrCount}
+              </p>
+            </div>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {lineCountLabel} · 1 mã = tiền tố+hậu tố; trùng cả mã thì bỏ qua, mã khác thì tự thêm
+              1 mã = tiền tố+hậu tố; trùng cả mã thì bỏ qua, mã khác thì tự thêm
             </p>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="grid w-full grid-cols-3 gap-1.5 sm:flex sm:w-auto sm:items-center">
             {canCreate ? (
               <>
                 <button
@@ -842,7 +847,7 @@ export function KiemKhoPanel({
                     setScannerMode('hardware');
                     setIsQrScannerOpen(true);
                   }}
-                  className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-1 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] sm:h-9 sm:px-3"
                   title="Bật đầu đọc laser BT-A700"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
@@ -854,7 +859,7 @@ export function KiemKhoPanel({
                     setScannerMode('camera');
                     setIsQrScannerOpen(true);
                   }}
-                  className="flex h-9 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
+                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ef1b2d] bg-red-50 px-1 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 sm:h-9 sm:px-3"
                   title="Quét QR bằng camera ĐT"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
@@ -863,7 +868,7 @@ export function KiemKhoPanel({
                 <button
                   type="button"
                   onClick={openManualModal}
-                  className="flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-extrabold text-zinc-800 transition hover:bg-zinc-50"
+                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1 text-[11px] font-extrabold text-zinc-800 transition hover:bg-zinc-50 sm:h-9 sm:px-3"
                   title="Nhập mã SP thủ công"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -874,6 +879,44 @@ export function KiemKhoPanel({
           </div>
         </div>
 
+        <div className="space-y-2 p-2 sm:hidden">
+          {lines.map((line, index) => {
+            const highlightClass = line.key === highlightKey ? 'border-emerald-300 bg-emerald-50' : 'border-zinc-200 bg-white';
+            return (
+              <article key={line.key} className={`rounded-xl border p-3 shadow-sm ${highlightClass}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Mã quét #{index + 1}</p>
+                    <p className="mt-0.5 break-all font-mono text-sm font-black text-zinc-950">{line.maSp}</p>
+                  </div>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => removeLine(line.key)}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                      title="Xóa dòng"
+                      aria-label={`Xóa mã ${line.maSp}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                  <div><p className="font-bold text-zinc-400">Mã SP gốc</p><p className="mt-0.5 break-all font-mono font-bold text-zinc-800">{line.maNvl || '—'}</p></div>
+                  <div><p className="font-bold text-zinc-400">Loại SP</p><p className="mt-0.5 font-semibold text-zinc-700">{line.loaiSp || '—'}</p></div>
+                  <div className="col-span-2"><p className="font-bold text-zinc-400">Tên SP</p><p className="mt-0.5 font-semibold text-zinc-700">{line.tenSp || '—'}</p></div>
+                </div>
+              </article>
+            );
+          })}
+          {lines.length === 0 ? (
+            <p className="rounded-xl bg-zinc-50 px-3 py-6 text-center text-sm font-semibold text-zinc-500">
+              Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc <span className="text-[#ef1b2d]">Quét máy</span>.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="hidden sm:block">
         <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[420px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
@@ -922,6 +965,7 @@ export function KiemKhoPanel({
             )}
           </TableBody>
         </TableShell>
+        </div>
       </section>
 
       {error ? (

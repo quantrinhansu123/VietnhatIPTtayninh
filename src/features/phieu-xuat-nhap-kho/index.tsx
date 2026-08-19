@@ -619,6 +619,30 @@ function warehouseCodePrefix(raw: string) {
   return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
 }
 
+/** Nhãn NVL dùng đúng mã danh mục, không mang hậu tố lô/serial và mỗi mã chỉ in một tem. */
+function buildMaterialQrPrintLabels(items: WarehouseSlipPayloadItem[]): ProductQrPrintLabel[] {
+  const labelsByCode = new Map<string, ProductQrPrintLabel>();
+  for (const item of items) {
+    const materialCode = warehouseCodePrefix(item.code);
+    if (!materialCode) continue;
+    const existing = labelsByCode.get(materialCode);
+    if (existing) {
+      existing.quantity = (existing.quantity || 0) + item.quantity;
+      continue;
+    }
+    labelsByCode.set(materialCode, {
+      key: `nvl-${materialCode}`,
+      payload: materialCode,
+      productCode: materialCode,
+      productName: item.name,
+      itemLabel: 'Tên NVL',
+      quantity: item.quantity,
+      unit: item.unit
+    });
+  }
+  return [...labelsByCode.values()];
+}
+
 export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2041,7 +2065,7 @@ export function WarehouseSlipPanel({
         throw new Error('Máy chủ chưa xác nhận mã phiếu đã lưu. Phiếu sẽ không được in.');
       }
       const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodes);
-      const savedQrLabels: ProductQrPrintLabel[] = Array.isArray(data.qrCodes)
+      const savedProductQrLabels: ProductQrPrintLabel[] = Array.isArray(data.qrCodes)
         ? data.qrCodes
             .map((record: Record<string, unknown>, index: number) => {
               const payload = String(record.code ?? record.ma_sp_day_du ?? '').trim();
@@ -2055,6 +2079,9 @@ export function WarehouseSlipPanel({
             })
             .filter((label: ProductQrPrintLabel) => Boolean(label.payload))
         : [];
+      const savedQrLabels = printSlipType === 'nhap' && warehouseKind === 'nvl'
+        ? buildMaterialQrPrintLabels(payloadItems)
+        : savedProductQrLabels;
       setPendingQrLabels(savedQrLabels);
 
       setPrintSlip(
@@ -2084,7 +2111,7 @@ export function WarehouseSlipPanel({
         : isXuatTreoFlow
           ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
           : savedQrLabels.length > 0
-            ? `Đã lưu phiếu ${savedSlipCode} và sinh ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
+            ? `Đã lưu phiếu ${savedSlipCode} và chuẩn bị ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
             : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
       setActionMessage(okMsg);
       showAppToast(okMsg);
@@ -2908,6 +2935,17 @@ export function WarehouseSlipPanel({
         open={qrPrintOpen}
         labels={pendingQrLabels}
         autoPrint={qrPrintAutoTrigger}
+        trackProductPrint={warehouseKind === 'san_pham'}
+        title={warehouseKind === 'nvl'
+          ? 'Mã QR nguyên vật liệu nhập kho'
+          : warehouseKind === 'hang_hoa'
+            ? 'Mã QR hàng hóa nhập kho'
+            : undefined}
+        description={warehouseKind === 'nvl'
+          ? `${pendingQrLabels.length} tem · mỗi mã NVL in một lần, không theo số lượng`
+          : warehouseKind === 'hang_hoa'
+            ? `${pendingQrLabels.length} tem · mỗi tem là một đơn vị hàng hóa`
+            : undefined}
         onClose={() => {
           setQrPrintOpen(false);
           setQrPrintAutoTrigger(false);

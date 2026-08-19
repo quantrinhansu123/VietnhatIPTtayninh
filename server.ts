@@ -8261,6 +8261,34 @@ export function createApp() {
         });
       }
 
+      // Hàng hóa đóng gói/quản lý theo từng đơn vị giống thành phẩm: mỗi đơn vị nhận một QR serial.
+      // Không đăng ký vào ma_san_pham_chi_tiet vì đây không phải danh mục sản phẩm sản xuất.
+      const goodsQrCodes = parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'hang_hoa'
+        ? (() => {
+            const totalQuantity = parsed.items.reduce((sum, item) => sum + item.quantity, 0);
+            const invalidItem = parsed.items.find(item => !Number.isInteger(item.quantity));
+            if (invalidItem) {
+              return { error: `Số lượng nhập của ${invalidItem.code} phải là số nguyên để sinh từng mã QR.` };
+            }
+            if (totalQuantity < 1 || totalQuantity > 999) {
+              return { error: 'Tổng số lượng sinh mã QR trong một phiếu phải từ 1 đến 999.' };
+            }
+            return {
+              codes: parsed.items.flatMap(item =>
+                buildStoredProductQrCodes(item.code, item.quantity).map(code => ({
+                  code,
+                  baseCode: item.code,
+                  name: item.name
+                }))
+              ),
+              quantity: totalQuantity
+            };
+          })()
+        : null;
+      if (goodsQrCodes && 'error' in goodsQrCodes) {
+        return res.status(400).json({ error: goodsQrCodes.error });
+      }
+
       const damagedReportRowIds = parsed.items
         .map(item => String(item.damagedReportRowId ?? '').trim())
         .filter(Boolean);
@@ -8303,7 +8331,9 @@ export function createApp() {
       return res.status(201).json({
         success: true,
         slipCode: maPhieu,
-        movements: data || []
+        movements: data || [],
+        qrCodes: goodsQrCodes?.codes || [],
+        qrQuantity: goodsQrCodes?.quantity || 0
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo phiếu xuất nhập kho.' });

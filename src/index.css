@@ -948,6 +948,14 @@ input[type="number"] {
     word-break: break-word;
   }
 
+  .qr-print-tag-quantity {
+    margin: 2mm 0 0;
+    font-size: 9pt;
+    font-weight: 800;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+
   .qr-print-tag-code {
     margin: 4mm 0 0;
     font-size: 12pt;

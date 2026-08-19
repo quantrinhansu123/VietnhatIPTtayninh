@@ -11,6 +11,8 @@ import {
   Clock,
   Eye,
   Factory,
+  FileDown,
+  FileUp,
   History,
   Loader2,
   Package,
@@ -50,6 +52,10 @@ import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, { type WarehouseSlipPrintData } from '../../components/WarehouseSlipPrintModal';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
+import {
+  downloadWarehouseSlipLinesTemplate,
+  parseWarehouseSlipLinesExcel
+} from '../../utils/warehouseSlipLinesExcel';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } from '../../utils/shiftSettings';
 import { findProductByCode, normalizeProducts } from '../san-pham';
 import { buildProductionOrderMaterialProposal, loadProductionOrderProductCatalog } from '../ke-hoach-san-xuat';
@@ -1449,6 +1455,89 @@ export function WarehouseSlipPanel({
     return true;
   };
 
+  const excelImportInputRef = useRef<HTMLInputElement | null>(null);
+  const [excelImporting, setExcelImporting] = useState(false);
+
+  const handleDownloadExcelTemplate = () => {
+    downloadWarehouseSlipLinesTemplate(
+      itemOptions.map(item => ({ code: item.code, name: item.name, unit: item.unit })),
+      slipType,
+      warehouseKind
+    );
+  };
+
+  const handleExcelFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setExcelImporting(true);
+    try {
+      const rows = await parseWarehouseSlipLinesExcel(file, slipType);
+      if (rows.length === 0) {
+        showAppToast('Không đọc được dòng nào từ file Excel — kiểm tra lại cột mã và số lượng.', 'error');
+        return;
+      }
+
+      const existingCodes = new Set(lines.map(line => line.code.trim()).filter(Boolean));
+      const unknownCodes: string[] = [];
+      const importedLines: WarehouseSlipLineDraft[] = [];
+
+      rows.forEach(row => {
+        const code = row.code.trim();
+        if (!code || existingCodes.has(code)) return;
+        existingCodes.add(code);
+
+        const patch = resolveLinePatchForCode(code);
+        if (!patch.name && !row.name) unknownCodes.push(code);
+
+        importedLines.push(
+          createWarehouseLineDraftFromPrefill({
+            code,
+            name: patch.name || row.name,
+            unit: patch.unit || row.unit,
+            quantity: row.quantity,
+            documentQuantity: slipType === 'xuat' ? row.documentQuantity || row.quantity : '',
+            unitPrice: row.unitPrice || (patch as { unitPrice?: string }).unitPrice || ''
+          })
+        );
+      });
+
+      if (importedLines.length === 0) {
+        showAppToast('Tất cả mã trong file đã có sẵn trong phiếu.', 'error');
+        return;
+      }
+
+      setLines(current => {
+        const meaningfulCurrent = current.filter(line => line.code.trim() || line.name.trim());
+        return [...meaningfulCurrent, ...importedLines];
+      });
+
+      if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
+        importedLines.forEach(line => {
+          void loadNvlAvgInboundPrice(line.code, slipDate, {
+            lineKey: line.key,
+            applySuggestion: true,
+            forceOverwrite: !line.unitPrice
+          });
+        });
+      }
+
+      if (unknownCodes.length > 0) {
+        showAppToast(
+          `Đã nhập ${importedLines.length} dòng — ${unknownCodes.length} mã không có trong danh mục, cần kiểm tra tên/ĐVT.`,
+          'error'
+        );
+      } else {
+        showAppToast(`Đã nhập ${importedLines.length} dòng từ file Excel.`);
+      }
+    } catch (error: any) {
+      showAppToast(error?.message || 'Không đọc được file Excel.', 'error');
+    } finally {
+      setExcelImporting(false);
+    }
+  };
+
   const isMaterialWarehouse = warehouseKind === 'nvl' || warehouseKind === 'tai_che';
   const isNvlExport = isMaterialWarehouse && slipType === 'xuat';
   const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
@@ -2520,12 +2609,56 @@ export function WarehouseSlipPanel({
                 </button>
                 <button
                   type="button"
+                  onClick={handleDownloadExcelTemplate}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
+                  title="Tải file Excel mẫu — có sẵn danh mục mã/tên/ĐVT để điền số lượng"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  File mẫu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => excelImportInputRef.current?.click()}
+                  disabled={excelImporting}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Nhập file Excel đã điền — mỗi dòng là một mã SP/NPL"
+                >
+                  {excelImporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileUp className="h-3.5 w-3.5" />
+                  )}
+                  Nhập Excel
+                </button>
+                <input
+                  ref={excelImportInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleExcelFileSelected}
+                />
+                <button
+                  type="button"
                   onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
                   className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Thêm dòng
                 </button>
+                {canDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
+                      setLines([createWarehouseLineDraft()]);
+                    }}
+                    className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:border-red-200 hover:bg-red-50 hover:text-[#ef1b2d]"
+                    title="Xóa toàn bộ các dòng đã nhập/import"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Xóa hết
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

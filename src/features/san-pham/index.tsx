@@ -36,8 +36,6 @@ import { showAppToast } from '../../lib/appToast';
 import type { InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 
-const PRODUCT_QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Sản xuất', 'Ngày sản xuất'] as const;
-
 type ProductQrPrintLabel = {
   key: string;
   product: ProductRow;
@@ -66,7 +64,7 @@ async function createQrDataUrl(payload: string) {
   return QRCode.toDataURL(payload, {
     errorCorrectionLevel: 'H',
     margin: 1,
-    width: 220,
+    width: 340,
     color: {
       dark: '#111111',
       light: '#ffffff'
@@ -2666,28 +2664,15 @@ export function ProductsPanel({
         <div className="qr-print-page">
           {printQrLabels.map(label => (
             <div key={label.key} className="qr-print-card">
-              <div className="qr-print-left">
-                <div className="qr-print-code">
-                  {printQrImages[label.qrPayload] && (
-                    <img src={printQrImages[label.qrPayload]} alt={`QR ${label.qrPayload}`} />
-                  )}
-                </div>
-                <p className="qr-print-payload">{label.qrPayload}</p>
+              <div className="qr-print-code">
+                {printQrImages[label.qrPayload] && (
+                  <img src={printQrImages[label.qrPayload]} alt={`QR ${label.qrPayload}`} />
+                )}
               </div>
-              <div className="qr-print-right">
-                <p className="qr-print-product-code">{label.product.code || '-'}</p>
-                <table className="qr-print-footer">
-                  <tbody>
-                    {PRODUCT_QR_LABEL_FOOTER_ROWS.map(rowLabel => (
-                      <tr key={rowLabel}>
-                        <th>{rowLabel}</th>
-                        <td>
-                          <span className="qr-print-footer-field" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="qr-print-tag-info">
+                <p className="qr-print-tag-label">Tên sản phẩm</p>
+                <p className="qr-print-tag-name">{label.product.name || '-'}</p>
+                <p className="qr-print-tag-code">{label.product.code || '-'}</p>
               </div>
             </div>
           ))}

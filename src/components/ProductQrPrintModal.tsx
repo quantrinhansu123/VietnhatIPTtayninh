@@ -4,7 +4,20 @@ import { Loader2, Printer, QrCode, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { waitForPrintImagesReady } from '../utils/printReady';
 
-const QR_LABEL_FOOTER_ROWS = ['Cơ sở sản xuất', 'Sản xuất', 'Ngày sản xuất'] as const;
+const QR_PRINT_PAGE_STYLE_ID = 'product-qr-print-page-portrait';
+
+function enablePortraitQrPrintPage() {
+  document.getElementById(QR_PRINT_PAGE_STYLE_ID)?.remove();
+  const style = document.createElement('style');
+  style.id = QR_PRINT_PAGE_STYLE_ID;
+  style.media = 'print';
+  style.textContent = '@page { size: 210mm 297mm; margin: 5mm; }';
+  document.head.appendChild(style);
+}
+
+function disablePortraitQrPrintPage() {
+  document.getElementById(QR_PRINT_PAGE_STYLE_ID)?.remove();
+}
 
 export type ProductQrPrintLabel = {
   key: string;
@@ -17,7 +30,7 @@ async function createQrDataUrl(payload: string) {
   return QRCode.toDataURL(payload, {
     errorCorrectionLevel: 'H',
     margin: 1,
-    width: 220,
+    width: 340,
     color: { dark: '#111111', light: '#ffffff' }
   });
 }
@@ -36,24 +49,13 @@ function ProductQrCards({
       <div className="qr-print-page">
         {labels.map(label => (
           <div key={label.key} className="qr-print-card">
-            <div className="qr-print-left">
-              <div className="qr-print-code">
-                {images[label.payload] ? <img src={images[label.payload]} alt={`QR ${label.payload}`} /> : null}
-              </div>
-              <p className="qr-print-payload">{label.payload}</p>
+            <div className="qr-print-code">
+              {images[label.payload] ? <img src={images[label.payload]} alt={`QR ${label.payload}`} /> : null}
             </div>
-            <div className="qr-print-right">
-              <p className="qr-print-product-code">{label.productCode || '-'}</p>
-              <table className="qr-print-footer">
-                <tbody>
-                  {QR_LABEL_FOOTER_ROWS.map(rowLabel => (
-                    <tr key={rowLabel}>
-                      <th>{rowLabel}</th>
-                      <td><span className="qr-print-footer-field" /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="qr-print-tag-info">
+              <p className="qr-print-tag-label">Tên sản phẩm</p>
+              <p className="qr-print-tag-name">{label.productName || '-'}</p>
+              <p className="qr-print-tag-code">{label.productCode || '-'}</p>
             </div>
           </div>
         ))}
@@ -134,6 +136,7 @@ export default function ProductQrPrintModal({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Không thể lưu lịch sử in QR.');
 
+      enablePortraitQrPrintPage();
       document.body.classList.add('product-qr-print-active');
       await waitForPrintImagesReady();
       window.print();
@@ -141,6 +144,7 @@ export default function ProductQrPrintModal({
       setError(reason instanceof Error ? reason.message : 'Không thể in mã QR.');
     } finally {
       document.body.classList.remove('product-qr-print-active');
+      disablePortraitQrPrintPage();
       setIsPreparing(false);
     }
   };

@@ -758,6 +758,11 @@ input[type="number"] {
     margin: 8mm;
   }
 
+  @page qr-print-page {
+    size: 210mm 297mm;
+    margin: 5mm;
+  }
+
   @page warehouse-slip-page {
     size: A4 landscape;
     margin: 5mm;
@@ -859,6 +864,7 @@ input[type="number"] {
 
   .qr-print-sheet {
     display: block !important;
+    page: qr-print-page;
     position: absolute;
     inset: 0;
     z-index: 9999;
@@ -867,55 +873,64 @@ input[type="number"] {
     padding: 0;
   }
 
-  /* Tem QR ngang: 2 cột × 4 dòng / tờ A4 — mã SP to */
+  /* Tem QR A4 dọc: đúng 2 cột × 5 dòng = 10 tem / trang. */
   .qr-print-page {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 66mm;
-    gap: 4mm 5mm;
-    width: 194mm;
+    grid-template-rows: repeat(5, 54mm);
+    column-gap: 2mm;
+    row-gap: 3mm;
+    width: 200mm;
     margin: 0 auto;
   }
 
   .qr-print-card {
     break-inside: avoid;
     page-break-inside: avoid;
-    height: 66mm;
-    min-height: 66mm;
-    max-height: 66mm;
+    height: 54mm;
+    min-height: 54mm;
+    max-height: 54mm;
     box-sizing: border-box;
     border: 1.2px solid #111111;
-    border-radius: 3mm;
-    padding: 3.5mm;
+    border-radius: 4mm;
+    padding: 3mm;
     display: grid;
-    grid-template-columns: 42mm minmax(0, 1fr);
-    gap: 3.5mm;
+    grid-template-columns: 45mm minmax(0, 1fr);
     align-items: center;
+    column-gap: 4mm;
   }
 
-  .qr-print-card:nth-child(8n) {
+  .qr-print-card:nth-child(10n) {
     break-after: page;
     page-break-after: always;
   }
 
-  .qr-print-card:nth-child(8n):last-child {
+  .qr-print-card:nth-child(10n):last-child {
     break-after: auto;
     page-break-after: auto;
   }
 
-  .qr-print-left {
+  .qr-print-tag-info {
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    gap: 1.5mm;
-    min-width: 0;
+  }
+
+  .qr-print-tag-label {
+    margin: 0;
+    font-size: 7.5pt;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #111111;
   }
 
   .qr-print-code {
     position: relative;
-    width: 38mm;
-    height: 38mm;
+    width: 45mm;
+    height: 45mm;
     flex-shrink: 0;
   }
 
@@ -924,67 +939,21 @@ input[type="number"] {
     height: 100%;
   }
 
-  .qr-print-payload {
-    margin: 0;
-    max-width: 42mm;
-    font-size: 7.5pt;
-    font-weight: 700;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    line-height: 1.15;
-    text-align: center;
-    word-break: break-all;
-  }
-
-  .qr-print-right {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3mm;
+  .qr-print-tag-name {
+    margin: 2.5mm 0 0;
     min-width: 0;
+    font-size: 10pt;
+    font-weight: 900;
+    line-height: 1.3;
+    word-break: break-word;
   }
 
-  .qr-print-product-code {
-    margin: 0;
-    font-size: 11pt;
+  .qr-print-tag-code {
+    margin: 4mm 0 0;
+    font-size: 12pt;
     font-weight: 900;
     line-height: 1.15;
-    text-align: left;
-    letter-spacing: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .qr-print-footer {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-
-  .qr-print-footer th,
-  .qr-print-footer td {
-    border: 1px solid #111111;
-    padding: 0;
-    vertical-align: middle;
-  }
-
-  .qr-print-footer th {
-    width: 30mm;
-    padding: 2.4mm 2.4mm;
-    font-size: 9pt;
-    font-weight: 900;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  .qr-print-footer td {
-    height: 9mm;
-    padding: 2mm 2.4mm;
-  }
-
-  .qr-print-footer-field {
-    display: block;
-    min-height: 5mm;
+    word-break: break-word;
   }
 
   .order-print-sheet,

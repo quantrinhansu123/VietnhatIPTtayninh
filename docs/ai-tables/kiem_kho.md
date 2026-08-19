@@ -74,6 +74,7 @@ Cả ba tab **Thực hiện kiểm kho**, **Danh sách chi tiết** và **Bảng
 | File | Nội dung |
 |------|----------|
 | `src/features/kiem-kho/index.tsx` | 3 tab: **Thực hiện kiểm kho** (đợt lấy động từ `GET /api/kiem-kho/dot-mo`; còn đợt chưa xác nhận thì ẩn lựa chọn "Tạo đợt mới", bắt tiếp tục đợt đó; `ma_nvl` auto từ tiền tố; trùng mã = trùng cả tiền tố+hậu tố, chỉ chống trùng trong phiên đang nhập); **Danh sách chi tiết** (combobox tìm kiếm `SearchableSelect` liệt kê mọi đợt từ `GET /api/kiem-kho/dot`, mặc định chọn đợt gần nhất; bảng hiển thị toàn bộ sản phẩm đã quét của đợt; nút "Xác nhận kiểm kho" chỉ hiện khi đợt chưa xác nhận); **Bảng tổng hợp** (combobox liệt kê **mọi đợt** — đã chốt lẫn chưa — từ `GET /api/kiem-kho/dot`; chỉ tải tổng hợp của **đúng đợt đang chọn**, không tải cả lịch sử: đợt đã chốt gọi `GET /api/kiem-kho-tong-hop?dotKiemKho=...`, đợt chưa chốt gọi `GET /api/kiem-kho/dot-tong-hop-live?dotKiemKho=...`; cột "Chốt lúc"/"Người chốt" hiện badge "Chưa chốt" khi `da_chot === false`). |
+| `src/features/kiem-kho/KiemKhoPrintSheet.tsx` | Phiếu tổng hợp kiểm kho A4 ngang: thông tin đợt, trạng thái/chốt và danh sách sản phẩm đã kiểm theo mã gốc. |
 | `src/components/shared/SearchableSelect.tsx` | Combobox có ô tìm kiếm — dùng cho dropdown chọn đợt ở tab "Danh sách chi tiết" |
 | `src/components/ProductQrScanner.tsx` | INPUT_CONNECTION + KEY_EVENT |
 

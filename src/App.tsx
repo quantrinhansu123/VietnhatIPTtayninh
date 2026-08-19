@@ -752,6 +752,8 @@ export default function App() {
             ? 'p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
               ? 'overflow-hidden p-0'
+              : activeTab === 'kiem-kho'
+                ? 'p-2 md:p-3 pb-4'
               : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
                 ? 'p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'

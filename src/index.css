@@ -4447,3 +4447,167 @@ input[type="number"] {
     padding: 0;
   }
 }
+
+/* Phiếu tổng hợp kiểm kho — dùng chung hệ thống letterhead/bảng của các mẫu in trong dự án. */
+.kiem-kho-print-doc {
+  width: 100%;
+  max-width: 100%;
+}
+
+.kiem-kho-print-meta-table th,
+.kiem-kho-print-meta-table td {
+  padding: 1.6mm 1.8mm;
+  font-size: 10.5pt;
+}
+
+.kiem-kho-print-meta-table th {
+  width: 14%;
+  background: #f2f2f2;
+  font-weight: 700;
+}
+
+.kiem-kho-print-meta-table td {
+  width: 36%;
+}
+
+.kiem-kho-print-meta-table th:nth-child(1),
+.kiem-kho-print-meta-table th:nth-child(3) {
+  width: 14%;
+}
+
+.kiem-kho-print-meta-table td:nth-child(2),
+.kiem-kho-print-meta-table td:nth-child(4) {
+  width: 36%;
+}
+
+.kiem-kho-print-batch-code {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 9.5pt !important;
+}
+
+.kiem-kho-print-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8mm;
+  margin: 0 0 2mm;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 10.5pt;
+}
+
+.kiem-kho-print-product-table {
+  table-layout: fixed;
+  margin-bottom: 0;
+}
+
+.kiem-kho-print-product-table th {
+  padding: 1.6mm 1.2mm;
+  background: #f2f2f2;
+  font-size: 9.5pt;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.kiem-kho-print-product-table td {
+  padding: 1.5mm 1.4mm;
+  font-size: 10pt;
+}
+
+.kiem-kho-print-product-table td:nth-child(1) {
+  text-align: center;
+}
+
+.kiem-kho-print-product-table td:nth-child(5) {
+  text-align: right;
+}
+
+.kiem-kho-print-product-table th:nth-child(1) { width: 6%; }
+.kiem-kho-print-product-table th:nth-child(2) { width: 20%; }
+.kiem-kho-print-product-table th:nth-child(3) { width: 35%; }
+.kiem-kho-print-product-table th:nth-child(4) { width: 24%; }
+.kiem-kho-print-product-table th:nth-child(5) { width: 15%; }
+
+.kiem-kho-print-product-code {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+}
+
+.kiem-kho-print-empty {
+  height: 18mm;
+  color: #555555;
+  font-style: italic;
+}
+
+.kiem-kho-print-total-row td {
+  background: #f2f2f2;
+  font-weight: 700;
+}
+
+.kiem-kho-print-total-row td:first-child {
+  text-align: center;
+}
+
+.kiem-kho-print-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8mm;
+  margin-top: 9mm;
+  text-align: center;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 11pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.kiem-kho-print-signatures p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.kiem-kho-print-signatures span {
+  display: block;
+  margin-top: 16mm;
+  color: #444444;
+  font-style: italic;
+}
+
+@media print {
+  @page kiem-kho-summary-page {
+    size: A4 landscape;
+    margin: 7mm;
+  }
+
+  .kiem-kho-print-sheet {
+    page: kiem-kho-summary-page;
+  }
+
+  body.kiem-kho-summary-print-active #root {
+    display: none !important;
+  }
+
+  body.kiem-kho-summary-print-active .kiem-kho-print-sheet,
+  body.kiem-kho-summary-print-active .kiem-kho-print-sheet * {
+    visibility: visible !important;
+  }
+
+  body.kiem-kho-summary-print-active .kiem-kho-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  .kiem-kho-print-product-table thead {
+    display: table-header-group;
+  }
+
+  .kiem-kho-print-product-table tbody tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

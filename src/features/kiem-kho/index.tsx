@@ -7,6 +7,7 @@ import {
   ListChecks,
   Loader2,
   Plus,
+  Printer,
   Save,
   ScanBarcode,
   Trash2,
@@ -16,6 +17,8 @@ import { useTabAccess } from '../../app/useTabAccess';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
+import { waitForPrintImagesReady } from '../../utils/printReady';
+import { KiemKhoPrintSheet, type KiemKhoPrintReport } from './KiemKhoPrintSheet';
 import {
   TableShell,
   TableHead,
@@ -242,6 +245,8 @@ export function KiemKhoPanel({
   const [summaryError, setSummaryError] = useState('');
   const [selectedSummaryDot, setSelectedSummaryDot] = useState('');
   const [summaryDotTouched, setSummaryDotTouched] = useState(false);
+  const [printReport, setPrintReport] = useState<KiemKhoPrintReport | null>(null);
+  const [pendingPrint, setPendingPrint] = useState(false);
 
   useEffect(() => {
     if (loginName) setNguoiKiemKho(loginName);
@@ -464,6 +469,66 @@ export function KiemKhoPanel({
     void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan);
   }, [view, selectedSummaryDot, selectedSummaryDotGroup, loadSummary]);
 
+  const handlePrintSummary = () => {
+    if (!selectedSummaryDotGroup || !selectedSummaryDot) {
+      showAppToast('Chọn đợt kiểm kho trước khi in phiếu.', 'error');
+      return;
+    }
+
+    setPrintReport({
+      dotLabel: formatDotLabel(
+        selectedSummaryDotGroup.ngay_bat_dau,
+        selectedSummaryDotGroup.thoi_gian_xac_nhan,
+        selectedSummaryDotGroup.thu_tu_trong_ngay,
+        selectedSummaryDotGroup.tong_dot_trong_ngay
+      ),
+      dotKiemKho: selectedSummaryDot,
+      ngayBatDau: selectedSummaryDotGroup.ngay_bat_dau,
+      thoiGianXacNhan: selectedSummaryDotGroup.thoi_gian_xac_nhan,
+      nguoiChot: String(summaryRows.find(row => row.nguoi_chot)?.nguoi_chot ?? '').trim(),
+      daXacNhan: selectedSummaryDotGroup.da_xac_nhan,
+      rows: summaryRows.map(row => ({
+        maNvl: String(row.ma_nvl ?? '').trim(),
+        tenSp: String(row.ten_sp ?? '').trim(),
+        loaiSp: String(row.loai_sp ?? '').trim(),
+        tongSoLuong: Number(row.tong_so_luong) || 0
+      }))
+    });
+    setPendingPrint(true);
+  };
+
+  useEffect(() => {
+    if (!pendingPrint || !printReport) return;
+    let cancelled = false;
+    document.body.classList.add('kiem-kho-summary-print-active');
+    const timer = window.setTimeout(() => {
+      void waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        window.print();
+        setPendingPrint(false);
+      });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('kiem-kho-summary-print-active');
+    };
+  }, [pendingPrint, printReport]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove('kiem-kho-summary-print-active');
+      setPrintReport(null);
+      setPendingPrint(false);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('kiem-kho-summary-print-active');
+    };
+  }, []);
+
   const addLineFromCode = useCallback(
     (raw: string): boolean | 'duplicate' => {
       setMessage('');
@@ -632,7 +697,7 @@ export function KiemKhoPanel({
   const lineCountLabel = useMemo(() => `${lines.length} mã SP`, [lines.length]);
 
   return (
-    <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
+    <div className="mx-auto w-full max-w-none space-y-4 py-2 md:py-3">
       <nav
         aria-label="Chức năng kiểm kho"
         className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:p-3"
@@ -1050,14 +1115,26 @@ export function KiemKhoPanel({
               {summaryRows.length} mã SP · gộp theo mã SP gốc của đợt đang chọn
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan)}
-            disabled={loadingSummary}
-            className="text-[11px] font-bold text-[#ef1b2d] hover:underline disabled:opacity-50"
-          >
-            {loadingSummary ? 'Đang tải…' : 'Tải lại'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePrintSummary}
+              disabled={!selectedSummaryDot || loadingSummary || pendingPrint}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-white px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45"
+              title="In phiếu tổng hợp kiểm kho"
+            >
+              {pendingPrint ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              In phiếu
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan)}
+              disabled={loadingSummary}
+              className="text-[11px] font-bold text-[#ef1b2d] hover:underline disabled:opacity-50"
+            >
+              {loadingSummary ? 'Đang tải…' : 'Tải lại'}
+            </button>
+          </div>
         </div>
 
         {summaryError ? (
@@ -1113,6 +1190,10 @@ export function KiemKhoPanel({
       </section>
       </>
       )}
+
+      {printReport && typeof document !== 'undefined'
+        ? createPortal(<KiemKhoPrintSheet report={printReport} />, document.body)
+        : null}
 
       <ProductQrScanner
         open={isQrScannerOpen}

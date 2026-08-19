@@ -503,7 +503,7 @@ export function KiemKhoPanel({
     const pageStyle = document.createElement('style');
     pageStyle.dataset.printPage = 'kiem-kho';
     pageStyle.textContent = `
-      @page { size: A4 landscape; margin: 7mm; }
+      @page { size: A4 portrait; margin: 5mm; }
       @media print {
         html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; }
         body.kiem-kho-summary-print-active .kiem-kho-print-sheet {

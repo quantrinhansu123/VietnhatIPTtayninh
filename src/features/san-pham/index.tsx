@@ -1449,6 +1449,21 @@ export function ProductsPanel({
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
 
   useEffect(() => {
+    if (printQrLabels.length === 0) return;
+    document.body.classList.add('product-qr-print-active');
+    return () => document.body.classList.remove('product-qr-print-active');
+  }, [printQrLabels.length]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setPrintQrLabels([]);
+      setPrintQrImages({});
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
+  useEffect(() => {
     const loadWarehouses = async () => {
       try {
         const res = await fetch('/api/quan-ly-kho');
@@ -2660,24 +2675,29 @@ export function ProductsPanel({
           )
         : null}
 
-      <div className="qr-print-sheet">
-        <div className="qr-print-page">
-          {printQrLabels.map(label => (
-            <div key={label.key} className="qr-print-card">
-              <div className="qr-print-code">
-                {printQrImages[label.qrPayload] && (
-                  <img src={printQrImages[label.qrPayload]} alt={`QR ${label.qrPayload}`} />
-                )}
+      {printQrLabels.length > 0 && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="qr-print-sheet">
+              <div className="qr-print-page">
+                {printQrLabels.map(label => (
+                  <div key={label.key} className="qr-print-card">
+                    <div className="qr-print-code">
+                      {printQrImages[label.qrPayload] && (
+                        <img src={printQrImages[label.qrPayload]} alt={`QR ${label.qrPayload}`} />
+                      )}
+                    </div>
+                    <div className="qr-print-tag-info">
+                      <p className="qr-print-tag-label">Tên sản phẩm</p>
+                      <p className="qr-print-tag-name">{label.product.name || '-'}</p>
+                      <p className="qr-print-tag-code">{label.product.code || '-'}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="qr-print-tag-info">
-                <p className="qr-print-tag-label">Tên sản phẩm</p>
-                <p className="qr-print-tag-name">{label.product.name || '-'}</p>
-                <p className="qr-print-tag-code">{label.product.code || '-'}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

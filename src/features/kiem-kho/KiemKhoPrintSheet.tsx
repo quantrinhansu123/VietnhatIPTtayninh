@@ -36,7 +36,7 @@ export function KiemKhoPrintSheet({ report }: { report: KiemKhoPrintReport }) {
   const totalQuantity = report.rows.reduce((sum, row) => sum + row.tongSoLuong, 0);
 
   return (
-    <div className="production-order-print-sheet kiem-kho-print-sheet">
+    <div className="kiem-kho-print-sheet">
       <div className="production-order-print-doc kiem-kho-print-doc">
         <header className="production-order-print-letterhead">
           <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="production-order-print-logo" />

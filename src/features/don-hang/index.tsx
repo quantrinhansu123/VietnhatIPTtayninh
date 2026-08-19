@@ -297,6 +297,12 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
+    if (!printOrder) return;
+    document.body.classList.add('production-order-print-active');
+    return () => document.body.classList.remove('production-order-print-active');
+  }, [printOrder]);
+
+  useEffect(() => {
     loadOrders();
   }, []);
 
@@ -605,8 +611,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                 <input
                   value={orderForm.orderCode}
                   onChange={e => setOrderForm(prev => ({ ...prev, orderCode: e.target.value }))}
-                  readOnly={formMode === 'add'}
-                  className={`${orderFieldClass} ${formMode === 'add' ? 'bg-zinc-50 font-black text-zinc-900' : ''}`}
+                  className={orderFieldClass}
                   placeholder="DH001"
                 />
                 {formMode === 'add' ? (

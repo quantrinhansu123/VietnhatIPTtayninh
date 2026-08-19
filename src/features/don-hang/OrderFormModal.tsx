@@ -256,8 +256,7 @@ export function OrderFormModal({
               <input
                 value={orderForm.orderCode}
                 onChange={e => setOrderForm(prev => ({ ...prev, orderCode: e.target.value }))}
-                readOnly={mode === 'add'}
-                className={`${orderFieldClass} ${mode === 'add' ? 'bg-zinc-50 font-black text-zinc-900' : ''}`}
+                className={orderFieldClass}
                 placeholder="DH001"
               />
               {mode === 'add' ? (

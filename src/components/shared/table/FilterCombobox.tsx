@@ -16,7 +16,9 @@ export function FilterCombobox({
   formatOption = (option: string) => option,
   searchable = true,
   alignDropdown = 'left',
-  dropdownWidth = 'w-max min-w-full max-w-[calc(100vw-1rem)]'
+  dropdownWidth = 'w-max min-w-full max-w-[calc(100vw-1rem)]',
+  className = '',
+  buttonClassName = ''
 }: {
   label: string;
   options: string[];
@@ -30,6 +32,8 @@ export function FilterCombobox({
   searchable?: boolean;
   alignDropdown?: 'left' | 'right';
   dropdownWidth?: string;
+  className?: string;
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -56,11 +60,11 @@ export function FilterCombobox({
     : options;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
-        className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${
+        className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${buttonClassName} ${
           value !== 'all'
             ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
             : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-950'

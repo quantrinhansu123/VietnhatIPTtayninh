@@ -13,7 +13,10 @@ export function MultiSelectFilter({
   options,
   values,
   onChange,
-  alignDropdown = 'left'
+  alignDropdown = 'left',
+  className = '',
+  buttonClassName = '',
+  dropdownWidth = 'w-max min-w-full max-w-[calc(100vw-1rem)]'
 }: {
   /** Nhãn hiển thị khi chưa chọn gì, vd. "Máy" */
   label: string;
@@ -26,6 +29,12 @@ export function MultiSelectFilter({
   onChange: (values: string[]) => void;
   /** Canh menu xổ sang cạnh trái hoặc phải của nút lọc. */
   alignDropdown?: 'left' | 'right';
+  /** Class bố cục cho vùng chứa combobox. */
+  className?: string;
+  /** Class bố cục cho nút mở combobox. */
+  buttonClassName?: string;
+  /** Chiều rộng menu xổ, mặc định tự co theo nội dung. */
+  dropdownWidth?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -55,11 +64,11 @@ export function MultiSelectFilter({
   };
 
   return (
-    <div ref={containerRef} className="relative shrink-0">
+    <div ref={containerRef} className={`relative shrink-0 ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
-        className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${
+        className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${buttonClassName} ${
           values.length > 0
             ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
             : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-950'
@@ -70,7 +79,7 @@ export function MultiSelectFilter({
       </button>
 
       {open && (
-        <div className={`absolute top-[calc(100%+6px)] z-30 w-max min-w-full max-w-[calc(100vw-1rem)] rounded-xl border border-zinc-200 bg-white p-2 shadow-lg ${
+        <div className={`absolute top-[calc(100%+6px)] z-30 ${dropdownWidth} rounded-xl border border-zinc-200 bg-white p-2 shadow-lg ${
           alignDropdown === 'right' ? 'right-0' : 'left-0'
         }`}>
           <label className="flex h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5">

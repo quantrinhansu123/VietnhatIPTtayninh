@@ -4117,6 +4117,17 @@ input[type="number"] {
     display: none !important;
   }
 
+  /* Tem QR được render bằng portal cạnh #root; nếu chỉ ẩn bằng visibility,
+     app shell vẫn chiếm layout và Chrome có thể sinh một trang trắng cuối. */
+  body.product-qr-print-active #root {
+    display: none !important;
+  }
+
+  /* Phiếu cân cũng đã được render qua portal; loại app shell khỏi layout in. */
+  body.weighing-slip-print-active #root {
+    display: none !important;
+  }
+
   body.warehouse-slip-print-active .warehouse-slip-print-batch {
     display: block !important;
   }
@@ -4580,16 +4591,13 @@ input[type="number"] {
 }
 
 @media print {
-  @page kiem-kho-summary-page {
-    size: A4 landscape;
-    margin: 7mm;
-  }
-
-  .kiem-kho-print-sheet {
-    page: kiem-kho-summary-page;
-  }
-
   body.kiem-kho-summary-print-active #root {
+    display: none !important;
+  }
+
+  /* Phiếu được portal trực tiếp vào body. Chỉ để lại đúng vùng này trong
+     print tree để không còn sibling/modal ẩn nào tạo một trang rỗng. */
+  body.kiem-kho-summary-print-active > :not(.kiem-kho-print-sheet) {
     display: none !important;
   }
 
@@ -4608,6 +4616,11 @@ input[type="number"] {
     padding: 0 !important;
     overflow: visible !important;
     background: #ffffff !important;
+    page: auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    break-after: auto !important;
+    page-break-after: auto !important;
   }
 
   .kiem-kho-print-product-table thead {

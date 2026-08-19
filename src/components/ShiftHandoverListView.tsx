@@ -252,6 +252,12 @@ export default function ShiftHandoverListView({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
+  useEffect(() => {
+    if (printSlips.length === 0) return;
+    document.body.classList.add('production-order-print-active');
+    return () => document.body.classList.remove('production-order-print-active');
+  }, [printSlips]);
+
   const shiftOptions = useMemo<string[]>(() => {
     const shifts = slips.reduce<string[]>((result, slip) => {
       const shift = (slip.shift || '').trim();
@@ -393,7 +399,9 @@ export default function ShiftHandoverListView({
 
   return (
     <div className="space-y-4 pb-24">
-      {printSlips.length > 0 ? <ShiftHandoverPrintBatch slips={printSlips} /> : null}
+      {printSlips.length > 0 && typeof document !== 'undefined'
+        ? createPortal(<ShiftHandoverPrintBatch slips={printSlips} />, document.body)
+        : null}
       {viewingSlip ? (
         <ShiftHandoverDetailModal
           slip={viewingSlip}

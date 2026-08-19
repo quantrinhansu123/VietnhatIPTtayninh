@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   ChevronLeft,
@@ -451,6 +452,12 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
+    if (!printSlip) return;
+    document.body.classList.add('production-order-print-active');
+    return () => document.body.classList.remove('production-order-print-active');
+  }, [printSlip]);
+
+  useEffect(() => {
     let alive = true;
 
     const load = async () => {
@@ -637,7 +644,9 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex h-full flex-col bg-zinc-50">
-      {printSlip && <MachineRunLogPrintBatch slips={[printSlip]} />}
+      {printSlip && typeof document !== 'undefined'
+        ? createPortal(<MachineRunLogPrintBatch slips={[printSlip]} />, document.body)
+        : null}
 
       <div className="border-b border-zinc-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">

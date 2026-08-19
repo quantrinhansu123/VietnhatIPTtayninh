@@ -500,18 +500,34 @@ export function KiemKhoPanel({
   useEffect(() => {
     if (!pendingPrint || !printReport) return;
     let cancelled = false;
+    const pageStyle = document.createElement('style');
+    pageStyle.dataset.printPage = 'kiem-kho';
+    pageStyle.textContent = `
+      @page { size: A4 landscape; margin: 7mm; }
+      @media print {
+        html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; }
+        body.kiem-kho-summary-print-active .kiem-kho-print-sheet {
+          page: auto !important;
+          height: auto !important;
+          min-height: 0 !important;
+          break-after: auto !important;
+          page-break-after: auto !important;
+        }
+      }
+    `;
+    document.head.appendChild(pageStyle);
     document.body.classList.add('kiem-kho-summary-print-active');
     const timer = window.setTimeout(() => {
       void waitForPrintImagesReady().then(() => {
         if (cancelled) return;
         window.print();
-        setPendingPrint(false);
       });
     }, 150);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      pageStyle.remove();
       document.body.classList.remove('kiem-kho-summary-print-active');
     };
   }, [pendingPrint, printReport]);

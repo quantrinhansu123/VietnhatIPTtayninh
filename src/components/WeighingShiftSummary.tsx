@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   CalendarDays,
@@ -1296,14 +1297,19 @@ export default function WeighingShiftSummary({
         </div>
       )}
 
-      <WeighingSlipPrintBatch
-        slip={printSlip}
-        title={config.printTitle}
-        layout={{
-          hideProductFields: config.hideProductFields,
-          splitPlasticFilmWeights: config.splitPlasticFilmWeights
-        }}
-      />
+      {printSlip && typeof document !== 'undefined'
+        ? createPortal(
+            <WeighingSlipPrintBatch
+              slip={printSlip}
+              title={config.printTitle}
+              layout={{
+                hideProductFields: config.hideProductFields,
+                splitPlasticFilmWeights: config.splitPlasticFilmWeights
+              }}
+            />,
+            document.body
+          )
+        : null}
     </div>
   );
 }

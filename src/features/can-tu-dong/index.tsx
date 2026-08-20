@@ -418,6 +418,26 @@ export function CanTuDongPanel({
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
+        <div className="flex flex-wrap items-center gap-4">
+          <span title="Số dòng đang lọc = số lần cân">
+            <span className="uppercase tracking-wider text-emerald-800/80">Số lượng</span>{' '}
+            <span className="font-mono text-sm">
+              {loading ? '…' : formatNumber(trongLuongNhuaTotals.quantity, 0)}
+            </span>
+          </span>
+          <span title="Tổng cột «Trọng lượng nhựa» = SP − lõi − bì 0,16">
+            <span className="uppercase tracking-wider text-emerald-800/80">Trọng lượng</span>{' '}
+            <span className="font-mono text-sm text-emerald-800">
+              {loading ? '…' : `${formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">
+          Tổng cột Trọng lượng nhựa
+        </span>
+      </div>
+
       <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-2">
         <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
           Từ ngày
@@ -493,30 +513,7 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <TableShell
-        minWidthClassName="min-w-[1280px]"
-        footer={
-          !loading && filteredRecords.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
-              <div className="flex flex-wrap items-center gap-4">
-                <span title="Số dòng đang lọc = số lần cân">
-                  <span className="uppercase tracking-wider text-emerald-800/80">Số lượng</span>{' '}
-                  <span className="font-mono text-sm">{formatNumber(trongLuongNhuaTotals.quantity, 0)}</span>
-                </span>
-                <span title="Tổng cột «Trọng lượng nhựa» = SP − lõi − bì 0,16">
-                  <span className="uppercase tracking-wider text-emerald-800/80">Trọng lượng</span>{' '}
-                  <span className="font-mono text-sm text-emerald-800">
-                    {formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg
-                  </span>
-                </span>
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">
-                Tổng cột Trọng lượng nhựa
-              </span>
-            </div>
-          ) : undefined
-        }
-      >
+      <TableShell minWidthClassName="min-w-[1280px]">
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input

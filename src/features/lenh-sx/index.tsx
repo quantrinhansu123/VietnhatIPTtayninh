@@ -789,7 +789,7 @@ export function ProductionOrdersPanel({
                       </div>
                     </TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
-                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
+                    <TableHeadCell className="min-w-[160px] max-w-[240px] px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Bắt đầu</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Kết thúc</TableHeadCell>
@@ -853,7 +853,7 @@ export function ProductionOrdersPanel({
                         <td className="whitespace-nowrap px-2 py-2 align-top">
                           <StatusBadge label={row.status} color="amber" />
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.customer}</td>
+                        <td className="min-w-[160px] max-w-[240px] break-words px-2 py-2 align-top leading-4 text-zinc-700">{row.customer}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.startDate}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.endDate}</td>

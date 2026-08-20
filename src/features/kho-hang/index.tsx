@@ -141,36 +141,49 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterCombobox
-          label="Chọn kho"
-          options={accessibleWarehouses}
-          value={selectedWarehouse}
-          onChange={setSelectedWarehouse}
-          formatOption={value => value}
-          includeAll={false}
-          searchPlaceholder="Tìm kho..."
-        />
-        <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
-        {isLoadingBalances ? (
-          <span className="text-sm font-bold text-zinc-500">Đang tính tồn kho...</span>
-        ) : null}
-      </div>
-
       {balanceError ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
           {balanceError}
         </p>
       ) : null}
 
-      {!selectedWarehouse ? null : kind === 'materials' ? (
-        <MaterialsInventoryPanel
-          onBack={onBack}
-          warehouseFilter={selectedWarehouse}
-          includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
-          asOfDate={asOfDate}
-          balanceRows={balanceRows}
-        />
+      {!selectedWarehouse ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <FilterCombobox
+            label="Chọn kho"
+            options={accessibleWarehouses}
+            value={selectedWarehouse}
+            onChange={setSelectedWarehouse}
+            formatOption={value => value}
+            includeAll={false}
+            searchPlaceholder="Tìm kho..."
+          />
+        </div>
+      ) : kind === 'materials' ? (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <FilterCombobox
+              label="Chọn kho"
+              options={accessibleWarehouses}
+              value={selectedWarehouse}
+              onChange={setSelectedWarehouse}
+              formatOption={value => value}
+              includeAll={false}
+              searchPlaceholder="Tìm kho..."
+            />
+            <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
+            {isLoadingBalances ? (
+              <span className="text-sm font-bold text-zinc-500">Đang tính tồn kho...</span>
+            ) : null}
+          </div>
+          <MaterialsInventoryPanel
+            onBack={onBack}
+            warehouseFilter={selectedWarehouse}
+            includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
+            asOfDate={asOfDate}
+            balanceRows={balanceRows}
+          />
+        </>
       ) : (
         <ProductsPanel
           onBack={onBack}
@@ -178,6 +191,23 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
           asOfDate={asOfDate}
           balanceRows={balanceRows}
+          topControls={
+            <>
+              <FilterCombobox
+                label="Chọn kho"
+                options={accessibleWarehouses}
+                value={selectedWarehouse}
+                onChange={setSelectedWarehouse}
+                formatOption={value => value}
+                includeAll={false}
+                searchPlaceholder="Tìm kho..."
+              />
+              <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
+              {isLoadingBalances ? (
+                <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
+              ) : null}
+            </>
+          }
         />
       )}
     </div>

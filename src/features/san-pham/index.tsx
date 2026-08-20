@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
@@ -22,7 +22,7 @@ import {
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
-import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X } from 'lucide-react';
+import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X, Search } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
 import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, excelRowsToProductNplItems, bulkExcelRowsToProductMap, productNplAmountTypeLabel, formatProductNplAmount, roundNplNumber } from './types';
@@ -1406,13 +1406,15 @@ export function ProductsPanel({
   warehouseFilter = '',
   includeUnassigned = false,
   asOfDate = '',
-  balanceRows = []
+  balanceRows = [],
+  topControls = null
 }: {
   onBack: () => void;
   warehouseFilter?: string;
   includeUnassigned?: boolean;
   asOfDate?: string;
   balanceRows?: InventoryBalanceRow[];
+  topControls?: ReactNode;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -2206,104 +2208,227 @@ export function ProductsPanel({
     }
   };
 
+  const isInventoryHeader = Boolean(warehouseFilter);
+  const summaryStats = isCatalogMode
+    ? [
+        ['Sản phẩm', displayProducts.length],
+        ['Nhóm VTHH', productGroups.length > 0 ? productGroups.length - 1 : 0],
+        ['Đơn vị', productUnitCount || productNatureCount]
+      ]
+    : [
+        ['Mã SP', displayProducts.length],
+        ['Tổng SL', formatNumber(totalProductQuantity, 2)],
+        ['Đơn vị', productUnitCount]
+      ];
+
   return (
     <div className="w-full space-y-4">
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={handleDownloadProductCatalogTemplate}
-            disabled={isImportingProductCatalog || isLoadingProducts}
-            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-            title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
-          >
-            <Download className="h-4 w-4" />
-            Tải mẫu Excel SP
-          </button>
-          {canCreate || canEdit ? (
-            <button
-              type="button"
-              onClick={() => catalogFileInputRef.current?.click()}
-              disabled={isImportingProductCatalog || isLoadingProducts}
-              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
-            </button>
-          ) : null}
-          <input
-            ref={catalogFileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
-          />
-          {canCreate ? (
-            <button
-              type="button"
-              onClick={openProductCreate}
-              className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-            >
-              <Plus className="h-4 w-4" />
-              Thêm mới
-            </button>
-          ) : null}
-        </div>
+      {isInventoryHeader ? (
+        <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+            {topControls}
+            {topControls ? <div className="hidden h-8 w-px shrink-0 bg-zinc-200 lg:block" aria-hidden /> : null}
 
-        <div className="mt-5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-          {(isCatalogMode
-            ? [
-                ['Sản phẩm', displayProducts.length],
-                ['Nhóm VTHH', productGroups.length > 0 ? productGroups.length - 1 : 0],
-                ['Đơn vị', productUnitCount || productNatureCount]
-              ]
-            : [
-                ['Mã SP', displayProducts.length],
-                ['Tổng SL', formatNumber(totalProductQuantity, 2)],
-                ['Đơn vị', productUnitCount]
-              ]
-          ).map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <span className="block font-bold text-slate-500">{label}</span>
-              <span className="mt-1 block text-xl font-black text-slate-900">{value}</span>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {summaryStats.map(([label, value]) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-500"
+                >
+                  {label}
+                  <span className="font-black text-slate-900">{value}</span>
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
 
-      <TableToolbar
-        isLoading={isLoadingProducts}
-        hasActiveFilters={hasActiveFilters}
-        onResetFilters={resetFilters}
-        loadError={productError}
-        actionMessage={productActionMessage}
-      >
-        <TableSearchInput
-          value={searchText}
-          onChange={setSearchText}
-          placeholder="Tìm mã, tên, nhóm, nguồn gốc..."
-          disabled={isLoadingProducts || products.length === 0}
-        />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadProductCatalogTemplate}
+                disabled={isImportingProductCatalog || isLoadingProducts}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
+              >
+                <Download className="h-4 w-4" />
+                Tải mẫu Excel SP
+              </button>
+              {canCreate || canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => catalogFileInputRef.current?.click()}
+                  disabled={isImportingProductCatalog || isLoadingProducts}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
+                </button>
+              ) : null}
+              <input
+                ref={catalogFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
+              />
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openProductCreate}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
+            </div>
 
-        <FilterCombobox
-          label="Nhóm"
-          options={productGroups.filter(group => group !== 'all')}
-          value={selectedGroup}
-          onChange={setSelectedGroup}
-          searchPlaceholder="Tìm nhóm..."
-          compact
-        />
+            <label className="flex h-10 min-w-[140px] flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
+              <Search className="h-4 w-4 shrink-0 text-zinc-400" />
+              <input
+                value={searchText}
+                onChange={event => setSearchText(event.target.value)}
+                placeholder="Tìm mã, tên, nhóm..."
+                disabled={isLoadingProducts || products.length === 0}
+                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+              />
+            </label>
 
-        <MultiSelectFilter
-          label="Tính chất"
-          allLabel="Tất cả tính chất"
-          searchPlaceholder="Tìm tính chất..."
-          emptyLabel="Không tìm thấy tính chất"
-          options={productNatures}
-          values={[...selectedNatures]}
-          onChange={values => setSelectedNatures(new Set(values))}
-        />
-      </TableToolbar>
+            <FilterCombobox
+              label="Nhóm"
+              options={productGroups.filter(group => group !== 'all')}
+              value={selectedGroup}
+              onChange={setSelectedGroup}
+              searchPlaceholder="Tìm nhóm..."
+              compact
+            />
+
+            <MultiSelectFilter
+              label="Tính chất"
+              allLabel="Tất cả tính chất"
+              searchPlaceholder="Tìm tính chất..."
+              emptyLabel="Không tìm thấy tính chất"
+              options={productNatures}
+              values={[...selectedNatures]}
+              onChange={values => setSelectedNatures(new Set(values))}
+            />
+
+            {isLoadingProducts ? (
+              <div className="flex h-10 shrink-0 items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
+                Đang tải...
+              </div>
+            ) : null}
+
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-black text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+              >
+                Xóa lọc
+              </button>
+            ) : null}
+          </div>
+
+          {productError ? (
+            <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+              {productError}
+            </p>
+          ) : null}
+          {productActionMessage ? (
+            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+              {productActionMessage}
+            </p>
+          ) : null}
+        </section>
+      ) : (
+        <>
+          <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadProductCatalogTemplate}
+                disabled={isImportingProductCatalog || isLoadingProducts}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
+              >
+                <Download className="h-4 w-4" />
+                Tải mẫu Excel SP
+              </button>
+              {canCreate || canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => catalogFileInputRef.current?.click()}
+                  disabled={isImportingProductCatalog || isLoadingProducts}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel SP lên'}
+                </button>
+              ) : null}
+              <input
+                ref={catalogFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={event => void handleImportProductCatalog(event.target.files?.[0])}
+              />
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openProductCreate}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm mới
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+              {summaryStats.map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <span className="block font-bold text-slate-500">{label}</span>
+                  <span className="mt-1 block text-xl font-black text-slate-900">{value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <TableToolbar
+            isLoading={isLoadingProducts}
+            hasActiveFilters={hasActiveFilters}
+            onResetFilters={resetFilters}
+            loadError={productError}
+            actionMessage={productActionMessage}
+          >
+            <TableSearchInput
+              value={searchText}
+              onChange={setSearchText}
+              placeholder="Tìm mã, tên, nhóm, nguồn gốc..."
+              disabled={isLoadingProducts || products.length === 0}
+            />
+
+            <FilterCombobox
+              label="Nhóm"
+              options={productGroups.filter(group => group !== 'all')}
+              value={selectedGroup}
+              onChange={setSelectedGroup}
+              searchPlaceholder="Tìm nhóm..."
+              compact
+            />
+
+            <MultiSelectFilter
+              label="Tính chất"
+              allLabel="Tất cả tính chất"
+              searchPlaceholder="Tìm tính chất..."
+              emptyLabel="Không tìm thấy tính chất"
+              options={productNatures}
+              values={[...selectedNatures]}
+              onChange={values => setSelectedNatures(new Set(values))}
+            />
+          </TableToolbar>
+        </>
+      )}
 
       <section className="grid gap-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">

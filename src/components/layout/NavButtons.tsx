@@ -105,6 +105,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'weighing-summary-list': 'factory-qc',
   'can-tu-dong': 'report-lists',
   'can-tu-dong-pilot': 'report-lists',
+  'can-kiem-kho': 'factory-kho',
   'damaged-goods-report': 'report-forms',
   'damaged-goods-report-list': 'factory-qc',
   'mixing-report': 'report-forms',

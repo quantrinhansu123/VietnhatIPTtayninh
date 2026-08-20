@@ -1262,32 +1262,44 @@ export function WarehouseSlipPanel({
     const loadItems = async () => {
       setIsLoadingItems(true);
       try {
-        if (warehouseKind === 'san_pham') {
+        // Kho hàng hóa cũng dùng danh mục sản phẩm làm mã chuẩn để QR sinh ra
+        // luôn giữ đúng `san_pham.ma_sp` (không lấy mã biến thể từ kho NVL).
+        if (warehouseKind === 'san_pham' || warehouseKind === 'hang_hoa') {
           const res = await fetch('/api/san-pham?format=table');
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || 'Không thể tải danh sách sản phẩm.');
           const products = normalizeProducts(data);
+          // Chỉ hiển thị sản phẩm đúng nhóm của kho đang chọn.
+          const selectableProducts =
+            warehouseKind === 'hang_hoa'
+              ? products.filter(product => isGoodsWarehouseName(product.nature))
+              : products.filter(product => isFinishedGoodsWarehouseName(product.nature));
           setItemOptions(
-            products.map(product => ({
+            selectableProducts.map(product => ({
               code: product.code,
               name: product.name,
               unit: product.unit && product.unit !== '-' ? product.unit : ''
             }))
           );
-          setWeightCatalog(products.map(mapProductToWeightCatalogItem));
+          setWeightCatalog(selectableProducts.map(mapProductToWeightCatalogItem));
         } else {
           const res = await fetch('/api/kho-nvl');
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || 'Không thể tải kho NVL.');
           const materials = normalizeMaterialsInventory(data);
+          const selectedWarehouseKey = normalizeWarehouseNameKey(warehouseName);
+          // Các kho vật tư lọc chính xác theo tên kho đã chọn trong Quản lý kho.
+          const selectableMaterials = selectedWarehouseKey
+            ? materials.filter(material => normalizeWarehouseNameKey(material.warehouse) === selectedWarehouseKey)
+            : [];
           setItemOptions(
-            materials.map(material => ({
+            selectableMaterials.map(material => ({
               code: material.code,
               name: material.name,
               unit: material.unit && material.unit !== '-' ? material.unit : ''
             }))
           );
-          setWeightCatalog(materials.map(mapMaterialToWeightCatalogItem));
+          setWeightCatalog(selectableMaterials.map(mapMaterialToWeightCatalogItem));
         }
       } catch {
         setItemOptions([]);
@@ -1298,7 +1310,7 @@ export function WarehouseSlipPanel({
     };
 
     loadItems();
-  }, [warehouseKind]);
+  }, [warehouseKind, warehouseName]);
 
   const handleWarehouseNameChange = (name: string) => {
     const nextName = name.trim();

@@ -1453,6 +1453,7 @@ export function KiemKhoPanel({
         onScan={handleQrScan}
         hardwareOnly={scannerMode === 'hardware'}
         requireConfirm={false}
+        scannedCount={scannedQrCount}
       />
 
       {showManualModal

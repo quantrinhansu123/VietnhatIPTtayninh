@@ -79,6 +79,8 @@ Cả ba tab **Thực hiện kiểm kho**, **Danh sách chi tiết** và **Bảng
 | `src/components/shared/SearchableSelect.tsx` | Combobox có ô tìm kiếm — dùng cho dropdown chọn đợt ở tab "Danh sách chi tiết" |
 | `src/components/ProductQrScanner.tsx` | INPUT_CONNECTION + KEY_EVENT |
 
+Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc, lấy từ số dòng mã đang có trên phiếu kiểm kho; đóng/mở lại modal vẫn giữ đúng tổng, mã trùng/lỗi không làm tăng.
+
 ## Thêm cột trên DB đã có
 
 Chạy lại `supabase-kiem-kho.sql` (có `add column if not exists dot_kiem_kho`, `thoi_gian_xac_nhan`, và `drop column if exists da_dong_bo/dong_bo_luc`), `supabase-kiem-kho-tong-hop.sql` (bảng mới) và `supabase-kiem-kho-tong-hop-rpc.sql` (2 RPC function `kiem_kho_gop_theo_ma_nvl`, `kiem_kho_chot_dot`) trên:

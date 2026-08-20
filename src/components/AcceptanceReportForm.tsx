@@ -758,6 +758,11 @@ export default function AcceptanceReportForm({
     return `Đã quét mã ${code}. Bấm Xác nhận để thêm dòng mới.`;
   }, []);
 
+  const scannedQrCount = useMemo(
+    () => form.lines.filter(line => !isBlankProductLine(line)).length,
+    [form.lines]
+  );
+
   const handleImagePick = async (file: File | null) => {
     if (!file) return;
     setError('');
@@ -1500,6 +1505,7 @@ export default function AcceptanceReportForm({
         hardwareOnly={scannerMode === 'hardware'}
         getConfirmMessage={getQrConfirmMessage}
         requireConfirm={false}
+        scannedCount={scannedQrCount}
       />
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
     </div>

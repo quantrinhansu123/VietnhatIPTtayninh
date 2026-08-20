@@ -1447,14 +1447,26 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
-  /** Quét/nhận một mã (có thể mang hậu tố lô/serial) — điền vào dòng trống đầu tiên, hoặc thêm dòng mới. */
+  /** Quét/nhận một mã: lần đầu SL thực = 1; trùng mã thì cộng 1 vào SL thực. */
   const addLineFromScan = (raw: string): boolean | 'duplicate' => {
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
     const current = linesRef.current;
-    if (current.some(line => line.code.trim() === fullCode)) return 'duplicate';
+    const existingIndex = current.findIndex(line => line.code.trim() === fullCode);
 
-    const patch = resolveLinePatchForCode(fullCode);
+    if (existingIndex >= 0) {
+      const nextLines = current.map((line, idx) => {
+        if (idx !== existingIndex) return line;
+        const parsed = parsePercentInput(line.quantity);
+        const nextQty = (Number.isFinite(parsed) && parsed > 0 ? parsed : 0) + 1;
+        return { ...line, quantity: formatNumber(nextQty, 3) };
+      });
+      linesRef.current = nextLines;
+      setLines(nextLines);
+      return true;
+    }
+
+    const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1' };
     const emptyIndex = current.findIndex(line => !line.code.trim());
     let targetKey: string;
     let nextLines: WarehouseSlipLineDraft[];
@@ -2629,7 +2641,7 @@ export function WarehouseSlipPanel({
                   type="button"
                   onClick={() => setQrScannerOpen(true)}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
-                  title="Quét mã QR/tem có hậu tố lô/serial — mỗi lần quét là một dòng riêng"
+                  title="Quét QR: SL thực = 1; trùng mã thì cộng thêm 1"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét QR

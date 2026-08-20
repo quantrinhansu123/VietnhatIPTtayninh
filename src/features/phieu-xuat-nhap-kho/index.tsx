@@ -90,7 +90,7 @@ export type WarehouseKind =
 
 const WAREHOUSE_HISTORY_TABS = [
   ['nvl', 'Kho NVL', Boxes],
-  ['san_pham', 'Kho Sản phẩm', Package],
+  ['san_pham', 'Kho thành phẩm', Package],
   ['hang_hong', 'Kho hàng hỏng', TriangleAlert],
   ['hang_hoa', 'Kho hàng hóa', Package],
   ['cong_cu_dung_cu', 'Kho công cụ dụng cụ', Wrench],
@@ -428,7 +428,7 @@ export function pickWarehouseSlipAccess(
 }
 
 export function warehouseKindLabel(kind: WarehouseKind) {
-  if (kind === 'san_pham') return 'Kho Sản phẩm';
+  if (kind === 'san_pham') return 'Kho thành phẩm';
   if (kind === 'hang_hong') return 'Kho hàng hỏng';
   if (kind === 'hang_hoa') return 'Kho hàng hóa';
   if (kind === 'cong_cu_dung_cu') return 'Kho công cụ dụng cụ';
@@ -1420,14 +1420,17 @@ export function WarehouseSlipPanel({
   const resolveLinePatchForCode = (fullCode: string) => {
     const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
     const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
+    // Mã quét mang hậu tố lô/serial chỉ dùng để tra danh mục và chống trùng khi quét — dòng
+    // phiếu (ô Mã NPL/SP) chỉ lưu đúng mã gốc/tiền tố, không mang hậu tố.
+    const canonicalCode = item?.code || warehouseCodePrefix(fullCode);
     const isExportNvl = (warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat';
     const cachedAvg =
-      isExportNvl && fullCode ? avgInboundPriceByKey[avgPriceCacheKey(fullCode, slipDate)] : undefined;
+      isExportNvl && canonicalCode ? avgInboundPriceByKey[avgPriceCacheKey(canonicalCode, slipDate)] : undefined;
     const immediatePrice =
       typeof cachedAvg === 'number' && cachedAvg > 0 ? formatSuggestedUnitPrice(cachedAvg) : '';
 
     return {
-      code: fullCode,
+      code: canonicalCode,
       name: item?.name || '',
       unit: item?.unit || '',
       ...(isExportNvl
@@ -1463,28 +1466,39 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
+  // Ô Mã NPL/SP chỉ lưu tiền tố (mã gốc trong danh mục), không mang hậu tố lô/serial — nên
+  // phải nhớ riêng từng mã đầy đủ (tiền tố+hậu tố) đã quét theo tiền tố để chống quét trùng tem.
+  const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
+
   /**
    * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial.
-   * - Trùng cả tiền tố lẫn hậu tố (đúng y nguyên mã đã có trên form) → báo lỗi, không cộng.
+   * - Trùng cả tiền tố lẫn hậu tố (đúng y nguyên tem đã quét) → báo lỗi, không cộng.
    * - Cùng tiền tố, khác hậu tố → cộng dồn 1 vào SL thực của dòng đã có, không thêm dòng mới.
-   * - Chưa gặp tiền tố này → thêm dòng mới, SL thực = 1.
+   * - Chưa gặp tiền tố này → thêm dòng mới, SL thực = 1. Ô Mã NPL/SP chỉ lưu tiền tố.
    */
   const addLineFromScan = (raw: string): boolean | 'duplicate' => {
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
     const current = linesRef.current;
     const prefix = warehouseCodePrefix(fullCode);
+    const prefixKey = normalizeMaterialCodeKey(prefix);
+    const fullCodeKey = normalizeMaterialCodeKey(fullCode);
 
-    const exactIndex = current.findIndex(line => line.code.trim() === fullCode);
-    if (exactIndex >= 0) {
+    const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
+    if (scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
     const prefixIndex = current.findIndex(
-      line => line.code.trim() && warehouseCodePrefix(line.code.trim()) === prefix
+      line => line.code.trim() && normalizeMaterialCodeKey(line.code.trim()) === prefixKey
     );
 
     if (prefixIndex >= 0) {
+      if (scannedForPrefix) {
+        scannedForPrefix.add(fullCodeKey);
+      } else {
+        scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
+      }
       const nextLines = current.map((line, idx) => {
         if (idx !== prefixIndex) return line;
         const parsed = parsePercentInput(line.quantity);
@@ -1498,7 +1512,6 @@ export function WarehouseSlipPanel({
 
     // Mã không thuộc danh mục của kho đang chọn (VD quét nhầm tem NVL trong lúc đang lập
     // phiếu Kho hàng hóa) — không thêm dòng để tránh lẫn dữ liệu giữa các kho.
-    const prefixKey = normalizeMaterialCodeKey(prefix);
     const belongsToWarehouse = itemOptions.some(
       option => normalizeMaterialCodeKey(option.code) === prefixKey
     );
@@ -1506,7 +1519,10 @@ export function WarehouseSlipPanel({
       return false;
     }
 
+    scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
+
     const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1' };
+    const canonicalCode = patch.code;
     const emptyIndex = current.findIndex(line => !line.code.trim());
     let targetKey: string;
     let nextLines: WarehouseSlipLineDraft[];
@@ -1522,7 +1538,7 @@ export function WarehouseSlipPanel({
     setLines(nextLines);
 
     if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
-      void loadNvlAvgInboundPrice(fullCode, slipDate, {
+      void loadNvlAvgInboundPrice(canonicalCode, slipDate, {
         lineKey: targetKey,
         applySuggestion: true,
         forceOverwrite: true
@@ -2177,6 +2193,7 @@ export function WarehouseSlipPanel({
       setCreatedBy(loginName);
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
+      scannedFullCodesByPrefixRef.current.clear();
       setLines([createWarehouseLineDraft()]);
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu phiếu xuất nhập kho.'));
@@ -2742,6 +2759,7 @@ export function WarehouseSlipPanel({
                     type="button"
                     onClick={() => {
                       if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
+                      scannedFullCodesByPrefixRef.current.clear();
                       setLines([createWarehouseLineDraft()]);
                     }}
                     className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:border-red-200 hover:bg-red-50 hover:text-[#ef1b2d]"
@@ -2950,7 +2968,6 @@ export function WarehouseSlipPanel({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <p className="mr-auto text-[11px] font-semibold text-zinc-500">
             Phiếu chỉ được mở để in sau khi lưu thành công vào lịch sử.
-            {warehouseKind === 'san_pham' && slipType === 'nhap' ? ' Phiếu nhập thành phẩm sẽ sinh từng serial và mở thêm file tem QR.' : ''}
           </p>
           {(editSlipCode ? canEdit : canCreate) ? (
             <button

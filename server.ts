@@ -8197,87 +8197,8 @@ export function createApp() {
 
       const maPhieu = generateWarehouseSlipCode(parsed.loaiPhieu);
 
-      if (parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'san_pham') {
-        const totalQuantity = parsed.items.reduce((sum, item) => sum + item.quantity, 0);
-        const invalidItem = parsed.items.find(item => !Number.isInteger(item.quantity));
-        if (invalidItem) {
-          return res.status(400).json({
-            error: `Số lượng nhập của ${invalidItem.code} phải là số nguyên để sinh từng mã QR.`
-          });
-        }
-        if (totalQuantity < 1 || totalQuantity > 999) {
-          return res.status(400).json({ error: 'Tổng số lượng sinh mã QR trong một phiếu phải từ 1 đến 999.' });
-        }
-
-        const { data: productRows, error: productError } = await supabase
-          .from(SUPABASE_PRODUCTS_TABLE)
-          .select('id, ma_sp, ma_sp_moi, ma_amis, ten_sp, don_vi');
-        if (productError) {
-          return res.status(500).json({ error: `Không thể tra danh mục sản phẩm. ${productError.message}` });
-        }
-
-        const normalizeCode = (value: unknown) => String(value ?? '').trim().toLocaleUpperCase('vi-VN');
-        const productByCode = new Map<string, any>();
-        for (const product of productRows || []) {
-          [product.ma_sp, product.ma_sp_moi, product.ma_amis].forEach(value => {
-            const key = normalizeCode(value);
-            if (key && !productByCode.has(key)) productByCode.set(key, product);
-          });
-        }
-
-        const detailedLines: Array<Record<string, unknown>> = [];
-        for (const item of parsed.items) {
-          const product = productByCode.get(normalizeCode(item.code));
-          if (!product) {
-            return res.status(400).json({ error: `Mã sản phẩm ${item.code} chưa có trong danh mục sản phẩm.` });
-          }
-          const baseCode = String(product.ma_sp ?? '').trim();
-          if (!baseCode) {
-            return res.status(400).json({ error: `Sản phẩm ${item.code} chưa có mã gốc để sinh QR.` });
-          }
-          detailedLines.push({
-            san_pham_id: product.id,
-            ma_sp_goc: baseCode,
-            ten_sp: item.name || String(product.ten_sp ?? '').trim(),
-            don_vi: item.unit || String(product.don_vi ?? '').trim(),
-            don_gia: item.unitPrice,
-            codes: buildStoredProductQrCodes(baseCode, item.quantity)
-          });
-        }
-
-        const { data: rpcData, error: rpcError } = await supabase.rpc(
-          'tao_phieu_nhap_san_pham_voi_ma_chi_tiet',
-          {
-            p_ma_phieu: maPhieu,
-            p_ngay_phieu: parsed.ngayPhieu,
-            p_ten_kho: parsed.tenKho,
-            p_ly_do: parsed.lyDo,
-            p_ghi_chu: parsed.ghiChu,
-            p_nguoi_lap: parsed.nguoiLap,
-            p_ca: parsed.ca,
-            p_dong_hang: detailedLines
-          }
-        );
-
-        if (rpcError) {
-          console.error('Supabase create product inbound slip with QR codes error:', rpcError);
-          const missingMigration = rpcError.code === 'PGRST202'
-            || /tao_phieu_nhap_san_pham_voi_ma_chi_tiet/i.test(rpcError.message || '');
-          return res.status(500).json({
-            error: missingMigration
-              ? 'Thiếu RPC sinh mã QR khi nhập kho. Hãy chạy file supabase-phieu-nhap-san-pham-ma-chi-tiet.sql.'
-              : rpcError.message || 'Không thể tạo phiếu nhập và mã QR trong cùng transaction.'
-          });
-        }
-
-        return res.status(201).json({
-          success: true,
-          slipCode: maPhieu,
-          movements: Array.isArray(rpcData?.movements) ? rpcData.movements : [],
-          qrCodes: Array.isArray(rpcData?.codes) ? rpcData.codes : [],
-          qrQuantity: Number(rpcData?.quantity) || totalQuantity
-        });
-      }
+      // Nhập kho thành phẩm không còn sinh mã QR/serial riêng cho từng đơn vị — ghi nhận theo
+      // tổng số lượng như các kho khác (giống luồng NVL), đi qua nhánh insert chung bên dưới.
 
       // Hàng hóa đóng gói/quản lý theo từng đơn vị giống thành phẩm: mỗi đơn vị nhận một QR serial.
       // Không đăng ký vào ma_san_pham_chi_tiet vì đây không phải danh mục sản phẩm sản xuất.

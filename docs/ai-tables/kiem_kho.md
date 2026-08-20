@@ -12,7 +12,7 @@
 | Cột | Kiểu | Ghi chú |
 |-----|------|--------|
 | `id` | `bigint` identity PK | |
-| `ten_kho` | `text` | |
+| `ten_kho` | `text` | Bắt buộc — mỗi đợt (`dot_kiem_kho`) luôn thuộc đúng 1 kho, FE bắt chọn kho trước khi lưu dòng đầu tiên. |
 | `dot_kiem_kho` | `text` | Đợt kiểm kho — phân biệt các lần kiểm |
 | `ma_nvl` | `text` | Auto = tiền tố trước `_` của mã quét |
 | `ma_sp` | `text` | Nguyên mã vừa quét (tiền tố + hậu tố) |
@@ -38,8 +38,9 @@ Việc `GROUP BY ma_nvl` chạy hẳn trong Postgres (không kéo dòng thô v�
 
 ## Quy tắc đợt kiểm kho
 
+- Mỗi đợt (`dot_kiem_kho`) luôn thuộc **đúng 1 kho** — mọi dòng chi tiết của đợt cùng `ten_kho`. FE bắt chọn kho trước, mọi API liệt kê/lọc đợt đều nhận `tenKho` để chỉ trả đợt của kho đang chọn.
 - 1 tháng có thể có nhiều đợt — đợt không gắn với tháng, chỉ là khoảng thời gian từ lúc "Lưu phiếu" đầu tiên tới lúc "Xác nhận kiểm kho".
-- Tab "Thực hiện kiểm kho" **chặn tạo đợt mới** khi còn bất kỳ đợt nào chưa xác nhận (`GET /api/kiem-kho/dot-mo` trả về ≥1 bản ghi) — bắt buộc phải qua tab "Danh sách chi tiết" xác nhận hết các đợt cũ trước.
+- Tab "Thực hiện kiểm kho" **chặn tạo đợt mới của cùng 1 kho** khi kho đó còn bất kỳ đợt nào chưa xác nhận (`GET /api/kiem-kho/dot-mo?tenKho=...` trả về ≥1 bản ghi) — bắt buộc phải qua tab "Danh sách chi tiết" xác nhận hết các đợt cũ của kho đó trước. Kho khác không bị ảnh hưởng.
 - Xác nhận (`POST /api/kiem-kho/dot-xac-nhan`) gọi RPC `kiem_kho_chot_dot` — xem mục trên. Không thể xác nhận lại đợt đã xác nhận (409).
 
 ## API (`server.ts`)
@@ -47,10 +48,10 @@ Việc `GROUP BY ma_nvl` chạy hẳn trong Postgres (không kéo dòng thô v�
 | Path | Ghi chú |
 |------|---------|
 | `GET /api/kiem-kho` | Query: `tenKho`, `dotKiemKho`, `maSp`, `from`, `to` |
-| `POST /api/kiem-kho` | Body: `dot_kiem_kho`, `nguoi_kiem_kho` (tự động), `ngay_gio_kiem_kho` (tự động), `lines[]`; `ten_kho` không bắt buộc |
+| `POST /api/kiem-kho` | Body: `ten_kho` (bắt buộc), `dot_kiem_kho`, `nguoi_kiem_kho` (tự động), `ngay_gio_kiem_kho` (tự động), `lines[]` |
 | `DELETE /api/kiem-kho/:id` | Xóa một dòng, chỉ khi đợt kiểm kho chưa chốt (`thoi_gian_xac_nhan is null`) |
-| `GET /api/kiem-kho/dot-mo` | Chỉ đợt **chưa chốt** — dùng cho combobox tab "Thực hiện kiểm kho": `{ dot_kiem_kho, ngay_bat_dau }[]` |
-| `GET /api/kiem-kho/dot` | **Toàn bộ** đợt (đã chốt lẫn chưa) — dùng cho combobox tìm kiếm tab "Danh sách chi tiết" và tab "Bảng tổng hợp": `{ dot_kiem_kho, ngay_bat_dau, thoi_gian_xac_nhan, da_xac_nhan, so_dong }[]`, sắp xếp mới nhất trước |
+| `GET /api/kiem-kho/dot-mo` | Query: `tenKho` (lọc theo kho, FE luôn truyền). Chỉ đợt **chưa chốt** — dùng cho combobox tab "Thực hiện kiểm kho": `{ dot_kiem_kho, ten_kho, ngay_bat_dau }[]` |
+| `GET /api/kiem-kho/dot` | Query: `tenKho` (lọc theo kho, FE luôn truyền). **Toàn bộ** đợt (đã chốt lẫn chưa) của kho đó — dùng cho combobox tìm kiếm tab "Danh sách chi tiết" và tab "Bảng tổng hợp": `{ dot_kiem_kho, ten_kho, ngay_bat_dau, thoi_gian_xac_nhan, da_xac_nhan, so_dong }[]`, sắp xếp mới nhất trước |
 | `POST /api/kiem-kho/dot-xac-nhan` | Body: `dot_kiem_kho`, `nguoi_xac_nhan`. Chốt đợt — gọi RPC `kiem_kho_chot_dot` |
 | `GET /api/kiem-kho/dot-tong-hop-live` | Query: `dotKiemKho` (bắt buộc). Tổng hợp "live" theo mã NVL cho đợt **chưa chốt** — gọi RPC `kiem_kho_gop_theo_ma_nvl`, không ghi DB. Response `{ records: [{ ma_nvl, ten_sp, loai_sp, tong_so_luong, dot_kiem_kho, da_chot: false }] }` |
 | `GET /api/kiem-kho-tong-hop` | Query: `dotKiemKho`. Đọc bảng tổng hợp (chỉ có dữ liệu của đợt **đã chốt**) |
@@ -73,7 +74,7 @@ Cả ba tab **Thực hiện kiểm kho**, **Danh sách chi tiết** và **Bảng
 
 | File | Nội dung |
 |------|----------|
-| `src/features/kiem-kho/index.tsx` | 3 tab: **Thực hiện kiểm kho** (đợt lấy động từ `GET /api/kiem-kho/dot-mo`; còn đợt chưa xác nhận thì ẩn lựa chọn "Tạo đợt mới", bắt tiếp tục đợt đó; `ma_nvl` auto từ tiền tố; trùng mã = trùng cả tiền tố+hậu tố, chỉ chống trùng trong phiên đang nhập); **Danh sách chi tiết** (combobox tìm kiếm `SearchableSelect` liệt kê mọi đợt từ `GET /api/kiem-kho/dot`, mặc định chọn đợt gần nhất; bảng hiển thị toàn bộ sản phẩm đã quét của đợt; nút "Xác nhận kiểm kho" chỉ hiện khi đợt chưa xác nhận); **Bảng tổng hợp** (combobox liệt kê **mọi đợt** — đã chốt lẫn chưa — từ `GET /api/kiem-kho/dot`; chỉ tải tổng hợp của **đúng đợt đang chọn**, không tải cả lịch sử: đợt đã chốt gọi `GET /api/kiem-kho-tong-hop?dotKiemKho=...`, đợt chưa chốt gọi `GET /api/kiem-kho/dot-tong-hop-live?dotKiemKho=...`; cột "Chốt lúc"/"Người chốt" hiện badge "Chưa chốt" khi `da_chot === false`). |
+| `src/features/kiem-kho/index.tsx` | Cả 3 tab đều bắt **chọn kho trước** (combobox `SearchableSelect` nạp từ `GET /api/quan-ly-kho`, cùng state `selectedKho` dùng chung toàn trang) — chưa chọn kho thì ẩn phần đợt/danh sách sản phẩm, chỉ hiện gợi ý "Chọn kho ở trên...". **Thực hiện kiểm kho** (đợt lấy động từ `GET /api/kiem-kho/dot-mo?tenKho=...`; còn đợt chưa xác nhận của kho đó thì ẩn lựa chọn "Tạo đợt mới", bắt tiếp tục đợt đó; `ma_nvl` auto từ tiền tố; trùng mã = trùng cả tiền tố+hậu tố, chỉ chống trùng trong phiên đang nhập; "Lưu phiếu" gửi kèm `ten_kho`); **Danh sách chi tiết** (combobox tìm kiếm `SearchableSelect` liệt kê đợt của kho đang chọn từ `GET /api/kiem-kho/dot?tenKho=...`, mặc định chọn đợt gần nhất; bảng hiển thị toàn bộ sản phẩm đã quét của đợt; nút "Xác nhận kiểm kho" chỉ hiện khi đợt chưa xác nhận); **Bảng tổng hợp** (combobox liệt kê **mọi đợt của kho đang chọn** — đã chốt lẫn chưa — từ `GET /api/kiem-kho/dot?tenKho=...`; chỉ tải tổng hợp của **đúng đợt đang chọn**, không tải cả lịch sử: đợt đã chốt gọi `GET /api/kiem-kho-tong-hop?dotKiemKho=...`, đợt chưa chốt gọi `GET /api/kiem-kho/dot-tong-hop-live?dotKiemKho=...`; cột "Chốt lúc"/"Người chốt" hiện badge "Chưa chốt" khi `da_chot === false`). Đổi kho sẽ bỏ chọn đợt/đợt tổng hợp đang xem của kho trước. |
 | `src/features/kiem-kho/KiemKhoPrintSheet.tsx` | Phiếu tổng hợp kiểm kho A4 ngang: thông tin đợt, trạng thái/chốt và danh sách sản phẩm đã kiểm theo mã gốc. |
 | `src/components/shared/SearchableSelect.tsx` | Combobox có ô tìm kiếm — dùng cho dropdown chọn đợt ở tab "Danh sách chi tiết" |
 | `src/components/ProductQrScanner.tsx` | INPUT_CONNECTION + KEY_EVENT |

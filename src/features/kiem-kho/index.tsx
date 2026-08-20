@@ -25,16 +25,43 @@ import {
   TableHeadCell,
   TableBody,
   TableRow,
-  TableEmptyRow
+  TableEmptyRow,
+  RowActionsMenu
 } from '../../components/shared/table';
 
 type CatalogProduct = {
   code: string;
   name: string;
   productType: string;
+  unit: string;
 };
 
 type WarehouseCatalogItem = { id: string | number; ten_kho: string };
+
+/** Viết tắt tên kho dùng cho tiêu đề cột động ("Mã TP gốc", "Tên NVL"...). */
+const KHO_ABBREVIATION_MAP: Record<string, string> = {
+  'Kho thành phẩm': 'TP',
+  'Kho NVL': 'NVL',
+  'Kho hàng hóa': 'HH',
+  'Kho gia công': 'GC',
+  'Kho công cụ dụng cụ': 'CCDC',
+  'Kho hàng hỏng': 'HHỎNG',
+  'Kho hàng rác': 'HR',
+  'Kho tái chế': 'TC'
+};
+
+function khoAbbreviation(tenKho: string) {
+  const key = tenKho.trim();
+  if (!key) return 'SP';
+  if (KHO_ABBREVIATION_MAP[key]) return KHO_ABBREVIATION_MAP[key];
+  const rest = key.replace(/^Kho\s+/i, '').trim();
+  return (rest || key).toUpperCase();
+}
+
+/** Kho NVL nhập tay, không quét QR — ẩn cột "Mã quét". */
+function isNvlKho(tenKho: string) {
+  return khoAbbreviation(tenKho) === 'NVL';
+}
 
 type KiemKhoLine = {
   key: string;
@@ -42,6 +69,7 @@ type KiemKhoLine = {
   maSp: string;
   tenSp: string;
   loaiSp: string;
+  donVi: string;
   rawQr: string;
 };
 
@@ -187,8 +215,9 @@ function normalizeCatalogProducts(data: unknown): CatalogProduct[] {
       const productType = String(
         record.nhom_vthh ?? record.loai_sp ?? record.loai ?? record.nhom ?? ''
       ).trim();
+      const unit = String(record.don_vi ?? record.unit ?? '').trim();
       if (!code) return null;
-      return { code, name, productType };
+      return { code, name, productType, unit };
     })
     .filter((item): item is CatalogProduct => Boolean(item));
 }
@@ -635,6 +664,7 @@ export function KiemKhoPanel({
         maSp: fullCode,
         tenSp: matched?.name || '',
         loaiSp: matched?.productType || '',
+        donVi: matched?.unit || '',
         rawQr: fullCode
       };
       const nextLines = [...linesRef.current, nextLine];
@@ -773,6 +803,8 @@ export function KiemKhoPanel({
   };
 
   const scannedQrCount = lines.length;
+  const khoAbbr = khoAbbreviation(selectedKho);
+  const hideMaQuet = isNvlKho(selectedKho);
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 py-2 md:py-3">
@@ -989,8 +1021,12 @@ export function KiemKhoPanel({
               <article key={line.key} className={`rounded-xl border p-3 shadow-sm ${highlightClass}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Mã quét #{index + 1}</p>
-                    <p className="mt-0.5 break-all font-mono text-sm font-black text-zinc-950">{line.maSp}</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      {hideMaQuet ? `Mã ${khoAbbr} gốc #${index + 1}` : `Mã quét #${index + 1}`}
+                    </p>
+                    <p className="mt-0.5 break-all font-mono text-sm font-black text-zinc-950">
+                      {hideMaQuet ? line.maNvl || '—' : line.maSp}
+                    </p>
                   </div>
                   {canDelete ? (
                     <button
@@ -1005,9 +1041,12 @@ export function KiemKhoPanel({
                   ) : null}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                  <div><p className="font-bold text-zinc-400">Mã SP gốc</p><p className="mt-0.5 break-all font-mono font-bold text-zinc-800">{line.maNvl || '—'}</p></div>
-                  <div><p className="font-bold text-zinc-400">Loại SP</p><p className="mt-0.5 font-semibold text-zinc-700">{line.loaiSp || '—'}</p></div>
-                  <div className="col-span-2"><p className="font-bold text-zinc-400">Tên SP</p><p className="mt-0.5 font-semibold text-zinc-700">{line.tenSp || '—'}</p></div>
+                  {!hideMaQuet ? (
+                    <div><p className="font-bold text-zinc-400">Mã {khoAbbr} gốc</p><p className="mt-0.5 break-all font-mono font-bold text-zinc-800">{line.maNvl || '—'}</p></div>
+                  ) : null}
+                  <div><p className="font-bold text-zinc-400">ĐV</p><p className="mt-0.5 font-semibold text-zinc-700">{line.donVi || '—'}</p></div>
+                  <div><p className="font-bold text-zinc-400">Kho</p><p className="mt-0.5 font-semibold text-zinc-700">{selectedKho || '—'}</p></div>
+                  <div className="col-span-2"><p className="font-bold text-zinc-400">Tên {khoAbbr}</p><p className="mt-0.5 font-semibold text-zinc-700">{line.tenSp || '—'}</p></div>
                 </div>
               </article>
             );
@@ -1023,10 +1062,11 @@ export function KiemKhoPanel({
         <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[420px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
-            <TableHeadCell>Mã SP gốc</TableHeadCell>
-            <TableHeadCell>Mã quét</TableHeadCell>
-            <TableHeadCell>Tên SP</TableHeadCell>
-            <TableHeadCell>Loại SP</TableHeadCell>
+            <TableHeadCell>Mã {khoAbbr} gốc</TableHeadCell>
+            {!hideMaQuet ? <TableHeadCell>Mã quét</TableHeadCell> : null}
+            <TableHeadCell>Tên {khoAbbr}</TableHeadCell>
+            <TableHeadCell>ĐV</TableHeadCell>
+            <TableHeadCell>Kho</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
@@ -1039,20 +1079,19 @@ export function KiemKhoPanel({
                       {index + 1}
                     </td>
                     <td className={`px-4 py-3 font-mono font-bold text-zinc-800 ${highlightClass}`}>{line.maNvl || '—'}</td>
-                    <td className={`px-4 py-3 font-mono font-bold text-zinc-900 ${highlightClass}`}>{line.maSp}</td>
+                    {!hideMaQuet ? (
+                      <td className={`px-4 py-3 font-mono font-bold text-zinc-900 ${highlightClass}`}>{line.maSp}</td>
+                    ) : null}
                     <td className={`px-4 py-3 font-semibold text-zinc-700 ${highlightClass}`}>{line.tenSp || '—'}</td>
-                    <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{line.loaiSp || '—'}</td>
+                    <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{line.donVi || '—'}</td>
+                    <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{selectedKho || '—'}</td>
                     <td className={`px-4 py-3 text-center ${highlightClass}`}>
                       {canDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line.key)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                          title="Xóa dòng"
-                          aria-label={`Xóa mã ${line.maSp}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <RowActionsMenu label={`Thao tác ${line.maSp}`}>
+                          <button type="button" onClick={() => removeLine(line.key)} title="Xóa">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </RowActionsMenu>
                       ) : null}
                     </td>
                   </TableRow>
@@ -1061,7 +1100,7 @@ export function KiemKhoPanel({
             })}
 
             {lines.length === 0 && (
-              <TableEmptyRow colSpan={6}>
+              <TableEmptyRow colSpan={hideMaQuet ? 6 : 7}>
                 Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc{' '}
                 <span className="text-[#ef1b2d]">Quét máy</span>.
               </TableEmptyRow>
@@ -1179,53 +1218,60 @@ export function KiemKhoPanel({
         <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[480px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
-            <TableHeadCell>Mã SP gốc</TableHeadCell>
-            <TableHeadCell>Mã quét</TableHeadCell>
-            <TableHeadCell>Tên SP</TableHeadCell>
-            <TableHeadCell>Loại SP</TableHeadCell>
+            <TableHeadCell>Mã {khoAbbr} gốc</TableHeadCell>
+            {!hideMaQuet ? <TableHeadCell>Mã quét</TableHeadCell> : null}
+            <TableHeadCell>Tên {khoAbbr}</TableHeadCell>
+            <TableHeadCell>ĐV</TableHeadCell>
+            <TableHeadCell>Kho</TableHeadCell>
             <TableHeadCell>Người kiểm</TableHeadCell>
             <TableHeadCell>Thời điểm lưu</TableHeadCell>
             {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
-              <TableHeadCell align="center">Xóa</TableHeadCell>
+              <TableHeadCell align="center">Thao tác</TableHeadCell>
             ) : null}
           </TableHead>
           <TableBody>
-            {dotDetailLines.map((line, index) => (
-              <React.Fragment key={String(line.id)}>
-                <TableRow>
-                  <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
-                  <td className="px-4 py-3 font-mono font-bold text-zinc-800">{line.ma_nvl || '—'}</td>
-                  <td className="px-4 py-3 font-mono font-bold text-zinc-900">{line.ma_sp || '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-zinc-700">{line.ten_sp || '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-zinc-600">{line.loai_sp || '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-zinc-700">{line.nguoi_kiem_kho || '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                    {formatDateTime(line.ngay_gio_kiem_kho)}
-                  </td>
-                  {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteDetailLine(line)}
-                        disabled={deletingDetailId !== null}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        title={`Xóa mã ${line.ma_sp || line.ma_nvl || ''}`}
-                        aria-label={`Xóa mã ${line.ma_sp || line.ma_nvl || ''}`}
-                      >
-                        {deletingDetailId === String(line.id) ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+            {dotDetailLines.map((line, index) => {
+              const matched = findCatalogProduct(String(line.ma_nvl ?? ''), products);
+              return (
+                <React.Fragment key={String(line.id)}>
+                  <TableRow>
+                    <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-zinc-800">{line.ma_nvl || '—'}</td>
+                    {!hideMaQuet ? (
+                      <td className="px-4 py-3 font-mono font-bold text-zinc-900">{line.ma_sp || '—'}</td>
+                    ) : null}
+                    <td className="px-4 py-3 font-semibold text-zinc-700">{line.ten_sp || '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-zinc-600">{matched?.unit || '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-zinc-600">{selectedDotGroup?.ten_kho || selectedKho || '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-zinc-700">{line.nguoi_kiem_kho || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                      {formatDateTime(line.ngay_gio_kiem_kho)}
                     </td>
-                  ) : null}
-                </TableRow>
-              </React.Fragment>
-            ))}
+                    {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
+                      <td className="px-4 py-3 text-center">
+                        <RowActionsMenu label={`Thao tác ${line.ma_sp || line.ma_nvl || ''}`}>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteDetailLine(line)}
+                            disabled={deletingDetailId !== null}
+                            title="Xóa"
+                          >
+                            {deletingDetailId === String(line.id) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </RowActionsMenu>
+                      </td>
+                    ) : null}
+                  </TableRow>
+                </React.Fragment>
+              );
+            })}
 
             {dotDetailLines.length === 0 && (
-              <TableEmptyRow colSpan={canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? 8 : 7}>
+              <TableEmptyRow colSpan={(hideMaQuet ? 7 : 8) + (canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? 1 : 0)}>
                 {loadingDotDetail
                   ? 'Đang tải dữ liệu...'
                   : 'Đợt này chưa có sản phẩm nào được quét.'}

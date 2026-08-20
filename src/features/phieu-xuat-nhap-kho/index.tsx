@@ -611,6 +611,11 @@ export function formatWarehouseMoney(value: number) {
   return formatMoney(value, 0);
 }
 
+/** So khớp mã bỏ qua khoảng trắng/hoa-thường — mã trong kho_nvl đôi khi bị nhập thiếu dấu cách so với mã gốc bên danh mục sản phẩm (VD "MT-MN043" vs "MT- MN043"). */
+function normalizeMaterialCodeKey(raw: string) {
+  return String(raw ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
 /** Tiền tố trước dấu "_" — dùng để tra tên/ĐVT trong danh mục khi mã quét có hậu tố lô/serial (VD "L30cm_3701190208G" → "L30cm"). */
 function warehouseCodePrefix(raw: string) {
   const trimmed = raw.trim();
@@ -1283,18 +1288,39 @@ export function WarehouseSlipPanel({
           );
           setWeightCatalog(selectableProducts.map(mapProductToWeightCatalogItem));
         } else {
-          const res = await fetch('/api/kho-nvl');
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || 'Không thể tải kho NVL.');
+          const [khoRes, spRes] = await Promise.all([
+            fetch('/api/kho-nvl'),
+            fetch('/api/san-pham?format=table')
+          ]);
+          const data = await khoRes.json().catch(() => ({}));
+          if (!khoRes.ok) throw new Error(data.error || 'Không thể tải kho NVL.');
           const materials = normalizeMaterialsInventory(data);
+
+          // Mã trong kho_nvl đôi khi bị nhập thiếu dấu cách so với mã gốc bên danh mục sản
+          // phẩm (VD "MT-MN043" vs "MT- MN043") — quy về đúng mã gốc để khớp giữa các kho.
+          const productData = await spRes.json().catch(() => ({}));
+          const canonicalCodeByKey = new Map<string, string>();
+          if (spRes.ok) {
+            for (const product of normalizeProducts(productData)) {
+              const key = normalizeMaterialCodeKey(product.code);
+              if (key) canonicalCodeByKey.set(key, product.code);
+            }
+          }
+
           const selectedWarehouseKey = normalizeWarehouseNameKey(warehouseName);
-          // Các kho vật tư lọc chính xác theo tên kho đã chọn trong Quản lý kho.
+          // Các kho vật tư gợi ý theo tên kho đã chọn trong Quản lý kho; NVL chưa được gán kho
+          // (phần lớn danh mục hiện nay) vẫn hiển thị để không chặn việc chọn mã.
           const selectableMaterials = selectedWarehouseKey
-            ? materials.filter(material => normalizeWarehouseNameKey(material.warehouse) === selectedWarehouseKey)
+            ? materials.filter(material => {
+                const materialWarehouseKey = normalizeWarehouseNameKey(
+                  material.warehouse === '-' ? '' : material.warehouse
+                );
+                return !materialWarehouseKey || materialWarehouseKey === selectedWarehouseKey;
+              })
             : [];
           setItemOptions(
             selectableMaterials.map(material => ({
-              code: material.code,
+              code: canonicalCodeByKey.get(normalizeMaterialCodeKey(material.code)) || material.code,
               name: material.name,
               unit: material.unit && material.unit !== '-' ? material.unit : ''
             }))
@@ -1416,7 +1442,8 @@ export function WarehouseSlipPanel({
    * — tra tên/ĐVT theo tiền tố trước "_", nhưng vẫn lưu nguyên mã đầy đủ vào dòng phiếu.
    */
   const resolveLinePatchForCode = (fullCode: string) => {
-    const item = itemOptions.find(option => option.code === warehouseCodePrefix(fullCode));
+    const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
+    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
     const isExportNvl = (warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat';
     const cachedAvg =
       isExportNvl && fullCode ? avgInboundPriceByKey[avgPriceCacheKey(fullCode, slipDate)] : undefined;
@@ -1452,6 +1479,7 @@ export function WarehouseSlipPanel({
   };
 
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('camera');
   // Theo dõi `lines` bằng ref để quét liên tiếp (nhiều mã trong 1 nhịp camera) không bị đọc dữ
   // liệu cũ khi state React chưa kịp render lại giữa hai lần quét.
   const linesRef = useRef(lines);
@@ -1459,16 +1487,30 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
-  /** Quét/nhận một mã: lần đầu SL thực = 1; trùng mã thì cộng 1 vào SL thực. */
+  /**
+   * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial.
+   * - Trùng cả tiền tố lẫn hậu tố (đúng y nguyên mã đã có trên form) → báo lỗi, không cộng.
+   * - Cùng tiền tố, khác hậu tố → cộng dồn 1 vào SL thực của dòng đã có, không thêm dòng mới.
+   * - Chưa gặp tiền tố này → thêm dòng mới, SL thực = 1.
+   */
   const addLineFromScan = (raw: string): boolean | 'duplicate' => {
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
     const current = linesRef.current;
-    const existingIndex = current.findIndex(line => line.code.trim() === fullCode);
+    const prefix = warehouseCodePrefix(fullCode);
 
-    if (existingIndex >= 0) {
+    const exactIndex = current.findIndex(line => line.code.trim() === fullCode);
+    if (exactIndex >= 0) {
+      return 'duplicate';
+    }
+
+    const prefixIndex = current.findIndex(
+      line => line.code.trim() && warehouseCodePrefix(line.code.trim()) === prefix
+    );
+
+    if (prefixIndex >= 0) {
       const nextLines = current.map((line, idx) => {
-        if (idx !== existingIndex) return line;
+        if (idx !== prefixIndex) return line;
         const parsed = parsePercentInput(line.quantity);
         const nextQty = (Number.isFinite(parsed) && parsed > 0 ? parsed : 0) + 1;
         return { ...line, quantity: formatNumber(nextQty, 3) };
@@ -2651,9 +2693,24 @@ export function WarehouseSlipPanel({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setQrScannerOpen(true)}
+                  onClick={() => {
+                    setScannerMode('hardware');
+                    setQrScannerOpen(true);
+                  }}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  title="Quét máy: cùng tiền tố khác hậu tố sẽ cộng dồn SL thực; trùng cả mã báo lỗi"
+                >
+                  <ScanBarcode className="h-3.5 w-3.5" />
+                  Quét máy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerMode('camera');
+                    setQrScannerOpen(true);
+                  }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
-                  title="Quét QR: SL thực = 1; trùng mã thì cộng thêm 1"
+                  title="Quét QR: cùng tiền tố khác hậu tố sẽ cộng dồn SL thực; trùng cả mã báo lỗi"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét QR
@@ -2981,6 +3038,7 @@ export function WarehouseSlipPanel({
         open={qrScannerOpen}
         onClose={() => setQrScannerOpen(false)}
         onScan={addLineFromScan}
+        hardwareOnly={scannerMode === 'hardware'}
         closeAfterScan={false}
         requireConfirm={false}
       />

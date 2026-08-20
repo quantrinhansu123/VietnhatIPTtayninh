@@ -47,6 +47,8 @@ interface ProductQrScannerProps {
   closeAfterScan?: boolean;
   requireConfirm?: boolean;
   getConfirmMessage?: (code: string) => string;
+  /** Tổng số mã đã quét thành công trong danh sách hiện tại; nếu bỏ trống sẽ đếm trong phiên mở scanner. */
+  scannedCount?: number;
 }
 
 type ScanFeedback = {
@@ -245,7 +247,8 @@ export default function ProductQrScanner({
   hardwareOnly = false,
   closeAfterScan = false,
   requireConfirm = true,
-  getConfirmMessage
+  getConfirmMessage,
+  scannedCount
 }: ProductQrScannerProps) {
   const reactId = useId();
   const regionId = `product-qr-${reactId.replace(/:/g, '')}`;
@@ -267,8 +270,10 @@ export default function ProductQrScanner({
   const [feedbackPulse, setFeedbackPulse] = useState(0);
   const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [lastScannedValue, setLastScannedValue] = useState('');
+  const [sessionScannedCount, setSessionScannedCount] = useState(0);
   const [cameraEnabled, setCameraEnabled] = useState(loadCameraPreference);
   const useCamera = !hardwareOnly && cameraEnabled;
+  const displayedScannedCount = Math.max(0, Math.trunc(scannedCount ?? sessionScannedCount));
 
   const clearAutoSubmitTimer = () => {
     if (autoSubmitTimerRef.current !== null) {
@@ -313,6 +318,7 @@ export default function ProductQrScanner({
 
   useEffect(() => {
     if (!open) return;
+    setSessionScannedCount(0);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -358,6 +364,7 @@ export default function ProductQrScanner({
     }
 
     playScanBeep(audioCtxRef.current);
+    setSessionScannedCount(current => current + 1);
     setFeedback({ type: 'success', text: `Đã thêm mã SP: ${code}` });
     if (closeAfterScan) {
       void stopScannerSafely(scannerRef.current);
@@ -714,7 +721,7 @@ export default function ProductQrScanner({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           <div className="mb-2.5 flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
-            <div>
+            <div className="min-w-0">
               <span className="block text-[11px] font-bold text-zinc-600">
                 {hardwareOnly
                   ? 'Đầu đọc laser của máy'
@@ -726,6 +733,12 @@ export default function ProductQrScanner({
                 BT-A700: đã sẵn sàng — hãy bấm cò quét
               </span>
             </div>
+            <span
+              className="ml-auto shrink-0 text-right text-sm font-black text-[#ef1b2d]"
+              data-testid="scanner-total-count"
+            >
+              Tổng SL: {displayedScannedCount}
+            </span>
             {!hardwareOnly && (
               <button
                 type="button"

@@ -38,6 +38,8 @@ export type WarehouseSlipPrintData = {
   warehouseLocation?: string;
   /** Tên kho vật lý (từ Quản lý kho). */
   warehouseName?: string;
+  /** Bản xem/in tạm, chưa được lưu vào lịch sử và chưa cập nhật tồn kho. */
+  isTemporary?: boolean;
   lines: WarehouseSlipPrintLine[];
 };
 
@@ -264,6 +266,11 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
 
       <div className="warehouse-nhap-kho-print-heading">
         <h1 className="warehouse-nhap-kho-print-title">{slipTypeTitle(data)}</h1>
+        {data.isTemporary ? (
+          <p className="mt-1 text-center text-sm font-black uppercase tracking-widest text-[#ef1b2d]">
+            Bản tạm · Chưa ghi sổ kho
+          </p>
+        ) : null}
         <p className="warehouse-nhap-kho-print-date">
           <em>
             Ngày {dateParts.day || '……'} tháng {dateParts.month || '……'} năm {dateParts.year || '……'}
@@ -562,6 +569,11 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
           </div>
           <h1 className="warehouse-slip-print-title">{slipTypeTitle(printData)}</h1>
         </header>
+        {printData.isTemporary ? (
+          <p className="mb-3 text-center text-sm font-black uppercase tracking-widest text-[#ef1b2d]">
+            Bản tạm · Chưa ghi sổ kho
+          </p>
+        ) : null}
 
         {nvlExport ? (
           <NvlExportPrintBody data={printData} />
@@ -724,7 +736,11 @@ export default function WarehouseSlipPrintModal({
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-4 sm:px-5">
             <div>
               <h3 className="text-lg font-black text-zinc-950">
-                {isNhapKhoPrintLayout(data) ? 'Mẫu phiếu nhập kho' : 'Mẫu phiếu xuất kho'}
+                {data.isTemporary
+                  ? 'Bản in tạm · Chưa ghi sổ kho'
+                  : isNhapKhoPrintLayout(data)
+                    ? 'Mẫu phiếu nhập kho'
+                    : 'Mẫu phiếu xuất kho'}
               </h3>
               <p className="mt-1 text-sm font-medium text-zinc-500">
                 {data.slipCode} · {slipTypeTitle(data)}
@@ -760,7 +776,7 @@ export default function WarehouseSlipPrintModal({
               className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
             >
               {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              In phiếu
+              {data.isTemporary ? 'In tạm phiếu' : 'In phiếu'}
             </button>
           </div>
         </div>

@@ -54,6 +54,8 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 - Tài khoản vận hành đã gán trực tiếp qua `nhan_su.vi_tri_gan`: `NV003-3` → Vật tư, `NV006-4` → Thành phẩm. Đã kiểm thử đăng nhập thực tế ngày 2026-08-12; mỗi tài khoản chỉ thấy dropdown và tab lịch sử thuộc kho phụ trách.
 
 - Phiếu **Nhập** chỉ có một trường **Số lượng**, lưu tại `so_luong`; `so_luong_chung_tu` luôn `NULL`.
+- Phiếu **Nhập** tự lưu các phiếu đang quét vào trình duyệt (gồm cả mã tem đầy đủ để tiếp tục chống quét trùng). Người dùng có thể chọn lại **Phiếu đang quét**, bấm **Lưu tạm phiếu**, xóa phiếu tạm hoặc **In tạm phiếu**. Không có nút tạo phiếu mới thủ công; chỉ sau khi **Lưu & in phiếu nhập kho** thành công, form mới được làm trống để lập phiếu tiếp theo. Bản lưu/in tạm không gọi API, không ghi lịch sử và không cập nhật tồn kho.
+- Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc; chỉ đếm các mã quét thành công, không tăng khi mã trùng hoặc lỗi.
 - Phiếu **Xuất** có **SL CT** (`so_luong_chung_tu`) và **SL THỰC** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
 - Phiếu **Nhập kho thành phẩm** nhận mã gốc + số lượng nguyên. API dùng thuật toán serial cũ để sinh từng mã đầy đủ, rồi RPC `tao_phieu_nhap_san_pham_voi_ma_chi_tiet` đăng ký mã và ghi mỗi serial thành một dòng phiếu số lượng 1 trong cùng transaction.
 - Sau khi lưu, UI lần lượt mở file phiếu nhập và file tem QR. Có thể in lại đúng bộ tem tại **Lịch sử xuất nhập kho → Kho sản phẩm → Xem chi tiết → In mã QR**.

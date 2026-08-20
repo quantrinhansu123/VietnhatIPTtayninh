@@ -51,7 +51,10 @@ import {
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, { type WarehouseSlipPrintData } from '../../components/WarehouseSlipPrintModal';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
-import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
+import {
+  STORAGE_WAREHOUSE_SLIP_DRAFT_KEY,
+  STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY
+} from '../_shared/storageKeys';
 import {
   downloadWarehouseSlipLinesTemplate,
   parseWarehouseSlipLinesExcel
@@ -211,6 +214,59 @@ export type WarehouseSlipPrefillDraft = {
     >
   >;
 };
+
+type WarehouseScanningDraft = WarehouseSlipPrefillDraft & {
+  id: string;
+  updatedAt: number;
+  owner: string;
+  scannedFullCodes: Record<string, string[]>;
+};
+
+function readWarehouseScanningDrafts(): WarehouseScanningDraft[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(draft => draft && typeof draft.id === 'string' && Array.isArray(draft.lines))
+      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
+  } catch {
+    return [];
+  }
+}
+
+function writeWarehouseScanningDrafts(drafts: WarehouseScanningDraft[]) {
+  localStorage.setItem(
+    STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY,
+    JSON.stringify([...drafts].sort((left, right) => right.updatedAt - left.updatedAt))
+  );
+}
+
+function createWarehouseScanningDraftId() {
+  return `warehouse-scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function formatWarehouseDraftUpdatedAt(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return new Date(value).toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+function warehouseScanningDraftLabel(draft: WarehouseScanningDraft) {
+  const itemCount = draft.lines.filter(line => line.code.trim()).length;
+  return `${draft.warehouseName || warehouseKindLabel(draft.warehouseKind)} · ${itemCount} mã · ${formatWarehouseDraftUpdatedAt(draft.updatedAt)}`;
+}
+
+function warehouseScanningDraftSearchText(draft: WarehouseScanningDraft) {
+  const lineText = draft.lines.map(line => `${line.code} ${line.name}`).join(' ');
+  return [warehouseScanningDraftLabel(draft), draft.createdBy, draft.reason, draft.note, lineText]
+    .filter(Boolean)
+    .join(' ');
+}
 
 /** Draft quá thời gian này (ms) coi như đã cũ/bỏ dở, không tự điền vào phiếu mới nữa. */
 const WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS = 5 * 60 * 1000;
@@ -1015,6 +1071,9 @@ export function WarehouseSlipPanel({
   const [qrPrintOpen, setQrPrintOpen] = useState(false);
   const [qrPrintAutoTrigger, setQrPrintAutoTrigger] = useState(false);
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
+  const [scanningDrafts, setScanningDrafts] = useState<WarehouseScanningDraft[]>(readWarehouseScanningDrafts);
+  const [activeScanningDraftId, setActiveScanningDraftId] = useState<string | null>(null);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<number | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
@@ -1026,6 +1085,10 @@ export function WarehouseSlipPanel({
   const damagedReportsRequestSeqRef = useRef(0);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+  const ownedScanningDrafts = useMemo(
+    () => scanningDrafts.filter(draft => String(draft.owner || '').trim() === loginName),
+    [scanningDrafts, loginName]
+  );
   const selectedWarehouseName = warehouseName.trim();
   const selectedWarehouseHasDamagedReports =
     Boolean(selectedWarehouseName) &&
@@ -1469,6 +1532,161 @@ export function WarehouseSlipPanel({
   // Ô Mã NPL/SP chỉ lưu tiền tố (mã gốc trong danh mục), không mang hậu tố lô/serial — nên
   // phải nhớ riêng từng mã đầy đủ (tiền tố+hậu tố) đã quét theo tiền tố để chống quét trùng tem.
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
+  const scannedItemCount = [...scannedFullCodesByPrefixRef.current.values()].reduce(
+    (total, codes) => total + codes.size,
+    0
+  );
+
+  const buildCurrentScanningDraft = (id: string, updatedAt = Date.now()): WarehouseScanningDraft => ({
+    id,
+    updatedAt,
+    owner: loginName,
+    scannedFullCodes: Object.fromEntries(
+      [...scannedFullCodesByPrefixRef.current.entries()].map(([prefix, codes]) => [prefix, [...codes]])
+    ),
+    slipType: 'nhap',
+    warehouseKind,
+    warehouseName,
+    slipDate,
+    reason,
+    note,
+    createdBy: createdBy.trim() || loginName,
+    productionOrderRef: formatWarehouseProductionOrderSelection(productionOrderCodes),
+    machine,
+    shift: formatWarehouseShiftSelection(selectedShifts),
+    recipient,
+    deliverer,
+    warehouseLocation,
+    createdAt: updatedAt,
+    lines: lines.map(line => ({
+      code: line.code,
+      name: line.name,
+      unit: line.unit,
+      quantity: line.quantity,
+      documentQuantity: line.documentQuantity,
+      unitPrice: line.unitPrice,
+      quotaQuantity: line.quotaQuantity,
+      suggestedQuantity: line.suggestedQuantity,
+      lineNote: line.lineNote,
+      sourceInboundLineId: line.sourceInboundLineId,
+      sourceInboundSlipCode: line.sourceInboundSlipCode,
+      damagedReportRowId: line.damagedReportRowId
+    }))
+  });
+
+  const persistScanningDraft = (requestedId?: string | null) => {
+    if (slipType !== 'nhap' || editSlipCode || !lines.some(line => line.code.trim())) return null;
+    const id = requestedId || activeScanningDraftId || createWarehouseScanningDraftId();
+    const updatedAt = Date.now();
+    const draft = buildCurrentScanningDraft(id, updatedAt);
+    setScanningDrafts(current => {
+      const next = [draft, ...current.filter(item => item.id !== id)];
+      writeWarehouseScanningDrafts(next);
+      return next;
+    });
+    setActiveScanningDraftId(id);
+    setLastDraftSavedAt(updatedAt);
+    return id;
+  };
+
+  const loadScanningDraft = (draftId: string) => {
+    if (!draftId) return;
+    if (activeScanningDraftId && activeScanningDraftId !== draftId) {
+      persistScanningDraft(activeScanningDraftId);
+    }
+    const draft = scanningDrafts.find(item => item.id === draftId);
+    if (!draft) return;
+    const draftAccess = pickWarehouseSlipAccess(warehouseAccess, draft.warehouseKind);
+    if (!draftAccess.canCreate) {
+      setFormError('Bạn không có quyền tiếp tục phiếu tạm thuộc kho này.');
+      return;
+    }
+    setSlipType('nhap');
+    setIsXuatTreoMode(false);
+    setWarehouseKind(draft.warehouseKind);
+    setWarehouseName(draft.warehouseName || '');
+    setSlipDate(draft.slipDate || new Date().toISOString().slice(0, 10));
+    setReason(draft.reason || '');
+    setNote(draft.note || '');
+    setCreatedBy(draft.createdBy || loginName);
+    setProductionOrderCodes(parseWarehouseProductionOrderSelection(draft.productionOrderRef));
+    setProductionOrderSearch('');
+    setMachine(draft.machine || '');
+    setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
+    setRecipient(draft.recipient || '');
+    setDeliverer(draft.deliverer || '');
+    setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
+    const restoredLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
+    linesRef.current = restoredLines;
+    setLines(restoredLines);
+    scannedFullCodesByPrefixRef.current = new Map(
+      Object.entries((draft.scannedFullCodes || {}) as Record<string, string[]>).map(([prefix, codes]) => [
+        prefix,
+        new Set(codes)
+      ])
+    );
+    setActiveScanningDraftId(draft.id);
+    setLastDraftSavedAt(draft.updatedAt);
+    setEditSlipCode(null);
+    setFormError('');
+    setActionMessage(`Đã mở phiếu đang quét, lưu tạm lúc ${formatWarehouseDraftUpdatedAt(draft.updatedAt)}.`);
+  };
+
+  const handleSaveScanningDraft = () => {
+    if (!warehouseName.trim()) {
+      setFormError('Vui lòng chọn tên kho trước khi lưu tạm phiếu.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!lines.some(line => line.code.trim())) {
+      setFormError('Vui lòng quét hoặc nhập ít nhất một mã trước khi lưu tạm phiếu.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const savedDraftId = persistScanningDraft(activeScanningDraftId);
+    if (!savedDraftId) return;
+    const message = 'Đã lưu tạm phiếu. Phiếu chưa ghi lịch sử và chưa cập nhật tồn kho.';
+    setFormError('');
+    setActionMessage(message);
+    showAppToast(message);
+  };
+
+  const deleteActiveScanningDraft = () => {
+    if (!activeScanningDraftId) return;
+    if (!window.confirm('Xóa phiếu đang quét này khỏi danh sách lưu tạm?')) return;
+    const next = scanningDrafts.filter(draft => draft.id !== activeScanningDraftId);
+    writeWarehouseScanningDrafts(next);
+    setScanningDrafts(next);
+    setActiveScanningDraftId(null);
+    setLastDraftSavedAt(null);
+    const emptyLines = [createWarehouseLineDraft()];
+    linesRef.current = emptyLines;
+    scannedFullCodesByPrefixRef.current.clear();
+    setLines(emptyLines);
+    setActionMessage('Đã xóa phiếu lưu tạm.');
+  };
+
+  useEffect(() => {
+    if (slipType !== 'nhap' || editSlipCode || !lines.some(line => line.code.trim())) return;
+    const timer = window.setTimeout(() => persistScanningDraft(), 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    warehouseKind,
+    warehouseName,
+    slipType,
+    slipDate,
+    reason,
+    note,
+    createdBy,
+    productionOrderCodes,
+    machine,
+    selectedShifts,
+    recipient,
+    deliverer,
+    warehouseLocation,
+    lines,
+    editSlipCode
+  ]);
 
   /**
    * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial.
@@ -2036,6 +2254,48 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
 
+  const handleTemporaryPrint = () => {
+    if (slipType !== 'nhap') return;
+    if (!warehouseName.trim()) {
+      setFormError('Vui lòng chọn tên kho trước khi in tạm phiếu.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const parsed = parseWarehouseSlipPayloadItems(lines, warehouseKind);
+    if ('error' in parsed) {
+      setFormError(parsed.error);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    persistScanningDraft();
+    setPendingQrLabels([]);
+    setPrintSlip({
+      ...buildWarehouseSlipPrintData(parsed.items, {
+        slipCode: `TẠM-${generateWarehouseSlipPreviewCode('nhap')}`,
+        slipType: 'nhap',
+        warehouseKind,
+        slipDate,
+        reason: composeReasonWithProductionOrderCodes(reason, productionOrderCodes),
+        note: note.trim(),
+        createdBy: createdBy.trim() || loginName,
+        productionOrderRef: productionOrderLabel,
+        machine: machine.trim(),
+        shift: shiftLabel,
+        recipient: recipient.trim(),
+        deliverer: deliverer.trim(),
+        warehouseLocation: warehouseLocation.trim(),
+        warehouseName: warehouseName.trim(),
+        materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
+        products: warehouseKind === 'san_pham' ? weightCatalog : []
+      }),
+      isTemporary: true
+    });
+    setPrintAutoTrigger(true);
+    setPrintModalOpen(true);
+    setFormError('');
+    setActionMessage('Đã lưu tạm và mở bản in tạm. Phiếu chưa ghi vào lịch sử, chưa cập nhật tồn kho.');
+  };
+
   const handleSave = async () => {
     if (!(editSlipCode ? canEdit : canCreate)) {
       setFormError(
@@ -2185,6 +2445,15 @@ export function WarehouseSlipPanel({
         setPendingDamagedReports(current => current.filter(report => report.key !== reviewingDamagedReportKey));
         setReviewingDamagedReportKey('');
         void loadPendingDamagedReports();
+      }
+      if (activeScanningDraftId) {
+        setScanningDrafts(current => {
+          const next = current.filter(draft => draft.id !== activeScanningDraftId);
+          writeWarehouseScanningDrafts(next);
+          return next;
+        });
+        setActiveScanningDraftId(null);
+        setLastDraftSavedAt(null);
       }
       setEditSlipCode(null);
       setReason('');
@@ -2358,6 +2627,51 @@ export function WarehouseSlipPanel({
       )}
 
       <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+        {slipType === 'nhap' && !editSlipCode ? (
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+            <label className="min-w-[16rem] flex-1 space-y-1">
+              <span className="text-xs font-black uppercase tracking-wide text-amber-900">Phiếu đang quét</span>
+              <SearchableSelect
+                value={activeScanningDraftId || ''}
+                onChange={draftId => loadScanningDraft(draftId)}
+                options={ownedScanningDrafts}
+                placeholder="-- Chọn phiếu lưu tạm để quét tiếp --"
+                searchPlaceholder="Tìm theo kho, mã hàng, người lập..."
+                getLabel={item => warehouseScanningDraftLabel(item as WarehouseScanningDraft)}
+                getValue={item => (item as WarehouseScanningDraft).id}
+                getSearchText={item => warehouseScanningDraftSearchText(item as WarehouseScanningDraft)}
+                inputClassName={warehouseFieldClass}
+                allowEmpty={false}
+                comboboxMode
+                comboboxSearchable
+                desktopAutoFlip
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleSaveScanningDraft}
+              className="flex h-10 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-extrabold text-amber-900 transition hover:bg-amber-100"
+            >
+              <Save className="h-4 w-4" /> Lưu tạm phiếu
+            </button>
+            {activeScanningDraftId ? (
+              <button
+                type="button"
+                onClick={deleteActiveScanningDraft}
+                className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-extrabold text-rose-700 transition hover:bg-rose-50"
+              >
+                <Trash2 className="h-4 w-4" /> Xóa phiếu tạm
+              </button>
+            ) : null}
+            <p className="w-full text-[11px] font-semibold text-amber-800">
+              {lastDraftSavedAt
+                ? `Đã tự lưu tạm lúc ${formatWarehouseDraftUpdatedAt(lastDraftSavedAt)}. Có thể đóng trang và mở lại để quét tiếp.`
+                : ownedScanningDrafts.length > 0
+                  ? `Có ${ownedScanningDrafts.length} phiếu đang quét. Chọn một phiếu để tiếp tục.`
+                  : 'Phiếu sẽ tự lưu tạm sau khi quét hoặc nhập mã đầu tiên.'}
+            </p>
+          </div>
+        ) : null}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-2">
             <div>
@@ -2967,8 +3281,20 @@ export function WarehouseSlipPanel({
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <p className="mr-auto text-[11px] font-semibold text-zinc-500">
-            Phiếu chỉ được mở để in sau khi lưu thành công vào lịch sử.
+            Phiếu tạm chưa cập nhật tồn kho; chỉ nút Lưu & in mới chốt phiếu vào lịch sử.
           </p>
+          {slipType === 'nhap' && !editSlipCode && canCreate ? (
+            <button
+              type="button"
+              onClick={handleTemporaryPrint}
+              disabled={isSaving}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Lưu bản nháp trên máy và in, không ghi lịch sử hoặc cập nhật tồn kho"
+            >
+              <Printer className="h-4 w-4" />
+              In tạm phiếu
+            </button>
+          ) : null}
           {(editSlipCode ? canEdit : canCreate) ? (
             <button
               type="button"
@@ -3036,6 +3362,7 @@ export function WarehouseSlipPanel({
         hardwareOnly={scannerMode === 'hardware'}
         closeAfterScan={false}
         requireConfirm={false}
+        scannedCount={scannedItemCount}
       />
     </div>
   );

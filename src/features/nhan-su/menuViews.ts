@@ -61,6 +61,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'weighing-summary-list', label: 'Phiếu cân ca' },
       { tab: 'can-tu-dong', label: 'Cân AI cũ' },
       { tab: 'can-tu-dong-pilot', label: 'Trạm cân QR' },
+      { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'acceptance-report-list', label: 'Kiểm tra kho thành phẩm' }
     ]
   },
@@ -83,6 +84,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'warehouse-slip-vat-tu', label: 'Phiếu xuất nhập kho - Vật tư' },
       { tab: 'warehouse-slip-thanh-pham', label: 'Phiếu xuất nhập kho - Thành phẩm' },
       { tab: 'kiem-kho', label: 'Kiểm kho' },
+      { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'kiem-kho-chenh-lech', label: 'Xử lý chênh lệch' },
       { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },
       { tab: 'ton-kho', label: 'Tồn kho' }

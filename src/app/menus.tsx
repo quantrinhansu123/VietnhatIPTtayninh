@@ -188,6 +188,13 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     modalUrl: 'https://tram-can-qr-pilot.onrender.com/'
   },
   {
+    title: 'Cân kiểm kho',
+    desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
+    icon: Scale,
+    icon3d: scale3d,
+    tab: 'can-kiem-kho'
+  },
+  {
     title: 'Phiếu báo dừng máy',
     desc: 'Ghi nhận thời gian dừng, lý do và số cuộn ảnh hưởng theo ca.',
     icon: MachineDowntimeIcon,
@@ -327,6 +334,13 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong-pilot'
+  },
+  {
+    title: 'Cân kiểm kho',
+    desc: 'Mở trạm cân kiểm kho ngay trong app (không mở tab mới).',
+    icon: Scale,
+    icon3d: scale3d,
+    tab: 'can-kiem-kho'
   },
   {
     title: 'Báo cáo kiểm kho',
@@ -596,6 +610,13 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'can-tu-dong-pilot'
   },
   {
+    title: 'Cân kiểm kho',
+    desc: 'Mở trạm cân kiểm kho ngay trong app (không mở tab mới).',
+    icon: Scale,
+    icon3d: scale3d,
+    tab: 'can-kiem-kho'
+  },
+  {
     title: 'Kiểm tra kho thành phẩm',
     desc: 'Xem, sửa và in các phiếu báo cáo sản lượng đã lưu.',
     icon: ClipboardCheck,
@@ -664,6 +685,13 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     icon: ClipboardList,
     icon3d: reportList3d,
     tab: 'kiem-kho'
+  },
+  {
+    title: 'Cân kiểm kho',
+    desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
+    icon: Scale,
+    icon3d: scale3d,
+    tab: 'can-kiem-kho'
   },
   {
     title: 'Xử lý chênh lệch',
@@ -962,6 +990,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },
       { label: 'Cân AI cũ', tab: 'can-tu-dong' },
+      { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Kiểm tra kho thành phẩm', tab: 'acceptance-report-list' },
       { label: 'Báo cáo chất lượng', tab: 'factory-qc', disabled: true }
     ]
@@ -986,6 +1015,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kho hàng hỏng', tab: 'damaged-goods-warehouse' },
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
+      { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
       { label: 'Tồn kho', tab: 'ton-kho' },
       { label: 'Chuẩn bị xuất hàng', tab: 'factory-kho', disabled: true }
@@ -1019,6 +1049,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
   'can-tu-dong': { group: 'Sản xuất', sub: 'Cân AI cũ' },
   'can-tu-dong-pilot': { group: 'Sản xuất', sub: 'Trạm cân QR' },
+  'can-kiem-kho': { group: 'Kho', sub: 'Cân kiểm kho' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },
   'quan-ly-kho': { group: 'Kho', sub: 'Danh mục kho' },
   'damaged-goods-report': { group: 'Sản xuất', sub: 'Báo cáo hàng hư' },

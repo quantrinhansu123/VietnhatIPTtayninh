@@ -1,4 +1,4 @@
-export type AppTab = 'menu' | 'quan-tri' | 'production-reports' | 'report-forms' | 'report-lists' | 'facility-management' | 'hcns' | 'business' | 'factory' | 'factory-quan-doc' | 'factory-qc' | 'factory-cong-nhan' | 'factory-kho' | 'control-board' | 'form' | 'weighing-summary' | 'weighing-summary-list' | 'can-tu-dong' | 'can-tu-dong-pilot' | 'kiem-kho' | 'kiem-kho-chenh-lech' | 'quan-ly-kho' | 'damaged-goods-report' | 'damaged-goods-report-list' | 'mixing-report' | 'mixing-report-list' | 'machine-nvl-report' | 'machine-nvl-report-list' | 'machine-downtime-report' | 'machine-downtime-list' | 'shift-handover-report' | 'shift-handover-list' | 'machine-run-log' | 'machine-run-log-list' | 'acceptance-report' | 'acceptance-report-list' | 'hr' | 'vehicles' | 'inventory-catalog' | 'products' | 'machines' | 'materials' | 'warehouse-slip' | 'warehouse-history' | 'damaged-goods-warehouse' | 'ton-kho' | 'orders' | 'customers' | 'shipping-orders' | 'production-orders' | 'production-plan-history' | 'settings' | 'dashboard' | 'dashboard-auto';
+export type AppTab = 'menu' | 'quan-tri' | 'production-reports' | 'report-forms' | 'report-lists' | 'facility-management' | 'hcns' | 'business' | 'factory' | 'factory-quan-doc' | 'factory-qc' | 'factory-cong-nhan' | 'factory-kho' | 'control-board' | 'form' | 'weighing-summary' | 'weighing-summary-list' | 'can-tu-dong' | 'can-tu-dong-pilot' | 'can-kiem-kho' | 'kiem-kho' | 'kiem-kho-chenh-lech' | 'quan-ly-kho' | 'damaged-goods-report' | 'damaged-goods-report-list' | 'mixing-report' | 'mixing-report-list' | 'machine-nvl-report' | 'machine-nvl-report-list' | 'machine-downtime-report' | 'machine-downtime-list' | 'shift-handover-report' | 'shift-handover-list' | 'machine-run-log' | 'machine-run-log-list' | 'acceptance-report' | 'acceptance-report-list' | 'hr' | 'vehicles' | 'inventory-catalog' | 'products' | 'machines' | 'materials' | 'warehouse-slip' | 'warehouse-history' | 'damaged-goods-warehouse' | 'ton-kho' | 'orders' | 'customers' | 'shipping-orders' | 'production-orders' | 'production-plan-history' | 'settings' | 'dashboard' | 'dashboard-auto';
 
 export const TAB_ROUTES: Record<AppTab, string> = {
   menu: '/',
@@ -20,6 +20,7 @@ export const TAB_ROUTES: Record<AppTab, string> = {
   'weighing-summary-list': '/danh-sach-phieu-can-ca',
   'can-tu-dong': '/can-tu-dong',
   'can-tu-dong-pilot': '/tram-can-qr',
+  'can-kiem-kho': '/can-kiem-kho',
   'kiem-kho': '/kiem-kho',
   'kiem-kho-chenh-lech': '/xu-ly-chenh-lech',
   'quan-ly-kho': '/quan-ly-kho',

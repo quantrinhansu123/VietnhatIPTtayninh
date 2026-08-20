@@ -32,7 +32,7 @@ import {
 import { showAppToast } from '../../lib/appToast';
 import { productFieldClass } from '../san-pham/productFieldClass';
 import { readUnitSuggestions, saveUnitSuggestion } from '../_shared/orderHelpers';
-import type { InventoryBalanceRow } from '../kho-hang';
+import { matchesWarehouseFilter, type InventoryBalanceRow } from '../kho-hang';
 import {
   FilterCombobox,
   TableSearchInput,
@@ -70,41 +70,6 @@ export function parseInventoryNumber(value: string): number | null {
   const normalized = String(value).trim().replace(',', '.');
   const num = Number(normalized);
   return Number.isFinite(num) ? num : null;
-}
-
-function parseDecimalParts(raw: string) {
-  const trimmed = String(raw ?? '').trim();
-  if (!trimmed || trimmed === '-') return null;
-  // Accept both "1.234,56" (vi-VN) and "1234.56" (dot decimal).
-  // If there's a comma, treat comma as decimal separator and dots as thousands separators.
-  // If no comma, keep dot as decimal separator (do NOT strip it).
-  const normalized = trimmed.includes(',')
-    ? trimmed.replace(/\./g, '').replace(',', '.')
-    : trimmed.replace(/\s+/g, '');
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
-  const [intPart, fracPart = ''] = normalized.split('.');
-  return { intPart, fracPart };
-}
-
-function sumDecimalStrings(values: string[]) {
-  const parts = values.map(parseDecimalParts).filter(Boolean) as Array<{ intPart: string; fracPart: string }>;
-  if (parts.length === 0) return '0';
-  const maxScale = parts.reduce((max, item) => Math.max(max, item.fracPart.length), 0);
-  const sum = parts.reduce((acc, item) => {
-    const scaled = BigInt(item.intPart + item.fracPart.padEnd(maxScale, '0'));
-    return acc + scaled;
-  }, 0n);
-  const rawSum = sum.toString().padStart(maxScale + 1, '0');
-  const intPart = rawSum.slice(0, rawSum.length - maxScale) || '0';
-  const fracPart = maxScale > 0 ? rawSum.slice(rawSum.length - maxScale) : '';
-  return fracPart ? `${intPart}.${fracPart}` : intPart;
-}
-
-function formatKgNoRounding(value: string) {
-  if (!value) return '0';
-  const [intPart, fracPart = ''] = value.split('.');
-  const withSeparators = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return fracPart ? `${withSeparators},${fracPart}` : withSeparators;
 }
 
 export function computeClosingStock(opening: string, inbound: string, outbound: string): string {
@@ -919,12 +884,10 @@ export function MaterialsInventoryPanel({
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMaterials = useMemo(() => {
     return datedMaterials.filter(material => {
-      const isUnassigned = !material.warehouse || material.warehouse === '-';
-      const matchesWarehouse =
-        !warehouseFilter ||
-        (Boolean(asOfDate) && !includeUnassigned) ||
-        material.warehouse === warehouseFilter ||
-        (includeUnassigned && isUnassigned);
+      const matchesWarehouse = matchesWarehouseFilter(material.warehouse, warehouseFilter, {
+        includeUnassigned,
+        skipFilter: Boolean(asOfDate) && !includeUnassigned
+      });
       const matchesUnit = selectedUnit === 'all' || material.unit === selectedUnit;
       const matchesSearch =
         !normalizedSearch ||
@@ -938,11 +901,6 @@ export function MaterialsInventoryPanel({
     setSelectedUnit('all');
     setSearchText('');
   };
-
-  const totalWeightAllText = useMemo(() => {
-    const sum = sumDecimalStrings(datedMaterials.map(material => material.totalWeight));
-    return formatKgNoRounding(sum);
-  }, [datedMaterials]);
 
   const handleDownloadTotalWeightTemplate = () => {
     downloadBulkMaterialTotalWeightTemplate(
@@ -1163,12 +1121,6 @@ export function MaterialsInventoryPanel({
     { key: 'unitLength', label: 'Chiều dài ĐV' }
   ];
 
-  const materialSummaryStats: Array<[string, string | number]> = [
-    ['Mã NVL', datedMaterials.length],
-    ['Tổng kg', totalWeightAllText],
-    ['Đơn vị', units.length > 0 ? units.length - 1 : 0]
-  ];
-
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
@@ -1237,16 +1189,6 @@ export function MaterialsInventoryPanel({
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {materialSummaryStats.map(([label, value]) => (
-            <span
-              key={label}
-              className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-500"
-            >
-              {label}
-              <span className="font-black text-slate-900">{value}</span>
-            </span>
-          ))}
-
           <TableSearchInput
             value={searchText}
             onChange={setSearchText}

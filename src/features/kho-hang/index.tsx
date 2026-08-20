@@ -4,7 +4,7 @@ import { FilterCombobox, TableDateFilter } from '../../components/shared/table';
 import { MaterialsInventoryPanel } from '../kho-nvl';
 import { ProductsPanel } from '../san-pham';
 
-type InventoryCatalogKind = 'materials' | 'products';
+export type InventoryCatalogKind = 'materials' | 'products';
 type InventoryMovementKind = 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
 
 export type InventoryBalanceRow = {
@@ -18,7 +18,7 @@ export type InventoryBalanceRow = {
   ton_cuoi_ky: number;
 };
 
-function normalizeWarehouseName(name: string) {
+export function normalizeWarehouseName(name: string) {
   return name
     .trim()
     .toLowerCase()
@@ -43,11 +43,29 @@ function warehouseMovementKind(name: string): InventoryMovementKind {
   return 'nvl';
 }
 
-function isDefaultWarehouse(name: string, kind: InventoryCatalogKind) {
+export function isDefaultWarehouse(name: string, kind: InventoryCatalogKind) {
   const normalized = normalizeWarehouseName(name);
   return kind === 'products'
     ? normalized === 'kho san pham' || normalized === 'kho thanh pham'
     : normalized === 'kho nvl' || normalized === 'kho nguyen vat lieu';
+}
+
+/** Khớp tên kho khi lọc danh mục: alias kho mặc định (SP↔thành phẩm, NVL↔nguyên vật liệu) + chưa gán kho. */
+export function matchesWarehouseFilter(
+  warehouse: string,
+  warehouseFilter: string,
+  options: { includeUnassigned?: boolean; skipFilter?: boolean } = {}
+) {
+  if (!warehouseFilter || options.skipFilter) return true;
+  const value = String(warehouse ?? '').trim();
+  const isUnassigned = !value || value === '-';
+  if (value === warehouseFilter) return true;
+  if (options.includeUnassigned && isUnassigned) return true;
+  if (options.includeUnassigned) {
+    const kind = warehouseCatalogKind(warehouseFilter);
+    if (isDefaultWarehouse(warehouseFilter, kind) && isDefaultWarehouse(value, kind)) return true;
+  }
+  return false;
 }
 
 export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {

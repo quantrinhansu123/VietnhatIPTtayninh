@@ -22,6 +22,7 @@ import WeighingImagePreviewModal, {
 import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
+import { resolveTrongLuongNhuaKg } from '../utils/canTuDongWeights';
 
 const productLineGridClass =
   'grid-cols-1 sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
@@ -77,6 +78,10 @@ interface AiWeighingRecord {
   qr_code?: string | null;
   ca?: string | null;
   unit?: string | null;
+  tare_weight?: number | string | null;
+  weight?: number | string | null;
+  can_loi?: number | string | null;
+  can_san_pham?: number | string | null;
 }
 
 const inputClass =
@@ -1035,7 +1040,10 @@ export default function AcceptanceReportForm({
         throw new Error('Không có phiếu cân AI phù hợp với ngày và ca đã chọn.');
       }
 
-      const quantities = new Map<string, { code: string; unit: string; quantity: number }>();
+      const quantities = new Map<
+        string,
+        { code: string; unit: string; quantity: number; plasticWeightKg: number }
+      >();
       let skipped = 0;
       matched.forEach(record => {
         const qrProductCode = parseQrProductCode(String(record.qr_code ?? ''));
@@ -1047,25 +1055,25 @@ export default function AcceptanceReportForm({
         const code = product?.code || qrProductCode;
         const key = normalizeKey(code);
         const current = quantities.get(key);
+        const plasticKg = resolveTrongLuongNhuaKg(record);
         quantities.set(key, {
           code,
           unit: product?.unit || current?.unit || String(record.unit ?? '').trim(),
-          quantity: (current?.quantity ?? 0) + 1
+          quantity: (current?.quantity ?? 0) + 1,
+          plasticWeightKg: (current?.plasticWeightKg ?? 0) + (plasticKg ?? 0)
         });
       });
       if (quantities.size === 0) {
         throw new Error('Phiếu cân AI không có mã QR sản phẩm hợp lệ.');
       }
 
-      const lines = [...quantities.values()].map(({ code, unit, quantity }) => ({
+      const lines = [...quantities.values()].map(({ code, unit, quantity, plasticWeightKg }) => ({
         ...newProductLine(),
         mat_hang: code,
         don_vi: unit,
         so_luong: String(quantity),
-        trong_luong: calculateProductWeight(
-          findProductOption(code, productSelectOptions),
-          String(quantity)
-        )
+        // Trọng lượng = tổng cột «Trọng lượng nhựa» (SP − lõi − bì) của các lần cân cùng mã SP
+        trong_luong: plasticWeightKg > 0 ? formatAutoWeight(plasticWeightKg) : ''
       }));
       setForm(prev => ({
         ...prev,
@@ -1075,7 +1083,7 @@ export default function AcceptanceReportForm({
       }));
       setIsAutoReportOpen(false);
       setMessage(
-        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI${
+        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI (SL = số lần cân, TL = tổng trọng lượng nhựa)${
           skipped ? `; bỏ qua ${skipped} bản ghi không có QR hợp lệ` : ''
         }.`
       );

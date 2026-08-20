@@ -11,7 +11,8 @@ import {
   filterCanTuDongRecordsForBoard,
   resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
-  sumCanTuDongSanLuongTotals
+  sumCanTuDongSanLuongTotals,
+  vietnamIsoDateFromTimestamp
 } from '../../utils/canTuDongWeights';
 import {
   TableToolbar,
@@ -171,8 +172,6 @@ export function CanTuDongPanel({
     () => initialFilters?.dateFrom?.trim() || defaultFromDate(14)
   );
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
-  const [deviceFilter, setDeviceFilter] = useState('');
-  const [qrFilter, setQrFilter] = useState('');
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -193,8 +192,6 @@ export function CanTuDongPanel({
       const params = new URLSearchParams({ limit: '2000' });
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
-      if (deviceFilter.trim()) params.set('deviceId', deviceFilter.trim());
-      if (qrFilter.trim()) params.set('qrCode', qrFilter.trim());
 
       const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
       if (!res.ok) {
@@ -219,15 +216,6 @@ export function CanTuDongPanel({
     void loadRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ load lần đầu; lọc bằng nút Tải lại
   }, []);
-
-  const deviceOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of records) {
-      const id = String(row.device_id ?? '').trim();
-      if (id) set.add(id);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [records]);
 
   const statusOptions = useMemo(() => {
     const set = new Set<string>();
@@ -258,12 +246,18 @@ export function CanTuDongPanel({
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredRecords = useMemo(() => {
-    const byDateAndCa = filterCanTuDongRecordsForBoard(records, {
-      shiftFilter: selectedCa,
-      dateFrom: fromDate,
-      dateTo: toDate
+    // Chỉ lọc ca ở client. Ngày khớp cột THỜI ĐIỂM (captured_at), không dùng SOURCE_DATE
+    // trong metadata (ngày sản xuất) — tránh lệch với API / cột hiển thị.
+    const byCa = filterCanTuDongRecordsForBoard(records, {
+      shiftFilter: selectedCa
     });
-    return byDateAndCa.filter(row => {
+    return byCa.filter(row => {
+      if (fromDate || toDate) {
+        const day = vietnamIsoDateFromTimestamp(row.captured_at || row.created_at);
+        if (!day) return false;
+        if (fromDate && day < fromDate) return false;
+        if (toDate && day > toDate) return false;
+      }
       const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
       const matchesSearch =
         !normalizedSearch ||
@@ -424,7 +418,7 @@ export function CanTuDongPanel({
         </button>
       </div>
 
-      <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-2">
         <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
           Từ ngày
           <input
@@ -443,40 +437,6 @@ export function CanTuDongPanel({
             className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
           />
         </label>
-        <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
-          Thiết bị
-          <input
-            list="can-tu-dong-devices"
-            value={deviceFilter}
-            onChange={e => setDeviceFilter(e.target.value)}
-            placeholder="station-01"
-            className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
-          />
-          <datalist id="can-tu-dong-devices">
-            {deviceOptions.map(id => (
-              <option key={id} value={id} />
-            ))}
-          </datalist>
-        </label>
-        <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 sm:col-span-2 lg:col-span-1">
-          Mã QR
-          <input
-            value={qrFilter}
-            onChange={e => setQrFilter(e.target.value)}
-            placeholder="ROLL-..."
-            className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
-          />
-        </label>
-        <div className="flex items-end sm:col-span-2 lg:col-span-1">
-          <button
-            type="button"
-            onClick={() => void loadRecords()}
-            disabled={loading}
-            className="h-9 w-full rounded-lg border border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-60"
-          >
-            Áp dụng lọc
-          </button>
-        </div>
       </div>
 
       {error ? (
@@ -489,7 +449,7 @@ export function CanTuDongPanel({
         <TableSearchInput
           value={searchText}
           onChange={setSearchText}
-          placeholder="Tìm QR, thiết bị..."
+          placeholder="Tìm QR..."
           disabled={loading}
         />
         <FilterCombobox
@@ -537,12 +497,21 @@ export function CanTuDongPanel({
         minWidthClassName="min-w-[1280px]"
         footer={
           !loading && filteredRecords.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
-              <span className="uppercase tracking-wider">
-                Tổng ({trongLuongNhuaTotals.quantity} lần cân) · Trọng lượng nhựa
-              </span>
-              <span className="font-mono text-sm text-emerald-800">
-                {formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
+              <div className="flex flex-wrap items-center gap-4">
+                <span title="Số dòng đang lọc = số lần cân">
+                  <span className="uppercase tracking-wider text-emerald-800/80">Số lượng</span>{' '}
+                  <span className="font-mono text-sm">{formatNumber(trongLuongNhuaTotals.quantity, 0)}</span>
+                </span>
+                <span title="Tổng cột «Trọng lượng nhựa» = SP − lõi − bì 0,16">
+                  <span className="uppercase tracking-wider text-emerald-800/80">Trọng lượng</span>{' '}
+                  <span className="font-mono text-sm text-emerald-800">
+                    {formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg
+                  </span>
+                </span>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">
+                Tổng cột Trọng lượng nhựa
               </span>
             </div>
           ) : undefined
@@ -570,20 +539,19 @@ export function CanTuDongPanel({
             Trọng lượng bì
           </TableHeadCell>
           <TableHeadCell title="Cân SP − Cân lõi − Trọng lượng bì">Trọng lượng nhựa</TableHeadCell>
-          <TableHeadCell>Thiết bị</TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
           <TableHeadCell>Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={13}>
+            <TableEmptyRow colSpan={12}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={13}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+            <TableEmptyRow colSpan={12}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
           ) : (
             filteredRecords.map(row => {
               const idKey = rowIdKey(row.id);
@@ -643,9 +611,6 @@ export function CanTuDongPanel({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-black text-emerald-800">
                     {trongLuongNhua !== null ? formatWeight(trongLuongNhua, row.unit, 2) : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                    {row.device_id || '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <span

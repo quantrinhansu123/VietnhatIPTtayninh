@@ -34,7 +34,6 @@ import { productFieldClass } from '../san-pham/productFieldClass';
 import { readUnitSuggestions, saveUnitSuggestion } from '../_shared/orderHelpers';
 import { matchesWarehouseFilter, type InventoryBalanceRow } from '../kho-hang';
 import {
-  FilterCombobox,
   TableSearchInput,
   TableShell,
   TableHead,
@@ -772,7 +771,6 @@ export function MaterialsInventoryPanel({
   const { canCreate, canEdit, canDelete } = useTabAccess('materials');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedUnit, setSelectedUnit] = useState('all');
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
   const [materialsError, setMaterialsError] = useState('');
   const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
@@ -843,9 +841,9 @@ export function MaterialsInventoryPanel({
       if (material) {
         return [{
           ...material,
-          warehouse: material.warehouse && material.warehouse !== '-'
-            ? material.warehouse
-            : balance.ten_kho || warehouseFilter,
+          // Tồn theo ngày phải phản ánh kho của phiếu kho, không phải kho gán
+          // sẵn trên danh mục NVL (một NVL có thể xuất hiện ở nhiều kho).
+          warehouse: balance.ten_kho || material.warehouse || warehouseFilter,
           openingStock: String(balance.ton_dau_ky),
           inbound: String(balance.nhap_trong_ky),
           outbound: String(balance.xuat_trong_ky)
@@ -872,33 +870,25 @@ export function MaterialsInventoryPanel({
     });
   }, [asOfDate, balanceRows, materials, warehouseFilter]);
 
-  const units = useMemo(
-    () => ['all', ...Array.from(new Set(datedMaterials.map(material => material.unit).filter(unit => unit !== '-'))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
-    [datedMaterials]
-  );
   const materialUnitSuggestions = useMemo(() => {
     const fromMaterials = materials.map(material => material.unit).filter(unit => unit && unit !== '-');
     return [...new Set([...fromMaterials, ...readUnitSuggestions()])].sort((a, b) => a.localeCompare(b, 'vi'));
   }, [materials]);
-  const unitFilterOptions = useMemo(() => units.filter(unit => unit !== 'all'), [units]);
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMaterials = useMemo(() => {
     return datedMaterials.filter(material => {
       const matchesWarehouse = matchesWarehouseFilter(material.warehouse, warehouseFilter, {
-        includeUnassigned,
-        skipFilter: Boolean(asOfDate) && !includeUnassigned
+        includeUnassigned
       });
-      const matchesUnit = selectedUnit === 'all' || material.unit === selectedUnit;
       const matchesSearch =
         !normalizedSearch ||
         `${material.code} ${material.name} ${material.unit}`.toLowerCase().includes(normalizedSearch);
-      return matchesWarehouse && matchesUnit && matchesSearch;
+      return matchesWarehouse && matchesSearch;
     });
-  }, [asOfDate, datedMaterials, includeUnassigned, normalizedSearch, selectedUnit, warehouseFilter]);
+  }, [asOfDate, datedMaterials, includeUnassigned, normalizedSearch, warehouseFilter]);
 
-  const hasActiveFilters = selectedUnit !== 'all' || Boolean(searchText);
+  const hasActiveFilters = Boolean(searchText);
   const resetFilters = () => {
-    setSelectedUnit('all');
     setSearchText('');
   };
 
@@ -1194,15 +1184,6 @@ export function MaterialsInventoryPanel({
             onChange={setSearchText}
             placeholder="Tìm mã NVL, tên nguyên phụ liệu..."
             disabled={isLoadingMaterials}
-          />
-
-          <FilterCombobox
-            label="Đơn vị"
-            options={unitFilterOptions}
-            value={selectedUnit}
-            onChange={setSelectedUnit}
-            searchPlaceholder="Tìm đơn vị..."
-            compact
           />
 
           {isLoadingMaterials ? (

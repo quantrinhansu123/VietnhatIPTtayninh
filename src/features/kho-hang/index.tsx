@@ -73,7 +73,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
   const productsAccess = useTabAccess('products');
   const [warehouses, setWarehouses] = useState<string[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
-  const [asOfDate, setAsOfDate] = useState('');
+  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [balanceRows, setBalanceRows] = useState<InventoryBalanceRow[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState('');
@@ -131,8 +131,9 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           loai_kho: warehouseMovementKind(selectedWarehouse),
           to: asOfDate
         });
-        // Dữ liệu cũ của kho mặc định chưa có ten_kho; không khóa tên kho để vẫn tính được các dòng này.
-        if (!isDefaultWarehouse(selectedWarehouse, kind)) params.set('ten_kho', selectedWarehouse);
+        // Luôn lọc tại database theo đúng kho đang chọn. Không gộp dữ liệu
+        // không gán kho hoặc kho alias vào kho hiện tại.
+        params.set('ten_kho', selectedWarehouse);
         const response = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, {
           signal: controller.signal
         });
@@ -187,7 +188,6 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         <MaterialsInventoryPanel
           onBack={onBack}
           warehouseFilter={selectedWarehouse}
-          includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={
@@ -212,7 +212,6 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         <ProductsPanel
           onBack={onBack}
           warehouseFilter={selectedWarehouse}
-          includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={

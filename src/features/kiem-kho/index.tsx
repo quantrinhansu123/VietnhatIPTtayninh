@@ -25,8 +25,7 @@ import {
   TableHeadCell,
   TableBody,
   TableRow,
-  TableEmptyRow,
-  RowActionsMenu
+  TableEmptyRow
 } from '../../components/shared/table';
 
 type CatalogProduct = {
@@ -34,6 +33,8 @@ type CatalogProduct = {
   name: string;
   productType: string;
   unit: string;
+  totalWeight: string;
+  warehouse: string;
 };
 
 type WarehouseCatalogItem = { id: string | number; ten_kho: string };
@@ -70,6 +71,8 @@ type KiemKhoLine = {
   tenSp: string;
   loaiSp: string;
   donVi: string;
+  soLuong: string;
+  trongLuong: string;
   rawQr: string;
 };
 
@@ -204,20 +207,24 @@ function normalizeCatalogProducts(data: unknown): CatalogProduct[] {
     ? data
     : data && typeof data === 'object' && Array.isArray((data as { products?: unknown }).products)
       ? (data as { products: unknown[] }).products
+      : data && typeof data === 'object' && Array.isArray((data as { materials?: unknown }).materials)
+        ? (data as { materials: unknown[] }).materials
       : [];
 
   return rows
     .map((item): CatalogProduct | null => {
       if (!item || typeof item !== 'object') return null;
       const record = item as Record<string, unknown>;
-      const code = String(record.ma_sp ?? record.ma_san_pham ?? record.code ?? '').trim();
-      const name = String(record.ten_sp ?? record.ten_san_pham ?? record.name ?? '').trim();
+      const code = String(record.ma_sp ?? record.ma_npl ?? record.ma_san_pham ?? record.code ?? '').trim();
+      const name = String(record.ten_sp ?? record.ten_npl ?? record.ten_san_pham ?? record.name ?? '').trim();
       const productType = String(
         record.nhom_vthh ?? record.loai_sp ?? record.loai ?? record.nhom ?? ''
       ).trim();
       const unit = String(record.don_vi ?? record.unit ?? '').trim();
+      const totalWeight = String(record.tong_trong_luong ?? record.totalWeight ?? '').trim();
+      const warehouse = String(record.ten_kho ?? record.warehouse ?? '').trim();
       if (!code) return null;
-      return { code, name, productType, unit };
+      return { code, name, productType, unit, totalWeight, warehouse };
     })
     .filter((item): item is CatalogProduct => Boolean(item));
 }
@@ -238,10 +245,12 @@ function normalizeWarehouseCatalog(data: unknown): WarehouseCatalogItem[] {
     .filter((item): item is WarehouseCatalogItem => Boolean(item));
 }
 
-function findCatalogProduct(code: string, products: CatalogProduct[]) {
+function findCatalogProduct(code: string, products: CatalogProduct[], warehouse = '') {
   const key = normalizeKey(code);
   if (!key) return null;
-  return products.find(item => normalizeKey(item.code) === key) ?? null;
+  const matches = products.filter(item => normalizeKey(item.code) === key);
+  const warehouseKey = normalizeKey(warehouse);
+  return matches.find(item => warehouseKey && normalizeKey(item.warehouse) === warehouseKey) ?? matches[0] ?? null;
 }
 
 /** Trùng mã = trùng cả chuỗi (tiền tố + hậu tố). */
@@ -309,7 +318,6 @@ export function KiemKhoPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [highlightKey, setHighlightKey] = useState('');
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('hardware');
   const [manualCode, setManualCode] = useState('');
@@ -334,10 +342,21 @@ export function KiemKhoPanel({
   const loadProducts = useCallback(async () => {
     setIsLoadingProducts(true);
     try {
-      const res = await fetch('/api/san-pham?format=table');
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh mục SP.'));
-      setProducts(normalizeCatalogProducts(data));
+      const [productRes, materialRes] = await Promise.all([
+        fetch('/api/san-pham?format=table'),
+        fetch('/api/kho-nvl')
+      ]);
+      const [productData, materialData] = await Promise.all([
+        productRes.json().catch(() => ({})),
+        materialRes.json().catch(() => ({}))
+      ]);
+      if (!productRes.ok && !materialRes.ok) {
+        throw new Error(readApiErrorMessage(productRes, productData, 'Không tải được danh mục kho.'));
+      }
+      setProducts([
+        ...(productRes.ok ? normalizeCatalogProducts(productData) : []),
+        ...(materialRes.ok ? normalizeCatalogProducts(materialData) : [])
+      ]);
     } catch (err: any) {
       setProducts([]);
       showAppToast(err?.message || 'Không tải được danh mục SP.', 'error');
@@ -632,8 +651,8 @@ export function KiemKhoPanel({
   }, []);
 
   const addLineFromCode = useCallback(
-    (raw: string): boolean | 'duplicate' => {
-      setMessage('');
+    (raw: string, showFeedback = true): boolean | 'duplicate' => {
+      if (showFeedback) setMessage('');
       const fullCode = String(raw ?? '').trim();
       if (!fullCode) {
         setError('Nhập hoặc quét mã SP.');
@@ -656,7 +675,7 @@ export function KiemKhoPanel({
       }
 
       const maNvl = productPrefixBeforeUnderscore(fullCode) || fullCode;
-      const matched = findCatalogProduct(maNvl, products);
+      const matched = findCatalogProduct(maNvl, products, selectedKho);
 
       const nextLine: KiemKhoLine = {
         key: newLineKey(),
@@ -665,21 +684,25 @@ export function KiemKhoPanel({
         tenSp: matched?.name || '',
         loaiSp: matched?.productType || '',
         donVi: matched?.unit || '',
+        // Mỗi mã QR đại diện đúng một đơn vị kiểm kho.
+        soLuong: '1',
+        trongLuong: matched?.totalWeight || '',
         rawQr: fullCode
       };
       const nextLines = [...linesRef.current, nextLine];
       linesRef.current = nextLines;
       setLines(nextLines);
-      setHighlightKey(nextLine.key);
       setError('');
-      setMessage(
-        matched
-          ? `Đã thêm: ${fullCode}`
-          : `Đã thêm: ${fullCode} (chưa khớp danh mục — kiểm tra tên/loại)`
-      );
+      if (showFeedback) {
+        setMessage(
+          matched
+            ? `Đã thêm: ${fullCode}`
+            : `Đã thêm: ${fullCode} (chưa khớp danh mục — kiểm tra tên/loại)`
+        );
+      }
       return true;
     },
-    [isLoadingProducts, products]
+    [isLoadingProducts, products, selectedKho]
   );
 
   const handleQrScan = useCallback(
@@ -695,12 +718,20 @@ export function KiemKhoPanel({
 
   const openManualModal = () => {
     clearManualAutoAddTimer();
-    setManualCode('');
-    setShowManualModal(true);
-    setError('');
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => manualInputRef.current?.focus());
-    });
+    const nextLine: KiemKhoLine = {
+      key: newLineKey(),
+      maNvl: '',
+      maSp: '',
+      tenSp: '',
+      loaiSp: '',
+      donVi: '',
+      soLuong: '1',
+      trongLuong: '',
+      rawQr: ''
+    };
+    const nextLines = [...linesRef.current, nextLine];
+    linesRef.current = nextLines;
+    setLines(nextLines);
   };
 
   useEffect(() => {
@@ -716,25 +747,68 @@ export function KiemKhoPanel({
     (overrideValue?: string) => {
       clearManualAutoAddTimer();
       const value = (overrideValue ?? manualCode).trim();
-      const result = addLineFromCode(value);
+      const result = addLineFromCode(value, false);
       if (result === true) {
         setManualCode('');
-        window.requestAnimationFrame(() => manualInputRef.current?.focus());
       }
+      return result;
     },
     [addLineFromCode, manualCode]
   );
 
-  /** Trong modal: máy quét bắn chuỗi nhanh → debounce tự thêm; gõ tay dùng Enter / nút Thêm. */
+  /** Dòng thêm thủ công: chọn mã từ gợi ý sẽ tự điền các thông tin danh mục. */
   const handleManualCodeChange = (value: string) => {
     setManualCode(value);
     clearManualAutoAddTimer();
-    if (value.trim().length < 3) return;
-    manualAutoAddTimerRef.current = window.setTimeout(() => {
-      manualAutoAddTimerRef.current = null;
-      handleManualAdd(value);
-    }, 150);
   };
+
+  const manualProductOptions = useMemo(() => {
+    const warehouseKey = normalizeKey(selectedKho);
+    if (!warehouseKey) return [];
+    return products.filter(product => normalizeKey(product.warehouse) === warehouseKey);
+  }, [products, selectedKho]);
+
+  const manualCatalogProduct = useMemo(
+    () => findCatalogProduct(manualCode, manualProductOptions, selectedKho),
+    [manualCode, manualProductOptions, selectedKho]
+  );
+
+  const handleManualProductSelected = useCallback(
+    (item: unknown | null) => {
+      if (!item) return;
+      const result = handleManualAdd((item as CatalogProduct).code);
+      if (result === true) setShowManualModal(false);
+    },
+    [handleManualAdd]
+  );
+
+  const updateLine = useCallback((key: string, patch: Partial<KiemKhoLine>) => {
+    setLines(previous => {
+      const next = previous.map(line => (line.key === key ? { ...line, ...patch } : line));
+      linesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const updateLineCode = useCallback(
+    (key: string, value: string) => {
+      const matched = findCatalogProduct(value, manualProductOptions, selectedKho);
+      const isMaterialLine = isNvlKho(selectedKho);
+      updateLine(key, {
+        maNvl: value,
+        ...(isMaterialLine ? { maSp: value, rawQr: value } : {}),
+        ...(matched
+          ? {
+              tenSp: matched.name,
+              loaiSp: matched.productType,
+              donVi: matched.unit,
+              trongLuong: matched.totalWeight
+            }
+          : {})
+      });
+    },
+    [manualProductOptions, selectedKho, updateLine]
+  );
 
   const removeLine = (key: string) => {
     setLines(prev => prev.filter(line => line.key !== key));
@@ -743,6 +817,7 @@ export function KiemKhoPanel({
   const handleSave = async () => {
     setError('');
     setMessage('');
+    const savableLines = lines.filter(line => line.maSp.trim());
     if (!selectedKho.trim()) {
       setError('Chọn kho trước khi lưu phiếu.');
       return;
@@ -751,8 +826,8 @@ export function KiemKhoPanel({
       setError('Nhập người kiểm kho.');
       return;
     }
-    if (!lines.length) {
-      setError('Quét ít nhất một mã SP bằng máy quét hoặc camera.');
+    if (!savableLines.length) {
+      setError('Nhập hoặc quét ít nhất một mã sản phẩm.');
       return;
     }
 
@@ -769,7 +844,7 @@ export function KiemKhoPanel({
           dot_kiem_kho: finalDotKiemKho,
           nguoi_kiem_kho: nguoiKiemKho.trim(),
           ngay_gio_kiem_kho: toIsoFromLocalDateTime(thoiDiemLuu),
-          lines: lines.map(line => ({
+          lines: savableLines.map(line => ({
             ma_nvl: line.maNvl,
             ma_sp: line.maSp,
             ten_sp: line.tenSp,
@@ -802,7 +877,7 @@ export function KiemKhoPanel({
     }
   };
 
-  const scannedQrCount = lines.length;
+  const scannedQrCount = lines.filter(line => line.maSp.trim()).length;
   const khoAbbr = khoAbbreviation(selectedKho);
   const hideMaQuet = isNvlKho(selectedKho);
 
@@ -1003,7 +1078,8 @@ export function KiemKhoPanel({
                 <button
                   type="button"
                   onClick={openManualModal}
-                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1 text-[11px] font-extrabold text-zinc-800 transition hover:bg-zinc-50 sm:h-9 sm:px-3"
+                  onMouseDown={event => event.preventDefault()}
+                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1 text-[11px] font-extrabold text-zinc-800 transition-none hover:bg-white active:bg-white focus:bg-white focus:outline-none sm:h-9 sm:px-3"
                   title="Nhập mã SP thủ công"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -1014,9 +1090,53 @@ export function KiemKhoPanel({
           </div>
         </div>
 
-        <div className="space-y-2 p-2 sm:hidden">
+        <div className="flex flex-col gap-2 p-2 sm:hidden">
+          {showManualModal ? (
+            <article className="order-last rounded-xl border border-[#ef1b2d]/30 bg-red-50/40 p-3 shadow-sm">
+              <p className="text-xs font-black uppercase text-[#ef1b2d]">Dòng nhập mới</p>
+              <div className="mt-2 space-y-2">
+                <SearchableSelect
+                  value={manualCode}
+                  onChange={handleManualCodeChange}
+                  options={manualProductOptions}
+                  placeholder={`Mã ${khoAbbr}`}
+                  isLoading={isLoadingProducts}
+                  disabled={!selectedKho || isLoadingProducts}
+                  inputClassName={inputClass}
+                  displaySelectedAsValue
+                  desktopAutoFlip
+                  onSelectOption={handleManualProductSelected}
+                  getLabel={item => {
+                    const product = item as CatalogProduct;
+                    return `${product.code} · ${product.name}`;
+                  }}
+                  getOptionLabel={item => {
+                    const product = item as CatalogProduct;
+                    return `${product.code} · ${product.name}`;
+                  }}
+                  getSearchText={item => {
+                    const product = item as CatalogProduct;
+                    return `${product.code} ${product.name}`;
+                  }}
+                  getValue={item => (item as CatalogProduct).code}
+                />
+                <input readOnly value={manualCatalogProduct?.name || ''} className={inputClass} placeholder="Tên" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input readOnly value={manualCatalogProduct?.unit || ''} className={inputClass} placeholder="ĐVT" />
+                  <input readOnly value="1" className={inputClass} aria-label="Số lượng" />
+                  <input readOnly value={manualCatalogProduct?.totalWeight || ''} className={`${inputClass} bg-emerald-50/70 text-emerald-800`} placeholder="Trọng lượng" />
+                  <input readOnly value={selectedKho} className={inputClass} placeholder="Kho" />
+                </div>
+                <div className="flex justify-end">
+                  <button type="button" onClick={closeManualModal} className="h-10 rounded-lg border border-zinc-200 bg-white px-3 text-zinc-500" title="Hủy">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </article>
+          ) : null}
           {lines.map((line, index) => {
-            const highlightClass = line.key === highlightKey ? 'border-emerald-300 bg-emerald-50' : 'border-zinc-200 bg-white';
+            const highlightClass = 'border-zinc-200 bg-white';
             return (
               <article key={line.key} className={`rounded-xl border p-3 shadow-sm ${highlightClass}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -1024,9 +1144,39 @@ export function KiemKhoPanel({
                     <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
                       {hideMaQuet ? `Mã ${khoAbbr} gốc #${index + 1}` : `Mã quét #${index + 1}`}
                     </p>
-                    <p className="mt-0.5 break-all font-mono text-sm font-black text-zinc-950">
-                      {hideMaQuet ? line.maNvl || '—' : line.maSp}
-                    </p>
+                    {hideMaQuet ? (
+                      <div className="mt-1">
+                        <SearchableSelect
+                          value={line.maNvl}
+                          onChange={value => updateLineCode(line.key, value)}
+                          options={manualProductOptions}
+                          placeholder={`Mã ${khoAbbr}`}
+                          inputClassName="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-black text-zinc-950 outline-none focus:border-[#ef1b2d]"
+                          displaySelectedAsValue
+                          allowCustomValue
+                          getLabel={item => {
+                            const product = item as CatalogProduct;
+                            return `${product.code} · ${product.name}`;
+                          }}
+                          getOptionLabel={item => {
+                            const product = item as CatalogProduct;
+                            return `${product.code} · ${product.name}`;
+                          }}
+                          getSearchText={item => {
+                            const product = item as CatalogProduct;
+                            return `${product.code} ${product.name}`;
+                          }}
+                          getValue={item => (item as CatalogProduct).code}
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        value={line.maSp}
+                        onChange={event => updateLine(line.key, { maSp: event.target.value, rawQr: event.target.value })}
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-black text-zinc-950 outline-none focus:border-[#ef1b2d]"
+                        placeholder="Mã"
+                      />
+                    )}
                   </div>
                   {canDelete ? (
                     <button
@@ -1042,16 +1192,45 @@ export function KiemKhoPanel({
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                   {!hideMaQuet ? (
-                    <div><p className="font-bold text-zinc-400">Mã {khoAbbr} gốc</p><p className="mt-0.5 break-all font-mono font-bold text-zinc-800">{line.maNvl || '—'}</p></div>
+                    <label>
+                      <p className="font-bold text-zinc-400">Mã {khoAbbr} gốc</p>
+                      <div className="mt-1">
+                        <SearchableSelect
+                          value={line.maNvl}
+                          onChange={value => updateLineCode(line.key, value)}
+                          options={manualProductOptions}
+                          placeholder={`Mã ${khoAbbr}`}
+                          inputClassName="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-bold text-zinc-800 outline-none focus:border-[#ef1b2d]"
+                          displaySelectedAsValue
+                          allowCustomValue
+                          getLabel={item => `${(item as CatalogProduct).code} · ${(item as CatalogProduct).name}`}
+                          getOptionLabel={item => `${(item as CatalogProduct).code} · ${(item as CatalogProduct).name}`}
+                          getSearchText={item => `${(item as CatalogProduct).code} ${(item as CatalogProduct).name}`}
+                          getValue={item => (item as CatalogProduct).code}
+                        />
+                      </div>
+                    </label>
                   ) : null}
-                  <div><p className="font-bold text-zinc-400">ĐV</p><p className="mt-0.5 font-semibold text-zinc-700">{line.donVi || '—'}</p></div>
+                  <label><p className="font-bold text-zinc-400">ĐV</p><input value={line.donVi} onChange={event => updateLine(line.key, { donVi: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="ĐVT" /></label>
+                  <label><p className="font-bold text-zinc-400">Số lượng</p><input type="text" inputMode="decimal" value={line.soLuong} onChange={event => updateLine(line.key, { soLuong: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="SL" /></label>
+                  <label>
+                    <p className="font-bold text-zinc-400">Trọng lượng</p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={line.trongLuong}
+                      onChange={event => updateLine(line.key, { trongLuong: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]"
+                      placeholder="—"
+                    />
+                  </label>
                   <div><p className="font-bold text-zinc-400">Kho</p><p className="mt-0.5 font-semibold text-zinc-700">{selectedKho || '—'}</p></div>
-                  <div className="col-span-2"><p className="font-bold text-zinc-400">Tên {khoAbbr}</p><p className="mt-0.5 font-semibold text-zinc-700">{line.tenSp || '—'}</p></div>
+                  <label className="col-span-2"><p className="font-bold text-zinc-400">Tên {khoAbbr}</p><input value={line.tenSp} onChange={event => updateLine(line.key, { tenSp: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="Tên" /></label>
                 </div>
               </article>
             );
           })}
-          {lines.length === 0 ? (
+          {lines.length === 0 && !showManualModal ? (
             <p className="rounded-xl bg-zinc-50 px-3 py-6 text-center text-sm font-semibold text-zinc-500">
               Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc <span className="text-[#ef1b2d]">Quét máy</span>.
             </p>
@@ -1059,39 +1238,111 @@ export function KiemKhoPanel({
         </div>
 
         <div className="hidden sm:block">
-        <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[420px]">
+        <TableShell minWidthClassName="min-w-[1080px]" maxHeightClassName="max-h-[420px]">
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
             <TableHeadCell>Mã {khoAbbr} gốc</TableHeadCell>
             {!hideMaQuet ? <TableHeadCell>Mã quét</TableHeadCell> : null}
             <TableHeadCell>Tên {khoAbbr}</TableHeadCell>
             <TableHeadCell>ĐV</TableHeadCell>
+            <TableHeadCell align="center">Số lượng</TableHeadCell>
+            <TableHeadCell align="center">Trọng lượng</TableHeadCell>
             <TableHeadCell>Kho</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
             {lines.map((line, index) => {
-              const highlightClass = line.key === highlightKey ? 'bg-emerald-50/70' : '';
+              const highlightClass = '';
               return (
                 <React.Fragment key={line.key}>
-                  <TableRow>
+                  <TableRow className="transition-none hover:!bg-transparent">
                     <td className={`px-4 py-3 font-bold text-zinc-500 ${highlightClass}`}>
                       {index + 1}
                     </td>
-                    <td className={`px-4 py-3 font-mono font-bold text-zinc-800 ${highlightClass}`}>{line.maNvl || '—'}</td>
+                    <td className={`min-w-56 px-1 py-2 ${highlightClass}`}>
+                      <SearchableSelect
+                        value={line.maNvl}
+                        onChange={value => updateLineCode(line.key, value)}
+                        options={manualProductOptions}
+                        placeholder={`Mã ${khoAbbr}`}
+                        inputClassName="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-bold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        displaySelectedAsValue
+                        desktopAutoFlip
+                        allowCustomValue
+                        getLabel={item => {
+                          const product = item as CatalogProduct;
+                          return `${product.code} · ${product.name}`;
+                        }}
+                        getOptionLabel={item => {
+                          const product = item as CatalogProduct;
+                          return `${product.code} · ${product.name}`;
+                        }}
+                        getSearchText={item => {
+                          const product = item as CatalogProduct;
+                          return `${product.code} ${product.name}`;
+                        }}
+                        getValue={item => (item as CatalogProduct).code}
+                      />
+                    </td>
                     {!hideMaQuet ? (
-                      <td className={`px-4 py-3 font-mono font-bold text-zinc-900 ${highlightClass}`}>{line.maSp}</td>
+                      <td className={`min-w-56 px-1 py-2 ${highlightClass}`}>
+                        <input
+                          value={line.maSp}
+                          onChange={event => updateLine(line.key, { maSp: event.target.value, rawQr: event.target.value })}
+                          className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-bold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                          placeholder="Mã quét"
+                        />
+                      </td>
                     ) : null}
-                    <td className={`px-4 py-3 font-semibold text-zinc-700 ${highlightClass}`}>{line.tenSp || '—'}</td>
-                    <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{line.donVi || '—'}</td>
+                    <td className={`min-w-64 px-1 py-2 ${highlightClass}`}>
+                      <input
+                        value={line.tenSp}
+                        onChange={event => updateLine(line.key, { tenSp: event.target.value })}
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        placeholder="Tên"
+                      />
+                    </td>
+                    <td className={`w-24 px-1 py-2 ${highlightClass}`}>
+                      <input
+                        value={line.donVi}
+                        onChange={event => updateLine(line.key, { donVi: event.target.value })}
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        placeholder="ĐVT"
+                      />
+                    </td>
+                    <td className={`w-24 px-1 py-2 ${highlightClass}`}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={line.soLuong}
+                        onChange={event => updateLine(line.key, { soLuong: event.target.value })}
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        placeholder="SL"
+                      />
+                    </td>
+                    <td className={`px-2 py-2 text-center ${highlightClass}`}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={line.trongLuong}
+                        onChange={event => updateLine(line.key, { trongLuong: event.target.value })}
+                        className="h-9 w-28 rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        placeholder="—"
+                        aria-label={`Trọng lượng ${line.maNvl || line.maSp}`}
+                      />
+                    </td>
                     <td className={`px-4 py-3 font-semibold text-zinc-600 ${highlightClass}`}>{selectedKho || '—'}</td>
                     <td className={`px-4 py-3 text-center ${highlightClass}`}>
                       {canDelete ? (
-                        <RowActionsMenu label={`Thao tác ${line.maSp}`}>
-                          <button type="button" onClick={() => removeLine(line.key)} title="Xóa">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </RowActionsMenu>
+                        <button
+                          type="button"
+                          onClick={() => removeLine(line.key)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                          title={`Xóa ${line.maSp}`}
+                          aria-label={`Xóa ${line.maSp}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       ) : null}
                     </td>
                   </TableRow>
@@ -1099,8 +1350,74 @@ export function KiemKhoPanel({
               );
             })}
 
-            {lines.length === 0 && (
-              <TableEmptyRow colSpan={hideMaQuet ? 6 : 7}>
+            {showManualModal ? (
+              <TableRow className="bg-zinc-50/60 transition-none hover:!bg-zinc-50/60">
+                <td className="px-4 py-3 font-bold text-zinc-500">{lines.length + 1}</td>
+                <td className="min-w-56 px-1 py-2">
+                  <SearchableSelect
+                    value={manualCode}
+                    onChange={handleManualCodeChange}
+                    options={manualProductOptions}
+                    placeholder={`Mã ${khoAbbr}`}
+                    isLoading={isLoadingProducts}
+                    disabled={!selectedKho || isLoadingProducts}
+                    inputClassName="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                    displaySelectedAsValue
+                    desktopAutoFlip
+                    onSelectOption={handleManualProductSelected}
+                    getLabel={item => {
+                      const product = item as CatalogProduct;
+                      return `${product.code} · ${product.name}`;
+                    }}
+                    getOptionLabel={item => {
+                      const product = item as CatalogProduct;
+                      return `${product.code} · ${product.name}`;
+                    }}
+                    getSearchText={item => {
+                      const product = item as CatalogProduct;
+                      return `${product.code} ${product.name}`;
+                    }}
+                    getValue={item => (item as CatalogProduct).code}
+                  />
+                </td>
+                {!hideMaQuet ? (
+                  <td className="px-1 py-2">
+                    <input readOnly value={manualCode} className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 font-mono text-sm text-zinc-600" placeholder="Mã quét" />
+                  </td>
+                ) : null}
+                <td className="min-w-64 px-1 py-2">
+                  <input readOnly value={manualCatalogProduct?.name || ''} className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800" placeholder="Tên" />
+                </td>
+                <td className="w-24 px-1 py-2">
+                  <input readOnly value={manualCatalogProduct?.unit || ''} className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700" placeholder="ĐVT" />
+                </td>
+                <td className="w-24 px-1 py-2">
+                  <input readOnly value="1" className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-center text-sm font-semibold text-zinc-700" aria-label="Số lượng" />
+                </td>
+                <td className="w-32 px-1 py-2">
+                  <input readOnly value={manualCatalogProduct?.totalWeight || ''} className="h-10 w-full rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 text-center text-sm font-bold text-emerald-800" placeholder="—" />
+                </td>
+                <td className="min-w-36 px-1 py-2">
+                  <input readOnly value={selectedKho} className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700" placeholder="Kho" />
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={closeManualModal}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                      title="Xóa dòng nhập"
+                      aria-label="Xóa dòng nhập"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              </TableRow>
+            ) : null}
+
+            {lines.length === 0 && !showManualModal && (
+              <TableEmptyRow colSpan={hideMaQuet ? 8 : 9}>
                 Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc{' '}
                 <span className="text-[#ef1b2d]">Quét máy</span>.
               </TableEmptyRow>
@@ -1231,7 +1548,7 @@ export function KiemKhoPanel({
           </TableHead>
           <TableBody>
             {dotDetailLines.map((line, index) => {
-              const matched = findCatalogProduct(String(line.ma_nvl ?? ''), products);
+              const matched = findCatalogProduct(String(line.ma_nvl ?? ''), products, selectedKho);
               return (
                 <React.Fragment key={String(line.id)}>
                   <TableRow>
@@ -1249,20 +1566,20 @@ export function KiemKhoPanel({
                     </td>
                     {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
                       <td className="px-4 py-3 text-center">
-                        <RowActionsMenu label={`Thao tác ${line.ma_sp || line.ma_nvl || ''}`}>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteDetailLine(line)}
-                            disabled={deletingDetailId !== null}
-                            title="Xóa"
-                          >
-                            {deletingDetailId === String(line.id) ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </RowActionsMenu>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDetailLine(line)}
+                          disabled={deletingDetailId !== null}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          title={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
+                          aria-label={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
+                        >
+                          {deletingDetailId === String(line.id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
                       </td>
                     ) : null}
                   </TableRow>
@@ -1456,7 +1773,7 @@ export function KiemKhoPanel({
         scannedCount={scannedQrCount}
       />
 
-      {showManualModal
+      {false && showManualModal
         ? createPortal(
             <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
               <button

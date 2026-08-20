@@ -41,11 +41,14 @@ async function createQrDataUrl(payload: string) {
 function ProductQrCards({
   labels,
   images,
-  printLayout = false
+  printLayout = false,
+  showPayload = true
 }: {
   labels: ProductQrPrintLabel[];
   images: Record<string, string>;
   printLayout?: boolean;
+  /** Chỉ dùng mã gốc trên tem; nội dung QR vẫn là payload đầy đủ. */
+  showPayload?: boolean;
 }) {
   if (printLayout) {
     return (
@@ -61,7 +64,7 @@ function ProductQrCards({
               {label.quantity !== undefined ? (
                 <p className="qr-print-tag-quantity">Số lượng: {label.quantity}{label.unit ? ` ${label.unit}` : ''}</p>
               ) : null}
-              <p className="qr-print-tag-code">{label.productCode || '-'}</p>
+              <p className="qr-print-tag-code">{showPayload ? label.payload : label.productCode || '-'}</p>
             </div>
           </div>
         ))}
@@ -79,7 +82,7 @@ function ProductQrCards({
           <div className="min-w-0 self-center">
             <p className="font-black text-zinc-950">{label.productCode}</p>
             <p className="mt-1 text-xs font-semibold text-zinc-500">{label.productName || '-'}</p>
-            <p className="mt-2 break-all font-mono text-[11px] font-bold text-[#ef1b2d]">{label.payload}</p>
+            {showPayload ? <p className="mt-2 break-all font-mono text-[11px] font-bold text-[#ef1b2d]">{label.payload}</p> : null}
           </div>
         </div>
       ))}
@@ -92,6 +95,7 @@ export default function ProductQrPrintModal({
   labels,
   autoPrint = false,
   trackProductPrint = true,
+  showPayload = true,
   title = 'Mã QR sản phẩm nhập kho',
   description,
   onClose
@@ -101,6 +105,8 @@ export default function ProductQrPrintModal({
   autoPrint?: boolean;
   /** QR NVL không phải serial thành phẩm nên không ghi lịch sử in ở bảng mã sản phẩm. */
   trackProductPrint?: boolean;
+  /** Ẩn hậu tố trên tem/khung xem trước, không làm thay đổi dữ liệu được mã hóa trong QR. */
+  showPayload?: boolean;
   title?: string;
   description?: string;
   onClose: () => void;
@@ -177,7 +183,7 @@ export default function ProductQrPrintModal({
   return createPortal(
     <>
       <div className="qr-print-sheet">
-        <ProductQrCards labels={labels} images={images} printLayout />
+        <ProductQrCards labels={labels} images={images} printLayout showPayload={showPayload} />
       </div>
       <div className="fixed inset-0 z-[70] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
@@ -199,7 +205,7 @@ export default function ProductQrPrintModal({
             {error ? <p className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
             {isPreparing && Object.keys(images).length === 0 ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm font-bold text-zinc-500"><Loader2 className="h-5 w-5 animate-spin" />Đang tạo ảnh QR...</div>
-            ) : <ProductQrCards labels={labels} images={images} />}
+            ) : <ProductQrCards labels={labels} images={images} showPayload={showPayload} />}
           </div>
           <div className="flex justify-end gap-2 border-t border-zinc-200 px-4 py-4 sm:px-5">
             <button type="button" onClick={onClose} className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700">Đóng</button>

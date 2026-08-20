@@ -63,6 +63,19 @@ function parsePrintCopyCount(raw: string) {
   return Math.min(value, 999);
 }
 
+/**
+ * Tem in nhanh từ danh mục chưa được lưu thành serial trong CSDL. Vẫn phải mang
+ * nguyên mã gốc (tiền tố) và một hậu tố riêng cho từng tem để máy quét trả về
+ * mã đầy đủ, thay vì chỉ trả về mã SP gốc.
+ */
+function buildCatalogQrPayload(productCode: string, sequence: number): string {
+  const code = productCode.trim();
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const serial = String(sequence + 1).padStart(3, '0');
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0');
+  return `${code}_${timestamp}${serial}${random}`;
+}
+
 async function createQrDataUrl(payload: string) {
   return QRCode.toDataURL(payload, {
     errorCorrectionLevel: 'H',
@@ -1943,9 +1956,9 @@ export function ProductsPanel({
       if (product) {
         return [{
           ...product,
-          warehouse: product.warehouse && product.warehouse !== '-'
-            ? product.warehouse
-            : balance.ten_kho || warehouseFilter,
+          // Tồn theo ngày phải hiển thị đúng kho của phiếu kho; danh mục gốc
+          // chỉ là thông tin tham chiếu và có thể mang tên kho khác.
+          warehouse: balance.ten_kho || product.warehouse || warehouseFilter,
           openingStock: String(balance.ton_dau_ky),
           inbound: String(balance.nhap_trong_ky),
           outbound: String(balance.xuat_trong_ky),
@@ -1994,8 +2007,7 @@ export function ProductsPanel({
   const filteredProducts = useMemo(() => {
     return displayProducts.filter(product => {
       const matchesWarehouse = matchesWarehouseFilter(product.warehouse, warehouseFilter, {
-        includeUnassigned,
-        skipFilter: !isCatalogMode && !includeUnassigned
+        includeUnassigned
       });
       const matchesGroup = selectedGroup === 'all' || product.group === selectedGroup;
       const matchesNature = selectedNatures.size === 0 || selectedNatures.has(product.nature);
@@ -2025,6 +2037,13 @@ export function ProductsPanel({
     () => products.filter(product => selectedProductIds.has(product.id)),
     [products, selectedProductIds]
   );
+  // Ở màn hình tồn theo ngày có thể có dòng chỉ phát sinh từ phiếu kho, chưa có
+  // bản ghi danh mục. In QR phải dùng đúng các dòng đang hiển thị để checkbox,
+  // ảnh xem trước và nút in luôn đồng nhất.
+  const selectedPrintProducts = useMemo(
+    () => displayProducts.filter(product => selectedProductIds.has(product.id)),
+    [displayProducts, selectedProductIds]
+  );
   const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(product => selectedProductIds.has(product.id));
 
   const hasActiveFilters = selectedGroup !== 'all' || selectedNatures.size > 0 || Boolean(searchText);
@@ -2040,28 +2059,33 @@ export function ProductsPanel({
 
     const generateQrImages = async () => {
       const nextEntries = await Promise.all(
-        products
+        displayProducts
           .filter(product => product.code)
           .map(async product => {
-            const url = await QRCode.toDataURL(product.code, {
-              errorCorrectionLevel: 'H',
-              margin: 1,
-              width: 160,
-              color: {
-                dark: '#111111',
-                light: '#ffffff'
-              }
-            });
-            return [product.id, url] as const;
+            try {
+              const url = await QRCode.toDataURL(product.code, {
+                errorCorrectionLevel: 'H',
+                margin: 1,
+                width: 160,
+                color: {
+                  dark: '#111111',
+                  light: '#ffffff'
+                }
+              });
+              return [product.id, url] as const;
+            } catch {
+              // Một mã dữ liệu lỗi không được chặn việc tạo QR cho các dòng còn lại.
+              return null;
+            }
           })
       );
 
       if (!cancelled) {
-        setQrImages(Object.fromEntries(nextEntries));
+        setQrImages(Object.fromEntries(nextEntries.filter((entry): entry is readonly [string, string] => entry !== null)));
       }
     };
 
-    if (products.length > 0) {
+    if (displayProducts.length > 0) {
       generateQrImages();
     } else {
       setQrImages({});
@@ -2070,7 +2094,7 @@ export function ProductsPanel({
     return () => {
       cancelled = true;
     };
-  }, [products]);
+  }, [displayProducts]);
 
   const toggleProduct = (productId: string) => {
     setSelectedProductIds(prev => {
@@ -2097,7 +2121,7 @@ export function ProductsPanel({
   };
 
   const handlePrintSelectedProductQr = () => {
-    const printable = selectedProducts.filter(product => String(product.code || '').trim());
+    const printable = selectedPrintProducts.filter(product => String(product.code || '').trim());
     if (printable.length === 0) {
       setProductActionMessage('Vui lòng tích chọn ít nhất một sản phẩm có mã SP để in QR.');
       return;
@@ -2119,7 +2143,7 @@ export function ProductsPanel({
     setBulkPrintQty(qty);
     setPrintQtyById(prev => {
       const next = { ...prev };
-      selectedProducts.forEach(product => {
+      selectedPrintProducts.forEach(product => {
         if (!String(product.code || '').trim()) return;
         next[product.id] = qty;
       });
@@ -2165,14 +2189,14 @@ export function ProductsPanel({
 
   const handleConfirmPrintQrLabels = () => {
     setPrintQtyError('');
-    const labels: WarehouseProductQrPrintLabel[] = selectedProducts.flatMap(product => {
+    const labels: WarehouseProductQrPrintLabel[] = selectedPrintProducts.flatMap(product => {
       const productCode = String(product.code || '').trim();
       const copies = parsePrintCopyCount(printQtyById[product.id] ?? '0');
       if (!productCode || copies <= 0) return [];
 
       return Array.from({ length: copies }, (_, copyIndex) => ({
         key: `catalog-${product.id}-${copyIndex}`,
-        payload: productCode,
+        payload: buildCatalogQrPayload(productCode, copyIndex),
         productCode,
         productName: product.name || '-'
       }));
@@ -2190,11 +2214,11 @@ export function ProductsPanel({
 
   const totalPrintCopies = useMemo(
     () =>
-      selectedProducts.reduce((sum, product) => {
+      selectedPrintProducts.reduce((sum, product) => {
         if (!String(product.code || '').trim()) return sum;
         return sum + parsePrintCopyCount(printQtyById[product.id] ?? '0');
       }, 0),
-    [printQtyById, selectedProducts]
+    [printQtyById, selectedPrintProducts]
   );
 
   const handleBulkDeleteProducts = async () => {
@@ -2448,7 +2472,7 @@ export function ProductsPanel({
         <button
           type="button"
           onClick={handlePrintSelectedProductQr}
-          disabled={selectedProducts.length === 0 || isLoadingProducts}
+          disabled={selectedPrintProducts.length === 0 || isLoadingProducts}
           className="flex h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
           title="Nhập số tem QR cần in cho các sản phẩm đã chọn; không thay đổi dữ liệu"
         >
@@ -2739,7 +2763,7 @@ export function ProductsPanel({
                       <TableHeadCell align="center" className="w-28">Số bản</TableHeadCell>
                     </TableHead>
                     <TableBody>
-                      {selectedProducts
+                      {selectedPrintProducts
                         .filter(product => String(product.code || '').trim())
                         .map(product => (
                           <React.Fragment key={product.id}>
@@ -2834,8 +2858,9 @@ export function ProductsPanel({
         open={catalogQrPrintOpen}
         labels={catalogQrPrintLabels}
         trackProductPrint={false}
+        showPayload={false}
         title="Mã QR sản phẩm"
-        description={`${catalogQrPrintLabels.length} tem theo số lượng đã nhập · không lưu vào CSDL`}
+        description={`${catalogQrPrintLabels.length} tem có mã đầy đủ (tiền tố + hậu tố) · không lưu vào CSDL`}
         onClose={() => {
           setCatalogQrPrintOpen(false);
           setCatalogQrPrintLabels([]);

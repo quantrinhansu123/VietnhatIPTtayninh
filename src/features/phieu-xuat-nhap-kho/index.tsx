@@ -3344,6 +3344,7 @@ export function WarehouseSlipPanel({
         labels={pendingQrLabels}
         autoPrint={qrPrintAutoTrigger}
         trackProductPrint={warehouseKind === 'san_pham'}
+        showPayload={false}
         title={warehouseKind === 'hang_hoa' ? 'Mã QR hàng hóa nhập kho' : undefined}
         description={
           warehouseKind === 'hang_hoa' ? `${pendingQrLabels.length} tem · mỗi tem là một đơn vị hàng hóa` : undefined
@@ -4285,6 +4286,7 @@ export function WarehouseHistoryPanel({
       <ProductQrPrintModal
         open={historyQrPrintOpen}
         labels={historyQrLabels}
+        showPayload={false}
         onClose={() => {
           setHistoryQrPrintOpen(false);
           setHistoryQrLabels([]);

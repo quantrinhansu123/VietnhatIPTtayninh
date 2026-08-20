@@ -29,6 +29,7 @@ export function SearchableSelect({
   inputClassName,
   maxResults = 50,
   allowEmpty = true,
+  allowCustomValue = false,
   onSelectOption,
   resolveSelectedItem,
   getOptionLabel,
@@ -50,6 +51,8 @@ export function SearchableSelect({
   inputClassName?: string;
   maxResults?: number;
   allowEmpty?: boolean;
+  /** Cho phép giữ giá trị người dùng tự nhập dù không có trong danh sách gợi ý. */
+  allowCustomValue?: boolean;
   onSelectOption?: (item: unknown | null) => void;
   resolveSelectedItem?: (options: unknown[], value: string) => unknown | null;
   getOptionLabel?: (item: unknown) => string;
@@ -156,6 +159,11 @@ export function SearchableSelect({
           commitValue(getValue(resolved), resolved);
           return;
         }
+      }
+
+      if (allowCustomValue) {
+        commitValue(query, null);
+        return;
       }
 
       if (filteredOptions.length === 1) {

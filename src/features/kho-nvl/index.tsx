@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
@@ -35,7 +35,6 @@ import { readUnitSuggestions, saveUnitSuggestion } from '../_shared/orderHelpers
 import type { InventoryBalanceRow } from '../kho-hang';
 import {
   FilterCombobox,
-  TableToolbar,
   TableSearchInput,
   TableShell,
   TableHead,
@@ -793,13 +792,15 @@ export function MaterialsInventoryPanel({
   warehouseFilter = '',
   includeUnassigned = false,
   asOfDate = '',
-  balanceRows = []
+  balanceRows = [],
+  topControls = null
 }: {
   onBack: () => void;
   warehouseFilter?: string;
   includeUnassigned?: boolean;
   asOfDate?: string;
   balanceRows?: InventoryBalanceRow[];
+  topControls?: ReactNode;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('materials');
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
@@ -1130,111 +1131,134 @@ export function MaterialsInventoryPanel({
     { key: 'unitLength', label: 'Chiều dài ĐV' }
   ];
 
+  const materialSummaryStats: Array<[string, string | number]> = [
+    ['Mã NVL', datedMaterials.length],
+    ['Tổng kg', totalWeightAllText],
+    ['Đơn vị', units.length > 0 ? units.length - 1 : 0]
+  ];
+
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-        <div className="bg-white p-3 text-slate-700 border-b border-slate-200">
-          <div className="flex items-start justify-end gap-3">
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <button
-                type="button"
-                onClick={handleDownloadCatalogTemplate}
-                disabled={isImportingCatalog || isLoadingMaterials}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Mẫu Excel khớp cột bảng /kho-nvl — ô trống vẫn đẩy lên"
-              >
-                <Download className="h-4 w-4" />
-                Tải mẫu Excel
-              </button>
-              {canCreate || canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => catalogFileInputRef.current?.click()}
-                  disabled={isImportingCatalog || isLoadingMaterials}
-                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isImportingCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  {isImportingCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
-                </button>
-              ) : null}
-              <input
-                ref={catalogFileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={event => void handleImportCatalogExcel(event.target.files?.[0])}
-              />
-              <button
-                type="button"
-                onClick={handleDownloadTotalWeightTemplate}
-                disabled={isLoadingMaterials}
-                className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Chỉ cập nhật cột Tổng kg theo mã NVL"
-              >
-                <Download className="h-4 w-4" />
-                Mẫu cập nhật Tổng kg
-              </button>
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => setShowBulkTotalWeight(true)}
-                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200"
-                >
-                  <Upload className="h-4 w-4" />
-                  Nhập Tổng kg
-                </button>
-              ) : null}
-              {canCreate ? (
-                <button
-                  type="button"
-                  onClick={openAddForm}
-                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Thêm mới
-                </button>
-              ) : null}
-            </div>
-          </div>
+      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {topControls}
+          {topControls ? <div className="hidden h-8 w-px shrink-0 bg-zinc-200 lg:block" aria-hidden /> : null}
 
-          <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
-            {[
-              ['Mã NVL', datedMaterials.length],
-              ['Tổng kg', totalWeightAllText],
-              ['Đơn vị', units.length > 0 ? units.length - 1 : 0]
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <span className="block font-bold text-slate-500">{label}</span>
-                <span className="mt-1 block text-xl font-black text-slate-900">{value}</span>
-              </div>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={handleDownloadCatalogTemplate}
+            disabled={isImportingCatalog || isLoadingMaterials}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+            title="Mẫu Excel khớp cột bảng /kho-nvl — ô trống vẫn đẩy lên"
+          >
+            <Download className="h-4 w-4" />
+            Tải mẫu Excel
+          </button>
+          {canCreate || canEdit ? (
+            <button
+              type="button"
+              onClick={() => catalogFileInputRef.current?.click()}
+              disabled={isImportingCatalog || isLoadingMaterials}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isImportingCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
+            </button>
+          ) : null}
+          <input
+            ref={catalogFileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={event => void handleImportCatalogExcel(event.target.files?.[0])}
+          />
+          <button
+            type="button"
+            onClick={handleDownloadTotalWeightTemplate}
+            disabled={isLoadingMaterials}
+            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+            title="Chỉ cập nhật cột Tổng kg theo mã NVL"
+          >
+            <Download className="h-4 w-4" />
+            Mẫu cập nhật Tổng kg
+          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => setShowBulkTotalWeight(true)}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200"
+            >
+              <Upload className="h-4 w-4" />
+              Nhập Tổng kg
+            </button>
+          ) : null}
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openAddForm}
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm mới
+            </button>
+          ) : null}
         </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {materialSummaryStats.map(([label, value]) => (
+            <span
+              key={label}
+              className="inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-500"
+            >
+              {label}
+              <span className="font-black text-slate-900">{value}</span>
+            </span>
+          ))}
+
+          <TableSearchInput
+            value={searchText}
+            onChange={setSearchText}
+            placeholder="Tìm mã NVL, tên nguyên phụ liệu..."
+            disabled={isLoadingMaterials}
+          />
+
+          <FilterCombobox
+            label="Đơn vị"
+            options={unitFilterOptions}
+            value={selectedUnit}
+            onChange={setSelectedUnit}
+            searchPlaceholder="Tìm đơn vị..."
+            compact
+          />
+
+          {isLoadingMaterials ? (
+            <div className="flex h-10 shrink-0 items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
+              Đang tải...
+            </div>
+          ) : null}
+
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="flex h-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-black text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+            >
+              Xóa lọc
+            </button>
+          ) : null}
+        </div>
+
+        {materialsError ? (
+          <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+            {materialsError}
+          </p>
+        ) : null}
+        {actionMessage ? (
+          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+            {actionMessage}
+          </p>
+        ) : null}
       </section>
-
-      <TableToolbar
-        isLoading={isLoadingMaterials}
-        hasActiveFilters={hasActiveFilters}
-        onResetFilters={resetFilters}
-        loadError={materialsError}
-        actionMessage={actionMessage}
-      >
-        <TableSearchInput
-          value={searchText}
-          onChange={setSearchText}
-          placeholder="Tìm mã NVL, tên nguyên phụ liệu..."
-          disabled={isLoadingMaterials}
-        />
-
-        <FilterCombobox
-          label="Đơn vị"
-          options={unitFilterOptions}
-          value={selectedUnit}
-          onChange={setSelectedUnit}
-          searchPlaceholder="Tìm đơn vị..."
-          compact
-        />
-      </TableToolbar>
 
       {formMode && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">

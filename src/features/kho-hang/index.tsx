@@ -160,30 +160,30 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           />
         </div>
       ) : kind === 'materials' ? (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
-            <FilterCombobox
-              label="Chọn kho"
-              options={accessibleWarehouses}
-              value={selectedWarehouse}
-              onChange={setSelectedWarehouse}
-              formatOption={value => value}
-              includeAll={false}
-              searchPlaceholder="Tìm kho..."
-            />
-            <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
-            {isLoadingBalances ? (
-              <span className="text-sm font-bold text-zinc-500">Đang tính tồn kho...</span>
-            ) : null}
-          </div>
-          <MaterialsInventoryPanel
-            onBack={onBack}
-            warehouseFilter={selectedWarehouse}
-            includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
-            asOfDate={asOfDate}
-            balanceRows={balanceRows}
-          />
-        </>
+        <MaterialsInventoryPanel
+          onBack={onBack}
+          warehouseFilter={selectedWarehouse}
+          includeUnassigned={isDefaultWarehouse(selectedWarehouse, kind)}
+          asOfDate={asOfDate}
+          balanceRows={balanceRows}
+          topControls={
+            <>
+              <FilterCombobox
+                label="Chọn kho"
+                options={accessibleWarehouses}
+                value={selectedWarehouse}
+                onChange={setSelectedWarehouse}
+                formatOption={value => value}
+                includeAll={false}
+                searchPlaceholder="Tìm kho..."
+              />
+              <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
+              {isLoadingBalances ? (
+                <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
+              ) : null}
+            </>
+          }
+        />
       ) : (
         <ProductsPanel
           onBack={onBack}

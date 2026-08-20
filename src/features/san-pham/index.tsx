@@ -2401,13 +2401,6 @@ export function ProductsPanel({
             loadError={productError}
             actionMessage={productActionMessage}
           >
-            <TableSearchInput
-              value={searchText}
-              onChange={setSearchText}
-              placeholder="Tìm mã, tên, nhóm, nguồn gốc..."
-              disabled={isLoadingProducts || products.length === 0}
-            />
-
             <FilterCombobox
               label="Nhóm"
               options={productGroups.filter(group => group !== 'all')}
@@ -2430,83 +2423,75 @@ export function ProductsPanel({
         </>
       )}
 
-      <section className="grid gap-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="min-w-0">
-          <p className="text-sm font-black text-zinc-950">Thao tác hàng loạt</p>
-          <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-            Đã tick {selectedProducts.length} dòng. Excel danh mục SP khớp cột bảng (ô trống vẫn nhập được). Excel định mức NVL riêng.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <button
-            type="button"
-            onClick={handleDownloadProductCatalogTemplate}
-            disabled={isLoadingProducts || isImportingProductCatalog}
-            className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Mẫu cột bảng /san-pham — ô trống vẫn đẩy lên được"
-          >
-            <Download className="h-4 w-4" />
-            Tải mẫu Excel
-          </button>
-          {canCreate || canEdit ? (
-            <button
-              type="button"
-              onClick={() => catalogFileInputRef.current?.click()}
-              disabled={isLoadingProducts || isImportingProductCatalog}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleDownloadBulkProductComponentsTemplate}
-            disabled={isLoadingProducts}
-            className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Mẫu định mức thành phần NVL (không phải danh mục SP)"
-          >
-            <Download className="h-4 w-4" />
-            Mẫu định mức NVL
-          </button>
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => bulkComponentsFileInputRef.current?.click()}
-              disabled={isLoadingProducts || isImportingBulkProductComponents}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isImportingBulkProductComponents ? 'Đang nhập...' : 'Nhập định mức NVL'}
-            </button>
-          ) : null}
-          <input
-            ref={bulkComponentsFileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={event => handleImportBulkProductComponents(event.target.files?.[0])}
+      <section className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+        {isInventoryHeader ? null : (
+          <TableSearchInput
+            value={searchText}
+            onChange={setSearchText}
+            placeholder="Tìm mã, tên, nhóm..."
+            disabled={isLoadingProducts || products.length === 0}
           />
+        )}
+        <button
+          type="button"
+          onClick={handleDownloadProductCatalogTemplate}
+          disabled={isLoadingProducts || isImportingProductCatalog}
+          className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Mẫu cột bảng /san-pham — ô trống vẫn đẩy lên được"
+        >
+          <Download className="h-4 w-4" />
+          Tải mẫu Excel
+        </button>
+        {canCreate || canEdit ? (
           <button
             type="button"
-            onClick={toggleFilteredProducts}
-            disabled={filteredProducts.length === 0}
-            className="h-11 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => catalogFileInputRef.current?.click()}
+            disabled={isLoadingProducts || isImportingProductCatalog}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {allFilteredSelected ? 'Bỏ chọn bộ lọc' : 'Chọn các dòng đang lọc'}
+            {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
           </button>
-          {canDelete ? (
-            <button
-              type="button"
-              onClick={handleBulkDeleteProducts}
-              disabled={selectedProducts.length === 0 || isDeletingProducts}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isDeletingProducts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {isDeletingProducts ? 'Đang xóa...' : 'Xóa đã chọn'}
-            </button>
-          ) : null}
-        </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={handleDownloadBulkProductComponentsTemplate}
+          disabled={isLoadingProducts}
+          className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Mẫu định mức thành phần NVL (không phải danh mục SP)"
+        >
+          <Download className="h-4 w-4" />
+          Mẫu định mức NVL
+        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => bulkComponentsFileInputRef.current?.click()}
+            disabled={isLoadingProducts || isImportingBulkProductComponents}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {isImportingBulkProductComponents ? 'Đang nhập...' : 'Nhập định mức NVL'}
+          </button>
+        ) : null}
+        <input
+          ref={bulkComponentsFileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={event => handleImportBulkProductComponents(event.target.files?.[0])}
+        />
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={handleBulkDeleteProducts}
+            disabled={selectedProducts.length === 0 || isDeletingProducts}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isDeletingProducts ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {isDeletingProducts ? 'Đang xóa...' : 'Xóa đã chọn'}
+          </button>
+        ) : null}
       </section>
 
       <TableShell minWidthClassName={isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'}>

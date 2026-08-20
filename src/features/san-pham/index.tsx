@@ -35,6 +35,9 @@ import {
 import { showAppToast } from '../../lib/appToast';
 import type { InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
+import ProductQrPrintModal, {
+  type ProductQrPrintLabel as WarehouseProductQrPrintLabel
+} from '../../components/ProductQrPrintModal';
 
 type ProductQrPrintLabel = {
   key: string;
@@ -1424,6 +1427,8 @@ export function ProductsPanel({
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [productError, setProductError] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set());
+  const [catalogQrPrintLabels, setCatalogQrPrintLabels] = useState<WarehouseProductQrPrintLabel[]>([]);
+  const [catalogQrPrintOpen, setCatalogQrPrintOpen] = useState(false);
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [printQrLabels, setPrintQrLabels] = useState<ProductQrPrintLabel[]>([]);
   const [printQrImages, setPrintQrImages] = useState<Record<string, string>>({});
@@ -2093,13 +2098,18 @@ export function ProductsPanel({
     });
   };
 
-  const handleOpenPrintQtyModal = () => {
+  const handlePrintSelectedProductQr = () => {
     const printable = selectedProducts.filter(product => String(product.code || '').trim());
-    if (printable.length === 0) return;
+    if (printable.length === 0) {
+      setProductActionMessage('Vui lòng tích chọn ít nhất một sản phẩm có mã SP để in QR.');
+      return;
+    }
+
     const next: Record<string, string> = {};
     printable.forEach(product => {
       next[product.id] = printQtyById[product.id] || '1';
     });
+    setProductActionMessage('');
     setPrintQtyById(next);
     setBulkPrintQty('1');
     setPrintQtyError('');
@@ -2155,49 +2165,29 @@ export function ProductsPanel({
     }
   };
 
-  const handleConfirmPrintQrLabels = async () => {
+  const handleConfirmPrintQrLabels = () => {
     setPrintQtyError('');
-    setIsGeneratingPrintQr(true);
-    try {
-      const productCodeGroups = await Promise.all(
-        selectedProducts.map(async product => {
-          const copies = parsePrintCopyCount(printQtyById[product.id] ?? '0');
-          if (copies <= 0) return { product, codes: [] as ProductDetailCode[] };
-          const response = await fetch(`/api/san-pham/${encodeURIComponent(product.id)}/ma-chi-tiet`);
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.error || `Không thể tải mã chi tiết của ${product.code}.`);
-          }
-          const availableCodes = (Array.isArray(data.records) ? data.records : [])
-            .filter((record: ProductDetailCode) => record.trang_thai !== 'da_huy');
-          if (availableCodes.length < copies) {
-            throw new Error(
-              `${product.code} chỉ có ${availableCodes.length} mã chi tiết, không đủ để in ${copies} tem.`
-            );
-          }
-          return { product, codes: availableCodes.slice(0, copies) as ProductDetailCode[] };
-        })
-      );
+    const labels: WarehouseProductQrPrintLabel[] = selectedProducts.flatMap(product => {
+      const productCode = String(product.code || '').trim();
+      const copies = parsePrintCopyCount(printQtyById[product.id] ?? '0');
+      if (!productCode || copies <= 0) return [];
 
-      const labels: ProductQrPrintLabel[] = productCodeGroups.flatMap(({ product, codes }) =>
-        codes.map((record, index) => ({
-          key: `${product.id}-${index}-${record.ma_sp_day_du}`,
-          product,
-          qrPayload: record.ma_sp_day_du
-        }))
-      );
+      return Array.from({ length: copies }, (_, copyIndex) => ({
+        key: `catalog-${product.id}-${copyIndex}`,
+        payload: productCode,
+        productCode,
+        productName: product.name || '-'
+      }));
+    });
 
-      if (labels.length === 0) {
-        throw new Error('Nhập số bản (> 0) cho ít nhất một mã SP.');
-      }
-
-      await executePrintQrLabels(labels);
-      setShowPrintQtyModal(false);
-    } catch (error: any) {
-      setPrintQtyError(error?.message || 'Không tạo được mã QR để in.');
-    } finally {
-      setIsGeneratingPrintQr(false);
+    if (labels.length === 0) {
+      setPrintQtyError('Nhập số lượng (> 0) cho ít nhất một mã SP.');
+      return;
     }
+
+    setCatalogQrPrintLabels(labels);
+    setShowPrintQtyModal(false);
+    setCatalogQrPrintOpen(true);
   };
 
   const totalPrintCopies = useMemo(
@@ -2473,6 +2463,16 @@ export function ProductsPanel({
         )}
         <button
           type="button"
+          onClick={handlePrintSelectedProductQr}
+          disabled={selectedProducts.length === 0 || isLoadingProducts}
+          className="flex h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Nhập số tem QR cần in cho các sản phẩm đã chọn; không thay đổi dữ liệu"
+        >
+          <QrCode className="h-4 w-4" />
+          In mã QR
+        </button>
+        <button
+          type="button"
           onClick={handleDownloadProductCatalogTemplate}
           disabled={isLoadingProducts || isImportingProductCatalog}
           className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2714,7 +2714,7 @@ export function ProductsPanel({
                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">In tem QR</p>
                     <h3 className="mt-0.5 text-base font-black text-zinc-900">Số bản theo mã SP</h3>
                     <p className="mt-1 text-[11px] font-semibold text-zinc-500">
-                      In các mã QR chi tiết đã lưu trong cơ sở dữ liệu · nhập số tem cần in
+                      Nhập số tem cần in cho từng sản phẩm · không lưu vào CSDL
                     </p>
                   </div>
                   <button
@@ -2808,14 +2808,12 @@ export function ProductsPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleConfirmPrintQrLabels()}
-                    disabled={totalPrintCopies <= 0 || isGeneratingPrintQr}
+                    onClick={handleConfirmPrintQrLabels}
+                    disabled={totalPrintCopies <= 0}
                     className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isGeneratingPrintQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                    {isGeneratingPrintQr
-                      ? 'Đang tạo QR...'
-                      : `In ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
+                    <QrCode className="h-4 w-4" />
+                    {`Xem trước ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
                   </button>
                 </div>
               </div>
@@ -2847,6 +2845,18 @@ export function ProductsPanel({
             document.body
           )
         : null}
+
+      <ProductQrPrintModal
+        open={catalogQrPrintOpen}
+        labels={catalogQrPrintLabels}
+        trackProductPrint={false}
+        title="Mã QR sản phẩm"
+        description={`${catalogQrPrintLabels.length} tem theo số lượng đã nhập · không lưu vào CSDL`}
+        onClose={() => {
+          setCatalogQrPrintOpen(false);
+          setCatalogQrPrintLabels([]);
+        }}
+      />
     </div>
   );
 }

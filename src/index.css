@@ -748,6 +748,14 @@ input[type="number"] {
 }
 
 @media print {
+  /* JS chỉ gắn class này khi phiếu tràn sang trang 2 không quá hai hàng.
+     Bù chiều rộng để giữ nguyên bề ngang A4, còn toàn bộ chữ/khoảng cách
+     được thu nhỏ vừa đủ để phiếu trở lại một trang. */
+  .print-auto-fit-one-page {
+    zoom: var(--print-auto-fit-scale) !important;
+    width: calc(100% / var(--print-auto-fit-scale)) !important;
+  }
+
   @page {
     size: A4 landscape;
     margin: 8mm;

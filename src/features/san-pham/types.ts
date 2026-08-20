@@ -29,6 +29,8 @@ export interface ProductRow {
   origin: string;
   description: string;
   nplItems: ProductNplItem[];
+  /** Dòng tồn phát sinh từ phiếu kho nhưng chưa có bản ghi riêng trong danh mục san_pham. */
+  inventoryBalanceOnly?: boolean;
 }
 
 export type ProductNplAmountType = 'percent' | 'quantity';

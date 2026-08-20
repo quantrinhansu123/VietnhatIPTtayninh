@@ -535,6 +535,10 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
   };
   const nvlExport = isNvlExportPrintLayout(printData);
   const nhapKho = isNhapKhoPrintLayout(printData);
+  // Phiếu xuất NVL 8–12 dòng thường chỉ tràn phần ký tên sang trang thứ hai.
+  // Đánh dấu riêng để CSS in thu gọn đồng đều chữ và khoảng cách, thay vì để
+  // Chrome tách vài dòng chữ ký thành một trang trống gần như hoàn toàn.
+  const useCompactPrintLayout = nvlExport && printData.lines.length >= 8 && printData.lines.length <= 12;
 
   if (nhapKho) {
     return (
@@ -548,7 +552,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
 
   return (
     <div className="warehouse-slip-print-sheet">
-      <div className="warehouse-slip-print-doc">
+      <div className={`warehouse-slip-print-doc${useCompactPrintLayout ? ' warehouse-slip-print-doc--compact' : ''}`}>
         <header className="warehouse-slip-print-header">
           <div className="warehouse-slip-print-brand">
             <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="warehouse-slip-print-logo" />

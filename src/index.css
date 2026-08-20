@@ -4178,6 +4178,63 @@ input[type="number"] {
     margin: 0;
     padding: 0;
   }
+
+  /* Phiếu xuất NVL có 8–12 dòng rất dễ chỉ còn vài dòng chữ ký ở trang 2.
+     Thu gọn đồng đều nội dung in để giữ nguyên một tờ A4, vẫn chừa đủ vùng
+     ký tên. Màn hình xem trước trong ứng dụng không bị ảnh hưởng. */
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact {
+    font-size: 9.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-header {
+    margin-bottom: 3mm !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-brand {
+    gap: 3mm !important;
+    margin-bottom: 1mm !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-logo {
+    height: 13mm !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-title {
+    margin-top: 1mm !important;
+    font-size: 13pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-meta {
+    gap: 1mm 4mm !important;
+    margin-bottom: 3mm !important;
+    font-size: 9pt !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-table {
+    margin-bottom: 4mm !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-table th,
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-table td {
+    padding: 1mm 1.2mm !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-footnote {
+    margin-bottom: 3mm !important;
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-signatures {
+    margin-top: 4mm !important;
+    font-size: 9pt !important;
+  }
+
+  .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-signatures span {
+    margin-top: 9mm !important;
+  }
 }
 
 @keyframes qr-scan-pulse-success {

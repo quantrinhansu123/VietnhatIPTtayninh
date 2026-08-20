@@ -61,6 +61,8 @@ export interface MaterialRow {
   openingStock: string;
   inbound: string;
   outbound: string;
+  /** Dòng tồn phát sinh từ phiếu kho nhưng chưa có bản ghi riêng trong danh mục kho_nvl. */
+  inventoryBalanceOnly?: boolean;
 }
 
 export function parseInventoryNumber(value: string): number | null {
@@ -865,18 +867,45 @@ export function MaterialsInventoryPanel({
 
   const datedMaterials = useMemo(() => {
     if (!asOfDate) return [];
-    const balances = new Map(balanceRows.map(row => [normalizeMaterialCodeKey(row.ma), row]));
-    return materials.flatMap(material => {
-      const balance = balances.get(normalizeMaterialCodeKey(material.code));
-      if (!balance || balance.ton_cuoi_ky <= 0) return [];
+    const materialsByCode = new Map<string, MaterialRow>(
+      materials.map(material => [normalizeMaterialCodeKey(material.code), material] as const)
+    );
+
+    return balanceRows.flatMap(balance => {
+      if (!balance.ma || balance.ton_cuoi_ky <= 0) return [];
+      const key = normalizeMaterialCodeKey(balance.ma);
+      const material = materialsByCode.get(key);
+      if (material) {
+        return [{
+          ...material,
+          warehouse: material.warehouse && material.warehouse !== '-'
+            ? material.warehouse
+            : balance.ten_kho || warehouseFilter,
+          openingStock: String(balance.ton_dau_ky),
+          inbound: String(balance.nhap_trong_ky),
+          outbound: String(balance.xuat_trong_ky)
+        }];
+      }
+
       return [{
-        ...material,
+        id: `inventory-balance:${key}`,
+        code: balance.ma,
+        name: balance.ten || balance.ma,
+        unit: balance.don_vi || '-',
+        warehouse: balance.ten_kho || warehouseFilter,
+        totalWeight: '-',
+        plasticWeight: '-',
+        bagWeight: '-',
+        coreWeight: '-',
+        rollWidth: '-',
+        unitLength: '-',
         openingStock: String(balance.ton_dau_ky),
         inbound: String(balance.nhap_trong_ky),
-        outbound: String(balance.xuat_trong_ky)
+        outbound: String(balance.xuat_trong_ky),
+        inventoryBalanceOnly: true
       }];
     });
-  }, [asOfDate, balanceRows, materials]);
+  }, [asOfDate, balanceRows, materials, warehouseFilter]);
 
   const units = useMemo(
     () => ['all', ...Array.from(new Set(datedMaterials.map(material => material.unit).filter(unit => unit !== '-'))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
@@ -892,14 +921,17 @@ export function MaterialsInventoryPanel({
     return datedMaterials.filter(material => {
       const isUnassigned = !material.warehouse || material.warehouse === '-';
       const matchesWarehouse =
-        !warehouseFilter || material.warehouse === warehouseFilter || (includeUnassigned && isUnassigned);
+        !warehouseFilter ||
+        (Boolean(asOfDate) && !includeUnassigned) ||
+        material.warehouse === warehouseFilter ||
+        (includeUnassigned && isUnassigned);
       const matchesUnit = selectedUnit === 'all' || material.unit === selectedUnit;
       const matchesSearch =
         !normalizedSearch ||
         `${material.code} ${material.name} ${material.unit}`.toLowerCase().includes(normalizedSearch);
       return matchesWarehouse && matchesUnit && matchesSearch;
     });
-  }, [datedMaterials, includeUnassigned, normalizedSearch, selectedUnit, warehouseFilter]);
+  }, [asOfDate, datedMaterials, includeUnassigned, normalizedSearch, selectedUnit, warehouseFilter]);
 
   const hasActiveFilters = selectedUnit !== 'all' || Boolean(searchText);
   const resetFilters = () => {
@@ -1410,7 +1442,7 @@ export function MaterialsInventoryPanel({
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    {canEdit ? (
+                    {canEdit && !material.inventoryBalanceOnly ? (
                       <button
                         type="button"
                         onClick={() => openEditForm(material)}
@@ -1420,7 +1452,7 @@ export function MaterialsInventoryPanel({
                         <Pencil className="h-4 w-4" />
                       </button>
                     ) : null}
-                    {canDelete ? (
+                    {canDelete && !material.inventoryBalanceOnly ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteMaterial(material)}

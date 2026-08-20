@@ -2042,6 +2042,7 @@ function listSupabaseDbRefsPreferNew(): SupabaseDbRef[] {
 
 type KiemKhoDotGroup = {
   dot_kiem_kho: string;
+  ten_kho: string | null;
   ngay_bat_dau: string | null;
   thoi_gian_xac_nhan: string | null;
   da_xac_nhan: boolean;
@@ -2050,22 +2051,38 @@ type KiemKhoDotGroup = {
   tong_dot_trong_ngay: number;
 };
 
-/** Gộp các dòng kiem_kho theo dot_kiem_kho. Đợt "đã xác nhận" = mọi dòng đều có thoi_gian_xac_nhan. */
+/**
+ * Gộp các dòng kiem_kho theo dot_kiem_kho. Đợt "đã xác nhận" = mọi dòng đều có thoi_gian_xac_nhan.
+ * Mỗi đợt luôn thuộc đúng 1 kho (FE bắt buộc chọn kho trước khi lưu dòng đầu tiên của đợt).
+ */
 function computeKiemKhoDotGroups(
-  rows: Array<{ dot_kiem_kho?: unknown; ngay_gio_kiem_kho?: unknown; thoi_gian_xac_nhan?: unknown }>
+  rows: Array<{
+    dot_kiem_kho?: unknown;
+    ten_kho?: unknown;
+    ngay_gio_kiem_kho?: unknown;
+    thoi_gian_xac_nhan?: unknown;
+  }>
 ): KiemKhoDotGroup[] {
-  type Group = { start: string; confirmMax: string | null; hasUnconfirmed: boolean; count: number };
+  type Group = {
+    start: string;
+    tenKho: string | null;
+    confirmMax: string | null;
+    hasUnconfirmed: boolean;
+    count: number;
+  };
   const groups = new Map<string, Group>();
   for (const row of rows) {
     const key = String(row.dot_kiem_kho ?? '').trim();
     if (!key) continue;
     const start = String(row.ngay_gio_kiem_kho ?? '').trim();
+    const tenKho = String(row.ten_kho ?? '').trim() || null;
     const confirmRaw = row.thoi_gian_xac_nhan ? String(row.thoi_gian_xac_nhan) : null;
     const g = groups.get(key);
     if (!g) {
-      groups.set(key, { start, confirmMax: confirmRaw, hasUnconfirmed: !confirmRaw, count: 1 });
+      groups.set(key, { start, tenKho, confirmMax: confirmRaw, hasUnconfirmed: !confirmRaw, count: 1 });
     } else {
       if (start && (!g.start || start < g.start)) g.start = start;
+      if (!g.tenKho && tenKho) g.tenKho = tenKho;
       if (!confirmRaw) g.hasUnconfirmed = true;
       if (confirmRaw && (!g.confirmMax || confirmRaw > g.confirmMax)) g.confirmMax = confirmRaw;
       g.count += 1;
@@ -2073,6 +2090,7 @@ function computeKiemKhoDotGroups(
   }
   const result: KiemKhoDotGroup[] = [...groups.entries()].map(([dot_kiem_kho, g]) => ({
     dot_kiem_kho,
+    ten_kho: g.tenKho,
     ngay_bat_dau: g.start || null,
     thoi_gian_xac_nhan: g.hasUnconfirmed ? null : g.confirmMax,
     da_xac_nhan: !g.hasUnconfirmed,
@@ -10014,8 +10032,8 @@ export function createApp() {
     }
   });
 
-  /** Đợt kiểm kho chưa chốt = còn ít nhất 1 dòng chưa có thoi_gian_xac_nhan. */
-  app.get('/api/kiem-kho/dot-mo', async (_req, res) => {
+  /** Đợt kiểm kho chưa chốt = còn ít nhất 1 dòng chưa có thoi_gian_xac_nhan, thuộc đúng kho đang chọn. */
+  app.get('/api/kiem-kho/dot-mo', async (req, res) => {
     const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
     if (!resolved) {
       return res.status(503).json({
@@ -10024,14 +10042,17 @@ export function createApp() {
     }
     const db = resolved.client;
     const dbLabel = resolved.label;
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
 
     try {
-      const { data, error } = await db
+      let query = db
         .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
+        .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
         .not('dot_kiem_kho', 'is', null)
         .order('ngay_gio_kiem_kho', { ascending: true })
         .limit(5000);
+      if (tenKho) query = query.eq('ten_kho', tenKho);
+      const { data, error } = await query;
 
       if (error) {
         const missingColumn = /thoi_gian_xac_nhan/i.test(error.message || '');
@@ -10048,6 +10069,7 @@ export function createApp() {
         .filter(g => !g.da_xac_nhan)
         .map(g => ({
           dot_kiem_kho: g.dot_kiem_kho,
+          ten_kho: g.ten_kho,
           ngay_bat_dau: g.ngay_bat_dau,
           thu_tu_trong_ngay: g.thu_tu_trong_ngay,
           tong_dot_trong_ngay: g.tong_dot_trong_ngay
@@ -10064,7 +10086,7 @@ export function createApp() {
   });
 
   /** Toàn bộ đợt kiểm kho (đã chốt lẫn chưa chốt) — dùng cho combobox tab "Danh sách đợt kiểm kho". */
-  app.get('/api/kiem-kho/dot', async (_req, res) => {
+  app.get('/api/kiem-kho/dot', async (req, res) => {
     const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
     if (!resolved) {
       return res.status(503).json({
@@ -10073,14 +10095,17 @@ export function createApp() {
     }
     const db = resolved.client;
     const dbLabel = resolved.label;
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
 
     try {
-      const { data, error } = await db
+      let query = db
         .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
+        .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
         .not('dot_kiem_kho', 'is', null)
         .order('ngay_gio_kiem_kho', { ascending: true })
         .limit(20000);
+      if (tenKho) query = query.eq('ten_kho', tenKho);
+      const { data, error } = await query;
 
       if (error) {
         return res.status(500).json({
@@ -10232,6 +10257,9 @@ export function createApp() {
           ? [body]
           : [];
 
+    if (!tenKho) {
+      return res.status(400).json({ error: 'Thiếu kho kiểm kho.' });
+    }
     if (!dotKiemKho) {
       return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
     }
@@ -11057,7 +11085,7 @@ export function createApp() {
       loadAllTonKhoRows((from, to) => {
         let query = supabase!
           .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-          .select('ma_npl, ma_sp, so_luong, ngay_phieu, loai_phieu, loai_kho, ten_kho');
+          .select('ma_npl, ten_npl, ma_sp, ten_sp, don_vi, so_luong, ngay_phieu, loai_phieu, loai_kho, ten_kho');
         query = isProduct
           ? query.eq('loai_kho', 'san_pham')
           : loaiKho === 'nvl'
@@ -11096,10 +11124,12 @@ export function createApp() {
       // từ mã gốc (tiền tố) nếu danh mục đã có, để chi tiết không hiển thị tên trống/mã thô.
       const prefix = extractTonKhoPrefix(code);
       const prefixMatch = prefix && prefix !== code ? totals.get(prefix) : undefined;
+      const movementName = String(isProduct ? row.ten_sp ?? '' : row.ten_npl ?? '').trim();
+      const movementUnit = String(row.don_vi ?? '').trim() || null;
       const current = totals.get(code) ?? {
         ma: code,
-        ten: prefixMatch?.ten || code,
-        don_vi: prefixMatch?.don_vi ?? null,
+        ten: movementName || prefixMatch?.ten || code,
+        don_vi: movementUnit || prefixMatch?.don_vi || null,
         ten_kho: prefixMatch?.ten_kho ?? tenKho,
         ton_dau_ky: 0,
         nhap_trong_ky: 0,
@@ -11107,6 +11137,8 @@ export function createApp() {
         ton_cuoi_ky: 0
       };
       totals.set(code, current);
+      if ((!current.ten || current.ten === code) && movementName) current.ten = movementName;
+      if (!current.don_vi && movementUnit) current.don_vi = movementUnit;
 
       const quantityValue = Number(row.so_luong);
       const quantity = Number.isFinite(quantityValue) ? quantityValue : 0;

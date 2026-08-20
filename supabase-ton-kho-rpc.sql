@@ -37,6 +37,7 @@ as $$
     select distinct m.ma_npl as ma
     from public.phieu_xuat_nhap_kho m
     where (m.loai_kho = 'nvl' or m.loai_kho is null)
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and m.ma_npl is not null and m.ma_npl <> ''
   ),
@@ -51,6 +52,7 @@ as $$
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as adj
     from public.phieu_xuat_nhap_kho m
     where (m.loai_kho = 'nvl' or m.loai_kho is null)
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and p_tu_ngay is not null
       and m.ngay_phieu < p_tu_ngay
@@ -62,6 +64,7 @@ as $$
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as xuat
     from public.phieu_xuat_nhap_kho m
     where (m.loai_kho = 'nvl' or m.loai_kho is null)
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and (p_tu_ngay is null or m.ngay_phieu >= p_tu_ngay)
       and (p_den_ngay is null or m.ngay_phieu <= p_den_ngay)
@@ -109,6 +112,7 @@ as $$
     select distinct trim(m.ma_sp) as ma
     from public.phieu_xuat_nhap_kho m
     where m.loai_kho = 'san_pham'
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and m.ma_sp is not null and m.ma_sp <> ''
   ),
@@ -123,6 +127,7 @@ as $$
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as adj
     from public.phieu_xuat_nhap_kho m
     where m.loai_kho = 'san_pham'
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and p_tu_ngay is not null
       and m.ngay_phieu < p_tu_ngay
@@ -134,6 +139,7 @@ as $$
       sum(case when m.loai_phieu = 'xuat' then m.so_luong else 0 end) as xuat
     from public.phieu_xuat_nhap_kho m
     where m.loai_kho = 'san_pham'
+      and coalesce(m.treo, false) = false
       and (p_ten_kho is null or m.ten_kho = p_ten_kho)
       and (p_tu_ngay is null or m.ngay_phieu >= p_tu_ngay)
       and (p_den_ngay is null or m.ngay_phieu <= p_den_ngay)

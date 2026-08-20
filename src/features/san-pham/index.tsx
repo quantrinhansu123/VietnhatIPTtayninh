@@ -1927,19 +1927,55 @@ export function ProductsPanel({
 
   const displayProducts = useMemo(() => {
     if (isCatalogMode) return products;
-    const balances = new Map(balanceRows.map(row => [normalizeProductCodeKey(row.ma), row]));
-    return products.flatMap(product => {
-      const balance = balances.get(normalizeProductCodeKey(product.code));
-      if (!balance || balance.ton_cuoi_ky <= 0) return [];
+    const productsByCode = new Map<string, ProductRow>(
+      products.map(product => [normalizeProductCodeKey(product.code), product] as const)
+    );
+
+    return balanceRows.flatMap(balance => {
+      if (!balance.ma || balance.ton_cuoi_ky <= 0) return [];
+      const key = normalizeProductCodeKey(balance.ma);
+      const product = productsByCode.get(key);
+      if (product) {
+        return [{
+          ...product,
+          warehouse: product.warehouse && product.warehouse !== '-'
+            ? product.warehouse
+            : balance.ten_kho || warehouseFilter,
+          openingStock: String(balance.ton_dau_ky),
+          inbound: String(balance.nhap_trong_ky),
+          outbound: String(balance.xuat_trong_ky),
+          stock: String(balance.ton_cuoi_ky)
+        }];
+      }
+
       return [{
-        ...product,
+        id: `inventory-balance:${key}`,
+        code: balance.ma,
+        newCode: '',
+        amisCode: '',
+        name: balance.ten || balance.ma,
+        nature: 'Chưa phân loại',
+        group: 'Chưa nhóm',
+        unit: balance.don_vi || '-',
+        warehouse: balance.ten_kho || warehouseFilter,
+        totalWeight: '-',
+        rollWidth: '-',
+        rollLength: '-',
+        coreWeight: '-',
+        bagWeight: '-',
+        plasticWeight: '-',
         openingStock: String(balance.ton_dau_ky),
         inbound: String(balance.nhap_trong_ky),
         outbound: String(balance.xuat_trong_ky),
-        stock: String(balance.ton_cuoi_ky)
+        stock: String(balance.ton_cuoi_ky),
+        minStock: '-',
+        origin: '-',
+        description: '',
+        nplItems: [],
+        inventoryBalanceOnly: true
       }];
     });
-  }, [asOfDate, balanceRows, isCatalogMode, products]);
+  }, [balanceRows, isCatalogMode, products, warehouseFilter]);
 
   const productGroups = useMemo(
     () => ['all', ...Array.from(new Set(displayProducts.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],
@@ -1954,7 +1990,10 @@ export function ProductsPanel({
     return displayProducts.filter(product => {
       const isUnassigned = !product.warehouse || product.warehouse === '-';
       const matchesWarehouse =
-        !warehouseFilter || product.warehouse === warehouseFilter || (includeUnassigned && isUnassigned);
+        !warehouseFilter ||
+        (!isCatalogMode && !includeUnassigned) ||
+        product.warehouse === warehouseFilter ||
+        (includeUnassigned && isUnassigned);
       const matchesGroup = selectedGroup === 'all' || product.group === selectedGroup;
       const matchesNature = selectedNatures.size === 0 || selectedNatures.has(product.nature);
       const matchesSearch =
@@ -1964,7 +2003,7 @@ export function ProductsPanel({
           .includes(normalizedSearch);
       return matchesWarehouse && matchesGroup && matchesNature && matchesSearch;
     });
-  }, [displayProducts, includeUnassigned, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
+  }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
 
   const totalProductQuantity = useMemo(
     () => displayProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
@@ -2590,7 +2629,7 @@ export function ProductsPanel({
                     >
                       <Eye className="h-4 w-4" />
                     </button>
-                    {canEdit ? (
+                    {canEdit && !product.inventoryBalanceOnly ? (
                       <button
                         type="button"
                         onClick={() => openProductEdit(product)}
@@ -2600,7 +2639,7 @@ export function ProductsPanel({
                         <Pencil className="h-4 w-4" />
                       </button>
                     ) : null}
-                    {canDelete ? (
+                    {canDelete && !product.inventoryBalanceOnly ? (
                       <button
                         type="button"
                         onClick={() => handleDeleteProduct(product)}

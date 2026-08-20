@@ -9,6 +9,9 @@ type InventoryMovementKind = 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'han
 
 export type InventoryBalanceRow = {
   ma: string;
+  ten: string;
+  don_vi: string;
+  ten_kho: string;
   ton_dau_ky: number;
   nhap_trong_ky: number;
   xuat_trong_ky: number;
@@ -120,6 +123,9 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         const records = Array.isArray(data?.records) ? data.records : [];
         setBalanceRows(records.map((record: Record<string, unknown>) => ({
           ma: String(record.ma ?? '').trim(),
+          ten: String(record.ten ?? '').trim(),
+          don_vi: String(record.don_vi ?? '').trim(),
+          ten_kho: String(record.ten_kho ?? '').trim() || selectedWarehouse,
           ton_dau_ky: Number(record.ton_dau_ky) || 0,
           nhap_trong_ky: Number(record.nhap_trong_ky) || 0,
           xuat_trong_ky: Number(record.xuat_trong_ky) || 0,
@@ -177,7 +183,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
                 includeAll={false}
                 searchPlaceholder="Tìm kho..."
               />
-              <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
+              <TableDateFilter label="Chọn ngày" value={asOfDate} onChange={setAsOfDate} />
               {isLoadingBalances ? (
                 <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
               ) : null}
@@ -202,7 +208,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
                 includeAll={false}
                 searchPlaceholder="Tìm kho..."
               />
-              <TableDateFilter label="Đến ngày" value={asOfDate} onChange={setAsOfDate} />
+              <TableDateFilter label="Chọn ngày" value={asOfDate} onChange={setAsOfDate} />
               {isLoadingBalances ? (
                 <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
               ) : null}

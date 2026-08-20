@@ -34,6 +34,8 @@ type CatalogProduct = {
   productType: string;
 };
 
+type WarehouseCatalogItem = { id: string | number; ten_kho: string };
+
 type KiemKhoLine = {
   key: string;
   maNvl: string;
@@ -45,6 +47,7 @@ type KiemKhoLine = {
 
 type OpenBatch = {
   dot_kiem_kho: string;
+  ten_kho: string | null;
   ngay_bat_dau: string | null;
   thu_tu_trong_ngay: number;
   tong_dot_trong_ngay: number;
@@ -52,6 +55,7 @@ type OpenBatch = {
 
 type DotGroup = {
   dot_kiem_kho: string;
+  ten_kho: string | null;
   ngay_bat_dau: string | null;
   thoi_gian_xac_nhan: string | null;
   da_xac_nhan: boolean;
@@ -189,6 +193,22 @@ function normalizeCatalogProducts(data: unknown): CatalogProduct[] {
     .filter((item): item is CatalogProduct => Boolean(item));
 }
 
+function normalizeWarehouseCatalog(data: unknown): WarehouseCatalogItem[] {
+  const records =
+    data && typeof data === 'object' && Array.isArray((data as { records?: unknown }).records)
+      ? (data as { records: unknown[] }).records
+      : [];
+  return records
+    .map((item): WarehouseCatalogItem | null => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const tenKho = String(record.ten_kho ?? '').trim();
+      if (!tenKho) return null;
+      return { id: (record.id as string | number) ?? tenKho, ten_kho: tenKho };
+    })
+    .filter((item): item is WarehouseCatalogItem => Boolean(item));
+}
+
 function findCatalogProduct(code: string, products: CatalogProduct[]) {
   const key = normalizeKey(code);
   if (!key) return null;
@@ -210,6 +230,9 @@ export function KiemKhoPanel({
   const { canCreate, canDelete } = useTabAccess('kiem-kho');
   const loginName = String(currentUser?.name ?? '').trim();
   const [view, setView] = useState<'thuc-hien' | 'danh-sach' | 'tong-hop'>('thuc-hien');
+  const [warehouses, setWarehouses] = useState<WarehouseCatalogItem[]>([]);
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+  const [selectedKho, setSelectedKho] = useState('');
   const [dotKiemKho, setDotKiemKho] = useState('');
   const [openBatches, setOpenBatches] = useState<OpenBatch[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
@@ -221,6 +244,7 @@ export function KiemKhoPanel({
         : [
             {
               dot_kiem_kho: '',
+              ten_kho: null,
               ngay_bat_dau: null,
               thu_tu_trong_ngay: 1,
               tong_dot_trong_ngay: 1
@@ -232,7 +256,6 @@ export function KiemKhoPanel({
   // Tab "Danh sách chi tiết"
   const [allBatches, setAllBatches] = useState<DotGroup[]>([]);
   const [loadingAllBatches, setLoadingAllBatches] = useState(false);
-  const [allBatchesLoaded, setAllBatchesLoaded] = useState(false);
   const [selectedDot, setSelectedDot] = useState('');
   const [dotDetailLines, setDotDetailLines] = useState<KiemKhoDetailRow[]>([]);
   const [loadingDotDetail, setLoadingDotDetail] = useState(false);
@@ -294,10 +317,30 @@ export function KiemKhoPanel({
     }
   }, []);
 
-  const loadOpenBatches = useCallback(async () => {
+  const loadWarehouses = useCallback(async () => {
+    setLoadingWarehouses(true);
+    try {
+      const res = await fetch('/api/quan-ly-kho');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh mục kho.'));
+      setWarehouses(normalizeWarehouseCatalog(data));
+    } catch (err: any) {
+      setWarehouses([]);
+      showAppToast(err?.message || 'Không tải được danh mục kho.', 'error');
+    } finally {
+      setLoadingWarehouses(false);
+    }
+  }, []);
+
+  const loadOpenBatches = useCallback(async (kho: string) => {
+    if (!kho) {
+      setOpenBatches([]);
+      setDotKiemKho('');
+      return;
+    }
     setLoadingBatches(true);
     try {
-      const res = await fetch('/api/kiem-kho/dot-mo');
+      const res = await fetch(`/api/kiem-kho/dot-mo?tenKho=${encodeURIComponent(kho)}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh sách đợt kiểm kho.'));
       const records: OpenBatch[] = Array.isArray(data?.records) ? data.records : [];
@@ -317,19 +360,26 @@ export function KiemKhoPanel({
 
   useEffect(() => {
     void loadProducts();
-    void loadOpenBatches();
-  }, [loadProducts, loadOpenBatches]);
+    void loadWarehouses();
+  }, [loadProducts, loadWarehouses]);
 
-  const loadAllBatches = useCallback(async () => {
+  useEffect(() => {
+    void loadOpenBatches(selectedKho);
+  }, [selectedKho, loadOpenBatches]);
+
+  const loadAllBatches = useCallback(async (kho: string) => {
+    if (!kho) {
+      setAllBatches([]);
+      return;
+    }
     setLoadingAllBatches(true);
     try {
-      const res = await fetch('/api/kiem-kho/dot');
+      const res = await fetch(`/api/kiem-kho/dot?tenKho=${encodeURIComponent(kho)}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh sách đợt kiểm kho.'));
       const records: DotGroup[] = Array.isArray(data?.records) ? data.records : [];
       setAllBatches(records);
-      setAllBatchesLoaded(true);
-      // Mới vào trang → mặc định chọn đợt gần nhất.
+      // Mới chọn kho → mặc định chọn đợt gần nhất của kho đó.
       setSelectedDot(prev => (prev && records.some(b => b.dot_kiem_kho === prev) ? prev : records[0]?.dot_kiem_kho ?? ''));
     } catch (err: any) {
       setAllBatches([]);
@@ -359,10 +409,17 @@ export function KiemKhoPanel({
   }, []);
 
   useEffect(() => {
-    if ((view === 'danh-sach' || view === 'tong-hop') && !allBatchesLoaded) {
-      void loadAllBatches();
+    if (view === 'danh-sach' || view === 'tong-hop') {
+      void loadAllBatches(selectedKho);
     }
-  }, [view, allBatchesLoaded, loadAllBatches]);
+  }, [view, selectedKho, loadAllBatches]);
+
+  // Đổi kho → bỏ chọn đợt/đợt tổng hợp cũ, tránh giữ dữ liệu của kho trước.
+  useEffect(() => {
+    setSelectedDot('');
+    setSelectedSummaryDot('');
+    setSummaryDotTouched(false);
+  }, [selectedKho]);
 
   useEffect(() => {
     if (view === 'danh-sach') void loadDotDetail(selectedDot);
@@ -389,7 +446,7 @@ export function KiemKhoPanel({
 
       setDotDetailLines(current => current.filter(item => String(item.id) !== id));
       showAppToast(`Đã xóa mã "${productCode}" khỏi đợt kiểm kho.`, 'success');
-      await Promise.all([loadAllBatches(), loadOpenBatches()]);
+      await Promise.all([loadAllBatches(selectedKho), loadOpenBatches(selectedKho)]);
     } catch (err: any) {
       showAppToast(err?.message || 'Không xóa được sản phẩm khỏi đợt kiểm kho.', 'error');
     } finally {
@@ -413,7 +470,7 @@ export function KiemKhoPanel({
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không xác nhận được kiểm kê.'));
       showAppToast('Đã xác nhận kiểm kê đợt này.', 'success');
       if (data?.warning) showAppToast(String(data.warning), 'error');
-      await Promise.all([loadAllBatches(), loadDotDetail(selectedDot), loadOpenBatches()]);
+      await Promise.all([loadAllBatches(selectedKho), loadDotDetail(selectedDot), loadOpenBatches(selectedKho)]);
     } catch (err: any) {
       showAppToast(err?.message || 'Không xác nhận được kiểm kê.', 'error');
     } finally {
@@ -656,6 +713,10 @@ export function KiemKhoPanel({
   const handleSave = async () => {
     setError('');
     setMessage('');
+    if (!selectedKho.trim()) {
+      setError('Chọn kho trước khi lưu phiếu.');
+      return;
+    }
     if (!nguoiKiemKho.trim()) {
       setError('Nhập người kiểm kho.');
       return;
@@ -674,6 +735,7 @@ export function KiemKhoPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ten_kho: selectedKho.trim(),
           dot_kiem_kho: finalDotKiemKho,
           nguoi_kiem_kho: nguoiKiemKho.trim(),
           ngay_gio_kiem_kho: toIsoFromLocalDateTime(thoiDiemLuu),
@@ -700,7 +762,7 @@ export function KiemKhoPanel({
       setDotKiemKho(finalDotKiemKho);
       setMessage(resultMessage);
       showAppToast(resultMessage, 'success');
-      await loadOpenBatches();
+      await loadOpenBatches(selectedKho);
     } catch (err: any) {
       const text = err?.message || 'Không lưu được báo cáo kiểm kho.';
       setError(text);
@@ -802,7 +864,24 @@ export function KiemKhoPanel({
             </button>
           ) : null}
         </div>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Kho
+            <div className="mt-1">
+              <SearchableSelect
+                value={selectedKho}
+                onChange={setSelectedKho}
+                options={warehouses}
+                getValue={item => (item as WarehouseCatalogItem).ten_kho}
+                getLabel={item => (item as WarehouseCatalogItem).ten_kho}
+                placeholder="Chọn kho..."
+                isLoading={loadingWarehouses}
+                allowEmpty={false}
+                inputClassName={inputClass}
+                comboboxMode
+              />
+            </div>
+          </label>
           <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
             Đợt kiểm kho
             <div className="mt-1">
@@ -825,22 +904,30 @@ export function KiemKhoPanel({
                 placeholder="+ Tạo đợt mới"
                 isLoading={loadingBatches}
                 allowEmpty={false}
+                disabled={!selectedKho}
                 inputClassName={inputClass}
                 comboboxMode
                 comboboxSearchable={false}
               />
             </div>
             <span className="mt-1 block text-[11px] font-medium normal-case tracking-normal text-zinc-400">
-              {loadingBatches
-                ? 'Đang tải danh sách đợt...'
-                : openBatches.length === 0
-                  ? 'Không có đợt chưa chốt. Khi lưu, hệ thống sẽ tự tạo đợt mới với ngày bắt đầu là hôm nay.'
-                  : 'Đang có đợt chưa xác nhận kiểm kê — vào "Danh sách chi tiết" để xác nhận trước khi tạo đợt mới.'}
+              {!selectedKho
+                ? 'Chọn kho trước để xem đợt kiểm kho.'
+                : loadingBatches
+                  ? 'Đang tải danh sách đợt...'
+                  : openBatches.length === 0
+                    ? 'Không có đợt chưa chốt. Khi lưu, hệ thống sẽ tự tạo đợt mới với ngày bắt đầu là hôm nay.'
+                    : 'Đang có đợt chưa xác nhận kiểm kê — vào "Danh sách chi tiết" để xác nhận trước khi tạo đợt mới.'}
             </span>
           </label>
         </div>
       </section>
 
+      {!selectedKho ? (
+      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center text-sm font-semibold text-zinc-500">
+        Chọn kho ở trên để bắt đầu quét mã sản phẩm.
+      </section>
+      ) : (
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-2.5">
           <div className="min-w-0">
@@ -983,6 +1070,7 @@ export function KiemKhoPanel({
         </TableShell>
         </div>
       </section>
+      )}
 
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -998,8 +1086,25 @@ export function KiemKhoPanel({
       ) : view === 'danh-sach' ? (
       <>
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-        <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn đợt kiểm kho</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn kho và đợt kiểm kho</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Kho
+            <div className="mt-1">
+              <SearchableSelect
+                value={selectedKho}
+                onChange={setSelectedKho}
+                options={warehouses}
+                getValue={item => (item as WarehouseCatalogItem).ten_kho}
+                getLabel={item => (item as WarehouseCatalogItem).ten_kho}
+                placeholder="Chọn kho..."
+                isLoading={loadingWarehouses}
+                allowEmpty={false}
+                inputClassName={inputClass}
+                comboboxMode
+              />
+            </div>
+          </label>
           <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
             Đợt kiểm kho
             <div className="mt-1">
@@ -1018,9 +1123,10 @@ export function KiemKhoPanel({
                     b.tong_dot_trong_ngay
                   )} · ${b.so_dong} mã · ${status}`;
                 }}
-                placeholder="Tìm đợt kiểm kho..."
+                placeholder={selectedKho ? 'Tìm đợt kiểm kho...' : 'Chọn kho trước'}
                 isLoading={loadingAllBatches}
                 allowEmpty={false}
+                disabled={!selectedKho}
                 inputClassName={inputClass}
                 comboboxMode
               />
@@ -1053,6 +1159,15 @@ export function KiemKhoPanel({
         ) : null}
       </section>
 
+      {!selectedKho ? (
+      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center text-sm font-semibold text-zinc-500">
+        Chọn kho ở trên để xem đợt kiểm kho.
+      </section>
+      ) : !selectedDot ? (
+      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center text-sm font-semibold text-zinc-500">
+        Chọn đợt kiểm kho ở trên để xem danh sách sản phẩm đã quét.
+      </section>
+      ) : (
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
           <div>
@@ -1119,39 +1234,60 @@ export function KiemKhoPanel({
           </TableBody>
         </TableShell>
       </section>
+      )}
       </>
       ) : (
       <>
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-        <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn đợt kiểm kho</h2>
-        <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
-          Đợt kiểm kho
-          <div className="mt-1">
-            <SearchableSelect
-              value={selectedSummaryDot}
-              onChange={value => {
-                setSelectedSummaryDot(value);
-                setSummaryDotTouched(true);
-              }}
-              options={allBatches}
-              getValue={item => (item as DotGroup).dot_kiem_kho}
-              getLabel={item => {
-                const b = item as DotGroup;
-                return `${formatDotLabel(
-                  b.ngay_bat_dau,
-                  b.thoi_gian_xac_nhan,
-                  b.thu_tu_trong_ngay,
-                  b.tong_dot_trong_ngay
-                )} · ${b.so_dong} mã · ${b.da_xac_nhan ? 'Đã xác nhận' : 'Chưa xác nhận'}`;
-              }}
-              placeholder="Tìm đợt kiểm kho..."
-              isLoading={loadingAllBatches}
-              allowEmpty={false}
-              inputClassName={inputClass}
-              comboboxMode
-            />
-          </div>
-        </label>
+        <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn kho và đợt kiểm kho</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Kho
+            <div className="mt-1">
+              <SearchableSelect
+                value={selectedKho}
+                onChange={setSelectedKho}
+                options={warehouses}
+                getValue={item => (item as WarehouseCatalogItem).ten_kho}
+                getLabel={item => (item as WarehouseCatalogItem).ten_kho}
+                placeholder="Chọn kho..."
+                isLoading={loadingWarehouses}
+                allowEmpty={false}
+                inputClassName={inputClass}
+                comboboxMode
+              />
+            </div>
+          </label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Đợt kiểm kho
+            <div className="mt-1">
+              <SearchableSelect
+                value={selectedSummaryDot}
+                onChange={value => {
+                  setSelectedSummaryDot(value);
+                  setSummaryDotTouched(true);
+                }}
+                options={allBatches}
+                getValue={item => (item as DotGroup).dot_kiem_kho}
+                getLabel={item => {
+                  const b = item as DotGroup;
+                  return `${formatDotLabel(
+                    b.ngay_bat_dau,
+                    b.thoi_gian_xac_nhan,
+                    b.thu_tu_trong_ngay,
+                    b.tong_dot_trong_ngay
+                  )} · ${b.so_dong} mã · ${b.da_xac_nhan ? 'Đã xác nhận' : 'Chưa xác nhận'}`;
+                }}
+                placeholder={selectedKho ? 'Tìm đợt kiểm kho...' : 'Chọn kho trước'}
+                isLoading={loadingAllBatches}
+                allowEmpty={false}
+                disabled={!selectedKho}
+                inputClassName={inputClass}
+                comboboxMode
+              />
+            </div>
+          </label>
+        </div>
 
         {selectedSummaryDotGroup ? (
           <p className="mt-3 text-[11px] font-semibold text-zinc-500">
@@ -1167,6 +1303,15 @@ export function KiemKhoPanel({
         ) : null}
       </section>
 
+      {!selectedKho ? (
+      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center text-sm font-semibold text-zinc-500">
+        Chọn kho ở trên để xem đợt kiểm kho.
+      </section>
+      ) : !selectedSummaryDot ? (
+      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center text-sm font-semibold text-zinc-500">
+        Chọn đợt kiểm kho ở trên để xem danh sách sản phẩm đã kiểm.
+      </section>
+      ) : (
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
           <div>
@@ -1248,6 +1393,7 @@ export function KiemKhoPanel({
           </TableBody>
         </TableShell>
       </section>
+      )}
       </>
       )}
 

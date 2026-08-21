@@ -235,6 +235,57 @@ function normalizeCatalogProducts(data: unknown): ProductSelectOption[] {
     .filter((item): item is ProductSelectOption => Boolean(item));
 }
 
+function normalizeWarehouseKey(name: string) {
+  return String(name ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+}
+
+function isHangHongWarehouse(name: string) {
+  const key = normalizeWarehouseKey(name);
+  return key.includes('hang hong') || key.includes('hang_hong') || key.includes('hang-hong');
+}
+
+function isRacWarehouse(name: string) {
+  const key = normalizeWarehouseKey(name);
+  return key.includes('kho rac') || key.includes('hang rac') || (key.includes('rac') && !key.includes('trac'));
+}
+
+/** Mã trong `kho_nvl` theo tên kho — dùng khi loại vật tư là SP lỗi / SP rác. */
+function normalizeMaterialCatalogOptions(
+  data: unknown,
+  warehouseMatch: (warehouse: string) => boolean
+): ProductSelectOption[] {
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { materials?: unknown }).materials)
+      ? (data as { materials: unknown[] }).materials
+      : [];
+
+  const byCode = new Map<string, ProductSelectOption>();
+  for (const item of rows) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const warehouse = String(record.ten_kho ?? record.warehouse ?? '').trim();
+    if (!warehouseMatch(warehouse)) continue;
+    const code = String(record.ma_npl ?? record.ma_sp ?? record.code ?? '').trim();
+    if (!code) continue;
+    const key = normalizeKey(code);
+    if (!key || byCode.has(key)) continue;
+    const name = String(record.ten_npl ?? record.ten_sp ?? record.name ?? '').trim();
+    const unit = String(record.don_vi ?? record.unit ?? '').trim();
+    const totalWeightRaw = record.tong_trong_luong ?? record.totalWeight;
+    const totalWeightText = String(totalWeightRaw ?? '').trim();
+    const totalWeightNumber = Number(totalWeightText.replace(',', '.'));
+    const totalWeightKg = totalWeightText && Number.isFinite(totalWeightNumber) ? totalWeightNumber : null;
+    byCode.set(key, { code, name, unit, totalWeightKg });
+  }
+  return [...byCode.values()];
+}
+
 function isBlankProductLine(line: ProductLine) {
   return !line.mat_hang.trim() && !line.so_luong.trim();
 }
@@ -389,6 +440,8 @@ export default function AcceptanceReportForm({
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderOption[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<ProductSelectOption[]>([]);
+  const [hangHongMaterialOptions, setHangHongMaterialOptions] = useState<ProductSelectOption[]>([]);
+  const [racMaterialOptions, setRacMaterialOptions] = useState<ProductSelectOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [form, setForm] = useState(newReportForm());
@@ -415,16 +468,18 @@ export default function AcceptanceReportForm({
     (async () => {
       setError('');
       try {
-        const [machineRes, productionRes, productRes, settingsRes] = await Promise.all([
+        const [machineRes, productionRes, productRes, settingsRes, materialRes] = await Promise.all([
           fetch('/api/danh-sach-may'),
           fetch('/api/lenh-sx'),
           fetch('/api/san-pham?format=table'),
-          fetch('/api/cai-dat')
+          fetch('/api/cai-dat'),
+          fetch('/api/kho-nvl')
         ]);
         const machineData = await machineRes.json().catch(() => ({}));
         const productionData = await productionRes.json().catch(() => ({}));
         const productData = await productRes.json().catch(() => ({}));
         const settingsData = await settingsRes.json().catch(() => ({}));
+        const materialData = await materialRes.json().catch(() => ({}));
         if (!machineRes.ok) throw new Error(machineData.error || 'Không thể tải danh sách máy.');
         if (!productionRes.ok) throw new Error(productionData.error || 'Không thể tải lệnh sản xuất.');
         if (cancelled) return;
@@ -435,6 +490,13 @@ export default function AcceptanceReportForm({
           setCatalogProducts(normalizeCatalogProducts(productData));
         } else {
           setCatalogProducts([]);
+        }
+        if (materialRes.ok) {
+          setHangHongMaterialOptions(normalizeMaterialCatalogOptions(materialData, isHangHongWarehouse));
+          setRacMaterialOptions(normalizeMaterialCatalogOptions(materialData, isRacWarehouse));
+        } else {
+          setHangHongMaterialOptions([]);
+          setRacMaterialOptions([]);
         }
         if (settingsRes.ok) {
           setShiftSettings(normalizeShiftSettings(settingsData));
@@ -554,27 +616,36 @@ export default function AcceptanceReportForm({
 
   const productSelectOptions = useMemo(() => {
     const byCode = new Map<string, ProductSelectOption>();
+    const materialType = form.loai_vat_tu.trim();
 
-    catalogProducts.forEach(product => {
-      const key = normalizeKey(product.code);
-      if (!key) return;
-      byCode.set(key, product);
-    });
-
-    orderProductOptions.forEach(product => {
-      const key = normalizeKey(product.code);
-      if (!key) return;
-      const existing = byCode.get(key);
-      byCode.set(key, {
-        code: product.code,
-        name: product.name || existing?.name || '',
-        unit: product.unit || existing?.unit || '',
-        totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
+    const mergeOptions = (products: ProductSelectOption[]) => {
+      products.forEach(product => {
+        const key = normalizeKey(product.code);
+        if (!key) return;
+        const existing = byCode.get(key);
+        byCode.set(key, {
+          code: product.code,
+          name: product.name || existing?.name || '',
+          unit: product.unit || existing?.unit || '',
+          totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
+        });
       });
-    });
+    };
+
+    // Thành phẩm / gia công: danh mục SP. SP lỗi / SP rác: thêm mã trong kho_nvl theo tên kho.
+    mergeOptions(catalogProducts);
+    if (materialType === 'SP lỗi') mergeOptions(hangHongMaterialOptions);
+    if (materialType === 'SP rác') mergeOptions(racMaterialOptions);
+    mergeOptions(orderProductOptions);
 
     return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
-  }, [catalogProducts, orderProductOptions]);
+  }, [
+    catalogProducts,
+    hangHongMaterialOptions,
+    racMaterialOptions,
+    orderProductOptions,
+    form.loai_vat_tu
+  ]);
 
   const handleDateChange = (ngay: string) => {
     setForm(prev => ({

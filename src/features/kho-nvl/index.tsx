@@ -830,26 +830,40 @@ export function MaterialsInventoryPanel({
 
   const datedMaterials = useMemo(() => {
     if (!asOfDate) return [];
-    const materialsByCode = new Map<string, MaterialRow>(
-      materials.map(material => [normalizeMaterialCodeKey(material.code), material] as const)
-    );
-
-    return balanceRows.flatMap(balance => {
-      if (!balance.ma || balance.ton_cuoi_ky <= 0) return [];
+    const balanceByCode = new Map<string, InventoryBalanceRow>();
+    for (const balance of balanceRows) {
       const key = normalizeMaterialCodeKey(balance.ma);
-      const material = materialsByCode.get(key);
-      if (material) {
-        return [{
-          ...material,
-          // Tồn theo ngày phải phản ánh kho của phiếu kho, không phải kho gán
-          // sẵn trên danh mục NVL (một NVL có thể xuất hiện ở nhiều kho).
-          warehouse: balance.ten_kho || material.warehouse || warehouseFilter,
-          openingStock: String(balance.ton_dau_ky),
-          inbound: String(balance.nhap_trong_ky),
-          outbound: String(balance.xuat_trong_ky)
-        }];
-      }
+      if (!key || key === '-') continue;
+      balanceByCode.set(key, balance);
+    }
+    const seenKeys = new Set<string>();
 
+    // Hiện hết danh mục thuộc kho (kể cả tồn 0 / chưa có phiếu).
+    const fromCatalog = materials.flatMap(material => {
+      if (
+        !matchesWarehouseFilter(material.warehouse, warehouseFilter, {
+          includeUnassigned
+        })
+      ) {
+        return [];
+      }
+      const key = normalizeMaterialCodeKey(material.code);
+      if (!key || key === '-') return [];
+      seenKeys.add(key);
+      const balance = balanceByCode.get(key);
+      return [{
+        ...material,
+        warehouse: balance?.ten_kho || material.warehouse || warehouseFilter,
+        openingStock: balance ? String(balance.ton_dau_ky) : material.openingStock && material.openingStock !== '-' ? material.openingStock : '0',
+        inbound: balance ? String(balance.nhap_trong_ky) : '0',
+        outbound: balance ? String(balance.xuat_trong_ky) : '0'
+      }];
+    });
+
+    // Bổ sung mã chỉ có trên phiếu kho, chưa có trong danh mục.
+    const fromBalancesOnly = balanceRows.flatMap(balance => {
+      const key = normalizeMaterialCodeKey(balance.ma);
+      if (!key || key === '-' || seenKeys.has(key)) return [];
       return [{
         id: `inventory-balance:${key}`,
         code: balance.ma,
@@ -868,7 +882,9 @@ export function MaterialsInventoryPanel({
         inventoryBalanceOnly: true
       }];
     });
-  }, [asOfDate, balanceRows, materials, warehouseFilter]);
+
+    return [...fromCatalog, ...fromBalancesOnly];
+  }, [asOfDate, balanceRows, includeUnassigned, materials, warehouseFilter]);
 
   const materialUnitSuggestions = useMemo(() => {
     const fromMaterials = materials.map(material => material.unit).filter(unit => unit && unit !== '-');
@@ -1399,7 +1415,7 @@ export function MaterialsInventoryPanel({
 
           {!isLoadingMaterials && filteredMaterials.length === 0 && (
             <TableEmptyRow colSpan={7}>
-              {asOfDate ? 'Không có nguyên phụ liệu còn tồn đến ngày đã chọn.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
+              {asOfDate ? 'Không có mã hàng trong kho này.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
             </TableEmptyRow>
           )}
         </TableBody>

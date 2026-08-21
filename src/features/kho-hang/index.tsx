@@ -58,12 +58,15 @@ export function matchesWarehouseFilter(
 ) {
   if (!warehouseFilter || options.skipFilter) return true;
   const value = String(warehouse ?? '').trim();
+  const filter = String(warehouseFilter ?? '').trim();
   const isUnassigned = !value || value === '-';
-  if (value === warehouseFilter) return true;
+  if (value === filter) return true;
+  // So khớp không phân biệt hoa thường / dấu (tránh lệch Unicode tên kho).
+  if (normalizeWarehouseName(value) === normalizeWarehouseName(filter)) return true;
   if (options.includeUnassigned && isUnassigned) return true;
   if (options.includeUnassigned) {
-    const kind = warehouseCatalogKind(warehouseFilter);
-    if (isDefaultWarehouse(warehouseFilter, kind) && isDefaultWarehouse(value, kind)) return true;
+    const kind = warehouseCatalogKind(filter);
+    if (isDefaultWarehouse(filter, kind) && isDefaultWarehouse(value, kind)) return true;
   }
   return false;
 }
@@ -149,7 +152,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           nhap_trong_ky: Number(record.nhap_trong_ky) || 0,
           xuat_trong_ky: Number(record.xuat_trong_ky) || 0,
           ton_cuoi_ky: Number(record.ton_cuoi_ky) || 0
-        })).filter((record: InventoryBalanceRow) => record.ma && record.ton_cuoi_ky > 0));
+        })).filter((record: InventoryBalanceRow) => Boolean(record.ma)));
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setBalanceRows([]);
@@ -188,6 +191,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         <MaterialsInventoryPanel
           onBack={onBack}
           warehouseFilter={selectedWarehouse}
+          includeUnassigned
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={
@@ -212,6 +216,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         <ProductsPanel
           onBack={onBack}
           warehouseFilter={selectedWarehouse}
+          includeUnassigned
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={

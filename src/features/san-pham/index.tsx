@@ -1977,27 +1977,44 @@ export function ProductsPanel({
 
   const displayProducts = useMemo(() => {
     if (isCatalogMode) return products;
-    const productsByCode = new Map<string, ProductRow>(
-      products.map(product => [normalizeProductCodeKey(product.code), product] as const)
-    );
-
-    return balanceRows.flatMap(balance => {
-      if (!balance.ma || balance.ton_cuoi_ky <= 0) return [];
+    const balanceByCode = new Map<string, InventoryBalanceRow>();
+    for (const balance of balanceRows) {
       const key = normalizeProductCodeKey(balance.ma);
-      const product = productsByCode.get(key);
-      if (product) {
-        return [{
-          ...product,
-          // Tồn theo ngày phải hiển thị đúng kho của phiếu kho; danh mục gốc
-          // chỉ là thông tin tham chiếu và có thể mang tên kho khác.
-          warehouse: balance.ten_kho || product.warehouse || warehouseFilter,
-          openingStock: String(balance.ton_dau_ky),
-          inbound: String(balance.nhap_trong_ky),
-          outbound: String(balance.xuat_trong_ky),
-          stock: String(balance.ton_cuoi_ky)
-        }];
-      }
+      if (!key || key === '-') continue;
+      balanceByCode.set(key, balance);
+    }
+    const seenKeys = new Set<string>();
 
+    // Hiện hết danh mục thuộc kho (kể cả tồn 0 / chưa có phiếu).
+    const fromCatalog = products.flatMap(product => {
+      if (
+        !matchesWarehouseFilter(product.warehouse, warehouseFilter, {
+          includeUnassigned
+        })
+      ) {
+        return [];
+      }
+      const key = normalizeProductCodeKey(product.code);
+      if (!key || key === '-') return [];
+      seenKeys.add(key);
+      const balance = balanceByCode.get(key);
+      return [{
+        ...product,
+        warehouse: balance?.ten_kho || product.warehouse || warehouseFilter,
+        openingStock: balance
+          ? String(balance.ton_dau_ky)
+          : product.openingStock && product.openingStock !== '-'
+            ? product.openingStock
+            : '0',
+        inbound: balance ? String(balance.nhap_trong_ky) : '0',
+        outbound: balance ? String(balance.xuat_trong_ky) : '0',
+        stock: balance ? String(balance.ton_cuoi_ky) : '0'
+      }];
+    });
+
+    const fromBalancesOnly = balanceRows.flatMap(balance => {
+      const key = normalizeProductCodeKey(balance.ma);
+      if (!key || key === '-' || seenKeys.has(key)) return [];
       return [{
         id: `inventory-balance:${key}`,
         code: balance.ma,
@@ -2025,7 +2042,9 @@ export function ProductsPanel({
         inventoryBalanceOnly: true
       }];
     });
-  }, [balanceRows, isCatalogMode, products, warehouseFilter]);
+
+    return [...fromCatalog, ...fromBalancesOnly];
+  }, [balanceRows, includeUnassigned, isCatalogMode, products, warehouseFilter]);
 
   const productGroups = useMemo(
     () => ['all', ...Array.from(new Set(displayProducts.map(product => product.group))).sort((a, b) => String(a).localeCompare(String(b), 'vi'))],

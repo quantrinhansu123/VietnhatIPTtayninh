@@ -3141,11 +3141,14 @@ input[type="number"] {
 .acceptance-report-print-table th:nth-child(4) { width: 12%; }
 .acceptance-report-print-table th:nth-child(5) { width: 18%; }
 
-.can-tu-dong-print-table th:nth-child(1) { width: 8%; }
-.can-tu-dong-print-table th:nth-child(2) { width: 18%; }
-.can-tu-dong-print-table th:nth-child(3) { width: 36%; }
-.can-tu-dong-print-table th:nth-child(4) { width: 14%; }
-.can-tu-dong-print-table th:nth-child(5) { width: 24%; }
+.can-tu-dong-print-table th:nth-child(1) { width: 5%; }
+.can-tu-dong-print-table th:nth-child(2) { width: 12%; }
+.can-tu-dong-print-table th:nth-child(3) { width: 20%; }
+.can-tu-dong-print-table th:nth-child(4) { width: 8%; }
+.can-tu-dong-print-table th:nth-child(5) { width: 14%; }
+.can-tu-dong-print-table th:nth-child(6) { width: 14%; }
+.can-tu-dong-print-table th:nth-child(7) { width: 13%; }
+.can-tu-dong-print-table th:nth-child(8) { width: 14%; }
 
 .shift-summary-print-doc {
   width: 190mm;

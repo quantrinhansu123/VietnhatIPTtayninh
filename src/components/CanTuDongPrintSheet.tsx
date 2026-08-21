@@ -4,6 +4,9 @@ import { formatNumber } from '../utils';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
 import {
   parseCanTuDongQrProductCode,
+  resolveCanLoiKg,
+  resolveCanSpKg,
+  resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
   type CanTuDongWeightRow
 } from '../utils/canTuDongWeights';
@@ -12,6 +15,12 @@ export type CanTuDongPrintLine = {
   maSp: string;
   tenSp: string;
   soLuong: number;
+  /** Tổng Cân sản phẩm (Cân hàng) — `weight` / `can_san_pham`. */
+  tongTrongLuong: number;
+  /** Tổng Cân lõi — `tare_weight` / `can_loi`. */
+  tongTrongLuongLoi: number;
+  /** Tổng Trọng lượng bì. */
+  tongTrongLuongBi: number;
   trongLuongNhua: number;
 };
 
@@ -22,6 +31,9 @@ export type CanTuDongPrintData = {
   printedAt: string;
   lines: CanTuDongPrintLine[];
   totalSoLuong: number;
+  totalTongTrongLuong: number;
+  totalTongTrongLuongLoi: number;
+  totalTongTrongLuongBi: number;
   totalTrongLuongNhua: number;
 };
 
@@ -44,8 +56,13 @@ function formatPrintDateTime(iso: string) {
   });
 }
 
+function addFinite(sum: number, value: number | null) {
+  return value === null ? sum : sum + value;
+}
+
 /**
- * Gộp các lần cân theo mã SP: Số lượng = số lần cân, Trọng lượng nhựa = tổng kg nhựa.
+ * Gộp các lần cân theo mã SP.
+ * Số lượng = số lần cân; các cột tổng cộng dồn từ Cân hàng / Cân lõi / Bì / Nhựa.
  */
 export function buildCanTuDongPrintData(
   records: CanTuDongWeightRow[],
@@ -65,16 +82,25 @@ export function buildCanTuDongPrintData(
       String(row.qr_code || '').trim() ||
       '—';
     const key = normalizeProductCodeKey(maSp) || maSp;
+    const canHang = resolveCanSpKg(row);
+    const canLoi = resolveCanLoiKg(row);
+    const trongLuongBi = resolveTrongLuongBiKg(row);
     const nhua = resolveTrongLuongNhuaKg(row);
     const existing = lineMap.get(key);
     if (existing) {
       existing.soLuong += 1;
+      existing.tongTrongLuong = addFinite(existing.tongTrongLuong, canHang);
+      existing.tongTrongLuongLoi = addFinite(existing.tongTrongLuongLoi, canLoi);
+      existing.tongTrongLuongBi += trongLuongBi;
       if (nhua !== null) existing.trongLuongNhua += nhua;
     } else {
       lineMap.set(key, {
         maSp,
         tenSp: productNameByCode.get(key) || '',
         soLuong: 1,
+        tongTrongLuong: canHang ?? 0,
+        tongTrongLuongLoi: canLoi ?? 0,
+        tongTrongLuongBi: trongLuongBi,
         trongLuongNhua: nhua ?? 0
       });
     }
@@ -91,6 +117,9 @@ export function buildCanTuDongPrintData(
     printedAt: new Date().toISOString(),
     lines,
     totalSoLuong: lines.reduce((sum, line) => sum + line.soLuong, 0),
+    totalTongTrongLuong: lines.reduce((sum, line) => sum + line.tongTrongLuong, 0),
+    totalTongTrongLuongLoi: lines.reduce((sum, line) => sum + line.tongTrongLuongLoi, 0),
+    totalTongTrongLuongBi: lines.reduce((sum, line) => sum + line.tongTrongLuongBi, 0),
     totalTrongLuongNhua: lines.reduce((sum, line) => sum + line.trongLuongNhua, 0)
   };
 }
@@ -127,13 +156,16 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               <th>Mã SP</th>
               <th>Tên SP</th>
               <th>Số lượng</th>
+              <th>Tổng trọng lượng</th>
+              <th>Tổng trọng lượng lõi</th>
+              <th>Tổng trọng lượng bì</th>
               <th>Trọng lượng nhựa</th>
             </tr>
           </thead>
           <tbody>
             {data.lines.length === 0 ? (
               <tr>
-                <td colSpan={5} className="production-order-print-center">
+                <td colSpan={8} className="production-order-print-center">
                   Không có dữ liệu theo bộ lọc.
                 </td>
               </tr>
@@ -144,6 +176,15 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
                   <td>{line.maSp || '-'}</td>
                   <td>{line.tenSp || '-'}</td>
                   <td className="production-order-print-right">{formatNumber(line.soLuong, 0)}</td>
+                  <td className="production-order-print-right">
+                    {formatNumber(line.tongTrongLuong, 2)} kg
+                  </td>
+                  <td className="production-order-print-right">
+                    {formatNumber(line.tongTrongLuongLoi, 2)} kg
+                  </td>
+                  <td className="production-order-print-right">
+                    {formatNumber(line.tongTrongLuongBi, 2)} kg
+                  </td>
                   <td className="production-order-print-right">
                     {formatNumber(line.trongLuongNhua, 2)} kg
                   </td>
@@ -156,6 +197,15 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               </td>
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalSoLuong, 0)}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTongTrongLuong, 2)} kg
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTongTrongLuongLoi, 2)} kg
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTongTrongLuongBi, 2)} kg
               </td>
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalTrongLuongNhua, 2)} kg

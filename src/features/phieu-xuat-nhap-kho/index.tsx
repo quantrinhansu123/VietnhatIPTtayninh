@@ -50,7 +50,7 @@ import {
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, {
-  mergeNvlExportPrintSlips,
+  mergeWarehousePrintSlips,
   type WarehouseSlipPrintData
 } from '../../components/WarehouseSlipPrintModal';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
@@ -3727,12 +3727,8 @@ export function WarehouseHistoryPanel({
       return;
     }
 
-    // Xuất kho vật tư: gộp thành 1 phiếu in và cộng SL khi trùng mã (không tách trang từng phiếu).
-    const allNvlExport = slips.every(
-      slip => slip.slipType === 'xuat' && slip.warehouseKind !== 'san_pham'
-    );
-    const printSlips =
-      allNvlExport && slips.length > 1 ? [mergeNvlExportPrintSlips(slips)] : slips;
+    // Mọi phiếu xuất/nhập khi in gộp → 1 bảng; trùng mã (+ ĐVT) thì cộng SL.
+    const printSlips = slips.length > 1 ? [mergeWarehousePrintSlips(slips)] : slips;
 
     setError('');
     setHistoryPrintSlips(printSlips);

@@ -772,8 +772,13 @@ input[type="number"] {
   }
 
   @page warehouse-slip-page {
-    size: A4 landscape;
-    margin: 5mm;
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  @page warehouse-slip-xuat-page {
+    size: A4 portrait;
+    margin: 8mm;
   }
 
   @page shift-summary-page {
@@ -3765,6 +3770,10 @@ input[type="number"] {
   display: block;
 }
 
+.warehouse-slip-print-preview {
+  max-width: 210mm;
+}
+
 .warehouse-slip-print-doc {
   width: 100%;
   font-family: 'Times New Roman', Times, serif;
@@ -3890,7 +3899,7 @@ input[type="number"] {
 }
 
 .warehouse-slip-print-meta--nvl-export {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .warehouse-slip-print-table--nvl-export {
@@ -4182,6 +4191,11 @@ input[type="number"] {
     padding: 0;
   }
 
+  .warehouse-slip-print-batch .warehouse-slip-print-sheet--xuat,
+  .production-order-print-batch .warehouse-slip-print-sheet--xuat {
+    page: warehouse-slip-xuat-page;
+  }
+
   .warehouse-slip-print-batch .warehouse-slip-print-sheet + .warehouse-slip-print-sheet {
     break-before: page;
     page-break-before: always;
@@ -4189,9 +4203,12 @@ input[type="number"] {
 
   .warehouse-slip-print-batch .warehouse-slip-print-doc {
     width: 100% !important;
-    max-width: none !important;
+    max-width: 210mm !important;
+    margin-left: auto;
+    margin-right: auto;
     box-sizing: border-box;
-    margin: 0;
+    margin-top: 0;
+    margin-bottom: 0;
     padding: 0;
   }
 

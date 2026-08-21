@@ -97,11 +97,11 @@ function addNullablePrintQty(a: number | null | undefined, b: number | null | un
 }
 
 /**
- * In gộp phiếu xuất kho vật tư: 1 phiếu in, cộng SL khi trùng mã (+ ĐVT).
+ * In gộp nhiều phiếu xuất/nhập: 1 bảng in, cộng SL khi trùng mã (+ ĐVT).
  */
-export function mergeNvlExportPrintSlips(slips: WarehouseSlipPrintData[]): WarehouseSlipPrintData {
+export function mergeWarehousePrintSlips(slips: WarehouseSlipPrintData[]): WarehouseSlipPrintData {
   if (slips.length === 0) {
-    throw new Error('Không có phiếu xuất kho vật tư để gộp in.');
+    throw new Error('Không có phiếu để gộp in.');
   }
   if (slips.length === 1) return slips[0];
 
@@ -156,6 +156,9 @@ export function mergeNvlExportPrintSlips(slips: WarehouseSlipPrintData[]): Wareh
     lines
   };
 }
+
+/** @deprecated Dùng mergeWarehousePrintSlips — giữ alias để tương thích. */
+export const mergeNvlExportPrintSlips = mergeWarehousePrintSlips;
 
 function warehouseKindTitleLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
   switch (kind) {
@@ -603,7 +606,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
   }
 
   return (
-    <div className="warehouse-slip-print-sheet">
+    <div className="warehouse-slip-print-sheet warehouse-slip-print-sheet--xuat">
       <div className={`warehouse-slip-print-doc${useCompactPrintLayout ? ' warehouse-slip-print-doc--compact' : ''}`}>
         <header className="warehouse-slip-print-header">
           <div className="warehouse-slip-print-brand">
@@ -805,7 +808,7 @@ export default function WarehouseSlipPrintModal({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 px-4 py-4 sm:px-5">
-            <div className="mx-auto flex w-full max-w-[297mm] flex-col gap-4">
+            <div className="mx-auto flex w-full max-w-[210mm] flex-col gap-4">
               {printSlips.map((slip, index) => (
                 <div
                   key={`${slip.slipCode}-${index}`}

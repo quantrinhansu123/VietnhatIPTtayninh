@@ -781,6 +781,16 @@ input[type="number"] {
     margin: 8mm;
   }
 
+  @page can-tu-dong-print-page {
+    size: 210mm 297mm;
+    margin: 8mm;
+  }
+
+  @page production-order-print-page {
+    size: 210mm 297mm;
+    margin: 8mm;
+  }
+
   @page shift-summary-page {
     size: A4 landscape;
     margin: 5mm;
@@ -2247,6 +2257,27 @@ input[type="number"] {
     visibility: visible !important;
   }
 
+  body.can-tu-dong-print-active #root {
+    display: none !important;
+  }
+
+  body.can-tu-dong-print-active .production-order-print-batch,
+  body.can-tu-dong-print-active .production-order-print-sheet,
+  body.can-tu-dong-print-active .can-tu-dong-print-batch,
+  body.can-tu-dong-print-active .can-tu-dong-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
+
+  body.can-tu-dong-print-active .production-order-print-page,
+  body.can-tu-dong-print-active .can-tu-dong-print-sheet {
+    page: can-tu-dong-print-page !important;
+  }
+
   /* Preview báo cáo máy NVL tồn dùng cùng print layout cân đối với báo cáo
      sản lượng: sheet nằm cạnh #root và bắt đầu từ đầu vùng in. */
   body.machine-nvl-report-print-active #root {
@@ -2272,6 +2303,11 @@ input[type="number"] {
     width: 100% !important;
     overflow: visible !important;
     visibility: visible !important;
+  }
+
+  body.production-order-print-active .production-order-print-page,
+  body.production-order-print-active .production-order-print-sheet {
+    page: production-order-print-page !important;
   }
 
   body.shift-handover-print-active #root {
@@ -3104,6 +3140,12 @@ input[type="number"] {
 .acceptance-report-print-table th:nth-child(3) { width: 34%; }
 .acceptance-report-print-table th:nth-child(4) { width: 12%; }
 .acceptance-report-print-table th:nth-child(5) { width: 18%; }
+
+.can-tu-dong-print-table th:nth-child(1) { width: 8%; }
+.can-tu-dong-print-table th:nth-child(2) { width: 18%; }
+.can-tu-dong-print-table th:nth-child(3) { width: 36%; }
+.can-tu-dong-print-table th:nth-child(4) { width: 14%; }
+.can-tu-dong-print-table th:nth-child(5) { width: 24%; }
 
 .shift-summary-print-doc {
   width: 190mm;

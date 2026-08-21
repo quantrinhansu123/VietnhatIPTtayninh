@@ -27,7 +27,7 @@ import { STANDARD_SHIFTS } from '../../types';
 import { normalizeHrBranches, type HrBranch, type HrMember } from '../_shared/hr';
 import { ControlBoardShiftSummaryPrintBatch } from '../../components/ControlBoardShiftSummaryPrintSheet';
 import { buildControlBoardShiftSummary, type ControlBoardShiftSummaryRow } from '../../utils/controlBoardShiftSummary';
-import { waitForPrintImagesReady } from '../../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
   normalizeProducts,
   findProductByCode,
@@ -4402,11 +4402,16 @@ export function useProductionOrderPrint() {
 
     let cancelled = false;
     document.body.classList.add('production-order-print-active');
+    enablePortraitPrintPage('production-order-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('production-order-print-page-portrait');
+        }
       });
     }, 150);
 
@@ -4414,12 +4419,14 @@ export function useProductionOrderPrint() {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('production-order-print-active');
+      disablePortraitPrintPage('production-order-print-page-portrait');
     };
   }, [pendingPrint, printingOrder, printingMaterials, printingProduct, printingMachineLabel]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('production-order-print-active');
+      disablePortraitPrintPage('production-order-print-page-portrait');
       setPrintingOrder(null);
       setPrintingMaterials([]);
       setPrintingProduct(null);

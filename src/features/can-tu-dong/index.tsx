@@ -1,11 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Pencil, RefreshCw, Scale, Trash2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Loader2, Pencil, Printer, RefreshCw, Scale, Trash2, X } from 'lucide-react';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
 } from '../../components/WeighingImagePreviewModal';
+import {
+  buildCanTuDongPrintData,
+  CanTuDongPrintBatch,
+  type CanTuDongPrintData
+} from '../../components/CanTuDongPrintSheet';
 import { formatNumber } from '../../utils';
+import { waitForPrintImagesReady } from '../../utils/printReady';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
+import { normalizeProductCodeKey } from '../san-pham/types';
 import {
   DEFAULT_CAN_TU_DONG_BI_KG,
   filterCanTuDongRecordsForBoard,
@@ -25,6 +33,21 @@ import {
   TableRow,
   TableEmptyRow
 } from '../../components/shared/table';
+
+const CAN_TU_DONG_PORTRAIT_STYLE_ID = 'can-tu-dong-print-page-portrait';
+
+function enableCanTuDongPortraitPrintPage() {
+  document.getElementById(CAN_TU_DONG_PORTRAIT_STYLE_ID)?.remove();
+  const style = document.createElement('style');
+  style.id = CAN_TU_DONG_PORTRAIT_STYLE_ID;
+  style.media = 'print';
+  style.textContent = '@page { size: 210mm 297mm; margin: 8mm; }';
+  document.head.appendChild(style);
+}
+
+function disableCanTuDongPortraitPrintPage() {
+  document.getElementById(CAN_TU_DONG_PORTRAIT_STYLE_ID)?.remove();
+}
 
 /**
  * Ý nghĩa cột DB / hiển thị:
@@ -184,6 +207,9 @@ export function CanTuDongPanel({
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
+  const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
+  const [pendingPrint, setPendingPrint] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -216,6 +242,61 @@ export function CanTuDongPanel({
     void loadRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ load lần đầu; lọc bằng nút Tải lại
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/san-pham?format=table');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows: Array<Record<string, unknown>> = Array.isArray(data?.products)
+          ? data.products
+          : Array.isArray(data)
+            ? data
+            : [];
+        const map = new Map<string, string>();
+        for (const row of rows) {
+          const code = String(row.ma_sp ?? row.code ?? '').trim();
+          const name = String(row.ten_sp ?? row.name ?? '').trim();
+          const key = normalizeProductCodeKey(code);
+          if (key && name) map.set(key, name);
+        }
+        if (!cancelled) setProductNameByCode(map);
+      } catch {
+        if (!cancelled) setProductNameByCode(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPrint || !printData) return;
+    let cancelled = false;
+    document.body.classList.add('can-tu-dong-print-active');
+    enableCanTuDongPortraitPrintPage();
+    const timer = window.setTimeout(() => {
+      void waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        try {
+          window.print();
+        } finally {
+          document.body.classList.remove('can-tu-dong-print-active');
+          disableCanTuDongPortraitPrintPage();
+          setPendingPrint(false);
+          setPrintData(null);
+        }
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('can-tu-dong-print-active');
+      disableCanTuDongPortraitPrintPage();
+    };
+  }, [pendingPrint, printData]);
 
   const statusOptions = useMemo(() => {
     const set = new Set<string>();
@@ -391,6 +472,22 @@ export function CanTuDongPanel({
     }
   };
 
+  const handlePrintFiltered = () => {
+    if (filteredRecords.length === 0) {
+      showAppToast('Không có dữ liệu theo bộ lọc để in.', 'error');
+      return;
+    }
+    setPrintData(
+      buildCanTuDongPrintData(filteredRecords, {
+        fromDate,
+        toDate,
+        ca: selectedCa,
+        productNameByCode
+      })
+    );
+    setPendingPrint(true);
+  };
+
   return (
     <div className="w-full max-w-none space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -407,15 +504,27 @@ export function CanTuDongPanel({
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadRecords()}
-          disabled={loading}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#ef1b2d] px-3 text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Tải lại
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePrintFiltered}
+            disabled={loading || pendingPrint || filteredRecords.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#ef1b2d]/30 bg-red-50 px-3 text-xs font-bold text-[#ef1b2d] transition hover:bg-red-100 disabled:opacity-60"
+            title="In bảng tổng hợp theo bộ lọc đang chọn"
+          >
+            {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            In theo bộ lọc
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadRecords()}
+            disabled={loading}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#ef1b2d] px-3 text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Tải lại
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
@@ -681,6 +790,10 @@ export function CanTuDongPanel({
       ) : null}
 
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
+
+      {pendingPrint && printData
+        ? createPortal(<CanTuDongPrintBatch data={printData} />, document.body)
+        : null}
     </div>
   );
 }

@@ -34,3 +34,21 @@ export function waitForPrintImagesReady(maxWaitMs = 4000): Promise<void> {
     const fallbackTimer = window.setTimeout(finish, maxWaitMs);
   });
 }
+
+const PORTRAIT_PRINT_PAGE_STYLE_ID = 'app-print-page-portrait-override';
+
+/**
+ * Chrome hay giữ @page landscape toàn cục — inject @page A4 dọc trước khi in.
+ */
+export function enablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID) {
+  document.getElementById(styleId)?.remove();
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.media = 'print';
+  style.textContent = '@page { size: 210mm 297mm; margin: 8mm; }';
+  document.head.appendChild(style);
+}
+
+export function disablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID) {
+  document.getElementById(styleId)?.remove();
+}

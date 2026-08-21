@@ -45,7 +45,7 @@ import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
-import { waitForPrintImagesReady } from '../../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
   Eye,
   Loader2,
@@ -443,11 +443,16 @@ export function ProductionOrdersPanel({
 
     let cancelled = false;
     document.body.classList.add('production-order-print-active');
+    enablePortraitPrintPage('production-order-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingBatchPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingBatchPrint(false);
+          disablePortraitPrintPage('production-order-print-page-portrait');
+        }
       });
     }, 150);
 
@@ -455,12 +460,14 @@ export function ProductionOrdersPanel({
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('production-order-print-active');
+      disablePortraitPrintPage('production-order-print-page-portrait');
     };
   }, [pendingBatchPrint, printingBatchOrders]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('production-order-print-active');
+      disablePortraitPrintPage('production-order-print-page-portrait');
       setPrintingBatchOrders([]);
       setPrintingBatchProductCatalog([]);
       setPendingBatchPrint(false);

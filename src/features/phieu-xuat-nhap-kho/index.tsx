@@ -680,6 +680,13 @@ function warehouseCodePrefix(raw: string) {
   return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
 }
 
+/** Có hậu tố lô/serial sau dấu `_` (VD `MT-MN001_3701190208G`). Mã chỉ tiền tố → không chặn quét trùng. */
+function warehouseScanHasLotSuffix(raw: string) {
+  const trimmed = raw.trim();
+  const underscoreIdx = trimmed.indexOf('_');
+  return underscoreIdx > 0 && underscoreIdx < trimmed.length - 1;
+}
+
 export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1531,11 +1538,23 @@ export function WarehouseSlipPanel({
 
   // Ô Mã NPL/SP chỉ lưu tiền tố (mã gốc trong danh mục), không mang hậu tố lô/serial — nên
   // phải nhớ riêng từng mã đầy đủ (tiền tố+hậu tố) đã quét theo tiền tố để chống quét trùng tem.
+  // Tổng SL trên modal: cộng SL các dòng đã quét (mã chỉ tiền tố quét lại vẫn tăng SL).
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
-  const scannedItemCount = [...scannedFullCodesByPrefixRef.current.values()].reduce(
-    (total, codes) => total + codes.size,
-    0
-  );
+  const scannedItemCount = (() => {
+    let total = 0;
+    for (const prefixKey of scannedFullCodesByPrefixRef.current.keys()) {
+      const line = lines.find(
+        entry => entry.code.trim() && normalizeMaterialCodeKey(entry.code.trim()) === prefixKey
+      );
+      if (line) {
+        const parsed = parsePercentInput(line.quantity);
+        total += Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      } else {
+        total += scannedFullCodesByPrefixRef.current.get(prefixKey)?.size ?? 0;
+      }
+    }
+    return total;
+  })();
 
   const buildCurrentScanningDraft = (id: string, updatedAt = Date.now()): WarehouseScanningDraft => ({
     id,
@@ -1689,8 +1708,9 @@ export function WarehouseSlipPanel({
   ]);
 
   /**
-   * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial.
-   * - Trùng cả tiền tố lẫn hậu tố (đúng y nguyên tem đã quét) → báo lỗi, không cộng.
+   * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial (nếu có).
+   * - Có hậu tố và trùng đúng mã đầy đủ đã quét → báo lỗi, không cộng.
+   * - Chỉ tiền tố (không hậu tố) → quét lại vẫn cộng dồn SL.
    * - Cùng tiền tố, khác hậu tố → cộng dồn 1 vào SL thực của dòng đã có, không thêm dòng mới.
    * - Chưa gặp tiền tố này → thêm dòng mới, SL thực = 1. Ô Mã NPL/SP chỉ lưu tiền tố.
    */
@@ -1701,9 +1721,11 @@ export function WarehouseSlipPanel({
     const prefix = warehouseCodePrefix(fullCode);
     const prefixKey = normalizeMaterialCodeKey(prefix);
     const fullCodeKey = normalizeMaterialCodeKey(fullCode);
+    const hasLotSuffix = warehouseScanHasLotSuffix(fullCode);
 
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
-    if (scannedForPrefix?.has(fullCodeKey)) {
+    // Chỉ chặn trùng khi tem có hậu tố serial. Tem chỉ mã gốc → cho phép quét lại để đếm SL.
+    if (hasLotSuffix && scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
@@ -1712,9 +1734,14 @@ export function WarehouseSlipPanel({
     );
 
     if (prefixIndex >= 0) {
-      if (scannedForPrefix) {
-        scannedForPrefix.add(fullCodeKey);
-      } else {
+      if (hasLotSuffix) {
+        if (scannedForPrefix) {
+          scannedForPrefix.add(fullCodeKey);
+        } else {
+          scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
+        }
+      } else if (!scannedFullCodesByPrefixRef.current.has(prefixKey)) {
+        // Đánh dấu tiền tố đã quét để Tổng SL / phiếu tạm vẫn nhận diện dòng này.
         scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
       }
       const nextLines = current.map((line, idx) => {
@@ -3013,7 +3040,7 @@ export function WarehouseSlipPanel({
                     setQrScannerOpen(true);
                   }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  title="Quét máy: cùng tiền tố khác hậu tố sẽ cộng dồn SL thực; trùng cả mã báo lỗi"
+                  title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét máy
@@ -3025,7 +3052,7 @@ export function WarehouseSlipPanel({
                     setQrScannerOpen(true);
                   }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
-                  title="Quét QR: cùng tiền tố khác hậu tố sẽ cộng dồn SL thực; trùng cả mã báo lỗi"
+                  title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét QR

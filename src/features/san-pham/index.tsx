@@ -63,17 +63,49 @@ function parsePrintCopyCount(raw: string) {
   return Math.min(value, 999);
 }
 
+/** Giống server `buildProductQrTimeSerial`: ssmmhhddmm (Asia/Ho_Chi_Minh). */
+function buildProductQrTimeSerial(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    second: '2-digit',
+    minute: '2-digit',
+    hour: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find(part => part.type === type)?.value.padStart(2, '0') || '00';
+  return `${value('second')}${value('minute')}${value('hour')}${value('day')}${value('month')}`;
+}
+
+function randomProductQrSuffix(length: number): string {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let result = '';
+  for (let index = 0; index < length; index += 1) {
+    result += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return result;
+}
+
 /**
- * Tem in nhanh từ danh mục chưa được lưu thành serial trong CSDL. Vẫn phải mang
- * nguyên mã gốc (tiền tố) và một hậu tố riêng cho từng tem để máy quét trả về
- * mã đầy đủ, thay vì chỉ trả về mã SP gốc.
+ * Tem in nhanh từ danh mục — cùng quy tắc Nhập kho (`buildStoredProductQrCodes`):
+ * `MãSP_` + ssmmhhddmm + 1 chuỗi ký tự random (tăng độ dài khi trùng trong lô in).
+ * Không lưu CSDL; khi quét, tiền tố trước `_` vẫn khớp mã SP gốc.
  */
-function buildCatalogQrPayload(productCode: string, sequence: number): string {
+function buildCatalogQrPayload(productCode: string, used: Set<string>): string {
   const code = productCode.trim();
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const serial = String(sequence + 1).padStart(3, '0');
-  const random = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0');
-  return `${code}_${timestamp}${serial}${random}`;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const randomLength = attempt < 24 ? 1 : attempt < 64 ? 2 : 3;
+    const candidate = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(randomLength)}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return candidate;
+    }
+  }
+  const fallback = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(4)}`;
+  used.add(fallback);
+  return fallback;
 }
 
 async function createQrDataUrl(payload: string) {
@@ -2189,6 +2221,7 @@ export function ProductsPanel({
 
   const handleConfirmPrintQrLabels = () => {
     setPrintQtyError('');
+    const usedPayloads = new Set<string>();
     const labels: WarehouseProductQrPrintLabel[] = selectedPrintProducts.flatMap(product => {
       const productCode = String(product.code || '').trim();
       const copies = parsePrintCopyCount(printQtyById[product.id] ?? '0');
@@ -2196,7 +2229,7 @@ export function ProductsPanel({
 
       return Array.from({ length: copies }, (_, copyIndex) => ({
         key: `catalog-${product.id}-${copyIndex}`,
-        payload: buildCatalogQrPayload(productCode, copyIndex),
+        payload: buildCatalogQrPayload(productCode, usedPayloads),
         productCode,
         productName: product.name || '-'
       }));

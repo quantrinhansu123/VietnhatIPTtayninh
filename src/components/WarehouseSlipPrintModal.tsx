@@ -194,10 +194,6 @@ function sortPrintLinesByUnit(lines: WarehouseSlipPrintLine[]) {
     .map(item => item.line);
 }
 
-function sumPrintAmount(lines: WarehouseSlipPrintLine[]) {
-  return lines.reduce((sum, line) => sum + (Number.isFinite(line.lineAmount) ? line.lineAmount : 0), 0);
-}
-
 function formatPrintWeightKg(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '';
   return formatNumber(value, 3);
@@ -402,8 +398,6 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
   const totalPlasticKg = sumPrintWeightKg(plasticLines) || sumPrintQty(plasticLines);
   const totalOtherMaterialKg = sumPrintWeightKg(otherMaterialLines);
   const grandTotalKg = totalPlasticKg + totalOtherMaterialKg;
-  const totalPlasticAmount = sumPrintAmount(plasticLines);
-  const totalOtherAmount = sumPrintAmount(otherMaterialLines);
   const printShift = formatPrintShift(data.shift);
 
   return (
@@ -438,11 +432,9 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th>Mã vật tư</th>
             <th>Tên vật tư</th>
             <th>ĐVT</th>
-            <th>PN nhập / giá</th>
-            <th>SL CT</th>
+            <th>PN nhập</th>
             <th>SL THỰC</th>
             <th>Quy về kg</th>
-            <th>Thành tiền</th>
             <th>Ghi chú</th>
           </tr>
         </thead>
@@ -451,57 +443,40 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <tr key={`${line.code}-${index}`}>
               <td className="warehouse-slip-print-center">{index + 1}</td>
               <td>{line.code || ''}</td>
-              <td>{line.name || ''}</td>
+              <td className="warehouse-slip-print-name">{line.name || ''}</td>
               <td className="warehouse-slip-print-center">{line.unit || ''}</td>
-              <td className="warehouse-slip-print-center">
-                {[line.sourceInboundSlipCode, line.unitPrice > 0 ? `${formatMoney(line.unitPrice, 0)} đ` : '']
-                  .filter(Boolean)
-                  .join(' · ')}
-              </td>
-              <td className="warehouse-slip-print-right">{formatPrintQty(line.documentQuantity)}</td>
+              <td className="warehouse-slip-print-center">{line.sourceInboundSlipCode || ''}</td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
-              <td className="warehouse-slip-print-right">
-                {line.lineAmount > 0 ? formatMoney(line.lineAmount, 0) : ''}
-              </td>
               <td>{line.lineNote || ''}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           {plasticLines.length > 0 ? <tr>
-            <td colSpan={7} className="warehouse-slip-print-total-label">
+            <td colSpan={6} className="warehouse-slip-print-total-label">
               TỔNG NHỰA (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
               {totalPlasticKg > 0 ? `${formatNumber(totalPlasticKg, 3)} kg` : '0 kg'}
             </td>
-            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalPlasticAmount > 0 ? formatMoney(totalPlasticAmount, 0) : ''}
-            </td>
             <td />
           </tr> : null}
           {otherMaterialLines.length > 0 ? <tr>
-            <td colSpan={7} className="warehouse-slip-print-total-label">
+            <td colSpan={6} className="warehouse-slip-print-total-label">
               TỔNG VẬT TƯ KHÁC (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
               {totalOtherMaterialKg > 0 ? `${formatNumber(totalOtherMaterialKg, 3)} kg` : '0 kg'}
             </td>
-            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalOtherAmount > 0 ? formatMoney(totalOtherAmount, 0) : ''}
-            </td>
             <td />
           </tr> : null}
           <tr className="warehouse-slip-print-grand-total-row">
-            <td colSpan={7} className="warehouse-slip-print-total-label">
+            <td colSpan={6} className="warehouse-slip-print-total-label">
               TỔNG KG
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
               {grandTotalKg > 0 ? `${formatNumber(grandTotalKg, 3)} kg` : '0 kg'}
-            </td>
-            <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : ''}
             </td>
             <td />
           </tr>
@@ -602,17 +577,14 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
               </p>
             </div>
 
-            <table className="warehouse-slip-print-table">
+            <table className="warehouse-slip-print-table warehouse-slip-print-table--xuat">
               <thead>
                 <tr>
                   <th>STT</th>
                   <th>{codeColumnLabel(printData.warehouseKind)}</th>
                   <th>{nameColumnLabel(printData.warehouseKind)}</th>
                   <th>ĐVT</th>
-                  <th>SL CT</th>
-                  <th>SL THỰC</th>
-                  <th>Đơn giá</th>
-                  <th>Thành tiền</th>
+                  <th>SL</th>
                 </tr>
               </thead>
               <tbody>
@@ -620,22 +592,19 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                   <tr key={`${line.code}-${index}`}>
                     <td className="warehouse-slip-print-center">{index + 1}</td>
                     <td>{line.code || '-'}</td>
-                    <td>{line.name || '-'}</td>
+                    <td className="warehouse-slip-print-name">{line.name || '-'}</td>
                     <td className="warehouse-slip-print-center">{line.unit || '-'}</td>
-                    <td className="warehouse-slip-print-right">{formatPrintQty(line.documentQuantity, 2)}</td>
                     <td className="warehouse-slip-print-right">{formatNumber(line.quantity, 2)}</td>
-                    <td className="warehouse-slip-print-right">{formatMoney(line.unitPrice, 0)} đ</td>
-                    <td className="warehouse-slip-print-right">{formatMoney(line.lineAmount, 0)} đ</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={7} className="warehouse-slip-print-total-label">
+                  <td colSpan={4} className="warehouse-slip-print-total-label">
                     Tổng cộng
                   </td>
                   <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-                    {formatMoney(printData.totalAmount, 0)} đ
+                    {formatNumber(sumPrintQty(printData.lines), 2)}
                   </td>
                 </tr>
               </tfoot>

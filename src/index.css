@@ -3899,15 +3899,13 @@ input[type="number"] {
 }
 
 .warehouse-slip-print-table--nvl-export th:nth-child(1) { width: 5%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(2) { width: 17%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(3) { width: 24%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(4) { width: 6%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(5) { width: 10%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(6) { width: 7%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(7) { width: 8%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(8) { width: 9%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(9) { width: 8%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(10) { width: 6%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(2) { width: 14%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(3) { width: 38%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(4) { width: 7%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(5) { width: 12%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(6) { width: 9%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(7) { width: 9%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(8) { width: 6%; }
 
 .warehouse-slip-print-table--nvl-export th,
 .warehouse-slip-print-table--nvl-export td {
@@ -3917,8 +3915,6 @@ input[type="number"] {
 .warehouse-slip-print-table--nvl-export tbody td:nth-child(5),
 .warehouse-slip-print-table--nvl-export tbody td:nth-child(6),
 .warehouse-slip-print-table--nvl-export tbody td:nth-child(7),
-.warehouse-slip-print-table--nvl-export tbody td:nth-child(8),
-.warehouse-slip-print-table--nvl-export tbody td:nth-child(9),
 .warehouse-slip-print-table--nvl-export .warehouse-slip-print-total-value {
   white-space: nowrap;
   word-break: keep-all;
@@ -3929,6 +3925,23 @@ input[type="number"] {
   border-top: 2px solid #111111;
   background: #eeeeee;
   font-weight: 900;
+}
+
+.warehouse-slip-print-table--xuat {
+  table-layout: fixed;
+}
+
+.warehouse-slip-print-table--xuat th:nth-child(1) { width: 6%; }
+.warehouse-slip-print-table--xuat th:nth-child(2) { width: 16%; }
+.warehouse-slip-print-table--xuat th:nth-child(3) { width: 52%; }
+.warehouse-slip-print-table--xuat th:nth-child(4) { width: 10%; }
+.warehouse-slip-print-table--xuat th:nth-child(5) { width: 16%; }
+
+.warehouse-slip-print-name {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 .warehouse-slip-print-footnote {

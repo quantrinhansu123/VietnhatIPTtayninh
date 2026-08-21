@@ -5,6 +5,22 @@ import { PRINT_COMPANY_NAME, COMPANY_BRANCH_NAME, vietNhatLogoUrl } from './layo
 import { formatMoney, formatNumber } from '../utils';
 import { formatVietnameseMoneyWords } from '../utils/vietnameseMoneyWords';
 import { waitForPrintImagesReady } from '../utils/printReady';
+
+const WAREHOUSE_SLIP_PORTRAIT_STYLE_ID = 'warehouse-slip-print-page-portrait';
+
+/** Chrome hay bỏ qua named @page khi có @page landscape toàn cục — ép A4 dọc lúc in. */
+function enableWarehousePortraitPrintPage() {
+  document.getElementById(WAREHOUSE_SLIP_PORTRAIT_STYLE_ID)?.remove();
+  const style = document.createElement('style');
+  style.id = WAREHOUSE_SLIP_PORTRAIT_STYLE_ID;
+  style.media = 'print';
+  style.textContent = '@page { size: 210mm 297mm; margin: 8mm; }';
+  document.head.appendChild(style);
+}
+
+function disableWarehousePortraitPrintPage() {
+  document.getElementById(WAREHOUSE_SLIP_PORTRAIT_STYLE_ID)?.remove();
+}
 export type WarehouseSlipPrintLine = {
   code: string;
   name: string;
@@ -740,20 +756,26 @@ export default function WarehouseSlipPrintModal({
   useEffect(() => {
     if (!pendingPrint || printSlips.length === 0) return;
     document.body.classList.add('warehouse-slip-print-active');
+    enableWarehousePortraitPrintPage();
     let cancelled = false;
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
-        document.body.classList.remove('warehouse-slip-print-active');
-        onAfterPrint?.();
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          document.body.classList.remove('warehouse-slip-print-active');
+          disableWarehousePortraitPrintPage();
+          onAfterPrint?.();
+        }
       });
     }, 200);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('warehouse-slip-print-active');
+      disableWarehousePortraitPrintPage();
     };
   }, [pendingPrint, printSlips, onAfterPrint]);
 

@@ -772,12 +772,12 @@ input[type="number"] {
   }
 
   @page warehouse-slip-page {
-    size: A4 portrait;
+    size: 210mm 297mm;
     margin: 8mm;
   }
 
   @page warehouse-slip-xuat-page {
-    size: A4 portrait;
+    size: 210mm 297mm;
     margin: 8mm;
   }
 
@@ -4184,7 +4184,7 @@ input[type="number"] {
     display: block !important;
     position: relative;
     inset: auto;
-    page: warehouse-slip-page;
+    page: warehouse-slip-xuat-page;
     width: 100% !important;
     max-width: none !important;
     background: #ffffff;
@@ -4192,8 +4192,10 @@ input[type="number"] {
   }
 
   .warehouse-slip-print-batch .warehouse-slip-print-sheet--xuat,
-  .production-order-print-batch .warehouse-slip-print-sheet--xuat {
-    page: warehouse-slip-xuat-page;
+  .warehouse-slip-print-batch .warehouse-slip-print-sheet--nhap-kho,
+  .production-order-print-batch .warehouse-slip-print-sheet--xuat,
+  .production-order-print-batch .warehouse-slip-print-sheet--nhap-kho {
+    page: warehouse-slip-xuat-page !important;
   }
 
   .warehouse-slip-print-batch .warehouse-slip-print-sheet + .warehouse-slip-print-sheet {

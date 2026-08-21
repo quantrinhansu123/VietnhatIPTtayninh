@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Pencil, Printer, RefreshCw, Scale, Trash2, X } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Pencil, Printer, RefreshCw, Scale, Trash2, X } from 'lucide-react';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
@@ -12,6 +12,7 @@ import {
 } from '../../components/CanTuDongPrintSheet';
 import { formatNumber } from '../../utils';
 import { waitForPrintImagesReady } from '../../utils/printReady';
+import { downloadCanTuDongExcel } from '../../utils/canTuDongExcel';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { normalizeProductCodeKey } from '../san-pham/types';
 import {
@@ -26,6 +27,7 @@ import {
   TableToolbar,
   TableSearchInput,
   FilterCombobox,
+  MultiSelectFilter,
   TableShell,
   TableHead,
   TableHeadCell,
@@ -202,6 +204,8 @@ export function CanTuDongPanel({
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? 'all' : shift;
   });
+  /** Rỗng = mọi mã QR; tick nhiều mã để chỉ hiện các dòng khớp. */
+  const [selectedQrCodes, setSelectedQrCodes] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
@@ -316,16 +320,30 @@ export function CanTuDongPanel({
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
   }, [records]);
 
+  const qrCodeOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of records) {
+      const qr = String(row.qr_code ?? '').trim();
+      if (qr) set.add(qr);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [records]);
+
   const hasActiveFilters =
-    Boolean(searchText.trim()) || selectedStatus !== 'all' || selectedCa !== 'all';
+    Boolean(searchText.trim()) ||
+    selectedStatus !== 'all' ||
+    selectedCa !== 'all' ||
+    selectedQrCodes.length > 0;
 
   const resetFilters = () => {
     setSearchText('');
     setSelectedStatus('all');
     setSelectedCa('all');
+    setSelectedQrCodes([]);
   };
 
   const normalizedSearch = searchText.trim().toLowerCase();
+  const selectedQrSet = useMemo(() => new Set(selectedQrCodes), [selectedQrCodes]);
   const filteredRecords = useMemo(() => {
     // Chỉ lọc ca ở client. Ngày khớp cột THỜI ĐIỂM (captured_at), không dùng SOURCE_DATE
     // trong metadata (ngày sản xuất) — tránh lệch với API / cột hiển thị.
@@ -340,14 +358,16 @@ export function CanTuDongPanel({
         if (toDate && day > toDate) return false;
       }
       const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
+      const qr = String(row.qr_code ?? '').trim();
+      const matchesQr = selectedQrSet.size === 0 || (qr.length > 0 && selectedQrSet.has(qr));
       const matchesSearch =
         !normalizedSearch ||
         `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''} ${row.ca ?? ''}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesQr && matchesSearch;
     });
-  }, [records, normalizedSearch, selectedStatus, selectedCa, fromDate, toDate]);
+  }, [records, normalizedSearch, selectedStatus, selectedCa, selectedQrSet, fromDate, toDate]);
 
   const visibleIds = useMemo(
     () => filteredRecords.map(row => rowIdKey(row.id)).filter(Boolean),
@@ -488,6 +508,23 @@ export function CanTuDongPanel({
     setPendingPrint(true);
   };
 
+  const handleDownloadExcel = () => {
+    if (filteredRecords.length === 0) {
+      showAppToast('Không có dữ liệu theo bộ lọc để tải Excel.', 'error');
+      return;
+    }
+    try {
+      downloadCanTuDongExcel(filteredRecords, {
+        fromDate,
+        toDate,
+        productNameByCode
+      });
+      showAppToast(`Đã tải Excel (${filteredRecords.length} dòng).`);
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể tải Excel.', 'error');
+    }
+  };
+
   return (
     <div className="w-full max-w-none space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -505,6 +542,16 @@ export function CanTuDongPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            disabled={loading || filteredRecords.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+            title="Tải Excel theo bộ lọc đang chọn"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Tải Excel
+          </button>
           <button
             type="button"
             onClick={handlePrintFiltered}
@@ -588,6 +635,17 @@ export function CanTuDongPanel({
           onChange={setSelectedCa}
           searchPlaceholder="Tìm ca..."
           compact
+        />
+        <MultiSelectFilter
+          label="Mã QR"
+          allLabel="Tất cả mã QR"
+          options={qrCodeOptions}
+          values={selectedQrCodes}
+          onChange={setSelectedQrCodes}
+          searchPlaceholder="Tìm mã QR..."
+          emptyLabel="Không tìm thấy mã QR"
+          dropdownWidth="w-[min(28rem,calc(100vw-1.5rem))]"
+          buttonClassName="h-9 rounded-lg px-2.5 text-xs"
         />
         <FilterCombobox
           label="Trạng thái"

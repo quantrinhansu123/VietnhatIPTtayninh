@@ -82,7 +82,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'can-tu-dong',
     appLines: 'src/features/can-tu-dong/index.tsx',
     components: ['src/components/WeighingImagePreviewModal.tsx'],
-    utils: []
+    utils: ['src/utils/canTuDongWeights.ts', 'src/utils/canTuDongExcel.ts']
   },
   kiem_kho: {
     table: 'kiem_kho',

@@ -37,8 +37,9 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **danh sách Cân AI cũ** (`can_tu_dong`) — bảng lọc/ảnh/tổng kg · nút **In theo bộ lọc** |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **danh sách Cân AI cũ** (`can_tu_dong`) — lọc ngày/ca/trạng thái/**mã QR (tick nhiều)** · ảnh/tổng kg · **Tải Excel** · **In theo bộ lọc** |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
+| `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel cân tự động (dùng khi `sanLuongSource='can-tu-dong'`; `/phan-tich-tu-dong` hiện lấy sản lượng từ `bao_cao_nghiem_thu`) |

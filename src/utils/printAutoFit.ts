@@ -19,20 +19,20 @@ const PRINT_DOCUMENT_CONTENT_HEIGHT_MM: Record<string, number> = {
   // Các selector chuyên biệt phải đứng trước class dùng chung
   // .production-order-print-doc để lấy đúng margin @page của từng mẫu.
   '.kiem-kho-print-doc': 297 - 5 * 2, // A4 dọc, @page sinh động khi in
-  '.machine-nvl-print-doc': 210 - 7 * 2,
-  '.bb-machine-report-print-doc': 210 - 7 * 2,
-  '.shift-summary-print-doc': 210 - 5 * 2,
+  '.machine-nvl-print-doc': 297 - 5 * 2, // @page machine-nvl-report-page: A4 dọc, margin 5mm
+  '.bb-machine-report-print-doc': 297 - 5 * 2, // @page bb-machine-report-page: A4 dọc, margin 5mm
+  '.shift-summary-print-doc': 297 - 5 * 2, // @page shift-summary-page: A4 dọc, margin 5mm
   '.warehouse-slip-print-doc': 210 - 5 * 2,
-  '.production-plan-print-doc': 210 - 9 * 2, // @page production-plan-page: margin 9mm 10mm
-  '.mixing-report-print-doc': 210, // @page mixing-report-page: margin 0
-  '.weighing-slip-print-doc': 210, // @page weighing-slip-page: margin 0
-  '.shift-handover-print-doc': 210 - 8 * 2,
-  '.mixing-norm-ratio-print-doc': 210 - 8 * 2,
-  '.order-print-doc': 210 - 8 * 2,
+  '.production-plan-print-doc': 297 - 5 * 2, // @page production-plan-page: A4 dọc, margin 5mm
+  '.mixing-report-print-doc': 297 - 5 * 2, // @page mixing-report-page: A4 dọc, margin 5mm
+  '.weighing-slip-print-doc': 297 - 5 * 2, // @page weighing-slip-page: A4 dọc, margin 5mm
+  '.shift-handover-print-doc': 297 - 5 * 2, // @page shift-handover-page: A4 dọc, margin 5mm
+  '.mixing-norm-ratio-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
+  '.order-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
   '.production-order-print-doc': 210 - 8 * 2,
   '.kiem-kho-print-sheet': 297 - 5 * 2,
 };
-const DEFAULT_CONTENT_HEIGHT_MM = 210 - 8 * 2;
+const DEFAULT_CONTENT_HEIGHT_MM = 297 - 8 * 2; // @page mặc định: A4 dọc, margin 8mm
 
 function pageContentHeightPx(element: HTMLElement) {
   const matchedSelector = Object.keys(PRINT_DOCUMENT_CONTENT_HEIGHT_MM).find(selector =>

@@ -17,7 +17,7 @@ import {
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 import { SearchableSelect } from './shared/SearchableSelect';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 
 const fieldClass =
   'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -343,17 +343,23 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     if (!pendingPrint || !printSlip) return;
     let cancelled = false;
     document.body.classList.add('shift-handover-print-active');
+    enablePortraitPrintPage('shift-handover-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('shift-handover-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('shift-handover-print-active');
+      disablePortraitPrintPage('shift-handover-page-portrait');
     };
   }, [pendingPrint, printSlip]);
 

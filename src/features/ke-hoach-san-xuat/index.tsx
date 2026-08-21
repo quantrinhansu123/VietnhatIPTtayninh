@@ -2007,6 +2007,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     if (historyPrintLines.length === 0) return;
     let cancelled = false;
     document.body.classList.add('production-plan-history-print-active');
+    enablePortraitPrintPage('production-plan-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -2017,12 +2018,14 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('production-plan-history-print-active');
+      disablePortraitPrintPage('production-plan-print-page-portrait');
     };
   }, [historyPrintLines]);
 
   useEffect(() => {
     const handleAfterHistoryPrint = () => {
       document.body.classList.remove('production-plan-history-print-active');
+      disablePortraitPrintPage('production-plan-print-page-portrait');
       setHistoryPrintLines([]);
       setHistoryPrintMaterials({});
     };
@@ -2730,49 +2733,67 @@ export function ProductionPlanModal({
   useEffect(() => {
     if (!pendingPrint || displayLines.length === 0) return;
     let cancelled = false;
+    enablePortraitPrintPage('production-plan-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('production-plan-print-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('production-plan-print-page-portrait');
     };
   }, [pendingPrint, displayLines]);
 
   useEffect(() => {
     if (!pendingNvlPrint || displayLines.length === 0) return;
     let cancelled = false;
+    enablePortraitPrintPage('production-plan-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingNvlPrint(false);
-        setShowNvlPrintSheet(false);
+        try {
+          window.print();
+        } finally {
+          setPendingNvlPrint(false);
+          setShowNvlPrintSheet(false);
+          disablePortraitPrintPage('production-plan-print-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('production-plan-print-page-portrait');
     };
   }, [pendingNvlPrint, displayLines]);
 
   useEffect(() => {
     if (!pendingStaffAssignmentPrint) return;
     let cancelled = false;
+    enablePortraitPrintPage('production-plan-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingStaffAssignmentPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingStaffAssignmentPrint(false);
+          disablePortraitPrintPage('production-plan-print-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('production-plan-print-page-portrait');
     };
   }, [pendingStaffAssignmentPrint]);
 

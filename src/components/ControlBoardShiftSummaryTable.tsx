@@ -28,7 +28,7 @@ import {
   type ShiftSummaryMetric
 } from '../utils/controlBoardShiftSummaryDetails';
 import type { ShiftSetting } from '../utils/shiftSettings';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import { formatMoney } from '../utils';
 
 const inputClass =
@@ -314,16 +314,22 @@ export default function ControlBoardShiftSummaryTable({
     if (!pendingPrint || !printPayload) return;
     let cancelled = false;
     document.body.classList.add('shift-summary-print-active');
+    enablePortraitPrintPage('shift-summary-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('shift-summary-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('shift-summary-page-portrait');
       document.body.classList.remove('shift-summary-print-active');
     };
   }, [pendingPrint, printPayload]);

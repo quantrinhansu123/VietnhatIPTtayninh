@@ -27,7 +27,7 @@ import {
   type MachineNvlSavedReport
 } from '../../utils/machineNvlReports';
 import { normalizeProductCodeKey } from '../san-pham/types';
-import { waitForPrintImagesReady } from '../../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
   findMachineByRef,
   machineSelectValue,
@@ -919,23 +919,30 @@ export function MachineNvlReportPanel({
     if (!pendingPrint || !printReport) return;
     let cancelled = false;
     document.body.classList.add('machine-nvl-report-print-active');
+    enablePortraitPrintPage('machine-nvl-report-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('machine-nvl-report-page-portrait');
+        }
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('machine-nvl-report-print-active');
+      disablePortraitPrintPage('machine-nvl-report-page-portrait');
     };
   }, [pendingPrint, printReport]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('machine-nvl-report-print-active');
+      disablePortraitPrintPage('machine-nvl-report-page-portrait');
       setPrintReport(null);
       setPendingPrint(false);
     };

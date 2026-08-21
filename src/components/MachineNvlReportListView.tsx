@@ -3,7 +3,7 @@ import { AlertTriangle, Boxes, ChevronLeft, Eye, Loader2, Pencil, Plus, Printer,
 import { createPortal } from 'react-dom';
 import { useTabAccess } from '../app/useTabAccess';
 import { formatNumber } from '../utils';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import {
   buildMachineNvlReportGroups,
   computeMachineNvlDauCaDiscrepancy,
@@ -725,6 +725,7 @@ export default function MachineNvlReportListView({
     if (!pendingPrint || !printReport) return;
     let cancelled = false;
     document.body.classList.add('machine-nvl-report-print-active');
+    enablePortraitPrintPage('machine-nvl-report-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -734,11 +735,13 @@ export default function MachineNvlReportListView({
           document.body.classList.remove('machine-nvl-report-print-active');
           setPrintReport(null);
           setPendingPrint(false);
+          disablePortraitPrintPage('machine-nvl-report-page-portrait');
         }
       });
     }, 150);
     return () => {
       cancelled = true;
+      disablePortraitPrintPage('machine-nvl-report-page-portrait');
       window.clearTimeout(timer);
       document.body.classList.remove('machine-nvl-report-print-active');
     };

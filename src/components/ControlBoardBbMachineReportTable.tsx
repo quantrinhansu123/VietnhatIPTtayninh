@@ -13,7 +13,7 @@ import type { ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
 import BbCanTuDongSanLuongPanel from './BbCanTuDongSanLuongPanel';
 import {
@@ -1317,11 +1317,16 @@ export default function ControlBoardBbMachineReportTable({
     let cancelled = false;
     document.body.classList.add('shift-summary-print-active');
     document.body.classList.add('bb-machine-report-print-active');
+    enablePortraitPrintPage('bb-machine-report-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('bb-machine-report-page-portrait');
+        }
       });
     }, 150);
     return () => {
@@ -1329,6 +1334,7 @@ export default function ControlBoardBbMachineReportTable({
       window.clearTimeout(timer);
       document.body.classList.remove('shift-summary-print-active');
       document.body.classList.remove('bb-machine-report-print-active');
+      disablePortraitPrintPage('bb-machine-report-page-portrait');
     };
   }, [pendingPrint, showPrintSheet]);
 

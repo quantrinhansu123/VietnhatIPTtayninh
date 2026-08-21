@@ -725,7 +725,7 @@ export function KiemKhoPanel({
       tenSp: '',
       loaiSp: '',
       donVi: '',
-      soLuong: '1',
+      soLuong: '',
       trongLuong: '',
       rawQr: ''
     };

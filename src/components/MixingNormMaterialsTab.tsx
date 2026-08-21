@@ -7,7 +7,7 @@ import {
   normalizeMixingProductionOrders,
   type MixingProductionOrder
 } from '../utils/mixingOrderAutofill';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import {
   MixingNormRatioPrintBatch,
   toPrintDoc,
@@ -511,16 +511,22 @@ export default function MixingNormMaterialsTab() {
   useEffect(() => {
     if (!pendingPrint || printDocs.length === 0) return;
     let cancelled = false;
+    enablePortraitPrintPage('order-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('order-print-page-portrait');
+        }
       });
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('order-print-page-portrait');
     };
   }, [pendingPrint, printDocs]);
 

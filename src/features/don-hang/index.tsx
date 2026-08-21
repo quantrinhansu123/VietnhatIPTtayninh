@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Eye, Loader2, Pencil, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
-import { waitForPrintImagesReady } from '../../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import { BackButton } from '../../components/layout/NavButtons';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
@@ -409,6 +409,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (!pendingPrint || !printOrder) return;
     let cancelled = false;
+    enablePortraitPrintPage('order-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -418,6 +419,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('order-print-page-portrait');
     };
   }, [pendingPrint, printOrder]);
 
@@ -425,6 +427,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
     const handleAfterPrint = () => {
       setPendingPrint(false);
       setPrintOrder(null);
+      disablePortraitPrintPage('order-print-page-portrait');
     };
     window.addEventListener('afterprint', handleAfterPrint);
     return () => window.removeEventListener('afterprint', handleAfterPrint);

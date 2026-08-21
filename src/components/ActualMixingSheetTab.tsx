@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, Printer, Save, XCircle } from 'lucide-react';
 import { MixingNormRatioPrintBatch, type MixingNormRatioPrintDoc } from './MixingNormRatioPrintSheet';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 
 type ActualLine = {
   ma_nvl: string;
@@ -356,6 +356,7 @@ export default function ActualMixingSheetTab() {
   useEffect(() => {
     if (!printDoc) return;
     document.body.classList.add('mixing-norm-ratio-print-active');
+    enablePortraitPrintPage('order-print-page-portrait');
     let cancelled = false;
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
@@ -369,6 +370,7 @@ export default function ActualMixingSheetTab() {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', close);
       document.body.classList.remove('mixing-norm-ratio-print-active');
+      disablePortraitPrintPage('order-print-page-portrait');
     };
   }, [printDoc]);
 

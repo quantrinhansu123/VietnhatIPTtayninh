@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeftRight, ChevronLeft, Eye, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import {
   ShiftHandoverPrintBatch,
   buildShiftHandoverPrintSlip,
@@ -337,16 +337,22 @@ export default function ShiftHandoverListView({
   useEffect(() => {
     if (!pendingPrint || printSlips.length === 0) return;
     let cancelled = false;
+    enablePortraitPrintPage('shift-handover-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('shift-handover-page-portrait');
+        }
       });
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('shift-handover-page-portrait');
     };
   }, [pendingPrint, printSlips]);
 

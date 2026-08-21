@@ -252,7 +252,7 @@ function printVehicleExpenses(
   popup.document.write(`<!doctype html>
   <html lang="vi"><head><meta charset="utf-8"><title>Báo cáo chi phí lái xe</title>
   <style>
-    @page { size: A4 landscape; margin: 10mm; }
+    @page { size: A4 portrait; margin: 8mm; }
     * { box-sizing: border-box; }
     body { margin: 0; color: #111; font-family: "Times New Roman", serif; font-size: 12px; }
     .sheet { width: 100%; }
@@ -361,7 +361,7 @@ function printVehicleKmLogs(
   popup.document.write(`<!doctype html>
   <html lang="vi"><head><meta charset="utf-8"><title>Phiếu xác nhận KM lái xe</title>
   <style>
-    @page { size: A4 landscape; margin: 10mm; }
+    @page { size: A4 portrait; margin: 8mm; }
     * { box-sizing: border-box; }
     body { margin: 0; color: #111; font-family: "Times New Roman", serif; font-size: 13px; }
     .sheet { width: 100%; }

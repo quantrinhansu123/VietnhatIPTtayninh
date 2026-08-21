@@ -28,7 +28,7 @@ import {
   normalizeMixingReport
 } from '../lib/mixingReportModel';
 import type { MixingRoundPhoto } from './MixingReportForm';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import type { MixingReport } from './MixingReportForm';
 import MixingReportForm from './MixingReportForm';
 import {
@@ -340,6 +340,7 @@ export default function MixingReportListView({
   useEffect(() => {
     if (!pendingPrint || printReports.length === 0) return;
     let cancelled = false;
+    enablePortraitPrintPage('mixing-report-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -349,12 +350,14 @@ export default function MixingReportListView({
           document.body.classList.remove('mixing-report-print-active');
           setPrintReports([]);
           setPendingPrint(false);
+          disablePortraitPrintPage('mixing-report-page-portrait');
         }
       });
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      disablePortraitPrintPage('mixing-report-page-portrait');
     };
   }, [pendingPrint, printReports]);
 

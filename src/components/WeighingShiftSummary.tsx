@@ -21,7 +21,7 @@ import { WeighingSlipPrintBatch, type WeighingSlipPrintData } from './WeighingSl
 import { RowActionsMenu } from './shared/table';
 import { DEFAULT_WEIGHING_SLIP_CONFIG, type WeighingSlipConfig } from '../lib/weighingSlipConfig';
 import { useTabAccess } from '../app/useTabAccess';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import {
   getProductionShiftOptions,
   normalizeShiftSettings,
@@ -859,15 +859,21 @@ export default function WeighingShiftSummary({
   useEffect(() => {
     if (!pendingPrint || !printSlip) return;
     let cancelled = false;
+    enablePortraitPrintPage('weighing-slip-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        window.print();
-        setPendingPrint(false);
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disablePortraitPrintPage('weighing-slip-page-portrait');
+        }
       });
     }, 120);
     return () => {
       cancelled = true;
+      disablePortraitPrintPage('weighing-slip-page-portrait');
       window.clearTimeout(timer);
     };
   }, [pendingPrint, printSlip]);

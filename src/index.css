@@ -757,7 +757,7 @@ input[type="number"] {
   }
 
   @page {
-    size: A4 landscape;
+    size: A4 portrait;
     margin: 8mm;
   }
 
@@ -792,35 +792,36 @@ input[type="number"] {
   }
 
   @page shift-summary-page {
-    size: A4 landscape;
+    size: 210mm 297mm;
     margin: 5mm;
   }
 
   @page shift-handover-page {
-    size: A4 landscape;
-    margin: 8mm;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   @page bb-machine-report-page {
-    size: A4 landscape;
-    margin: 7mm;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   @page mixing-report-page {
-    size: A4 landscape;
-    margin: 0;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   @page weighing-slip-page {
-    size: A4 landscape;
-    margin: 0;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   /* Phiếu tồn máy có 11 cột: gắn một trang in riêng để Chrome luôn nhận
-     đúng kích thước ngang A4, không phụ thuộc vào trang in trước đó. */
+     đúng kích thước dọc A4, không phụ thuộc vào trang in trước đó. Cột co
+     hẹp lại và nội dung dài sẽ tự xuống dòng để vừa khổ dọc. */
   @page machine-nvl-report-page {
-    size: 297mm 210mm;
-    margin: 7mm;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   .machine-nvl-print-batch,
@@ -1773,8 +1774,8 @@ input[type="number"] {
 
 @media print {
   @page production-plan-page {
-    size: A4 landscape;
-    margin: 9mm 10mm;
+    size: 210mm 297mm;
+    margin: 5mm;
   }
 
   .production-plan-print-sheet {
@@ -2358,8 +2359,8 @@ input[type="number"] {
 }
 
 .bb-machine-report-preview .bb-machine-report-print-page {
-  width: 297mm;
-  min-height: 210mm;
+  width: 210mm;
+  min-height: 297mm;
   padding: 10mm;
   box-sizing: border-box;
   background: #ffffff;
@@ -2517,26 +2518,25 @@ input[type="number"] {
   font-weight: 700;
   text-align: center;
   background: #f5f5f5;
-  font-size: 8pt;
+  font-size: 7pt;
   line-height: 1.1;
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-wrap: normal;
-  word-break: keep-all;
-  padding: 1.4mm 0.8mm;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  padding: 1.2mm 0.6mm;
 }
 
-.weighing-slip-print-col-lan { width: 10mm; }
-.weighing-slip-print-col-code { width: 16mm; }
+.weighing-slip-print-col-lan { width: 8mm; }
+.weighing-slip-print-col-code { width: 13mm; }
 .weighing-slip-print-col-name { width: auto; }
-.weighing-slip-print-col-core { width: 10mm; }
-.weighing-slip-print-col-shell { width: 10mm; }
-.weighing-slip-print-col-weight { width: 10mm; }
-.weighing-slip-print-col-total { width: 22mm; }
-.weighing-slip-print-col-time { width: 9mm; }
-.weighing-slip-print-col-status { width: 10mm; }
-.weighing-slip-print-col-note { width: 18mm; }
-.weighing-slip-print-col-photo { width: 9mm; }
+.weighing-slip-print-col-core { width: 8mm; }
+.weighing-slip-print-col-shell { width: 8mm; }
+.weighing-slip-print-col-weight { width: 8mm; }
+.weighing-slip-print-col-total { width: 16mm; }
+.weighing-slip-print-col-time { width: 7mm; }
+.weighing-slip-print-col-status { width: 8mm; }
+.weighing-slip-print-col-note { width: 14mm; }
+.weighing-slip-print-col-photo { width: 7mm; }
 
 .weighing-slip-print-total-head {
   font-size: 7.5pt;
@@ -2752,11 +2752,11 @@ input[type="number"] {
 
 .mixing-report-print-table th {
   text-align: center;
-  font-size: 9.5pt;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-wrap: normal;
+  font-size: 8pt;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
   background: #f2f2f2;
 }
 
@@ -2972,12 +2972,12 @@ input[type="number"] {
 .production-order-print-grid-table th:nth-child(5) { width: 28%; }
 
 .production-order-print-product-table th:nth-child(1) { width: 8%; }
-.production-order-print-product-table th:nth-child(2) { width: 18%; }
-.production-order-print-product-table th:nth-child(3) { width: 10%; }
+.production-order-print-product-table th:nth-child(2) { width: 34%; }
+.production-order-print-product-table th:nth-child(3) { width: 8%; }
 .production-order-print-product-table th:nth-child(4) { width: 7%; }
 .production-order-print-product-table th:nth-child(5) { width: 12%; }
 .production-order-print-product-table th:nth-child(6) { width: 14%; }
-.production-order-print-product-table th:nth-child(7) { width: 31%; }
+.production-order-print-product-table th:nth-child(7) { width: 17%; }
 
 .production-order-print-product-table thead th {
   font-size: 9.5pt;
@@ -3036,8 +3036,8 @@ input[type="number"] {
   word-wrap: normal;
 }
 
-.production-order-print-params-table th:nth-child(2) { width: 30%; }
-.production-order-print-params-table th:nth-child(3) { width: 44%; }
+.production-order-print-params-table th:nth-child(2) { width: 40%; }
+.production-order-print-params-table th:nth-child(3) { width: 34%; }
 
 .production-order-print-params-table th {
   text-align: center;
@@ -3454,11 +3454,12 @@ input[type="number"] {
 
   .bb-machine-report-print-doc .shift-summary-print-table th,
   .bb-machine-report-print-doc .shift-summary-print-table td {
-    padding: 0.5mm 0.7mm !important;
-    font-size: 8pt !important;
-    line-height: 1.12 !important;
+    padding: 0.5mm 0.5mm !important;
+    font-size: 7pt !important;
+    line-height: 1.1 !important;
     letter-spacing: 0 !important;
     overflow-wrap: break-word !important;
+    white-space: normal !important;
   }
 
   .bb-machine-report-print-doc .shift-summary-print-table th {
@@ -3616,15 +3617,18 @@ input[type="number"] {
 
 .machine-nvl-print-table th,
 .machine-nvl-print-table td {
-  padding-left: 1.5mm;
-  padding-right: 1.5mm;
+  padding-left: 0.8mm;
+  padding-right: 0.8mm;
+  font-size: 7.5pt;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .machine-nvl-print-table th {
-  font-size: 10pt;
-  line-height: 1.15;
-  overflow-wrap: normal;
-  word-wrap: normal;
+  font-size: 7.5pt;
+  line-height: 1.1;
 }
 
 .machine-nvl-print-table th:nth-child(1) { width: 4%; }

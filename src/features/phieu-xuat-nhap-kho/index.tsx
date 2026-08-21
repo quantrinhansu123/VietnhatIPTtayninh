@@ -1094,6 +1094,12 @@ export function WarehouseSlipPanel({
   const [reviewingDamagedReportKey, setReviewingDamagedReportKey] = useState('');
   const damagedReportsRequestSeqRef = useRef(0);
 
+  const clearSavedPrint = () => {
+    setPrintSlip(null);
+    setPrintAutoTrigger(false);
+    setPendingQrLabels([]);
+  };
+
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
   const ownedScanningDrafts = useMemo(
     () => scanningDrafts.filter(draft => String(draft.owner || '').trim() === loginName),
@@ -1140,6 +1146,7 @@ export function WarehouseSlipPanel({
       warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) ||
       'Kho hàng hỏng';
     const isXuatTreo = mode === 'xuat_treo';
+    clearSavedPrint();
     setSlipType(isXuatTreo ? 'xuat' : 'nhap');
     setIsXuatTreoMode(isXuatTreo);
     setWarehouseKind('hang_hong');
@@ -1172,7 +1179,7 @@ export function WarehouseSlipPanel({
     setActionMessage(
       isXuatTreo
         ? `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu xuất kho treo để tạo phiếu xuất chính thức.`
-        : `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu & in phiếu nhập kho.`
+        : `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu nhập kho.`
     );
     window.setTimeout(() => {
       document.querySelector('[data-warehouse-slip-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1277,6 +1284,7 @@ export function WarehouseSlipPanel({
         setWarehouseName(draftName);
         setWarehouseKind(resolvedKind);
       }
+      clearSavedPrint();
       setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
       setIsXuatTreoMode(false);
       if (draft.slipDate) setSlipDate(draft.slipDate);
@@ -1623,6 +1631,7 @@ export function WarehouseSlipPanel({
       setFormError('Bạn không có quyền tiếp tục phiếu tạm thuộc kho này.');
       return;
     }
+    clearSavedPrint();
     setSlipType('nhap');
     setIsXuatTreoMode(false);
     setWarehouseKind(draft.warehouseKind);
@@ -2284,49 +2293,17 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
 
-  const handleTemporaryPrint = () => {
-    if (slipType !== 'nhap') return;
-    if (!warehouseName.trim()) {
-      setFormError('Vui lòng chọn tên kho trước khi in tạm phiếu.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handlePrintSavedSlip = () => {
+    if (!printSlip) {
+      setFormError(showSaveFailure('Vui lòng lưu phiếu trước khi in.'));
       return;
     }
-    const parsed = parseWarehouseSlipPayloadItems(lines, warehouseKind);
-    if ('error' in parsed) {
-      setFormError(parsed.error);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    persistScanningDraft();
-    setPendingQrLabels([]);
-    setPrintSlip({
-      ...buildWarehouseSlipPrintData(parsed.items, {
-        slipCode: `TẠM-${generateWarehouseSlipPreviewCode('nhap')}`,
-        slipType: 'nhap',
-        warehouseKind,
-        slipDate,
-        reason: composeReasonWithProductionOrderCodes(reason, productionOrderCodes),
-        note: note.trim(),
-        createdBy: createdBy.trim() || loginName,
-        productionOrderRef: productionOrderLabel,
-        machine: machine.trim(),
-        shift: shiftLabel,
-        recipient: recipient.trim(),
-        deliverer: deliverer.trim(),
-        warehouseLocation: warehouseLocation.trim(),
-        warehouseName: warehouseName.trim(),
-        materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
-        products: warehouseKind === 'san_pham' ? weightCatalog : []
-      }),
-      isTemporary: true
-    });
+    setFormError('');
     setPrintAutoTrigger(true);
     setPrintModalOpen(true);
-    setFormError('');
-    setActionMessage('Đã lưu tạm và mở bản in tạm. Phiếu chưa ghi vào lịch sử, chưa cập nhật tồn kho.');
   };
 
-  const handleSave = async () => {
+  const handleSave = async (autoPrint = false) => {
     if (!(editSlipCode ? canEdit : canCreate)) {
       setFormError(
         showSaveFailure(
@@ -2460,15 +2437,22 @@ export function WarehouseSlipPanel({
             products: warehouseKind === 'san_pham' ? weightCatalog : []
         })
       );
-      setPrintAutoTrigger(true);
-      setPrintModalOpen(true);
+      setPrintAutoTrigger(autoPrint);
+      if (autoPrint) setPrintModalOpen(true);
+      const savedMessage = autoPrint
+        ? savedQrLabels.length > 0
+          ? `Đã lưu phiếu ${savedSlipCode} và chuẩn bị ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
+          : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`
+        : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử. Bấm “In phiếu” để mở bản in.`;
       const okMsg = isEditing
-        ? `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Xem tại Lịch sử xuất nhập kho.`
+        ? autoPrint
+          ? `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Xem tại Lịch sử xuất nhập kho.`
+          : `Đã cập nhật phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}). Bấm “In phiếu” để mở bản in.`
         : isXuatTreoFlow
-          ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
-          : savedQrLabels.length > 0
-            ? `Đã lưu phiếu ${savedSlipCode} và chuẩn bị ${savedQrLabels.length} mã QR. Hệ thống sẽ lần lượt mở phiếu nhập và file tem QR.`
-            : `Đã lưu phiếu ${savedSlipCode} (${warehouseKindLabel(warehouseKind)}) vào lịch sử.`;
+          ? autoPrint
+            ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
+            : `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho. Bấm “In phiếu” để mở bản in.`
+          : savedMessage;
       setActionMessage(okMsg);
       showAppToast(okMsg);
       if (reviewingDamagedReportKey) {
@@ -2719,6 +2703,8 @@ export function WarehouseSlipPanel({
                     key={option.key}
                     type="button"
                     onClick={() => {
+                      const modeChanged = slipType !== option.slipType || isXuatTreoMode !== option.treoMode;
+                      if (modeChanged) clearSavedPrint();
                       setSlipType(option.slipType);
                       setIsXuatTreoMode(option.treoMode);
                       if (option.slipType === 'xuat') {
@@ -3167,7 +3153,8 @@ export function WarehouseSlipPanel({
                       value={line.code}
                       onChange={code => pickItem(line.key, code)}
                       options={itemOptions}
-                      placeholder={warehouseKind === 'san_pham' ? 'Mã SP' : 'Mã NPL'}
+                      placeholder=""
+                      emptyInputText=""
                       isLoading={isLoadingItems}
                       disabled={isLoadingItems}
                       inputClassName={warehouseLineFieldClass}
@@ -3185,7 +3172,6 @@ export function WarehouseSlipPanel({
                       value={line.name}
                       onChange={event => updateLine(line.key, { name: event.target.value })}
                       className={warehouseLineFieldClass}
-                      placeholder="Tên"
                     />
                   </div>
                   <div className="min-w-0">
@@ -3194,7 +3180,6 @@ export function WarehouseSlipPanel({
                       value={line.unit}
                       onChange={event => updateLine(line.key, { unit: event.target.value })}
                       className={warehouseLineFieldClass}
-                      placeholder="ĐVT"
                     />
                   </div>
                   {slipType === 'xuat' ? (
@@ -3207,7 +3192,6 @@ export function WarehouseSlipPanel({
                           value={line.documentQuantity || ''}
                           onChange={event => updateLine(line.key, { documentQuantity: event.target.value })}
                           className={warehouseLineFieldClass}
-                          placeholder="SL CT"
                         />
                       </div>
                       <div className="min-w-0">
@@ -3218,7 +3202,6 @@ export function WarehouseSlipPanel({
                           value={line.quantity}
                           onChange={event => updateLine(line.key, { quantity: event.target.value })}
                           className={warehouseLineFieldClass}
-                          placeholder="SL thực"
                         />
                       </div>
                     </>
@@ -3231,7 +3214,6 @@ export function WarehouseSlipPanel({
                         value={line.quantity}
                         onChange={event => updateLine(line.key, { quantity: event.target.value })}
                         className={warehouseLineFieldClass}
-                        placeholder="SL"
                       />
                     </div>
                   )}
@@ -3241,7 +3223,10 @@ export function WarehouseSlipPanel({
                       className={`${warehouseLineFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}
                       title={resolveLineWeightHint(line)}
                     >
-                      {formatWarehouseWeightKg(resolveLineWeightKg(line))}
+                      {(() => {
+                        const weightKg = resolveLineWeightKg(line);
+                        return weightKg === null ? '' : formatWarehouseWeightKg(weightKg);
+                      })()}
                     </div>
                   </div>
                   <div className="min-w-0">
@@ -3264,18 +3249,6 @@ export function WarehouseSlipPanel({
                           isNvlExport
                             ? `Gợi ý BQ nhập tháng ${formatAvgPriceMonthLabel(slipDate)} — có thể sửa`
                             : undefined
-                        }
-                        placeholder={
-                          isNvlExport
-                            ? avgPriceLoadingCode === line.code.trim()
-                              ? '...'
-                              : (() => {
-                                  const avg = avgInboundPriceByKey[avgPriceCacheKey(line.code, slipDate)];
-                                  return avg && avg > 0
-                                    ? formatWarehouseMoney(avg)
-                                    : 'Giá';
-                                })()
-                            : 'Giá'
                         }
                       />
                       {isNvlExport && avgPriceLoadingCode === line.code.trim() ? (
@@ -3311,39 +3284,30 @@ export function WarehouseSlipPanel({
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <p className="mr-auto text-[11px] font-semibold text-zinc-500">
-            Phiếu tạm chưa cập nhật tồn kho; chỉ nút Lưu & in mới chốt phiếu vào lịch sử.
+            Phiếu chỉ cập nhật tồn kho sau khi bấm nút lưu.
           </p>
-          {slipType === 'nhap' && !editSlipCode && canCreate ? (
+          <>
+            {(editSlipCode ? canEdit : canCreate) ? (
             <button
               type="button"
-              onClick={handleTemporaryPrint}
-              disabled={isSaving}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-              title="Lưu bản nháp trên máy và in, không ghi lịch sử hoặc cập nhật tồn kho"
-            >
-              <Printer className="h-4 w-4" />
-              In tạm phiếu
-            </button>
-          ) : null}
-          {(editSlipCode ? canEdit : canCreate) ? (
-            <button
-              type="button"
-              onClick={handleSave}
+              onClick={() => void handleSave(false)}
               disabled={isSaving}
               className="flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-5 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {isSaving
-                ? editSlipCode
-                  ? 'Đang cập nhật...'
-                  : 'Đang lưu...'
-                : editSlipCode
-                  ? `Cập nhật & in phiếu ${editSlipCode}`
-                  : slipType === 'xuat' && isXuatTreoMode
-                    ? 'Lưu & in phiếu xuất kho treo'
-                    : `Lưu & in phiếu ${warehouseSlipTypeLabel(slipType).toLowerCase()}`}
+              {isSaving ? (editSlipCode ? 'Đang cập nhật...' : 'Đang lưu...') : editSlipCode ? 'Cập nhật phiếu' : 'Lưu phiếu'}
             </button>
-          ) : null}
+            ) : null}
+            <button
+              type="button"
+              onClick={handlePrintSavedSlip}
+              disabled={isSaving || !printSlip}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Printer className="h-4 w-4" />
+              In phiếu
+            </button>
+          </>
         </div>
       </section>
 

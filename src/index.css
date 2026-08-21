@@ -659,7 +659,7 @@ input[type="number"] {
 }
 
 .order-print-meta-table th {
-  width: 18%;
+  width: 22%;
   font-size: 10.5pt;
   font-weight: 700;
   text-align: left;
@@ -667,7 +667,7 @@ input[type="number"] {
 }
 
 .order-print-meta-table td {
-  width: 32%;
+  width: 28%;
 }
 
 .order-print-products-table thead th {
@@ -677,9 +677,9 @@ input[type="number"] {
   text-align: center;
 }
 
-.order-print-products-table th:nth-child(1) { width: 5%; }
+.order-print-products-table th:nth-child(1) { width: 7%; }
 .order-print-products-table th:nth-child(2) { width: 12%; }
-.order-print-products-table th:nth-child(3) { width: 30%; }
+.order-print-products-table th:nth-child(3) { width: 28%; }
 .order-print-products-table th:nth-child(4) { width: 10%; }
 .order-print-products-table th:nth-child(5) { width: 8%; }
 .order-print-products-table th:nth-child(6) { width: 10%; }
@@ -691,7 +691,7 @@ input[type="number"] {
 }
 
 .order-print-mono {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: 'Times New Roman', Times, serif;
   font-size: 10pt;
 }
 
@@ -2547,7 +2547,7 @@ input[type="number"] {
 }
 
 .weighing-slip-print-right {
-  text-align: right;
+  text-align: center;
 }
 
 .weighing-slip-print-lan,
@@ -2654,7 +2654,7 @@ input[type="number"] {
 }
 
 .mixing-report-print-right {
-  text-align: right;
+  text-align: center;
 }
 
 .mixing-report-print-header {
@@ -2780,10 +2780,10 @@ input[type="number"] {
   page-break-inside: avoid;
 }
 
-.mixing-report-print-col-lan { width: 5%; }
+.mixing-report-print-col-lan { width: 8%; }
 .mixing-report-print-col-time { width: 8%; }
 .mixing-report-print-col-code { width: 9%; }
-.mixing-report-print-col-name { width: 38%; }
+.mixing-report-print-col-name { width: 35%; }
 .mixing-report-print-col-unit { width: 6%; }
 .mixing-report-print-col-weight { width: 8%; }
 .mixing-report-print-col-photo { width: 6%; }
@@ -2800,6 +2800,30 @@ input[type="number"] {
 .mixing-report-print-lan {
   font-size: 9.5pt;
   font-weight: 700;
+  /* Cột "Lần" rất hẹp; cho phép nhãn dài xuống dòng trong chính ô đã gộp. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Quy chuẩn cho mọi phiếu in dạng bảng (trừ tem/mã QR): nội dung luôn ở trong
+   ô, tự xuống dòng thay vì nới bảng hoặc đè lên cột kế bên. Selector theo tên
+   lớp giúp các mẫu phiếu mới cũng tự nhận quy tắc này. */
+@media print {
+  [class*="-print-sheet"]:not(.qr-print-sheet):not(.production-plan-qr-print-sheet) table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  [class*="-print-sheet"]:not(.qr-print-sheet):not(.production-plan-qr-print-sheet) th,
+  [class*="-print-sheet"]:not(.qr-print-sheet):not(.production-plan-qr-print-sheet) td,
+  [class*="-print-sheet"]:not(.qr-print-sheet):not(.production-plan-qr-print-sheet) th *,
+  [class*="-print-sheet"]:not(.qr-print-sheet):not(.production-plan-qr-print-sheet) td * {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
 }
 
 .mixing-report-print-time {
@@ -2971,12 +2995,12 @@ input[type="number"] {
 .production-order-print-grid-table th:nth-child(4) { width: 12%; }
 .production-order-print-grid-table th:nth-child(5) { width: 28%; }
 
-.production-order-print-product-table th:nth-child(1) { width: 8%; }
+.production-order-print-product-table th:nth-child(1) { width: 12%; }
 .production-order-print-product-table th:nth-child(2) { width: 34%; }
 .production-order-print-product-table th:nth-child(3) { width: 8%; }
 .production-order-print-product-table th:nth-child(4) { width: 7%; }
-.production-order-print-product-table th:nth-child(5) { width: 12%; }
-.production-order-print-product-table th:nth-child(6) { width: 14%; }
+.production-order-print-product-table th:nth-child(5) { width: 10%; }
+.production-order-print-product-table th:nth-child(6) { width: 12%; }
 .production-order-print-product-table th:nth-child(7) { width: 17%; }
 
 .production-order-print-product-table thead th {
@@ -3122,7 +3146,7 @@ input[type="number"] {
 }
 
 .production-order-print-right {
-  text-align: right;
+  text-align: center;
 }
 
 .production-order-print-page {
@@ -3913,7 +3937,7 @@ input[type="number"] {
 }
 
 .warehouse-slip-print-right {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 

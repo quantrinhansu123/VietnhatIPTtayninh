@@ -22,6 +22,7 @@ export function SearchableSelect({
   onChange,
   options,
   placeholder,
+  emptyInputText,
   isLoading,
   disabled,
   getLabel,
@@ -44,6 +45,8 @@ export function SearchableSelect({
   onChange: (value: string) => void;
   options: unknown[];
   placeholder: string;
+  /** Nội dung tùy chọn khi ô chưa có giá trị hoặc danh sách đang rỗng. */
+  emptyInputText?: string;
   isLoading?: boolean;
   disabled?: boolean;
   getLabel: (item: unknown) => string;
@@ -177,7 +180,11 @@ export function SearchableSelect({
   };
 
   const isDisabled = Boolean(disabled || isLoading);
-  const emptyText = isLoading ? 'Đang tải...' : options.length === 0 ? 'Không có dữ liệu' : placeholder;
+  const emptyText = isLoading
+    ? emptyInputText ?? 'Đang tải...'
+    : options.length === 0
+      ? emptyInputText ?? 'Không có dữ liệu'
+      : placeholder;
 
   const updateMenuPosition = () => {
     const element = anchorRef.current;

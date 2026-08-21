@@ -264,12 +264,12 @@ function printVehicleExpenses(
     .meta div { border-bottom: 1px dotted #555; padding: 3px 2px; }
     .section { margin-top: 8px; font-weight: 700; }
     .blank { height: 25px; border-bottom: 1px dotted #777; padding: 5px 3px; font-weight: 400; }
-    table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-    th, td { border: 1px solid #111; padding: 5px 6px; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 5px; }
+    th, td { border: 1px solid #111; padding: 5px 6px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
     th { text-align: center; font-weight: 700; }
     td small { display: block; margin-top: 2px; color: #444; }
     .center { text-align: center; }
-    .money { text-align: right; white-space: nowrap; }
+    .money { text-align: right; }
     .empty { height: 42px; vertical-align: middle; color: #666; }
     .total td { font-weight: 700; }
     .summary { width: 55%; margin-top: 10px; }
@@ -371,8 +371,8 @@ function printVehicleKmLogs(
     h1 { margin: 16px 0 14px; text-align: center; font-size: 20px; }
     .meta { display: flex; flex-wrap: wrap; gap: 6px 40px; margin-bottom: 14px; font-weight: 700; }
     .meta span.value { font-weight: 400; border-bottom: 1px dotted #555; padding: 0 4px; display: inline-block; min-width: 160px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-    th, td { border: 1px solid #111; padding: 7px 8px; vertical-align: middle; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 5px; }
+    th, td { border: 1px solid #111; padding: 7px 8px; vertical-align: middle; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
     th { text-align: center; font-weight: 700; background: #f2f2f2; }
     .center { text-align: center; }
     .blank-cell { height: 34px; }

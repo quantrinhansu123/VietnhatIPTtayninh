@@ -18,7 +18,7 @@
 
 - `MixingReportListView.tsx` — danh sách phiếu phối trộn theo ngày · ca · máy / lần
 
-- `MixingReportPrintSheet.tsx` — in
+- `MixingReportPrintSheet.tsx` — in (gộp phiếu cùng ngày · ca · máy thành **1 bảng / 1 nhật ký**)
 
 - `MixingOrderAutofillModal.tsx` — autofill theo đơn hàng
 

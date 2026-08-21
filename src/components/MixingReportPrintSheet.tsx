@@ -5,6 +5,7 @@ import {
   MIXING_ROUND_KEYS,
   buildMixingReportPrintContext,
   formatNormWeight,
+  groupMixingReportsForPrint,
   listRoundMaterialEntries,
   mixingSessionColumnLabel,
   resolveMixingReportRoundPhotos,
@@ -277,15 +278,17 @@ export function MixingReportPrintSheet({
 export function MixingReportPrintBatch({ reports }: { reports: MixingReport[] }) {
   if (reports.length === 0) return null;
 
+  // Gộp phiếu cùng ngày · ca · máy → một nhật ký / một bảng (không in 1 phiếu = 1 trang).
+  const groups = groupMixingReportsForPrint(reports);
+
   return createPortal(
     <div className="mixing-report-print-batch">
-      {reports.map(report => {
-        // Mỗi id được chọn tương ứng đúng một phiếu/trang preview; không gộp
-        // các bản ghi có cùng ngày, ca hoặc máy.
-        const context = buildMixingReportPrintContext([report]);
+      {groups.map((group, index) => {
+        const context = buildMixingReportPrintContext(group);
+        const pageKey = group.map(report => report.id).join('|') || `group-${index}`;
         return (
-          <div key={report.id} className="mixing-report-print-page">
-            <MixingReportPrintSheet reports={[report]} context={context} />
+          <div key={pageKey} className="mixing-report-print-page">
+            <MixingReportPrintSheet reports={group} context={context} />
           </div>
         );
       })}

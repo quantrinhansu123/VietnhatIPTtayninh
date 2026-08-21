@@ -85,6 +85,78 @@ function isNvlExportPrintLayout(data: WarehouseSlipPrintData) {
   );
 }
 
+function joinUniquePrintValues(values: Array<string | undefined | null>, separator = ', ') {
+  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].join(separator);
+}
+
+function addNullablePrintQty(a: number | null | undefined, b: number | null | undefined): number | null {
+  const left = Number.isFinite(a) && (a as number) > 0 ? (a as number) : 0;
+  const right = Number.isFinite(b) && (b as number) > 0 ? (b as number) : 0;
+  const sum = left + right;
+  return sum > 0 ? sum : null;
+}
+
+/**
+ * In gộp phiếu xuất kho vật tư: 1 phiếu in, cộng SL khi trùng mã (+ ĐVT).
+ */
+export function mergeNvlExportPrintSlips(slips: WarehouseSlipPrintData[]): WarehouseSlipPrintData {
+  if (slips.length === 0) {
+    throw new Error('Không có phiếu xuất kho vật tư để gộp in.');
+  }
+  if (slips.length === 1) return slips[0];
+
+  const lineMap = new Map<string, WarehouseSlipPrintLine>();
+  const lineOrder: string[] = [];
+
+  for (const slip of slips) {
+    for (const line of slip.lines) {
+      const key = `${String(line.code || '')
+        .replace(/\s+/g, '')
+        .toUpperCase()}|${String(line.unit || '')
+        .replace(/\s+/g, '')
+        .toUpperCase()}`;
+      const existing = lineMap.get(key);
+      if (existing) {
+        existing.quantity += Number.isFinite(line.quantity) ? line.quantity : 0;
+        existing.documentQuantity = addNullablePrintQty(existing.documentQuantity, line.documentQuantity);
+        existing.unitPrice = existing.unitPrice || line.unitPrice;
+        existing.lineAmount += Number.isFinite(line.lineAmount) ? line.lineAmount : 0;
+        existing.weightKg = addNullablePrintQty(existing.weightKg, line.weightKg);
+        if (!existing.name && line.name) existing.name = line.name;
+        if (line.lineNote) {
+          existing.lineNote = existing.lineNote
+            ? [...new Set([existing.lineNote, line.lineNote].filter(Boolean))].join('; ')
+            : line.lineNote;
+        }
+      } else {
+        lineMap.set(key, { ...line });
+        lineOrder.push(key);
+      }
+    }
+  }
+
+  const lines = lineOrder.map(key => lineMap.get(key)!);
+  const first = slips[0];
+
+  return {
+    ...first,
+    slipCode: joinUniquePrintValues(slips.map(slip => slip.slipCode)),
+    slipDate: first.slipDate,
+    reason: joinUniquePrintValues(slips.map(slip => slip.reason)),
+    note: joinUniquePrintValues(slips.map(slip => slip.note)),
+    createdBy: joinUniquePrintValues(slips.map(slip => slip.createdBy)),
+    productionOrderRef: joinUniquePrintValues(slips.map(slip => slip.productionOrderRef)),
+    machine: joinUniquePrintValues(slips.map(slip => slip.machine)),
+    shift: joinUniquePrintValues(slips.map(slip => slip.shift)),
+    recipient: joinUniquePrintValues(slips.map(slip => slip.recipient)),
+    deliverer: joinUniquePrintValues(slips.map(slip => slip.deliverer)),
+    warehouseLocation: joinUniquePrintValues(slips.map(slip => slip.warehouseLocation)),
+    warehouseName: joinUniquePrintValues(slips.map(slip => slip.warehouseName)),
+    totalAmount: lines.reduce((sum, line) => sum + (Number.isFinite(line.lineAmount) ? line.lineAmount : 0), 0),
+    lines
+  };
+}
+
 function warehouseKindTitleLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
   switch (kind) {
     case 'san_pham':
@@ -432,7 +504,6 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th>Mã vật tư</th>
             <th>Tên vật tư</th>
             <th>ĐVT</th>
-            <th>PN nhập</th>
             <th>SL THỰC</th>
             <th>Quy về kg</th>
             <th>Ghi chú</th>
@@ -445,7 +516,6 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               <td>{line.code || ''}</td>
               <td className="warehouse-slip-print-name">{line.name || ''}</td>
               <td className="warehouse-slip-print-center">{line.unit || ''}</td>
-              <td className="warehouse-slip-print-center">{line.sourceInboundSlipCode || ''}</td>
               <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td>{line.lineNote || ''}</td>
@@ -454,7 +524,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
         </tbody>
         <tfoot>
           {plasticLines.length > 0 ? <tr>
-            <td colSpan={6} className="warehouse-slip-print-total-label">
+            <td colSpan={5} className="warehouse-slip-print-total-label">
               TỔNG NHỰA (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
@@ -463,7 +533,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <td />
           </tr> : null}
           {otherMaterialLines.length > 0 ? <tr>
-            <td colSpan={6} className="warehouse-slip-print-total-label">
+            <td colSpan={5} className="warehouse-slip-print-total-label">
               TỔNG VẬT TƯ KHÁC (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
@@ -472,7 +542,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <td />
           </tr> : null}
           <tr className="warehouse-slip-print-grand-total-row">
-            <td colSpan={6} className="warehouse-slip-print-total-label">
+            <td colSpan={5} className="warehouse-slip-print-total-label">
               TỔNG KG
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
@@ -612,7 +682,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
 
             <div className="warehouse-slip-print-signatures">
               <div>
-                <p>Người lập phiếu</p>
+                <p>{printData.warehouseKind === 'san_pham' ? 'Lái xe' : 'Người lập phiếu'}</p>
                 <span>(Ký, ghi rõ họ tên)</span>
               </div>
               <div>

@@ -49,7 +49,10 @@ import {
   RowActionsMenu
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
-import WarehouseSlipPrintModal, { type WarehouseSlipPrintData } from '../../components/WarehouseSlipPrintModal';
+import WarehouseSlipPrintModal, {
+  mergeNvlExportPrintSlips,
+  type WarehouseSlipPrintData
+} from '../../components/WarehouseSlipPrintModal';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import {
   STORAGE_WAREHOUSE_SLIP_DRAFT_KEY,
@@ -3723,8 +3726,16 @@ export function WarehouseHistoryPanel({
       setError('Vui lòng tích chọn ít nhất một phiếu để in gộp.');
       return;
     }
+
+    // Xuất kho vật tư: gộp thành 1 phiếu in và cộng SL khi trùng mã (không tách trang từng phiếu).
+    const allNvlExport = slips.every(
+      slip => slip.slipType === 'xuat' && slip.warehouseKind !== 'san_pham'
+    );
+    const printSlips =
+      allNvlExport && slips.length > 1 ? [mergeNvlExportPrintSlips(slips)] : slips;
+
     setError('');
-    setHistoryPrintSlips(slips);
+    setHistoryPrintSlips(printSlips);
     setHistoryPrintAutoTrigger(autoPrint);
     setHistoryPrintOpen(true);
   };

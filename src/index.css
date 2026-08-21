@@ -3900,12 +3900,11 @@ input[type="number"] {
 
 .warehouse-slip-print-table--nvl-export th:nth-child(1) { width: 5%; }
 .warehouse-slip-print-table--nvl-export th:nth-child(2) { width: 14%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(3) { width: 38%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(4) { width: 7%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(5) { width: 12%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(6) { width: 9%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(3) { width: 42%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(4) { width: 8%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(5) { width: 11%; }
+.warehouse-slip-print-table--nvl-export th:nth-child(6) { width: 11%; }
 .warehouse-slip-print-table--nvl-export th:nth-child(7) { width: 9%; }
-.warehouse-slip-print-table--nvl-export th:nth-child(8) { width: 6%; }
 
 .warehouse-slip-print-table--nvl-export th,
 .warehouse-slip-print-table--nvl-export td {
@@ -3914,7 +3913,6 @@ input[type="number"] {
 
 .warehouse-slip-print-table--nvl-export tbody td:nth-child(5),
 .warehouse-slip-print-table--nvl-export tbody td:nth-child(6),
-.warehouse-slip-print-table--nvl-export tbody td:nth-child(7),
 .warehouse-slip-print-table--nvl-export .warehouse-slip-print-total-value {
   white-space: nowrap;
   word-break: keep-all;

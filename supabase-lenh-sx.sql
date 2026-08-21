@@ -15,6 +15,7 @@ alter table public.lenh_sx
   add column if not exists trang_thai text default 'Chờ sx',
   add column if not exists khach_hang text,
   add column if not exists ma_don_hang text,
+  add column if not exists ngay date,
   add column if not exists ngay_bat_dau date,
   add column if not exists ngay_ket_thuc date,
   add column if not exists ngay_gio_bat_dau timestamptz,
@@ -61,8 +62,27 @@ create policy "lenh_sx_delete_all"
 
 comment on table public.lenh_sx is 'Lenh san xuat.';
 comment on column public.lenh_sx.ma_lenh_sx is 'Ma lenh san xuat.';
+comment on column public.lenh_sx.ngay is 'Ngay lenh san xuat (cot Ngay). Phai la cot thuong, khong generated tu created_at.';
+comment on column public.lenh_sx.ngay_bat_dau is 'Dong bo ngay form (du phong khi cot ngay khong ghi duoc).';
 comment on column public.lenh_sx.trang_thai is 'Trang thai: Cho sx, Dang sx, Hoan thanh, Huy.';
 comment on column public.lenh_sx.truong_ca is 'Truong ca phu trach lenh san xuat.';
 comment on column public.lenh_sx.nhan_su_chinh is 'Nhan su chinh thuc hien lenh san xuat.';
 comment on column public.lenh_sx.tho_phu is 'Tho phu cua lenh san xuat.';
 comment on column public.lenh_sx.hoc_viec is 'Nhan su hoc viec cua lenh san xuat.';
+
+-- Neu cot ngay dang la GENERATED (bam created_at) thi doi thanh cot thuong de sua Ngay duoc.
+do $$
+begin
+  alter table public.lenh_sx alter column ngay drop expression;
+exception
+  when undefined_object then null;
+  when undefined_column then null;
+  when feature_not_supported then null;
+  when others then null;
+end $$;
+
+-- Dong bo ngay hien thi: uu tien ngay_bat_dau neu khac ngay (ban ghi cu).
+update public.lenh_sx
+set ngay = coalesce(ngay_bat_dau, (timezone('Asia/Ho_Chi_Minh', ngay_gio_bat_dau))::date, ngay)
+where ngay is null
+   or (ngay_bat_dau is not null and ngay is distinct from ngay_bat_dau);

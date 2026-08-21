@@ -348,8 +348,11 @@ export function ProductionOrdersPanel({
           matchesSearch
         );
       })
-      // Bản ghi tạo mới nhất đứng trước; dữ liệu không có created_at được đặt sau cùng.
+      // Nhóm theo cột Ngày lệnh SX (không dùng ngày tạo).
       .sort((left, right) => {
+        const leftDate = parseDisplayDate(left.startDate);
+        const rightDate = parseDisplayDate(right.startDate);
+        if (leftDate !== null && rightDate !== null && leftDate !== rightDate) return rightDate - leftDate;
         const leftTime = Date.parse(left.createdAt);
         const rightTime = Date.parse(right.createdAt);
         const leftValid = Number.isFinite(leftTime);
@@ -381,7 +384,7 @@ export function ProductionOrdersPanel({
   const dateGroups = useMemo(() => {
     const map = new Map<string, ProductionOrderRow[]>();
     filteredRows.forEach(row => {
-      const date = row.startDate && row.startDate !== '-' ? row.startDate : 'Chưa có ngày bắt đầu';
+      const date = row.startDate && row.startDate !== '-' ? row.startDate : 'Chưa có ngày';
       const list = map.get(date) ?? [];
       list.push(row);
       map.set(date, list);
@@ -745,8 +748,6 @@ export function ProductionOrdersPanel({
                           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                             <div><dt className="font-bold text-zinc-400">Khách hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.customer || '-'}</dd></div>
                             <div><dt className="font-bold text-zinc-400">Đơn hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.orderRef || '-'}</dd></div>
-                            <div><dt className="font-bold text-zinc-400">Bắt đầu</dt><dd className="mt-0.5 font-semibold text-zinc-700">{row.startDate || '-'}</dd></div>
-                            <div><dt className="font-bold text-zinc-400">Kết thúc</dt><dd className="mt-0.5 font-semibold text-zinc-700">{row.endDate || '-'}</dd></div>
                             <div className="col-span-2"><dt className="font-bold text-zinc-400">Nhân sự · Máy</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{staffNames.length > 0 ? staffNames.join(', ') : '-'} · {row.machine || '-'}</dd></div>
                           </dl>
 
@@ -764,12 +765,11 @@ export function ProductionOrdersPanel({
               </div>
 
               <div className="hover-scrollbar hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[1834px] table-fixed border-collapse text-left text-[11px]">
+                <table className="w-full min-w-[1594px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
                     <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} /><col style={{ width: 460 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 120 }} />
-                    <col style={{ width: 120 }} /><col style={{ width: 120 }} /><col style={{ width: 220 }} />
-                    <col style={{ width: 160 }} /><col style={{ width: 100 }} />
+                    <col style={{ width: 220 }} /><col style={{ width: 160 }} /><col style={{ width: 100 }} />
                   </colgroup>
                   <TableHead>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-center text-[10px]">
@@ -798,8 +798,6 @@ export function ProductionOrdersPanel({
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
                     <TableHeadCell className="min-w-[160px] max-w-[240px] px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
-                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Bắt đầu</TableHeadCell>
-                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Kết thúc</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Nhân sự phụ trách</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Máy</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]" align="center">Thao tác</TableHeadCell>
@@ -862,8 +860,6 @@ export function ProductionOrdersPanel({
                         </td>
                         <td className="min-w-[160px] max-w-[240px] break-words px-2 py-2 align-top leading-4 text-zinc-700">{row.customer}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.startDate}</td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.endDate}</td>
                         <td className="px-2 py-2 align-top font-semibold text-zinc-700">
                           {staffNames.length > 0 ? (
                             <div className="space-y-1 leading-tight">

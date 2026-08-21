@@ -3432,7 +3432,7 @@ export function WarehouseHistoryPanel({
   const [deletingSlipCode, setDeletingSlipCode] = useState<string | null>(null);
   const [selectedSlipCodes, setSelectedSlipCodes] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [historyPrintSlip, setHistoryPrintSlip] = useState<WarehouseSlipPrintData | null>(null);
+  const [historyPrintSlips, setHistoryPrintSlips] = useState<WarehouseSlipPrintData[]>([]);
   const [historyPrintOpen, setHistoryPrintOpen] = useState(false);
   const [historyPrintAutoTrigger, setHistoryPrintAutoTrigger] = useState(false);
   const [historyQrLabels, setHistoryQrLabels] = useState<ProductQrPrintLabel[]>([]);
@@ -3674,13 +3674,13 @@ export function WarehouseHistoryPanel({
     return hasWeight ? total : 0;
   }, [viewingRows, weightCatalogMaterials, weightCatalogProducts]);
 
-  const handlePrintSlipByCode = (slipCode: string, autoPrint = false) => {
+  const buildHistoryPrintSlip = (slipCode: string): WarehouseSlipPrintData | null => {
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
     const header = rows[0];
-    if (!header) return;
+    if (!header) return null;
 
     const totalAmount = rows.reduce((sum, row) => sum + row.lineAmount, 0);
-    setHistoryPrintSlip({
+    return {
       slipCode,
       slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',
       warehouseKind: header.warehouseKind,
@@ -3703,7 +3703,28 @@ export function WarehouseHistoryPanel({
         weightKg: resolveWarehouseRowWeightKg(row),
         sourceInboundSlipCode: row.sourceInboundSlipCode
       }))
-    });
+    };
+  };
+
+  const handlePrintSlipByCode = (slipCode: string, autoPrint = false) => {
+    const slip = buildHistoryPrintSlip(slipCode);
+    if (!slip) return;
+    setHistoryPrintSlips([slip]);
+    setHistoryPrintAutoTrigger(autoPrint);
+    setHistoryPrintOpen(true);
+  };
+
+  const handlePrintSelectedSlips = (autoPrint = true) => {
+    const slips = slipGroups
+      .filter(group => selectedSlipCodes.has(group.slipCode))
+      .map(group => buildHistoryPrintSlip(group.slipCode))
+      .filter((slip): slip is WarehouseSlipPrintData => Boolean(slip));
+    if (slips.length === 0) {
+      setError('Vui lòng tích chọn ít nhất một phiếu để in gộp.');
+      return;
+    }
+    setError('');
+    setHistoryPrintSlips(slips);
     setHistoryPrintAutoTrigger(autoPrint);
     setHistoryPrintOpen(true);
   };
@@ -3890,20 +3911,35 @@ export function WarehouseHistoryPanel({
         <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
       </TableToolbar>
 
-      {canDelete && selectableSlips.length > 0 && (
+      {selectableSlips.length > 0 && (
         <section className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-zinc-900/10 bg-zinc-50 px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold text-zinc-600">
-            {selectedCount > 0 ? `Đã chọn ${selectedCount} phiếu` : 'Chọn phiếu để xóa nhiều'}
+            {selectedCount > 0
+              ? `Đã chọn ${selectedCount} phiếu`
+              : 'Tích chọn phiếu để in gộp' + (canDelete ? ' hoặc xóa nhiều' : '')}
           </p>
-          <button
-            type="button"
-            disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
-            onClick={() => void handleBulkDelete()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            Xóa đã chọn{selectedCount > 0 ? ` (${selectedCount})` : ''}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
+              onClick={() => handlePrintSelectedSlips(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-3 py-1.5 text-xs font-black text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              In gộp{selectedCount > 0 ? ` (${selectedCount})` : ''}
+            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
+                onClick={() => void handleBulkDelete()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Xóa đã chọn{selectedCount > 0 ? ` (${selectedCount})` : ''}
+              </button>
+            ) : null}
+          </div>
         </section>
       )}
 
@@ -3965,16 +4001,14 @@ export function WarehouseHistoryPanel({
               <TableShell minWidthClassName="min-w-[820px]">
                 <TableHead>
                   <TableHeadCell className="w-10" align="center">
-                    {canDelete ? (
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={toggleSelectAll}
-                        disabled={selectableSlips.length === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
-                        className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
-                        title="Chọn tất cả"
-                      />
-                    ) : null}
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      disabled={selectableSlips.length === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
+                      className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                      title="Chọn tất cả"
+                    />
                   </TableHeadCell>
                   <TableHeadCell>Mã phiếu</TableHeadCell>
                   <TableHeadCell>Loại</TableHeadCell>
@@ -3994,16 +4028,14 @@ export function WarehouseHistoryPanel({
                       <React.Fragment key={group.slipCode}>
                         <TableRow className={isSelected ? 'bg-red-50/30' : ''}>
                           <td className="px-3 py-3 text-center">
-                            {canDelete ? (
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                disabled={!group.slipCode || isBulkDeleting || isDeleting}
-                                onChange={() => toggleSlipSelection(group.slipCode)}
-                                className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
-                                title="Chọn phiếu"
-                              />
-                            ) : null}
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={!group.slipCode || isBulkDeleting || isDeleting}
+                              onChange={() => toggleSlipSelection(group.slipCode)}
+                              className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Chọn phiếu"
+                            />
                           </td>
                           <td className="px-4 py-3 font-black text-zinc-950">
                             <div>{group.slipCode || '-'}</div>
@@ -4301,11 +4333,11 @@ export function WarehouseHistoryPanel({
 
       <WarehouseSlipPrintModal
         open={historyPrintOpen}
-        data={historyPrintSlip}
+        slips={historyPrintSlips}
         autoPrint={historyPrintAutoTrigger}
         onClose={() => {
           setHistoryPrintOpen(false);
-          setHistoryPrintSlip(null);
+          setHistoryPrintSlips([]);
           setHistoryPrintAutoTrigger(false);
         }}
       />

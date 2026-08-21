@@ -4184,6 +4184,11 @@ input[type="number"] {
     padding: 0;
   }
 
+  .warehouse-slip-print-batch .warehouse-slip-print-sheet + .warehouse-slip-print-sheet {
+    break-before: page;
+    page-break-before: always;
+  }
+
   .warehouse-slip-print-batch .warehouse-slip-print-doc {
     width: 100% !important;
     max-width: none !important;

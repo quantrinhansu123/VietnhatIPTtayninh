@@ -637,30 +637,35 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
 
 export default function WarehouseSlipPrintModal({
   open,
-  data,
+  data = null,
+  slips = null,
   autoPrint = false,
   onClose,
   onAfterPrint
 }: {
   open: boolean;
-  data: WarehouseSlipPrintData | null;
+  data?: WarehouseSlipPrintData | null;
+  /** In gộp nhiều phiếu — mỗi phiếu một trang. */
+  slips?: WarehouseSlipPrintData[] | null;
   autoPrint?: boolean;
   onClose: () => void;
   onAfterPrint?: () => void;
 }) {
   const [pendingPrint, setPendingPrint] = useState(false);
+  const printSlips = slips && slips.length > 0 ? slips : data ? [data] : [];
+  const primarySlip = printSlips[0] ?? null;
 
   useEffect(() => {
     if (!open) setPendingPrint(false);
   }, [open]);
 
   useEffect(() => {
-    if (!open || !autoPrint || !data) return;
+    if (!open || !autoPrint || printSlips.length === 0) return;
     setPendingPrint(true);
-  }, [open, autoPrint, data]);
+  }, [open, autoPrint, printSlips.length, primarySlip?.slipCode]);
 
   useEffect(() => {
-    if (!pendingPrint || !data) return;
+    if (!pendingPrint || printSlips.length === 0) return;
     document.body.classList.add('warehouse-slip-print-active');
     let cancelled = false;
     const timer = window.setTimeout(() => {
@@ -677,42 +682,47 @@ export default function WarehouseSlipPrintModal({
       window.clearTimeout(timer);
       document.body.classList.remove('warehouse-slip-print-active');
     };
-  }, [pendingPrint, data, onAfterPrint]);
+  }, [pendingPrint, printSlips, onAfterPrint]);
 
-  if (!open || !data) {
-    return pendingPrint && data
+  const printBatchPortal =
+    pendingPrint && printSlips.length > 0
       ? createPortal(
           <div className="warehouse-slip-print-batch">
-            <WarehouseSlipPrintSheet data={data} />
+            {printSlips.map((slip, index) => (
+              <WarehouseSlipPrintSheet key={`${slip.slipCode}-${index}`} data={slip} />
+            ))}
           </div>,
           document.body
         )
       : null;
+
+  if (!open || printSlips.length === 0) {
+    return printBatchPortal;
   }
+
+  const isBatch = printSlips.length > 1;
 
   return (
     <>
-      {pendingPrint &&
-        createPortal(
-          <div className="warehouse-slip-print-batch">
-            <WarehouseSlipPrintSheet data={data} />
-          </div>,
-          document.body
-        )}
+      {printBatchPortal}
 
       <div className="warehouse-slip-print-modal fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div className="warehouse-slip-print-modal-chrome flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-4 sm:px-5">
             <div>
               <h3 className="text-lg font-black text-zinc-950">
-                {data.isTemporary
-                  ? 'Bản in tạm · Chưa ghi sổ kho'
-                  : isNhapKhoPrintLayout(data)
-                    ? 'Mẫu phiếu nhập kho'
-                    : 'Mẫu phiếu xuất kho'}
+                {isBatch
+                  ? `In gộp ${printSlips.length} phiếu`
+                  : primarySlip?.isTemporary
+                    ? 'Bản in tạm · Chưa ghi sổ kho'
+                    : isNhapKhoPrintLayout(primarySlip!)
+                      ? 'Mẫu phiếu nhập kho'
+                      : 'Mẫu phiếu xuất kho'}
               </h3>
               <p className="mt-1 text-sm font-medium text-zinc-500">
-                {data.slipCode} · {slipTypeTitle(data)}
+                {isBatch
+                  ? printSlips.map(slip => slip.slipCode).filter(Boolean).join(' · ')
+                  : `${primarySlip?.slipCode || ''} · ${slipTypeTitle(primarySlip!)}`}
               </p>
             </div>
             <button
@@ -725,8 +735,15 @@ export default function WarehouseSlipPrintModal({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 px-4 py-4 sm:px-5">
-            <div className="warehouse-slip-print-preview mx-auto w-full max-w-[297mm] rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <WarehouseSlipPrintSheet data={data} />
+            <div className="mx-auto flex w-full max-w-[297mm] flex-col gap-4">
+              {printSlips.map((slip, index) => (
+                <div
+                  key={`${slip.slipCode}-${index}`}
+                  className="warehouse-slip-print-preview rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+                >
+                  <WarehouseSlipPrintSheet data={slip} />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -745,7 +762,11 @@ export default function WarehouseSlipPrintModal({
               className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
             >
               {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              {data.isTemporary ? 'In tạm phiếu' : 'In phiếu'}
+              {isBatch
+                ? `In gộp ${printSlips.length} phiếu`
+                : primarySlip?.isTemporary
+                  ? 'In tạm phiếu'
+                  : 'In phiếu'}
             </button>
           </div>
         </div>

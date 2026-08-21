@@ -2011,7 +2011,13 @@ function parseVehicleKmLogBody(
 function isMissingColumnError(error: { code?: string; message?: string } | null) {
   if (!error) return false;
   if (error.code === 'PGRST204') return true;
-  return /does not exist/i.test(error.message || '');
+  if (error.code === '42703') return true;
+  return /does not exist|Could not find the .+ column|schema cache/i.test(error.message || '');
+}
+
+function isImmutableOrGeneratedColumnError(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return /generated column|can only be updated to DEFAULT|immutable/i.test(error.message || '');
 }
 
 function isMissingTableError(error: { code?: string; message?: string } | null) {
@@ -5289,6 +5295,14 @@ function buildProductionOrderRecordFromOrder(
     pickRowField(order, ['cong_nhan', 'nhan_su', 'nhan_vien', 'staff'], '') || DEFAULT_PRODUCTION_WORKERS;
   const creator =
     pickRowField(order, ['nguoi_tao', 'created_by', 'nguoi_lap', 'nhan_vien', 'staff'], '') || DEFAULT_PRODUCTION_CREATOR;
+  const orderDateRaw = pickRowField(
+    order,
+    ['ngay_don_hang', 'ngay_dat_hang', 'order_date', 'ngay', 'ngay_giao'],
+    ''
+  );
+  const orderDateOnly =
+    (orderDateRaw && /^\d{4}-\d{2}-\d{2}/.test(orderDateRaw) ? orderDateRaw.slice(0, 10) : '') ||
+    todayDateString();
 
   return {
     ma_lenh_sx: code,
@@ -5304,7 +5318,9 @@ function buildProductionOrderRecordFromOrder(
     nhan_su: workers,
     nguoi_tao: creator,
     ma_don_hang: orderCode,
-    ngay_bat_dau: todayDateString(),
+    ngay: orderDateOnly,
+    ngay_bat_dau: orderDateOnly,
+    ngay_gio_bat_dau: `${orderDateOnly}T08:00:00`,
     ghi_chu: pickRowField(order, ['ghi_chu', 'note'])
   };
 }
@@ -5395,17 +5411,13 @@ function parseProductionOrderBody(
   const codeInput = pickRowField(source, ['ma_lenh_sx', 'code'], '');
   const code = codeInput || makeProductionOrderCode(orderRef || manualSeed);
   const name = pickRowField(source, ['ten_lenh_sx', 'name'], '');
-  const startDateTime = pickRowField(
-    source,
-    ['ngay_gio_bat_dau', 'startDateTime', 'ngay_bat_dau', 'startDate'],
-    ''
-  );
-  const endDateTime = pickRowField(
-    source,
-    ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'],
-    ''
-  );
-  const startDateOnly = startDateTime ? startDateTime.slice(0, 10) : todayDateString();
+  const startDateTime = pickRowField(source, ['ngay_gio_bat_dau', 'startDateTime'], '');
+  const endDateTime = pickRowField(source, ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'], '');
+  // Cột Ngày lệnh SX — lấy `ngay` / startDate form.
+  const explicitDate = pickRowField(source, ['ngay', 'startDate', 'ngay_bat_dau'], '');
+  const startDateOnly =
+    (explicitDate && /^\d{4}-\d{2}-\d{2}/.test(explicitDate) ? explicitDate.slice(0, 10) : '') ||
+    todayDateString();
   const endDateOnly = endDateTime ? endDateTime.slice(0, 10) : '';
   const workers =
     pickRowField(source, ['cong_nhan', 'nhan_su', 'staff', 'nhan_vien'], '') || DEFAULT_PRODUCTION_WORKERS;
@@ -5439,8 +5451,10 @@ function parseProductionOrderBody(
       tho_phu: pickRowField(source, ['tho_phu', 'assistantStaff'], '') || null,
       hoc_viec: pickRowField(source, ['hoc_viec', 'traineeStaff'], '') || null,
       nguoi_tao: creator,
+      ngay: startDateOnly,
       ngay_gio_bat_dau: startDateTime || null,
       ngay_gio_ket_thuc: endDateTime || null,
+      // Đồng bộ ngày form vào ngay_bat_dau để vẫn lưu được khi cột ngay không ghi được.
       ngay_bat_dau: startDateOnly,
       ngay_ket_thuc: endDateOnly || null,
       may: pickRowField(source, ['may', 'machine'], ''),
@@ -5478,6 +5492,84 @@ function productionOrderWriteErrorMessage(error: { code?: string; message?: stri
     return `Bảng ${SUPABASE_PRODUCTION_ORDERS_TABLE} đang thiếu cột. Hãy chạy file supabase-lenh-sx.sql.`;
   }
   return `Không thể lưu lệnh sản xuất vào ${SUPABASE_PRODUCTION_ORDERS_TABLE}. ${error.message}`;
+}
+
+/** Ghi lệnh SX; chịu thiếu/cột generated `ngay` và cột san_pham kiểu text. */
+async function insertProductionOrderRecord(record: Record<string, unknown>) {
+  if (!supabase) return { data: null, error: { message: 'Supabase chưa được cấu hình.' } };
+
+  const attempts: Record<string, unknown>[] = [record];
+  if (Array.isArray(record.san_pham)) {
+    attempts.push({ ...record, san_pham: JSON.stringify(record.san_pham) });
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'ngay')) {
+    const { ngay, ...withoutNgay } = record;
+    const fallbackDate = String(ngay ?? '').slice(0, 10);
+    const without = {
+      ...withoutNgay,
+      // Nếu không ghi được cột ngay, vẫn giữ ngày form ở ngay_bat_dau.
+      ngay_bat_dau: fallbackDate || withoutNgay.ngay_bat_dau || null
+    };
+    attempts.push(without);
+    if (Array.isArray(record.san_pham)) {
+      attempts.push({ ...without, san_pham: JSON.stringify(record.san_pham) });
+    }
+  }
+
+  let data: unknown = null;
+  let error: { code?: string; message?: string } | null = null;
+  for (const attempt of attempts) {
+    ({ data, error } = await supabase.from(SUPABASE_PRODUCTION_ORDERS_TABLE).insert(attempt).select('*').single());
+    if (!error) return { data, error };
+    if (!isMissingColumnError(error) && !isImmutableOrGeneratedColumnError(error)) {
+      // Thử kiểu san_pham text nếu lỗi cast JSON.
+      if (Array.isArray(attempt.san_pham) && /invalid|json|type/i.test(error.message || '')) {
+        continue;
+      }
+      return { data, error };
+    }
+  }
+  return { data, error };
+}
+
+async function updateProductionOrderRecord(id: string, record: Record<string, unknown>) {
+  if (!supabase) return { data: null, error: { message: 'Supabase chưa được cấu hình.' } };
+
+  const attempts: Record<string, unknown>[] = [record];
+  if (Array.isArray(record.san_pham)) {
+    attempts.push({ ...record, san_pham: JSON.stringify(record.san_pham) });
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'ngay')) {
+    const { ngay, ...withoutNgay } = record;
+    const fallbackDate = String(ngay ?? '').slice(0, 10);
+    const without = {
+      ...withoutNgay,
+      ngay_bat_dau: fallbackDate || withoutNgay.ngay_bat_dau || null
+    };
+    attempts.push(without);
+    if (Array.isArray(record.san_pham)) {
+      attempts.push({ ...without, san_pham: JSON.stringify(record.san_pham) });
+    }
+  }
+
+  let data: unknown = null;
+  let error: { code?: string; message?: string } | null = null;
+  for (const attempt of attempts) {
+    ({ data, error } = await supabase
+      .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
+      .update(attempt)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle());
+    if (!error) return { data, error };
+    if (!isMissingColumnError(error) && !isImmutableOrGeneratedColumnError(error)) {
+      if (Array.isArray(attempt.san_pham) && /invalid|json|type/i.test(error.message || '')) {
+        continue;
+      }
+      return { data, error };
+    }
+  }
+  return { data, error };
 }
 
 function productionPlanWriteErrorMessage(error: { code?: string; message?: string }) {
@@ -6762,11 +6854,7 @@ export function createApp() {
       code = await ensureUniqueProductionOrderCode(code);
 
       const record = buildProductionOrderRecordFromOrder(orderRow, code, firstProduct);
-      const { data: created, error: insertError } = await supabase
-        .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
-        .insert(record)
-        .select('*')
-        .single();
+      const { data: created, error: insertError } = await insertProductionOrderRecord(record);
 
       if (insertError) {
         console.error('Supabase lenh_sx insert error:', insertError);
@@ -6839,11 +6927,7 @@ export function createApp() {
         }
       }
 
-      const { data: created, error: insertError } = await supabase
-        .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
-        .insert(record)
-        .select('*')
-        .single();
+      const { data: created, error: insertError } = await insertProductionOrderRecord(record);
 
       if (insertError) {
         console.error('Supabase lenh_sx insert error:', insertError);
@@ -7155,12 +7239,7 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
-      const { data: updated, error: updateError } = await supabase
-        .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
-        .update(parsed.record)
-        .eq('id', id)
-        .select('*')
-        .maybeSingle();
+      const { data: updated, error: updateError } = await updateProductionOrderRecord(id, parsed.record);
 
       if (updateError) {
         console.error('Supabase lenh_sx update error:', updateError);

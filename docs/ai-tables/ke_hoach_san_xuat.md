@@ -9,4 +9,4 @@
 **Components:** `ProductionPlanNvlPrintSheet.tsx`, `ControlBoardShiftSummaryTable.tsx`  
 **Utils:** `controlBoardShiftSummary.ts`, `controlBoardShiftSummaryDetails.ts`
 
-**Modal tạo kế hoạch:** tick chọn lệnh SX (không tự lấy tất cả); chỉ hiện lệnh đúng **Ngày kế hoạch** và chưa nằm trong KH đã lưu (`GET /api/ke-hoach-sx?usedLenhSx=1`).
+**Modal tạo kế hoạch:** tick chọn lệnh SX (không tự lấy tất cả); chỉ hiện lệnh đúng **Ngày kế hoạch** khớp cột `lenh_sx.ngay` (không dùng `ngay_bat_dau`) và chưa nằm trong KH đã lưu (`GET /api/ke-hoach-sx?usedLenhSx=1`).

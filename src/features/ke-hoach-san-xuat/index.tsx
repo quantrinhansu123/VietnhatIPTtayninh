@@ -106,8 +106,13 @@ export interface ProductionOrderRow {
   status: string;
   customer: string;
   orderRef: string;
+  /** Cột `ngay` trên lenh_sx — dùng cho nhóm ngày / KH SX / in. */
   startDate: string;
   endDate: string;
+  /** Raw `ngay_gio_bat_dau` — chỉ dùng giờ bắt đầu trên form. */
+  startAt: string;
+  /** Raw `ngay_gio_ket_thuc` — chỉ dùng giờ kết thúc trên form. */
+  endAt: string;
   createdAt: string;
   machine: string;
   shift: string;
@@ -270,7 +275,7 @@ export function buildInitialProductionPlanLines(
   machines: MachineRow[] = [],
   planDate = ''
 ): ProductionPlanLine[] {
-  const targetDate = String(planDate || '').trim();
+  const targetDate = parseProductionOrderFilterDate(planDate);
   return productionOrders
     .filter(isActiveProductionPlanOrder)
     .filter(row => {
@@ -293,7 +298,7 @@ export function isProductionOrderUsedInSavedPlan(
   return Boolean(orderCode) && usedOrderCodes.has(orderCode);
 }
 
-/** Lệnh SX còn có thể chọn khi lập kế hoạch mới (đúng ngày, chưa nằm trong KH đã lưu). */
+/** Lệnh SX còn có thể chọn khi lập kế hoạch mới (đúng ngày lệnh SX, chưa nằm trong KH đã lưu). */
 export function getAvailableProductionPlanOrders(
   productionOrders: ProductionOrderRow[],
   planDate: string,
@@ -301,7 +306,8 @@ export function getAvailableProductionPlanOrders(
   usedOrderCodes: Set<string>,
   alwaysIncludeIds: Set<string> = new Set()
 ): ProductionOrderRow[] {
-  const targetDate = String(planDate || '').trim();
+  // Chuẩn hóa về YYYY-MM-DD để khớp cột Ngày lệnh SX (không dùng ngày tạo).
+  const targetDate = parseProductionOrderFilterDate(planDate);
   return productionOrders
     .filter(isActiveProductionPlanOrder)
     .filter(row => {
@@ -338,18 +344,19 @@ export async function loadUsedProductionPlanOrderRefs(excludePlanId = ''): Promi
   };
 }
 
-/** Ngày kế hoạch mặc định = ngày xuất hiện nhiều nhất trong lệnh SX đã chọn. */
+/** Ngày kế hoạch mặc định = ngày (cột Ngày lệnh SX) xuất hiện nhiều nhất trong lệnh đã chọn. */
 export function resolveDefaultProductionPlanDate(
   productionOrders: ProductionOrderRow[],
   fallback = todayDateInputValue()
 ): string {
   const counts = new Map<string, number>();
   for (const row of productionOrders) {
+    // Chỉ lấy cột Ngày lệnh SX — không dùng created_at / ngày tạo.
     const date = parseProductionOrderFilterDate(row.startDate);
     if (!date) continue;
     counts.set(date, (counts.get(date) || 0) + 1);
   }
-  if (counts.size === 0) return fallback;
+  if (counts.size === 0) return parseProductionOrderFilterDate(fallback) || todayDateInputValue();
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0][0];
 }
 
@@ -436,11 +443,11 @@ export function buildProductionPlanPrintRows(lines: ProductionPlanLine[]): Produ
 }
 
 function formatProductionPlanPrintDate(value: string) {
-  if (!value) {
+  const iso = parseProductionOrderFilterDate(value);
+  if (!iso) {
     return new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value;
+  const [year, month, day] = iso.split('-');
   return `${day}/${month}/${year}`;
 }
 
@@ -1786,7 +1793,9 @@ export function normalizeProductionPlanHistory(data: unknown): ProductionPlanHis
       return {
         id,
         code: pickText(record, ['ma_ke_hoach', 'code'], '-'),
-        planDate: formatCell(record.ngay_ke_hoach ?? record.planDate),
+        planDate:
+          parseProductionOrderFilterDate(String(record.ngay_ke_hoach ?? record.planDate ?? '')) ||
+          formatCell(record.ngay_ke_hoach ?? record.planDate),
         status: pickText(record, ['trang_thai', 'status'], '-'),
         orderCount: Number(record.so_lenh ?? record.orderCount ?? 0) || 0,
         note: pickText(record, ['ghi_chu', 'note'], ''),
@@ -2579,7 +2588,7 @@ export function ProductionPlanModal({
     const seedOrders =
       seedIdSet.size > 0 ? productionOrders.filter(order => seedIdSet.has(order.id)) : productionOrders;
     const nextDate =
-      initialPlanDate ||
+      parseProductionOrderFilterDate(initialPlanDate || '') ||
       resolveDefaultProductionPlanDate(seedOrders.length > 0 ? seedOrders : productionOrders, todayDateInputValue());
     setPlanDate(nextDate);
     if (initialLines?.length) {
@@ -2890,7 +2899,7 @@ export function ProductionPlanModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editPlanId,
-          ngay_ke_hoach: planDate,
+          ngay_ke_hoach: parseProductionOrderFilterDate(planDate) || planDate,
           ghi_chu: planHeaderNote.trim(),
           items: buildProductionPlanSaveItems(displayLines)
         })
@@ -3496,6 +3505,7 @@ export function ProductionPlanModal({
                         />
                       </th>
                       <th className="px-2 py-2 font-black">STT</th>
+                      <th className="px-2 py-2 font-black">Ngày</th>
                       <th className="px-2 py-2 font-black">Tên máy</th>
                       <th className="px-2 py-2 font-black">Ca làm việc</th>
                       <th className="px-2 py-2 font-black">Nhân sự</th>
@@ -3543,6 +3553,9 @@ export function ProductionPlanModal({
                           </td>
                           <td className="px-2 py-2 font-black text-emerald-700">
                             {row.selected && selectedIndex >= 0 ? selectedIndex + 1 : '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-2 font-mono text-xs font-bold text-zinc-800">
+                            {row.order.startDate || '-'}
                           </td>
                           <td className="px-2 py-2 font-semibold text-zinc-800">{line.position || '-'}</td>
                           <td className="px-2 py-2 text-zinc-700">{line.shift && line.shift !== '-' ? line.shift : '-'}</td>
@@ -3829,15 +3842,11 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
         status: pickText(record, ['trang_thai', 'status', 'tinh_trang'], '-'),
         customer: pickText(record, ['khach_hang', 'customer', 'ten_khach_hang'], '-'),
         orderRef: pickText(record, ['ma_don_hang', 'don_hang', 'order_code'], '-'),
-        startDate: formatProductionOrderDate(
-          record.ngay ??
-            record.ngay_san_xuat ??
-            record.ngay_sx ??
-            record.ngay_bat_dau ??
-            record.ngay_gio_bat_dau ??
-            record.start_date
-        ),
+        // Form/UI «Ngày»: ưu tiên cột ngay; fallback ngay_bat_dau (khi ngay generated/không ghi được).
+        startDate: formatProductionOrderDate(record.ngay ?? record.ngay_bat_dau),
         endDate: formatProductionOrderDate(record.ngay_gio_ket_thuc ?? record.ngay_ket_thuc ?? record.end_date),
+        startAt: String(record.ngay_gio_bat_dau ?? record.start_at ?? '').trim(),
+        endAt: String(record.ngay_gio_ket_thuc ?? record.end_at ?? '').trim(),
         createdAt: String(record.created_at ?? record.createdAt ?? '').trim(),
         machine: pickText(record, ['may', 'ten_may', 'ma_may', 'machine'], '-'),
         shift: pickText(record, ['ca', 'shift'], '-'),
@@ -4134,12 +4143,12 @@ export function formatProductionOrderPrintDate(value?: string) {
     return new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
 
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
+  // startDate trên UI đã là dd/mm/yyyy — giữ nguyên, tránh new Date('dd/mm/yyyy') lệch/NaN.
+  const trimmed = String(value).trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) return trimmed;
 
-  return value;
+  const formatted = formatProductionOrderDate(trimmed);
+  return formatted === '-' ? trimmed : formatted;
 }
 
 export function ProductionOrderPrintSheet({
@@ -4512,10 +4521,29 @@ export function toDatetimeLocalValue(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Chuyển ngày lệnh SX (ISO / dd/mm/yyyy / datetime) → YYYY-MM-DD; không fallback ngày tạo. */
+export function parseProductionOrderDateToIso(value: string): string {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw === '-') return '';
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  }
+
+  return '';
+}
+
 export function toDatetimeLocalInputValue(value: string) {
   const raw = String(value ?? '').trim();
   if (!raw || raw === '-') return '';
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return raw;
+
+  const isoDate = parseProductionOrderDateToIso(raw);
+  if (isoDate) return `${isoDate}T08:00`;
 
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return '';
@@ -4528,6 +4556,8 @@ export function todayIsoDate(date = new Date()) {
 }
 
 export function extractProductionOrderDate(datetimeLocal: string) {
+  const fromFlexible = parseProductionOrderDateToIso(datetimeLocal);
+  if (fromFlexible) return fromFlexible;
   if (!datetimeLocal) return todayIsoDate();
   const datePart = datetimeLocal.slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : todayIsoDate();
@@ -4913,6 +4943,8 @@ export function productionOrderFormToCreatePayload(
           .filter(Boolean)
           .join(' + ');
 
+  const productionDate = form.startDate.trim();
+  const startDateTime = mergeProductionOrderDateTime(productionDate, form.startDateTime) || null;
   return {
     ma_lenh_sx: form.code.trim(),
     ten_lenh_sx: form.name.trim() || (defaultName ? `SX ${defaultName}` : ''),
@@ -4929,7 +4961,10 @@ export function productionOrderFormToCreatePayload(
     nhan_su_chinh: staffRoles?.mainStaff?.trim() || '',
     tho_phu: staffRoles?.assistantStaff?.trim() || '',
     hoc_viec: staffRoles?.traineeStaff?.trim() || '',
-    ngay_gio_bat_dau: mergeProductionOrderDateTime(form.startDate, form.startDateTime) || null,
+    // Form «Ngày» — ghi cả ngay + ngay_bat_dau để vẫn lưu được nếu cột ngay bị generated/thiếu.
+    ngay: productionDate || null,
+    ngay_bat_dau: productionDate || null,
+    ngay_gio_bat_dau: startDateTime,
     ngay_gio_ket_thuc: form.endDateTime.trim() || null,
     may: form.machine.trim(),
     ghi_chu: form.note.trim()
@@ -6262,8 +6297,7 @@ export function ProductionOrderViewModal({
             ['Thợ phụ', row.assistantStaff],
             ['Học việc', row.traineeStaff],
             ['Tổng nhân sự', row.staff],
-            ['Bắt đầu', row.startDate],
-            ['Kết thúc', row.endDate],
+            ['Ngày', row.startDate],
             ['Máy', row.machine],
             ['Ghi chú', row.note || '-']
           ].map(([label, value]) => (
@@ -6346,7 +6380,11 @@ export function EditProductionOrderModal({
   useEffect(() => {
     if (!open || !row) return;
     const productLines = getProductionOrderProductLines(row);
-    const startDateTime = toDatetimeLocalInputValue(row.startDate);
+    // Ngày form = cột `ngay`; giờ bắt đầu/kết thúc lấy từ ngay_gio_* .
+    const startDate = parseProductionOrderDateToIso(row.startDate) || todayIsoDate();
+    const startDateTime =
+      toDatetimeLocalInputValue(row.startAt) ||
+      mergeProductionOrderDateTime(startDate, `${startDate}T08:00`);
     setForm({
       code: row.code === '-' ? '' : row.code,
       name: row.name === '-' ? '' : row.name,
@@ -6368,9 +6406,9 @@ export function EditProductionOrderModal({
       mainStaffId: '',
       assistantStaffId: '',
       traineeStaffId: '',
-      startDate: extractProductionOrderDate(startDateTime),
+      startDate,
       startDateTime,
-      endDateTime: toDatetimeLocalInputValue(row.endDate),
+      endDateTime: toDatetimeLocalInputValue(row.endAt || row.endDate),
       machine: row.machine === '-' ? '' : row.machine,
       note: row.note === '-' ? '' : row.note || ''
     });
@@ -6489,6 +6527,11 @@ export function EditProductionOrderModal({
     const filledLines = mergeProductionOrderEntryLinesByProductCode(
       form.entryLines.filter(line => line.orderRef.trim() && line.productCode.trim())
     );
+
+    if (!form.startDate.trim()) {
+      setFormError('Vui lòng chọn Ngày.');
+      return;
+    }
 
     if (filledLines.length === 0) {
       setFormError('Vui lòng thêm ít nhất một dòng đơn hàng và mã hàng.');

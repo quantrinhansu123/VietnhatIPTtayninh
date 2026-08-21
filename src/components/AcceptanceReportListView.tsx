@@ -431,7 +431,7 @@ export default function AcceptanceReportListView({
   };
 
   const handlePrint = () => {
-    // Chụp đúng selection hiện tại; mỗi id báo cáo là một phiếu in độc lập.
+    // Gộp các dòng đã chọn cùng ngày + ca thành một phiếu in (một bảng sản lượng).
     startPrint(buildAcceptancePrintSlips(addProductNamesForPrint(selectedReportsForPrint)));
   };
 

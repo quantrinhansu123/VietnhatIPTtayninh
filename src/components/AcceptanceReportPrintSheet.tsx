@@ -68,24 +68,81 @@ export function sumByUnit(lines: AcceptancePrintLine[]) {
 }
 
 export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): AcceptancePrintSlip[] {
-  // Mỗi bản ghi là một phiếu độc lập, nhận diện duy nhất bằng id.
-  // Không gộp theo ngày, ca, lần, máy hoặc mặt hàng.
-  return reports.map(report => ({
-    id: report.id,
-    ngay: report.ngay,
-    ca: report.ca || '-',
-    lan: report.lan || '-',
-    gio: report.gio || '-',
-    machineLabel: machineLabelFromReport(report),
-    lines: [
-      {
+  type AcceptanceSlipAcc = {
+    id: string;
+    ngay: string;
+    ca: string;
+    gio: string;
+    lanSet: Set<string>;
+    machineSet: Set<string>;
+    lineMap: Map<string, AcceptancePrintLine>;
+    lineOrder: string[];
+  };
+  const grouped = new Map<string, AcceptanceSlipAcc>();
+
+  // Gộp các dòng cùng NGÀY + CA thành 1 phiếu in (một bảng), cộng dồn SL theo mặt hàng.
+  reports.forEach(report => {
+    const key = [report.ngay, report.ca].join('|');
+    let acc = grouped.get(key);
+    if (!acc) {
+      acc = {
+        id: `slip-${key}`,
+        ngay: report.ngay,
+        ca: report.ca || '-',
+        gio: report.gio || '-',
+        lanSet: new Set<string>(),
+        machineSet: new Set<string>(),
+        lineMap: new Map<string, AcceptancePrintLine>(),
+        lineOrder: []
+      };
+      grouped.set(key, acc);
+    }
+
+    if (report.lan) acc.lanSet.add(report.lan);
+    const machineLabel = machineLabelFromReport(report);
+    if (machineLabel && machineLabel !== '-') acc.machineSet.add(machineLabel);
+
+    const lineKey = [report.mat_hang, report.ten_sp || '', report.don_vi].join('|');
+    const existing = acc.lineMap.get(lineKey);
+    if (existing) {
+      existing.so_luong = (existing.so_luong ?? 0) + (report.so_luong ?? 0);
+    } else {
+      const line: AcceptancePrintLine = {
         mat_hang: report.mat_hang,
         ten_sp: report.ten_sp,
         don_vi: report.don_vi,
         so_luong: report.so_luong
-      }
-    ]
-  }));
+      };
+      acc.lineMap.set(lineKey, line);
+      acc.lineOrder.push(lineKey);
+    }
+
+    if (report.gio && (acc.gio === '-' || !acc.gio || report.gio < acc.gio)) {
+      acc.gio = report.gio;
+    }
+  });
+
+  return [...grouped.values()]
+    .map(acc => ({
+      id: acc.id,
+      ngay: acc.ngay,
+      ca: acc.ca,
+      lan:
+        acc.lanSet.size > 0
+          ? [...acc.lanSet].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })).join(', ')
+          : '-',
+      gio: acc.gio,
+      machineLabel:
+        acc.machineSet.size > 0
+          ? [...acc.machineSet].sort((a, b) => a.localeCompare(b, 'vi')).join(', ')
+          : '-',
+      lines: acc.lineOrder.map(k => acc.lineMap.get(k)!)
+    }))
+    .sort((a, b) => {
+      const byDate = a.ngay.localeCompare(b.ngay, 'vi');
+      if (byDate !== 0) return byDate;
+      return a.ca.localeCompare(b.ca, 'vi');
+    });
 }
 
 export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip }) {

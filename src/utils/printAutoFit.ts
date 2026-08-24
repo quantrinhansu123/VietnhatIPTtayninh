@@ -26,7 +26,7 @@ const PRINT_DOCUMENT_CONTENT_HEIGHT_MM: Record<string, number> = {
   '.production-plan-print-doc': 297 - 5 * 2, // @page production-plan-page: A4 dọc, margin 5mm
   '.mixing-report-print-doc': 297 - 5 * 2, // @page mixing-report-page: A4 dọc, margin 5mm
   '.weighing-slip-print-doc': 297 - 5 * 2, // @page weighing-slip-page: A4 dọc, margin 5mm
-  '.shift-handover-print-doc': 297 - 5 * 2, // @page shift-handover-page: A4 dọc, margin 5mm
+  '.shift-handover-print-doc': 210 - 5 * 2, // @page shift-handover-page: A4 ngang, margin 5mm
   '.mixing-norm-ratio-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
   '.order-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
   '.production-order-print-doc': 210 - 8 * 2,

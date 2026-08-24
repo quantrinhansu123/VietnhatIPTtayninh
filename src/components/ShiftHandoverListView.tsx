@@ -1,18 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeftRight, ChevronLeft, Eye, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
+import { ClipboardList, ChevronLeft, Eye, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
-import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import {
-  ShiftHandoverPrintBatch,
-  buildShiftHandoverPrintSlip,
-  type ShiftHandoverPrintSlip
-} from './ShiftHandoverPrintSheet';
-import {
-  normalizeShiftHandoverSlips,
-  type ShiftHandoverSlip
-} from './ShiftHandoverPanel';
+  waitForPrintImagesReady,
+  enableLandscapePrintPage,
+  disableLandscapePrintPage
+} from '../utils/printReady';
+import { formatNumber } from '../utils';
+import { ShiftHandoverPrintBatch, slipToPrintSlip, type ShiftHandoverPrintSlip } from './ShiftHandoverPrintSheet';
+import { normalizeShiftHandoverSlips, sumProductTotals, type ShiftHandoverSlip } from '../lib/shiftHandoverModel';
 import {
   FilterCombobox,
   TableToolbar,
@@ -44,29 +42,9 @@ function formatDisplayDate(iso: string) {
   return `${day}/${month}/${year}`;
 }
 
-function slipToPrintSlip(slip: ShiftHandoverSlip): ShiftHandoverPrintSlip {
-  return buildShiftHandoverPrintSlip({
-    slipCode: slip.slipCode,
-    date: slip.date,
-    shift: slip.shift,
-    nextShift: slip.nextShift,
-    machineCode: slip.machineCode,
-    machineName: slip.machineName,
-    handoverBy: slip.handoverBy,
-    receivedBy: slip.receivedBy,
-    productionStatus: slip.productionStatus,
-    output: slip.output,
-    machineStatus: slip.machineStatus,
-    endingStock: slip.endingStock,
-    note: slip.note,
-    lines: slip.lines.map(line => ({
-      content: line.content,
-      priority: line.priority,
-      assignee: line.assignee,
-      status: line.status,
-      note: line.note
-    }))
-  });
+function displayNum(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return formatNumber(value, digits);
 }
 
 function machineLabel(slip: ShiftHandoverSlip) {
@@ -74,6 +52,12 @@ function machineLabel(slip: ShiftHandoverSlip) {
     return `${slip.machineCode} · ${slip.machineName}`;
   }
   return slip.machineName || slip.machineCode || 'Chung';
+}
+
+function shiftLabel(slip: ShiftHandoverSlip) {
+  const range = [slip.timeFrom, slip.timeTo].filter(Boolean).join('–');
+  if (slip.shift && range) return `${slip.shift} (${range})`;
+  return slip.shift || range || '—';
 }
 
 type DateGroup = { ngay: string; slips: ShiftHandoverSlip[] };
@@ -95,19 +79,22 @@ function ShiftHandoverDetailModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
+  const totals = sumProductTotals(slip.products);
+
   const modal = (
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Đóng" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-gradient-to-r from-zinc-50 to-white px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">Chi tiết phiếu giao ca</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">
+              Chi tiết phiếu giao ca
+            </p>
             <h3 className="mt-0.5 truncate text-base font-black text-zinc-900 sm:text-lg">
               {slip.slipCode || machineLabel(slip)}
             </h3>
             <p className="mt-1 font-mono text-[11px] font-semibold text-zinc-500">
-              {formatDisplayDate(slip.date)} · {slip.shift || '—'}
-              {slip.nextShift ? ` → ${slip.nextShift}` : ''} · {machineLabel(slip)}
+              {formatDisplayDate(slip.date)} · {shiftLabel(slip)} · {machineLabel(slip)}
             </p>
           </div>
           <button
@@ -122,68 +109,104 @@ function ShiftHandoverDetailModal({
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Người giao ca</p>
-              <p className="mt-0.5 text-sm font-bold text-zinc-800">{slip.handoverBy || '—'}</p>
-            </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Người nhận ca</p>
-              <p className="mt-0.5 text-sm font-bold text-zinc-800">{slip.receivedBy || '—'}</p>
-            </div>
             <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 sm:col-span-2">
-              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Sản lượng đạt được</p>
-              <p className="mt-0.5 text-sm font-bold text-zinc-800">{slip.output || '—'}</p>
+              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Người thực hiện</p>
+              <p className="mt-0.5 text-sm font-bold text-zinc-800">{slip.operators || '—'}</p>
             </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 sm:col-span-2">
-              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Tình hình sản xuất</p>
-              <p className="mt-0.5 text-sm font-semibold text-zinc-700">{slip.productionStatus || '—'}</p>
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">SL cuộn</p>
+              <p className="mt-0.5 text-sm font-bold text-zinc-800">{displayNum(totals.quantity)}</p>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2 sm:col-span-2">
-              <p className="text-[9px] font-black uppercase tracking-wider text-amber-700">Tình trạng máy móc</p>
-              <p className="mt-0.5 text-sm font-semibold text-amber-900">{slip.machineStatus || '—'}</p>
-            </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 sm:col-span-4">
-              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Tồn kho cuối ca</p>
-              <p className="mt-0.5 text-sm font-semibold text-zinc-700">{slip.endingStock || '—'}</p>
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
+              <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Tổng TL ĐM</p>
+              <p className="mt-0.5 text-sm font-bold text-zinc-800">{displayNum(totals.totalNormWeight)}</p>
             </div>
           </div>
 
           <div className="mt-4">
-            <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[360px]">
+            <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">II. Thành phẩm</p>
+            <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[280px]">
               <TableHead>
-                <TableHeadCell>STT</TableHeadCell>
-                <TableHeadCell>Nội dung bàn giao</TableHeadCell>
-                <TableHeadCell>Mức độ</TableHeadCell>
-                <TableHeadCell>Người phụ trách</TableHeadCell>
-                <TableHeadCell>Trạng thái</TableHeadCell>
-                <TableHeadCell>Ghi chú</TableHeadCell>
+                <TableHeadCell>Mã hàng</TableHeadCell>
+                <TableHeadCell>Thành phẩm</TableHeadCell>
+                <TableHeadCell align="center">DK trả kho</TableHeadCell>
+                <TableHeadCell align="center">SL cuộn</TableHeadCell>
+                <TableHeadCell align="center">TL cuộn</TableHeadCell>
+                <TableHeadCell align="center">ĐM nhựa</TableHeadCell>
+                <TableHeadCell align="center">Tổng TL ĐM</TableHeadCell>
+                <TableHeadCell align="center">Lõi 20cm</TableHeadCell>
+                <TableHeadCell align="center">Lõi 30cm</TableHeadCell>
               </TableHead>
               <TableBody>
-                {slip.lines.map(line => (
-                  <React.Fragment key={`${slip.id}-${line.stt}`}>
+                {slip.products.map(line => (
+                  <React.Fragment key={`${slip.id}-p-${line.stt}`}>
                     <TableRow>
-                      <td className="px-3 py-2 font-bold text-[#ef1b2d]">{line.stt}</td>
-                      <td className="px-3 py-2 text-zinc-800">{line.content || '—'}</td>
-                      <td className="px-3 py-2 text-zinc-700">
-                        {line.priority === 'Khẩn cấp' ? (
-                          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">
-                            {line.priority}
-                          </span>
-                        ) : (
-                          line.priority || '—'
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-zinc-700">{line.assignee || '—'}</td>
-                      <td className="px-3 py-2 text-zinc-700">{line.status || '—'}</td>
-                      <td className="px-3 py-2 text-zinc-600">{line.note || '—'}</td>
+                      <td className="px-3 py-2 font-black text-zinc-900">{line.productCode || '—'}</td>
+                      <td className="px-3 py-2 text-zinc-800">{line.productName || '—'}</td>
+                      <td className="px-3 py-2 text-center">{displayNum(line.plannedReturn)}</td>
+                      <td className="px-3 py-2 text-center">{displayNum(line.quantity)}</td>
+                      <td className="px-3 py-2 text-center">{displayNum(line.rollWeight)}</td>
+                      <td className="px-3 py-2 text-center">{displayNum(line.resinNorm)}</td>
+                      <td className="px-3 py-2 text-center font-bold">{displayNum(line.totalNormWeight)}</td>
+                      <td className="px-3 py-2 text-center">{line.defect20 || '—'}</td>
+                      <td className="px-3 py-2 text-center">{line.defect30 || '—'}</td>
                     </TableRow>
                   </React.Fragment>
                 ))}
-                {slip.lines.length === 0 && (
-                  <TableEmptyRow colSpan={6}>Không có việc bàn giao.</TableEmptyRow>
-                )}
+                {slip.products.length === 0 && <TableEmptyRow colSpan={9}>Chưa có thành phẩm.</TableEmptyRow>}
               </TableBody>
             </TableShell>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                III. Hàng lỗi / phế / sự cố
+              </p>
+              <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[220px]">
+                <TableHead>
+                  <TableHeadCell>Tên lỗi / sự cố</TableHeadCell>
+                  <TableHeadCell align="center">SL (kg)</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {slip.scraps.map(line => (
+                    <React.Fragment key={`${slip.id}-s-${line.stt}`}>
+                      <TableRow>
+                        <td className="px-3 py-2 text-zinc-800">{line.name || '—'}</td>
+                        <td className="px-3 py-2 text-center">{displayNum(line.quantity)}</td>
+                      </TableRow>
+                    </React.Fragment>
+                  ))}
+                  {slip.scraps.length === 0 && <TableEmptyRow colSpan={2}>Không có hàng lỗi.</TableEmptyRow>}
+                </TableBody>
+              </TableShell>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                III. Báo cáo SX cuối ca
+              </p>
+              <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[220px]">
+                <TableHead>
+                  <TableHeadCell>Chỉ tiêu</TableHeadCell>
+                  <TableHeadCell align="center">SL ĐM</TableHeadCell>
+                  <TableHeadCell align="center">Thực tế</TableHeadCell>
+                  <TableHeadCell align="center">Chênh lệch</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {slip.kpis.map(line => (
+                    <React.Fragment key={`${slip.id}-k-${line.stt}`}>
+                      <TableRow>
+                        <td className="px-3 py-2 text-zinc-800">{line.criteria || '—'}</td>
+                        <td className="px-3 py-2 text-center">{displayNum(line.norm)}</td>
+                        <td className="px-3 py-2 text-center">{displayNum(line.actual)}</td>
+                        <td className="px-3 py-2 text-center font-bold">{displayNum(line.variance)}</td>
+                      </TableRow>
+                    </React.Fragment>
+                  ))}
+                  {slip.kpis.length === 0 && <TableEmptyRow colSpan={4}>Chưa có chỉ tiêu.</TableEmptyRow>}
+                </TableBody>
+              </TableShell>
+            </div>
           </div>
 
           {slip.note ? (
@@ -238,9 +261,7 @@ export default function ShiftHandoverListView({
   const [filterFromDate, setFilterFromDate] = useState(
     () => initialFilters?.dateFrom?.trim() || defaultFromDate()
   );
-  const [filterToDate, setFilterToDate] = useState(
-    () => initialFilters?.dateTo?.trim() || todayIso()
-  );
+  const [filterToDate, setFilterToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
   const [searchText, setSearchText] = useState('');
   const [filterShift, setFilterShift] = useState(() => {
     const shift = initialFilters?.shift?.trim() || '';
@@ -254,8 +275,8 @@ export default function ShiftHandoverListView({
 
   useEffect(() => {
     if (printSlips.length === 0) return;
-    document.body.classList.add('production-order-print-active');
-    return () => document.body.classList.remove('production-order-print-active');
+    document.body.classList.add('shift-handover-print-active');
+    return () => document.body.classList.remove('shift-handover-print-active');
   }, [printSlips]);
 
   const shiftOptions = useMemo<string[]>(() => {
@@ -275,7 +296,8 @@ export default function ShiftHandoverListView({
       if (filterToDate && date && date > filterToDate) return false;
       if (filterShift && slip.shift?.trim() !== filterShift) return false;
       if (normalizedSearch) {
-        const haystack = `${slip.slipCode} ${slip.shift} ${machineLabel(slip)} ${slip.handoverBy} ${slip.receivedBy}`.toLowerCase();
+        const productText = slip.products.map(line => `${line.productCode} ${line.productName}`).join(' ');
+        const haystack = `${slip.slipCode} ${slip.shift} ${machineLabel(slip)} ${slip.operators} ${productText}`.toLowerCase();
         if (!haystack.includes(normalizedSearch)) return false;
       }
       return true;
@@ -304,12 +326,8 @@ export default function ShiftHandoverListView({
       .sort((a, b) => b.slips[0]?.createdAt.localeCompare(a.slips[0]?.createdAt ?? '') ?? 0);
   }, [filteredSlips]);
 
-  const pendingCount = useMemo(
-    () =>
-      filteredSlips.reduce(
-        (sum, slip) => sum + slip.lines.filter(line => line.status !== 'Đã xử lý').length,
-        0
-      ),
+  const totalRolls = useMemo(
+    () => filteredSlips.reduce((sum, slip) => sum + sumProductTotals(slip.products).quantity, 0),
     [filteredSlips]
   );
 
@@ -337,7 +355,7 @@ export default function ShiftHandoverListView({
   useEffect(() => {
     if (!pendingPrint || printSlips.length === 0) return;
     let cancelled = false;
-    enablePortraitPrintPage('shift-handover-page-portrait');
+    enableLandscapePrintPage('shift-handover-page-landscape');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -345,14 +363,14 @@ export default function ShiftHandoverListView({
           window.print();
         } finally {
           setPendingPrint(false);
-          disablePortraitPrintPage('shift-handover-page-portrait');
+          disableLandscapePrintPage('shift-handover-page-landscape');
         }
       });
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      disablePortraitPrintPage('shift-handover-page-portrait');
+      disableLandscapePrintPage('shift-handover-page-landscape');
     };
   }, [pendingPrint, printSlips]);
 
@@ -409,11 +427,7 @@ export default function ShiftHandoverListView({
         ? createPortal(<ShiftHandoverPrintBatch slips={printSlips} />, document.body)
         : null}
       {viewingSlip ? (
-        <ShiftHandoverDetailModal
-          slip={viewingSlip}
-          onClose={() => setViewingSlip(null)}
-          onPrint={handlePrintSlip}
-        />
+        <ShiftHandoverDetailModal slip={viewingSlip} onClose={() => setViewingSlip(null)} onPrint={handlePrintSlip} />
       ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -423,7 +437,9 @@ export default function ShiftHandoverListView({
               <img src={vietNhatLogoUrl} alt="Viet Nhat IPT" className="h-14 w-auto max-w-[190px] object-contain" />
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Phiếu giao ca</p>
-                <p className="mt-1 text-sm font-semibold text-zinc-500">Danh sách phiếu bàn giao theo ngày / ca</p>
+                <p className="mt-1 text-sm font-semibold text-zinc-500">
+                  Nhật ký sản xuất kiêm phiếu giao ca (QT-16-BM02)
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -451,9 +467,9 @@ export default function ShiftHandoverListView({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
           <div className="flex items-center gap-2">
-            <ArrowLeftRight className="h-4 w-4 text-[#ef1b2d]" />
+            <ClipboardList className="h-4 w-4 text-[#ef1b2d]" />
             <span className="text-xs font-black uppercase tracking-wider text-zinc-600">
-              {dateGroups.length} ngày · {filteredSlips.length} phiếu · {pendingCount} việc chưa xử lý
+              {dateGroups.length} ngày · {filteredSlips.length} phiếu · {displayNum(totalRolls)} cuộn
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -483,7 +499,7 @@ export default function ShiftHandoverListView({
             <TableSearchInput
               value={searchText}
               onChange={setSearchText}
-              placeholder="Tìm số phiếu, máy, người giao/nhận ca..."
+              placeholder="Tìm số phiếu, máy, người thực hiện, mã hàng..."
               disabled={isLoading}
             />
             <FilterCombobox
@@ -533,34 +549,32 @@ export default function ShiftHandoverListView({
                 <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[520px]">
                   <TableHead>
                     <TableHeadCell>Số phiếu</TableHeadCell>
-                    <TableHeadCell>Ca giao → nhận</TableHeadCell>
-                    <TableHeadCell>Máy / Chuyền</TableHeadCell>
-                    <TableHeadCell>Người giao ca</TableHeadCell>
-                    <TableHeadCell>Người nhận ca</TableHeadCell>
-                    <TableHeadCell align="center">Việc bàn giao</TableHeadCell>
+                    <TableHeadCell>Ca sản xuất</TableHeadCell>
+                    <TableHeadCell>Máy</TableHeadCell>
+                    <TableHeadCell>Người thực hiện</TableHeadCell>
+                    <TableHeadCell align="center">Mã hàng</TableHeadCell>
+                    <TableHeadCell align="center">SL cuộn</TableHeadCell>
+                    <TableHeadCell align="center">Tổng TL ĐM</TableHeadCell>
                     <TableHeadCell align="center">Thao tác</TableHeadCell>
                   </TableHead>
                   <TableBody>
                     {group.slips.map(slip => {
-                      const pending = slip.lines.filter(line => line.status !== 'Đã xử lý').length;
+                      const totals = sumProductTotals(slip.products);
                       return (
                         <React.Fragment key={slip.id}>
                           <TableRow>
                             <td className="px-3 py-2 font-black text-zinc-900">{slip.slipCode || '—'}</td>
-                            <td className="px-3 py-2 font-semibold text-zinc-800">
-                              {slip.shift || '—'}
-                              {slip.nextShift ? ` → ${slip.nextShift}` : ''}
-                            </td>
+                            <td className="px-3 py-2 font-semibold text-zinc-800">{shiftLabel(slip)}</td>
                             <td className="px-3 py-2 text-zinc-700">{machineLabel(slip)}</td>
-                            <td className="px-3 py-2 text-zinc-700">{slip.handoverBy || '—'}</td>
-                            <td className="px-3 py-2 text-zinc-700">{slip.receivedBy || '—'}</td>
-                            <td className="px-3 py-2 text-center">
-                              <span className="font-mono font-bold text-zinc-700">{slip.lines.length}</span>
-                              {pending > 0 ? (
-                                <span className="ml-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">
-                                  {pending} chưa xử lý
-                                </span>
-                              ) : null}
+                            <td className="px-3 py-2 text-zinc-700">{slip.operators || '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono font-bold text-zinc-700">
+                              {slip.products.length}
+                            </td>
+                            <td className="px-3 py-2 text-center font-mono font-bold text-zinc-700">
+                              {displayNum(totals.quantity)}
+                            </td>
+                            <td className="px-3 py-2 text-center font-mono font-bold text-zinc-700">
+                              {displayNum(totals.totalNormWeight)}
                             </td>
                             <td className="px-3 py-2">
                               <RowActionsMenu label={`Thao tác phiếu ${slip.slipCode}`}>
@@ -609,9 +623,7 @@ export default function ShiftHandoverListView({
                         </React.Fragment>
                       );
                     })}
-                    {group.slips.length === 0 && (
-                      <TableEmptyRow colSpan={7}>Chưa có dữ liệu.</TableEmptyRow>
-                    )}
+                    {group.slips.length === 0 && <TableEmptyRow colSpan={8}>Chưa có dữ liệu.</TableEmptyRow>}
                   </TableBody>
                 </TableShell>
               </div>

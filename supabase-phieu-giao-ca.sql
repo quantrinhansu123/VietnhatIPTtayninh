@@ -52,5 +52,7 @@ before update on public.phieu_giao_ca
 for each row
 execute function public.set_phieu_giao_ca_updated_at();
 
-comment on table public.phieu_giao_ca is 'Phiếu giao ca — bàn giao thông tin sản xuất, tình trạng máy và sự cố tồn đọng giữa ca ngày/đêm.';
-comment on column public.phieu_giao_ca.chi_tiet is 'Danh sách việc/sự cố bàn giao: stt, noi_dung, muc_do, nguoi_phu_trach, trang_thai, ghi_chu.';
+comment on table public.phieu_giao_ca is 'Nhật ký sản xuất kiêm phiếu giao ca (QT-16-BM02) — thành phẩm, hàng lỗi/phế và báo cáo SX cuối ca.';
+comment on column public.phieu_giao_ca.chi_tiet is 'JSON mẫu QT-16-BM02: loai=nk_sx, gio_tu, gio_den, thanh_pham[], hang_loi[], bao_cao_cuoi_ca[]. Phiếu cũ có thể là mảng việc bàn giao.';
+comment on column public.phieu_giao_ca.nguoi_giao_ca is 'Người thực hiện / công nhân vận hành ca.';
+comment on column public.phieu_giao_ca.ca_giao is 'Tên ca sản xuất.';

@@ -224,7 +224,7 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Phiếu giao ca',
-    desc: 'Bàn giao tình hình sản xuất, tình trạng máy và sự cố tồn đọng giữa ca ngày/đêm.',
+    desc: 'Nhật ký sản xuất kiêm phiếu giao ca QT-16-BM02: thành phẩm, hàng lỗi và báo cáo cuối ca.',
     icon: ArrowLeftRight,
     tab: 'shift-handover-report'
   }
@@ -386,7 +386,7 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Danh sách phiếu giao ca',
-    desc: 'Xem các phiếu bàn giao ca đã lưu và việc bàn giao chưa xử lý.',
+    desc: 'Xem nhật ký sản xuất kiêm phiếu giao ca đã lưu, lọc theo ngày/ca và in lại.',
     icon: ArrowLeftRight,
     tab: 'shift-handover-list'
   }

@@ -3968,6 +3968,123 @@ function parseShiftHandoverLine(source: unknown, index: number) {
   };
 }
 
+function parseShiftHandoverNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseShiftHandoverProductLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ma_hang = String(record.ma_hang ?? record.productCode ?? record.ma_sp ?? '').trim();
+  const thanh_pham = String(record.thanh_pham ?? record.productName ?? record.ten_sp ?? '').trim();
+  const du_kien_tra_kho = parseShiftHandoverNumber(record.du_kien_tra_kho ?? record.plannedReturn);
+  const so_luong = parseShiftHandoverNumber(record.so_luong ?? record.quantity);
+  const trong_luong_cuon = parseShiftHandoverNumber(record.trong_luong_cuon ?? record.rollWeight);
+  const dinh_muc_nhua = parseShiftHandoverNumber(record.dinh_muc_nhua ?? record.resinNorm);
+  const tong_tl_dm =
+    parseShiftHandoverNumber(record.tong_tl_dm ?? record.totalNormWeight) ??
+    (so_luong !== null && dinh_muc_nhua !== null
+      ? Math.round(so_luong * dinh_muc_nhua * 1000) / 1000
+      : null);
+  const loi_20cm = String(record.loi_20cm ?? record.defect20 ?? '').trim();
+  const loi_30cm = String(record.loi_30cm ?? record.defect30 ?? '').trim();
+  if (
+    !ma_hang &&
+    !thanh_pham &&
+    du_kien_tra_kho === null &&
+    so_luong === null &&
+    trong_luong_cuon === null &&
+    dinh_muc_nhua === null &&
+    !loi_20cm &&
+    !loi_30cm
+  ) {
+    return null;
+  }
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    ma_hang,
+    thanh_pham,
+    du_kien_tra_kho,
+    so_luong,
+    trong_luong_cuon,
+    dinh_muc_nhua,
+    tong_tl_dm,
+    loi_20cm,
+    loi_30cm
+  };
+}
+
+function parseShiftHandoverScrapLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ten = String(record.ten ?? record.name ?? record.ten_loi ?? '').trim();
+  const so_luong = parseShiftHandoverNumber(record.so_luong ?? record.quantity);
+  if (!ten && so_luong === null) return null;
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    ten,
+    so_luong
+  };
+}
+
+function parseShiftHandoverKpiLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const chi_tieu = String(record.chi_tieu ?? record.criteria ?? '').trim();
+  const sl_dm = parseShiftHandoverNumber(record.sl_dm ?? record.norm);
+  const thuc_te = parseShiftHandoverNumber(record.thuc_te ?? record.actual);
+  const chenh_lech =
+    parseShiftHandoverNumber(record.chenh_lech ?? record.variance) ??
+    (sl_dm !== null && thuc_te !== null ? Math.round((thuc_te - sl_dm) * 1000) / 1000 : null);
+  if (!chi_tieu && sl_dm === null && thuc_te === null) return null;
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    chi_tieu,
+    sl_dm,
+    thuc_te,
+    chenh_lech
+  };
+}
+
+function parseShiftHandoverNkSxDetail(source: Record<string, unknown>) {
+  const nested =
+    source.chi_tiet && typeof source.chi_tiet === 'object' && !Array.isArray(source.chi_tiet)
+      ? (source.chi_tiet as Record<string, unknown>)
+      : {};
+  const productSource = Array.isArray(source.thanh_pham)
+    ? source.thanh_pham
+    : Array.isArray(nested.thanh_pham)
+      ? nested.thanh_pham
+      : [];
+  const scrapSource = Array.isArray(source.hang_loi)
+    ? source.hang_loi
+    : Array.isArray(nested.hang_loi)
+      ? nested.hang_loi
+      : [];
+  const kpiSource = Array.isArray(source.bao_cao_cuoi_ca)
+    ? source.bao_cao_cuoi_ca
+    : Array.isArray(nested.bao_cao_cuoi_ca)
+      ? nested.bao_cao_cuoi_ca
+      : [];
+
+  return {
+    loai: 'nk_sx',
+    gio_tu: String(source.gio_tu ?? nested.gio_tu ?? '').trim() || null,
+    gio_den: String(source.gio_den ?? nested.gio_den ?? '').trim() || null,
+    thanh_pham: productSource
+      .map((line, index) => parseShiftHandoverProductLine(line, index))
+      .filter((line): line is NonNullable<typeof line> => Boolean(line)),
+    hang_loi: scrapSource
+      .map((line, index) => parseShiftHandoverScrapLine(line, index))
+      .filter((line): line is NonNullable<typeof line> => Boolean(line)),
+    bao_cao_cuoi_ca: kpiSource
+      .map((line, index) => parseShiftHandoverKpiLine(line, index))
+      .filter((line): line is NonNullable<typeof line> => Boolean(line))
+  };
+}
+
 function parseShiftHandoverBody(body: unknown): { error: string } | { record: Record<string, unknown> } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const ngay = String(source.ngay ?? '').trim();
@@ -3975,19 +4092,33 @@ function parseShiftHandoverBody(body: unknown): { error: string } | { record: Re
   const ca_nhan = String(source.ca_nhan ?? source.nextShift ?? '').trim();
   const ma_may = String(source.ma_may ?? source.machineCode ?? '').trim();
   const ten_may = String(source.ten_may ?? source.machineName ?? '').trim();
-  const nguoi_giao_ca = String(source.nguoi_giao_ca ?? source.handoverBy ?? '').trim();
+  const nguoi_giao_ca = String(
+    source.nguoi_giao_ca ?? source.nguoi_thuc_hien ?? source.handoverBy ?? source.operators ?? ''
+  ).trim();
   const nguoi_nhan_ca = String(source.nguoi_nhan_ca ?? source.receivedBy ?? '').trim();
 
   if (!ngay) return { error: 'Vui lòng chọn ngày.' };
-  if (!ca_giao) return { error: 'Vui lòng chọn ca giao.' };
-  if (!nguoi_giao_ca) return { error: 'Vui lòng nhập người giao ca.' };
-  if (!nguoi_nhan_ca) return { error: 'Vui lòng nhập người nhận ca.' };
+  if (!ca_giao) return { error: 'Vui lòng chọn ca sản xuất.' };
+  if (!nguoi_giao_ca) return { error: 'Vui lòng nhập người thực hiện.' };
 
-  const rawLines = source.chi_tiet ?? source.lines ?? source.items;
-  const list = Array.isArray(rawLines) ? rawLines : [];
-  const chi_tiet = list
-    .map((line, index) => parseShiftHandoverLine(line, index))
-    .filter((line): line is NonNullable<typeof line> => Boolean(line));
+  const nestedDetail =
+    source.chi_tiet && typeof source.chi_tiet === 'object' && !Array.isArray(source.chi_tiet)
+      ? (source.chi_tiet as Record<string, unknown>)
+      : null;
+  const isNkSx =
+    source.loai === 'nk_sx' ||
+    nestedDetail?.loai === 'nk_sx' ||
+    Array.isArray(source.thanh_pham) ||
+    Array.isArray(source.hang_loi) ||
+    Array.isArray(source.bao_cao_cuoi_ca) ||
+    Array.isArray(nestedDetail?.thanh_pham);
+
+  const rawLegacyLines = source.chi_tiet ?? source.lines ?? source.items;
+  const chi_tiet = isNkSx
+    ? parseShiftHandoverNkSxDetail(source)
+    : (Array.isArray(rawLegacyLines) ? rawLegacyLines : [])
+        .map((line, index) => parseShiftHandoverLine(line, index))
+        .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
   const so_phieu = String(source.so_phieu ?? source.slipCode ?? '').trim() || generateShiftHandoverCode();
 
@@ -4000,7 +4131,7 @@ function parseShiftHandoverBody(body: unknown): { error: string } | { record: Re
       ma_may: ma_may || null,
       ten_may: ten_may || null,
       nguoi_giao_ca,
-      nguoi_nhan_ca,
+      nguoi_nhan_ca: nguoi_nhan_ca || null,
       tinh_hinh_san_xuat: String(source.tinh_hinh_san_xuat ?? source.productionStatus ?? '').trim() || null,
       san_luong_dat_duoc: String(source.san_luong_dat_duoc ?? source.output ?? '').trim() || null,
       tinh_trang_may_moc: String(source.tinh_trang_may_moc ?? source.machineStatus ?? '').trim() || null,

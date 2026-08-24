@@ -439,14 +439,18 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   },
   phieu_giao_ca: {
     table: 'phieu_giao_ca',
-    label: 'Phiếu giao ca',
+    label: 'Phiếu giao ca (QT-16-BM02)',
     sql: ['supabase-phieu-giao-ca.sql'],
     apiPrefix: '/api/phieu-giao-ca',
-    serverLines: 'sau /api/phieu-bao-dung-may',
+    serverLines: 'GET/POST/DELETE /api/phieu-giao-ca (sau /api/phieu-bao-dung-may)',
     appTab: 'shift-handover-report | shift-handover-list',
     appLines: 'src/components/ShiftHandoverPanel.tsx',
-    components: ['src/components/ShiftHandoverPanel.tsx', 'src/components/ShiftHandoverListView.tsx', 'src/components/ShiftHandoverPrintSheet.tsx'],
-    utils: []
+    components: [
+      'src/components/ShiftHandoverPanel.tsx',
+      'src/components/ShiftHandoverListView.tsx',
+      'src/components/ShiftHandoverPrintSheet.tsx'
+    ],
+    utils: ['src/lib/shiftHandoverModel.ts', 'src/utils/shiftHandoverAutofill.ts']
   },
   nhat_ky_chay_may: {
     table: 'nhat_ky_chay_may',

@@ -77,6 +77,10 @@ type MaterialPrintRow = {
   actualMixedKg: number;
   openingKg: number;
   exportKg: number;
+  /** SL xuất từ phiếu xuất NVL (ĐVT gốc, dùng mục 3.2 Cái). */
+  exportQty: number;
+  /** SL thực tế = SL báo cáo sản lượng × định mức theo cái (mục 3.2). */
+  actualQty: number;
   finishedKg: number;
   damagedKg: number;
   closingKg: number;
@@ -380,6 +384,8 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
         actualMixedKg: 0,
         openingKg: 0,
         exportKg: 0,
+        exportQty: 0,
+        actualQty: 0,
         finishedKg: 0,
         damagedKg: 0,
         closingKg: 0
@@ -413,6 +419,8 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
           if (!unit || unit === '-' || isWarehouseKgUnit(unit)) {
             row.finishedKg += rawQuantity;
           } else {
+            // Mục 3.2: SL thực tế = SL sản lượng × định mức theo cái (giữ ĐVT gốc).
+            row.actualQty += rawQuantity;
             const converted = convertWarehouseQuantityToKg({
               quantity: rawQuantity,
               unit,
@@ -428,8 +436,20 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   }
 
   const exportGroup = findOrderGroup(props.exportGroups, order);
+  // Mỗi dòng phiếu xuất chỉ cộng 1 lần (tránh nhân khi phân bổ nhiều SP).
+  const seenExportSlipKeys = new Set<string>();
   for (const line of exportGroup?.lines || []) {
-    ensure(line.itemCode, line.itemName, line.unit).exportKg += line.weightKg || 0;
+    const row = ensure(line.itemCode, line.itemName, line.unit);
+    const slipId = String(line.slipLineKey || line.key || '').trim();
+    const isFirstSlipHit = !slipId || !seenExportSlipKeys.has(slipId);
+    if (slipId) seenExportSlipKeys.add(slipId);
+
+    // KL xuất (kg): các phần phân bổ theo SP cộng lại = tổng phiếu → cộng mọi dòng.
+    row.exportKg += line.weightKg || 0;
+    // SL xuất (Cái…): dòng ≠ kg thường copy nguyên SL phiếu cho mỗi SP → chỉ cộng 1 lần / slipLineKey.
+    if (isFirstSlipHit) {
+      row.exportQty += line.quantity > 0 ? line.quantity : 0;
+    }
   }
   const openingGroups = findOrderGroups(props.dauCaGroups, order);
   const openingLines = openingGroups.flatMap(group => group.lines);
@@ -551,25 +571,22 @@ function BbMachineOrderPrintSheet({ order, props }: { order: BbProductionOrderGr
   const evaluation = findOrderGroup(props.danhGiaGroups, order);
   const ghiChu = (props.noteByOrder?.[order.groupKey] || '').trim();
   const materialRows = buildMaterialRows(order, props);
-  const plasticMaterialRows = materialRows.filter(row =>
-    isWarehousePlasticNvlLine({
-      warehouseKind: 'nvl',
-      itemCode: row.code,
-      itemName: row.name,
-      unit: row.unit
-    })
-  );
-  const otherMaterialRows = materialRows.filter(
-    row =>
-      !isWarehousePlasticNvlLine({
-        warehouseKind: 'nvl',
-        itemCode: row.code,
-        itemName: row.name,
-        unit: row.unit
-      })
-  );
+  const sortByUnitThenName = (
+    a: (typeof materialRows)[number],
+    b: (typeof materialRows)[number]
+  ) => {
+    const unitA = String(a.unit || 'kg').trim();
+    const unitB = String(b.unit || 'kg').trim();
+    const unitCmp = unitA.localeCompare(unitB, 'vi', { sensitivity: 'base' });
+    if (unitCmp !== 0) return unitCmp;
+    const nameCmp = String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+    if (nameCmp !== 0) return nameCmp;
+    return String(a.code || '').localeCompare(String(b.code || ''), 'vi');
+  };
+  /** 3.1: ĐVT kg lên đầu; 3.2: các ĐVT khác (Cái…), cùng đơn vị cạnh nhau. */
+  const plasticMaterialRows = materialRows.filter(isPlasticMaterialPrintRow).sort(sortByUnitThenName);
+  const otherMaterialRows = materialRows.filter(row => !isPlasticMaterialPrintRow(row)).sort(sortByUnitThenName);
   const plasticMaterialTotals = sumMaterialPrintTotals(plasticMaterialRows);
-  const otherMaterialTotals = sumMaterialPrintTotals(otherMaterialRows);
   const useCanTuDong = props.sanLuongSource === 'can-tu-dong';
   const qtyDigits = useCanTuDong ? 0 : 2;
   const editableLyDo = Boolean(props.editableLyDo && props.onLyDoChange);
@@ -815,11 +832,13 @@ function BbMachineOrderPrintSheet({ order, props }: { order: BbProductionOrderGr
               <th>Tên NVL</th>
               <th>ĐVT</th>
               <th>Trọng lượng<br />tồn đầu ca</th>
+              <th>Số lượng</th>
+              <th>Số lượng<br />thực tế</th>
               <th>Trọng lượng<br />vật tư tồn<br />cuối ca</th>
             </tr></thead>
             <tbody>
               {otherMaterialRows.length === 0 ? (
-                <tr><td colSpan={5} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
+                <tr><td colSpan={7} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
               ) : (
                 otherMaterialRows.map(row => (
                   <tr key={row.key}>
@@ -827,15 +846,22 @@ function BbMachineOrderPrintSheet({ order, props }: { order: BbProductionOrderGr
                     <td>{row.name || '-'}</td>
                     <td className="shift-summary-print-center">{row.unit || '-'}</td>
                     <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
+                    <td
+                      className="shift-summary-print-num"
+                      title="SL từ phiếu xuất kho NVL (bảng xuất NVL)"
+                    >
+                      {printNumber(row.exportQty, 2)}
+                    </td>
+                    <td
+                      className="shift-summary-print-num"
+                      title="SL báo cáo sản lượng × định mức theo cái trên công thức SP"
+                    >
+                      {printNumber(row.actualQty, 2)}
+                    </td>
                     <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
                   </tr>
                 ))
               )}
-              <tr className="shift-summary-print-total-row">
-                <td colSpan={3} className="shift-summary-print-total-label">Tổng vật tư khác</td>
-                <td className="shift-summary-print-num">{printNumber(otherMaterialTotals.openingKg, 2)}</td>
-                <td className="shift-summary-print-num">{printNumber(otherMaterialTotals.closingKg, 2)}</td>
-              </tr>
             </tbody>
           </table>
         </section>

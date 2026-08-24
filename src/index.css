@@ -797,7 +797,7 @@ input[type="number"] {
   }
 
   @page shift-handover-page {
-    size: 210mm 297mm;
+    size: 297mm 210mm;
     margin: 5mm;
   }
 
@@ -2389,6 +2389,13 @@ input[type="number"] {
   page-break-after: auto;
 }
 
+.shift-handover-print-page + .shift-handover-print-page {
+  break-before: page;
+  page-break-before: always;
+  break-after: auto;
+  page-break-after: auto;
+}
+
 .weighing-slip-print-batch {
   display: none;
 }
@@ -3074,25 +3081,154 @@ input[type="number"] {
   text-align: center;
 }
 
-.shift-handover-print-info-table th:nth-child(1),
-.shift-handover-print-info-table td:nth-child(1) { width: 13%; }
-.shift-handover-print-info-table th:nth-child(2),
-.shift-handover-print-info-table td:nth-child(2) { width: 13%; }
-.shift-handover-print-info-table th:nth-child(3),
-.shift-handover-print-info-table td:nth-child(3) { width: 28%; }
-.shift-handover-print-info-table th:nth-child(4),
-.shift-handover-print-info-table td:nth-child(4) { width: 23%; }
-.shift-handover-print-info-table th:nth-child(5),
-.shift-handover-print-info-table td:nth-child(5) { width: 23%; }
+.shift-handover-print-letterhead {
+  display: flex;
+  align-items: center;
+  gap: 4mm;
+  margin-bottom: 2.5mm;
+  border-bottom: 1.4px solid #111111;
+  padding-bottom: 2mm;
+}
 
-.shift-handover-print-summary-table th:nth-child(1),
-.shift-handover-print-summary-table td:nth-child(1) { width: 28%; }
-.shift-handover-print-summary-table th:nth-child(2),
-.shift-handover-print-summary-table td:nth-child(2) { width: 24%; }
-.shift-handover-print-summary-table th:nth-child(3),
-.shift-handover-print-summary-table td:nth-child(3) { width: 28%; }
-.shift-handover-print-summary-table th:nth-child(4),
-.shift-handover-print-summary-table td:nth-child(4) { width: 20%; }
+.shift-handover-print-letterhead .production-order-print-logo {
+  height: 12mm;
+  max-width: 36mm;
+}
+
+.shift-handover-print-brand {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  min-width: 58mm;
+  flex-shrink: 0;
+}
+
+.shift-handover-print-company {
+  margin: 0;
+  font-size: 10pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.shift-handover-print-company-sub {
+  margin: 0.4mm 0 0;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #444444;
+}
+
+.shift-handover-print-title {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-size: 15pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.shift-handover-print-control-table {
+  width: 42mm;
+  border-collapse: collapse;
+  flex-shrink: 0;
+  font-size: 8.5pt;
+}
+
+.shift-handover-print-control-table th,
+.shift-handover-print-control-table td {
+  border: 0.4pt solid #111111;
+  padding: 0.8mm 1.5mm;
+}
+
+.shift-handover-print-control-table th {
+  width: 38%;
+  text-align: left;
+  font-weight: 700;
+  background: #f3f3f3;
+}
+
+.shift-handover-print-meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2mm 0 3mm;
+  font-size: 10pt;
+}
+
+.shift-handover-print-meta-table td {
+  border: 0.4pt solid #111111;
+  padding: 1.4mm 2mm;
+  vertical-align: middle;
+}
+
+.shift-handover-print-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(72mm, 0.7fr);
+  gap: 3mm;
+  align-items: start;
+}
+
+.shift-handover-print-section {
+  margin: 0 0 1.2mm;
+  font-size: 9.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.shift-handover-print-products-table,
+.shift-handover-print-scrap-table,
+.shift-handover-print-kpi-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.shift-handover-print-products-table th,
+.shift-handover-print-products-table td,
+.shift-handover-print-scrap-table th,
+.shift-handover-print-scrap-table td,
+.shift-handover-print-kpi-table th,
+.shift-handover-print-kpi-table td {
+  padding: 1.1mm 1mm;
+  font-size: 8pt;
+  vertical-align: middle;
+}
+
+.shift-handover-print-products-table thead th {
+  font-size: 7.2pt;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.shift-handover-print-products-table thead th span {
+  display: block;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.shift-handover-print-left {
+  text-align: left !important;
+}
+
+.shift-handover-print-total-row td {
+  font-weight: 700;
+  background: #f3f3f3;
+}
+
+.shift-handover-print-scrap-table th:nth-child(2),
+.shift-handover-print-scrap-table td:nth-child(2) { width: 28%; }
+
+.shift-handover-print-kpi-table th:nth-child(2),
+.shift-handover-print-kpi-table td:nth-child(2),
+.shift-handover-print-kpi-table th:nth-child(3),
+.shift-handover-print-kpi-table td:nth-child(3),
+.shift-handover-print-kpi-table th:nth-child(4),
+.shift-handover-print-kpi-table td:nth-child(4) { width: 16%; }
+
+.shift-handover-print-side .shift-handover-print-section:nth-of-type(2) {
+  margin-top: 3mm;
+}
 
 .shift-handover-print-details-table th:nth-child(1),
 .shift-handover-print-details-table td:nth-child(1) { width: 6%; }
@@ -3853,7 +3989,8 @@ input[type="number"] {
 }
 
 .shift-handover-print-signatures {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 4mm;
 }
 
 .machine-run-log-print-form-code {

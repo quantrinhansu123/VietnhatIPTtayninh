@@ -3352,6 +3352,81 @@ input[type="number"] {
   vertical-align: middle;
 }
 
+/* Preview on-screen: cùng tỉ lệ cột với bản in. */
+.bb-machine-report-print-product-table,
+.bb-finished-goods-print-table.bb-machine-report-print-product-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.bb-machine-report-print-product-table th:nth-child(1),
+.bb-machine-report-print-product-table td:nth-child(1) { width: 9%; }
+.bb-machine-report-print-product-table th:nth-child(2),
+.bb-machine-report-print-product-table td:nth-child(2) { width: 30%; }
+.bb-machine-report-print-product-table th:nth-child(3),
+.bb-machine-report-print-product-table td:nth-child(3) { width: 6%; }
+.bb-machine-report-print-product-table th:nth-child(4),
+.bb-machine-report-print-product-table td:nth-child(4) { width: 5.5%; }
+.bb-machine-report-print-product-table th:nth-child(5),
+.bb-machine-report-print-product-table td:nth-child(5) { width: 6.5%; }
+.bb-machine-report-print-product-table th:nth-child(6),
+.bb-machine-report-print-product-table td:nth-child(6) { width: 5.5%; }
+.bb-machine-report-print-product-table th:nth-child(7),
+.bb-machine-report-print-product-table td:nth-child(7) { width: 6.5%; }
+.bb-machine-report-print-product-table th:nth-child(8),
+.bb-machine-report-print-product-table td:nth-child(8) { width: 6%; }
+.bb-machine-report-print-product-table th:nth-child(9),
+.bb-machine-report-print-product-table td:nth-child(9) { width: 9%; }
+.bb-machine-report-print-product-table th:nth-child(10),
+.bb-machine-report-print-product-table td:nth-child(10) { width: 16%; }
+
+.bb-machine-report-print-product-table td:nth-child(2) {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+/* ĐVT / nhãn Tổng — luôn 1 dòng (Cuộn, kg, Tổng…). */
+.bb-machine-report-print-product-table th:nth-child(3),
+.bb-machine-report-print-product-table td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.bb-machine-report-print-ly-do {
+  vertical-align: top;
+}
+
+.bb-print-ly-do-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 3px 5px;
+  border: 1px dashed #64748b;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #18181b;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  resize: vertical;
+  outline: none;
+}
+
+.bb-print-ly-do-input:focus {
+  border-color: #0284c7;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+}
+
+.bb-machine-report-print-product-table td:nth-child(9) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bb-finished-goods-print-empty-row td {
   height: 7mm;
 }
@@ -3503,26 +3578,55 @@ input[type="number"] {
     page-break-inside: avoid;
   }
 
+  /* Bảng 2 — Thành phẩm đạt nhập kho: Tên SP rộng hơn (~2 dòng), cột số hẹp lại. */
+  .bb-machine-report-print-product-table {
+    table-layout: fixed;
+  }
+
   .bb-machine-report-print-product-table th:nth-child(1),
-  .bb-machine-report-print-product-table td:nth-child(1) { width: 12%; }
+  .bb-machine-report-print-product-table td:nth-child(1) { width: 9%; }
   .bb-machine-report-print-product-table th:nth-child(2),
-  .bb-machine-report-print-product-table td:nth-child(2) { width: 24%; }
+  .bb-machine-report-print-product-table td:nth-child(2) { width: 30%; }
   .bb-machine-report-print-product-table th:nth-child(3),
-  .bb-machine-report-print-product-table td:nth-child(3) { width: 7%; }
+  .bb-machine-report-print-product-table td:nth-child(3) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(4),
-  .bb-machine-report-print-product-table td:nth-child(4) { width: 7%; }
+  .bb-machine-report-print-product-table td:nth-child(4) { width: 5.5%; }
   .bb-machine-report-print-product-table th:nth-child(5),
-  .bb-machine-report-print-product-table td:nth-child(5) { width: 8%; }
+  .bb-machine-report-print-product-table td:nth-child(5) { width: 6.5%; }
   .bb-machine-report-print-product-table th:nth-child(6),
-  .bb-machine-report-print-product-table td:nth-child(6) { width: 7%; }
+  .bb-machine-report-print-product-table td:nth-child(6) { width: 5.5%; }
   .bb-machine-report-print-product-table th:nth-child(7),
-  .bb-machine-report-print-product-table td:nth-child(7) { width: 8%; }
+  .bb-machine-report-print-product-table td:nth-child(7) { width: 6.5%; }
   .bb-machine-report-print-product-table th:nth-child(8),
-  .bb-machine-report-print-product-table td:nth-child(8) { width: 7%; }
+  .bb-machine-report-print-product-table td:nth-child(8) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(9),
-  .bb-machine-report-print-product-table td:nth-child(9) { width: 8%; }
+  .bb-machine-report-print-product-table td:nth-child(9) { width: 9%; }
   .bb-machine-report-print-product-table th:nth-child(10),
-  .bb-machine-report-print-product-table td:nth-child(10) { width: 12%; }
+  .bb-machine-report-print-product-table td:nth-child(10) { width: 16%; }
+
+  .bb-machine-report-print-product-table td:nth-child(2) {
+    text-align: left !important;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.25;
+  }
+
+  .bb-machine-report-print-product-table th:nth-child(3),
+  .bb-machine-report-print-product-table td:nth-child(3),
+  .bb-machine-report-print-product-table th:nth-child(n+4):nth-child(-n+8),
+  .bb-machine-report-print-product-table td:nth-child(n+4):nth-child(-n+8) {
+    white-space: nowrap;
+    padding-left: 1mm !important;
+    padding-right: 1mm !important;
+  }
+
+  .bb-machine-report-print-product-table td:nth-child(9) {
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 1mm !important;
+    padding-right: 1mm !important;
+  }
 
   .bb-machine-report-print-material-table th:nth-child(1),
   .bb-machine-report-print-material-table td:nth-child(1) { width: 8%; }

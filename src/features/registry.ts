@@ -37,7 +37,8 @@ export type TableId =
   | 'phieu_bao_dung_may'
   | 'phieu_giao_ca'
   | 'nhat_ky_chay_may'
-  | 'control_board';
+  | 'control_board'
+  | 'bb_bao_cao_ly_do';
 
 export interface TableRegistryEntry {
   table: TableId;
@@ -470,11 +471,30 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/components/ControlBoardCommonFilters.tsx',
       'src/components/ControlBoardShiftSummaryTable.tsx',
       'src/components/ControlBoardBbMachineReportTable.tsx',
+      'src/components/ControlBoardBbMachineReportPrintSheet.tsx',
       'src/components/ControlBoardShiftDetailModal.tsx',
       'src/components/ControlBoardShiftSummaryPrintSheet.tsx',
       'src/components/ControlBoardShiftSummaryChart.tsx'
     ],
-    utils: ['src/utils/controlBoardShiftSummary.ts', 'src/utils/controlBoardBbMachineReport.ts']
+    utils: [
+      'src/utils/controlBoardShiftSummary.ts',
+      'src/utils/controlBoardBbMachineReport.ts',
+      'src/utils/bbBaoCaoLyDo.ts'
+    ]
+  },
+  bb_bao_cao_ly_do: {
+    table: 'bb_bao_cao_ly_do',
+    label: 'Lý do giải trình in BB',
+    sql: ['supabase-bb-bao-cao-ly-do.sql'],
+    apiPrefix: '/api/bb-bao-cao-ly-do',
+    serverLines: 'GET/PUT /api/bb-bao-cao-ly-do (sau /api/phieu-giao-ca)',
+    appTab: 'dashboard | dashboard-auto | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: [
+      'src/components/ControlBoardBbMachineReportTable.tsx',
+      'src/components/ControlBoardBbMachineReportPrintSheet.tsx'
+    ],
+    utils: ['src/utils/bbBaoCaoLyDo.ts']
   }
 };
 

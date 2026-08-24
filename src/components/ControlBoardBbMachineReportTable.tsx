@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Loader2, Printer, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Printer, Save, X } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
 import type { ProductRow } from '../features/san-pham/types';
 import type { MachineRow } from '../features/danh-sach-may';
@@ -9,7 +9,7 @@ import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../featur
 import { splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
 import type { MixingReport } from './MixingReportForm';
 import type { AcceptanceReport } from './AcceptanceReportForm';
-import { shiftIsoDateByDays, type ShiftSetting } from '../utils/shiftSettings';
+import { getProductionShiftOptions, shiftIsoDateByDays, type ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
@@ -21,6 +21,11 @@ import {
   sumCanTuDongSanLuongTotals
 } from '../utils/canTuDongWeights';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
+import {
+  buildBbLyDoStableKey,
+  printLyDoLineKey,
+  type BbBaoCaoLyDoRow
+} from '../utils/bbBaoCaoLyDo';
 import {
   BB_MACHINE_REPORT_TABS,
   buildBbCuoiCaLineRows,
@@ -88,6 +93,7 @@ type BbPrintConfirmSelection = {
   staffAssistant: string;
   staffSupport: string;
   ghiChu: string;
+  lyDo: string;
 };
 
 const BB_PHAN_TICH_STORAGE_KEY = 'control-board-bb-phan-tich-v1';
@@ -113,6 +119,13 @@ function persistBbPhanTichMap(map: Record<string, string>) {
 
 function formatKg(value: number | null | undefined, digits = 2) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  // ≥4 chữ số thập phân: giữ đủ số, không cắt còn 2 số gây mất phần thập phân.
+  if (digits >= 4) {
+    return new Intl.NumberFormat('vi-VN', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits
+    }).format(value);
+  }
   return formatNumber(value, digits);
 }
 
@@ -406,6 +419,10 @@ export default function ControlBoardBbMachineReportTable({
   const [printStaffByOrder, setPrintStaffByOrder] = useState<Record<string, BbPrintConfirmSelection>>({});
   const [printOrderGroups, setPrintOrderGroups] = useState<BbProductionOrderGroup[]>([]);
   const [printNoteByOrder, setPrintNoteByOrder] = useState<Record<string, string>>({});
+  const [printLyDoByLine, setPrintLyDoByLine] = useState<Record<string, string>>({});
+  const [dbLyDoByStableKey, setDbLyDoByStableKey] = useState<Record<string, BbBaoCaoLyDoRow>>({});
+  const [savingLyDo, setSavingLyDo] = useState(false);
+  const [lyDoSaveMessage, setLyDoSaveMessage] = useState('');
   const [hrStaffNames, setHrStaffNames] = useState<string[]>([]);
   const [selectedMaterialNorm, setSelectedMaterialNorm] = useState<BbMaterialNormFormula | null>(null);
   const [selectedTrongLuongDinhMuc, setSelectedTrongLuongDinhMuc] = useState<BbWarehouseExportLineRow | null>(null);
@@ -452,6 +469,11 @@ export default function ControlBoardBbMachineReportTable({
     machine: string;
     balanceDetail: BbInboundMaterialBalanceDetail | null;
   } | null>(null);
+
+  const productionShiftOptions = useMemo(
+    () => getProductionShiftOptions(shiftSettings as ShiftSetting[]),
+    [shiftSettings]
+  );
 
   const scopedGroupKey = (tabId: BbMachineReportTabId, groupKey: string) => `${tabId}:${groupKey}`;
   const isGroupExpanded = (tabId: BbMachineReportTabId, groupKey: string) =>
@@ -565,6 +587,51 @@ export default function ControlBoardBbMachineReportTable({
   );
 
   const orderGroups = useMemo(() => groupBbProductionOrderLines(orderRows), [orderRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLyDo = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+        const res = await fetch(`/api/bb-bao-cao-ly-do?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          console.warn('Không tải được lý do BB:', data?.error || res.statusText);
+          return;
+        }
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const next: Record<string, BbBaoCaoLyDoRow> = {};
+        for (const raw of items) {
+          const khoa = String(raw?.khoa_on_dinh || '').trim();
+          if (!khoa) continue;
+          next[khoa] = {
+            id: raw.id,
+            khoa_on_dinh: khoa,
+            ngay: String(raw.ngay || ''),
+            ca: String(raw.ca || ''),
+            may: String(raw.may || ''),
+            ma_lenh: String(raw.ma_lenh || ''),
+            ma_sp: String(raw.ma_sp || ''),
+            ten_sp: raw.ten_sp,
+            group_key: raw.group_key,
+            line_key: raw.line_key,
+            ly_do: String(raw.ly_do || ''),
+            ghi_chu: String(raw.ghi_chu || '')
+          };
+        }
+        setDbLyDoByStableKey(next);
+      } catch (error) {
+        if (!cancelled) console.warn('Lỗi tải lý do BB:', error);
+      }
+    };
+    void loadLyDo();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateFrom, dateTo]);
   const exportGroups = useMemo(
     () => groupBbWarehouseExportLines(exportRows, scopedProductionOrders, products, materials),
     [exportRows, scopedProductionOrders, products, materials]
@@ -682,7 +749,23 @@ export default function ControlBoardBbMachineReportTable({
       selectedMachine
     ]
   );
-  const cuoiCaGroups = useMemo(() => groupBbCuoiCaLines(cuoiCaRows), [cuoiCaRows]);
+  const cuoiCaGroups = useMemo(
+    () =>
+      groupBbCuoiCaLines(cuoiCaRows, scopedProductionOrders, products, materials, {
+        machines,
+        mixingReports,
+        shiftSettings
+      }),
+    [
+      cuoiCaRows,
+      scopedProductionOrders,
+      products,
+      materials,
+      machines,
+      mixingReports,
+      shiftSettings
+    ]
+  );
   const dauCaRows = useMemo(
     () =>
       buildBbDauCaLineRows({
@@ -715,8 +798,17 @@ export default function ControlBoardBbMachineReportTable({
         mixingReports,
         shiftSettings
       }),
-    [dauCaRows, scopedProductionOrders, products, materials, machines, mixingReports, shiftSettings]
+    [
+      dauCaRows,
+      scopedProductionOrders,
+      products,
+      materials,
+      machines,
+      mixingReports,
+      shiftSettings
+    ]
   );
+
   const sanLuongGroups = useMemo(
     () =>
       buildBbSanLuongGroups({
@@ -1064,8 +1156,8 @@ export default function ControlBoardBbMachineReportTable({
   /** Lượng nhựa sử dụng LT = Xuất nhựa + Tồn đầu ca − Tồn cuối ca. */
   const plasticUsedLtKg =
     exportWeightByKind.plasticKg + dauCaWeightByKind.plasticKg - cuoiCaWeightByKind.plasticKg;
-  /** Chênh lệch = Lượng nhựa sử dụng LT − Tổng nhựa thành phẩm. */
-  const plasticDifferenceWeightKg = plasticUsedLtKg - displaySanLuongTotals.weightKg;
+  /** Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT. */
+  const plasticDifferenceWeightKg = displaySanLuongTotals.weightKg - plasticUsedLtKg;
   const plasticSummaryRow = {
     requiredKg: plasticRequiredWeightKg,
     exportKg: exportWeightByKind.plasticKg,
@@ -1215,7 +1307,8 @@ export default function ControlBoardBbMachineReportTable({
         staffMain: group.staffMain || '',
         staffAssistant: group.staffAssistant || '',
         staffSupport: group.staffSupport || '',
-        ghiChu: printNoteByOrder[group.groupKey] || ''
+        ghiChu: printNoteByOrder[group.groupKey] || '',
+        lyDo: phanTichMap[group.groupKey] || ''
       };
     });
     setPrintStaffByOrder(initialStaff);
@@ -1282,6 +1375,7 @@ export default function ControlBoardBbMachineReportTable({
         staffAssistant: prev[groupKey]?.staffAssistant || '',
         staffSupport: prev[groupKey]?.staffSupport || '',
         ghiChu: prev[groupKey]?.ghiChu || '',
+        lyDo: prev[groupKey]?.lyDo || '',
         [field]: value
       }
     }));
@@ -1299,11 +1393,42 @@ export default function ControlBoardBbMachineReportTable({
       };
     });
     const nextNotes: Record<string, string> = {};
+    const nextLyDo: Record<string, string> = {};
     orderGroups.forEach(group => {
-      const note = printStaffByOrder[group.groupKey]?.ghiChu?.trim() || '';
+      const selected = printStaffByOrder[group.groupKey];
+      const note = selected?.ghiChu?.trim() || '';
+      const dbNote =
+        group.lines
+          .map(line => {
+            const stable = buildBbLyDoStableKey({
+              ngay: group.ngay,
+              ca: group.shift,
+              may: group.machine,
+              maLenh: group.orderCode,
+              maSp: line.productCode
+            });
+            return dbLyDoByStableKey[stable]?.ghi_chu || '';
+          })
+          .find(value => value.trim()) || '';
       if (note) nextNotes[group.groupKey] = note;
+      else if (dbNote) nextNotes[group.groupKey] = dbNote;
+
+      const defaultLyDo = selected?.lyDo?.trim() || phanTichMap[group.groupKey] || '';
+      group.lines.forEach(line => {
+        const lineKey = printLyDoLineKey(group.groupKey, line.key);
+        const stable = buildBbLyDoStableKey({
+          ngay: group.ngay,
+          ca: group.shift,
+          may: group.machine,
+          maLenh: group.orderCode,
+          maSp: line.productCode
+        });
+        const fromDb = dbLyDoByStableKey[stable]?.ly_do || '';
+        nextLyDo[lineKey] = printLyDoByLine[lineKey] ?? (fromDb || defaultLyDo);
+      });
     });
     setPrintNoteByOrder(nextNotes);
+    setPrintLyDoByLine(nextLyDo);
     setPrintOrderGroups(nextGroups);
     setPrintConfirmOpen(false);
     setShowPrintSheet(true);
@@ -1315,15 +1440,105 @@ export default function ControlBoardBbMachineReportTable({
     setPendingPrint(true);
   };
 
+  const savePrintLyDoToDb = async () => {
+    const groups = printOrderGroups.length > 0 ? printOrderGroups : orderGroups;
+    if (groups.length === 0 || savingLyDo) return;
+    setSavingLyDo(true);
+    setLyDoSaveMessage('');
+    try {
+      const items = groups.flatMap(group =>
+        group.lines.map(line => {
+          const lineKey = printLyDoLineKey(group.groupKey, line.key);
+          return {
+            ngay: group.ngay,
+            ca: group.shift,
+            may: group.machine,
+            ma_lenh: group.orderCode,
+            ma_sp: line.productCode,
+            ten_sp: line.productName,
+            group_key: group.groupKey,
+            line_key: line.key,
+            ly_do: printLyDoByLine[lineKey] || '',
+            ghi_chu: printNoteByOrder[group.groupKey] || '',
+            khoa_on_dinh: buildBbLyDoStableKey({
+              ngay: group.ngay,
+              ca: group.shift,
+              may: group.machine,
+              maLenh: group.orderCode,
+              maSp: line.productCode
+            })
+          };
+        })
+      );
+      const res = await fetch('/api/bb-bao-cao-ly-do', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Không lưu được lý do vào DB.');
+      }
+      const savedItems = Array.isArray(data?.items) ? data.items : items;
+      setDbLyDoByStableKey(prev => {
+        const next = { ...prev };
+        for (const raw of savedItems) {
+          const khoa = String(raw?.khoa_on_dinh || '').trim();
+          if (!khoa) continue;
+          next[khoa] = {
+            id: raw.id,
+            khoa_on_dinh: khoa,
+            ngay: String(raw.ngay || ''),
+            ca: String(raw.ca || ''),
+            may: String(raw.may || ''),
+            ma_lenh: String(raw.ma_lenh || ''),
+            ma_sp: String(raw.ma_sp || ''),
+            ten_sp: raw.ten_sp,
+            group_key: raw.group_key,
+            line_key: raw.line_key,
+            ly_do: String(raw.ly_do || ''),
+            ghi_chu: String(raw.ghi_chu || '')
+          };
+        }
+        return next;
+      });
+      setLyDoSaveMessage(`Đã lưu ${items.length} dòng lý do vào DB.`);
+    } catch (error: any) {
+      setLyDoSaveMessage(error?.message || 'Lỗi khi lưu lý do vào DB.');
+    } finally {
+      setSavingLyDo(false);
+    }
+  };
+
   const closePrintPreview = () => {
     if (pendingPrint) return;
     setPrintPreviewOpen(false);
     setShowPrintSheet(false);
     setPrintOrderGroups([]);
     setPrintNoteByOrder({});
+    setPrintLyDoByLine({});
+    setLyDoSaveMessage('');
   };
 
   const editPrintDetails = () => {
+    setPrintStaffByOrder(prev => {
+      const next = { ...prev };
+      (printOrderGroups.length > 0 ? printOrderGroups : orderGroups).forEach(group => {
+        const current = next[group.groupKey];
+        const firstLineLyDo =
+          group.lines.length > 0
+            ? printLyDoByLine[printLyDoLineKey(group.groupKey, group.lines[0].key)] || ''
+            : '';
+        next[group.groupKey] = {
+          staffMain: current?.staffMain || group.staffMain || '',
+          staffAssistant: current?.staffAssistant || group.staffAssistant || '',
+          staffSupport: current?.staffSupport || group.staffSupport || '',
+          ghiChu: printNoteByOrder[group.groupKey] || current?.ghiChu || '',
+          lyDo: firstLineLyDo || current?.lyDo || phanTichMap[group.groupKey] || ''
+        };
+      });
+      return next;
+    });
     setPrintPreviewOpen(false);
     setShowPrintSheet(false);
     setPrintConfirmOpen(true);
@@ -1368,6 +1583,7 @@ export default function ControlBoardBbMachineReportTable({
       setShowPrintSheet(false);
       setPrintOrderGroups([]);
       setPrintNoteByOrder({});
+      setPrintLyDoByLine({});
     };
     window.addEventListener('afterprint', handleAfterPrint);
     return () => window.removeEventListener('afterprint', handleAfterPrint);
@@ -1624,7 +1840,7 @@ export default function ControlBoardBbMachineReportTable({
 
         <div
           className="mt-3 rounded-lg border border-white/40 bg-white/15 px-2.5 py-2 shadow-sm backdrop-blur-[1px]"
-          title="Chênh lệch = (Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối"
+          title="Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT"
         >
           <p className="mb-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
             Tổng hợp nhựa
@@ -1688,7 +1904,7 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Chênh lệch',
-                  title: 'Lượng nhựa sử dụng LT − Tổng nhựa thành phẩm',
+                  title: 'Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT',
                   display: isLoading
                     ? '…'
                     : Number.isFinite(plasticSummaryRow.differenceKg)
@@ -1757,29 +1973,43 @@ export default function ControlBoardBbMachineReportTable({
         <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 to-transparent" />
       </div>
 
-      {activeGroupKeys.length > 0 ? (
-        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => setAllActiveGroupsExpanded(true)}
-              disabled={allActiveGroupsExpanded}
-              className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-black text-sky-800 shadow-sm transition hover:bg-sky-50 disabled:cursor-default disabled:opacity-40"
-            >
-              Mở tất cả
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllActiveGroupsExpanded(false)}
-              disabled={
-                !allActiveGroupsExpanded &&
-                activeGroupKeys.every(groupKey => !isGroupExpanded(activeTab, groupKey))
-              }
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
-            >
-              Đóng tất cả
-            </button>
-          </div>
+      {activeGroupKeys.length > 0 || activeTab === 'ton_dau_ca' ? (
+        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          {activeTab === 'ton_dau_ca' ? (
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-indigo-700">
+                Tỉ lệ theo định mức
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                Cột Tỉ lệ thực tế và phân bổ NNS-TRON đều lấy tỉ lệ ĐM máy / thành phần SP
+              </p>
+            </div>
+          ) : (
+            <div />
+          )}
+          {activeGroupKeys.length > 0 ? (
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setAllActiveGroupsExpanded(true)}
+                disabled={allActiveGroupsExpanded}
+                className="rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-black text-sky-800 shadow-sm transition hover:bg-sky-50 disabled:cursor-default disabled:opacity-40"
+              >
+                Mở tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllActiveGroupsExpanded(false)}
+                disabled={
+                  !allActiveGroupsExpanded &&
+                  activeGroupKeys.every(groupKey => !isGroupExpanded(activeTab, groupKey))
+                }
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
+              >
+                Đóng tất cả
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -2382,31 +2612,41 @@ export default function ControlBoardBbMachineReportTable({
           </table>
           </div>
         ) : activeTab === 'ton_dau_ca' ? (
-          <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
+          <table className="min-w-[1280px] w-full table-fixed text-left text-sm font-semibold">
+            <colgroup>
+              <col className="w-10" />
+              <col className="w-[7.5rem]" />
+              <col />
+              <col className="w-[5rem]" />
+              <col className="w-[6.5rem]" />
+              <col className="w-[7rem]" />
+              <col className="w-[7.5rem]" />
+              <col className="w-[7.5rem]" />
+            </colgroup>
             <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
               <tr>
-                <th className="w-10 px-3 py-3.5 font-black" />
-                <th className="px-4 py-3.5 font-black">Ngày</th>
-                <th className="px-4 py-3.5 font-black">Ca</th>
-                <th className="px-4 py-3.5 font-black">Lệnh SX</th>
-                <th className="px-4 py-3.5 font-black">Máy</th>
-                <th colSpan={3} className="px-4 py-3.5 text-right font-black">
+                <th className="px-2 py-3.5 font-black" />
+                <th className="px-3 py-3.5 font-black">Ngày</th>
+                <th className="px-3 py-3.5 font-black">Ca</th>
+                <th className="px-3 py-3.5 font-black">Lệnh SX</th>
+                <th className="px-3 py-3.5 font-black">Máy</th>
+                <th colSpan={2} className="px-3 py-3.5 text-right font-black">
                   SP / NVL
                 </th>
-                <th className="px-4 py-3.5 text-right font-black">Tồn đầu ca (kg)</th>
+                <th className="px-3 py-3.5 text-right font-black">Tồn đầu ca (kg)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                     Đang tải báo cáo tồn đầu ca...
                   </td>
                 </tr>
               ) : dauCaGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     Chưa có báo cáo tồn đầu ca gắn ca/ngày lệnh máy BB.
                   </td>
                 </tr>
@@ -2416,7 +2656,7 @@ export default function ControlBoardBbMachineReportTable({
                   return (
                     <React.Fragment key={group.groupKey}>
                       <tr className="border-y border-indigo-200 bg-indigo-50/60 font-bold hover:bg-indigo-100/50 transition">
-                        <td className="px-3 py-2.5">
+                        <td className="px-2 py-2.5">
                           <button
                             type="button"
                             onClick={() => toggleGroup('ton_dau_ca', group.groupKey)}
@@ -2427,40 +2667,39 @@ export default function ControlBoardBbMachineReportTable({
                             <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`} />
                           </button>
                         </td>
-                        <td className="px-4 py-2.5 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
-                        <td className="px-4 py-2.5 font-semibold text-zinc-800">
+                        <td className="px-3 py-2.5 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
+                        <td className="px-3 py-2.5 font-semibold text-zinc-800">
                           {group.shiftLabel || group.shift || '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
-                        <td className="px-4 py-2.5 font-semibold text-zinc-800">{group.machine || '—'}</td>
-                        <td colSpan={3} className="px-4 py-2.5 text-right font-mono font-bold text-zinc-600">
+                        <td className="px-3 py-2.5 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
+                        <td className="px-3 py-2.5 font-semibold text-zinc-800">{group.machine || '—'}</td>
+                        <td colSpan={2} className="px-3 py-2.5 text-right font-mono font-bold text-zinc-600">
                           {group.productCount}/{group.lineCount}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono font-bold text-indigo-800">
-                          {formatKg(group.totalWeightKg, 2)}
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-indigo-800">
+                          {formatKg(group.totalWeightKg, 4)}
                         </td>
                       </tr>
                       {expanded ? (
                         <>
                           <tr className="border-y border-indigo-100 bg-indigo-100/40 text-xs font-black uppercase tracking-wider text-indigo-900">
                             <td />
-                            <td className="px-4 py-2 font-black">Mã NVL</td>
-                            <td className="px-4 py-2 font-black">Tên nguyên phụ liệu</td>
-                            <td className="px-4 py-2 font-black">ĐVT</td>
-                            <td className="px-4 py-2 text-right font-black" title="Từ thành phần % SP hoặc tỉ lệ trộn máy">
+                            <td className="px-3 py-2 font-black">Mã NVL</td>
+                            <td className="px-3 py-2 font-black">Tên nguyên phụ liệu</td>
+                            <td className="px-3 py-2 font-black">ĐVT</td>
+                            <td className="px-3 py-2 text-right font-black" title="Từ thành phần % SP hoặc tỉ lệ trộn máy">
                               Tỉ lệ ĐM (%)
                             </td>
                             <td
-                              className="px-4 py-2 text-right font-black"
-                              title="Ưu tiên phiếu trộn ca liền trước (KL NVL ÷ tổng trộn × 100); không có thì lấy tỉ lệ ĐM"
+                              className="px-3 py-2 text-right font-black"
+                              title="Bằng Tỉ lệ ĐM (%): thành phần SP hoặc tỉ lệ trộn máy"
                             >
                               Tỉ lệ thực tế (%)
                             </td>
-                            <td className="px-4 py-2 text-right font-black">Thành phần</td>
-                            <td className="px-4 py-2 text-right font-black">SL tồn</td>
+                            <td className="px-3 py-2 text-right font-black">Thành phần</td>
                             <td
-                              className="px-4 py-2 text-right font-black"
-                              title="Có NNS-TRON: NNS-TRON × Tỉ lệ thực tế (%); không thì lấy tồn đầu theo mã NVL"
+                              className="px-3 py-2 text-right font-black"
+                              title="Có NNS-TRON: NNS-TRON × Tỉ lệ ĐM (%); không thì lấy tồn đầu theo mã NVL (số lượng/kg trên báo cáo tồn đầu ca)"
                             >
                               Tồn đầu (kg)
                             </td>
@@ -2470,39 +2709,36 @@ export default function ControlBoardBbMachineReportTable({
                               key={row.key}
                               className="bg-white font-semibold hover:bg-indigo-50/40 border-b border-slate-50"
                             >
-                              <td className="px-3 py-2" />
-                              <td className="px-4 py-2 font-mono font-bold text-zinc-800">
+                              <td className="px-2 py-2" />
+                              <td className="px-3 py-2 font-mono font-bold text-zinc-800">
                                 {row.itemCode || '—'}
                               </td>
-                              <td className="px-4 py-2 text-zinc-700">{row.itemName || '—'}</td>
-                              <td className="px-4 py-2 text-zinc-600">{row.unit || '—'}</td>
-                              <td className="px-4 py-2 text-right font-mono text-zinc-600">
+                              <td className="px-3 py-2 text-zinc-700">{row.itemName || '—'}</td>
+                              <td className="px-3 py-2 text-zinc-600">{row.unit || '—'}</td>
+                              <td className="px-3 py-2 text-right font-mono text-zinc-600">
                                 {formatPercent(row.tiLeDinhMucPercent, 2)}
                               </td>
-                              <td className="px-4 py-2 text-right font-mono font-bold text-orange-800">
+                              <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
                                 {formatPercent(row.tiLeThucTeTbPercent, 2)}
                               </td>
-                              <td className="px-4 py-2 text-right font-mono text-zinc-700">
+                              <td className="px-3 py-2 text-right font-mono text-zinc-700">
                                 {row.dinhMucRate === null || row.dinhMucRate === undefined
                                   ? '—'
                                   : `${formatNumber(row.dinhMucRate, row.amountType === 'percent' ? 2 : 3)}${
                                       row.dinhMucUnit ? ` ${row.dinhMucUnit}` : ''
                                     }`}
                               </td>
-                              <td className="px-4 py-2 text-right font-mono font-bold text-zinc-800">
-                                {row.tonDauQuantity > 0 ? formatNumber(row.tonDauQuantity, 3) : '—'}
-                              </td>
-                              <td className="px-4 py-2 text-right font-mono font-bold text-indigo-700">
+                              <td className="px-3 py-2 text-right font-mono font-bold text-indigo-700">
                                 {row.tonDauFormula ? (
                                   <ThucDungMetricButton
-                                    label={formatKg(row.tonDauWeightKg, 2)}
+                                    label={formatKg(row.tonDauWeightKg, 4)}
                                     className="font-mono font-bold text-indigo-700"
                                     onOpen={() => {
                                       if (row.tonDauFormula) setSelectedTonDauFormula(row.tonDauFormula);
                                     }}
                                   />
                                 ) : (
-                                  formatKg(row.tonDauWeightKg, 2)
+                                  formatKg(row.tonDauWeightKg, 4)
                                 )}
                               </td>
                             </tr>
@@ -2517,10 +2753,10 @@ export default function ControlBoardBbMachineReportTable({
             {!isLoading && dauCaGroups.length > 0 ? (
               <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
                 <tr>
-                  <td colSpan={8} className="px-4 py-3.5 text-right uppercase tracking-wider">
+                  <td colSpan={7} className="px-3 py-3.5 text-right uppercase tracking-wider">
                     Tổng
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-indigo-800">{formatKg(dauCaTotalKg, 2)}</td>
+                  <td className="px-3 py-3.5 text-right font-mono text-indigo-800">{formatKg(dauCaTotalKg, 4)}</td>
                 </tr>
               </tfoot>
             ) : null}
@@ -2900,29 +3136,41 @@ export default function ControlBoardBbMachineReportTable({
             </div>
           </>
         ) : activeTab === 'kiem_ton_cuoi_ca' ? (
-          <table className="min-w-[1100px] w-full text-left text-sm font-semibold">
+          <table className="min-w-[1280px] w-full table-fixed text-left text-sm font-semibold">
+            <colgroup>
+              <col className="w-10" />
+              <col className="w-[7.5rem]" />
+              <col />
+              <col className="w-[5rem]" />
+              <col className="w-[6.5rem]" />
+              <col className="w-[7rem]" />
+              <col className="w-[7.5rem]" />
+              <col className="w-[7.5rem]" />
+            </colgroup>
             <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
               <tr>
-                <th className="w-10 px-3 py-3.5 font-black" />
-                <th className="px-4 py-3.5 font-black">Ngày</th>
-                <th className="px-4 py-3.5 font-black">Ca</th>
-                <th className="px-4 py-3.5 font-black">Lệnh SX</th>
-                <th className="px-4 py-3.5 font-black">Máy</th>
-                <th className="px-4 py-3.5 text-right font-black">Dòng NVL</th>
-                <th className="px-4 py-3.5 text-right font-black">Tồn cuối ca (kg)</th>
+                <th className="px-2 py-3.5 font-black" />
+                <th className="px-3 py-3.5 font-black">Ngày</th>
+                <th className="px-3 py-3.5 font-black">Ca</th>
+                <th className="px-3 py-3.5 font-black">Lệnh SX</th>
+                <th className="px-3 py-3.5 font-black">Máy</th>
+                <th colSpan={2} className="px-3 py-3.5 text-right font-black">
+                  SP / NVL
+                </th>
+                <th className="px-3 py-3.5 text-right font-black">Tồn cuối ca (kg)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                     Đang tải kiểm tồn cuối ca...
                   </td>
                 </tr>
               ) : cuoiCaGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     Chưa có báo cáo kiểm tồn cuối ca gắn ca/ngày lệnh máy BB.
                   </td>
                 </tr>
@@ -2932,7 +3180,7 @@ export default function ControlBoardBbMachineReportTable({
                   return (
                     <React.Fragment key={group.groupKey}>
                       <tr className="border-y border-violet-200 bg-violet-50/60 font-bold hover:bg-violet-100/50 transition">
-                        <td className="px-3 py-2.5">
+                        <td className="px-2 py-2.5">
                           <button
                             type="button"
                             onClick={() => toggleGroup('kiem_ton_cuoi_ca', group.groupKey)}
@@ -2943,42 +3191,79 @@ export default function ControlBoardBbMachineReportTable({
                             <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`} />
                           </button>
                         </td>
-                        <td className="px-4 py-2.5 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
-                        <td className="px-4 py-2.5 font-semibold text-zinc-800">
+                        <td className="px-3 py-2.5 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
+                        <td className="px-3 py-2.5 font-semibold text-zinc-800">
                           {group.shiftLabel || group.shift || '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
-                        <td className="px-4 py-2.5 font-semibold text-zinc-800">{group.machine || '—'}</td>
-                        <td className="px-4 py-2.5 text-right font-mono font-bold text-zinc-600">{group.lineCount}</td>
-                        <td className="px-4 py-2.5 text-right font-mono font-bold text-violet-800">
-                          {formatKg(group.totalWeightKg, 2)}
+                        <td className="px-3 py-2.5 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
+                        <td className="px-3 py-2.5 font-semibold text-zinc-800">{group.machine || '—'}</td>
+                        <td colSpan={2} className="px-3 py-2.5 text-right font-mono font-bold text-zinc-600">
+                          {group.productCount}/{group.lineCount}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-violet-800">
+                          {formatKg(group.totalWeightKg, 4)}
                         </td>
                       </tr>
                       {expanded ? (
                         <>
                           <tr className="border-y border-violet-100 bg-violet-100/40 text-xs font-black uppercase tracking-wider text-violet-900">
                             <td />
-                            <td className="px-4 py-2 font-black">Mã NVL</td>
-                            <td colSpan={2} className="px-4 py-2 font-black">
-                              Tên NVL
+                            <td className="px-3 py-2 font-black">Mã NVL</td>
+                            <td className="px-3 py-2 font-black">Tên nguyên phụ liệu</td>
+                            <td className="px-3 py-2 font-black">ĐVT</td>
+                            <td className="px-3 py-2 text-right font-black" title="Từ thành phần % SP hoặc tỉ lệ trộn máy">
+                              Tỉ lệ ĐM (%)
                             </td>
-                            <td className="px-4 py-2 font-black">ĐVT</td>
-                            <td className="px-4 py-2 text-right font-black">SL</td>
-                            <td className="px-4 py-2 text-right font-black">Tổng (kg)</td>
+                            <td
+                              className="px-3 py-2 text-right font-black"
+                              title="Bằng Tỉ lệ ĐM (%): thành phần SP hoặc tỉ lệ trộn máy"
+                            >
+                              Tỉ lệ thực tế (%)
+                            </td>
+                            <td className="px-3 py-2 text-right font-black">Thành phần</td>
+                            <td
+                              className="px-3 py-2 text-right font-black"
+                              title="Có NNS-TRON: NNS-TRON × Tỉ lệ ĐM (%); không thì lấy tồn cuối theo mã NVL trên báo cáo kiểm tồn cuối ca"
+                            >
+                              Tồn cuối (kg)
+                            </td>
                           </tr>
-                          {group.lines.map(row => (
-                            <tr key={row.key} className="bg-white font-semibold hover:bg-violet-50/40 border-b border-slate-50">
-                              <td className="px-3 py-2" />
-                              <td className="px-4 py-2 font-mono font-bold text-zinc-800">{row.itemCode || '—'}</td>
-                              <td colSpan={2} className="px-4 py-2 text-zinc-700">
-                                {row.itemName || '—'}
+                          {(group.materialLines || []).map(row => (
+                            <tr
+                              key={row.key}
+                              className="bg-white font-semibold hover:bg-violet-50/40 border-b border-slate-50"
+                            >
+                              <td className="px-2 py-2" />
+                              <td className="px-3 py-2 font-mono font-bold text-zinc-800">
+                                {row.itemCode || '—'}
                               </td>
-                              <td className="px-4 py-2 text-zinc-600">{row.unit || '—'}</td>
-                              <td className="px-4 py-2 text-right font-mono font-bold text-zinc-800">
-                                {formatNumber(row.quantity, 3)}
+                              <td className="px-3 py-2 text-zinc-700">{row.itemName || '—'}</td>
+                              <td className="px-3 py-2 text-zinc-600">{row.unit || '—'}</td>
+                              <td className="px-3 py-2 text-right font-mono text-zinc-600">
+                                {formatPercent(row.tiLeDinhMucPercent, 2)}
                               </td>
-                              <td className="px-4 py-2 text-right font-mono font-bold text-violet-700">
-                                {formatKg(row.weightKg, 2)}
+                              <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
+                                {formatPercent(row.tiLeThucTeTbPercent, 2)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-zinc-700">
+                                {row.dinhMucRate === null || row.dinhMucRate === undefined
+                                  ? '—'
+                                  : `${formatNumber(row.dinhMucRate, row.amountType === 'percent' ? 2 : 3)}${
+                                      row.dinhMucUnit ? ` ${row.dinhMucUnit}` : ''
+                                    }`}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-violet-700">
+                                {row.tonDauFormula ? (
+                                  <ThucDungMetricButton
+                                    label={formatKg(row.tonDauWeightKg, 4)}
+                                    className="font-mono font-bold text-violet-700"
+                                    onOpen={() => {
+                                      if (row.tonDauFormula) setSelectedTonDauFormula(row.tonDauFormula);
+                                    }}
+                                  />
+                                ) : (
+                                  formatKg(row.tonDauWeightKg, 4)
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -2992,10 +3277,12 @@ export default function ControlBoardBbMachineReportTable({
             {!isLoading && cuoiCaGroups.length > 0 ? (
               <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
                 <tr>
-                  <td colSpan={6} className="px-4 py-3.5 text-right uppercase tracking-wider">
+                  <td colSpan={7} className="px-3 py-3.5 text-right uppercase tracking-wider">
                     Tổng tồn cuối ca
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-violet-800">{formatKg(cuoiCaTotalKg, 2)}</td>
+                  <td className="px-3 py-3.5 text-right font-mono text-violet-800">
+                    {formatKg(cuoiCaTotalKg, 4)}
+                  </td>
                 </tr>
               </tfoot>
             ) : null}
@@ -3151,7 +3438,7 @@ export default function ControlBoardBbMachineReportTable({
                             <td className="px-3 py-1.5 text-right font-black">Tỉ lệ ĐM (%)</td>
                             <td
                               className="px-3 py-1.5 text-right font-black"
-                              title="Ưu tiên phiếu trộn ca liền trước; không có thì lấy cùng ca lệnh (KL NVL ÷ tổng trộn × 100); không có phiếu thì dùng tỉ lệ ĐM máy"
+                              title="Bằng Tỉ lệ ĐM máy (%); phân bổ NNS-TRON cũng dùng tỉ lệ này"
                             >
                               Tỉ lệ TB thực tế (%)
                             </td>
@@ -4552,7 +4839,7 @@ export default function ControlBoardBbMachineReportTable({
         className="fixed inset-0 z-[10050] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
-        aria-label="Chi tiết công thức tồn đầu ca"
+        aria-label="Chi tiết công thức tồn NVL"
         onMouseDown={event => {
           if (event.target === event.currentTarget) setSelectedTonDauFormula(null);
         }}
@@ -4560,7 +4847,7 @@ export default function ControlBoardBbMachineReportTable({
         <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-indigo-800 to-indigo-600 px-5 py-4 text-white">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Công thức tồn đầu (kg)</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Công thức tồn (kg)</p>
               <h4 className="mt-1 text-base font-black">
                 {selectedTonDauFormula.itemCode || '—'} · {selectedTonDauFormula.itemName || '—'}
               </h4>
@@ -4574,7 +4861,7 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               ) : null}
               <p className="mt-2 font-mono text-lg font-black text-white">
-                {formatKg(selectedTonDauFormula.tonDauWeightKg, 2)}
+                {formatKg(selectedTonDauFormula.tonDauWeightKg, 4)}
               </p>
             </div>
             <button
@@ -4591,15 +4878,15 @@ export default function ControlBoardBbMachineReportTable({
               {selectedTonDauFormula.fromNnsTron &&
               selectedTonDauFormula.tiLeThucTeTbPercent !== null ? (
                 <>
-                  Tồn đầu = NNS-TRON ({formatKg(selectedTonDauFormula.nnsTronTonDauKg, 2)})
-                  {' × '}Tỉ lệ thực tế ({formatNumber(selectedTonDauFormula.tiLeThucTeTbPercent, 2)}%)
+                  Tồn = NNS-TRON ({formatKg(selectedTonDauFormula.nnsTronTonDauKg, 4)})
+                  {' × '}Tỉ lệ ĐM ({formatNumber(selectedTonDauFormula.tiLeThucTeTbPercent, 4)}%)
                   {' = '}
-                  {formatKg(selectedTonDauFormula.tonDauWeightKg, 2)}
+                  {formatKg(selectedTonDauFormula.tonDauWeightKg, 4)}
                 </>
               ) : (
                 <>
-                  Tồn đầu = Tồn ghi nhận theo mã NVL trên báo cáo tồn đầu ca ={' '}
-                  {formatKg(selectedTonDauFormula.tonDauWeightKg, 2)}
+                  Tồn = Tồn ghi nhận theo mã NVL trên báo cáo ={' '}
+                  {formatKg(selectedTonDauFormula.tonDauWeightKg, 4)}
                 </>
               )}
             </div>
@@ -4608,29 +4895,28 @@ export default function ControlBoardBbMachineReportTable({
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">NNS-TRON</p>
                 <p className="mt-1 font-mono text-lg font-black text-zinc-900">
-                  {formatKg(selectedTonDauFormula.nnsTronTonDauKg, 2)}
+                  {formatKg(selectedTonDauFormula.nnsTronTonDauKg, 4)}
                 </p>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Tỉ lệ thực tế</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Tỉ lệ ĐM</p>
                 <p className="mt-1 font-mono text-lg font-black text-orange-800">
                   {selectedTonDauFormula.tiLeThucTeTbPercent === null
                     ? '—'
-                    : `${formatNumber(selectedTonDauFormula.tiLeThucTeTbPercent, 2)}%`}
+                    : `${formatNumber(selectedTonDauFormula.tiLeThucTeTbPercent, 4)}%`}
                 </p>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Tồn theo mã NVL</p>
                 <p className="mt-1 font-mono text-lg font-black text-zinc-900">
-                  {formatKg(selectedTonDauFormula.directTonDauKg, 2)}
+                  {formatKg(selectedTonDauFormula.directTonDauKg, 4)}
                 </p>
               </div>
             </div>
 
             <p className="text-xs font-semibold text-zinc-500">
-              Khi có NNS-TRON: phân bổ về từng NVL bằng Tỉ lệ thực tế (phiếu trộn ca liền trước; không có thì dùng
-              tỉ lệ ĐM). Khi không có NNS-TRON: lấy nguyên tồn ghi nhận theo mã NVL (dùng chung cho mọi sản phẩm
-              cùng mã NVL đó trong lệnh).
+              Khi có NNS-TRON: phân bổ về từng NVL bằng Tỉ lệ ĐM (%). Khi không có NNS-TRON: lấy nguyên tồn
+              ghi nhận theo mã NVL (dùng chung cho mọi sản phẩm cùng mã NVL đó trong lệnh).
             </p>
           </div>
         </div>
@@ -5160,7 +5446,7 @@ export default function ControlBoardBbMachineReportTable({
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">Xác nhận trước khi in</p>
               <h4 className="mt-1 text-base font-black">Báo cáo tổng hợp máy BB</h4>
               <p className="mt-1 text-xs font-semibold text-sky-50">
-                Kiểm tra thông tin lệnh SX. Chỉ nhân sự được chọn lại trước khi in.
+                Chọn nhân sự, gõ lý do giải trình — rồi xem trước trước khi in.
               </p>
             </div>
             <button
@@ -5178,7 +5464,8 @@ export default function ControlBoardBbMachineReportTable({
                 staffMain: group.staffMain || '',
                 staffAssistant: group.staffAssistant || '',
                 staffSupport: group.staffSupport || '',
-                ghiChu: ''
+                ghiChu: '',
+                lyDo: phanTichMap[group.groupKey] || ''
               };
               const staffSelectClass =
                 'h-10 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15';
@@ -5271,6 +5558,19 @@ export default function ControlBoardBbMachineReportTable({
 
                   <label className="mt-3 block space-y-1">
                     <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                      Lý do mặc định (áp dụng từng dòng SP — sửa riêng trên xem trước)
+                    </span>
+                    <textarea
+                      value={selection.lyDo}
+                      onChange={event => updatePrintStaff(group.groupKey, 'lyDo', event.target.value)}
+                      rows={3}
+                      placeholder="Gõ lý do mặc định cho các dòng SP, rồi xem trước để sửa từng dòng..."
+                      className="min-h-[72px] w-full resize-y rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+                    />
+                  </label>
+
+                  <label className="mt-3 block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
                       Ghi chú
                     </span>
                     <textarea
@@ -5317,8 +5617,25 @@ export default function ControlBoardBbMachineReportTable({
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Xem trước khi in</p>
             <h4 className="text-sm font-black sm:text-base">Báo cáo kết quả theo từng lệnh sản xuất</h4>
+            <p className="mt-0.5 text-xs font-semibold text-slate-300">
+              Gõ lý do từng dòng SP → Lưu lý do DB → rồi In báo cáo.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {lyDoSaveMessage ? (
+              <span className="max-w-[280px] truncate text-xs font-semibold text-sky-200" title={lyDoSaveMessage}>
+                {lyDoSaveMessage}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void savePrintLyDoToDb()}
+              disabled={savingLyDo || pendingPrint}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-400/60 bg-emerald-600/90 px-4 text-xs font-black hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingLyDo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {savingLyDo ? 'Đang lưu...' : 'Lưu lý do DB'}
+            </button>
             <button type="button" onClick={editPrintDetails} className="h-10 rounded-lg border border-slate-500 bg-white/10 px-4 text-xs font-black hover:bg-white/20">
               Quay lại chỉnh sửa
             </button>
@@ -5346,6 +5663,13 @@ export default function ControlBoardBbMachineReportTable({
               materials={materials}
               phanTichMap={phanTichMap}
               noteByOrder={printNoteByOrder}
+              lyDoByLine={printLyDoByLine}
+              editableLyDo={!pendingPrint}
+              onLyDoChange={(lineKey, value) =>
+                setPrintLyDoByLine(prev => ({ ...prev, [lineKey]: value }))
+              }
+              sanLuongSource={sanLuongSource}
+              canTuDongRecords={canTuDongRecords}
             />
           </div>
         </div>
@@ -5368,6 +5692,9 @@ export default function ControlBoardBbMachineReportTable({
             materials={materials}
             phanTichMap={phanTichMap}
             noteByOrder={printNoteByOrder}
+            lyDoByLine={printLyDoByLine}
+            sanLuongSource={sanLuongSource}
+            canTuDongRecords={canTuDongRecords}
           />,
           document.body
         )

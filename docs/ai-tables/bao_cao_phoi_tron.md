@@ -34,7 +34,7 @@
 
 
 
-**Danh sách:** Tab `mixing-report-list` → chỉ phiếu `bao_cao_phoi_tron` (không gộp định mức / thực tế).
+**Danh sách:** Tab `mixing-report-list` → phiếu `bao_cao_phoi_tron`. Khi mở chi tiết hiện **Tỉ lệ trộn Định mức** (`ti_le_phan_tram`) và **Tỉ lệ trộn Thực tế** (KL TT dòng ÷ tổng KL TT phiếu × 100).
 
 
 

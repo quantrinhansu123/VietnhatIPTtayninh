@@ -48,6 +48,7 @@ import {
   FilterCombobox,
   TableToolbar,
   TableSearchInput,
+  TableDateFilter,
   TableShell,
   TableHead,
   TableHeadCell,
@@ -206,6 +207,24 @@ async function postCanTuDongBulkAutofill(
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || 'Không thể tự động điền các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
+async function postCanTuDongBulkSetTare(ids: Array<string | number>, tareWeight: number) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-tare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, tare_weight: tareWeight })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi cân lõi các dòng cân tự động.');
     }
     updated += Number(data.updated) || chunk.length;
   }
@@ -374,13 +393,19 @@ export function CanTuDongPanel({
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isSettingCa, setIsSettingCa] = useState(false);
+  const [isSettingTare, setIsSettingTare] = useState(false);
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   const [showNormalizeAllModal, setShowNormalizeAllModal] = useState(false);
+  const [showSetTareModal, setShowSetTareModal] = useState(false);
+  const [bulkTareInput, setBulkTareInput] = useState('');
   const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
   const [maSpFilter, setMaSpFilter] = useState('all');
   /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
   const [maSpQuery, setMaSpQuery] = useState('');
+  /** Lọc cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân. */
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -506,22 +531,33 @@ export function CanTuDongPanel({
     };
   }, [pendingPrint, printData]);
 
+  const recordsByDate = useMemo(() => {
+    if (!fromDate && !toDate) return records;
+    return records.filter(row => {
+      const ngay = resolveCanTuDongBusinessDate(row);
+      if (!ngay) return false;
+      if (fromDate && ngay < fromDate) return false;
+      if (toDate && ngay > toDate) return false;
+      return true;
+    });
+  }, [records, fromDate, toDate]);
+
   const maSpOptions = useMemo(() => {
     const byKey = new Map<string, string>();
-    for (const row of records) {
+    for (const row of recordsByDate) {
       const maSp = resolveRowMaSp(row);
       const key = normalizeProductCodeKey(maSp);
       if (!key) continue;
       if (!byKey.has(key)) byKey.set(key, maSp);
     }
     return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [records]);
+  }, [recordsByDate]);
 
   const recordsByMaSp = useMemo(() => {
     const queryKey = normalizeProductCodeKey(maSpQuery);
     const pickKey = maSpFilter === 'all' ? '' : normalizeProductCodeKey(maSpFilter);
-    if (!queryKey && !pickKey) return records;
-    return records.filter(row => {
+    if (!queryKey && !pickKey) return recordsByDate;
+    return recordsByDate.filter(row => {
       const maSp = resolveRowMaSp(row);
       const maSpKey = normalizeProductCodeKey(maSp);
       if (pickKey && maSpKey !== pickKey) return false;
@@ -533,7 +569,7 @@ export function CanTuDongPanel({
       if (name && normalizeProductCodeKey(name).includes(queryKey)) return true;
       return false;
     });
-  }, [records, maSpFilter, maSpQuery, productNameByCode]);
+  }, [recordsByDate, maSpFilter, maSpQuery, productNameByCode]);
 
   const visibleRecords = useMemo(() => {
     if (diffFilter === 'all') return recordsByMaSp;
@@ -578,6 +614,19 @@ export function CanTuDongPanel({
     () => sumCanTuDongChenhLechLoiKg(visibleRecords, productCoreWeightByCode),
     [visibleRecords, productCoreWeightByCode]
   );
+
+  const hasDateFilters = Boolean(fromDate || toDate);
+  const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
+  const hasActiveFilters = hasDateFilters || hasMaSpFilters;
+
+  /** Gợi ý cân lõi lý thuyết khi đang lọc đúng 1 Mã SP. */
+  const suggestedCoreTareKg = useMemo(() => {
+    if (maSpFilter === 'all') return null;
+    const key = normalizeProductCodeKey(maSpFilter);
+    if (!key) return null;
+    const core = productCoreWeightByCode.get(key);
+    return core != null && core > 0 ? core : null;
+  }, [maSpFilter, productCoreWeightByCode]);
 
   /** Phân tích kém cân / hơn cân theo |%| so với TL tiêu chuẩn (ngưỡng 2%) — theo bộ lọc Mã SP. */
   const phanTichCan = useMemo(() => {
@@ -688,6 +737,64 @@ export function CanTuDongPanel({
       showAppToast(message, 'error');
     } finally {
       setIsSettingCa(false);
+    }
+  };
+
+  const openSetTareModal = () => {
+    if (!hasMaSpFilters) {
+      showAppToast('Hãy lọc theo Mã SP trước khi đổi cân lõi hàng loạt.', 'error');
+      return;
+    }
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào khớp bộ lọc hiện tại.', 'error');
+      return;
+    }
+    setBulkTareInput(
+      suggestedCoreTareKg != null ? String(suggestedCoreTareKg).replace('.', ',') : ''
+    );
+    setShowSetTareModal(true);
+  };
+
+  const handleSetTareByFilter = async () => {
+    const parsed = Number(String(bulkTareInput).trim().replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      showAppToast('Nhập số cân lõi hợp lệ (≥ 0).', 'error');
+      return;
+    }
+    if (!hasMaSpFilters) {
+      showAppToast('Hãy lọc theo Mã SP trước khi đổi cân lõi hàng loạt.', 'error');
+      return;
+    }
+    const ids = visibleRecords.map(row => row.id).filter(id => id != null && id !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng nào khớp bộ lọc hiện tại.', 'error');
+      return;
+    }
+
+    setIsSettingTare(true);
+    try {
+      const updated = await postCanTuDongBulkSetTare(ids, parsed);
+      const idSet = new Set(ids.map(id => String(id)));
+      const tareRounded = Math.round(parsed * 1000) / 1000;
+      setRecords(prev =>
+        prev.map(row =>
+          idSet.has(String(row.id))
+            ? { ...row, tare_weight: tareRounded, can_loi: tareRounded }
+            : row
+        )
+      );
+      showAppToast(
+        `Đã đổi Cân lõi = ${formatNumber(tareRounded, 3)} kg cho ${updated} dòng theo bộ lọc.`
+      );
+      setShowSetTareModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(
+        err instanceof Error ? err.message : 'Không thể đổi cân lõi theo bộ lọc.',
+        'error'
+      );
+    } finally {
+      setIsSettingTare(false);
     }
   };
 
@@ -818,8 +925,8 @@ export function CanTuDongPanel({
     }
     setPrintData(
       buildCanTuDongPrintData(visibleRecords, {
-        fromDate: '',
-        toDate: '',
+        fromDate,
+        toDate,
         ca: 'all',
         productNameByCode
       })
@@ -834,8 +941,8 @@ export function CanTuDongPanel({
     }
     try {
       downloadCanTuDongExcel(visibleRecords, {
-        fromDate: '',
-        toDate: '',
+        fromDate,
+        toDate,
         productNameByCode,
         productStandardWeightByCode
       });
@@ -845,10 +952,11 @@ export function CanTuDongPanel({
     }
   };
 
-  const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
-  const clearMaSpFilters = () => {
+  const clearFilters = () => {
     setMaSpFilter('all');
     setMaSpQuery('');
+    setFromDate('');
+    setToDate('');
   };
 
   return (
@@ -871,7 +979,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openNormalizeAllModal}
-            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || records.length === 0}
+            disabled={loading || isAutoFilling || isSettingCa || isSettingTare || isBulkDeleting || records.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-800 transition hover:bg-sky-100 disabled:opacity-60"
             title={`Quy tất cả ${records.length} dòng về Ngày 20/08/2026 · Ca ${AUTO_FILL_CA} · Máy ${AUTO_FILL_MAY}`}
           >
@@ -881,7 +989,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={() => void handleFillCaSelected()}
-            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || selectedCount === 0}
+            disabled={loading || isAutoFilling || isSettingCa || isSettingTare || isBulkDeleting || selectedCount === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
             title={`Chỉ điền cột Ca = ${AUTO_FILL_CA} cho dòng đã chọn`}
           >
@@ -891,7 +999,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openAutoFillModal}
-            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || selectedCount === 0}
+            disabled={loading || isAutoFilling || isSettingCa || isSettingTare || isBulkDeleting || selectedCount === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 transition hover:bg-violet-100 disabled:opacity-60"
             title={`Điền Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
           >
@@ -932,9 +1040,11 @@ export function CanTuDongPanel({
 
       <TableToolbar
         isLoading={loading}
-        hasActiveFilters={hasMaSpFilters}
-        onResetFilters={clearMaSpFilters}
+        hasActiveFilters={hasActiveFilters}
+        onResetFilters={clearFilters}
       >
+        <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} />
+        <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
         <TableSearchInput
           value={maSpQuery}
           onChange={value => {
@@ -959,93 +1069,141 @@ export function CanTuDongPanel({
           }}
           dropdownWidth="w-max min-w-[16rem] max-w-[min(28rem,calc(100vw-1rem))]"
         />
+        <button
+          type="button"
+          onClick={openSetTareModal}
+          disabled={
+            loading ||
+            isSettingTare ||
+            isAutoFilling ||
+            isSettingCa ||
+            isBulkDeleting ||
+            !hasMaSpFilters ||
+            visibleRecords.length === 0
+          }
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-orange-300 bg-orange-50 px-3 text-xs font-bold text-orange-900 transition hover:bg-orange-100 disabled:opacity-60"
+          title={
+            hasMaSpFilters
+              ? `Đổi Cân lõi cho ${visibleRecords.length} dòng đang lọc`
+              : 'Lọc theo Mã SP trước, rồi nhập số cân lõi để đổi hết cột Cân lõi'
+          }
+        >
+          {isSettingTare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+          {isSettingTare ? 'Đang đổi...' : 'Đổi cân lõi theo lọc'}
+        </button>
         <span className="text-[11px] font-semibold text-zinc-500">
           {loading
             ? '…'
-            : hasMaSpFilters
+            : hasActiveFilters
               ? `${formatNumber(visibleRecords.length, 0)} / ${formatNumber(records.length, 0)} dòng`
               : `${formatNumber(records.length, 0)} dòng`}
         </span>
       </TableToolbar>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
-        <div className="flex flex-wrap items-center gap-4">
-          <span title="Số dòng = số lần cân">
-            <span className="uppercase tracking-wider text-emerald-800/80">Số lượng</span>{' '}
-            <span className="font-mono text-sm">
-              {loading ? '…' : formatNumber(trongLuongNhuaTotals.quantity, 0)}
-            </span>
-          </span>
-          <span title="Tổng cột «Trọng lượng nhựa» = SP − lõi − bì 0,16">
-            <span className="uppercase tracking-wider text-emerald-800/80">Trọng lượng</span>{' '}
-            <span className="font-mono text-sm text-emerald-800">
-              {loading ? '…' : `${formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Tổng cột «Trọng lượng tiêu chuẩn» = Σ san_pham.tong_trong_luong theo Mã SP từ QR">
-            <span className="uppercase tracking-wider text-sky-800/80">Trọng lượng tiêu chuẩn</span>{' '}
-            <span className="font-mono text-sm text-sky-900">
-              {loading ? '…' : `${formatNumber(nhuaTieuChuanTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Tổng cột «Cân sản phẩm» (Trọng lượng TT)">
-            <span className="uppercase tracking-wider text-violet-800/80">Trọng lượng TT</span>{' '}
-            <span className="font-mono text-sm text-violet-900">
-              {loading ? '…' : `${formatNumber(trongLuongTtTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Chênh lệch = Trọng lượng TT − Trọng lượng tiêu chuẩn (thực tế − LT)">
-            <span className="uppercase tracking-wider text-rose-800/80">Chênh lệch</span>{' '}
-            <span
-              className={`font-mono text-sm ${
-                loading
-                  ? 'text-zinc-500'
-                  : chenhLechTtLtTotals.weightKg > 0
-                    ? 'text-emerald-800'
-                    : chenhLechTtLtTotals.weightKg < 0
-                      ? 'text-rose-700'
-                      : 'text-zinc-800'
-              }`}
-            >
-              {loading
-                ? '…'
-                : `${chenhLechTtLtTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechTtLtTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Tổng cột «Cân lõi» (trọng lượng lõi thực tế)">
-            <span className="uppercase tracking-wider text-sky-800/80">Tổng trọng lượng lõi</span>{' '}
-            <span className="font-mono text-sm text-sky-900">
-              {loading ? '…' : `${formatNumber(tongTrongLuongLoiTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Tổng cột «Lõi lý thuyết» = Σ san_pham.trong_luong_loi theo Mã SP từ QR">
-            <span className="uppercase tracking-wider text-amber-800/80">Tổng trọng lượng lõi lý thuyết</span>{' '}
-            <span className="font-mono text-sm text-amber-900">
-              {loading ? '…' : `${formatNumber(loiTieuChuanTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-          <span title="Chênh lệch lõi = Tổng trọng lượng lõi − Tổng trọng lượng lõi lý thuyết (thực tế − LT)">
-            <span className="uppercase tracking-wider text-orange-800/80">Chênh lệch lõi</span>{' '}
-            <span
-              className={`font-mono text-sm ${
-                loading
-                  ? 'text-zinc-500'
-                  : chenhLechLoiTotals.weightKg > 0
-                    ? 'text-emerald-800'
-                    : chenhLechLoiTotals.weightKg < 0
-                      ? 'text-rose-700'
-                      : 'text-zinc-800'
-              }`}
-            >
-              {loading
-                ? '…'
-                : `${chenhLechLoiTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechLoiTotals.weightKg, 2)} kg`}
-            </span>
-          </span>
-        </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">
-          TL · TT · Chênh lệch · Lõi · Lõi LT · Chênh lệch lõi
-        </span>
+      <div className="overflow-x-auto rounded-2xl border border-emerald-200 bg-emerald-50/70 shadow-sm">
+        <table className="min-w-full border-collapse text-left text-xs">
+          <thead>
+            <tr className="border-b border-emerald-200 bg-emerald-100/80 text-[10px] font-black uppercase tracking-wider text-emerald-900">
+              <th className="whitespace-nowrap px-3 py-2.5" title="Số dòng = số lần cân">
+                Số lượng
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5"
+                title="Tổng cột «Trọng lượng nhựa» = SP − lõi − bì 0,16"
+              >
+                Trọng lượng nhựa
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-sky-900"
+                title="Tổng cột «Trọng lượng tiêu chuẩn» = Σ san_pham.tong_trong_luong theo Mã SP từ QR"
+              >
+                Trọng lượng tiêu chuẩn
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-violet-900"
+                title="Tổng cột «Cân sản phẩm» (Trọng lượng TT)"
+              >
+                Trọng lượng TT
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-rose-900"
+                title="Chênh lệch = Trọng lượng TT − Trọng lượng tiêu chuẩn (thực tế − LT)"
+              >
+                Chênh lệch
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-sky-900"
+                title="Tổng cột «Cân lõi» (trọng lượng lõi thực tế)"
+              >
+                Tổng trọng lượng lõi
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-amber-900"
+                title="Tổng cột «Lõi lý thuyết» = Σ san_pham.trong_luong_loi theo Mã SP từ QR"
+              >
+                Tổng trọng lượng lõi lý thuyết
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-orange-900"
+                title="Chênh lệch lõi = Tổng trọng lượng lõi − Tổng trọng lượng lõi lý thuyết (thực tế − LT)"
+              >
+                Chênh lệch lõi
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="font-mono text-sm font-black text-emerald-950">
+              <td className="whitespace-nowrap px-3 py-3">
+                {loading ? '…' : formatNumber(trongLuongNhuaTotals.quantity, 0)}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-emerald-800">
+                {loading ? '…' : `${formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg`}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-sky-900">
+                {loading ? '…' : `${formatNumber(nhuaTieuChuanTotals.weightKg, 2)} kg`}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-violet-900">
+                {loading ? '…' : `${formatNumber(trongLuongTtTotals.weightKg, 2)} kg`}
+              </td>
+              <td
+                className={`whitespace-nowrap px-3 py-3 ${
+                  loading
+                    ? 'text-zinc-500'
+                    : chenhLechTtLtTotals.weightKg > 0
+                      ? 'text-emerald-800'
+                      : chenhLechTtLtTotals.weightKg < 0
+                        ? 'text-rose-700'
+                        : 'text-zinc-800'
+                }`}
+              >
+                {loading
+                  ? '…'
+                  : `${chenhLechTtLtTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechTtLtTotals.weightKg, 2)} kg`}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-sky-900">
+                {loading ? '…' : `${formatNumber(tongTrongLuongLoiTotals.weightKg, 2)} kg`}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-amber-900">
+                {loading ? '…' : `${formatNumber(loiTieuChuanTotals.weightKg, 2)} kg`}
+              </td>
+              <td
+                className={`whitespace-nowrap px-3 py-3 ${
+                  loading
+                    ? 'text-zinc-500'
+                    : chenhLechLoiTotals.weightKg > 0
+                      ? 'text-emerald-800'
+                      : chenhLechLoiTotals.weightKg < 0
+                        ? 'text-rose-700'
+                        : 'text-zinc-800'
+                }`}
+              >
+                {loading
+                  ? '…'
+                  : `${chenhLechLoiTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechLoiTotals.weightKg, 2)} kg`}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div className="space-y-2">
@@ -1061,6 +1219,9 @@ export function CanTuDongPanel({
                 : 'Hiển thị toàn bộ dòng cân tự động'}
             {maSpFilter !== 'all' ? ` · Mã SP ${maSpFilter}` : ''}
             {maSpQuery.trim() ? ` · tìm «${maSpQuery.trim()}»` : ''}
+            {fromDate || toDate
+              ? ` · Ngày ${fromDate ? formatIsoDateVi(fromDate) : '…'} → ${toDate ? formatIsoDateVi(toDate) : '…'}`
+              : ''}
             {!loading && phanTichCan.comparedRows > 0
               ? ` · ${formatNumber(phanTichCan.comparedRows, 0)} dòng có tiêu chuẩn`
               : ''}
@@ -1371,15 +1532,17 @@ export function CanTuDongPanel({
             <TableEmptyRow colSpan={22}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
-                : hasMaSpFilters && recordsByMaSp.length === 0
-                  ? maSpFilter !== 'all'
-                    ? `Không có dòng nào với Mã SP ${maSpFilter}.`
-                    : `Không có dòng khớp «${maSpQuery.trim()}».`
-                  : diffFilter === 'gt-2pct'
-                    ? `Không có dòng nào có |Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%.`
-                    : diffFilter === 'all-diff'
-                      ? 'Không có dòng nào có chênh lệch so với TL tiêu chuẩn.'
-                      : 'Không có bản ghi cân tự động.'}
+                : hasDateFilters && recordsByDate.length === 0
+                  ? `Không có dòng nào trong khoảng ngày${fromDate ? ` từ ${formatIsoDateVi(fromDate)}` : ''}${toDate ? ` đến ${formatIsoDateVi(toDate)}` : ''}.`
+                  : hasMaSpFilters && recordsByMaSp.length === 0
+                    ? maSpFilter !== 'all'
+                      ? `Không có dòng nào với Mã SP ${maSpFilter}.`
+                      : `Không có dòng khớp «${maSpQuery.trim()}».`
+                    : diffFilter === 'gt-2pct'
+                      ? `Không có dòng nào có |Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%.`
+                      : diffFilter === 'all-diff'
+                        ? 'Không có dòng nào có chênh lệch so với TL tiêu chuẩn.'
+                        : 'Không có bản ghi cân tự động.'}
             </TableEmptyRow>
           ) : (
             visibleRecords.map(row => {
@@ -1682,6 +1845,90 @@ export function CanTuDongPanel({
               >
                 {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
                 {isAutoFilling ? 'Đang quy...' : 'Quy hết'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showSetTareModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-set-tare-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-set-tare-title" className="text-base font-black text-zinc-950">
+                  Đổi cân lõi theo bộ lọc
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho {visibleRecords.length} dòng đang lọc
+                  {maSpFilter !== 'all' ? ` · Mã SP ${maSpFilter}` : ''}
+                  {maSpQuery.trim() ? ` · tìm «${maSpQuery.trim()}»` : ''}
+                  {fromDate || toDate
+                    ? ` · Ngày ${fromDate ? formatIsoDateVi(fromDate) : '…'} → ${toDate ? formatIsoDateVi(toDate) : '…'}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetTareModal(false)}
+                disabled={isSettingTare}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Số cân lõi (kg)
+                </span>
+                <input
+                  value={bulkTareInput}
+                  onChange={e => setBulkTareInput(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="VD: 1,06"
+                  autoFocus
+                  disabled={isSettingTare}
+                  className="mt-1 h-11 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold outline-none focus:border-orange-400 disabled:opacity-60"
+                />
+              </label>
+              {suggestedCoreTareKg != null ? (
+                <button
+                  type="button"
+                  onClick={() => setBulkTareInput(String(suggestedCoreTareKg).replace('.', ','))}
+                  disabled={isSettingTare}
+                  className="text-xs font-bold text-orange-700 underline-offset-2 hover:underline disabled:opacity-60"
+                >
+                  Dùng lõi lý thuyết: {formatNumber(suggestedCoreTareKg, 3)} kg
+                </button>
+              ) : null}
+              <p className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">
+                Toàn bộ cột <span className="font-black">Cân lõi</span> của các dòng đang lọc sẽ đổi
+                thành số vừa nhập.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowSetTareModal(false)}
+                disabled={isSettingTare}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSetTareByFilter()}
+                disabled={isSettingTare || !String(bulkTareInput).trim()}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-orange-600 px-4 text-xs font-extrabold text-white hover:bg-orange-700 disabled:opacity-60"
+              >
+                {isSettingTare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+                {isSettingTare ? 'Đang đổi...' : `Đổi ${visibleRecords.length} dòng`}
               </button>
             </div>
           </div>

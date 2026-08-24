@@ -180,7 +180,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
       {!selectedWarehouse ? (
         <div className="flex flex-wrap items-center gap-3">
           <FilterCombobox
-            label="Chọn kho"
+            label="Kho"
             options={accessibleWarehouses}
             value={selectedWarehouse}
             onChange={setSelectedWarehouse}
@@ -199,7 +199,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           topControls={
             <>
               <FilterCombobox
-                label="Chọn kho"
+                label="Kho"
                 options={accessibleWarehouses}
                 value={selectedWarehouse}
                 onChange={setSelectedWarehouse}
@@ -224,7 +224,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           topControls={
             <>
               <FilterCombobox
-                label="Chọn kho"
+                label="Kho"
                 options={accessibleWarehouses}
                 value={selectedWarehouse}
                 onChange={setSelectedWarehouse}

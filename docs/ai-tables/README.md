@@ -53,6 +53,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `bao_cao_may_nvl_ton` | `/bao-cao-may-nvl-ton` | [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) |
 | `phieu_bao_dung_may` | `/phieu-bao-dung-may` | [phieu_bao_dung_may.md](./phieu_bao_dung_may.md) |
 | *(tổng hợp)* | `/bang-dieu-khien`, `/phan-tich` | [control_board.md](./control_board.md) |
+| `bb_bao_cao_ly_do` | *(lý do in BB)* | [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) |
 
 ## File dùng chung (chỉ khi cần)
 

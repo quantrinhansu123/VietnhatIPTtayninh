@@ -14,7 +14,7 @@
 | POST | `/api/san-pham` | 3564 |
 | GET | `/api/san-pham/:id/ma-chi-tiet` | danh sách mã QR/serial đã lưu |
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | nhật ký nhập/xuất từ `phieu_xuat_nhap_kho` theo mã SP |
-| PATCH | `/api/san-pham` | bulk đổi `ten_kho` theo `nhom_vthh` (vd nhóm XOP → Kho hàng hóa) |
+| PATCH | `/api/san-pham` | bulk đổi `ten_kho` theo `ids` (ưu tiên bộ lọc UI) hoặc theo `nhom_vthh` |
 | PATCH | `/api/san-pham/:id` | 3629 |
 | DELETE | `/api/san-pham` | bulk — xóa `ma_san_pham_chi_tiet` trước rồi `san_pham` |
 
@@ -32,8 +32,8 @@
 UI danh sách sản phẩm có **hai chế độ**:
 
 - Modal **Xem sản phẩm**: tab Thông tin · Thành phần · **Nhập kho** · **Xuất kho** (hai tab sau lấy dòng từ `phieu_xuat_nhap_kho` theo mã SP). Bảng **Tồn kho** trên tab Thông tin: **Tồn đầu kỳ** = `tong_so_luong` từ Bảng tổng hợp Kiểm kho (`GET /api/kiem-kho/ton-dau-ky`); **Nhập/Xuất trong kỳ** = tổng `so_luong` toàn bộ phiếu ở tab Nhập kho / Xuất kho; Tồn cuối = đầu + nhập − xuất.
-- **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT / Kho; thống kê Sản phẩm · Nhóm VTHH · Đơn vị. Nút **Đổi nhóm XOP → Kho hàng hóa** cập nhật `ten_kho` hàng loạt cho mọi SP nhóm XOP.
-- **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị.
+- **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT / Kho; thống kê Sản phẩm · Nhóm VTHH · Đơn vị. Nút **Đổi kho theo bộ lọc** mở chọn tên kho rồi cập nhật `ten_kho` cho các SP đang hiện theo bộ lọc.
+- **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị. Bộ lọc **Kho** (dropdown từ `quan_ly_kho`) — cột **Kho** trên bảng luôn hiện đúng kho đang chọn.
 
 ## Menu
 

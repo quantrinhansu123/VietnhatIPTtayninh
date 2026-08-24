@@ -16,10 +16,14 @@ Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trê
 | `ControlBoardShiftSummaryTable.tsx` | Bảng tổng hợp ca |
 | `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, lỗi hỏng, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt) |
 | `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`, bên dưới = list view tương ứng |
-| `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in báo cáo tổng hợp máy BB (gồm mục 2 thành phẩm đạt nhập kho) |
+| `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in báo cáo tổng hợp máy BB (gồm mục 2 thành phẩm đạt nhập kho + lý do từng dòng) |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |
 | `ControlBoardShiftDetailModal.tsx` | Chi tiết ca |
 | `ControlBoardShiftSummaryPrintSheet.tsx` | In tổng hợp |
+
+## Bảng liên quan thêm
+
+- [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) — lưu lý do giải trình in BB
 
 ## Utils
 

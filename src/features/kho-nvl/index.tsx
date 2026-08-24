@@ -855,7 +855,8 @@ export function MaterialsInventoryPanel({
       const balance = balanceByCode.get(key);
       return [{
         ...material,
-        warehouse: balance?.ten_kho || material.warehouse || warehouseFilter,
+        // Cột Kho luôn theo bộ lọc đang chọn trên /kho-hang.
+        warehouse: warehouseFilter || balance?.ten_kho || material.warehouse,
         openingStock: balance ? String(balance.ton_dau_ky) : material.openingStock && material.openingStock !== '-' ? material.openingStock : '0',
         inbound: balance ? String(balance.nhap_trong_ky) : '0',
         outbound: balance ? String(balance.xuat_trong_ky) : '0'
@@ -871,7 +872,7 @@ export function MaterialsInventoryPanel({
         code: balance.ma,
         name: balance.ten || balance.ma,
         unit: balance.don_vi || '-',
-        warehouse: balance.ten_kho || warehouseFilter,
+        warehouse: warehouseFilter || balance.ten_kho,
         totalWeight: '-',
         plasticWeight: '-',
         bagWeight: '-',

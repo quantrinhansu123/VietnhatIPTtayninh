@@ -1881,20 +1881,11 @@ export function ProductViewModal({
   );
 }
 
-const XOP_PRODUCT_GROUP = 'XOP';
 const GOODS_WAREHOUSE_NAME = 'Kho hàng hóa';
-
-function isXopProductGroup(group: string) {
-  return String(group || '').trim().toUpperCase() === XOP_PRODUCT_GROUP;
-}
 
 function resolveGoodsWarehouseName(warehouseOptions: string[]) {
   const target = normalizeWarehouseName(GOODS_WAREHOUSE_NAME);
   return warehouseOptions.find(name => normalizeWarehouseName(name) === target) || GOODS_WAREHOUSE_NAME;
-}
-
-function isGoodsWarehouseAssigned(warehouse: string, warehouseName = GOODS_WAREHOUSE_NAME) {
-  return normalizeWarehouseName(warehouse) === normalizeWarehouseName(warehouseName);
 }
 
 export function normalizeProducts(data: unknown): ProductRow[] {
@@ -2209,7 +2200,9 @@ export function ProductsPanel({
   const [printQtyError, setPrintQtyError] = useState('');
   const [bulkPrintQty, setBulkPrintQty] = useState('1');
   const [isDeletingProducts, setIsDeletingProducts] = useState(false);
-  const [isReassigningXopWarehouse, setIsReassigningXopWarehouse] = useState(false);
+  const [isReassigningWarehouse, setIsReassigningWarehouse] = useState(false);
+  const [isWarehouseReassignOpen, setIsWarehouseReassignOpen] = useState(false);
+  const [reassignWarehouseName, setReassignWarehouseName] = useState('');
   const [productActionMessage, setProductActionMessage] = useState('');
   const [viewingProduct, setViewingProduct] = useState<ProductRow | null>(null);
   const [productViewTab, setProductViewTab] = useState<ProductViewTab>('info');
@@ -2792,7 +2785,8 @@ export function ProductsPanel({
       const balance = balanceByCode.get(key);
       return [{
         ...product,
-        warehouse: balance?.ten_kho || product.warehouse || warehouseFilter,
+        // Cột Kho luôn theo bộ lọc đang chọn trên /kho-hang.
+        warehouse: warehouseFilter || balance?.ten_kho || product.warehouse,
         openingStock: balance
           ? String(balance.ton_dau_ky)
           : product.openingStock && product.openingStock !== '-'
@@ -2816,7 +2810,7 @@ export function ProductsPanel({
         nature: 'Chưa phân loại',
         group: 'Chưa nhóm',
         unit: balance.don_vi || '-',
-        warehouse: balance.ten_kho || warehouseFilter,
+        warehouse: warehouseFilter || balance.ten_kho,
         totalWeight: '-',
         rollWidth: '-',
         rollLength: '-',
@@ -3103,37 +3097,51 @@ export function ProductsPanel({
     }
   };
 
-  const goodsWarehouseName = useMemo(
+  const defaultReassignWarehouseName = useMemo(
     () => resolveGoodsWarehouseName(warehouseOptions),
     [warehouseOptions]
   );
-  const xopCatalogProducts = useMemo(
-    () => products.filter(product => !product.inventoryBalanceOnly && isXopProductGroup(product.group)),
-    [products]
-  );
-  const xopProductsNeedingWarehouse = useMemo(
-    () =>
-      xopCatalogProducts.filter(product => !isGoodsWarehouseAssigned(product.warehouse, goodsWarehouseName)),
-    [goodsWarehouseName, xopCatalogProducts]
+  const filteredCatalogProducts = useMemo(
+    () => filteredProducts.filter(product => !product.inventoryBalanceOnly),
+    [filteredProducts]
   );
 
-  const handleReassignXopWarehouse = async () => {
-    if (!canEdit || xopCatalogProducts.length === 0) return;
+  const openWarehouseReassignModal = () => {
+    if (!canEdit || filteredCatalogProducts.length === 0) return;
+    setReassignWarehouseName(prev => prev || defaultReassignWarehouseName || warehouseOptions[0] || '');
+    setProductError('');
+    setIsWarehouseReassignOpen(true);
+  };
 
-    if (xopProductsNeedingWarehouse.length === 0) {
-      setProductActionMessage(`Tất cả sản phẩm nhóm ${XOP_PRODUCT_GROUP} đã ở ${goodsWarehouseName}.`);
+  const handleReassignFilteredWarehouse = async () => {
+    if (!canEdit || filteredCatalogProducts.length === 0) return;
+
+    const warehouseName = reassignWarehouseName.trim();
+    if (!warehouseName) {
+      setProductError('Vui lòng chọn tên kho để sửa cột Kho.');
+      return;
+    }
+
+    const targetKey = normalizeWarehouseName(warehouseName);
+    const productsToUpdate = filteredCatalogProducts.filter(
+      product => normalizeWarehouseName(product.warehouse) !== targetKey
+    );
+
+    if (productsToUpdate.length === 0) {
+      setProductActionMessage(`Tất cả ${filteredCatalogProducts.length} sản phẩm đang lọc đã ở "${warehouseName}".`);
+      setIsWarehouseReassignOpen(false);
       return;
     }
 
     if (
       !window.confirm(
-        `Đổi cột Kho của ${xopProductsNeedingWarehouse.length} sản phẩm nhóm ${XOP_PRODUCT_GROUP} thành "${goodsWarehouseName}"?`
+        `Đổi cột Kho của ${productsToUpdate.length} sản phẩm đang lọc thành "${warehouseName}"?`
       )
     ) {
       return;
     }
 
-    setIsReassigningXopWarehouse(true);
+    setIsReassigningWarehouse(true);
     setProductActionMessage('');
     setProductError('');
 
@@ -3142,24 +3150,25 @@ export function ProductsPanel({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          group: XOP_PRODUCT_GROUP,
-          warehouse: goodsWarehouseName
+          ids: productsToUpdate.map(product => product.id),
+          warehouse: warehouseName
         })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'Không thể đổi kho cho nhóm XOP.');
+        throw new Error(data.error || 'Không thể đổi kho theo bộ lọc.');
       }
       setProductActionMessage(
         data.updated
-          ? `Đã đổi ${data.updated} sản phẩm nhóm ${XOP_PRODUCT_GROUP} sang ${data.ten_kho || goodsWarehouseName}.`
-          : `Không còn sản phẩm nhóm ${XOP_PRODUCT_GROUP} cần đổi kho.`
+          ? `Đã đổi cột Kho của ${data.updated} sản phẩm đang lọc sang ${data.ten_kho || warehouseName}.`
+          : `Không còn sản phẩm đang lọc cần đổi kho.`
       );
+      setIsWarehouseReassignOpen(false);
       await loadProducts();
     } catch (error: any) {
-      setProductError(error.message || 'Không thể đổi kho cho nhóm XOP.');
+      setProductError(error.message || 'Không thể đổi kho theo bộ lọc.');
     } finally {
-      setIsReassigningXopWarehouse(false);
+      setIsReassigningWarehouse(false);
     }
   };
 
@@ -3455,18 +3464,16 @@ export function ProductsPanel({
           className="hidden"
           onChange={event => handleImportBulkProductComponents(event.target.files?.[0])}
         />
-        {canEdit && xopCatalogProducts.length > 0 ? (
+        {canEdit && filteredCatalogProducts.length > 0 ? (
           <button
             type="button"
-            onClick={() => void handleReassignXopWarehouse()}
-            disabled={isReassigningXopWarehouse || isLoadingProducts || xopProductsNeedingWarehouse.length === 0}
+            onClick={openWarehouseReassignModal}
+            disabled={isReassigningWarehouse || isLoadingProducts || warehouseOptions.length === 0}
             className="flex h-10 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-            title={`Đổi cột Kho của mọi sản phẩm nhóm ${XOP_PRODUCT_GROUP} thành ${goodsWarehouseName}`}
+            title={`Đổi cột Kho của ${filteredCatalogProducts.length} sản phẩm đang lọc`}
           >
-            {isReassigningXopWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
-            {isReassigningXopWarehouse
-              ? 'Đang đổi kho...'
-              : `Đổi nhóm XOP → ${goodsWarehouseName}`}
+            {isReassigningWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
+            {isReassigningWarehouse ? 'Đang đổi kho...' : 'Đổi kho theo bộ lọc'}
           </button>
         ) : null}
         {canDelete ? (
@@ -3629,6 +3636,79 @@ export function ProductsPanel({
           onSave={productFormMode === 'add' ? handleCreateProduct : handleSaveProduct}
         />
       )}
+
+      {isWarehouseReassignOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
+              <button
+                type="button"
+                className="absolute inset-0 cursor-default"
+                aria-label="Đóng"
+                onClick={() => !isReassigningWarehouse && setIsWarehouseReassignOpen(false)}
+              />
+              <div className="relative z-10 w-full max-w-md overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-gradient-to-r from-violet-50 to-white px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Đổi kho</p>
+                    <h3 className="mt-0.5 text-base font-black text-zinc-900">Chọn tên kho</h3>
+                    <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                      Áp dụng cột Kho cho {filteredCatalogProducts.length} sản phẩm đang lọc
+                      {hasActiveFilters ? ' (theo bộ lọc hiện tại)' : ''}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsWarehouseReassignOpen(false)}
+                    disabled={isReassigningWarehouse}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-500 transition hover:bg-zinc-50 disabled:opacity-50"
+                    title="Đóng"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 px-4 py-4">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tên kho *</span>
+                    <SearchableSelect
+                      value={reassignWarehouseName}
+                      onChange={setReassignWarehouseName}
+                      options={warehouseOptions}
+                      placeholder="Chọn kho lưu trữ"
+                      searchPlaceholder="Tìm kho..."
+                      getLabel={item => String(item)}
+                      getValue={item => String(item)}
+                      inputClassName={productFieldClass}
+                      allowEmpty={false}
+                      comboboxMode
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsWarehouseReassignOpen(false)}
+                    disabled={isReassigningWarehouse}
+                    className="flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleReassignFilteredWarehouse()}
+                    disabled={isReassigningWarehouse || !reassignWarehouseName.trim()}
+                    className="flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isReassigningWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
+                    {isReassigningWarehouse ? 'Đang đổi...' : 'Đổi cột Kho'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {viewingProduct && (
         <ProductViewModal

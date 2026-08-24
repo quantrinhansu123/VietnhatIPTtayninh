@@ -58,7 +58,7 @@ function formatIsoDateVi(iso?: string | null) {
 function formatWeight(
   value?: number | string | null,
   unit?: string | null,
-  fractionDigits: number = 1
+  fractionDigits: number = 2
 ) {
   if (value == null || value === '') return '—';
   const num = asFiniteNumber(value);
@@ -221,10 +221,10 @@ export default function BbCanTuDongSanLuongPanel({
                     {row.qr_code || '—'}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-sky-800">
-                    {formatWeight(canLoi, row.unit)}
+                    {formatWeight(canLoi, row.unit, 3)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-zinc-800">
-                    {formatWeight(canSp, row.unit)}
+                    {formatWeight(canSp, row.unit, 3)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-zinc-700">
                     {formatWeight(trongLuongBi, row.unit, 2)}

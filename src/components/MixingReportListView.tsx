@@ -29,7 +29,7 @@ import {
 } from '../lib/mixingReportModel';
 import type { MixingRoundPhoto } from './MixingReportForm';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
-import type { MixingReport } from './MixingReportForm';
+import type { MixingReport, MixingReportLine } from './MixingReportForm';
 import MixingReportForm from './MixingReportForm';
 import {
   getProductionShiftOptions,
@@ -38,6 +38,7 @@ import {
   type ShiftSetting
 } from '../utils/shiftSettings';
 import { RowActionsMenu } from './shared/table';
+import { isWarehouseKgUnit } from '../utils/warehouseWeight';
 
 const inputClass =
   'h-9 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -114,6 +115,55 @@ function formatFilterSummary(filters: MixingReportFilters, machines: MachineOpti
   const machine = machines.find(item => item.id === filters.machineId);
   if (machine) parts.push(`${machine.code} · ${machine.name}`);
   return parts.length > 0 ? parts.join(' · ') : 'tất cả';
+}
+
+/** Tỉ lệ trộn định mức (%) — trung bình `ti_le_phan_tram` trên các lần của dòng NVL. */
+function resolveLineTiLeDinhMucPercent(line: MixingReportLine): number | null {
+  const values: number[] = [];
+  for (const roundKey of MIXING_ROUND_KEYS) {
+    for (const item of getRoundItems(line.lan_su_dung, roundKey)) {
+      const pct = item.ti_le_phan_tram;
+      if (pct !== null && pct !== undefined && Number.isFinite(pct)) values.push(pct);
+    }
+  }
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/** Tỉ lệ trộn thực tế (%) = KL thực tế dòng ÷ tổng KL thực tế phiếu × 100.
+ * Chỉ chia trên vật tư ĐVT = kg (bỏ Cái / đơn vị khác).
+ */
+function resolveLineTiLeThucTePercent(
+  lineKlThucTe: number | null,
+  reportTotalKlThucTe: number
+): number | null {
+  if (
+    lineKlThucTe === null ||
+    !Number.isFinite(lineKlThucTe) ||
+    !Number.isFinite(reportTotalKlThucTe) ||
+    reportTotalKlThucTe <= 0
+  ) {
+    return null;
+  }
+  return (lineKlThucTe / reportTotalKlThucTe) * 100;
+}
+
+function isMixingListKgUnit(unit: string) {
+  const normalized = String(unit || '')
+    .trim()
+    .toLowerCase();
+  if (!normalized || normalized === '-' || normalized === '%') return true;
+  return isWarehouseKgUnit(unit);
+}
+
+function resolveMixingLineKgForRatio(line: MixingReportLine): number | null {
+  if (!isMixingListKgUnit(deriveLineUnit(line.lan_su_dung))) return null;
+  return resolveLineKlThucTe(line);
+}
+
+function formatPercentCell(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return `${formatOptionalNumber(value)}%`;
 }
 
 type MixingRoundRow = {
@@ -668,6 +718,18 @@ export default function MixingReportListView({
                 <th className="px-2 py-2 font-black">Mã NVL</th>
                 <th className="px-2 py-2 font-black">Tên vật tư</th>
                 <th className="px-2 py-2 font-black">ĐVT</th>
+                <th
+                  className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
+                  title="Tỉ lệ trộn định mức (%) từ phiếu phối trộn"
+                >
+                  Tỉ lệ trộn<br />Định mức
+                </th>
+                <th
+                  className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
+                  title="Tỉ lệ trộn thực tế (%) = KL thực tế NVL ÷ tổng KL thực tế phiếu × 100"
+                >
+                  Tỉ lệ trộn<br />Thực tế
+                </th>
                 {showQtyColumns
                   ? MIXING_ROUND_KEYS.slice(0, roundCount).map((_, roundIndex) => (
                       <th
@@ -705,65 +767,94 @@ export default function MixingReportListView({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {report.chi_tiet.map((line, index) => {
-                const klDinhMuc = sumLineNormQuantity(line);
-                const klThucTe = resolveLineKlThucTe(line);
-                return (
-                  <tr key={`expand-row-${report.id}-${line.stt}-${index}`} className="hover:bg-red-50/20">
-                    <td className="whitespace-nowrap px-2 py-2 font-bold text-zinc-600">{index + 1}</td>
-                    <td className="whitespace-nowrap px-2 py-2 font-mono font-semibold text-zinc-700">
-                      {line.ma_nvl || '-'}
-                    </td>
-                    <td className="px-2 py-2 text-zinc-800">{line.ten_vat_tu || '-'}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-zinc-600">
-                      {deriveLineUnit(line.lan_su_dung)}
-                    </td>
-                    {showQtyColumns
-                      ? MIXING_ROUND_KEYS.slice(0, roundCount).map(roundKey => (
-                          <td
-                            key={`${line.stt}-${roundKey}`}
-                            className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-700"
-                          >
-                            {formatNormWeight(sumLineRoundNormQuantity(line, roundKey)) || '-'}
-                          </td>
-                        ))
-                      : null}
-                    <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
-                      {formatNormWeight(klDinhMuc) || '-'}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-[#ef1b2d]">
-                      {klThucTe !== null ? formatOptionalNumber(klThucTe) : '-'}
-                    </td>
-                    {index === 0
-                      ? MIXING_ROUND_KEYS.slice(0, roundCount).flatMap(roundKey => [
-                          <td
-                            key={`expand-reason-${report.id}-${roundKey}`}
-                            rowSpan={report.chi_tiet.length}
-                            className="min-w-[120px] max-w-[220px] align-top px-2 py-2"
-                          >
-                            {renderReasonList(roundReasons[roundKey])}
-                          </td>,
-                          <td
-                            key={`expand-explain-${report.id}-${roundKey}`}
-                            rowSpan={report.chi_tiet.length}
-                            className="min-w-[160px] max-w-[280px] align-top px-2 py-2"
-                          >
-                            {renderExplanationText(roundExplanations[roundKey])}
-                          </td>
-                        ])
-                      : null}
-                  </tr>
+              {(() => {
+                const reportActualTotal = report.chi_tiet.reduce(
+                  (sum, line) => sum + (resolveMixingLineKgForRatio(line) ?? 0),
+                  0
                 );
-              })}
+                const hasReportActual = report.chi_tiet.some(
+                  line => resolveMixingLineKgForRatio(line) !== null
+                );
+                return report.chi_tiet.map((line, index) => {
+                  const klDinhMuc = sumLineNormQuantity(line);
+                  const klThucTe = resolveLineKlThucTe(line);
+                  const tiLeDinhMuc = resolveLineTiLeDinhMucPercent(line);
+                  const lineKgForRatio = resolveMixingLineKgForRatio(line);
+                  const tiLeThucTe =
+                    hasReportActual && lineKgForRatio !== null
+                      ? resolveLineTiLeThucTePercent(lineKgForRatio, reportActualTotal)
+                      : null;
+                  return (
+                    <tr key={`expand-row-${report.id}-${line.stt}-${index}`} className="hover:bg-red-50/20">
+                      <td className="whitespace-nowrap px-2 py-2 font-bold text-zinc-600">{index + 1}</td>
+                      <td className="whitespace-nowrap px-2 py-2 font-mono font-semibold text-zinc-700">
+                        {line.ma_nvl || '-'}
+                      </td>
+                      <td className="px-2 py-2 text-zinc-800">{line.ten_vat_tu || '-'}</td>
+                      <td className="whitespace-nowrap px-2 py-2 text-zinc-600">
+                        {deriveLineUnit(line.lan_su_dung)}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-sky-800">
+                        {formatPercentCell(tiLeDinhMuc)}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-orange-800">
+                        {formatPercentCell(tiLeThucTe)}
+                      </td>
+                      {showQtyColumns
+                        ? MIXING_ROUND_KEYS.slice(0, roundCount).map(roundKey => (
+                            <td
+                              key={`${line.stt}-${roundKey}`}
+                              className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-700"
+                            >
+                              {formatNormWeight(sumLineRoundNormQuantity(line, roundKey)) || '-'}
+                            </td>
+                          ))
+                        : null}
+                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
+                        {formatNormWeight(klDinhMuc) || '-'}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-[#ef1b2d]">
+                        {klThucTe !== null ? formatOptionalNumber(klThucTe) : '-'}
+                      </td>
+                      {index === 0
+                        ? MIXING_ROUND_KEYS.slice(0, roundCount).flatMap(roundKey => [
+                            <td
+                              key={`expand-reason-${report.id}-${roundKey}`}
+                              rowSpan={report.chi_tiet.length}
+                              className="min-w-[120px] max-w-[220px] align-top px-2 py-2"
+                            >
+                              {renderReasonList(roundReasons[roundKey])}
+                            </td>,
+                            <td
+                              key={`expand-explain-${report.id}-${roundKey}`}
+                              rowSpan={report.chi_tiet.length}
+                              className="min-w-[160px] max-w-[280px] align-top px-2 py-2"
+                            >
+                              {renderExplanationText(roundExplanations[roundKey])}
+                            </td>
+                          ])
+                        : null}
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
             <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700">
               <tr>
-                <td
-                  colSpan={4 + (showQtyColumns ? roundCount : 0)}
-                  className="px-2 py-2 text-right"
-                >
+                <td colSpan={4} className="px-2 py-2 text-right">
                   Thực tế sử dụng
                 </td>
+                <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-400">—</td>
+                <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-orange-800">
+                  {report.chi_tiet.some(line => resolveMixingLineKgForRatio(line) !== null)
+                    ? '100%'
+                    : '-'}
+                </td>
+                {showQtyColumns
+                  ? MIXING_ROUND_KEYS.slice(0, roundCount).map(roundKey => (
+                      <td key={`expand-foot-round-${report.id}-${roundKey}`} className="px-2 py-2" />
+                    ))
+                  : null}
                 <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
                   {formatNormWeight(sumReportNormTotal(report.chi_tiet)) || '-'}
                 </td>

@@ -58,4 +58,4 @@ Cột **tickbox** đầu dòng + tick chọn cả nhóm theo **cột `ngay`** (k
 
 **Bộ lọc:** Từ ngày · Đến ngày · **Ca** (checkbox nhiều) · **Lệnh SX** (checkbox nhiều) · Trạng thái · Máy · Sắp xếp.
 
-**Ngày:** form field «Ngày» ↔ cột DB `lenh_sx.ngay`. Kế hoạch SX lọc / cột Ngày trong modal cũng chỉ đọc `ngay`.
+**Ngày:** form field «Ngày» ↔ cột DB `lenh_sx.ngay`. Luôn hiển thị/nhập **dd/mm/yyyy** (10/08/2026 = ngày 10 tháng 8), không theo locale máy (`8/10`). Kế hoạch SX lọc / cột Ngày trong modal cũng chỉ đọc `ngay`.

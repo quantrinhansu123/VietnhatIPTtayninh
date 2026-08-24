@@ -16,7 +16,7 @@ Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng 
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
-Tab **Báo cáo sản lượng** trên `/phan-tich` và `/phan-tich-tu-dong` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`).
+Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`). Trên `/phan-tich-tu-dong` tab cùng tên lấy **`can_tu_dong`** (Cân AI), không dùng bảng này.
 
 ## Menu
 

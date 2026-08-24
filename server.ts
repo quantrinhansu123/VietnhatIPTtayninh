@@ -62,6 +62,7 @@ const SUPABASE_KIEM_KHO_CHENH_LECH_TABLE =
 const SUPABASE_QUAN_LY_KHO_TABLE = process.env.SUPABASE_QUAN_LY_KHO_TABLE || 'quan_ly_kho';
 const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE || 'bao_cao_hang_hong';
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
+const SUPABASE_IMPORT_SP_TABLE = process.env.SUPABASE_IMPORT_SP_TABLE || 'import_sp';
 const SUPABASE_PRODUCT_CODES_TABLE = process.env.SUPABASE_PRODUCT_CODES_TABLE || 'ma_san_pham_chi_tiet';
 /** Sửa typo env phổ biến: anh_sach_may → danh_sach_may */
 const SUPABASE_MACHINES_TABLE = (() => {
@@ -189,8 +190,9 @@ if (useSupabase) {
     reports: SUPABASE_TABLE,
     weighingFallbackTable: SUPABASE_WEIGHING_TABLE,
     damagedGoods: SUPABASE_DAMAGED_GOODS_TABLE,
-    products: SUPABASE_PRODUCTS_TABLE,
-    machines: SUPABASE_MACHINES_TABLE,
+      products: SUPABASE_PRODUCTS_TABLE,
+      importSp: SUPABASE_IMPORT_SP_TABLE,
+      machines: SUPABASE_MACHINES_TABLE,
     materials: SUPABASE_MATERIALS_TABLE,
     staff: SUPABASE_STAFF_TABLE,
     orders: SUPABASE_ORDERS_TABLE,
@@ -305,31 +307,209 @@ function pickCanTuDongText(record: Record<string, unknown>, keys: string[]): str
   return '';
 }
 
-/** Trích ca từ cột/metadata (SOURCE_SHIFT=HC1 trong weight_raw). */
-function resolveCanTuDongCaFromRecord(row: Record<string, unknown>): string | null {
-  const direct = pickCanTuDongText(row, ['ca', 'shift', 'shift_name', 'ca_san_xuat', 'shiftName']);
-  if (direct) return direct;
+/** Chuỗi ngày → YYYY-MM-DD. Hiểu dd/mm/yyyy, không dùng captured_at. */
+function parseCanTuDongNgayToIso(value: unknown): string | null {
+  const text = String(value ?? '').trim();
+  if (!text || text === '-') return null;
+  const iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const dmy = text.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})/);
+  if (!dmy) return null;
+  return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+}
 
-  const metadata = row.metadata;
-  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-    const meta = metadata as Record<string, unknown>;
-    const fromMeta = pickCanTuDongText(meta, [
-      'ca',
-      'shift',
-      'source_shift',
-      'SOURCE_SHIFT',
-      'shift_name',
-      'ca_san_xuat'
-    ]);
-    if (fromMeta) return fromMeta;
+function asCanTuDongMetadata(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata) return null;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân captured_at. */
+function resolveCanTuDongNgayColumn(row: Record<string, unknown>): string | null {
+  const fromRow = parseCanTuDongNgayToIso(row.ngay ?? row.work_date ?? row.SOURCE_DATE);
+  if (fromRow) return fromRow;
+
+  const meta = asCanTuDongMetadata(row.metadata);
+  if (meta) {
+    for (const key of ['SOURCE_DATE', 'source_date', 'work_date', 'ngay', 'date']) {
+      const parsed = parseCanTuDongNgayToIso(meta[key]);
+      if (parsed) return parsed;
+    }
+    for (const value of Object.values(meta)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const match = value.match(
+        /SOURCE_DATE\s*=\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[/.\-]\d{1,2}[/.\-]\d{4})/i
+      );
+      if (match?.[1]) {
+        const fromRaw = parseCanTuDongNgayToIso(match[1]);
+        if (fromRaw) return fromRaw;
+      }
+    }
+  }
+  return null;
+}
+
+/** Trích ca từ metadata (SOURCE_SHIFT ưu tiên) rồi cột bảng. */
+function resolveCanTuDongCaFromRecord(row: Record<string, unknown>): string | null {
+  const meta = asCanTuDongMetadata(row.metadata);
+  if (meta) {
+    // Ưu tiên SOURCE_SHIFT / shift đã tự động điền — trước cột ca cũ trên row
+    const fromSourceKey = pickCanTuDongText(meta, ['SOURCE_SHIFT', 'source_shift']);
+    if (fromSourceKey) return fromSourceKey;
 
     for (const value of Object.values(meta)) {
       if (typeof value !== 'string' || !value.trim()) continue;
       const match = value.match(/SOURCE_SHIFT\s*=\s*([^\s;|,]+)/i);
       if (match?.[1]) return match[1].trim();
     }
+
+    const fromShift = pickCanTuDongText(meta, ['shift', 'ca', 'shift_name', 'ca_san_xuat']);
+    if (fromShift) return fromShift;
+  }
+
+  const direct = pickCanTuDongText(row, ['ca', 'shift', 'shift_name', 'ca_san_xuat', 'shiftName']);
+  if (direct) return direct;
+  return null;
+}
+
+/** Trích lệnh SX từ metadata (SOURCE_PRODUCTION_ORDER=LSX100) hoặc QR `MãSP+LSX…`. */
+function resolveCanTuDongProductionOrder(row: Record<string, unknown>): string | null {
+  const direct = pickCanTuDongText(row, [
+    'lenh_sx',
+    'ma_lenh_sx',
+    'production_order',
+    'productionOrder'
+  ]);
+  if (direct) return direct;
+
+  const metadata = row.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const meta = metadata as Record<string, unknown>;
+    const fromMeta = pickCanTuDongText(meta, [
+      'production_order',
+      'SOURCE_PRODUCTION_ORDER',
+      'source_production_order',
+      'ma_lenh_sx',
+      'lenh_sx'
+    ]);
+    if (fromMeta) return fromMeta;
+
+    for (const value of Object.values(meta)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const match = value.match(/SOURCE_PRODUCTION_ORDER\s*=\s*([^\s;|,]+)/i);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+
+  const qr = pickCanTuDongText(row, ['qr_code']);
+  const plusIdx = qr.indexOf('+');
+  if (plusIdx > 0) {
+    const after = qr.slice(plusIdx + 1).trim();
+    if (after) return after;
   }
   return null;
+}
+
+/** Trích máy từ metadata (SOURCE_MACHINE=…) hoặc cột may/machine. */
+function resolveCanTuDongMachine(row: Record<string, unknown>): string | null {
+  const direct = pickCanTuDongText(row, ['may', 'machine', 'ten_may', 'ma_may', 'machine_name']);
+  if (direct) return direct;
+
+  const metadata = row.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const meta = metadata as Record<string, unknown>;
+    const fromMeta = pickCanTuDongText(meta, [
+      'machine',
+      'SOURCE_MACHINE',
+      'source_machine',
+      'may',
+      'ten_may',
+      'ma_may',
+      'machine_name'
+    ]);
+    if (fromMeta) return fromMeta;
+
+    for (const value of Object.values(meta)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const match = value.match(/SOURCE_MACHINE\s*=\s*([^;|,]+)/i);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return null;
+}
+
+/** Ghi/đè token KEY=value trong chuỗi weight_raw. */
+function upsertCanTuDongWeightRawToken(raw: string, key: string, value: string): string {
+  const token = `${key}=${value}`;
+  const re = new RegExp(`${key}\\s*=\\s*[^;|,]*`, 'i');
+  const text = String(raw || '');
+  if (re.test(text)) return text.replace(re, token).replace(/;{2,}/g, ';').trim();
+  const trimmed = text.trim();
+  return trimmed ? `${trimmed}; ${token}` : token;
+}
+
+/** Gộp Ngày + Lệnh SX + Máy vào metadata cân tự động. */
+function mergeCanTuDongNgayLenhSxMetadata(
+  currentMetadata: Record<string, unknown>,
+  opts: { ngay?: string | null; lenhSx?: string | null; ca?: string | null; may?: string | null }
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...currentMetadata };
+  const ngay = String(opts.ngay ?? '').trim();
+  const lenhSx = String(opts.lenhSx ?? '').trim();
+  const ca = String(opts.ca ?? '').trim();
+  const may = String(opts.may ?? '').trim();
+
+  if (ngay) {
+    next.work_date = ngay;
+    next.SOURCE_DATE = ngay;
+    next.source_date = ngay;
+  }
+  if (lenhSx) {
+    next.production_order = lenhSx;
+    next.SOURCE_PRODUCTION_ORDER = lenhSx;
+    next.source_production_order = lenhSx;
+  }
+  if (ca) {
+    next.ca = ca;
+    next.SOURCE_SHIFT = ca;
+    next.source_shift = ca;
+    next.shift = ca;
+    next.ca_san_xuat = ca;
+  }
+  if (may) {
+    next.machine = may;
+    next.SOURCE_MACHINE = may;
+    next.source_machine = may;
+    next.may = may;
+  }
+
+  const rawExisting =
+    typeof next.weight_raw === 'string'
+      ? next.weight_raw
+      : typeof currentMetadata.weight_raw === 'string'
+        ? currentMetadata.weight_raw
+        : '';
+  let weightRaw = rawExisting;
+  if (ngay) weightRaw = upsertCanTuDongWeightRawToken(weightRaw, 'SOURCE_DATE', ngay);
+  if (lenhSx) weightRaw = upsertCanTuDongWeightRawToken(weightRaw, 'SOURCE_PRODUCTION_ORDER', lenhSx);
+  if (ca) weightRaw = upsertCanTuDongWeightRawToken(weightRaw, 'SOURCE_SHIFT', ca);
+  if (may) weightRaw = upsertCanTuDongWeightRawToken(weightRaw, 'SOURCE_MACHINE', may);
+  if (weightRaw) next.weight_raw = weightRaw;
+
+  return next;
 }
 
 function parseClockMinutes(value: string): number | null {
@@ -2134,6 +2314,76 @@ function computeKiemKhoDotGroups(
   return result;
 }
 
+/** Lỗi PostgREST khi select/filter cột thoi_gian_xac_nhan trên DB chưa migration. */
+function isMissingKiemKhoConfirmColumnError(error: { message?: string } | null | undefined) {
+  return /thoi_gian_xac_nhan/i.test(String(error?.message || ''));
+}
+
+/**
+ * Đọc meta đợt kiểm kho. Nếu DB chưa có cột thoi_gian_xac_nhan thì fallback
+ * (mọi đợt coi như chưa chốt) thay vì trả 500.
+ */
+async function loadKiemKhoDotSourceRows(
+  db: SupabaseClient,
+  options: { tenKho?: string; limit?: number } = {}
+): Promise<{
+  rows: Array<{
+    dot_kiem_kho?: unknown;
+    ten_kho?: unknown;
+    ngay_gio_kiem_kho?: unknown;
+    thoi_gian_xac_nhan?: unknown;
+  }>;
+  hasConfirmColumn: boolean;
+  error: { message?: string } | null;
+}> {
+  const tenKho = String(options.tenKho ?? '').trim();
+  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.trunc(options.limit!)) : 5000;
+
+  let withConfirm = db
+    .from(SUPABASE_KIEM_KHO_TABLE)
+    .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
+    .not('dot_kiem_kho', 'is', null)
+    .order('ngay_gio_kiem_kho', { ascending: true })
+    .limit(limit);
+  if (tenKho) withConfirm = withConfirm.eq('ten_kho', tenKho);
+
+  const first = await withConfirm;
+  if (!first.error) {
+    return {
+      rows: Array.isArray(first.data) ? first.data : [],
+      hasConfirmColumn: true,
+      error: null
+    };
+  }
+
+  if (!isMissingKiemKhoConfirmColumnError(first.error)) {
+    return { rows: [], hasConfirmColumn: true, error: first.error };
+  }
+
+  let withoutConfirm = db
+    .from(SUPABASE_KIEM_KHO_TABLE)
+    .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho')
+    .not('dot_kiem_kho', 'is', null)
+    .order('ngay_gio_kiem_kho', { ascending: true })
+    .limit(limit);
+  if (tenKho) withoutConfirm = withoutConfirm.eq('ten_kho', tenKho);
+
+  const second = await withoutConfirm;
+  if (second.error) {
+    return { rows: [], hasConfirmColumn: false, error: second.error };
+  }
+
+  console.warn(
+    `[SUPABASE] Bảng ${SUPABASE_KIEM_KHO_TABLE} thiếu cột thoi_gian_xac_nhan — dùng fallback (mọi đợt coi như chưa chốt). Chạy supabase-kiem-kho.sql để bật chốt đợt.`
+  );
+
+  return {
+    rows: Array.isArray(second.data) ? second.data : [],
+    hasConfirmColumn: false,
+    error: null
+  };
+}
+
 const supabaseTableClientCache = new Map<string, SupabaseDbRef>();
 
 /**
@@ -2226,6 +2476,7 @@ type ProductNplPhanTramItem = {
   phan_tram: number | null;
   so_luong: number | null;
   don_vi: string | null;
+  khoi_luong_kg: number | null;
 };
 
 function parseServerNumber(value: unknown): number {
@@ -2296,18 +2547,36 @@ function parseProductNplPhanTramInput(raw: unknown): { error: string } | { items
       return { error: 'Mỗi dòng NPL cần có mã NPL.' };
     }
 
+    const weightKgRaw = parseServerNumber(record.khoi_luong_kg ?? record.weightKg ?? record.weight_kg);
+    const weightKg = Number.isFinite(weightKgRaw) && weightKgRaw >= 0 ? weightKgRaw : null;
+    const companionPercentRaw = parseServerNumber(record.phan_tram ?? record.percent ?? record.ty_le);
+    const companionPercent =
+      Number.isFinite(companionPercentRaw) && companionPercentRaw >= 0 && companionPercentRaw <= 100
+        ? companionPercentRaw
+        : null;
+
     if (loai === 'so_luong') {
-      const quantity = parseServerNumber(record.so_luong ?? record.quantity);
-      if (!Number.isFinite(quantity) || quantity < 0) {
+      const quantityRaw = record.so_luong ?? record.quantity;
+      const quantityParsed = parseServerNumber(quantityRaw);
+      const quantityMissing =
+        quantityRaw === undefined || quantityRaw === null || quantityRaw === '';
+      // 0 hợp lệ. Dòng Excel chỉ có Kg (BDT 0.0085) có thể gửi so_luong=0 hoặc null + khoi_luong_kg.
+      let quantity: number | null;
+      if (Number.isFinite(quantityParsed) && quantityParsed >= 0) {
+        quantity = quantityParsed;
+      } else if (quantityMissing && weightKg !== null) {
+        quantity = 0;
+      } else {
         return { error: `Số lượng của ${maNpl} phải >= 0.` };
       }
       items.push({
         ma_npl: maNpl,
         ten_npl: tenNpl,
         loai: 'so_luong',
-        phan_tram: null,
-        so_luong: Math.round(quantity * 100) / 100,
-        don_vi: donVi
+        phan_tram: companionPercent,
+        so_luong: quantity,
+        don_vi: donVi,
+        khoi_luong_kg: weightKg
       });
       continue;
     }
@@ -2321,9 +2590,10 @@ function parseProductNplPhanTramInput(raw: unknown): { error: string } | { items
       ma_npl: maNpl,
       ten_npl: tenNpl,
       loai: 'phan_tram',
-      phan_tram: Math.round(percent * 100) / 100,
+      phan_tram: percent,
       so_luong: null,
-      don_vi: donVi
+      don_vi: donVi || '%',
+      khoi_luong_kg: weightKg
     });
   }
 
@@ -6298,6 +6568,111 @@ export function createApp() {
     }
   });
 
+  /** Nhật ký xuất/nhập kho thành phẩm theo mã SP (bảng phieu_xuat_nhap_kho). */
+  app.get('/api/san-pham/:id/phieu-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const productId = String(req.params.id || '').trim();
+      if (!productId) return res.status(400).json({ error: 'Thiếu ID sản phẩm.' });
+
+      const loaiRaw = String(req.query.loai ?? req.query.type ?? '').trim().toLowerCase();
+      const loai =
+        loaiRaw === 'xuat' || loaiRaw === 'export' || loaiRaw === 'out'
+          ? 'xuat'
+          : loaiRaw === 'nhap' || loaiRaw === 'import' || loaiRaw === 'in'
+            ? 'nhap'
+            : null;
+      if (!loai) {
+        return res.status(400).json({ error: 'Thiếu loại phiếu (loai=nhap|xuat).' });
+      }
+
+      const normalizeKey = (code: unknown) =>
+        String(code ?? '')
+          .trim()
+          .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+          .toUpperCase();
+
+      const { data: product, error: productError } = await supabase
+        .from(SUPABASE_PRODUCTS_TABLE)
+        .select('id, ma_sp, ma_sp_moi, ma_amis, ten_sp')
+        .eq('id', productId)
+        .maybeSingle();
+
+      if (productError) {
+        return res.status(500).json({ error: productError.message || 'Không thể tải sản phẩm.' });
+      }
+      if (!product) {
+        return res.status(404).json({ error: 'Không tìm thấy sản phẩm.' });
+      }
+
+      const codeVariants = [
+        ...new Set(
+          [product.ma_sp, product.ma_sp_moi, product.ma_amis]
+            .map(value => String(value ?? '').trim())
+            .filter(Boolean)
+            .flatMap(code => [code, code.replace(/[\s\u00A0]+/g, '')])
+        )
+      ];
+      const codeKeys = [
+        ...new Set(codeVariants.map(normalizeKey).filter(Boolean))
+      ];
+
+      if (codeKeys.length === 0) {
+        return res.json({ movements: [], total: 0, loai, source: 'supabase' });
+      }
+
+      let query = supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .select('*')
+        .eq('loai_phieu', loai)
+        .eq('treo', false)
+        .order('ngay_phieu', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .limit(2000);
+
+      // Ưu tiên khớp đúng mã; thêm or like tiền tố để bắt dòng serial (mã đầy đủ).
+          const orParts: string[] = [];
+          for (const code of codeVariants) {
+            const safe = String(code).replace(/"/g, '');
+            orParts.push(`ma_sp.eq."${safe}"`);
+            orParts.push(`ma_sp.like."${safe}%"`);
+          }
+      if (orParts.length > 0) {
+        query = query.or(orParts.join(','));
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase san-pham phieu-kho error:', error);
+        return res.status(500).json({
+          error: `Không thể tải nhật ký xuất nhập kho. ${error.message}`
+        });
+      }
+
+      const movements = (data || []).filter(row => {
+        const maSp = String((row as { ma_sp?: string }).ma_sp ?? '').trim();
+        const key = normalizeKey(maSp);
+        if (!key) return false;
+        return codeKeys.some(
+          productKey => key === productKey || key.startsWith(`${productKey}_`) || key.startsWith(`${productKey}-`)
+        );
+      });
+
+      return res.json({
+        movements,
+        total: movements.length,
+        loai,
+        ma_sp: product.ma_sp,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải nhật ký xuất nhập kho theo SP.' });
+    }
+  });
+
   app.post('/api/ma-san-pham/danh-dau-in', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -6328,12 +6703,91 @@ export function createApp() {
     }
 
     try {
-      const ids = Array.isArray(req.body?.ids)
+      const rawIds = Array.isArray(req.body?.ids)
         ? req.body.ids.map((id: unknown) => String(id ?? '').trim()).filter(Boolean)
         : [];
 
-      if (ids.length === 0) {
+      if (rawIds.length === 0) {
         return res.status(400).json({ error: 'Vui lòng chọn ít nhất một sản phẩm để xóa.' });
+      }
+
+      const uuidIds = rawIds.filter((id: string) => isUuidValue(id));
+      const codeIds = rawIds.filter((id: string) => !isUuidValue(id));
+      const resolvedIds = new Set<string>(uuidIds);
+
+      if (codeIds.length > 0) {
+        const { data: byCode, error: codeLookupError } = await supabase
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .select('id')
+          .in('ma_sp', codeIds);
+
+        if (codeLookupError) {
+          console.error('Supabase san_pham lookup by ma_sp error:', codeLookupError);
+          return res.status(500).json({
+            error: `Không thể tra sản phẩm theo mã. ${codeLookupError.message}`
+          });
+        }
+
+        for (const row of byCode || []) {
+          const id = String(row.id ?? '').trim();
+          if (id) resolvedIds.add(id);
+        }
+      }
+
+      const ids = Array.from(resolvedIds);
+      if (ids.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy sản phẩm cần xóa.' });
+      }
+
+      // Ưu tiên RPC SECURITY DEFINER (không bị RLS chặn mã chi tiết).
+      const { data: rpcData, error: rpcError } = await supabase.rpc('xoa_san_pham_hang_loat', {
+        p_ids: ids
+      });
+
+      if (!rpcError) {
+        const result = rpcData && typeof rpcData === 'object' ? (rpcData as Record<string, unknown>) : {};
+        if (result.success === false) {
+          return res.status(400).json({
+            error: String(result.error || 'Không thể xóa sản phẩm.')
+          });
+        }
+        return res.json({
+          success: true,
+          deleted: Number(result.deleted) || 0,
+          deleted_codes: Number(result.deleted_codes) || 0,
+          ids
+        });
+      }
+
+      // Fallback nếu chưa chạy SQL tạo RPC: xóa mã chi tiết rồi xóa SP.
+      // (Cần FK ON DELETE CASCADE hoặc policy DELETE — xem supabase-ma-san-pham-chi-tiet-delete.sql)
+      console.warn('RPC xoa_san_pham_hang_loat unavailable, fallback delete:', rpcError.message);
+
+      const { error: codesError } = await supabase
+        .from(SUPABASE_PRODUCT_CODES_TABLE)
+        .delete()
+        .in('san_pham_id', ids);
+
+      if (codesError) {
+        console.error('Supabase ma_san_pham_chi_tiet cascade delete error:', codesError);
+        return res.status(500).json({
+          error: `Không thể xóa mã chi tiết liên quan. Chạy file supabase-ma-san-pham-chi-tiet-delete.sql trên Supabase. ${codesError.message}`
+        });
+      }
+
+      const { count: remainingCodes, error: remainError } = await supabase
+        .from(SUPABASE_PRODUCT_CODES_TABLE)
+        .select('id', { count: 'exact', head: true })
+        .in('san_pham_id', ids);
+
+      if (remainError) {
+        console.error('Supabase ma_san_pham_chi_tiet remain check error:', remainError);
+      } else if ((remainingCodes || 0) > 0) {
+        return res.status(500).json({
+          error:
+            `Vẫn còn ${remainingCodes} mã chi tiết gắn sản phẩm (RLS/quyền DELETE). ` +
+            'Hãy chạy lại toàn bộ file supabase-ma-san-pham-chi-tiet-delete.sql trên Supabase SQL Editor.'
+        });
       }
 
       const { data, error } = await supabase
@@ -6345,7 +6799,9 @@ export function createApp() {
       if (error) {
         console.error('Supabase san_pham bulk delete error:', error);
         return res.status(500).json({
-          error: `Không thể xóa sản phẩm. ${error.message}`
+          error:
+            `Không thể xóa sản phẩm. ${error.message}. ` +
+            'Chạy file supabase-ma-san-pham-chi-tiet-delete.sql (đổi FK CASCADE + RPC) rồi thử lại.'
         });
       }
 
@@ -6356,6 +6812,104 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa sản phẩm.' });
+    }
+  });
+
+  app.patch('/api/san-pham', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const group = parseMaterialText(body.group ?? body.nhom_vthh);
+      const requestedWarehouse = parseMaterialText(body.warehouse ?? body.ten_kho);
+      if (!group) {
+        return res.status(400).json({ error: 'Vui lòng chọn nhóm VTHH cần đổi kho.' });
+      }
+      if (!requestedWarehouse) {
+        return res.status(400).json({ error: 'Vui lòng chọn kho lưu trữ.' });
+      }
+
+      const normalizeWarehouseKey = (value: string) =>
+        value
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd');
+
+      const { data: warehouseRows, error: warehouseError } = await supabase
+        .from(SUPABASE_QUAN_LY_KHO_TABLE)
+        .select('ten_kho');
+      if (warehouseError) {
+        console.warn('Supabase quan_ly_kho lookup for bulk warehouse update:', warehouseError.message);
+      }
+      const warehouseNames = (warehouseRows || [])
+        .map(row => String(row.ten_kho ?? '').trim())
+        .filter(Boolean);
+      const requestedKey = normalizeWarehouseKey(requestedWarehouse);
+      const warehouseName =
+        warehouseNames.find(name => normalizeWarehouseKey(name) === requestedKey) || requestedWarehouse;
+      const warehouseKey = normalizeWarehouseKey(warehouseName);
+      const groupKey = group.trim().toUpperCase();
+
+      const PAGE_SIZE = 1000;
+      const idsToUpdate: string[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .select('id, nhom_vthh, ten_kho')
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) {
+          console.error('Supabase san_pham bulk warehouse scan error:', error);
+          return res.status(500).json({ error: productWriteErrorMessage(error) });
+        }
+        const page = data || [];
+        for (const row of page) {
+          if (String(row.nhom_vthh ?? '').trim().toUpperCase() !== groupKey) continue;
+          if (normalizeWarehouseKey(String(row.ten_kho ?? '')) === warehouseKey) continue;
+          const id = String(row.id ?? '').trim();
+          if (id) idsToUpdate.push(id);
+        }
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+
+      if (idsToUpdate.length === 0) {
+        return res.json({
+          success: true,
+          updated: 0,
+          ten_kho: warehouseName,
+          nhom_vthh: group
+        });
+      }
+
+      let updated = 0;
+      const CHUNK_SIZE = 200;
+      for (let index = 0; index < idsToUpdate.length; index += CHUNK_SIZE) {
+        const chunk = idsToUpdate.slice(index, index + CHUNK_SIZE);
+        const { data, error } = await supabase
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .update({ ten_kho: warehouseName })
+          .in('id', chunk)
+          .select('id');
+        if (error) {
+          console.error('Supabase san_pham bulk warehouse update error:', error);
+          return res.status(500).json({ error: productWriteErrorMessage(error) });
+        }
+        updated += data?.length || 0;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        ten_kho: warehouseName,
+        nhom_vthh: group
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đổi kho theo nhóm.' });
     }
   });
 
@@ -6389,7 +6943,8 @@ export function createApp() {
         'stock', 'sl_ton', 'minStock', 'so_luong_ton_toi_thieu',
         'origin', 'nguon_goc', 'description', 'mo_ta',
         'totalWeight', 'tong_trong_luong', 'rollWidth', 'kho_cuon', 'rollLength', 'chieu_dai_cuon',
-        'coreWeight', 'trong_luong_loi', 'bagWeight', 'trong_luong_tui', 'plasticWeight', 'trong_luong_nhua'
+        'coreWeight', 'trong_luong_loi', 'bagWeight', 'trong_luong_tui', 'plasticWeight', 'trong_luong_nhua',
+        'warehouse', 'ten_kho'
       ];
       const hasProductFields = productFieldKeys.some(key => Object.prototype.hasOwnProperty.call(body, key));
 
@@ -6424,6 +6979,385 @@ export function createApp() {
       return res.json({ success: true, product: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật sản phẩm.' });
+    }
+  });
+
+  app.get('/api/import-sp', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const limitRaw = Number(req.query.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 2000) : 500;
+      const batchId = typeof req.query.batch_id === 'string' ? req.query.batch_id.trim() : '';
+
+      let query = supabase
+        .from(SUPABASE_IMPORT_SP_TABLE)
+        .select('*')
+        .order('imported_at', { ascending: false })
+        .order('so_dong_excel', { ascending: true })
+        .limit(limit);
+
+      if (batchId) {
+        query = query.eq('batch_id', batchId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase import_sp query error:', error);
+        return res.status(500).json({
+          error: `Không thể tải ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`
+        });
+      }
+
+      return res.json({
+        rows: data || [],
+        total: data?.length || 0,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải import_sp.' });
+    }
+  });
+
+  app.post('/api/import-sp', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const fileName = String(body.file_name ?? body.fileName ?? '').trim() || null;
+      const importedBy = String(body.imported_by ?? body.importedBy ?? '').trim() || null;
+      const list = Array.isArray(body.rows) ? body.rows : [];
+      if (list.length === 0) {
+        return res.status(400).json({ error: 'Không có dòng Excel để ghi vào import_sp.' });
+      }
+
+      const batchId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+      const records = list
+        .map((entry, index) => {
+          if (!entry || typeof entry !== 'object') return null;
+          const row = entry as Record<string, unknown>;
+          const ma_sp = String(row.ma_sp ?? row.maSp ?? '').trim();
+          const ma_nvl = String(row.ma_nvl ?? row.maNvl ?? '').trim();
+          if (!ma_sp || !ma_nvl) return null;
+
+          const parseNum = (value: unknown) => {
+            if (value === null || value === undefined || value === '') return null;
+            const n = typeof value === 'number' ? value : Number(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+            return Number.isFinite(n) && n >= 0 ? n : null;
+          };
+
+          return {
+            ma_sp,
+            ma_nvl,
+            ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+            loai: String(row.loai ?? '').trim() || null,
+            gia_tri: parseNum(row.gia_tri ?? row.giaTri),
+            dvt: String(row.dvt ?? '').trim() || null,
+            phan_tram: parseNum(row.phan_tram ?? row.phanTram),
+            so_luong: parseNum(row.so_luong ?? row.soLuong),
+            khoi_luong_kg: parseNum(row.khoi_luong_kg ?? row.khoiLuongKg),
+            don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+            batch_id: batchId,
+            file_name: fileName,
+            so_dong_excel:
+              Number.isFinite(Number(row.so_dong_excel ?? row.soDongExcel))
+                ? Number(row.so_dong_excel ?? row.soDongExcel)
+                : index + 1,
+            trang_thai: 'moi',
+            imported_by: importedBy
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+      if (records.length === 0) {
+        return res.status(400).json({ error: 'Không có dòng hợp lệ (cần Mã SP + Mã NVL).' });
+      }
+
+      const chunkSize = 200;
+      let inserted = 0;
+      for (let i = 0; i < records.length; i += chunkSize) {
+        const chunk = records.slice(i, i + chunkSize);
+        const { error } = await supabase.from(SUPABASE_IMPORT_SP_TABLE).insert(chunk);
+        if (error) {
+          console.error('Supabase import_sp insert error:', error);
+          return res.status(500).json({
+            error: `Không thể ghi ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`,
+            batch_id: batchId,
+            inserted
+          });
+        }
+        inserted += chunk.length;
+      }
+
+      return res.json({
+        success: true,
+        batch_id: batchId,
+        inserted,
+        file_name: fileName
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi ghi import_sp.' });
+    }
+  });
+
+  /** Đồng bộ import_sp → san_pham.npl_phan_tram theo mã SP (bỏ khoảng trắng khi khớp). */
+  app.post('/api/import-sp/dong-bo', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const batchId = String(body.batch_id ?? body.batchId ?? '').trim();
+      const onlyMoi = body.only_moi !== false && body.onlyMoi !== false;
+
+      const normalizeKey = (code: unknown) =>
+        String(code ?? '')
+          .trim()
+          .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+          .toUpperCase();
+
+      const pageSize = 1000;
+      const importRows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += pageSize) {
+        let query = supabase
+          .from(SUPABASE_IMPORT_SP_TABLE)
+          .select('*')
+          .order('imported_at', { ascending: true })
+          .order('so_dong_excel', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (onlyMoi) query = query.eq('trang_thai', 'moi');
+        if (batchId) query = query.eq('batch_id', batchId);
+        const { data, error } = await query;
+        if (error) {
+          console.error('Supabase import_sp dong-bo load error:', error);
+          return res.status(500).json({
+            error: `Không thể tải ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`
+          });
+        }
+        if (!data || data.length === 0) break;
+        importRows.push(...(data as Record<string, unknown>[]));
+        if (data.length < pageSize) break;
+      }
+
+      if (importRows.length === 0) {
+        return res.status(400).json({
+          error: onlyMoi
+            ? 'Không có dòng import_sp trạng thái «moi» để đồng bộ. Hãy nhập Excel trước.'
+            : 'Không có dòng import_sp để đồng bộ.'
+        });
+      }
+
+      const { data: products, error: productError } = await supabase
+        .from(SUPABASE_PRODUCTS_TABLE)
+        .select('id, ma_sp, ma_sp_moi, ma_amis, ten_sp');
+      if (productError) {
+        return res.status(500).json({
+          error: `Không thể tải ${SUPABASE_PRODUCTS_TABLE}. ${productError.message}`
+        });
+      }
+
+      const productByKey = new Map<string, { id: string; ma_sp: string }>();
+      for (const product of products || []) {
+        const row = product as { id: string; ma_sp?: string; ma_sp_moi?: string; ma_amis?: string };
+        for (const code of [row.ma_sp, row.ma_sp_moi, row.ma_amis]) {
+          const key = normalizeKey(code);
+          if (key && !productByKey.has(key)) {
+            productByKey.set(key, { id: row.id, ma_sp: String(row.ma_sp || code || '') });
+          }
+        }
+      }
+
+      type AggNvl = {
+        ma_npl: string;
+        ten_npl: string;
+        phan_tram: number | null;
+        so_luong: number | null;
+        khoi_luong_kg: number | null;
+        don_vi: string | null;
+        importIds: string[];
+      };
+
+      const byProduct = new Map<string, { product: { id: string; ma_sp: string } | null; nvl: Map<string, AggNvl>; importIds: string[] }>();
+
+      for (const row of importRows) {
+        const maSp = String(row.ma_sp ?? '').trim();
+        const maNvl = String(row.ma_nvl ?? '').trim();
+        const id = String(row.id ?? '').trim();
+        if (!maSp || !maNvl) continue;
+        const productKey = normalizeKey(maSp);
+        const nvlKey = normalizeKey(maNvl);
+        if (!productKey || !nvlKey) continue;
+
+        let bucket = byProduct.get(productKey);
+        if (!bucket) {
+          bucket = {
+            product: productByKey.get(productKey) || null,
+            nvl: new Map(),
+            importIds: []
+          };
+          byProduct.set(productKey, bucket);
+        }
+        if (id) bucket.importIds.push(id);
+
+        let agg = bucket.nvl.get(nvlKey);
+        if (!agg) {
+          agg = {
+            ma_npl: maNvl,
+            ten_npl: String(row.ten_nvl ?? '').trim() || maNvl,
+            phan_tram: null,
+            so_luong: null,
+            khoi_luong_kg: null,
+            don_vi: null,
+            importIds: []
+          };
+          bucket.nvl.set(nvlKey, agg);
+        }
+        if (id) agg.importIds.push(id);
+        const ten = String(row.ten_nvl ?? '').trim();
+        if (ten) agg.ten_npl = ten;
+
+        const phanTram = parseServerNumber(row.phan_tram);
+        const soLuong = parseServerNumber(row.so_luong);
+        const khoiLuong = parseServerNumber(row.khoi_luong_kg);
+        const dvt = String(row.dvt ?? row.don_vi ?? '').trim();
+        const dvtNorm = dvt.toLowerCase().replace(/[^a-z%]/g, '');
+
+        if (Number.isFinite(phanTram) && phanTram >= 0) {
+          agg.phan_tram = phanTram;
+          if (!agg.don_vi) agg.don_vi = '%';
+        }
+        if (Number.isFinite(khoiLuong) && khoiLuong >= 0) {
+          agg.khoi_luong_kg = khoiLuong;
+        }
+        // SL thực (Cái…): > 0 hoặc ĐVT không phải kg/% — bỏ so_luong=0 của dòng chỉ Kg
+        if (Number.isFinite(soLuong) && soLuong >= 0) {
+          const isKgUnit = dvtNorm.startsWith('kg');
+          const isPercentUnit = dvtNorm === '%' || dvtNorm.includes('phantram');
+          if (!isKgUnit && !isPercentUnit && (soLuong > 0 || Boolean(dvt))) {
+            agg.so_luong = soLuong;
+            agg.don_vi = dvt || agg.don_vi || 'Cái';
+          } else if (agg.so_luong === null && !isKgUnit && soLuong > 0) {
+            agg.so_luong = soLuong;
+            agg.don_vi = dvt || agg.don_vi;
+          }
+        }
+        if (!agg.don_vi && dvt) agg.don_vi = dvt;
+      }
+
+      let updatedProducts = 0;
+      let updatedLines = 0;
+      const appliedImportIds: string[] = [];
+      const missingProductCodes: string[] = [];
+      const failures: string[] = [];
+
+      for (const [productKey, bucket] of byProduct.entries()) {
+        if (!bucket.product) {
+          missingProductCodes.push(productKey);
+          continue;
+        }
+
+        const items: ProductNplPhanTramItem[] = [];
+        for (const agg of bucket.nvl.values()) {
+          const weightKg =
+            agg.khoi_luong_kg !== null && Number.isFinite(agg.khoi_luong_kg) && agg.khoi_luong_kg >= 0
+              ? agg.khoi_luong_kg
+              : null;
+          const hasPercent = agg.phan_tram !== null && Number.isFinite(agg.phan_tram);
+          const hasQty = agg.so_luong !== null && Number.isFinite(agg.so_luong) && agg.so_luong > 0;
+
+          if (hasPercent) {
+            items.push({
+              ma_npl: agg.ma_npl,
+              ten_npl: agg.ten_npl,
+              loai: 'phan_tram',
+              phan_tram: agg.phan_tram,
+              so_luong: null,
+              don_vi: '%',
+              khoi_luong_kg: weightKg
+            });
+          } else if (hasQty) {
+            items.push({
+              ma_npl: agg.ma_npl,
+              ten_npl: agg.ten_npl,
+              loai: 'so_luong',
+              phan_tram: null,
+              so_luong: agg.so_luong,
+              don_vi: agg.don_vi || 'Cái',
+              khoi_luong_kg: weightKg
+            });
+          } else if (weightKg !== null) {
+            // Chỉ có Kg (vd BDT 0.0085)
+            items.push({
+              ma_npl: agg.ma_npl,
+              ten_npl: agg.ten_npl,
+              loai: 'so_luong',
+              phan_tram: null,
+              so_luong: 0,
+              don_vi: 'kg',
+              khoi_luong_kg: weightKg
+            });
+          } else {
+            continue;
+          }
+        }
+
+        if (items.length === 0) continue;
+
+        const parsed = parseProductNplPhanTramInput(items);
+        if ('error' in parsed) {
+          failures.push(`${bucket.product.ma_sp}: ${parsed.error}`);
+          continue;
+        }
+
+        const { error: updateError } = await supabase
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .update({ npl_phan_tram: parsed.items })
+          .eq('id', bucket.product.id);
+
+        if (updateError) {
+          failures.push(`${bucket.product.ma_sp}: ${updateError.message}`);
+          continue;
+        }
+
+        updatedProducts += 1;
+        updatedLines += parsed.items.length;
+        appliedImportIds.push(...bucket.importIds);
+      }
+
+      const uniqueAppliedIds = [...new Set(appliedImportIds.filter(Boolean))];
+      if (uniqueAppliedIds.length > 0) {
+        const markChunk = 200;
+        for (let i = 0; i < uniqueAppliedIds.length; i += markChunk) {
+          const chunk = uniqueAppliedIds.slice(i, i + markChunk);
+          const { error: markError } = await supabase
+            .from(SUPABASE_IMPORT_SP_TABLE)
+            .update({ trang_thai: 'da_ap_dung' })
+            .in('id', chunk);
+          if (markError) {
+            console.error('Supabase import_sp mark da_ap_dung error:', markError);
+          }
+        }
+      }
+
+      return res.json({
+        success: failures.length === 0,
+        updated_products: updatedProducts,
+        updated_lines: updatedLines,
+        applied_rows: uniqueAppliedIds.length,
+        missing_product_codes: missingProductCodes,
+        failures
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đồng bộ import_sp.' });
     }
   });
 
@@ -8056,6 +8990,58 @@ export function createApp() {
     }
   });
 
+  app.delete('/api/kho-nvl', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const ids = Array.isArray(req.body?.ids)
+        ? req.body.ids.map((id: unknown) => String(id ?? '').trim()).filter(Boolean)
+        : [];
+
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Vui lòng chọn ít nhất một nguyên phụ liệu để xóa.' });
+      }
+
+      const uuidIds = ids.filter((id: string) => isUuidValue(id));
+      const codeIds = ids.filter((id: string) => !isUuidValue(id));
+      let deleted = 0;
+
+      if (uuidIds.length > 0) {
+        const { data, error } = await supabase
+          .from(SUPABASE_MATERIALS_TABLE)
+          .delete()
+          .in('id', uuidIds)
+          .select('id');
+
+        if (error) {
+          console.error('Supabase kho_nvl bulk delete by id error:', error);
+          return res.status(500).json({ error: `Không thể xóa nguyên phụ liệu. ${error.message}` });
+        }
+        deleted += data?.length || 0;
+      }
+
+      if (codeIds.length > 0) {
+        const { data, error } = await supabase
+          .from(SUPABASE_MATERIALS_TABLE)
+          .delete()
+          .in('ma_npl', codeIds)
+          .select('ma_npl');
+
+        if (error) {
+          console.error('Supabase kho_nvl bulk delete by code error:', error);
+          return res.status(500).json({ error: `Không thể xóa nguyên phụ liệu. ${error.message}` });
+        }
+        deleted += data?.length || 0;
+      }
+
+      return res.json({ success: true, deleted });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa nguyên phụ liệu.' });
+    }
+  });
+
   app.delete('/api/kho-nvl/:id', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -8206,7 +9192,10 @@ export function createApp() {
       if (toDate) query = query.lte('ngay_phieu', toDate);
       if (slipCode) query = query.eq('ma_phieu', slipCode);
       if (maNpl) query = query.eq('ma_npl', maNpl);
-      if (maSp) query = query.eq('ma_sp', maSp);
+      if (maSp) {
+        const variants = [...new Set([maSp, maSp.replace(/[\s\u00A0]+/g, '')].filter(Boolean))];
+        query = variants.length === 1 ? query.eq('ma_sp', variants[0]) : query.in('ma_sp', variants);
+      }
 
       const { data, error } = await query;
 
@@ -9774,12 +10763,15 @@ export function createApp() {
     const dbLabel = SUPABASE_WEIGHING_DB_LABEL;
 
     const limitRaw = Number(req.query.limit ?? 200);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 2000) : 200;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 10000) : 200;
     const deviceId = String(req.query.deviceId ?? req.query.device_id ?? '').trim();
     const status = String(req.query.status ?? '').trim();
     const qrCode = String(req.query.qrCode ?? req.query.qr_code ?? '').trim();
     const from = String(req.query.from ?? '').trim();
     const to = String(req.query.to ?? '').trim();
+    const dateBy = String(req.query.dateBy ?? req.query.date_by ?? '').trim().toLowerCase();
+    const filterByNgay =
+      dateBy === 'ngay' || dateBy === 'source_date' || dateBy === 'work_date';
 
     try {
       let query = db
@@ -9793,8 +10785,12 @@ export function createApp() {
       if (deviceId) query = query.eq('device_id', deviceId);
       if (status) query = query.eq('status', status);
       if (qrCode) query = query.eq('qr_code', qrCode);
-      if (from) query = query.gte('captured_at', `${from}T00:00:00+07:00`);
-      if (to) query = query.lte('captured_at', `${to}T23:59:59.999+07:00`);
+      // Mặc định lọc captured_at (thời điểm cân). `dateBy=ngay` → không cắt theo ngày cân,
+      // lọc cột Ngày (SOURCE_DATE) sau khi map.
+      if (!filterByNgay) {
+        if (from) query = query.gte('captured_at', `${from}T00:00:00+07:00`);
+        if (to) query = query.lte('captured_at', `${to}T23:59:59.999+07:00`);
+      }
 
       const { data, error } = await query;
       if (error) {
@@ -9805,9 +10801,19 @@ export function createApp() {
       }
 
       const rows = Array.isArray(data) ? data : [];
+      const matchedRows =
+        filterByNgay && (from || to)
+          ? rows.filter(row => {
+              const ngay = resolveCanTuDongNgayColumn(row as Record<string, unknown>);
+              if (!ngay) return false;
+              if (from && ngay < from) return false;
+              if (to && ngay > to) return false;
+              return true;
+            })
+          : rows;
       const shiftWindows = await loadCanTuDongShiftWindows();
       const records = await Promise.all(
-        rows.map(async row => {
+        matchedRows.map(async row => {
           const record = row as Record<string, unknown>;
 
           const [productUrl, coreUrl, qrUrl] = await Promise.all([
@@ -9830,12 +10836,20 @@ export function createApp() {
 
           const netWeight = resolveCanTuDongNetWeight(record);
           const ca = resolveCanTuDongCa(record, shiftWindows);
+          const lenhSx = resolveCanTuDongProductionOrder(record);
+          const may = resolveCanTuDongMachine(record);
+          const ngay = resolveCanTuDongNgayColumn(record);
 
           return {
             ...record,
             // Chuẩn hoá net nếu DB để trống nhưng đã có weight + tare
             net_weight: netWeight ?? record.net_weight ?? null,
             ca,
+            ngay,
+            lenh_sx: lenhSx,
+            ma_lenh_sx: lenhSx,
+            may,
+            machine: may,
             // Alias đọc UI theo nghĩa nghiệp vụ
             can_loi: asFiniteNumber(record.tare_weight),
             can_san_pham: asFiniteNumber(record.weight),
@@ -9953,6 +10967,13 @@ export function createApp() {
         ? existing.metadata as Record<string, unknown>
         : {};
       const shift = String(body.ca ?? '').trim();
+      const ngay = String(body.ngay ?? body.work_date ?? body.SOURCE_DATE ?? '').trim();
+      const lenhSx = String(
+        body.lenh_sx ?? body.ma_lenh_sx ?? body.production_order ?? body.SOURCE_PRODUCTION_ORDER ?? ''
+      ).trim();
+      const may = String(
+        body.may ?? body.machine ?? body.SOURCE_MACHINE ?? body.source_machine ?? ''
+      ).trim();
       const payload = {
         qr_code: String(body.qr_code ?? '').trim() || null,
         tare_weight: tareWeight,
@@ -9960,7 +10981,12 @@ export function createApp() {
         unit: String(body.unit ?? '').trim() || 'kg',
         status: String(body.status ?? '').trim() || null,
         device_id: String(body.device_id ?? '').trim() || null,
-        metadata: { ...currentMetadata, SOURCE_SHIFT: shift || null }
+        metadata: mergeCanTuDongNgayLenhSxMetadata(currentMetadata, {
+          ngay: ngay || null,
+          lenhSx: lenhSx || null,
+          ca: shift || null,
+          may: may || null
+        })
       };
       const { data, error } = await supabaseWeighing
         .from(SUPABASE_CAN_TU_DONG_TABLE)
@@ -9973,6 +10999,223 @@ export function createApp() {
       return res.json({ success: true, record: data });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi cập nhật dòng cân tự động.' });
+    }
+  });
+
+  app.post('/api/can-tu-dong/bulk-autofill', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+
+      const ngay = String(body.ngay ?? body.work_date ?? '2026-08-20').trim() || '2026-08-20';
+      const hasLenhField =
+        Object.prototype.hasOwnProperty.call(body, 'lenh_sx') ||
+        Object.prototype.hasOwnProperty.call(body, 'ma_lenh_sx') ||
+        Object.prototype.hasOwnProperty.call(body, 'production_order');
+      const lenhSx = hasLenhField
+        ? String(body.lenh_sx ?? body.ma_lenh_sx ?? body.production_order ?? '').trim()
+        : '';
+      const ca = String(body.ca ?? body.shift ?? body.SOURCE_SHIFT ?? '12C2').trim() || '12C2';
+      const may =
+        String(body.may ?? body.machine ?? body.SOURCE_MACHINE ?? body.source_machine ?? 'Máy Bao Bì').trim() ||
+        'Máy Bao Bì';
+      const updateAll =
+        body.all === true ||
+        body.all === 'true' ||
+        String(body.scope ?? '').trim().toLowerCase() === 'all';
+
+      let rows: Array<Record<string, unknown>> = [];
+      if (updateAll) {
+        const { data: allRows, error: readAllError } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .select('id, metadata')
+          .order('id', { ascending: true })
+          .limit(10000);
+        if (readAllError) {
+          return res.status(500).json({
+            error: readAllError.message || 'Không đọc được dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL
+          });
+        }
+        rows = Array.isArray(allRows) ? (allRows as Array<Record<string, unknown>>) : [];
+      } else {
+        if (ids.length === 0) {
+          return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+        }
+        const { data: existingRows, error: readError } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .select('id, metadata')
+          .in('id', ids);
+
+        if (readError) {
+          return res.status(500).json({
+            error: readError.message || 'Không đọc được dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL
+          });
+        }
+        rows = Array.isArray(existingRows) ? (existingRows as Array<Record<string, unknown>>) : [];
+      }
+
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const record of rows) {
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        const metadata = mergeCanTuDongNgayLenhSxMetadata(currentMetadata, {
+          ngay,
+          lenhSx,
+          ca,
+          may
+        });
+        const { data: updatedRows, error: updateError } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .update({ metadata })
+          .eq('id', record.id)
+          .select('id');
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể tự động điền dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+          continue;
+        }
+        updated += 1;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: updateAll ? rows.length : ids.length,
+        ngay,
+        ca,
+        lenh_sx: lenhSx,
+        may,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tự động điền cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  /** Chỉ điền cột Ca (mặc định 12C2) cho các dòng đã chọn. */
+  app.post('/api/can-tu-dong/bulk-set-ca', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const ca = String(body.ca ?? body.shift ?? body.SOURCE_SHIFT ?? '12C2').trim() || '12C2';
+
+      const { data: existingRows, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('id, metadata')
+        .in('id', ids);
+
+      if (readError) {
+        return res.status(500).json({
+          error: readError.message || 'Không đọc được dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const rows = Array.isArray(existingRows) ? existingRows : [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        const metadata = mergeCanTuDongNgayLenhSxMetadata(currentMetadata, { ca });
+        let updateError = (
+          await supabaseWeighing
+            .from(SUPABASE_CAN_TU_DONG_TABLE)
+            .update({ metadata, ca })
+            .eq('id', record.id)
+        ).error;
+        if (updateError && (updateError.code === 'PGRST204' || /column|schema cache|ca/i.test(String(updateError.message || '')))) {
+          updateError = (
+            await supabaseWeighing
+              .from(SUPABASE_CAN_TU_DONG_TABLE)
+              .update({ metadata })
+              .eq('id', record.id)
+          ).error;
+        }
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể điền ca cho dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        updated += 1;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: ids.length,
+        ca,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi điền ca cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
     }
   });
 
@@ -9991,6 +11234,7 @@ export function createApp() {
     const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
     const maSp = String(req.query.maSp ?? req.query.ma_sp ?? '').trim();
+    const maGoc = String(req.query.maGoc ?? req.query.maNvl ?? req.query.ma_nvl ?? '').trim();
     const from = String(req.query.from ?? '').trim();
     const to = String(req.query.to ?? '').trim();
 
@@ -10005,6 +11249,13 @@ export function createApp() {
       if (tenKho) query = query.eq('ten_kho', tenKho);
       if (dotKiemKho) query = query.eq('dot_kiem_kho', dotKiemKho);
       if (maSp) query = query.eq('ma_sp', maSp);
+      // Khớp mã gốc SP: ma_nvl (= tiền tố trước _/-) hoặc ma_sp bắt đầu bằng mã gốc.
+      if (maGoc) {
+        const safe = maGoc.replace(/[,]/g, '');
+        query = query.or(
+          [`ma_nvl.eq.${safe}`, `ma_sp.eq.${safe}`, `ma_sp.ilike.${safe}_%`, `ma_sp.ilike.${safe}-%`].join(',')
+        );
+      }
       if (from) query = query.gte('ngay_gio_kiem_kho', `${from}T00:00:00`);
       if (to) query = query.lte('ngay_gio_kiem_kho', `${to}T23:59:59.999`);
 
@@ -10032,6 +11283,253 @@ export function createApp() {
     }
   });
 
+  /**
+   * Tồn đầu kỳ theo Bảng tổng hợp kiểm kho (tong_so_luong theo ma_nvl).
+   * Ưu tiên đợt đã chốt mới nhất; nếu chưa có / thiếu cột chốt thì đếm dòng chi tiết theo mã.
+   * Query: maGoc (bắt buộc), tenKho (tuỳ chọn — ưu tiên đúng kho SP).
+   * Không bắt buộc cột thoi_gian_xac_nhan (DB cũ có thể chưa chạy migration).
+   */
+  app.get('/api/kiem-kho/ton-dau-ky', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa có trên Supabase mới lẫn cũ.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+
+    const maGocRaw = String(req.query.maGoc ?? req.query.maNvl ?? req.query.ma_nvl ?? req.query.maSp ?? '').trim();
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
+    if (!maGocRaw) {
+      return res.status(400).json({ error: 'Thiếu mã SP gốc (maGoc).' });
+    }
+
+    const normalizeCodeKey = (value: unknown) =>
+      String(value ?? '')
+        .trim()
+        .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+        .toUpperCase();
+
+    const targetKey = normalizeCodeKey(maGocRaw);
+    const codeVariants = [
+      ...new Set(
+        [maGocRaw, maGocRaw.replace(/\s+/g, ''), maGocRaw.replace(/\s+/g, ' ')]
+          .map(v => String(v ?? '').trim())
+          .filter(Boolean)
+      )
+    ];
+
+    const matchesMaNvl = (maNvl: unknown) => {
+      const raw = String(maNvl ?? '').trim();
+      if (!raw) return false;
+      const key = normalizeCodeKey(raw);
+      if (key === targetKey) return true;
+      const us = raw.indexOf('_');
+      if (us > 0 && normalizeCodeKey(raw.slice(0, us)) === targetKey) return true;
+      return false;
+    };
+
+    const maNvlOrFilter = () =>
+      codeVariants.flatMap(code => {
+        const safe = code.replace(/"/g, '');
+        return [`ma_nvl.eq."${safe}"`, `ma_nvl.ilike."${safe}_%"`];
+      });
+
+    try {
+      type Candidate = {
+        tong_so_luong: number;
+        ma_nvl: string;
+        ten_sp: string;
+        loai_sp: string;
+        dot_kiem_kho: string;
+        chot_luc: string;
+        ten_kho: string;
+        confirmed: boolean;
+        source: string;
+      };
+
+      const candidates: Candidate[] = [];
+
+      // 1) Ưu tiên Bảng tổng hợp (không cần cột thoi_gian_xac_nhan).
+      {
+        let tongHopQuery = db
+          .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+          .select('ma_nvl, ten_sp, loai_sp, tong_so_luong, dot_kiem_kho, chot_luc, nguoi_chot')
+          .order('chot_luc', { ascending: false, nullsFirst: false })
+          .limit(200);
+
+        const orParts = maNvlOrFilter();
+        if (orParts.length > 0) {
+          tongHopQuery = tongHopQuery.or(orParts.join(','));
+        }
+
+        const { data: tongHopRows, error: tongHopError } = await tongHopQuery;
+        if (tongHopError) {
+          const missingTable = /relation|does not exist|schema cache/i.test(tongHopError.message || '');
+          if (!missingTable) {
+            console.warn(`[kiem-kho/ton-dau-ky] tong_hop: ${tongHopError.message}`);
+          }
+        } else {
+          const dots = [
+            ...new Set(
+              (tongHopRows || [])
+                .map(row => String((row as { dot_kiem_kho?: string }).dot_kiem_kho ?? '').trim())
+                .filter(Boolean)
+            )
+          ];
+
+          const tenKhoByDot = new Map<string, string>();
+          if (dots.length > 0) {
+            const { data: dotMeta } = await db
+              .from(SUPABASE_KIEM_KHO_TABLE)
+              .select('dot_kiem_kho, ten_kho')
+              .in('dot_kiem_kho', dots)
+              .limit(2000);
+            for (const row of dotMeta || []) {
+              const dot = String((row as { dot_kiem_kho?: string }).dot_kiem_kho ?? '').trim();
+              const kho = String((row as { ten_kho?: string }).ten_kho ?? '').trim();
+              if (dot && kho && !tenKhoByDot.has(dot)) tenKhoByDot.set(dot, kho);
+            }
+          }
+
+          for (const row of tongHopRows || []) {
+            const maNvl = String((row as { ma_nvl?: string }).ma_nvl ?? '').trim();
+            if (!matchesMaNvl(maNvl)) continue;
+            const dot = String((row as { dot_kiem_kho?: string }).dot_kiem_kho ?? '').trim();
+            const qty = Number((row as { tong_so_luong?: number }).tong_so_luong);
+            candidates.push({
+              tong_so_luong: Number.isFinite(qty) ? qty : 0,
+              ma_nvl: maNvl,
+              ten_sp: String((row as { ten_sp?: string }).ten_sp ?? '').trim(),
+              loai_sp: String((row as { loai_sp?: string }).loai_sp ?? '').trim(),
+              dot_kiem_kho: dot,
+              chot_luc: String((row as { chot_luc?: string }).chot_luc ?? '').trim(),
+              ten_kho: tenKhoByDot.get(dot) || '',
+              confirmed: true,
+              source: 'kiem_kho_tong_hop'
+            });
+          }
+        }
+      }
+
+      // 2) Fallback: đếm dòng chi tiết kiem_kho theo mã (không dùng thoi_gian_xac_nhan).
+      if (candidates.length === 0) {
+        let detailQuery = db
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, ma_nvl, ten_sp, loai_sp')
+          .order('ngay_gio_kiem_kho', { ascending: false, nullsFirst: false })
+          .limit(5000);
+        if (tenKho) detailQuery = detailQuery.eq('ten_kho', tenKho);
+        const orParts = maNvlOrFilter();
+        if (orParts.length > 0) {
+          detailQuery = detailQuery.or(orParts.join(','));
+        }
+
+        const { data: detailRows, error: detailError } = await detailQuery;
+        if (detailError) {
+          return res.status(500).json({
+            error: detailError.message || 'Không đọc được bảng kiểm kho.',
+            db: dbLabel
+          });
+        }
+
+        const byDot = new Map<
+          string,
+          {
+            count: number;
+            ma_nvl: string;
+            ten_sp: string;
+            loai_sp: string;
+            ten_kho: string;
+            ngay: string;
+          }
+        >();
+
+        for (const row of detailRows || []) {
+          const maNvl = String((row as { ma_nvl?: string }).ma_nvl ?? '').trim();
+          if (!matchesMaNvl(maNvl)) continue;
+          const dot =
+            String((row as { dot_kiem_kho?: string }).dot_kiem_kho ?? '').trim() || '__no_dot__';
+          const ngay = String((row as { ngay_gio_kiem_kho?: string }).ngay_gio_kiem_kho ?? '').trim();
+          const current = byDot.get(dot) || {
+            count: 0,
+            ma_nvl: maNvl,
+            ten_sp: String((row as { ten_sp?: string }).ten_sp ?? '').trim(),
+            loai_sp: String((row as { loai_sp?: string }).loai_sp ?? '').trim(),
+            ten_kho: String((row as { ten_kho?: string }).ten_kho ?? '').trim(),
+            ngay: ''
+          };
+          current.count += 1;
+          if (ngay && (!current.ngay || ngay > current.ngay)) current.ngay = ngay;
+          if (!current.ten_kho) {
+            current.ten_kho = String((row as { ten_kho?: string }).ten_kho ?? '').trim();
+          }
+          byDot.set(dot, current);
+        }
+
+        for (const [dot, info] of byDot.entries()) {
+          candidates.push({
+            tong_so_luong: info.count,
+            ma_nvl: info.ma_nvl,
+            ten_sp: info.ten_sp,
+            loai_sp: info.loai_sp,
+            dot_kiem_kho: dot === '__no_dot__' ? '' : dot,
+            chot_luc: info.ngay,
+            ten_kho: info.ten_kho,
+            confirmed: false,
+            source: 'kiem_kho_count'
+          });
+        }
+      }
+
+      if (candidates.length === 0) {
+        return res.json({
+          ton_dau_ky: null,
+          tong_so_luong: null,
+          ma_nvl: maGocRaw,
+          dot_kiem_kho: null,
+          chot_luc: null,
+          ten_kho: tenKho || null,
+          confirmed: false,
+          source: 'empty',
+          db: dbLabel
+        });
+      }
+
+      const tenKhoKey = normalizeCodeKey(tenKho);
+      const ranked = [...candidates].sort((a, b) => {
+        if (tenKhoKey) {
+          const aMatch = normalizeCodeKey(a.ten_kho) === tenKhoKey ? 1 : 0;
+          const bMatch = normalizeCodeKey(b.ten_kho) === tenKhoKey ? 1 : 0;
+          if (aMatch !== bMatch) return bMatch - aMatch;
+        }
+        if (a.confirmed !== b.confirmed) return a.confirmed ? -1 : 1;
+        return String(b.chot_luc || '').localeCompare(String(a.chot_luc || ''));
+      });
+
+      const best = ranked[0];
+      return res.json({
+        ton_dau_ky: best.tong_so_luong,
+        tong_so_luong: best.tong_so_luong,
+        ma_nvl: best.ma_nvl,
+        ten_sp: best.ten_sp,
+        loai_sp: best.loai_sp,
+        dot_kiem_kho: best.dot_kiem_kho,
+        chot_luc: best.chot_luc || null,
+        ten_kho: best.ten_kho || null,
+        confirmed: best.confirmed,
+        source: best.source,
+        db: dbLabel
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi lấy tồn đầu kỳ từ kiểm kho.',
+        db: dbLabel
+      });
+    }
+  });
+
   /** Đợt kiểm kho chưa chốt = còn ít nhất 1 dòng chưa có thoi_gian_xac_nhan, thuộc đúng kho đang chọn. */
   app.get('/api/kiem-kho/dot-mo', async (req, res) => {
     const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
@@ -10045,26 +11543,15 @@ export function createApp() {
     const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
 
     try {
-      let query = db
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
-        .not('dot_kiem_kho', 'is', null)
-        .order('ngay_gio_kiem_kho', { ascending: true })
-        .limit(5000);
-      if (tenKho) query = query.eq('ten_kho', tenKho);
-      const { data, error } = await query;
-
+      const { rows, error } = await loadKiemKhoDotSourceRows(db, { tenKho, limit: 5000 });
       if (error) {
-        const missingColumn = /thoi_gian_xac_nhan/i.test(error.message || '');
         return res.status(500).json({
-          error: missingColumn
-            ? `Bảng ${SUPABASE_KIEM_KHO_TABLE} thiếu cột thoi_gian_xac_nhan. Hãy chạy lại file supabase-kiem-kho.sql.`
-            : error.message || 'Không đọc được danh sách đợt kiểm kho.',
+          error: error.message || 'Không đọc được danh sách đợt kiểm kho.',
           db: dbLabel
         });
       }
 
-      const groups = computeKiemKhoDotGroups(Array.isArray(data) ? data : []);
+      const groups = computeKiemKhoDotGroups(rows);
       const records = groups
         .filter(g => !g.da_xac_nhan)
         .map(g => ({
@@ -10098,15 +11585,7 @@ export function createApp() {
     const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
 
     try {
-      let query = db
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
-        .not('dot_kiem_kho', 'is', null)
-        .order('ngay_gio_kiem_kho', { ascending: true })
-        .limit(20000);
-      if (tenKho) query = query.eq('ten_kho', tenKho);
-      const { data, error } = await query;
-
+      const { rows, error } = await loadKiemKhoDotSourceRows(db, { tenKho, limit: 20000 });
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không đọc được danh sách đợt kiểm kho.',
@@ -10114,7 +11593,7 @@ export function createApp() {
         });
       }
 
-      const records = computeKiemKhoDotGroups(Array.isArray(data) ? data : []).sort((a, b) =>
+      const records = computeKiemKhoDotGroups(rows).sort((a, b) =>
         (a.ngay_bat_dau || '') < (b.ngay_bat_dau || '') ? 1 : -1
       );
 
@@ -10414,6 +11893,24 @@ export function createApp() {
         .is('thoi_gian_xac_nhan', null)
         .select('id')
         .maybeSingle();
+      if (error && isMissingKiemKhoConfirmColumnError(error)) {
+        const fallback = await resolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .delete()
+          .eq('id', id)
+          .select('id')
+          .maybeSingle();
+        if (fallback.error) {
+          return res.status(500).json({
+            error: fallback.error.message || 'Không xóa được dòng kiểm kho.',
+            db: resolved.label
+          });
+        }
+        if (!fallback.data) {
+          return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
+        }
+        return res.json({ success: true, db: resolved.label, confirmColumn: false });
+      }
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không xóa được dòng kiểm kho.',
@@ -10600,17 +12097,34 @@ export function createApp() {
         return res.status(503).json({ error: 'Supabase (DB chính) chưa được cấu hình.' });
       }
 
-      const { data: dotRows, error: dotError } = await kiemKhoResolved.client
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
-        .eq('dot_kiem_kho', dotKiemKho);
-      if (dotError) {
-        return res.status(500).json({
-          error: dotError.message || 'Không tải được thông tin đợt kiểm kho.',
-          db: kiemKhoResolved.label
-        });
+      let dotRows: Array<Record<string, unknown>> = [];
+      {
+        const first = await kiemKhoResolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
+          .eq('dot_kiem_kho', dotKiemKho);
+        if (first.error && isMissingKiemKhoConfirmColumnError(first.error)) {
+          const second = await kiemKhoResolved.client
+            .from(SUPABASE_KIEM_KHO_TABLE)
+            .select('dot_kiem_kho, ngay_gio_kiem_kho, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
+            .eq('dot_kiem_kho', dotKiemKho);
+          if (second.error) {
+            return res.status(500).json({
+              error: second.error.message || 'Không tải được thông tin đợt kiểm kho.',
+              db: kiemKhoResolved.label
+            });
+          }
+          dotRows = (second.data || []) as Array<Record<string, unknown>>;
+        } else if (first.error) {
+          return res.status(500).json({
+            error: first.error.message || 'Không tải được thông tin đợt kiểm kho.',
+            db: kiemKhoResolved.label
+          });
+        } else {
+          dotRows = (first.data || []) as Array<Record<string, unknown>>;
+        }
       }
-      const dotGroup = computeKiemKhoDotGroups(dotRows || [])[0];
+      const dotGroup = computeKiemKhoDotGroups(dotRows)[0];
       if (!dotGroup) {
         return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
       }
@@ -10834,17 +12348,34 @@ export function createApp() {
       .from(SUPABASE_KIEM_KHO_TABLE)
       .select('thoi_gian_xac_nhan')
       .eq('dot_kiem_kho', dotKiemKho);
-    if (confirmationError) {
+    if (confirmationError && isMissingKiemKhoConfirmColumnError(confirmationError)) {
+      const exists = await kiemKhoResolved.client
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .select('id')
+        .eq('dot_kiem_kho', dotKiemKho)
+        .limit(1);
+      if (exists.error) {
+        return res.status(500).json({
+          error: exists.error.message || 'Không kiểm tra được đợt kiểm kho.',
+          db: kiemKhoResolved.label
+        });
+      }
+      if (!exists.data?.length) {
+        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
+      }
+      // DB chưa có cột chốt — cho phép xử lý chênh lệch (không chặn).
+    } else if (confirmationError) {
       return res.status(500).json({
         error: confirmationError.message || 'Không kiểm tra được trạng thái xác nhận đợt kiểm kho.',
         db: kiemKhoResolved.label
       });
-    }
-    if (!confirmationRows?.length) {
-      return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
-    }
-    if (confirmationRows.some(row => !row.thoi_gian_xac_nhan)) {
-      return res.status(409).json({ error: 'Đợt kiểm kho chưa xác nhận, chưa thể xử lý chênh lệch.' });
+    } else {
+      if (!confirmationRows?.length) {
+        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
+      }
+      if (confirmationRows.some(row => !row.thoi_gian_xac_nhan)) {
+        return res.status(409).json({ error: 'Đợt kiểm kho chưa xác nhận, chưa thể xử lý chênh lệch.' });
+      }
     }
 
     const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);

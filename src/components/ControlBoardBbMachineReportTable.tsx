@@ -9,7 +9,7 @@ import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../featur
 import { splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
 import type { MixingReport } from './MixingReportForm';
 import type { AcceptanceReport } from './AcceptanceReportForm';
-import type { ShiftSetting } from '../utils/shiftSettings';
+import { shiftIsoDateByDays, type ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
@@ -958,6 +958,32 @@ export default function ControlBoardBbMachineReportTable({
     () => exportMaterialTotals.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0),
     [exportMaterialTotals]
   );
+  /** Tổng NVL đã xuất — khớp phiếu: nhựa = ĐVT kg (cột Quy về kg); khác = ĐVT ≠ kg. */
+  const exportMaterialTotalsByUnit = useMemo(() => {
+    let kgWeight = 0;
+    let kgLines = 0;
+    let otherWeight = 0;
+    let otherLines = 0;
+    for (const row of exportMaterialTotals) {
+      const weight = row.weightKg > 0 ? row.weightKg : 0;
+      const lines = row.lineCount > 0 ? row.lineCount : 0;
+      if (isWarehouseKgUnit(row.unit || '')) {
+        kgWeight += weight;
+        kgLines += lines;
+      } else if (weight > 0) {
+        otherWeight += weight;
+        otherLines += lines;
+      }
+    }
+    return {
+      kgWeight,
+      kgLines,
+      otherWeight,
+      otherLines,
+      totalWeight: kgWeight + otherWeight,
+      totalLines: kgLines + otherLines
+    };
+  }, [exportMaterialTotals]);
   const exportTotalNormKg = useMemo(
     () => exportGroups.reduce((sum, group) => sum + group.totalNormWeightKg, 0),
     [exportGroups]
@@ -990,31 +1016,35 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
-  /** Ngày + ca của lệnh SX đang lọc — cân tự động khớp theo lệnh, không bắt buộc trùng mã SP trên QR. */
-  const canTuDongOrderShiftBuckets = useMemo(() => {
-    if (sanLuongSource !== 'can-tu-dong') return null;
-    const seen = new Set<string>();
-    const buckets: Array<{ ngay: string; shift: string }> = [];
-    for (const row of orderRows) {
-      const ngay = String(row.ngay || '').trim();
-      const shift = String(row.shift || '').trim();
-      if (!ngay && !shift) continue;
-      const key = `${ngay}|${shift}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      buckets.push({ ngay, shift });
-    }
-    return buckets;
-  }, [sanLuongSource, orderRows]);
+  /**
+   * `/phan-tich-tu-dong`: tổng cột «Trọng lượng nhựa» trên `/can-tu-dong`.
+   * Lọc cột Ngày [Từ ngày, Đến ngày + 1] khi chọn khoảng ngày.
+   * Ngày = Tất cả: không cắt Ngày, kể cả dòng trống / không chênh lệch.
+   */
+  const canTuDongDateTo = useMemo(() => {
+    if (sanLuongSource !== 'can-tu-dong' || !dateTo) return dateTo;
+    return shiftIsoDateByDays(dateTo, 1) || dateTo;
+  }, [sanLuongSource, dateTo]);
   const scopedCanTuDongRecords = useMemo(
     () =>
-      filterCanTuDongRecordsForBoard(canTuDongRecords, {
-        shiftFilter,
-        dateFrom,
-        dateTo,
-        orderShiftBuckets: canTuDongOrderShiftBuckets
-      }),
-    [canTuDongRecords, shiftFilter, dateFrom, dateTo, canTuDongOrderShiftBuckets]
+      sanLuongSource === 'can-tu-dong'
+        ? filterCanTuDongRecordsForBoard(canTuDongRecords, {
+            shiftFilter,
+            dateFrom,
+            dateTo: canTuDongDateTo,
+            machineFilter,
+            selectedMachine
+          })
+        : [],
+    [
+      sanLuongSource,
+      canTuDongRecords,
+      shiftFilter,
+      dateFrom,
+      canTuDongDateTo,
+      machineFilter,
+      selectedMachine
+    ]
   );
   const canTuDongSanLuongTotals = useMemo(
     () => sumCanTuDongSanLuongTotals(scopedCanTuDongRecords),
@@ -1031,25 +1061,17 @@ export default function ControlBoardBbMachineReportTable({
       }, 0),
     [damagedRows]
   );
-  /** Nhựa nhận = tồn đầu nhựa + xuất nhựa. */
-  const plasticStockInWeightKg = dauCaWeightByKind.plasticKg + exportWeightByKind.plasticKg;
-  /**
-   * Chênh lệch nhựa =
-   * (Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối
-   */
-  const plasticDifferenceWeightKg =
-    plasticStockInWeightKg -
-    displaySanLuongTotals.weightKg -
-    plasticDamagedWeightKg -
-    cuoiCaWeightByKind.plasticKg;
-  /** Tồn nhựa (đầu − cuối) — phần rút từ tồn ca. */
-  const plasticStockNetKg = dauCaWeightByKind.plasticKg - cuoiCaWeightByKind.plasticKg;
+  /** Lượng nhựa sử dụng LT = Xuất nhựa + Tồn đầu ca − Tồn cuối ca. */
+  const plasticUsedLtKg =
+    exportWeightByKind.plasticKg + dauCaWeightByKind.plasticKg - cuoiCaWeightByKind.plasticKg;
+  /** Chênh lệch = Lượng nhựa sử dụng LT − Tổng nhựa thành phẩm. */
+  const plasticDifferenceWeightKg = plasticUsedLtKg - displaySanLuongTotals.weightKg;
   const plasticSummaryRow = {
     requiredKg: plasticRequiredWeightKg,
     exportKg: exportWeightByKind.plasticKg,
-    /** `/phan-tich-tu-dong`: = tổng cột «Trọng lượng nhựa» (SP − lõi − bì 0,16). */
+    /** `/phan-tich-tu-dong`: tổng cột «Trọng lượng nhựa» trên /can-tu-dong. */
     finishedKg: displaySanLuongTotals.weightKg,
-    stockNetKg: plasticStockNetKg,
+    stockNetKg: plasticUsedLtKg,
     damagedKg: plasticDamagedWeightKg,
     differenceKg: plasticDifferenceWeightKg
   };
@@ -1407,34 +1429,34 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Trọng lượng xuất = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg, cột Tổng kg)"
+            title="Khớp phiếu xuất kho: Tổng nhựa = Σ Quy về kg dòng ĐVT kg; vật tư khác = Σ Quy về kg dòng ĐVT ≠ kg"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">Trọng lượng xuất</p>
             <p className="mt-0.5 font-mono text-sm font-black tabular-nums">
               {isLoading
                 ? '…'
                 : exportWeightByKind.totalKg > 0
-                  ? `${formatKg(exportWeightByKind.totalKg, 2)} kg`
+                  ? `${formatKg(exportWeightByKind.totalKg, 2)} Kg`
                   : '—'}
             </p>
             <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
-              <div title="Dòng NVL nhựa, ĐVT = kg">
+              <div title="Σ cột Quy về kg mọi dòng ĐVT = kg trên phiếu xuất (kể cả túi)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
                 <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.plasticKg > 0
-                      ? `${formatKg(exportWeightByKind.plasticKg, 2)} kg`
+                      ? `${formatKg(exportWeightByKind.plasticKg, 2)} Kg`
                       : '—'}
                 </p>
               </div>
-              <div title="Dòng ĐVT ≠ kg — lấy cột Tổng (kg)">
+              <div title="Σ cột Quy về kg dòng ĐVT ≠ kg (lõi cái…)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
                 <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.otherKg > 0
-                      ? `${formatKg(exportWeightByKind.otherKg, 2)} kg`
+                      ? `${formatKg(exportWeightByKind.otherKg, 2)} Kg`
                       : '—'}
                 </p>
               </div>
@@ -1443,7 +1465,7 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Trọng lượng tồn đầu ca = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg) trên phiếu tồn đầu"
+            title="Trọng lượng tồn đầu ca = nhựa (ĐVT kg) + vật tư khác (lõi/túi/ĐVT ≠ kg) trên phiếu tồn đầu"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng tồn Đầu ca
@@ -1466,7 +1488,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'}
                 </p>
               </div>
-              <div title="Dòng ĐVT ≠ kg trên phiếu tồn đầu">
+              <div title="Lõi, túi, màng và ĐVT ≠ kg trên phiếu tồn đầu">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
                 <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
@@ -1481,7 +1503,7 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Trọng lượng tồn cuối ca = nhựa (ĐVT kg) + vật tư khác (ĐVT ≠ kg) trên phiếu tồn cuối"
+            title="Trọng lượng tồn cuối ca = nhựa (ĐVT kg) + vật tư khác (lõi/túi/ĐVT ≠ kg) trên phiếu tồn cuối"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Trọng lượng tồn Cuối ca
@@ -1504,7 +1526,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'}
                 </p>
               </div>
-              <div title="Dòng ĐVT ≠ kg trên phiếu tồn cuối">
+              <div title="Lõi, túi, màng và ĐVT ≠ kg trên phiếu tồn cuối">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
                 <p className="font-mono text-[11px] font-black tabular-nums">
                   {isLoading
@@ -1521,7 +1543,7 @@ export default function ControlBoardBbMachineReportTable({
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
             title={
               sanLuongSource === 'can-tu-dong'
-                ? 'Số lần cân và tổng trọng lượng nhựa (SP − lõi − bì) khớp ngày/ca lệnh sản xuất'
+                ? 'Tổng cột «Trọng lượng nhựa» trên /can-tu-dong (SP − lõi − bì 0,16), cột Ngày từ Từ ngày đến Đến ngày+1 (gồm SP cân ngày hôm sau)'
                 : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng'
             }
           >
@@ -1532,12 +1554,12 @@ export default function ControlBoardBbMachineReportTable({
               <div
                 title={
                   sanLuongSource === 'can-tu-dong'
-                    ? 'Số lần cân = số dòng can_tu_dong khớp ngày/ca lệnh sản xuất'
+                    ? 'Số SP = số dòng /can-tu-dong cột Ngày trong khoảng lọc (gồm ngày kế tiếp)'
                     : 'Tổng cột «SL sản lượng»'
                 }
               >
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">
-                  {sanLuongSource === 'can-tu-dong' ? 'Lần cân' : 'Số lượng'}
+                  {sanLuongSource === 'can-tu-dong' ? 'Số SP' : 'Số lượng'}
                 </p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
@@ -1550,7 +1572,7 @@ export default function ControlBoardBbMachineReportTable({
               <div
                 title={
                   sanLuongSource === 'can-tu-dong'
-                    ? 'Tổng trọng lượng nhựa = SP − lõi − bì (bì mặc định 0,16 kg)'
+                    ? 'Tổng cột «Trọng lượng nhựa» /can-tu-dong = Cân SP − Cân lõi − bì 0,16 kg'
                     : 'Tổng cột «Trọng lượng thực tế (kg)»'
                 }
               >
@@ -1621,7 +1643,7 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Tổng nhựa xuất',
-                  title: 'Xuất nhựa (ĐVT kg)',
+                  title: 'Tổng nhựa phiếu xuất = Σ Quy về kg dòng ĐVT kg',
                   display: isLoading
                     ? '…'
                     : plasticSummaryRow.exportKg > 0
@@ -1632,7 +1654,7 @@ export default function ControlBoardBbMachineReportTable({
                   label: 'Tổng nhựa thành phẩm',
                   title:
                     sanLuongSource === 'can-tu-dong'
-                      ? 'Σ cột «Trọng lượng nhựa» của lần cân khớp ngày/ca lệnh sản xuất — SP − lõi − bì 0,16'
+                      ? 'Tổng cột «Trọng lượng nhựa» trên /can-tu-dong — SP − lõi − bì 0,16'
                       : 'Trọng lượng thực tế tab sản lượng',
                   display: isLoading
                     ? '…'
@@ -1645,11 +1667,13 @@ export default function ControlBoardBbMachineReportTable({
                         : '—'
                 },
                 {
-                  label: 'Tổng nhựa tồn',
-                  title: 'Tồn đầu ca − Tồn cuối ca (nhựa)',
+                  label: 'Lượng nhựa sử dụng LT',
+                  title: 'Lượng xuất + Đầu ca − Cuối ca (nhựa)',
                   display: isLoading
                     ? '…'
-                    : dauCaWeightByKind.plasticKg > 0 || cuoiCaWeightByKind.plasticKg > 0
+                    : exportWeightByKind.plasticKg > 0 ||
+                        dauCaWeightByKind.plasticKg > 0 ||
+                        cuoiCaWeightByKind.plasticKg > 0
                       ? `${formatKg(plasticSummaryRow.stockNetKg, 2)} kg`
                       : '—'
                 },
@@ -1664,7 +1688,7 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Chênh lệch',
-                  title: '(Xuất + Tồn đầu) − Thành phẩm − Lỗi nhựa − Tồn cuối',
+                  title: 'Lượng nhựa sử dụng LT − Tổng nhựa thành phẩm',
                   display: isLoading
                     ? '…'
                     : Number.isFinite(plasticSummaryRow.differenceKg)
@@ -2010,14 +2034,53 @@ export default function ControlBoardBbMachineReportTable({
                 {!isLoading && exportMaterialTotals.length > 0 ? (
                   <tfoot className="border-t-2 border-emerald-300 bg-emerald-50 text-xs font-black text-emerald-950">
                     <tr>
+                      <td colSpan={5} className="px-4 py-2.5 text-right uppercase tracking-wider">
+                        Tổng lượng nhựa
+                        <span className="ml-1 font-semibold normal-case tracking-normal text-emerald-700/80">
+                          (ĐVT kg, cột Quy về kg)
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-amber-800">
+                        {exportMaterialTotalsByUnit.kgWeight > 0
+                          ? formatKg(exportMaterialTotalsByUnit.kgWeight, 2)
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-zinc-600">
+                        {exportMaterialTotalsByUnit.kgLines > 0
+                          ? exportMaterialTotalsByUnit.kgLines
+                          : '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colSpan={5} className="px-4 py-2.5 text-right uppercase tracking-wider">
+                        Tổng vật tư khác
+                        <span className="ml-1 font-semibold normal-case tracking-normal text-emerald-700/80">
+                          (ĐVT ≠ kg, cột Quy về kg)
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-amber-800">
+                        {exportMaterialTotalsByUnit.otherWeight > 0
+                          ? formatKg(exportMaterialTotalsByUnit.otherWeight, 2)
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-zinc-600">
+                        {exportMaterialTotalsByUnit.otherLines > 0
+                          ? exportMaterialTotalsByUnit.otherLines
+                          : '—'}
+                      </td>
+                    </tr>
+                    <tr className="border-t border-emerald-400/80 bg-emerald-100/80">
                       <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-wider">
                         Tổng cộng
+                        <span className="ml-1 font-semibold normal-case tracking-normal text-emerald-800/80">
+                          = nhựa + vật tư khác
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-amber-800">
-                        {formatKg(exportMaterialTotalKg, 2)}
+                      <td className="px-4 py-3 text-right font-mono text-amber-900">
+                        {formatKg(exportMaterialTotalsByUnit.totalWeight || exportMaterialTotalKg, 2)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-zinc-600">
-                        {exportMaterialTotals.reduce((sum, row) => sum + row.lineCount, 0)}
+                      <td className="px-4 py-3 text-right font-mono text-zinc-700">
+                        {exportMaterialTotalsByUnit.totalLines}
                       </td>
                     </tr>
                   </tfoot>
@@ -2469,8 +2532,9 @@ export default function ControlBoardBbMachineReportTable({
               isLoading={isLoading}
               shiftFilter={shiftFilter}
               dateFrom={dateFrom}
-              dateTo={dateTo}
-              orderShiftBuckets={canTuDongOrderShiftBuckets}
+              dateTo={canTuDongDateTo}
+              machineFilter={machineFilter}
+              selectedMachine={selectedMachine}
             />
           ) : (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">

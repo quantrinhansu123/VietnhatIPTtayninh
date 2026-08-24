@@ -13,8 +13,10 @@
 | GET | `/api/san-pham` | 3507 |
 | POST | `/api/san-pham` | 3564 |
 | GET | `/api/san-pham/:id/ma-chi-tiet` | danh sách mã QR/serial đã lưu |
+| GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | nhật ký nhập/xuất từ `phieu_xuat_nhap_kho` theo mã SP |
+| PATCH | `/api/san-pham` | bulk đổi `ten_kho` theo `nhom_vthh` (vd nhóm XOP → Kho hàng hóa) |
 | PATCH | `/api/san-pham/:id` | 3629 |
-| DELETE | `/api/san-pham` | 3592 |
+| DELETE | `/api/san-pham` | bulk — xóa `ma_san_pham_chi_tiet` trước rồi `san_pham` |
 
 ## Frontend
 
@@ -29,7 +31,8 @@
 
 UI danh sách sản phẩm có **hai chế độ**:
 
-- **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT; thống kê Sản phẩm · Nhóm VTHH · Đơn vị.
+- Modal **Xem sản phẩm**: tab Thông tin · Thành phần · **Nhập kho** · **Xuất kho** (hai tab sau lấy dòng từ `phieu_xuat_nhap_kho` theo mã SP). Bảng **Tồn kho** trên tab Thông tin: **Tồn đầu kỳ** = `tong_so_luong` từ Bảng tổng hợp Kiểm kho (`GET /api/kiem-kho/ton-dau-ky`); **Nhập/Xuất trong kỳ** = tổng `so_luong` toàn bộ phiếu ở tab Nhập kho / Xuất kho; Tồn cuối = đầu + nhập − xuất.
+- **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT / Kho; thống kê Sản phẩm · Nhóm VTHH · Đơn vị. Nút **Đổi nhóm XOP → Kho hàng hóa** cập nhật `ten_kho` hàng loạt cho mọi SP nhóm XOP.
 - **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị.
 
 ## Menu
@@ -45,6 +48,8 @@ UI danh sách sản phẩm có **hai chế độ**:
 
 Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Việc sinh/lưu serial QR đã chuyển sang **Phiếu nhập kho thành phẩm**; xem manifest `phieu_xuat_nhap_kho.md` và `ma_san_pham_chi_tiet.md`.
 
+Xóa SP: `DELETE /api/san-pham` gọi RPC `xoa_san_pham_hang_loat` (hoặc FK `ON DELETE CASCADE`). Chạy `supabase-ma-san-pham-chi-tiet-delete.sql` nếu chưa.
+
 > Tính năng "Đồng bộ" (cộng số liệu kiểm kho vào `ton_dau_ky`) đã bị **gỡ bỏ**. File `supabase-san-pham-kiem-kho-dong-bo.sql` giờ chỉ còn migration `DROP` để dọn RPC/bảng so cái cũ trên DB đã từng chạy — không cần chạy lại nếu DB chưa từng có tính năng này.
 
 ### Excel danh mục SP
@@ -54,7 +59,7 @@ Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Vi�
 - **Ô trống vẫn đẩy lên** (chỉ bắt buộc có Mã SP hoặc Tên)
 - Upsert theo `ma_sp`
 - File mẫu cũ kiểu Tên NVL/Loại/Giá trị → báo lỗi hướng dẫn dùng mẫu danh mục
-- Định mức NVL riêng: **Mẫu định mức NVL** / **Nhập định mức NVL**
+- Định mức NVL: **Nhập định mức NVL** → `import_sp` · **Xem import_sp** · **Đồng bộ Thành phần** (`POST /api/import-sp/dong-bo`) — xem `import_sp.md`.
 
 ## Không đọc
 

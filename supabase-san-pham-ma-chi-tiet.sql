@@ -33,7 +33,7 @@ create unique index if not exists san_pham_id_unique_idx
 
 create table if not exists public.ma_san_pham_chi_tiet (
   id uuid primary key default gen_random_uuid(),
-  san_pham_id uuid not null references public.san_pham(id) on delete restrict,
+  san_pham_id uuid not null references public.san_pham(id) on delete cascade,
   ma_sp_goc text not null,
   ma_sp_day_du text not null,
   ten_kho text,
@@ -71,8 +71,11 @@ create policy "ma_san_pham_chi_tiet_insert_all"
 drop policy if exists "ma_san_pham_chi_tiet_update_all" on public.ma_san_pham_chi_tiet;
 create policy "ma_san_pham_chi_tiet_update_all"
   on public.ma_san_pham_chi_tiet for update using (true) with check (true);
+drop policy if exists "ma_san_pham_chi_tiet_delete_all" on public.ma_san_pham_chi_tiet;
+create policy "ma_san_pham_chi_tiet_delete_all"
+  on public.ma_san_pham_chi_tiet for delete using (true);
 
-grant select, insert, update on table public.ma_san_pham_chi_tiet to anon, authenticated, service_role;
+grant select, insert, update, delete on table public.ma_san_pham_chi_tiet to anon, authenticated, service_role;
 
 -- Một transaction: tạo danh mục sản phẩm, đăng ký các mã chi tiết và ghi phiếu nhập khởi tạo.
 create or replace function public.tao_san_pham_voi_ma_chi_tiet(

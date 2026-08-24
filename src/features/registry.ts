@@ -11,6 +11,7 @@ export type TableId =
   | 'quan_ly_kho'
   | 'bao_cao_hang_hong'
   | 'san_pham'
+  | 'import_sp'
   | 'ma_san_pham_chi_tiet'
   | 'danh_sach_may'
   | 'kho_nvl'
@@ -138,6 +139,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/features/kho-hang/index.tsx, src/features/san-pham/index.tsx, src/features/san-pham/types.ts, src/features/san-pham/productFieldClass.ts',
     components: ['src/components/ProductQrScanner.tsx', 'src/components/LineEditorSheet.tsx'],
     utils: ['src/utils/productNplComponentsExcel.ts', 'src/utils/productCatalogExcel.ts']
+  },
+  import_sp: {
+    table: 'import_sp',
+    label: 'Staging Excel định mức NVL',
+    sql: ['supabase-import-sp.sql'],
+    apiPrefix: '/api/import-sp',
+    serverLines: 'GET/POST /api/import-sp, POST /api/import-sp/dong-bo',
+    appTab: 'products',
+    appLines: 'src/features/san-pham/index.tsx (Nhập / Xem / Đồng bộ Thành phần)',
+    components: [],
+    utils: ['src/utils/productNplComponentsExcel.ts']
   },
   ma_san_pham_chi_tiet: {
     table: 'ma_san_pham_chi_tiet',
@@ -455,6 +467,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appTab: 'control-board | dashboard | dashboard-auto',
     appLines: 'src/features/control-board/index.tsx (mode full | report-only), src/features/dashboard/index.tsx',
     components: [
+      'src/components/ControlBoardCommonFilters.tsx',
       'src/components/ControlBoardShiftSummaryTable.tsx',
       'src/components/ControlBoardBbMachineReportTable.tsx',
       'src/components/ControlBoardShiftDetailModal.tsx',

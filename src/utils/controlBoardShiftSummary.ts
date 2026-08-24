@@ -21,6 +21,7 @@ import {
   type ShiftSetting
 } from './shiftSettings';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import { parseDateToIso } from './dateFormat';
 
 export type ShiftSummaryWarehouseMovement = {
   id: string;
@@ -408,13 +409,7 @@ function parseOrderQuantity(value: string) {
 }
 
 function parseIsoDate(value: string) {
-  const raw = String(value || '').trim();
-  if (!raw || raw === '-') return '';
-  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (direct) return direct[1];
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 10);
+  return parseDateToIso(value);
 }
 
 function normalizeShiftKey(raw: string, shiftOptions: ShiftOption[]) {
@@ -560,11 +555,19 @@ function normalizeWarehouseItemHay(code: string, name: string) {
 
 export function isWarehouseCoreExportItem(code: string, name: string) {
   const hay = normalizeWarehouseItemHay(code, name);
-  // Nhận diện mã/tên lõi: "lõi", "LOI", "LOI01", "loi giay"...
+  if (!hay) return false;
+  // «Nhựa tái lõi từ SX» (NVN) là hạt nhựa, không phải lõi quấn giấy L20cm / L30cm.
+  if (hay.startsWith('nhua') || /(?:^|\s)nhua(?:\s|$)/.test(hay)) return false;
+
+  const codeKey = String(code || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (/^l\d/.test(codeKey) || /^loi(\b|$|-|_|\d)/.test(codeKey)) return true;
+
   return (
-    hay.includes('loi') ||
     /\bloi\b/.test(hay) ||
-    hay.includes(' loi ') ||
     hay.startsWith('loi ') ||
     hay.startsWith('loi-') ||
     hay.startsWith('loi_')
@@ -1271,13 +1274,7 @@ export function machineValueMatchesFilter(
 }
 
 export function parseControlBoardFilterDate(value?: string) {
-  const raw = String(value || '').trim();
-  if (!raw || raw === '-') return '';
-  const direct = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (direct) return direct[1];
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 10);
+  return parseDateToIso(value);
 }
 
 export function matchesControlBoardDateRange(value: string | undefined, dateFrom: string, dateTo: string) {

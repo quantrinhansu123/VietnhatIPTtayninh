@@ -6,6 +6,9 @@ import {
   filterCanTuDongRecordsForBoard,
   resolveCanLoiKg,
   resolveCanSpKg,
+  resolveCanTuDongBusinessDate,
+  resolveCanTuDongMachine,
+  resolveCanTuDongProductionOrder,
   resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
   sumCanTuDongSanLuongTotals
@@ -45,6 +48,13 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function formatIsoDateVi(iso?: string | null) {
+  const raw = String(iso ?? '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return raw || '—';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 function formatWeight(
   value?: number | string | null,
   unit?: string | null,
@@ -71,6 +81,8 @@ export default function BbCanTuDongSanLuongPanel({
   shiftFilter = 'all',
   dateFrom = '',
   dateTo = '',
+  machineFilter = 'all',
+  selectedMachine = null,
   orderShiftBuckets = null
 }: {
   records: CanTuDongRecord[];
@@ -78,7 +90,13 @@ export default function BbCanTuDongSanLuongPanel({
   shiftFilter?: string;
   dateFrom?: string;
   dateTo?: string;
-  orderShiftBuckets?: Array<{ ngay?: string | null; shift?: string | null }> | null;
+  machineFilter?: string;
+  selectedMachine?: { code?: string; name?: string } | null;
+  orderShiftBuckets?: Array<{
+    ngay?: string | null;
+    shift?: string | null;
+    machine?: string | null;
+  }> | null;
 }) {
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const filtered = useMemo(
@@ -87,21 +105,30 @@ export default function BbCanTuDongSanLuongPanel({
         shiftFilter,
         dateFrom,
         dateTo,
+        machineFilter,
+        selectedMachine,
         orderShiftBuckets
       }),
-    [records, shiftFilter, dateFrom, dateTo, orderShiftBuckets]
+    [records, shiftFilter, dateFrom, dateTo, machineFilter, selectedMachine, orderShiftBuckets]
   );
   const totals = useMemo(() => sumCanTuDongSanLuongTotals(filtered), [filtered]);
 
   return (
     <>
-      <table className="min-w-[1180px] w-full text-left text-sm font-semibold">
+      <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
         <thead className="bg-[#ef1b2d] border-b border-red-700 text-xs uppercase tracking-wider text-white">
           <tr>
             <th className="px-3 py-3.5 font-black">Ảnh lõi</th>
             <th className="px-3 py-3.5 font-black">Ảnh SP</th>
+            <th className="px-3 py-3.5 font-black" title="Cột Ngày (SOURCE_DATE), không dùng ngày cân">
+              Ngày
+            </th>
             <th className="px-3 py-3.5 font-black">Thời điểm</th>
             <th className="px-3 py-3.5 font-black">Ca</th>
+            <th className="px-3 py-3.5 font-black" title="SOURCE_MACHINE">
+              Máy
+            </th>
+            <th className="px-3 py-3.5 font-black">Lệnh SX</th>
             <th className="px-3 py-3.5 font-black">QR</th>
             <th className="px-3 py-3.5 text-right font-black" title="tare_weight">
               Cân lõi
@@ -121,22 +148,21 @@ export default function BbCanTuDongSanLuongPanel({
             >
               Trọng lượng nhựa
             </th>
-            <th className="px-3 py-3.5 font-black">Thiết bị</th>
             <th className="px-3 py-3.5 font-black">Trạng thái</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-violet-100">
           {isLoading ? (
             <tr>
-              <td colSpan={11} className="px-3 py-10 text-center font-bold text-zinc-400">
+              <td colSpan={13} className="px-3 py-10 text-center font-bold text-zinc-400">
                 <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                Đang tải cân tự động...
+                Đang tải cân AI...
               </td>
             </tr>
           ) : filtered.length === 0 ? (
             <tr>
-              <td colSpan={11} className="px-3 py-10 text-center font-bold text-zinc-400">
-                Chưa có dữ liệu cân tự động khớp ngày/ca lệnh sản xuất đã lọc.
+              <td colSpan={13} className="px-3 py-10 text-center font-bold text-zinc-400">
+                Chưa có lần cân AI khớp cột Ngày · Ca · Máy đang lọc.
               </td>
             </tr>
           ) : (
@@ -147,6 +173,9 @@ export default function BbCanTuDongSanLuongPanel({
               const canSp = resolveCanSpKg(row);
               const trongLuongBi = resolveTrongLuongBiKg(row);
               const trongLuongNhua = resolveTrongLuongNhuaKg(row);
+              const ngay = resolveCanTuDongBusinessDate(row);
+              const may = resolveCanTuDongMachine(row);
+              const lenhSx = resolveCanTuDongProductionOrder(row);
               const coreTitle = `Ảnh cân lõi · ${row.qr_code || row.event_id || row.id}`;
               const productTitle = `Ảnh cân sản phẩm · ${row.qr_code || row.event_id || row.id}`;
               return (
@@ -175,29 +204,35 @@ export default function BbCanTuDongSanLuongPanel({
                       <span className="text-xs font-bold text-zinc-400">—</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-zinc-700">
+                  <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-900">
+                    {formatIsoDateVi(ngay)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-700">
                     {formatDateTime(row.captured_at || row.created_at)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-800">
-                    {row.ca || '—'}
+                  <td className="whitespace-nowrap px-3 py-2 font-bold text-sky-900">{row.ca || '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-800">
+                    {may || '—'}
                   </td>
-                  <td className="max-w-[160px] truncate px-3 py-2 font-mono text-xs text-zinc-700">
+                  <td className="whitespace-nowrap px-3 py-2 font-mono font-bold text-violet-900">
+                    {lenhSx || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono font-bold text-zinc-900">
                     {row.qr_code || '—'}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-zinc-700">
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-sky-800">
                     {formatWeight(canLoi, row.unit)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-zinc-700">
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-zinc-800">
                     {formatWeight(canSp, row.unit)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-zinc-600">
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-zinc-700">
                     {formatWeight(trongLuongBi, row.unit, 2)}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-black text-amber-800">
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-black text-emerald-800">
                     {trongLuongNhua !== null ? formatWeight(trongLuongNhua, row.unit, 2) : '—'}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-zinc-600">{row.device_id || '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs font-bold text-zinc-600">
+                  <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-600">
                     {row.status || '—'}
                   </td>
                 </tr>
@@ -206,15 +241,15 @@ export default function BbCanTuDongSanLuongPanel({
           )}
         </tbody>
         {!isLoading && filtered.length > 0 ? (
-          <tfoot className="border-t-2 border-violet-300 bg-violet-50 text-xs font-black text-violet-950">
+          <tfoot className="border-t-2 border-red-300 bg-red-50 text-xs font-black text-red-950">
             <tr>
-              <td colSpan={8} className="px-3 py-3 text-right uppercase tracking-wider">
-                Tổng ({totals.quantity} lần cân) · Trọng lượng nhựa
+              <td colSpan={11} className="px-3 py-3 text-right uppercase tracking-wider">
+                Tổng ({formatNumber(totals.quantity, 0)} lần cân)
               </td>
-              <td className="px-3 py-3 text-right font-mono text-amber-800">
-                {formatNumber(totals.weightKg, 2)} kg
+              <td className="px-3 py-3 text-right font-mono text-emerald-800">
+                {formatWeight(totals.weightKg, 'kg', 2)}
               </td>
-              <td colSpan={2} />
+              <td />
             </tr>
           </tfoot>
         ) : null}

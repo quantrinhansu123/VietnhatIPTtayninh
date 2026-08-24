@@ -156,7 +156,11 @@ function ProductionOrderSearchFilter({
   );
 }
 
+export type ControlBoardDateScope = 'all' | 'range';
+
 export function ControlBoardCommonFilters({
+  dateScope = 'range',
+  onDateScopeChange,
   dateFrom,
   dateTo,
   onDateFromChange,
@@ -176,6 +180,8 @@ export function ControlBoardCommonFilters({
   onClear,
   isLoading
 }: {
+  dateScope?: ControlBoardDateScope;
+  onDateScopeChange?: (value: ControlBoardDateScope) => void;
   dateFrom: string;
   dateTo: string;
   onDateFromChange: (value: string) => void;
@@ -195,6 +201,7 @@ export function ControlBoardCommonFilters({
   onClear: () => void;
   isLoading?: boolean;
 }) {
+  const dateInputsDisabled = isLoading || dateScope === 'all';
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3">
       <div className="flex flex-col gap-2.5 xl:flex-row xl:items-end">
@@ -213,15 +220,28 @@ export function ControlBoardCommonFilters({
           </button>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(110px,0.7fr)_minmax(150px,1fr)_minmax(230px,1.35fr)]">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(110px,0.7fr)_minmax(150px,1fr)_minmax(230px,1.35fr)]">
+        <label className="space-y-0.5">
+          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
+          <select
+            value={dateScope}
+            onChange={event => onDateScopeChange?.(event.target.value as ControlBoardDateScope)}
+            disabled={isLoading}
+            className={`${inputClass} w-full`}
+            title="Tất cả: lấy mọi dòng kể cả không có Ngày / không chênh lệch"
+          >
+            <option value="all">Tất cả</option>
+            <option value="range">Theo khoảng</option>
+          </select>
+        </label>
         <label className="space-y-0.5">
           <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
           <input
             type="date"
             value={dateFrom}
             onChange={event => onDateFromChange(event.target.value)}
-            disabled={isLoading}
-            className={`${inputClass} w-full`}
+            disabled={dateInputsDisabled}
+            className={`${inputClass} w-full disabled:bg-zinc-50 disabled:text-zinc-400`}
           />
         </label>
         <label className="space-y-0.5">
@@ -230,8 +250,8 @@ export function ControlBoardCommonFilters({
             type="date"
             value={dateTo}
             onChange={event => onDateToChange(event.target.value)}
-            disabled={isLoading}
-            className={`${inputClass} w-full`}
+            disabled={dateInputsDisabled}
+            className={`${inputClass} w-full disabled:bg-zinc-50 disabled:text-zinc-400`}
           />
         </label>
         <label className="space-y-0.5">

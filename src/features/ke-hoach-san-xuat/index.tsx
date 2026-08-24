@@ -8,6 +8,8 @@ import { BackButton } from '../../components/layout/NavButtons';
 import { RowActionsMenu } from '../../components/shared/table';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from '../../components/layout/constants';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
+import { formatDateDdMmYyyy, parseDateToIso } from '../../utils/dateFormat';
+import { DateInput } from '../../components/shared/DateInput';
 import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
 import { SearchableProductCodeField } from '../../components/shared/SearchableProductCodeField';
 import ProductionPlanNvlPrintSheet, { type ProductionPlanNvlPrintShiftGroup } from '../../components/ProductionPlanNvlPrintSheet';
@@ -443,12 +445,8 @@ export function buildProductionPlanPrintRows(lines: ProductionPlanLine[]): Produ
 }
 
 function formatProductionPlanPrintDate(value: string) {
-  const iso = parseProductionOrderFilterDate(value);
-  if (!iso) {
-    return new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
-  const [year, month, day] = iso.split('-');
-  return `${day}/${month}/${year}`;
+  const formatted = formatDateDdMmYyyy(value);
+  return formatted === '-' ? formatDateDdMmYyyy(new Date()) : formatted;
 }
 
 export function ProductionPlanPrintSheet({
@@ -619,11 +617,10 @@ export function StaffAssignmentPrintSheet({
   planDate: string;
   planNote: string;
 }) {
-  const parsedPlanDate = planDate ? new Date(planDate) : null;
-  const printDate =
-    parsedPlanDate && !Number.isNaN(parsedPlanDate.getTime())
-      ? parsedPlanDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const printDate = (() => {
+    const formatted = planDate ? formatDateDdMmYyyy(planDate) : '-';
+    return formatted === '-' ? formatDateDdMmYyyy(new Date()) : formatted;
+  })();
 
   return (
     <div className="production-plan-print-sheet">
@@ -2168,39 +2165,36 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           ) : null}
           <label className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
-            <input
-              type="date"
+            <DateInput
               value={filterDate}
-              onChange={event => {
-                setFilterDate(event.target.value);
+              onChange={next => {
+                setFilterDate(next);
                 setFromDate('');
                 setToDate('');
               }}
-              className="h-10 rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
             />
           </label>
           <label className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
-            <input
-              type="date"
+            <DateInput
               value={fromDate}
-              onChange={event => {
-                setFromDate(event.target.value);
+              onChange={next => {
+                setFromDate(next);
                 setFilterDate('');
               }}
-              className="h-10 rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              className="h-10 w-full min-w-[9rem] rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
             />
           </label>
           <label className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
-            <input
-              type="date"
+            <DateInput
               value={toDate}
-              onChange={event => {
-                setToDate(event.target.value);
+              onChange={next => {
+                setToDate(next);
                 setFilterDate('');
               }}
-              className="h-10 rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              className="h-10 w-full min-w-[9rem] rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
             />
           </label>
           <button
@@ -3292,11 +3286,10 @@ export function ProductionPlanModal({
             <div className="mb-4 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày kế hoạch</span>
-                <input
-                  type="date"
+                <DateInput
                   value={planDate}
-                  onChange={event => setPlanDate(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  onChange={setPlanDate}
+                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
                 <span className="block text-[11px] font-semibold text-zinc-500">
                   {isEditingExistingPlan
@@ -3863,23 +3856,9 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
     .filter((row): row is ProductionOrderRow => Boolean(row));
 }
 
-/** Hiển thị ngày của lệnh SX theo định dạng Việt Nam, không kèm giờ. */
+/** Hiển thị ngày của lệnh SX: luôn dd/mm/yyyy, không dùng locale máy. */
 export function formatProductionOrderDate(value: unknown): string {
-  const text = formatCell(value);
-  if (text === '-') return text;
-
-  // Dữ liệu PostgreSQL ISO bắt đầu bằng YYYY-MM-DD; lấy trực tiếp phần ngày để không bị lệch múi giờ.
-  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
-
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return text;
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone: 'Asia/Ho_Chi_Minh'
-  }).format(parsed);
+  return formatDateDdMmYyyy(value);
 }
 
 export interface ProductionOrderMaterialLine {
@@ -4140,15 +4119,10 @@ export async function resolveProductionOrderMachineLabel(machineValue: string): 
 
 export function formatProductionOrderPrintDate(value?: string) {
   if (!value || value === '-') {
-    return new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return formatDateDdMmYyyy(new Date());
   }
-
-  // startDate trên UI đã là dd/mm/yyyy — giữ nguyên, tránh new Date('dd/mm/yyyy') lệch/NaN.
-  const trimmed = String(value).trim();
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) return trimmed;
-
-  const formatted = formatProductionOrderDate(trimmed);
-  return formatted === '-' ? trimmed : formatted;
+  const formatted = formatProductionOrderDate(value);
+  return formatted === '-' ? String(value).trim() : formatted;
 }
 
 export function ProductionOrderPrintSheet({
@@ -4523,18 +4497,7 @@ export function toDatetimeLocalValue(date = new Date()) {
 
 /** Chuyển ngày lệnh SX (ISO / dd/mm/yyyy / datetime) → YYYY-MM-DD; không fallback ngày tạo. */
 export function parseProductionOrderDateToIso(value: string): string {
-  const raw = String(value ?? '').trim();
-  if (!raw || raw === '-') return '';
-
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-
-  const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (dmy) {
-    return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-  }
-
-  return '';
+  return parseDateToIso(value);
 }
 
 export function toDatetimeLocalInputValue(value: string) {
@@ -5619,18 +5582,17 @@ export function AddProductionOrderModal({
           </label>
           <label className="space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày *</span>
-            <input
-              type="date"
+            <DateInput
               value={form.startDate}
-              onChange={e => {
-                const startDate = e.target.value;
+              onChange={startDate => {
                 setForm(prev => ({
                   ...prev,
                   startDate,
                   startDateTime: mergeProductionOrderDateTime(startDate, prev.startDateTime)
                 }));
               }}
-              className={orderFieldClass}
+              required
+              className={`${orderFieldClass} pr-10`}
             />
           </label>
 
@@ -5672,7 +5634,7 @@ export function AddProductionOrderModal({
           >
             <p className="pb-2 text-[11px] font-bold text-zinc-500">
               {form.startDate
-                ? `Gợi ý đơn hàng cùng ngày ${form.startDate} hoặc còn SL chưa lập lệnh.`
+                ? `Gợi ý đơn hàng cùng ngày ${formatDateDdMmYyyy(form.startDate)} hoặc còn SL chưa lập lệnh.`
                 : 'Chọn ngày lệnh SX để lọc đơn hàng cùng ngày.'}
             </p>
 
@@ -5952,7 +5914,7 @@ export function AddProductionOrderModal({
                 <h4 className="text-sm font-black uppercase tracking-wider text-zinc-950">Tự điền từ đơn hàng</h4>
                 <p className="mt-0.5 text-xs font-semibold text-zinc-500">
                   {form.startDate
-                    ? `Chọn đơn hàng cùng ngày ${form.startDate}, sau đó tick sản phẩm cần lập lệnh SX.`
+                    ? `Chọn đơn hàng cùng ngày ${formatDateDdMmYyyy(form.startDate)}, sau đó tick sản phẩm cần lập lệnh SX.`
                     : 'Chọn ngày lệnh SX trước để lọc đơn hàng cùng ngày.'}
                 </p>
               </div>
@@ -5982,7 +5944,7 @@ export function AddProductionOrderModal({
                 {autofillOrderOptions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-8 text-center text-sm font-bold text-zinc-400">
                     {form.startDate
-                      ? `Không có đơn hàng phù hợp cho ngày ${form.startDate}.`
+                      ? `Không có đơn hàng phù hợp cho ngày ${formatDateDdMmYyyy(form.startDate)}.`
                       : 'Chọn ngày lệnh SX để xem đơn hàng cùng ngày.'}
                   </div>
                 ) : (
@@ -6608,18 +6570,17 @@ export function EditProductionOrderModal({
           </label>
           <label className="space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày *</span>
-            <input
-              type="date"
+            <DateInput
               value={form.startDate}
-              onChange={e => {
-                const startDate = e.target.value;
+              onChange={startDate => {
                 setForm(prev => ({
                   ...prev,
                   startDate,
                   startDateTime: mergeProductionOrderDateTime(startDate, prev.startDateTime)
                 }));
               }}
-              className={orderFieldClass}
+              required
+              className={`${orderFieldClass} pr-10`}
             />
           </label>
 

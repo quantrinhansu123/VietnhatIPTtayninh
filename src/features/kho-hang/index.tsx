@@ -29,7 +29,9 @@ export function normalizeWarehouseName(name: string) {
 
 function warehouseCatalogKind(name: string): InventoryCatalogKind {
   const normalized = normalizeWarehouseName(name);
-  return normalized.includes('san pham') || normalized.includes('thanh pham') ? 'products' : 'materials';
+  return normalized.includes('san pham') || normalized.includes('thanh pham') || normalized.includes('hang hoa')
+    ? 'products'
+    : 'materials';
 }
 
 function warehouseMovementKind(name: string): InventoryMovementKind {

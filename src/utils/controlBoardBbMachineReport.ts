@@ -778,9 +778,10 @@ export function sumBbWarehouseExportWeightKg(rows: BbWarehouseExportLineRow[]) {
 }
 
 /**
- * Tổng trọng lượng xuất tách nhựa / vật tư khác (khớp cột «Tổng (kg)» tab phiếu XK).
- * - Nhựa: dòng nhựa + ĐVT = kg
- * - Vật tư khác: ĐVT ≠ kg (dùng cột Tổng kg đã quy đổi)
+ * Tổng trọng lượng xuất — khớp footer phiếu xuất kho NVL:
+ * - Trọng lượng nhựa = Σ «Quy về kg» mọi dòng ĐVT = kg (kể cả túi/bột/dầu)
+ * - Vật tư khác = Σ «Quy về kg» dòng ĐVT ≠ kg (lõi cái…)
+ * - Dòng không quy được kg (vd. cuộn băng dính) không cộng
  */
 export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRow[]) {
   const seen = new Set<string>();
@@ -793,23 +794,8 @@ export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRo
     const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
 
-    const isKg = isWarehouseKgUnit(row.unit || '');
-    if (isKg) {
-      if (
-        isWarehousePlasticNvlLine({
-          warehouseKind: 'nvl',
-          itemCode: row.itemCode,
-          itemName: row.itemName,
-          unit: row.unit
-        })
-      ) {
-        plasticKg += kg;
-      }
-      continue;
-    }
-
-    // ĐVT khác kg → Vật tư khác (lấy cột Tổng kg).
-    otherKg += kg;
+    if (isWarehouseKgUnit(row.unit || '')) plasticKg += kg;
+    else otherKg += kg;
   }
   return {
     plasticKg,
@@ -2976,8 +2962,8 @@ export function sumBbCuoiCaWeightKg(rows: BbCuoiCaLineRow[]) {
 
 /**
  * Tổng trọng lượng tồn cuối ca tách nhựa / vật tư khác (cùng logic tồn đầu ca).
- * - Nhựa: dòng nhựa + ĐVT = kg
- * - Vật tư khác: ĐVT ≠ kg (cột trọng lượng kg trên phiếu)
+ * - Nhựa: dòng hạt nhựa, ĐVT = kg (không gồm lõi/túi)
+ * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg
  */
 export function sumBbCuoiCaWeightKgByKind(rows: BbCuoiCaLineRow[]) {
   let plasticKg = 0;
@@ -2986,22 +2972,16 @@ export function sumBbCuoiCaWeightKgByKind(rows: BbCuoiCaLineRow[]) {
     const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
 
-    const isKg = isWarehouseKgUnit(row.unit || '');
-    if (isKg) {
-      if (
-        isWarehousePlasticNvlLine({
-          warehouseKind: 'nvl',
-          itemCode: row.itemCode,
-          itemName: row.itemName,
-          unit: row.unit
-        })
-      ) {
-        plasticKg += kg;
-      }
-      continue;
-    }
-
-    otherKg += kg;
+    const isPlasticKg =
+      isWarehouseKgUnit(row.unit || '') &&
+      isWarehousePlasticNvlLine({
+        warehouseKind: 'nvl',
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        unit: row.unit
+      });
+    if (isPlasticKg) plasticKg += kg;
+    else otherKg += kg;
   }
   return {
     plasticKg,
@@ -3203,8 +3183,8 @@ export function sumBbDauCaWeightKg(rows: BbDauCaLineRow[]) {
 
 /**
  * Tổng trọng lượng tồn đầu ca tách nhựa / vật tư khác (khớp logic Trọng lượng xuất).
- * - Nhựa: dòng nhựa + ĐVT = kg
- * - Vật tư khác: ĐVT ≠ kg (cột trọng lượng kg trên phiếu)
+ * - Nhựa: dòng hạt nhựa, ĐVT = kg (không gồm lõi/túi)
+ * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg
  */
 export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
   let plasticKg = 0;
@@ -3213,22 +3193,16 @@ export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
     const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
 
-    const isKg = isWarehouseKgUnit(row.unit || '');
-    if (isKg) {
-      if (
-        isWarehousePlasticNvlLine({
-          warehouseKind: 'nvl',
-          itemCode: row.itemCode,
-          itemName: row.itemName,
-          unit: row.unit
-        })
-      ) {
-        plasticKg += kg;
-      }
-      continue;
-    }
-
-    otherKg += kg;
+    const isPlasticKg =
+      isWarehouseKgUnit(row.unit || '') &&
+      isWarehousePlasticNvlLine({
+        warehouseKind: 'nvl',
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        unit: row.unit
+      });
+    if (isPlasticKg) plasticKg += kg;
+    else otherKg += kg;
   }
   return {
     plasticKg,

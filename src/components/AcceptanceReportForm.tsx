@@ -1098,7 +1098,7 @@ export default function AcceptanceReportForm({
     setError('');
     setMessage('');
     try {
-      const params = new URLSearchParams({ from: ngay, to: ngay, limit: '2000' });
+      const params = new URLSearchParams({ from: ngay, to: ngay, limit: '2000', dateBy: 'ngay' });
       const response = await fetch(`/api/can-tu-dong?${params.toString()}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {

@@ -48,6 +48,7 @@ Việc `GROUP BY ma_nvl` chạy hẳn trong Postgres (không kéo dòng thô v�
 | Path | Ghi chú |
 |------|---------|
 | `GET /api/kiem-kho` | Query: `tenKho`, `dotKiemKho`, `maSp`, `from`, `to` |
+| `GET /api/kiem-kho/ton-dau-ky` | Query: `maGoc` (bắt buộc), `tenKho` (tuỳ chọn). Trả `ton_dau_ky` = `tong_so_luong` trên **Bảng tổng hợp** đợt đã chốt mới nhất khớp mã; nếu chưa có thì gộp live đợt mở |
 | `POST /api/kiem-kho` | Body: `ten_kho` (bắt buộc), `dot_kiem_kho`, `nguoi_kiem_kho` (tự động), `ngay_gio_kiem_kho` (tự động), `lines[]` |
 | `DELETE /api/kiem-kho/:id` | Xóa một dòng, chỉ khi đợt kiểm kho chưa chốt (`thoi_gian_xac_nhan is null`) |
 | `GET /api/kiem-kho/dot-mo` | Query: `tenKho` (lọc theo kho, FE luôn truyền). Chỉ đợt **chưa chốt** — dùng cho combobox tab "Thực hiện kiểm kho": `{ dot_kiem_kho, ten_kho, ngay_bat_dau }[]` |

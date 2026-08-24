@@ -5,7 +5,7 @@
 | **Bảng** | `ma_san_pham_chi_tiet` |
 | **Tab** | Chi tiết phiếu nhập tại `/lich-su-xuat-nhap-kho` |
 | **DB** | Chính — label `he-thong` |
-| **SQL** | `supabase-san-pham-ma-chi-tiet.sql` |
+| **SQL** | `supabase-san-pham-ma-chi-tiet.sql`, `supabase-ma-san-pham-chi-tiet-delete.sql` |
 
 ## API
 

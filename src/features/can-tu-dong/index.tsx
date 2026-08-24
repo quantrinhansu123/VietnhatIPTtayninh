@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileSpreadsheet, Loader2, Pencil, Printer, RefreshCw, Scale, Trash2, X } from 'lucide-react';
+import {
+  CalendarCheck,
+  Clock3,
+  FileSpreadsheet,
+  Loader2,
+  Pencil,
+  Printer,
+  RefreshCw,
+  Scale,
+  Sparkles,
+  Trash2,
+  X
+} from 'lucide-react';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
@@ -17,17 +29,25 @@ import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { normalizeProductCodeKey } from '../san-pham/types';
 import {
   DEFAULT_CAN_TU_DONG_BI_KG,
-  filterCanTuDongRecordsForBoard,
+  parseCanTuDongQrProductCode,
+  resolveCanSpKg,
+  resolveCanTuDongBusinessDate,
+  resolveCanTuDongMachine,
+  resolveCanTuDongProductionOrder,
   resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
-  sumCanTuDongSanLuongTotals,
-  vietnamIsoDateFromTimestamp
+  sumCanTuDongNhuaTieuChuanKg,
+  sumCanTuDongCanSanPhamKg,
+  sumCanTuDongChenhLechTtLtKg,
+  sumCanTuDongLoiTieuChuanKg,
+  sumCanTuDongCanLoiKg,
+  sumCanTuDongChenhLechLoiKg,
+  sumCanTuDongSanLuongTotals
 } from '../../utils/canTuDongWeights';
 import {
+  FilterCombobox,
   TableToolbar,
   TableSearchInput,
-  FilterCombobox,
-  MultiSelectFilter,
   TableShell,
   TableHead,
   TableHeadCell,
@@ -66,6 +86,14 @@ export type CanTuDongRecord = {
   qr_code?: string | null;
   /** Ca sản xuất (SOURCE_SHIFT metadata hoặc suy từ giờ captured_at). */
   ca?: string | null;
+  /** Cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân. */
+  ngay?: string | null;
+  /** Lệnh SX (metadata.production_order / SOURCE_PRODUCTION_ORDER). */
+  lenh_sx?: string | null;
+  ma_lenh_sx?: string | null;
+  /** Máy (metadata.machine / SOURCE_MACHINE). */
+  may?: string | null;
+  machine?: string | null;
   /** Cân sản phẩm (còn lõi) */
   weight?: number | string | null;
   /** Cân lõi */
@@ -90,23 +118,116 @@ export type CanTuDongRecord = {
   weight_source?: string | null;
   status?: string | null;
   created_at?: string | null;
+  metadata?: unknown;
 };
 
-function todayIso() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+/** Ngưỡng phân tích kém/hơn cân theo |% chênh lệch|. */
+const PHAN_TICH_NGUONG_PCT = 2;
+
+/** Bộ lọc danh sách theo chênh lệch Cân SP vs TL tiêu chuẩn. */
+type CanTuDongDiffFilter = 'all' | 'all-diff' | 'gt-2pct';
+
+type CanTuDongPhanTichBucket = {
+  /** Tổng số dòng kém/hơn cân (không lọc 2%). */
+  rowCount: number;
+  /** Σ |chênh lệch kg| mọi dòng trong nhóm. */
+  weightDiffAllKg: number;
+  rowsLe2Pct: number;
+  rowsGt2Pct: number;
+  /** Σ |chênh lệch kg| của các dòng có |%| > 2%. */
+  weightDiffGt2Kg: number;
+};
+
+function emptyPhanTichBucket(): CanTuDongPhanTichBucket {
+  return {
+    rowCount: 0,
+    weightDiffAllKg: 0,
+    rowsLe2Pct: 0,
+    rowsGt2Pct: 0,
+    weightDiffGt2Kg: 0
+  };
 }
 
-function defaultFromDate(days = 14) {
-  const d = new Date();
-  d.setDate(d.getDate() - Math.max(0, days - 1));
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function accumulatePhanTichBucket(
+  bucket: CanTuDongPhanTichBucket,
+  absPhanTram: number,
+  absChenhLechKg: number
+) {
+  bucket.rowCount += 1;
+  bucket.weightDiffAllKg += absChenhLechKg;
+  if (absPhanTram <= PHAN_TICH_NGUONG_PCT) {
+    bucket.rowsLe2Pct += 1;
+  } else {
+    bucket.rowsGt2Pct += 1;
+    bucket.weightDiffGt2Kg += absChenhLechKg;
+  }
+}
+
+/** Giá trị nút «Tự động điền» / «Quy hết». */
+const AUTO_FILL_NGAY = '2026-08-20';
+const AUTO_FILL_LENH_SX = 'LSX-DH056';
+const AUTO_FILL_CA = '12C2';
+const AUTO_FILL_MAY = 'Máy Bao Bì';
+const AUTO_FILL_CHUNK = 80;
+/** Tải full danh sách (không lọc ngày). */
+const CAN_TU_DONG_FETCH_LIMIT = '10000';
+
+async function postCanTuDongBulkAutofill(
+  ids: Array<string | number>,
+  payload: { ngay: string; ca: string; may: string; lenh_sx?: string; all?: boolean }
+) {
+  if (payload.all) {
+    const res = await fetch('/api/can-tu-dong/bulk-autofill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        all: true,
+        ngay: payload.ngay,
+        ca: payload.ca,
+        may: payload.may,
+        ...(payload.lenh_sx ? { lenh_sx: payload.lenh_sx } : {})
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể tự động điền các dòng cân tự động.');
+    }
+    return Number(data.updated) || 0;
+  }
+
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-autofill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, ...payload })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể tự động điền các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
+async function postCanTuDongBulkSetCa(ids: Array<string | number>, ca: string) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-ca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, ca })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể điền cột Ca.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
 }
 
 function formatDateTime(value?: string | null) {
@@ -124,6 +245,14 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+/** Hiển thị YYYY-MM-DD → dd/MM/yyyy. */
+function formatIsoDateVi(iso?: string | null) {
+  const raw = String(iso ?? '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return raw || '—';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 function formatWeight(
   value?: number | string | null,
   unit?: string | null,
@@ -134,6 +263,50 @@ function formatWeight(
   if (!Number.isFinite(num)) return String(value);
   const unitLabel = String(unit ?? 'kg').trim() || 'kg';
   return `${formatNumber(num, fractionDigits)} ${unitLabel}`;
+}
+
+function asWeightNumber(value?: number | string | null): number | null {
+  if (value == null || value === '') return null;
+  const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+  return Number.isFinite(num) ? num : null;
+}
+
+/** Chênh lệch = Cân SP − TL tiêu chuẩn; % = chênh lệch / tiêu chuẩn × 100. */
+function resolveCanSpVsStandard(canSp: number | null, standardKg: number | null) {
+  if (canSp === null || standardKg === null) {
+    return { chenhLech: null as number | null, phanTram: null as number | null };
+  }
+  const chenhLech = canSp - standardKg;
+  const phanTram = standardKg !== 0 ? (chenhLech / standardKg) * 100 : null;
+  return { chenhLech, phanTram };
+}
+
+function resolveRowStandardDiff(
+  row: CanTuDongRecord,
+  productStandardWeightByCode: Map<string, number>
+) {
+  const maSp = parseCanTuDongQrProductCode(row.qr_code);
+  const maSpKey = normalizeProductCodeKey(maSp);
+  const standardKg = maSpKey ? productStandardWeightByCode.get(maSpKey) : undefined;
+  if (standardKg == null || !(standardKg > 0)) return null;
+  const canSpKg = resolveCanSpKg(row);
+  if (canSpKg === null) return null;
+  const { chenhLech, phanTram } = resolveCanSpVsStandard(canSpKg, standardKg);
+  if (chenhLech === null || phanTram === null || chenhLech === 0) return null;
+  return {
+    chenhLech,
+    phanTram,
+    absPhanTram: Math.abs(phanTram),
+    absChenhLech: Math.abs(chenhLech),
+    standardKg,
+    canSpKg
+  };
+}
+
+function formatSignedPercent(value: number | null, fractionDigits = 2) {
+  if (value === null || !Number.isFinite(value)) return '—';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${formatNumber(value, fractionDigits)}%`;
 }
 
 function statusClass(status?: string | null) {
@@ -179,9 +352,12 @@ function rowIdKey(id: number | string) {
   return String(id);
 }
 
+function resolveRowMaSp(row: CanTuDongRecord): string {
+  return parseCanTuDongQrProductCode(row.qr_code);
+}
+
 export function CanTuDongPanel({
-  onBack,
-  initialFilters
+  onBack
 }: {
   onBack: () => void;
   initialFilters?: {
@@ -193,25 +369,28 @@ export function CanTuDongPanel({
   const [records, setRecords] = useState<CanTuDongRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [fromDate, setFromDate] = useState(
-    () => initialFilters?.dateFrom?.trim() || defaultFromDate(14)
-  );
-  const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedCa, setSelectedCa] = useState(() => {
-    const shift = initialFilters?.shift?.trim() || '';
-    return !shift || shift === 'all' ? 'all' : shift;
-  });
-  /** Rỗng = mọi mã QR; tick nhiều mã để chỉ hiện các dòng khớp. */
-  const [selectedQrCodes, setSelectedQrCodes] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isAutoFilling, setIsAutoFilling] = useState(false);
+  const [isSettingCa, setIsSettingCa] = useState(false);
+  const [showAutoFillModal, setShowAutoFillModal] = useState(false);
+  const [showNormalizeAllModal, setShowNormalizeAllModal] = useState(false);
+  const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
+  /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
+  const [maSpFilter, setMaSpFilter] = useState('all');
+  /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
+  const [maSpQuery, setMaSpQuery] = useState('');
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
+  const [productStandardWeightByCode, setProductStandardWeightByCode] = useState<Map<string, number>>(
+    () => new Map()
+  );
+  const [productCoreWeightByCode, setProductCoreWeightByCode] = useState<Map<string, number>>(
+    () => new Map()
+  );
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
 
@@ -219,10 +398,7 @@ export function CanTuDongPanel({
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ limit: '2000' });
-      if (fromDate) params.set('from', fromDate);
-      if (toDate) params.set('to', toDate);
-
+      const params = new URLSearchParams({ limit: CAN_TU_DONG_FETCH_LIMIT });
       const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -259,16 +435,44 @@ export function CanTuDongPanel({
           : Array.isArray(data)
             ? data
             : [];
-        const map = new Map<string, string>();
+        const nameMap = new Map<string, string>();
+        const weightMap = new Map<string, number>();
+        const coreMap = new Map<string, number>();
         for (const row of rows) {
           const code = String(row.ma_sp ?? row.code ?? '').trim();
+          const newCode = String(row.ma_sp_moi ?? row.newCode ?? '').trim();
           const name = String(row.ten_sp ?? row.name ?? '').trim();
-          const key = normalizeProductCodeKey(code);
-          if (key && name) map.set(key, name);
+          const weightRaw = row.tong_trong_luong ?? row.khoi_luong ?? row.totalWeight;
+          const weightNum =
+            typeof weightRaw === 'number'
+              ? weightRaw
+              : Number(String(weightRaw ?? '').trim().replace(',', '.'));
+          const hasWeight = Number.isFinite(weightNum) && weightNum > 0;
+          const coreRaw = row.trong_luong_loi ?? row.coreWeight;
+          const coreNum =
+            typeof coreRaw === 'number'
+              ? coreRaw
+              : Number(String(coreRaw ?? '').trim().replace(',', '.'));
+          const hasCore = Number.isFinite(coreNum) && coreNum > 0;
+          for (const c of [code, newCode]) {
+            const key = normalizeProductCodeKey(c);
+            if (!key) continue;
+            if (name) nameMap.set(key, name);
+            if (hasWeight) weightMap.set(key, weightNum);
+            if (hasCore) coreMap.set(key, coreNum);
+          }
         }
-        if (!cancelled) setProductNameByCode(map);
+        if (!cancelled) {
+          setProductNameByCode(nameMap);
+          setProductStandardWeightByCode(weightMap);
+          setProductCoreWeightByCode(coreMap);
+        }
       } catch {
-        if (!cancelled) setProductNameByCode(new Map());
+        if (!cancelled) {
+          setProductNameByCode(new Map());
+          setProductStandardWeightByCode(new Map());
+          setProductCoreWeightByCode(new Map());
+        }
       }
     })();
     return () => {
@@ -302,82 +506,96 @@ export function CanTuDongPanel({
     };
   }, [pendingPrint, printData]);
 
-  const statusOptions = useMemo(() => {
-    const set = new Set<string>();
+  const maSpOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
     for (const row of records) {
-      const status = String(row.status ?? '').trim();
-      if (status) set.add(status);
+      const maSp = resolveRowMaSp(row);
+      const key = normalizeProductCodeKey(maSp);
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, maSp);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [records]);
 
-  const caOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of records) {
-      const ca = String(row.ca ?? '').trim();
-      if (ca) set.add(ca);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [records]);
-
-  const qrCodeOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of records) {
-      const qr = String(row.qr_code ?? '').trim();
-      if (qr) set.add(qr);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [records]);
-
-  const hasActiveFilters =
-    Boolean(searchText.trim()) ||
-    selectedStatus !== 'all' ||
-    selectedCa !== 'all' ||
-    selectedQrCodes.length > 0;
-
-  const resetFilters = () => {
-    setSearchText('');
-    setSelectedStatus('all');
-    setSelectedCa('all');
-    setSelectedQrCodes([]);
-  };
-
-  const normalizedSearch = searchText.trim().toLowerCase();
-  const selectedQrSet = useMemo(() => new Set(selectedQrCodes), [selectedQrCodes]);
-  const filteredRecords = useMemo(() => {
-    // Chỉ lọc ca ở client. Ngày khớp cột THỜI ĐIỂM (captured_at), không dùng SOURCE_DATE
-    // trong metadata (ngày sản xuất) — tránh lệch với API / cột hiển thị.
-    const byCa = filterCanTuDongRecordsForBoard(records, {
-      shiftFilter: selectedCa
+  const recordsByMaSp = useMemo(() => {
+    const queryKey = normalizeProductCodeKey(maSpQuery);
+    const pickKey = maSpFilter === 'all' ? '' : normalizeProductCodeKey(maSpFilter);
+    if (!queryKey && !pickKey) return records;
+    return records.filter(row => {
+      const maSp = resolveRowMaSp(row);
+      const maSpKey = normalizeProductCodeKey(maSp);
+      if (pickKey && maSpKey !== pickKey) return false;
+      if (!queryKey) return true;
+      if (maSpKey.includes(queryKey)) return true;
+      const qrKey = normalizeProductCodeKey(String(row.qr_code || ''));
+      if (qrKey.includes(queryKey)) return true;
+      const name = maSpKey ? productNameByCode.get(maSpKey) : '';
+      if (name && normalizeProductCodeKey(name).includes(queryKey)) return true;
+      return false;
     });
-    return byCa.filter(row => {
-      if (fromDate || toDate) {
-        const day = vietnamIsoDateFromTimestamp(row.captured_at || row.created_at);
-        if (!day) return false;
-        if (fromDate && day < fromDate) return false;
-        if (toDate && day > toDate) return false;
-      }
-      const matchesStatus = selectedStatus === 'all' || String(row.status ?? '').trim() === selectedStatus;
-      const qr = String(row.qr_code ?? '').trim();
-      const matchesQr = selectedQrSet.size === 0 || (qr.length > 0 && selectedQrSet.has(qr));
-      const matchesSearch =
-        !normalizedSearch ||
-        `${row.qr_code ?? ''} ${row.event_id ?? ''} ${row.device_id ?? ''} ${row.weight_source ?? ''} ${row.ca ?? ''}`
-          .toLowerCase()
-          .includes(normalizedSearch);
-      return matchesStatus && matchesQr && matchesSearch;
+  }, [records, maSpFilter, maSpQuery, productNameByCode]);
+
+  const visibleRecords = useMemo(() => {
+    if (diffFilter === 'all') return recordsByMaSp;
+    return recordsByMaSp.filter(row => {
+      const diff = resolveRowStandardDiff(row, productStandardWeightByCode);
+      if (!diff) return false;
+      if (diffFilter === 'gt-2pct') return diff.absPhanTram > PHAN_TICH_NGUONG_PCT;
+      return true; // all-diff: mọi dòng có chênh lệch
     });
-  }, [records, normalizedSearch, selectedStatus, selectedCa, selectedQrSet, fromDate, toDate]);
+  }, [recordsByMaSp, productStandardWeightByCode, diffFilter]);
 
   const visibleIds = useMemo(
-    () => filteredRecords.map(row => rowIdKey(row.id)).filter(Boolean),
-    [filteredRecords]
+    () => visibleRecords.map(row => rowIdKey(row.id)).filter(Boolean),
+    [visibleRecords]
   );
 
   const trongLuongNhuaTotals = useMemo(
-    () => sumCanTuDongSanLuongTotals(filteredRecords),
-    [filteredRecords]
+    () => sumCanTuDongSanLuongTotals(visibleRecords),
+    [visibleRecords]
   );
+  const nhuaTieuChuanTotals = useMemo(
+    () => sumCanTuDongNhuaTieuChuanKg(visibleRecords, productStandardWeightByCode),
+    [visibleRecords, productStandardWeightByCode]
+  );
+  const trongLuongTtTotals = useMemo(
+    () => sumCanTuDongCanSanPhamKg(visibleRecords),
+    [visibleRecords]
+  );
+  const chenhLechTtLtTotals = useMemo(
+    () => sumCanTuDongChenhLechTtLtKg(visibleRecords, productStandardWeightByCode),
+    [visibleRecords, productStandardWeightByCode]
+  );
+  const loiTieuChuanTotals = useMemo(
+    () => sumCanTuDongLoiTieuChuanKg(visibleRecords, productCoreWeightByCode),
+    [visibleRecords, productCoreWeightByCode]
+  );
+  const tongTrongLuongLoiTotals = useMemo(
+    () => sumCanTuDongCanLoiKg(visibleRecords),
+    [visibleRecords]
+  );
+  const chenhLechLoiTotals = useMemo(
+    () => sumCanTuDongChenhLechLoiKg(visibleRecords, productCoreWeightByCode),
+    [visibleRecords, productCoreWeightByCode]
+  );
+
+  /** Phân tích kém cân / hơn cân theo |%| so với TL tiêu chuẩn (ngưỡng 2%) — theo bộ lọc Mã SP. */
+  const phanTichCan = useMemo(() => {
+    const kem = emptyPhanTichBucket();
+    const hon = emptyPhanTichBucket();
+    let comparedRows = 0;
+    for (const row of recordsByMaSp) {
+      const diff = resolveRowStandardDiff(row, productStandardWeightByCode);
+      if (!diff) continue;
+      comparedRows += 1;
+      if (diff.chenhLech < 0) {
+        accumulatePhanTichBucket(kem, diff.absPhanTram, diff.absChenhLech);
+      } else {
+        accumulatePhanTichBucket(hon, diff.absPhanTram, diff.absChenhLech);
+      }
+    }
+    return { kem, hon, comparedRows };
+  }, [recordsByMaSp, productStandardWeightByCode]);
 
   const selectedCount = selectedIds.size;
   const allVisibleSelected =
@@ -441,6 +659,107 @@ export function CanTuDongPanel({
     }
   };
 
+  const handleFillCaSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      showAppToast('Hãy tick chọn các dòng cần điền Ca.', 'error');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Điền Ca = ${AUTO_FILL_CA} cho ${ids.length} dòng đã chọn?`
+      )
+    ) {
+      return;
+    }
+
+    setIsSettingCa(true);
+    try {
+      const updated = await postCanTuDongBulkSetCa(ids, AUTO_FILL_CA);
+      // Cập nhật ngay trên UI rồi reload để chắc chắn khớp DB
+      const idSet = new Set(ids.map(id => String(id)));
+      setRecords(prev =>
+        prev.map(row => (idSet.has(String(row.id)) ? { ...row, ca: AUTO_FILL_CA } : row))
+      );
+      showAppToast(`Đã điền Ca = ${AUTO_FILL_CA} cho ${updated} dòng.`);
+      await loadRecords();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể điền cột Ca.';
+      showAppToast(message, 'error');
+    } finally {
+      setIsSettingCa(false);
+    }
+  };
+
+  const openAutoFillModal = () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      showAppToast('Hãy tick chọn các dòng cần tự động điền.', 'error');
+      return;
+    }
+    setShowAutoFillModal(true);
+  };
+
+  const handleAutoFillSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      showAppToast('Hãy tick chọn các dòng cần tự động điền.', 'error');
+      return;
+    }
+
+    setIsAutoFilling(true);
+    try {
+      const updated = await postCanTuDongBulkAutofill(ids, {
+        ngay: AUTO_FILL_NGAY,
+        lenh_sx: AUTO_FILL_LENH_SX,
+        ca: AUTO_FILL_CA,
+        may: AUTO_FILL_MAY
+      });
+      showAppToast(`Đã điền Ngày + Ca + Lệnh SX + Máy cho ${updated} dòng.`);
+      setShowAutoFillModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Không thể tự động điền các dòng đã chọn.';
+      showAppToast(message, 'error');
+    } finally {
+      setIsAutoFilling(false);
+    }
+  };
+
+  const openNormalizeAllModal = () => {
+    if (records.length === 0) {
+      showAppToast('Không có dòng cân để quy về 20/08.', 'error');
+      return;
+    }
+    setShowNormalizeAllModal(true);
+  };
+
+  const handleNormalizeAll = async () => {
+    const ids = records.map(row => row.id).filter(id => id != null && id !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng cân để quy về 20/08.', 'error');
+      return;
+    }
+
+    setIsAutoFilling(true);
+    try {
+      const updated = await postCanTuDongBulkAutofill(ids, {
+        ngay: AUTO_FILL_NGAY,
+        ca: AUTO_FILL_CA,
+        may: AUTO_FILL_MAY,
+        all: true
+      });
+      showAppToast(`Đã quy ${updated} dòng về Ngày 20/08/2026 · Ca ${AUTO_FILL_CA} · ${AUTO_FILL_MAY}.`);
+      setShowNormalizeAllModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể quy hết các dòng cân tự động.');
+    } finally {
+      setIsAutoFilling(false);
+    }
+  };
+
   const openEdit = (row: CanTuDongRecord) => {
     setEditingRecord(row);
     setEditForm({
@@ -492,16 +811,16 @@ export function CanTuDongPanel({
     }
   };
 
-  const handlePrintFiltered = () => {
-    if (filteredRecords.length === 0) {
-      showAppToast('Không có dữ liệu theo bộ lọc để in.', 'error');
+  const handlePrintAll = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dữ liệu để in theo bộ lọc hiện tại.', 'error');
       return;
     }
     setPrintData(
-      buildCanTuDongPrintData(filteredRecords, {
-        fromDate,
-        toDate,
-        ca: selectedCa,
+      buildCanTuDongPrintData(visibleRecords, {
+        fromDate: '',
+        toDate: '',
+        ca: 'all',
         productNameByCode
       })
     );
@@ -509,20 +828,27 @@ export function CanTuDongPanel({
   };
 
   const handleDownloadExcel = () => {
-    if (filteredRecords.length === 0) {
-      showAppToast('Không có dữ liệu theo bộ lọc để tải Excel.', 'error');
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dữ liệu để tải Excel theo bộ lọc hiện tại.', 'error');
       return;
     }
     try {
-      downloadCanTuDongExcel(filteredRecords, {
-        fromDate,
-        toDate,
-        productNameByCode
+      downloadCanTuDongExcel(visibleRecords, {
+        fromDate: '',
+        toDate: '',
+        productNameByCode,
+        productStandardWeightByCode
       });
-      showAppToast(`Đã tải Excel (${filteredRecords.length} dòng).`);
+      showAppToast(`Đã tải Excel (${visibleRecords.length} dòng).`);
     } catch (err: unknown) {
       showAppToast(err instanceof Error ? err.message : 'Không thể tải Excel.', 'error');
     }
+  };
+
+  const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
+  const clearMaSpFilters = () => {
+    setMaSpFilter('all');
+    setMaSpQuery('');
   };
 
   return (
@@ -544,23 +870,53 @@ export function CanTuDongPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            onClick={openNormalizeAllModal}
+            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || records.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-800 transition hover:bg-sky-100 disabled:opacity-60"
+            title={`Quy tất cả ${records.length} dòng về Ngày 20/08/2026 · Ca ${AUTO_FILL_CA} · Máy ${AUTO_FILL_MAY}`}
+          >
+            {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
+            {isAutoFilling ? 'Đang quy...' : 'Quy hết 20/08 · 12C2 · Máy Bao Bì'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleFillCaSelected()}
+            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || selectedCount === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+            title={`Chỉ điền cột Ca = ${AUTO_FILL_CA} cho dòng đã chọn`}
+          >
+            {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
+            {isSettingCa ? 'Đang điền Ca...' : `Điền Ca ${AUTO_FILL_CA}`}
+          </button>
+          <button
+            type="button"
+            onClick={openAutoFillModal}
+            disabled={loading || isAutoFilling || isSettingCa || isBulkDeleting || selectedCount === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 transition hover:bg-violet-100 disabled:opacity-60"
+            title={`Điền Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
+          >
+            {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {isAutoFilling ? 'Đang điền...' : 'Tự động điền'}
+          </button>
+          <button
+            type="button"
             onClick={handleDownloadExcel}
-            disabled={loading || filteredRecords.length === 0}
+            disabled={loading || visibleRecords.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
-            title="Tải Excel theo bộ lọc đang chọn"
+            title="Tải Excel toàn bộ danh sách"
           >
             <FileSpreadsheet className="h-4 w-4" />
             Tải Excel
           </button>
           <button
             type="button"
-            onClick={handlePrintFiltered}
-            disabled={loading || pendingPrint || filteredRecords.length === 0}
+            onClick={handlePrintAll}
+            disabled={loading || pendingPrint || visibleRecords.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#ef1b2d]/30 bg-red-50 px-3 text-xs font-bold text-[#ef1b2d] transition hover:bg-red-100 disabled:opacity-60"
-            title="In bảng tổng hợp theo bộ lọc đang chọn"
+            title="In bảng tổng hợp toàn bộ danh sách"
           >
             {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            In theo bộ lọc
+            In
           </button>
           <button
             type="button"
@@ -574,9 +930,47 @@ export function CanTuDongPanel({
         </div>
       </div>
 
+      <TableToolbar
+        isLoading={loading}
+        hasActiveFilters={hasMaSpFilters}
+        onResetFilters={clearMaSpFilters}
+      >
+        <TableSearchInput
+          value={maSpQuery}
+          onChange={value => {
+            setMaSpQuery(value);
+            if (value.trim()) setMaSpFilter('all');
+          }}
+          placeholder="Lọc theo Mã SP, QR hoặc tên SP..."
+          disabled={loading}
+        />
+        <FilterCombobox
+          label="Mã SP"
+          options={maSpOptions}
+          value={maSpFilter}
+          onChange={value => {
+            setMaSpFilter(value);
+            if (value !== 'all') setMaSpQuery('');
+          }}
+          searchPlaceholder="Tìm mã SP..."
+          formatOption={code => {
+            const name = productNameByCode.get(normalizeProductCodeKey(code));
+            return name ? `${code} · ${name}` : code;
+          }}
+          dropdownWidth="w-max min-w-[16rem] max-w-[min(28rem,calc(100vw-1rem))]"
+        />
+        <span className="text-[11px] font-semibold text-zinc-500">
+          {loading
+            ? '…'
+            : hasMaSpFilters
+              ? `${formatNumber(visibleRecords.length, 0)} / ${formatNumber(records.length, 0)} dòng`
+              : `${formatNumber(records.length, 0)} dòng`}
+        </span>
+      </TableToolbar>
+
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-950">
         <div className="flex flex-wrap items-center gap-4">
-          <span title="Số dòng đang lọc = số lần cân">
+          <span title="Số dòng = số lần cân">
             <span className="uppercase tracking-wider text-emerald-800/80">Số lượng</span>{' '}
             <span className="font-mono text-sm">
               {loading ? '…' : formatNumber(trongLuongNhuaTotals.quantity, 0)}
@@ -588,31 +982,244 @@ export function CanTuDongPanel({
               {loading ? '…' : `${formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg`}
             </span>
           </span>
+          <span title="Tổng cột «Trọng lượng tiêu chuẩn» = Σ san_pham.tong_trong_luong theo Mã SP từ QR">
+            <span className="uppercase tracking-wider text-sky-800/80">Trọng lượng tiêu chuẩn</span>{' '}
+            <span className="font-mono text-sm text-sky-900">
+              {loading ? '…' : `${formatNumber(nhuaTieuChuanTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+          <span title="Tổng cột «Cân sản phẩm» (Trọng lượng TT)">
+            <span className="uppercase tracking-wider text-violet-800/80">Trọng lượng TT</span>{' '}
+            <span className="font-mono text-sm text-violet-900">
+              {loading ? '…' : `${formatNumber(trongLuongTtTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+          <span title="Chênh lệch = Trọng lượng TT − Trọng lượng tiêu chuẩn (thực tế − LT)">
+            <span className="uppercase tracking-wider text-rose-800/80">Chênh lệch</span>{' '}
+            <span
+              className={`font-mono text-sm ${
+                loading
+                  ? 'text-zinc-500'
+                  : chenhLechTtLtTotals.weightKg > 0
+                    ? 'text-emerald-800'
+                    : chenhLechTtLtTotals.weightKg < 0
+                      ? 'text-rose-700'
+                      : 'text-zinc-800'
+              }`}
+            >
+              {loading
+                ? '…'
+                : `${chenhLechTtLtTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechTtLtTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+          <span title="Tổng cột «Cân lõi» (trọng lượng lõi thực tế)">
+            <span className="uppercase tracking-wider text-sky-800/80">Tổng trọng lượng lõi</span>{' '}
+            <span className="font-mono text-sm text-sky-900">
+              {loading ? '…' : `${formatNumber(tongTrongLuongLoiTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+          <span title="Tổng cột «Lõi lý thuyết» = Σ san_pham.trong_luong_loi theo Mã SP từ QR">
+            <span className="uppercase tracking-wider text-amber-800/80">Tổng trọng lượng lõi lý thuyết</span>{' '}
+            <span className="font-mono text-sm text-amber-900">
+              {loading ? '…' : `${formatNumber(loiTieuChuanTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
+          <span title="Chênh lệch lõi = Tổng trọng lượng lõi − Tổng trọng lượng lõi lý thuyết (thực tế − LT)">
+            <span className="uppercase tracking-wider text-orange-800/80">Chênh lệch lõi</span>{' '}
+            <span
+              className={`font-mono text-sm ${
+                loading
+                  ? 'text-zinc-500'
+                  : chenhLechLoiTotals.weightKg > 0
+                    ? 'text-emerald-800'
+                    : chenhLechLoiTotals.weightKg < 0
+                      ? 'text-rose-700'
+                      : 'text-zinc-800'
+              }`}
+            >
+              {loading
+                ? '…'
+                : `${chenhLechLoiTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechLoiTotals.weightKg, 2)} kg`}
+            </span>
+          </span>
         </div>
         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700/70">
-          Tổng cột Trọng lượng nhựa
+          TL · TT · Chênh lệch · Lõi · Lõi LT · Chênh lệch lõi
         </span>
       </div>
 
-      <div className="grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-2">
-        <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
-          Từ ngày
-          <input
-            type="date"
-            value={fromDate}
-            onChange={e => setFromDate(e.target.value)}
-            className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
-          />
-        </label>
-        <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
-          Đến ngày
-          <input
-            type="date"
-            value={toDate}
-            onChange={e => setToDate(e.target.value)}
-            className="mt-1 h-9 w-full rounded-lg border border-zinc-200 px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
-          />
-        </label>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-sm font-black uppercase tracking-wider text-zinc-800">
+            Phân tích
+          </h2>
+          <p className="text-[11px] font-semibold text-zinc-500">
+            {diffFilter === 'gt-2pct'
+              ? `So Cân SP với TL tiêu chuẩn · ngưỡng ${PHAN_TICH_NGUONG_PCT}%`
+              : diffFilter === 'all-diff'
+                ? 'So Cân SP với TL tiêu chuẩn · tất cả chênh lệch (không lọc 2%)'
+                : 'Hiển thị toàn bộ dòng cân tự động'}
+            {maSpFilter !== 'all' ? ` · Mã SP ${maSpFilter}` : ''}
+            {maSpQuery.trim() ? ` · tìm «${maSpQuery.trim()}»` : ''}
+            {!loading && phanTichCan.comparedRows > 0
+              ? ` · ${formatNumber(phanTichCan.comparedRows, 0)} dòng có tiêu chuẩn`
+              : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+            Bộ lọc danh sách
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDiffFilter('all')}
+              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
+                diffFilter === 'all'
+                  ? 'border-violet-300 bg-violet-600 text-white'
+                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
+              }`}
+              title="Hiện toàn bộ dòng cân tự động"
+            >
+              Tất cả
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiffFilter('all-diff')}
+              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
+                diffFilter === 'all-diff'
+                  ? 'border-violet-300 bg-violet-600 text-white'
+                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
+              }`}
+              title="Hiện mọi dòng có chênh lệch; bảng Phân tích không tách theo 2%"
+            >
+              Tất cả chênh lệch
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiffFilter('gt-2pct')}
+              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
+                diffFilter === 'gt-2pct'
+                  ? 'border-violet-300 bg-violet-600 text-white'
+                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
+              }`}
+              title={`Chỉ hiện dòng |%| > ${PHAN_TICH_NGUONG_PCT}%; bảng Phân tích tách theo ngưỡng ${PHAN_TICH_NGUONG_PCT}%`}
+            >
+              So sánh với {PHAN_TICH_NGUONG_PCT}%
+            </button>
+          </div>
+          <span className="ml-auto text-[11px] font-semibold text-zinc-500">
+            {loading
+              ? '…'
+              : `Đang xem ${formatNumber(visibleRecords.length, 0)} / ${formatNumber(records.length, 0)} dòng`}
+          </span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {(
+            [
+              {
+                key: 'kem',
+                title: 'Kém cân',
+                hint: 'Cân SP < Trọng lượng tiêu chuẩn',
+                tone: 'rose' as const,
+                stats: phanTichCan.kem
+              },
+              {
+                key: 'hon',
+                title: 'Hơn cân',
+                hint: 'Cân SP > Trọng lượng tiêu chuẩn',
+                tone: 'emerald' as const,
+                stats: phanTichCan.hon
+              }
+            ] as const
+          ).map(card => {
+            const border =
+              card.tone === 'rose' ? 'border-rose-200 bg-rose-50/60' : 'border-emerald-200 bg-emerald-50/60';
+            const titleColor = card.tone === 'rose' ? 'text-rose-900' : 'text-emerald-900';
+            const muted = card.tone === 'rose' ? 'text-rose-700/80' : 'text-emerald-700/80';
+            const value = card.tone === 'rose' ? 'text-rose-950' : 'text-emerald-950';
+            const showBy2Pct = diffFilter === 'gt-2pct';
+            return (
+              <div key={card.key} className={`overflow-hidden rounded-2xl border ${border}`}>
+                <div className="border-b border-black/5 px-4 py-2.5">
+                  <p className={`text-sm font-black ${titleColor}`}>{card.title}</p>
+                  <p className={`text-[10px] font-semibold ${muted}`}>{card.hint}</p>
+                </div>
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-black/5 bg-white/50 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                      <th className="px-4 py-2 font-black">Chỉ số</th>
+                      <th className="px-4 py-2 text-right font-black">Giá trị</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`font-bold ${value}`}>
+                    {showBy2Pct ? (
+                      <>
+                        <tr className="border-b border-black/5 bg-white/40">
+                          <td className="px-4 py-2.5" title={`|Phần trăm| ≤ ${PHAN_TICH_NGUONG_PCT}%`}>
+                            Số dòng ≤{PHAN_TICH_NGUONG_PCT}%
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                            {loading ? '…' : formatNumber(card.stats.rowsLe2Pct, 0)}
+                          </td>
+                        </tr>
+                        <tr className="border-b border-black/5 bg-white/40">
+                          <td className="px-4 py-2.5" title={`|Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%`}>
+                            Số dòng &gt;{PHAN_TICH_NGUONG_PCT}%
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                            {loading ? '…' : formatNumber(card.stats.rowsGt2Pct, 0)}
+                          </td>
+                        </tr>
+                        <tr className="bg-white/40">
+                          <td
+                            className="px-4 py-2.5"
+                            title={`Tổng |Cân SP − TL tiêu chuẩn| của dòng |%| > ${PHAN_TICH_NGUONG_PCT}%`}
+                          >
+                            Khối lượng chênh lệch &gt;{PHAN_TICH_NGUONG_PCT}%
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                            {loading
+                              ? '…'
+                              : card.stats.weightDiffGt2Kg > 0
+                                ? `${formatNumber(card.stats.weightDiffGt2Kg, 3)} kg`
+                                : '0 kg'}
+                          </td>
+                        </tr>
+                      </>
+                    ) : (
+                      <>
+                        <tr className="border-b border-black/5 bg-white/40">
+                          <td className="px-4 py-2.5" title="Tổng số dòng có chênh lệch trong nhóm">
+                            Số dòng
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                            {loading ? '…' : formatNumber(card.stats.rowCount, 0)}
+                          </td>
+                        </tr>
+                        <tr className="bg-white/40">
+                          <td
+                            className="px-4 py-2.5"
+                            title="Tổng |Cân SP − TL tiêu chuẩn| mọi dòng trong nhóm"
+                          >
+                            Khối lượng chênh lệch
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                            {loading
+                              ? '…'
+                              : card.stats.weightDiffAllKg > 0
+                                ? `${formatNumber(card.stats.weightDiffAllKg, 3)} kg`
+                                : '0 kg'}
+                          </td>
+                        </tr>
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {error ? (
@@ -621,49 +1228,33 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <TableToolbar isLoading={loading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
-        <TableSearchInput
-          value={searchText}
-          onChange={setSearchText}
-          placeholder="Tìm QR..."
-          disabled={loading}
-        />
-        <FilterCombobox
-          label="Ca"
-          options={caOptions}
-          value={selectedCa}
-          onChange={setSelectedCa}
-          searchPlaceholder="Tìm ca..."
-          compact
-        />
-        <MultiSelectFilter
-          label="Mã QR"
-          allLabel="Tất cả mã QR"
-          options={qrCodeOptions}
-          values={selectedQrCodes}
-          onChange={setSelectedQrCodes}
-          searchPlaceholder="Tìm mã QR..."
-          emptyLabel="Không tìm thấy mã QR"
-          dropdownWidth="w-[min(28rem,calc(100vw-1.5rem))]"
-          buttonClassName="h-9 rounded-lg px-2.5 text-xs"
-        />
-        <FilterCombobox
-          label="Trạng thái"
-          options={statusOptions}
-          value={selectedStatus}
-          onChange={setSelectedStatus}
-          searchPlaceholder="Tìm trạng thái..."
-          compact
-        />
-      </TableToolbar>
-
       {selectedCount > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2.5">
           <p className="mr-auto text-xs font-bold text-rose-800">Đã chọn {selectedCount} dòng</p>
           <button
             type="button"
+            onClick={() => void handleFillCaSelected()}
+            disabled={isAutoFilling || isSettingCa || isBulkDeleting}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-500 px-3 text-xs font-bold text-white transition hover:bg-amber-600 disabled:opacity-60"
+            title={`Chỉ điền Ca = ${AUTO_FILL_CA}`}
+          >
+            {isSettingCa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock3 className="h-3.5 w-3.5" />}
+            {isSettingCa ? 'Đang điền Ca...' : `Điền Ca ${AUTO_FILL_CA}`}
+          </button>
+          <button
+            type="button"
+            onClick={openAutoFillModal}
+            disabled={isAutoFilling || isSettingCa || isBulkDeleting}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-600 px-3 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
+            title={`Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
+          >
+            {isAutoFilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {isAutoFilling ? 'Đang điền...' : 'Tự động điền'}
+          </button>
+          <button
+            type="button"
             onClick={clearSelection}
-            disabled={isBulkDeleting}
+            disabled={isBulkDeleting || isAutoFilling}
             className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Bỏ chọn
@@ -671,7 +1262,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={() => void handleBulkDelete()}
-            disabled={isBulkDeleting}
+            disabled={isBulkDeleting || isAutoFilling}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
             {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -680,7 +1271,7 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <TableShell minWidthClassName="min-w-[1280px]">
+      <TableShell minWidthClassName="min-w-[2360px]">
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input
@@ -694,11 +1285,73 @@ export function CanTuDongPanel({
           </TableHeadCell>
           <TableHeadCell>Ảnh lõi</TableHeadCell>
           <TableHeadCell>Ảnh sản phẩm</TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Ngày nghiệp vụ (SOURCE_DATE / work_date), không dùng ngày cân"
+          >
+            Ngày
+          </TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Thời điểm</TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="metadata.machine / SOURCE_MACHINE"
+          >
+            Máy
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="metadata.production_order / SOURCE_PRODUCTION_ORDER"
+          >
+            Lệnh SX
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Mã sản phẩm lấy từ QR"
+          >
+            Mã SP
+          </TableHeadCell>
           <TableHeadCell>QR</TableHeadCell>
+          <TableHeadCell title="weight — còn lõi" className="whitespace-nowrap">
+            Cân sản phẩm
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="san_pham.tong_trong_luong (Tổng TL / Khối lượng) theo Mã SP từ QR"
+          >
+            Trọng lượng tiêu chuẩn
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Trọng lượng TT = cột Cân sản phẩm (weight / can_san_pham)"
+          >
+            Trọng lượng TT
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Chênh lệch = Trọng lượng TT − Trọng lượng tiêu chuẩn (thực tế − LT)"
+          >
+            Chênh lệch TT−LT
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="(Chênh lệch ÷ Trọng lượng tiêu chuẩn) × 100%"
+          >
+            Phần trăm
+          </TableHeadCell>
           <TableHeadCell title="tare_weight">Cân lõi</TableHeadCell>
-          <TableHeadCell title="weight — còn lõi">Cân sản phẩm</TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="san_pham.trong_luong_loi (Trọng lượng lõi lý thuyết) theo Mã SP từ QR"
+          >
+            Lõi lý thuyết
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Chênh lệch lõi = Cân lõi − Lõi lý thuyết (thực tế − LT)"
+          >
+            Chênh lệch lõi
+          </TableHeadCell>
           <TableHeadCell title={`Mặc định ${DEFAULT_CAN_TU_DONG_BI_KG} kg`}>
             Trọng lượng bì
           </TableHeadCell>
@@ -708,16 +1361,28 @@ export function CanTuDongPanel({
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={12}>
+            <TableEmptyRow colSpan={22}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
-          ) : filteredRecords.length === 0 ? (
-            <TableEmptyRow colSpan={12}>Không có bản ghi trong khoảng lọc.</TableEmptyRow>
+          ) : visibleRecords.length === 0 ? (
+            <TableEmptyRow colSpan={22}>
+              {records.length === 0
+                ? 'Không có bản ghi cân tự động.'
+                : hasMaSpFilters && recordsByMaSp.length === 0
+                  ? maSpFilter !== 'all'
+                    ? `Không có dòng nào với Mã SP ${maSpFilter}.`
+                    : `Không có dòng khớp «${maSpQuery.trim()}».`
+                  : diffFilter === 'gt-2pct'
+                    ? `Không có dòng nào có |Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%.`
+                    : diffFilter === 'all-diff'
+                      ? 'Không có dòng nào có chênh lệch so với TL tiêu chuẩn.'
+                      : 'Không có bản ghi cân tự động.'}
+            </TableEmptyRow>
           ) : (
-            filteredRecords.map(row => {
+            visibleRecords.map(row => {
               const idKey = rowIdKey(row.id);
               const coreUrl = resolveCoreImageUrl(row);
               const productUrl = resolveProductImageUrl(row);
@@ -727,6 +1392,27 @@ export function CanTuDongPanel({
               const canSp = row.can_san_pham ?? row.weight;
               const trongLuongBi = resolveTrongLuongBiKg(row);
               const trongLuongNhua = resolveTrongLuongNhuaKg(row);
+              const ngay = resolveCanTuDongBusinessDate(row);
+              const may =
+                String(row.may ?? row.machine ?? '').trim() || resolveCanTuDongMachine(row) || '';
+              const lenhSx =
+                String(row.lenh_sx ?? row.ma_lenh_sx ?? '').trim() ||
+                resolveCanTuDongProductionOrder(row) ||
+                '';
+              const maSp = parseCanTuDongQrProductCode(row.qr_code);
+              const maSpKey = normalizeProductCodeKey(maSp);
+              const trongLuongTieuChuan =
+                (maSpKey && productStandardWeightByCode.get(maSpKey)) || null;
+              const loiTieuChuan =
+                (maSpKey && productCoreWeightByCode.get(maSpKey)) || null;
+              const canLoiNum = asWeightNumber(canLoi);
+              const chenhLechLoi =
+                canLoiNum != null && loiTieuChuan != null ? canLoiNum - loiTieuChuan : null;
+              const canSpNum = asWeightNumber(canSp);
+              const { chenhLech, phanTram } = resolveCanSpVsStandard(
+                canSpNum,
+                trongLuongTieuChuan
+              );
               return (
                 <TableRow key={idKey}>
                   <td className="px-4 py-3 text-center align-middle">
@@ -755,20 +1441,98 @@ export function CanTuDongPanel({
                       onView={() => setViewingImage({ url: productUrl, title: productTitle })}
                     />
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-900">
+                    {formatIsoDateVi(ngay)}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatDateTime(row.captured_at || row.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold text-sky-900">
                     {row.ca || '—'}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-bold text-amber-900">
+                    {may || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-violet-900">
+                    {lenhSx || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-sky-950">
+                    {maSp || '—'}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-900">
                     {row.qr_code || '—'}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-sky-800">
-                    {formatWeight(canLoi, row.unit)}
-                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
-                    {formatWeight(canSp, row.unit)}
+                    {formatWeight(canSp, row.unit, 6)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 font-semibold text-indigo-900"
+                    title={maSp ? `Mã SP: ${maSp}` : undefined}
+                  >
+                    {trongLuongTieuChuan != null
+                      ? formatWeight(trongLuongTieuChuan, 'kg', 3)
+                      : '—'}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 font-semibold text-violet-900"
+                    title="Trọng lượng TT = Cân sản phẩm"
+                  >
+                    {formatWeight(canSp, row.unit, 6)}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-4 py-3 font-bold tabular-nums ${
+                      chenhLech == null
+                        ? 'text-zinc-400'
+                        : chenhLech > 0
+                          ? 'text-emerald-800'
+                          : chenhLech < 0
+                            ? 'text-rose-700'
+                            : 'text-zinc-800'
+                    }`}
+                    title="Chênh lệch = Trọng lượng TT − LT (tiêu chuẩn)"
+                  >
+                    {chenhLech == null
+                      ? '—'
+                      : `${chenhLech > 0 ? '+' : ''}${formatWeight(chenhLech, row.unit, 3)}`}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-4 py-3 font-bold tabular-nums ${
+                      phanTram == null
+                        ? 'text-zinc-400'
+                        : phanTram > 0
+                          ? 'text-emerald-800'
+                          : phanTram < 0
+                            ? 'text-rose-700'
+                            : 'text-zinc-800'
+                    }`}
+                    title="(Chênh lệch ÷ Tiêu chuẩn) × 100%"
+                  >
+                    {formatSignedPercent(phanTram)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-sky-800">
+                    {formatWeight(canLoi, row.unit, 6)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 font-semibold text-amber-900"
+                    title={maSp ? `Lõi lý thuyết · Mã SP: ${maSp}` : 'Lõi lý thuyết từ sản phẩm'}
+                  >
+                    {loiTieuChuan != null ? formatWeight(loiTieuChuan, 'kg', 3) : '—'}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-4 py-3 font-bold tabular-nums ${
+                      chenhLechLoi == null
+                        ? 'text-zinc-400'
+                        : chenhLechLoi > 0
+                          ? 'text-emerald-800'
+                          : chenhLechLoi < 0
+                            ? 'text-rose-700'
+                            : 'text-zinc-800'
+                    }`}
+                    title="Chênh lệch lõi = Cân lõi − Lõi lý thuyết"
+                  >
+                    {chenhLechLoi == null
+                      ? '—'
+                      : `${chenhLechLoi > 0 ? '+' : ''}${formatWeight(chenhLechLoi, row.unit, 3)}`}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatWeight(trongLuongBi, row.unit, 2)}
@@ -807,6 +1571,122 @@ export function CanTuDongPanel({
           )}
         </TableBody>
       </TableShell>
+
+      {showAutoFillModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-autofill-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-autofill-title" className="text-base font-black text-zinc-950">
+                  Tự động điền
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Điền cho {selectedCount} dòng đã chọn
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAutoFillModal(false)}
+                disabled={isAutoFilling}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700">
+                <p>• Ngày = 20/08/2026</p>
+                <p>• Ca = {AUTO_FILL_CA}</p>
+                <p>• Lệnh SX = {AUTO_FILL_LENH_SX}</p>
+                <p>• Máy = {AUTO_FILL_MAY}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowAutoFillModal(false)}
+                disabled={isAutoFilling}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAutoFillSelected()}
+                disabled={isAutoFilling}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-extrabold text-white hover:bg-violet-700 disabled:opacity-60"
+              >
+                {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {isAutoFilling ? 'Đang điền...' : 'Điền tất cả đã chọn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showNormalizeAllModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-normalize-all-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-normalize-all-title" className="text-base font-black text-zinc-950">
+                  Quy hết về 20/08
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Gán tất cả {records.length} dòng đang tải
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNormalizeAllModal(false)}
+                disabled={isAutoFilling}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-900">
+                <p>• Ngày = 20/08/2026</p>
+                <p>• Ca = {AUTO_FILL_CA}</p>
+                <p>• Máy = {AUTO_FILL_MAY}</p>
+              </div>
+              <p className="text-xs font-semibold text-zinc-500">
+                Mọi dòng (kể cả 21/08, HC1, 12C1) sẽ đổi sang các thông số trên. Lệnh SX giữ nguyên.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowNormalizeAllModal(false)}
+                disabled={isAutoFilling}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleNormalizeAll()}
+                disabled={isAutoFilling}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />}
+                {isAutoFilling ? 'Đang quy...' : 'Quy hết'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editingRecord ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">

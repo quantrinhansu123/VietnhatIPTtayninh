@@ -777,6 +777,8 @@ export function MaterialsInventoryPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingMaterial, setViewingMaterial] = useState<MaterialRow | null>(null);
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(() => new Set());
+  const [isDeletingMaterials, setIsDeletingMaterials] = useState(false);
   const [isSavingMaterial, setIsSavingMaterial] = useState(false);
   const [formError, setFormError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
@@ -902,6 +904,39 @@ export function MaterialsInventoryPanel({
       return matchesWarehouse && matchesSearch;
     });
   }, [asOfDate, datedMaterials, includeUnassigned, normalizedSearch, warehouseFilter]);
+
+  const selectableFilteredMaterials = useMemo(
+    () => filteredMaterials.filter(material => !material.inventoryBalanceOnly && Boolean(material.id)),
+    [filteredMaterials]
+  );
+  const selectedMaterials = useMemo(
+    () => materials.filter(material => selectedMaterialIds.has(material.id)),
+    [materials, selectedMaterialIds]
+  );
+  const allFilteredSelected =
+    selectableFilteredMaterials.length > 0 &&
+    selectableFilteredMaterials.every(material => selectedMaterialIds.has(material.id));
+
+  const toggleMaterial = (materialId: string) => {
+    setSelectedMaterialIds(prev => {
+      const next = new Set(prev);
+      if (next.has(materialId)) next.delete(materialId);
+      else next.add(materialId);
+      return next;
+    });
+  };
+
+  const toggleFilteredMaterials = () => {
+    setSelectedMaterialIds(prev => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        selectableFilteredMaterials.forEach(material => next.delete(material.id));
+      } else {
+        selectableFilteredMaterials.forEach(material => next.add(material.id));
+      }
+      return next;
+    });
+  };
 
   const hasActiveFilters = Boolean(searchText);
   const resetFilters = () => {
@@ -1108,12 +1143,58 @@ export function MaterialsInventoryPanel({
       }
 
       if (viewingMaterial?.id === material.id) setViewingMaterial(null);
+      setSelectedMaterialIds(prev => {
+        const next = new Set(prev);
+        next.delete(material.id);
+        return next;
+      });
       setActionMessage('Đã xóa nguyên phụ liệu.');
       await loadMaterials();
     } catch (error: any) {
       setMaterialsError(error.message || 'Không thể xóa nguyên phụ liệu.');
     } finally {
       setDeletingMaterialId(null);
+    }
+  };
+
+  const handleBulkDeleteMaterials = async () => {
+    if (selectedMaterials.length === 0) return;
+
+    const label =
+      selectedMaterials.length === 1
+        ? `"${selectedMaterials[0].code || selectedMaterials[0].name}"`
+        : `${selectedMaterials.length} nguyên phụ liệu`;
+
+    if (!window.confirm(`Bạn có chắc muốn xóa ${label}? Hành động này không thể hoàn tác.`)) {
+      return;
+    }
+
+    setIsDeletingMaterials(true);
+    setActionMessage('');
+    setMaterialsError('');
+
+    try {
+      const res = await fetch('/api/kho-nvl', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedMaterials.map(material => material.id) })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể xóa nguyên phụ liệu đã chọn.');
+      }
+
+      if (viewingMaterial && selectedMaterialIds.has(viewingMaterial.id)) {
+        setViewingMaterial(null);
+      }
+      setSelectedMaterialIds(new Set());
+      setActionMessage(`Đã xóa ${data.deleted ?? selectedMaterials.length} nguyên phụ liệu.`);
+      await loadMaterials();
+    } catch (error: any) {
+      setMaterialsError(error.message || 'Không thể xóa nguyên phụ liệu đã chọn.');
+    } finally {
+      setIsDeletingMaterials(false);
     }
   };
 
@@ -1190,6 +1271,17 @@ export function MaterialsInventoryPanel({
             >
               <Plus className="h-4 w-4" />
               Thêm mới
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={() => void handleBulkDeleteMaterials()}
+              disabled={selectedMaterials.length === 0 || isDeletingMaterials}
+              className="flex h-10 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDeletingMaterials ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isDeletingMaterials ? 'Đang xóa...' : 'Xóa đã chọn'}
             </button>
           ) : null}
         </div>
@@ -1348,8 +1440,18 @@ export function MaterialsInventoryPanel({
         }}
       />
 
-      <TableShell minWidthClassName="min-w-[800px]">
+      <TableShell minWidthClassName="min-w-[850px]">
         <TableHead>
+          <TableHeadCell align="center" className="w-14">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={toggleFilteredMaterials}
+              disabled={selectableFilteredMaterials.length === 0 || isDeletingMaterials}
+              className="h-4 w-4 accent-[#ef1b2d]"
+              aria-label="Chọn tất cả nguyên phụ liệu đang lọc"
+            />
+          </TableHeadCell>
           <TableHeadCell>Mã NPL</TableHeadCell>
           <TableHeadCell>Tên nguyên phụ liệu</TableHeadCell>
           <TableHeadCell>ĐV</TableHeadCell>
@@ -1359,9 +1461,25 @@ export function MaterialsInventoryPanel({
           <TableHeadCell align="center">Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
-          {filteredMaterials.map(material => (
+          {filteredMaterials.map(material => {
+            const canSelect = !material.inventoryBalanceOnly && Boolean(material.id);
+            return (
             <React.Fragment key={material.id}>
               <TableRow>
+                <td className="px-3 py-3 text-center">
+                  {canSelect ? (
+                    <input
+                      type="checkbox"
+                      checked={selectedMaterialIds.has(material.id)}
+                      onChange={() => toggleMaterial(material.id)}
+                      disabled={isDeletingMaterials}
+                      className="h-4 w-4 accent-[#ef1b2d]"
+                      aria-label={`Chọn ${material.code || material.name}`}
+                    />
+                  ) : (
+                    <span className="inline-block h-4 w-4" aria-hidden />
+                  )}
+                </td>
                 <td className="px-4 py-3 font-black text-zinc-950">{material.code || '-'}</td>
                 <td className="px-4 py-3 font-semibold text-zinc-900">{material.name || '-'}</td>
                 <td className="px-4 py-3 text-zinc-700">{material.unit}</td>
@@ -1395,7 +1513,7 @@ export function MaterialsInventoryPanel({
                       <button
                         type="button"
                         onClick={() => handleDeleteMaterial(material)}
-                        disabled={deletingMaterialId === material.id}
+                        disabled={deletingMaterialId === material.id || isDeletingMaterials}
                         title="Xóa"
                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 active:scale-95"
                       >
@@ -1411,10 +1529,11 @@ export function MaterialsInventoryPanel({
                 </td>
               </TableRow>
             </React.Fragment>
-          ))}
+            );
+          })}
 
           {!isLoadingMaterials && filteredMaterials.length === 0 && (
-            <TableEmptyRow colSpan={7}>
+            <TableEmptyRow colSpan={8}>
               {asOfDate ? 'Không có mã hàng trong kho này.' : 'Vui lòng chọn ngày để xem hàng còn trong kho.'}
             </TableEmptyRow>
           )}

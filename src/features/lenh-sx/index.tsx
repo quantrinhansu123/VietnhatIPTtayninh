@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { parseDateToIso } from '../../utils/dateFormat';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
@@ -271,22 +272,15 @@ export function ProductionOrdersPanel({
     return [...new Set(codes)].sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
   }, [rows]);
 
-  // Định dạng dd/mm/yyyy hiển thị trên bảng -> mốc thời gian để so sánh khoảng ngày.
   const parseDisplayDate = (value: string): number | null => {
-    const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!match) return null;
-    const [, day, month, year] = match;
-    const time = new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+    const iso = parseDateToIso(value);
+    if (!iso) return null;
+    const [year, month, day] = iso.split('-').map(Number);
+    const time = new Date(year, month - 1, day).getTime();
     return Number.isFinite(time) ? time : null;
   };
 
-  const parseDateInput = (value: string): number | null => {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-    const [, year, month, day] = match;
-    const time = new Date(Number(year), Number(month) - 1, Number(day)).getTime();
-    return Number.isFinite(time) ? time : null;
-  };
+  const parseDateInput = (value: string): number | null => parseDisplayDate(value);
 
   const hasActiveFilters =
     selectedStatus !== 'all' ||

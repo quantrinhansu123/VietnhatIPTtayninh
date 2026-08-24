@@ -1,4 +1,5 @@
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import { parseDateToIso } from './dateFormat';
 import { shiftNamesMatch } from './shiftSettings';
 
 /** Bản ghi tối thiểu để tính trọng lượng nhựa / lọc lần cân. */
@@ -8,9 +9,20 @@ export type CanTuDongWeightRow = {
   tare_weight?: number | string | null;
   can_san_pham?: number | string | null;
   weight?: number | string | null;
+  /** Cột UI «Trọng lượng nhựa» ưu tiên tính SP − lõi − bì; các field này chỉ dự phòng. */
+  khoi_luong_thuc?: number | string | null;
+  net_weight?: number | string | null;
   ca?: string | null;
+  lenh_sx?: string | null;
+  ma_lenh_sx?: string | null;
+  /** Máy từ metadata / API (SOURCE_MACHINE). */
+  may?: string | null;
+  machine?: string | null;
   captured_at?: string | null;
   created_at?: string | null;
+  /** Cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân. */
+  ngay?: string | null;
+  work_date?: string | null;
   device_id?: string | null;
   metadata?: unknown;
 };
@@ -82,22 +94,111 @@ function pickMetaText(meta: Record<string, unknown>, keys: string[]): string {
   return '';
 }
 
-/** Ngày nghiệp vụ: SOURCE_DATE trong metadata, không thì ngày VN của captured_at. */
+function asCanTuDongMetadata(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata) return null;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Cột Ngày: SOURCE_DATE / work_date. Không dùng captured_at (Ngày cân / Thời điểm). */
 export function resolveCanTuDongBusinessDate(row: CanTuDongWeightRow): string | null {
+  const fromRow = parseDateToIso(row.ngay ?? row.work_date ?? '');
+  if (fromRow) return fromRow;
+
+  const meta = asCanTuDongMetadata(row.metadata);
+  if (!meta) return null;
+
+  for (const key of ['SOURCE_DATE', 'source_date', 'work_date', 'ngay', 'date']) {
+    const parsed = parseDateToIso(meta[key]);
+    if (parsed) return parsed;
+  }
+
+  for (const value of Object.values(meta)) {
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const match = value.match(
+      /SOURCE_DATE\s*=\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[/.\-]\d{1,2}[/.\-]\d{4})/i
+    );
+    if (match?.[1]) {
+      const fromRaw = parseDateToIso(match[1]);
+      if (fromRaw) return fromRaw;
+    }
+  }
+  return null;
+}
+
+/** Lệnh SX: cột API `lenh_sx`, metadata.production_order / SOURCE_PRODUCTION_ORDER, hoặc phần sau `+` trên QR. */
+export function resolveCanTuDongProductionOrder(row: CanTuDongWeightRow): string | null {
+  const fromRow = String(row.lenh_sx ?? row.ma_lenh_sx ?? '').trim();
+  if (fromRow) return fromRow;
+
   const metadata = row.metadata;
   if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
     const meta = metadata as Record<string, unknown>;
-    const direct = pickMetaText(meta, ['SOURCE_DATE', 'source_date', 'ngay', 'date']);
-    const directMatch = direct.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (directMatch) return directMatch[1];
+    const direct = pickMetaText(meta, [
+      'production_order',
+      'SOURCE_PRODUCTION_ORDER',
+      'source_production_order',
+      'ma_lenh_sx',
+      'lenh_sx',
+      'lenhSx'
+    ]);
+    if (direct) return direct;
 
     for (const value of Object.values(meta)) {
       if (typeof value !== 'string' || !value.trim()) continue;
-      const match = value.match(/SOURCE_DATE\s*=\s*(\d{4}-\d{2}-\d{2})/i);
-      if (match?.[1]) return match[1];
+      const match = value.match(/SOURCE_PRODUCTION_ORDER\s*=\s*([^\s;|,]+)/i);
+      if (match?.[1]) return match[1].trim();
     }
   }
-  return vietnamIsoDateFromTimestamp(row.captured_at || row.created_at);
+
+  const qr = String(row.qr_code || '').trim();
+  const plusIdx = qr.indexOf('+');
+  if (plusIdx > 0) {
+    const after = qr.slice(plusIdx + 1).trim();
+    if (after) return after;
+  }
+  return null;
+}
+
+/** Máy: metadata.machine / SOURCE_MACHINE, hoặc cột may/machine. */
+export function resolveCanTuDongMachine(row: CanTuDongWeightRow): string | null {
+  const direct = String(row.may ?? row.machine ?? '').trim();
+  if (direct) return direct;
+
+  const metadata = row.metadata;
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+    const meta = metadata as Record<string, unknown>;
+    const fromMeta = pickMetaText(meta, [
+      'machine',
+      'SOURCE_MACHINE',
+      'source_machine',
+      'may',
+      'ten_may',
+      'ma_may',
+      'machine_name'
+    ]);
+    if (fromMeta) return fromMeta;
+
+    for (const value of Object.values(meta)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const match = value.match(/SOURCE_MACHINE\s*=\s*([^;|,]+)/i);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return null;
 }
 
 /**
@@ -190,8 +291,14 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
     shiftFilter?: string;
     dateFrom?: string;
     dateTo?: string;
-    /** Khi truyền: chỉ giữ lần cân có ngày+ca trùng một lệnh SX đang lọc. */
-    orderShiftBuckets?: Array<{ ngay?: string | null; shift?: string | null }> | null;
+    machineFilter?: string;
+    selectedMachine?: { code?: string; name?: string } | null;
+    /** Khi truyền: chỉ giữ lần cân có ngày+ca(+máy) trùng một lệnh SX đang lọc. */
+    orderShiftBuckets?: Array<{
+      ngay?: string | null;
+      shift?: string | null;
+      machine?: string | null;
+    }> | null;
     /** Khi truyền (kể cả Set rỗng): chỉ giữ lần cân có QR khớp mã SP lệnh SX. */
     productCodeKeys?: Iterable<string> | null;
   } = {}
@@ -199,13 +306,16 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
   const shiftFilter = String(opts.shiftFilter || '').trim();
   const dateFrom = String(opts.dateFrom || '').trim();
   const dateTo = String(opts.dateTo || '').trim();
+  const machineFilter = String(opts.machineFilter || '').trim();
+  const selectedMachine = opts.selectedMachine ?? null;
   const buckets = Array.isArray(opts.orderShiftBuckets)
     ? opts.orderShiftBuckets
         .map(bucket => ({
           ngay: String(bucket.ngay || '').trim(),
-          shift: String(bucket.shift || '').trim()
+          shift: String(bucket.shift || '').trim(),
+          machine: String(bucket.machine || '').trim()
         }))
-        .filter(bucket => bucket.ngay || bucket.shift)
+        .filter(bucket => bucket.ngay || bucket.shift || bucket.machine)
     : null;
   const productKeys =
     opts.productCodeKeys == null
@@ -216,17 +326,49 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
             .filter(key => key && key !== '-')
         );
 
+  const normalizeMachineToken = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '');
+
+  const machineMatches = (candidate: string, filter: string, selected?: { code?: string; name?: string } | null) => {
+    if (!filter || filter === 'all') return true;
+    const tokens = new Set<string>();
+    const add = (v?: string | null) => {
+      const t = normalizeMachineToken(String(v || ''));
+      if (t) tokens.add(t);
+    };
+    add(filter);
+    add(selected?.code);
+    add(selected?.name);
+    const cand = normalizeMachineToken(candidate);
+    if (!cand || tokens.size === 0) return false;
+    for (const token of tokens) {
+      if (cand === token || cand.includes(token) || token.includes(cand)) return true;
+    }
+    return false;
+  };
+
   return records.filter(row => {
     if (shiftFilter && shiftFilter !== 'all' && !canTuDongShiftMatches(String(row.ca || ''), shiftFilter)) {
       return false;
     }
 
     const businessDate = dateFrom || dateTo || buckets ? resolveCanTuDongBusinessDate(row) : null;
+    const rowMachine = resolveCanTuDongMachine(row) || '';
 
     if (dateFrom || dateTo) {
       if (!businessDate) return false;
       if (dateFrom && businessDate < dateFrom) return false;
       if (dateTo && businessDate > dateTo) return false;
+    }
+    // Không có từ/đến ngày (Ngày = Tất cả): giữ mọi dòng, kể cả trống Ngày / không chênh lệch.
+
+    if (machineFilter && machineFilter !== 'all' && !machineMatches(rowMachine, machineFilter, selectedMachine)) {
+      return false;
     }
 
     if (buckets) {
@@ -235,6 +377,7 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
       const matched = buckets.some(bucket => {
         if (bucket.ngay && businessDate !== bucket.ngay) return false;
         if (bucket.shift && !canTuDongShiftMatches(rowCa, bucket.shift)) return false;
+        if (bucket.machine && !machineMatches(rowMachine, bucket.machine, null)) return false;
         return true;
       });
       if (!matched) return false;
@@ -260,4 +403,105 @@ export function sumCanTuDongSanLuongTotals(records: CanTuDongWeightRow[]) {
     quantity: records.length,
     weightKg
   };
+}
+
+/** Tổng cột «Trọng lượng tiêu chuẩn» (`san_pham.tong_trong_luong` theo Mã SP từ QR). */
+export function sumCanTuDongNhuaTieuChuanKg(
+  records: CanTuDongWeightRow[],
+  standardKgByProductCode: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
+    if (standardKg == null || !(standardKg > 0) || !Number.isFinite(standardKg)) continue;
+    weightKg += standardKg;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng cột «Cân sản phẩm» / Trọng lượng TT (`weight` / `can_san_pham`). */
+export function sumCanTuDongCanSanPhamKg(records: CanTuDongWeightRow[]) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const sp = resolveCanSpKg(row);
+    if (sp === null) continue;
+    weightKg += sp;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng chênh lệch TT − LT = Σ (Cân sản phẩm − Trọng lượng tiêu chuẩn) khi đủ cả hai. */
+export function sumCanTuDongChenhLechTtLtKg(
+  records: CanTuDongWeightRow[],
+  standardKgByProductCode: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const sp = resolveCanSpKg(row);
+    if (sp === null) continue;
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
+    if (standardKg == null || !(standardKg > 0) || !Number.isFinite(standardKg)) continue;
+    weightKg += sp - standardKg;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng cột «Lõi tiêu chuẩn / lõi lý thuyết» (`san_pham.trong_luong_loi` theo Mã SP từ QR). */
+export function sumCanTuDongLoiTieuChuanKg(
+  records: CanTuDongWeightRow[],
+  coreKgByProductCode: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
+    if (coreKg == null || !(coreKg > 0) || !Number.isFinite(coreKg)) continue;
+    weightKg += coreKg;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng cột «Cân lõi» (`tare_weight` / `can_loi`). */
+export function sumCanTuDongCanLoiKg(records: CanTuDongWeightRow[]) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const loi = resolveCanLoiKg(row);
+    if (loi === null) continue;
+    weightKg += loi;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/**
+ * Tổng chênh lệch lõi = Σ (Cân lõi − Lõi lý thuyết) khi đủ cả hai.
+ * Cùng công thức kiểu Chênh lệch TT−LT: thực tế − lý thuyết.
+ */
+export function sumCanTuDongChenhLechLoiKg(
+  records: CanTuDongWeightRow[],
+  coreKgByProductCode: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const loi = resolveCanLoiKg(row);
+    if (loi === null) continue;
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const lyThuyetKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
+    if (lyThuyetKg == null || !(lyThuyetKg > 0) || !Number.isFinite(lyThuyetKg)) continue;
+    weightKg += loi - lyThuyetKg;
+    counted += 1;
+  }
+  return { weightKg, counted };
 }

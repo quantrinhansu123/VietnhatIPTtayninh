@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { useTabAccess } from '../../app/useTabAccess';
-import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { formatNumber, formatMoney, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
@@ -22,18 +22,19 @@ import {
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
-import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X } from 'lucide-react';
+import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X, Warehouse, ClipboardList, RefreshCw } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
-import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, excelRowsToProductNplItems, bulkExcelRowsToProductMap, productNplAmountTypeLabel, formatProductNplAmount, roundNplNumber } from './types';
-import { downloadBulkProductNplComponentsTemplate, downloadProductNplComponentsTemplate, parseBulkProductNplComponentsExcel, parseProductNplComponentsExcel } from '../../utils/productNplComponentsExcel';
+import { downloadBulkProductNplComponentsTemplate, downloadProductNplComponentsTemplate, parseThanhPhanLongFormatExcel, parseBulkProductNplComponentsExcel, parseImportSpExcelRows } from '../../utils/productNplComponentsExcel';
+import type { ImportSpExcelRow } from '../../utils/productNplComponentsExcel';
+import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, findMaterialOptionByCode, formatProductNplAmount, roundNplNumber, formatNplDecimal, formatNplWeightKg, bulkExcelRowsToProductMap } from './types';
 import {
   downloadProductCatalogExcelTemplate,
   parseProductCatalogExcel,
   productCatalogRowToPayload
 } from '../../utils/productCatalogExcel';
 import { showAppToast } from '../../lib/appToast';
-import { matchesWarehouseFilter, type InventoryBalanceRow } from '../kho-hang';
+import { matchesWarehouseFilter, normalizeWarehouseName, type InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import ProductQrPrintModal, {
   type ProductQrPrintLabel as WarehouseProductQrPrintLabel
@@ -120,12 +121,57 @@ async function createQrDataUrl(payload: string) {
   });
 }
 
-export type ProductViewTab = 'info' | 'codes' | 'components';
+export type ProductViewTab = 'info' | 'codes' | 'components' | 'kiem-kho' | 'nhap-kho' | 'xuat-kho';
 
-/** Hiển thị số lượng giữ nguyên giá trị nhập (không làm tròn, bỏ số 0 thừa). */
-function formatQuantityFull(value: number): string {
-  if (!Number.isFinite(value)) return '0';
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 20 }).format(value);
+type ProductWarehouseSlipRow = {
+  id: string;
+  ma_phieu: string;
+  ngay_phieu: string;
+  ca: string;
+  may: string;
+  ma_sp: string;
+  ten_sp: string;
+  don_vi: string;
+  so_luong: number;
+  so_luong_chung_tu: number | null;
+  ten_kho: string;
+  ly_do: string;
+  ghi_chu: string;
+  nguoi_lap: string;
+};
+
+type ProductKiemKhoRow = {
+  id: string;
+  ten_kho: string;
+  dot_kiem_kho: string;
+  ma_nvl: string;
+  ma_sp: string;
+  ten_sp: string;
+  loai_sp: string;
+  ngay_gio_kiem_kho: string;
+  nguoi_kiem_kho: string;
+  thoi_gian_xac_nhan: string;
+};
+
+/** Tiền tố mã kiểm kho trước `_` hoặc trước hậu tố serial `-000001XX`. */
+function extractKiemKhoPrefix(raw: string) {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return '';
+  const us = trimmed.indexOf('_');
+  if (us > 0) return trimmed.slice(0, us).trim();
+  const serialMatch = trimmed.match(/^(.+)[_-](\d{6})([0-9A-Za-z]{2,})$/);
+  if (serialMatch?.[1]) return serialMatch[1].trim();
+  return trimmed;
+}
+
+function productCodeCandidates(product: { code?: string; amisCode?: string; newCode?: string }) {
+  return [
+    ...new Set(
+      [product.code, product.amisCode, product.newCode]
+        .map(code => String(code ?? '').trim())
+        .filter(Boolean)
+    )
+  ];
 }
 
 export function ProductNplItemFormModal({
@@ -153,9 +199,9 @@ export function ProductNplItemFormModal({
   const [amountValue, setAmountValue] = useState(() => {
     if (!initialItem) return '';
     if (initialItem.amountType === 'quantity') {
-      return String(initialItem.quantity ?? 0).replace('.', ',');
+      return formatNplDecimal(initialItem.quantity ?? 0);
     }
-    return formatPercent(initialItem.percent ?? 0);
+    return formatNplDecimal(initialItem.percent ?? 0);
   });
   const [unit, setUnit] = useState(initialItem?.unit && initialItem.unit !== '-' ? initialItem.unit : '');
   const [formError, setFormError] = useState('');
@@ -212,9 +258,10 @@ export function ProductNplItemFormModal({
         code: trimmedCode,
         name: name.trim() || material?.name || '',
         amountType,
-        percent: amountType === 'percent' ? roundNplNumber(numericValue) : null,
+        percent: amountType === 'percent' ? numericValue : null,
         quantity: amountType === 'quantity' ? numericValue : null,
-        unit: resolvedUnit
+        unit: resolvedUnit,
+        weightKg: initialItem?.weightKg ?? null
       });
     } catch (error: any) {
       setFormError(error.message || 'Không thể lưu thành phần.');
@@ -229,7 +276,6 @@ export function ProductNplItemFormModal({
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">
               {mode === 'add' ? 'Thêm thành phần' : 'Sửa thành phần'}
             </h3>
-            <p className="mt-0.5 text-xs font-semibold text-zinc-500">NVL · phần trăm hoặc số lượng</p>
           </div>
           <BackButton onClick={onClose} />
         </div>
@@ -294,7 +340,7 @@ export function ProductNplItemFormModal({
                 value={amountValue}
                 onChange={e => setAmountValue(e.target.value)}
                 className={productFieldClass}
-                placeholder="VD: 40,50"
+                placeholder="VD: 40,5432"
               />
             </label>
           ) : (
@@ -307,7 +353,7 @@ export function ProductNplItemFormModal({
                   value={amountValue}
                   onChange={e => setAmountValue(e.target.value)}
                   className={productFieldClass}
-                  placeholder="VD: 100,00"
+                  placeholder="VD: 0,5432"
                 />
               </label>
               <label className="block space-y-1.5">
@@ -376,32 +422,91 @@ export function resolveProductMaterialBaseKg(
   return roundNplNumber(total - core - bag);
 }
 
-/** Giá trị hiển thị tại cột “Khối lượng (kg)” trong bảng Thành phần NVL. */
+/**
+ * Cột Trọng lượng (kg) — tối đa 4 chữ số thập phân.
+ * Thứ tự:
+ * 1) Excel: weightKg (dòng Loại=Số lượng, ĐVT=Kg)
+ * 2) Định lượng chính đang là Kg
+ * 3) Có % → % × KL nhựa+phụ gia của SP
+ * 4) Có số lượng Cái/… → × TL/ĐVT kho NVL hoặc kg ghi trong tên
+ */
 export function resolveProductNplItemWeightKg(
   product: Pick<ProductRow, 'plasticWeight' | 'totalWeight' | 'coreWeight' | 'bagWeight'>,
   item: ProductNplItem,
   materialOptions: MaterialOption[]
 ): number | null {
-  const roundWeightKg = (value: number) => Math.round(value * 10000) / 10000;
-  if (item.amountType === 'percent') {
-    const materialBaseKg = resolveProductMaterialBaseKg(product);
-    if (item.percent === null || materialBaseKg <= 0) return null;
-    return roundWeightKg((item.percent / 100) * materialBaseKg);
+  if (item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg) && item.weightKg >= 0) {
+    return roundNplNumber(item.weightKg);
   }
-  if (item.quantity === null) return null;
-  const unit = (item.unit || '').trim().toLowerCase();
-  if (unit === '' || unit === 'kg' || unit === '-') return roundWeightKg(item.quantity);
+
+  if (
+    item.quantity !== null &&
+    item.quantity !== undefined &&
+    Number.isFinite(item.quantity) &&
+    item.quantity >= 0 &&
+    isProductNplKgUnit(item.unit)
+  ) {
+    return roundNplNumber(item.quantity);
+  }
+
+  if (item.percent !== null && item.percent !== undefined && Number.isFinite(item.percent) && item.percent >= 0) {
+    const materialBaseKg = resolveProductMaterialBaseKg(product);
+    if (materialBaseKg > 0) {
+      return roundNplNumber((item.percent / 100) * materialBaseKg);
+    }
+  }
+
+  if (item.quantity === null || item.quantity === undefined || !Number.isFinite(item.quantity)) {
+    return null;
+  }
+
   const key = normalizeProductCodeKey(item.code);
   const material = materialOptions.find(option => normalizeProductCodeKey(option.code) === key);
   const totalWeightPerUnit = parseProductSpecNumber(material?.totalWeight ?? '');
   if (totalWeightPerUnit !== null && totalWeightPerUnit > 0) {
-    return roundWeightKg(item.quantity * totalWeightPerUnit);
+    return roundNplNumber(item.quantity * totalWeightPerUnit);
   }
+
+  const fromName = parseWeightKgFromLabel(material?.name || item.name || '');
+  if (fromName !== null && fromName > 0) {
+    return roundNplNumber(item.quantity * fromName);
+  }
+
   return null;
 }
 
+function isProductNplKgUnit(unit: string) {
+  const normalized = String(unit ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, '');
+  return (
+    normalized === 'kg' ||
+    normalized === 'kgs' ||
+    normalized === 'kilogram' ||
+    normalized === 'kilograms' ||
+    normalized.startsWith('kg')
+  );
+}
+
+function parseWeightKgFromLabel(label: string): number | null {
+  const match = String(label)
+    .trim()
+    .match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+  if (!match) return null;
+  const value = Number(String(match[1]).replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** Khớp mã: `MT- MN001` ≡ `MT-MN001` (bỏ mọi khoảng trắng, kể cả NBSP). */
 export function normalizeProductCodeKey(code: string) {
-  return code.trim().replace(/\s+/g, '').toUpperCase();
+  return String(code ?? '')
+    .trim()
+    .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+    .toUpperCase();
 }
 
 export function findProductByCode(products: ProductRow[], code: string) {
@@ -461,10 +566,35 @@ export function ProductViewModal({
   const [detailCodesError, setDetailCodesError] = useState('');
   const [selectedDetailCodeIds, setSelectedDetailCodeIds] = useState<Set<string>>(() => new Set());
   const [isPrintingDetailCodes, setIsPrintingDetailCodes] = useState(false);
+  const [kiemKhoRows, setKiemKhoRows] = useState<ProductKiemKhoRow[]>([]);
+  const [isLoadingKiemKho, setIsLoadingKiemKho] = useState(false);
+  const [kiemKhoError, setKiemKhoError] = useState('');
+  const [warehouseSlipRows, setWarehouseSlipRows] = useState<ProductWarehouseSlipRow[]>([]);
+  const [isLoadingWarehouseSlips, setIsLoadingWarehouseSlips] = useState(false);
+  const [warehouseSlipError, setWarehouseSlipError] = useState('');
+  const [stockFromKiem, setStockFromKiem] = useState<{
+    opening: number | null;
+    inbound: number | null;
+    outbound: number | null;
+    closing: number | null;
+    chotAt: string;
+    dot: string;
+    confirmed: boolean;
+  }>({
+    opening: null,
+    inbound: null,
+    outbound: null,
+    closing: null,
+    chotAt: '',
+    dot: '',
+    confirmed: false
+  });
+  const [isLoadingStockFromKiem, setIsLoadingStockFromKiem] = useState(false);
+  const [stockFromKiemError, setStockFromKiemError] = useState('');
 
   useEffect(() => {
     setItems(product.nplItems);
-  }, [product]);
+  }, [product.id]);
 
   useEffect(() => {
     setTab(initialTab);
@@ -508,6 +638,276 @@ export function ProductViewModal({
   }, [product.id, tab]);
 
   useEffect(() => {
+    if (tab !== 'kiem-kho') return;
+    const controller = new AbortController();
+    setIsLoadingKiemKho(true);
+    setKiemKhoError('');
+
+    const candidateCodes = [
+      product.code,
+      product.amisCode,
+      product.newCode
+    ]
+      .map(code => String(code ?? '').trim())
+      .filter(Boolean);
+
+    const uniqueCodes = [...new Set(candidateCodes)];
+    if (uniqueCodes.length === 0) {
+      setKiemKhoRows([]);
+      setIsLoadingKiemKho(false);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const batches = await Promise.all(
+          uniqueCodes.map(async code => {
+            const params = new URLSearchParams({
+              maGoc: code,
+              limit: '500'
+            });
+            const response = await fetch(`/api/kiem-kho?${params.toString()}`, {
+              signal: controller.signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error || 'Không thể tải dữ liệu kiểm kho.');
+            }
+            return Array.isArray(data.records) ? data.records : [];
+          })
+        );
+
+        const seen = new Set<string>();
+        const normalized: ProductKiemKhoRow[] = [];
+        for (const record of batches.flat()) {
+          if (!record || typeof record !== 'object') continue;
+          const row = record as Record<string, unknown>;
+          const id = String(row.id ?? '').trim();
+          const key = id || `${row.ma_sp}-${row.ngay_gio_kiem_kho}-${row.dot_kiem_kho}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          const maSp = String(row.ma_sp ?? '').trim();
+          const maNvl = String(row.ma_nvl ?? '').trim();
+          // Chỉ giữ dòng khớp mã SP: ma_nvl = mã gốc, hoặc tiền tố ma_sp trước _ / - serial.
+          const matchesProduct = uniqueCodes.some(code => {
+            const normCode = normalizeProductCodeKey(code);
+            if (!normCode) return false;
+            if (normalizeProductCodeKey(maNvl) === normCode) return true;
+            if (normalizeProductCodeKey(maSp) === normCode) return true;
+            const prefix = extractKiemKhoPrefix(maSp);
+            return normalizeProductCodeKey(prefix) === normCode;
+          });
+          if (!matchesProduct) continue;
+
+          normalized.push({
+            id: id || key,
+            ten_kho: String(row.ten_kho ?? '').trim(),
+            dot_kiem_kho: String(row.dot_kiem_kho ?? '').trim(),
+            ma_nvl: maNvl,
+            ma_sp: maSp,
+            ten_sp: String(row.ten_sp ?? '').trim(),
+            loai_sp: String(row.loai_sp ?? '').trim(),
+            ngay_gio_kiem_kho: String(row.ngay_gio_kiem_kho ?? '').trim(),
+            nguoi_kiem_kho: String(row.nguoi_kiem_kho ?? '').trim(),
+            thoi_gian_xac_nhan: String(row.thoi_gian_xac_nhan ?? '').trim()
+          });
+        }
+
+        normalized.sort((a, b) => {
+          const ta = Date.parse(a.ngay_gio_kiem_kho) || 0;
+          const tb = Date.parse(b.ngay_gio_kiem_kho) || 0;
+          return tb - ta;
+        });
+        setKiemKhoRows(normalized);
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') {
+          setKiemKhoRows([]);
+          setKiemKhoError(error?.message || 'Không thể tải dữ liệu kiểm kho.');
+        }
+      } finally {
+        setIsLoadingKiemKho(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [product.amisCode, product.code, product.id, product.newCode, tab]);
+
+  useEffect(() => {
+    if (tab !== 'nhap-kho' && tab !== 'xuat-kho') return;
+    const loai = tab === 'xuat-kho' ? 'xuat' : 'nhap';
+    const controller = new AbortController();
+    setIsLoadingWarehouseSlips(true);
+    setWarehouseSlipError('');
+    setWarehouseSlipRows([]);
+
+    void fetch(`/api/san-pham/${encodeURIComponent(product.id)}/phieu-kho?loai=${loai}`, {
+      signal: controller.signal
+    })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Không thể tải nhật ký xuất nhập kho.');
+        const list = Array.isArray(data.movements) ? data.movements : [];
+        const normalized: ProductWarehouseSlipRow[] = list.map((entry: Record<string, unknown>) => {
+          const quantity = Number(entry.so_luong ?? entry.quantity);
+          const docQty = Number(entry.so_luong_chung_tu ?? entry.documentQuantity);
+          return {
+            id: String(entry.id ?? ''),
+            ma_phieu: String(entry.ma_phieu ?? '').trim(),
+            ngay_phieu: String(entry.ngay_phieu ?? '').trim(),
+            ca: String(entry.ca ?? '').trim(),
+            may: String(entry.may ?? '').trim(),
+            ma_sp: String(entry.ma_sp ?? '').trim(),
+            ten_sp: String(entry.ten_sp ?? '').trim(),
+            don_vi: String(entry.don_vi ?? '').trim() || '-',
+            so_luong: Number.isFinite(quantity) ? quantity : 0,
+            so_luong_chung_tu: Number.isFinite(docQty) ? docQty : null,
+            ten_kho: String(entry.ten_kho ?? '').trim(),
+            ly_do: String(entry.ly_do ?? '').trim(),
+            ghi_chu: String(entry.ghi_chu ?? '').trim(),
+            nguoi_lap: String(entry.nguoi_lap ?? entry.nhan_su ?? '').trim()
+          };
+        });
+        setWarehouseSlipRows(normalized);
+      })
+      .catch(error => {
+        if (error?.name !== 'AbortError') {
+          setWarehouseSlipRows([]);
+          setWarehouseSlipError(error?.message || 'Không thể tải nhật ký xuất nhập kho.');
+        }
+      })
+      .finally(() => setIsLoadingWarehouseSlips(false));
+
+    return () => controller.abort();
+  }, [product.id, tab]);
+
+  useEffect(() => {
+    if (tab !== 'info') return;
+    const controller = new AbortController();
+    setIsLoadingStockFromKiem(true);
+    setStockFromKiemError('');
+
+    const uniqueCodes = productCodeCandidates(product);
+
+    void (async () => {
+      let opening: number | null = null;
+      let chotAt = '';
+      let dot = '';
+      let confirmed = false;
+      let openingError = '';
+
+      try {
+        if (uniqueCodes.length > 0) {
+          const warehouse =
+            product.warehouse && product.warehouse !== '-' ? String(product.warehouse).trim() : '';
+
+          // Tồn đầu = tong_so_luong trên Bảng tổng hợp kiểm kho (không đếm dòng chi tiết).
+          let best: {
+            ton_dau_ky: number;
+            chot_luc: string;
+            dot_kiem_kho: string;
+            confirmed: boolean;
+          } | null = null;
+
+          for (const code of uniqueCodes) {
+            const params = new URLSearchParams({ maGoc: code });
+            if (warehouse) params.set('tenKho', warehouse);
+            const response = await fetch(`/api/kiem-kho/ton-dau-ky?${params.toString()}`, {
+              signal: controller.signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error || 'Không thể tải tồn đầu từ kiểm kho.');
+            }
+            const qty = Number(data.ton_dau_ky ?? data.tong_so_luong);
+            if (!Number.isFinite(qty)) continue;
+            best = {
+              ton_dau_ky: qty,
+              chot_luc: String(data.chot_luc ?? '').trim(),
+              dot_kiem_kho: String(data.dot_kiem_kho ?? '').trim(),
+              confirmed: Boolean(data.confirmed)
+            };
+            break;
+          }
+
+          if (best) {
+            opening = best.ton_dau_ky;
+            chotAt = best.chot_luc;
+            dot = best.dot_kiem_kho;
+            confirmed = best.confirmed;
+          }
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return;
+        openingError = error?.message || 'Không thể tải tồn đầu từ kiểm kho.';
+      }
+
+      let inbound = 0;
+      let outbound = 0;
+      try {
+        const [nhapRes, xuatRes] = await Promise.all([
+          fetch(`/api/san-pham/${encodeURIComponent(product.id)}/phieu-kho?loai=nhap`, {
+            signal: controller.signal
+          }),
+          fetch(`/api/san-pham/${encodeURIComponent(product.id)}/phieu-kho?loai=xuat`, {
+            signal: controller.signal
+          })
+        ]);
+        const [nhapData, xuatData] = await Promise.all([
+          nhapRes.json().catch(() => ({})),
+          xuatRes.json().catch(() => ({}))
+        ]);
+        if (!nhapRes.ok) throw new Error(nhapData.error || 'Không thể tải phiếu nhập kho.');
+        if (!xuatRes.ok) throw new Error(xuatData.error || 'Không thể tải phiếu xuất kho.');
+
+        const sumMovements = (movements: unknown[]) =>
+          movements.reduce((sum, entry) => {
+            if (!entry || typeof entry !== 'object') return sum;
+            const qty = Number((entry as Record<string, unknown>).so_luong ?? 0);
+            return sum + (Number.isFinite(qty) ? qty : 0);
+          }, 0);
+
+        // Tổng hợp đúng như tab Nhập kho / Xuất kho (cộng toàn bộ SL phiếu).
+        inbound = sumMovements(Array.isArray(nhapData.movements) ? nhapData.movements : []);
+        outbound = sumMovements(Array.isArray(xuatData.movements) ? xuatData.movements : []);
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return;
+        setStockFromKiemError(
+          [openingError, error?.message || 'Không thể tải tổng hợp nhập/xuất kho.']
+            .filter(Boolean)
+            .join(' · ')
+        );
+        setStockFromKiem({
+          opening,
+          inbound: null,
+          outbound: null,
+          closing: null,
+          chotAt,
+          dot,
+          confirmed
+        });
+        setIsLoadingStockFromKiem(false);
+        return;
+      }
+
+      const closing = opening !== null ? opening + inbound - outbound : null;
+      setStockFromKiem({
+        opening,
+        inbound,
+        outbound,
+        closing,
+        chotAt,
+        dot,
+        confirmed
+      });
+      setStockFromKiemError(openingError);
+      setIsLoadingStockFromKiem(false);
+    })();
+
+    return () => controller.abort();
+  }, [product.amisCode, product.code, product.id, product.newCode, product.warehouse, tab]);
+
+  useEffect(() => {
     setSelectedDetailCodeIds(new Set());
   }, [product.id]);
 
@@ -547,25 +947,45 @@ export function ProductViewModal({
     }
   };
 
-  const totalPercent = items.reduce((sum, item) => {
-    if (item.amountType !== 'percent' || item.percent === null) return sum;
-    return sum + item.percent;
-  }, 0);
-  const percentItemCount = items.filter(item => item.amountType === 'percent').length;
-  const materialBaseKg = resolveProductMaterialBaseKg(product);
-
-  const formatItemWeight = (item: ProductNplItem): string => {
-    const weight = resolveProductNplItemWeightKg(product, item, materialOptions);
-    if (weight === null) return '-';
-    return `${formatNumber(weight, 4)} kg`;
+  const formatDinhLuong = (item: ProductNplItem) => {
+    const parts: string[] = [];
+    if (item.percent !== null && item.percent !== undefined && Number.isFinite(item.percent)) {
+      parts.push(`${formatNplDecimal(item.percent)}%`);
+    }
+    // Không đưa Kg vào Định lượng — Kg chỉ hiện ở cột Trọng lượng.
+    if (
+      item.quantity !== null &&
+      item.quantity !== undefined &&
+      Number.isFinite(item.quantity) &&
+      !isProductNplKgUnit(item.unit)
+    ) {
+      const unit = String(item.unit ?? '').trim();
+      const unitSuffix = unit && unit !== '-' && unit !== '%' ? ` ${unit}` : '';
+      parts.push(`${formatNplDecimal(item.quantity)}${unitSuffix}`);
+    }
+    if (parts.length > 0) return parts.join(' · ');
+    if (isProductNplKgUnit(item.unit) && item.quantity !== null && Number.isFinite(item.quantity)) {
+      return '—';
+    }
+    return formatProductNplAmount(item, { resolvedWeightKg: null });
   };
 
-  const resolveItemUnit = (item: ProductNplItem): string => {
-    const key = normalizeProductCodeKey(item.code);
-    const material = materialOptions.find(option => normalizeProductCodeKey(option.code) === key);
-    if (material && material.unit && material.unit !== '-') return material.unit;
-    if (item.unit && item.unit !== '-') return item.unit;
-    return '-';
+  /** Cột Trọng lượng: CHỈ số từ Excel (weightKg hoặc dòng Định lượng ĐVT=Kg). Không nhân %. */
+  const formatTrongLuong = (item: ProductNplItem) => {
+    let weight: number | null = null;
+    if (item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg) && item.weightKg >= 0) {
+      weight = item.weightKg;
+    } else if (
+      item.quantity !== null &&
+      item.quantity !== undefined &&
+      Number.isFinite(item.quantity) &&
+      item.quantity >= 0 &&
+      isProductNplKgUnit(item.unit)
+    ) {
+      weight = item.quantity;
+    }
+    if (weight === null) return '—';
+    return `${formatNplWeightKg(weight)} kg`;
   };
 
   const openAddForm = () => {
@@ -623,7 +1043,8 @@ export function ProductViewModal({
         amountType: item.amountType,
         percent: item.percent,
         quantity: item.quantity,
-        unit: item.unit
+        unit: item.unit,
+        weightKg: item.weightKg
       })),
       product.code
     );
@@ -637,43 +1058,174 @@ export function ProductViewModal({
     setComponentsExcelMessage('');
 
     try {
-      const rows = await parseProductNplComponentsExcel(file);
-      if (rows.length === 0) {
+      const candidateKeys = [
+        normalizeProductCodeKey(product.code),
+        normalizeProductCodeKey(product.newCode),
+        normalizeProductCodeKey(product.amisCode)
+      ].filter(Boolean);
+
+      const bulkRows = await parseBulkProductNplComponentsExcel(file);
+      const bulkMap = bulkExcelRowsToProductMap(bulkRows, materialOptions);
+      const longMap = await parseThanhPhanLongFormatExcel(file);
+
+      const pickList = (map: Map<string, ProductNplItem[]>): ProductNplItem[] => {
+        for (const key of candidateKeys) {
+          const list = map.get(key);
+          if (list && list.length > 0) return list;
+        }
+        if (map.size === 1) return [...map.values()][0];
+        return [];
+      };
+
+      const pickLongRows = () => {
+        for (const key of candidateKeys) {
+          const list = longMap.get(key);
+          if (list && list.length > 0) return list;
+        }
+        if (longMap.size === 1) return [...longMap.values()][0];
+        return [];
+      };
+
+      const fromLong: ProductNplItem[] = pickLongRows().map(row => {
+        const material = findMaterialOptionByCode(materialOptions, row.code);
+        return {
+          code: (material?.code || row.code).trim(),
+          name: material?.name || row.code,
+          amountType: row.amountType,
+          percent: row.percent,
+          quantity: row.quantity,
+          unit: row.unit || (row.amountType === 'percent' ? '%' : '-'),
+          weightKg: row.weightKg
+        };
+      });
+
+      const mergeByCode = (primary: ProductNplItem[], secondary: ProductNplItem[]): ProductNplItem[] => {
+        const map = new Map<string, ProductNplItem>();
+        const upsert = (item: ProductNplItem) => {
+          const key = normalizeProductCodeKey(item.code);
+          const prev = map.get(key);
+          const weightFromItem =
+            item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg)
+              ? item.weightKg
+              : item.quantity !== null &&
+                  Number.isFinite(item.quantity) &&
+                  isProductNplKgUnit(item.unit)
+                ? item.quantity
+                : null;
+          if (!prev) {
+            map.set(key, {
+              ...item,
+              weightKg: weightFromItem,
+              quantity:
+                item.quantity !== null && !isProductNplKgUnit(item.unit) ? item.quantity : null,
+              unit: isProductNplKgUnit(item.unit)
+                ? item.percent !== null && item.percent !== undefined
+                  ? '%'
+                  : item.unit
+                : item.unit
+            });
+            return;
+          }
+          const nextPercent = item.percent ?? prev.percent;
+          const nextQty =
+            item.quantity !== null && !isProductNplKgUnit(item.unit)
+              ? item.quantity
+              : prev.quantity !== null && !isProductNplKgUnit(prev.unit)
+                ? prev.quantity
+                : null;
+          const nextUnit =
+            nextQty !== null ? item.unit || prev.unit : nextPercent !== null ? '%' : item.unit || prev.unit;
+          map.set(key, {
+            code: item.code || prev.code,
+            name: item.name || prev.name,
+            amountType:
+              nextQty !== null && nextPercent === null
+                ? 'quantity'
+                : nextPercent !== null
+                  ? 'percent'
+                  : item.amountType,
+            percent: nextPercent,
+            quantity: nextQty,
+            unit: nextUnit,
+            weightKg: weightFromItem ?? prev.weightKg ?? null
+          });
+        };
+
+        primary.forEach(upsert);
+        secondary.forEach(upsert);
+        return [...map.values()];
+      };
+
+      const parsed = mergeByCode(pickList(bulkMap), fromLong);
+
+      if (parsed.length === 0 && (bulkMap.size > 0 || longMap.size > 0)) {
+        const sampleSp = [...new Set([...bulkMap.keys(), ...longMap.keys()])].slice(0, 5).join(', ');
         throw new Error(
-          'File Excel không có dòng thành phần hợp lệ. Kiểm tra cột Mã NPL, Loại, Giá trị và ĐVT (nếu là Số lượng).'
+          `File không có thành phần cho mã SP "${product.code}". Các mã trong file: ${sampleSp}.`
         );
       }
 
-      const importedItems = excelRowsToProductNplItems(rows, materialOptions);
-      const mergedItems = [...items];
-      let addedCount = 0;
-      let updatedCount = 0;
+      if (parsed.length === 0) {
+        throw new Error(
+          'File Excel không đọc được. Cần đúng cột: Mã SP, Mã NVL, Loại, Giá trị, ĐVT.'
+        );
+      }
 
-      importedItems.forEach(importedItem => {
-        const key = normalizeProductCodeKey(importedItem.code);
-        const existingIndex = mergedItems.findIndex(existing => normalizeProductCodeKey(existing.code) === key);
-        if (existingIndex >= 0) {
-          mergedItems[existingIndex] = importedItem;
-          updatedCount += 1;
-        } else {
-          mergedItems.push(importedItem);
-          addedCount += 1;
-        }
+      const importedItems = parsed.map(item => {
+        const weightKg =
+          item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg)
+            ? item.weightKg
+            : item.quantity !== null &&
+                Number.isFinite(item.quantity) &&
+                isProductNplKgUnit(item.unit)
+              ? item.quantity
+              : null;
+        const hasPercent = item.percent !== null && item.percent !== undefined;
+        const hasQty = item.quantity !== null && !isProductNplKgUnit(item.unit);
+        return {
+          code: item.code,
+          name: item.name,
+          amountType: (hasQty && !hasPercent ? 'quantity' : hasPercent ? 'percent' : item.amountType) as ProductNplAmountType,
+          percent: hasPercent ? item.percent : null,
+          quantity: hasQty ? item.quantity : null,
+          unit: hasQty ? item.unit : hasPercent ? '%' : item.unit,
+          weightKg
+        };
       });
 
-      const summaryParts = [
-        addedCount > 0 ? `thêm ${addedCount} mới` : '',
-        updatedCount > 0 ? `cập nhật ${updatedCount}` : ''
-      ].filter(Boolean);
-      const summary = summaryParts.join(', ');
+      const withWeight = importedItems.filter(
+        item => item.weightKg !== null && item.weightKg !== undefined
+      ).length;
+      const weightSamples = importedItems
+        .filter(item => item.weightKg !== null && item.weightKg !== undefined)
+        .slice(0, 4)
+        .map(item => `${item.code}=${formatNplWeightKg(item.weightKg!)}`)
+        .join(', ');
 
-      if (!window.confirm(`Excel có ${importedItems.length} dòng (${summary}). Thêm vào danh sách thành phần hiện tại?`)) {
+      const summary = [
+        `ghi ${importedItems.length} NVL`,
+        `Trọng lượng Kg: ${withWeight}/${importedItems.length}`,
+        weightSamples ? `vd ${weightSamples}` : ''
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      if (withWeight === 0) {
+        throw new Error(
+          `Không đọc được dòng Trọng lượng (Loại=Số lượng, ĐVT=Kg).\n` +
+            `Mã SP đang mở: "${product.code}" (khớp Excel bỏ khoảng trắng → ${normalizeProductCodeKey(product.code) || '—'}).\n` +
+            `Mã trong file: ${[...new Set([...bulkMap.keys(), ...longMap.keys()])].slice(0, 8).join(', ') || '(không có)'}.`
+        );
+      }
+
+      if (!window.confirm(`Excel: ${summary}.\nLưu vào sản phẩm (ghi đè thành phần)?`)) {
         return;
       }
 
-      await onSaveItems(mergedItems);
-      setItems(mergedItems);
-      setComponentsExcelMessage(`Đã ${summary} thành phần từ Excel.`);
+      setItems(importedItems);
+      await onSaveItems(importedItems);
+      setItems(importedItems);
+      setComponentsExcelMessage(`Đã lưu (${summary}).`);
     } catch (error: any) {
       setComponentsExcelError(error.message || 'Không thể đọc file Excel.');
     } finally {
@@ -693,13 +1245,50 @@ export function ProductViewModal({
     ['Nhóm', product.group],
     ['Tính chất', product.nature],
     ['Kho', product.warehouse],
-    ['Tồn đầu', product.openingStock],
-    ['Nhập', product.inbound],
-    ['Xuất', product.outbound],
-    ['Tồn kho', product.stock],
     ['Tồn TT', product.minStock],
     ['Nguồn gốc', product.origin]
   ] as [string, string][]).filter(([, value]) => value && value !== '-');
+
+  // Tồn đầu kỳ ← Kiểm kho; Nhập/Xuất ← tổng SL tab Nhập kho / Xuất kho.
+  const openingStockNum = stockFromKiem.opening;
+  const inboundNum = stockFromKiem.inbound;
+  const outboundNum = stockFromKiem.outbound;
+  const closingStockNum =
+    stockFromKiem.closing !== null
+      ? stockFromKiem.closing
+      : openingStockNum !== null && inboundNum !== null && outboundNum !== null
+        ? openingStockNum + inboundNum - outboundNum
+        : null;
+
+  const formatStockCell = (value: number | null) => {
+    if (value !== null && Number.isFinite(value)) return formatNplDecimal(value);
+    return '—';
+  };
+
+  const stockPeriodNote = (() => {
+    if (isLoadingStockFromKiem) return 'Đang tải tồn kho…';
+    if (stockFromKiemError) return stockFromKiemError;
+    const parts: string[] = [];
+    if (stockFromKiem.opening === null) {
+      parts.push('Chưa có dữ liệu kiểm kho');
+    } else {
+      const chotLabel = stockFromKiem.chotAt
+        ? new Date(stockFromKiem.chotAt).toLocaleString('vi-VN')
+        : '';
+      parts.push(
+        [
+          'Tồn đầu = Tổng SL Bảng tổng hợp Kiểm kho',
+          stockFromKiem.confirmed ? 'đã chốt' : 'chưa chốt',
+          stockFromKiem.dot ? `đợt ${stockFromKiem.dot}` : '',
+          chotLabel ? `· ${chotLabel}` : ''
+        ]
+          .filter(Boolean)
+          .join(' ')
+      );
+    }
+    parts.push('Nhập/Xuất = tổng SL tab Nhập kho / Xuất kho');
+    return parts.join(' · ');
+  })();
 
   const productDescription =
     product.description && product.description !== '-' ? product.description.trim() : '';
@@ -719,8 +1308,8 @@ export function ProductViewModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="flex h-full max-h-[98vh] min-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-3">
+      <div className="flex h-full max-h-[98vh] min-h-[85vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl xl:max-w-7xl">
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-red-500">Xem sản phẩm</p>
@@ -755,7 +1344,7 @@ export function ProductViewModal({
           </div>
         </div>
 
-        <div className="flex gap-1 border-b border-zinc-200 px-4">
+        <div className="flex flex-wrap gap-1 border-b border-zinc-200 px-4">
           <button
             type="button"
             onClick={() => setTab('info')}
@@ -775,6 +1364,26 @@ export function ProductViewModal({
             <FlaskConical className="h-4 w-4" />
             Thành phần
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">{items.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('nhap-kho')}
+            className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
+              tab === 'nhap-kho' ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <Download className="h-4 w-4" />
+            Nhập kho
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('xuat-kho')}
+            className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
+              tab === 'xuat-kho' ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <Upload className="h-4 w-4" />
+            Xuất kho
           </button>
         </div>
 
@@ -804,6 +1413,49 @@ export function ProductViewModal({
                           </td>
                         </tr>
                       ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-xl border-2 border-sky-200 bg-sky-50/30">
+                <div className="border-b border-sky-200 bg-sky-50 px-3 py-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-sky-800">Tồn kho</p>
+                  <p className="text-[10px] font-semibold text-sky-700/80">
+                    Mã SP · {product.code || '—'}
+                    {product.unit && product.unit !== '-' ? ` · ${product.unit}` : ''}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-semibold text-sky-600/90">{stockPeriodNote}</p>
+                </div>
+                <div className="overflow-x-auto p-2">
+                  <table className="min-w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white">
+                        <th className="whitespace-nowrap px-2 py-2 font-black">Mã SP</th>
+                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn đầu kỳ</th>
+                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Nhập trong kỳ</th>
+                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Xuất trong kỳ</th>
+                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn cuối kỳ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="bg-white">
+                        <td className="whitespace-pre border border-zinc-200 px-2 py-2 font-black text-zinc-950">
+                          {product.code || '—'}
+                        </td>
+                        <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-zinc-900">
+                          {isLoadingStockFromKiem ? '…' : formatStockCell(openingStockNum)}
+                        </td>
+                        <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-emerald-700">
+                          {isLoadingStockFromKiem ? '…' : formatStockCell(inboundNum)}
+                        </td>
+                        <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-rose-700">
+                          {isLoadingStockFromKiem ? '…' : formatStockCell(outboundNum)}
+                        </td>
+                        <td className="whitespace-nowrap border border-zinc-200 bg-sky-50 px-2 py-2 text-right font-black text-sky-900">
+                          {isLoadingStockFromKiem ? '…' : formatStockCell(closingStockNum)}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -960,24 +1612,13 @@ export function ProductViewModal({
                 </TableBody>
               </TableShell>
             </div>
-          ) : (
+          ) : tab === 'components' ? (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-black text-zinc-950">Bảng thành phần NVL</p>
-                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                    Nguyên vật liệu · phần trăm hoặc số lượng
-                    {materialBaseKg > 0
-                      ? ` · Quy đổi % theo ${formatNumber(materialBaseKg, 3)} kg nhựa+phụ gia`
-                      : ' · Chưa có KL nhựa+phụ gia để quy đổi %'}
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {percentItemCount > 0 && (
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-black ${Math.abs(totalPercent - 100) < 0.01 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
-                      Tổng %: {formatPercent(totalPercent)}%
-                    </span>
-                  )}
                   {canEditComponents ? (
                     <>
                       <button
@@ -1033,19 +1674,13 @@ export function ProductViewModal({
                 </p>
               )}
 
-              <p className="text-[11px] font-semibold text-zinc-500">
-                Excel gồm các cột: <strong>Mã NPL</strong>, <strong>Tên NVL</strong>, <strong>Loại</strong> (Phần trăm / Số lượng), <strong>Giá trị</strong>, <strong>ĐVT</strong> (bắt buộc nếu Số lượng). Tải lên sẽ thêm mới vào danh sách hiện tại, dòng trùng Mã NPL sẽ được cập nhật.
-              </p>
-
-              <TableShell minWidthClassName="min-w-[880px]" maxHeightClassName="">
+              <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="">
                 <TableHead>
                   <TableHeadCell>STT</TableHeadCell>
                   <TableHeadCell>Mã NPL</TableHeadCell>
                   <TableHeadCell>Tên NVL</TableHeadCell>
-                  <TableHeadCell>Loại</TableHeadCell>
-                  <TableHeadCell>Giá trị</TableHeadCell>
-                  <TableHeadCell>Khối lượng (kg)</TableHeadCell>
-                  <TableHeadCell>ĐVT</TableHeadCell>
+                  <TableHeadCell>Định lượng</TableHeadCell>
+                  <TableHeadCell>Trọng lượng</TableHeadCell>
                   <TableHeadCell align="center">Hành động</TableHeadCell>
                 </TableHead>
                 <TableBody>
@@ -1056,23 +1691,12 @@ export function ProductViewModal({
                         <td className="px-4 py-3 font-black text-zinc-950">{item.code}</td>
                         <td className="px-4 py-3 font-semibold text-zinc-800">{item.name || '-'}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge label={productNplAmountTypeLabel(item.amountType)} color="zinc" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge
-                            label={`${
-                              item.amountType === 'percent'
-                                ? formatPercent(item.percent ?? 0)
-                                : formatQuantityFull(item.quantity ?? 0)
-                            }${item.amountType === 'percent' ? '%' : ''}`}
-                            color="amber"
-                          />
+                          <span className="inline-flex max-w-full rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-800">
+                            {formatDinhLuong(item)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 font-bold text-emerald-700">
-                          {formatItemWeight(item)}
-                        </td>
-                        <td className="px-4 py-3 font-bold text-zinc-700">
-                          {resolveItemUnit(item)}
+                          {formatTrongLuong(item)}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1">
@@ -1111,12 +1735,97 @@ export function ProductViewModal({
                     </React.Fragment>
                   ))}
                   {items.length === 0 && (
-                    <TableEmptyRow colSpan={8}>Chưa khai báo thành phần NVL.</TableEmptyRow>
+                    <TableEmptyRow colSpan={6}>Chưa khai báo thành phần NVL.</TableEmptyRow>
                   )}
                 </TableBody>
               </TableShell>
             </div>
-          )}
+          ) : tab === 'nhap-kho' || tab === 'xuat-kho' ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black text-zinc-950">
+                    {tab === 'xuat-kho' ? 'Nhật ký xuất kho' : 'Nhật ký nhập kho'}
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                    Theo mã SP {product.code} · bảng phieu_xuat_nhap_kho
+                  </p>
+                </div>
+                <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-800">
+                  {warehouseSlipRows.length} dòng
+                </span>
+              </div>
+
+              {warehouseSlipError ? (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {warehouseSlipError}
+                </p>
+              ) : null}
+
+              <TableShell minWidthClassName="min-w-[1100px]" maxHeightClassName="max-h-[58vh]">
+                <TableHead>
+                  <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Ngày</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Mã phiếu</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Kho</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Máy</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Mã SP dòng</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-right">SL</TableHeadCell>
+                  {tab === 'xuat-kho' ? (
+                    <TableHeadCell className="whitespace-nowrap text-right">SL CT</TableHeadCell>
+                  ) : null}
+                  <TableHeadCell className="whitespace-nowrap">ĐVT</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Người lập</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Lý do / Ghi chú</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {warehouseSlipRows.map((row, index) => (
+                    <TableRow key={row.id || `${row.ma_phieu}-${index}`}>
+                      <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-600">{index + 1}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
+                        {row.ngay_phieu || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-zinc-950">
+                        {row.ma_phieu || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                        {row.ten_kho || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.ca || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.may || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-zinc-800">
+                        {row.ma_sp || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-black text-zinc-950">
+                        {formatNplDecimal(row.so_luong)}
+                      </td>
+                      {tab === 'xuat-kho' ? (
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold text-zinc-700">
+                          {row.so_luong_chung_tu === null ? '—' : formatNplDecimal(row.so_luong_chung_tu)}
+                        </td>
+                      ) : null}
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.don_vi}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.nguoi_lap || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-zinc-600">
+                        {[row.ly_do, row.ghi_chu].filter(Boolean).join(' · ') || '—'}
+                      </td>
+                    </TableRow>
+                  ))}
+                  {isLoadingWarehouseSlips ? (
+                    <TableEmptyRow colSpan={tab === 'xuat-kho' ? 12 : 11}>Đang tải nhật ký…</TableEmptyRow>
+                  ) : null}
+                  {!isLoadingWarehouseSlips && warehouseSlipRows.length === 0 ? (
+                    <TableEmptyRow colSpan={tab === 'xuat-kho' ? 12 : 11}>
+                      {tab === 'xuat-kho'
+                        ? 'Chưa có phiếu xuất kho cho sản phẩm này.'
+                        : 'Chưa có phiếu nhập kho cho sản phẩm này.'}
+                    </TableEmptyRow>
+                  ) : null}
+                </TableBody>
+              </TableShell>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1134,13 +1843,14 @@ export function ProductViewModal({
               {[
                 ['Mã NPL', detailItem.code],
                 ['Tên NVL', detailItem.name || '-'],
-                ['Loại', productNplAmountTypeLabel(detailItem.amountType)],
-                ['Giá trị', formatProductNplAmount(detailItem)],
-                ['Khối lượng', formatItemWeight(detailItem)],
-                ['Đơn vị', resolveItemUnit(detailItem)],
+                ['Định lượng', formatDinhLuong(detailItem)],
+                ['Trọng lượng', formatTrongLuong(detailItem)],
                 ['Sản phẩm', product.code]
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                <div
+                  key={label}
+                  className={`rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 ${label === 'Định lượng' ? 'col-span-2' : ''}`}
+                >
                   <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>
                   <p className="mt-1 font-bold text-zinc-900">{value}</p>
                 </div>
@@ -1169,6 +1879,22 @@ export function ProductViewModal({
       )}
     </div>
   );
+}
+
+const XOP_PRODUCT_GROUP = 'XOP';
+const GOODS_WAREHOUSE_NAME = 'Kho hàng hóa';
+
+function isXopProductGroup(group: string) {
+  return String(group || '').trim().toUpperCase() === XOP_PRODUCT_GROUP;
+}
+
+function resolveGoodsWarehouseName(warehouseOptions: string[]) {
+  const target = normalizeWarehouseName(GOODS_WAREHOUSE_NAME);
+  return warehouseOptions.find(name => normalizeWarehouseName(name) === target) || GOODS_WAREHOUSE_NAME;
+}
+
+function isGoodsWarehouseAssigned(warehouse: string, warehouseName = GOODS_WAREHOUSE_NAME) {
+  return normalizeWarehouseName(warehouse) === normalizeWarehouseName(warehouseName);
 }
 
 export function normalizeProducts(data: unknown): ProductRow[] {
@@ -1483,6 +2209,7 @@ export function ProductsPanel({
   const [printQtyError, setPrintQtyError] = useState('');
   const [bulkPrintQty, setBulkPrintQty] = useState('1');
   const [isDeletingProducts, setIsDeletingProducts] = useState(false);
+  const [isReassigningXopWarehouse, setIsReassigningXopWarehouse] = useState(false);
   const [productActionMessage, setProductActionMessage] = useState('');
   const [viewingProduct, setViewingProduct] = useState<ProductRow | null>(null);
   const [productViewTab, setProductViewTab] = useState<ProductViewTab>('info');
@@ -1498,6 +2225,29 @@ export function ProductsPanel({
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
   const [isImportingBulkProductComponents, setIsImportingBulkProductComponents] = useState(false);
   const [isImportingProductCatalog, setIsImportingProductCatalog] = useState(false);
+  const [isImportSpViewOpen, setIsImportSpViewOpen] = useState(false);
+  const [isLoadingImportSp, setIsLoadingImportSp] = useState(false);
+  const [isSyncingImportSp, setIsSyncingImportSp] = useState(false);
+  const [importSpRows, setImportSpRows] = useState<
+    Array<{
+      id: string;
+      ma_sp: string;
+      ma_nvl: string;
+      ten_nvl: string | null;
+      loai: string | null;
+      gia_tri: number | null;
+      dvt: string | null;
+      phan_tram: number | null;
+      so_luong: number | null;
+      khoi_luong_kg: number | null;
+      batch_id: string;
+      file_name: string | null;
+      so_dong_excel: number | null;
+      trang_thai: string;
+      imported_at: string | null;
+    }>
+  >([]);
+  const [importSpError, setImportSpError] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
 
   useEffect(() => {
@@ -1753,8 +2503,31 @@ export function ProductsPanel({
         throw new Error(data.error || 'Không thể lưu thành phần sản phẩm.');
       }
 
+      const savedFromApi = parseProductNplItems(
+        data?.product?.npl_phan_tram ?? data?.product?.nplPhanTram
+      );
+      // Ưu tiên bản vừa gửi (có weightKg); nếu API trả về đủ khoi_luong_kg thì dùng bản API.
+      const savedItems =
+        savedFromApi.length > 0 &&
+        savedFromApi.some(item => item.weightKg !== null && item.weightKg !== undefined)
+          ? savedFromApi
+          : items;
+
+      setViewingProduct(prev =>
+        prev && prev.id === productId ? { ...prev, nplItems: savedItems } : prev
+      );
+      setProducts(prev =>
+        prev.map(product => (product.id === productId ? { ...product, nplItems: savedItems } : product))
+      );
       setProductActionMessage('Đã cập nhật thành phần sản phẩm.');
       await loadProducts();
+      // Giữ weightKg sau reload (tránh mất khoi_luong_kg nếu API/list lệch).
+      setViewingProduct(prev =>
+        prev && prev.id === productId ? { ...prev, nplItems: savedItems } : prev
+      );
+      setProducts(prev =>
+        prev.map(product => (product.id === productId ? { ...product, nplItems: savedItems } : product))
+      );
     } catch (error: any) {
       setProductError(error.message || 'Không thể lưu thành phần sản phẩm.');
       throw error;
@@ -1852,11 +2625,13 @@ export function ProductsPanel({
       products.flatMap(product =>
         product.nplItems.map(item => ({
           productCode: product.code,
+          componentCode: item.code,
           componentName: item.name,
           amountType: item.amountType,
           percent: item.percent,
           quantity: item.quantity,
-          unit: item.unit
+          unit: item.unit,
+          weightKg: item.weightKg
         }))
       )
     );
@@ -1870,105 +2645,122 @@ export function ProductsPanel({
     setProductActionMessage('');
 
     try {
-      const effectiveMaterialOptions =
-        materialOptions.length > 0 ? materialOptions : await loadMaterialOptions();
-
-      const rows = await parseBulkProductNplComponentsExcel(file);
+      const rows = await parseImportSpExcelRows(file);
       if (rows.length === 0) {
         throw new Error(
-          'File Excel không có dòng hợp lệ. Cần có các cột Mã SP, Tên NVL, Loại, Giá trị và ĐVT nếu là Số lượng.'
+          'File Excel không có dòng hợp lệ. Cần cột: Mã SP, Mã NVL, Loại, Giá trị, ĐVT.'
         );
       }
 
-      const productMap = bulkExcelRowsToProductMap(rows, effectiveMaterialOptions);
-      const unknownMaterialNames = rows
-        .filter(
-          row =>
-            !effectiveMaterialOptions.some(
-              option => normalizeProductCodeKey(option.name) === normalizeProductCodeKey(row.componentName)
-            )
-        )
-        .map(row => row.componentName);
-      if (unknownMaterialNames.length > 0) {
-        const sample = [...new Set(unknownMaterialNames)].slice(0, 5).join(', ');
-        throw new Error(`Không tìm thấy NVL trong kho theo tên: ${sample}.`);
-      }
-      const updates = products
-        .map(product => {
-          const key = normalizeProductCodeKey(product.code || product.amisCode || product.newCode || '');
-          const importedItems = productMap.get(key) || [];
-          if (!key || importedItems.length === 0) return null;
-
-          const mergedItems = [...product.nplItems];
-          importedItems.forEach(importedItem => {
-            const importKey = normalizeProductCodeKey(importedItem.code);
-            const existingIndex = mergedItems.findIndex(
-              existing => normalizeProductCodeKey(existing.code) === importKey
-            );
-            if (existingIndex >= 0) {
-              mergedItems[existingIndex] = importedItem;
-            } else {
-              mergedItems.push(importedItem);
-            }
-          });
-
-          return { product, key, items: mergedItems };
-        })
-        .filter((entry): entry is { product: ProductRow; key: string; items: ProductNplItem[] } => Boolean(entry));
-
-      if (updates.length === 0) {
-        throw new Error('Không tìm thấy sản phẩm nào trong file khớp với danh sách hiện tại.');
-      }
-
-      const missingProductCodes = [...productMap.keys()].filter(
-        key =>
-          !products.some(product =>
-            [
-              normalizeProductCodeKey(product.code),
-              normalizeProductCodeKey(product.amisCode),
-              normalizeProductCodeKey(product.newCode)
-            ].includes(key)
-          )
-      );
-
       const confirmMessage = [
-        `Cập nhật thành phần cho ${updates.length} sản phẩm từ Excel?`,
-        missingProductCodes.length > 0 ? `Bỏ qua ${missingProductCodes.length} mã SP không khớp.` : null
-      ]
-        .filter(Boolean)
-        .join('\n');
+        `Ghi ${rows.length} dòng vào bảng import_sp?`,
+        `File: ${file.name}`,
+        `Ví dụ: ${rows
+          .slice(0, 3)
+          .map(r => `${r.ma_sp}/${r.ma_nvl}=${r.gia_tri}${r.dvt ? ` ${r.dvt}` : ''}`)
+          .join(' · ')}`
+      ].join('\n');
+      if (!window.confirm(confirmMessage)) return;
 
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
-
-      await Promise.all(
-        updates.map(async entry => {
-          const res = await fetch(`/api/san-pham/${entry.product.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ npl_phan_tram: productNplItemsToJson(entry.items) })
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            throw new Error(data.error || `Không thể cập nhật thành phần cho ${entry.product.code}.`);
-          }
+      const res = await fetch('/api/import-sp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_name: file.name,
+          rows: rows as ImportSpExcelRow[]
         })
-      );
-
-      const parts = [`Đã cập nhật thành phần cho ${updates.length} sản phẩm.`];
-      if (missingProductCodes.length > 0) {
-        parts.push(`Bỏ qua ${missingProductCodes.length} mã SP không khớp.`);
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể ghi Excel vào import_sp.');
       }
-      setProductActionMessage(parts.join(' '));
-      await loadProducts();
+
+      setProductActionMessage(
+        `Đã đổ ${data.inserted ?? rows.length} dòng vào import_sp` +
+          (data.batch_id ? ` (batch ${String(data.batch_id).slice(0, 8)}…)` : '') +
+          '. Bấm «Xem import_sp» để kiểm tra.'
+      );
+      showAppToast(`Đã ghi ${data.inserted ?? rows.length} dòng → import_sp`);
     } catch (error: any) {
-      setProductError(error.message || 'Không thể tải Excel thành phần sản phẩm.');
+      setProductError(error.message || 'Không thể tải Excel vào import_sp.');
     } finally {
       setIsImportingBulkProductComponents(false);
       if (bulkComponentsFileInputRef.current) {
         bulkComponentsFileInputRef.current.value = '';
       }
+    }
+  };
+
+  const loadImportSpRows = async () => {
+    setIsLoadingImportSp(true);
+    setImportSpError('');
+    try {
+      const res = await fetch('/api/import-sp?limit=1000');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể tải import_sp.');
+      }
+      setImportSpRows(Array.isArray(data.rows) ? data.rows : []);
+    } catch (error: any) {
+      setImportSpError(error.message || 'Không thể tải import_sp.');
+      setImportSpRows([]);
+    } finally {
+      setIsLoadingImportSp(false);
+    }
+  };
+
+  const openImportSpView = () => {
+    setIsImportSpViewOpen(true);
+    void loadImportSpRows();
+  };
+
+  const handleSyncImportSp = async () => {
+    if (!canEdit) return;
+    if (
+      !window.confirm(
+        'Đồng bộ từ import_sp → Thành phần NVL theo mã SP?\n' +
+          'Chỉ áp dòng trạng thái «moi», ghi đè thành phần của SP khớp mã.'
+      )
+    ) {
+      return;
+    }
+
+    setIsSyncingImportSp(true);
+    setProductError('');
+    setProductActionMessage('');
+    try {
+      const res = await fetch('/api/import-sp/dong-bo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_moi: true })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể đồng bộ import_sp.');
+      }
+
+      const parts = [
+        `Đã đồng bộ ${data.updated_products ?? 0} SP (${data.updated_lines ?? 0} dòng NVL)`,
+        data.applied_rows ? `· đánh dấu ${data.applied_rows} dòng import_sp` : null
+      ].filter(Boolean);
+
+      const missing = Array.isArray(data.missing_product_codes) ? data.missing_product_codes : [];
+      if (missing.length > 0) {
+        parts.push(`· bỏ qua ${missing.length} mã SP chưa có trong danh mục`);
+      }
+      const failures = Array.isArray(data.failures) ? data.failures : [];
+      if (failures.length > 0) {
+        setProductError(failures.slice(0, 3).join('\n'));
+      }
+
+      setProductActionMessage(parts.join(' '));
+      showAppToast(parts.join(' '));
+      await loadProducts();
+      if (isImportSpViewOpen) await loadImportSpRows();
+    } catch (error: any) {
+      setProductError(error.message || 'Không thể đồng bộ import_sp.');
+    } finally {
+      setIsSyncingImportSp(false);
     }
   };
 
@@ -2311,6 +3103,66 @@ export function ProductsPanel({
     }
   };
 
+  const goodsWarehouseName = useMemo(
+    () => resolveGoodsWarehouseName(warehouseOptions),
+    [warehouseOptions]
+  );
+  const xopCatalogProducts = useMemo(
+    () => products.filter(product => !product.inventoryBalanceOnly && isXopProductGroup(product.group)),
+    [products]
+  );
+  const xopProductsNeedingWarehouse = useMemo(
+    () =>
+      xopCatalogProducts.filter(product => !isGoodsWarehouseAssigned(product.warehouse, goodsWarehouseName)),
+    [goodsWarehouseName, xopCatalogProducts]
+  );
+
+  const handleReassignXopWarehouse = async () => {
+    if (!canEdit || xopCatalogProducts.length === 0) return;
+
+    if (xopProductsNeedingWarehouse.length === 0) {
+      setProductActionMessage(`Tất cả sản phẩm nhóm ${XOP_PRODUCT_GROUP} đã ở ${goodsWarehouseName}.`);
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Đổi cột Kho của ${xopProductsNeedingWarehouse.length} sản phẩm nhóm ${XOP_PRODUCT_GROUP} thành "${goodsWarehouseName}"?`
+      )
+    ) {
+      return;
+    }
+
+    setIsReassigningXopWarehouse(true);
+    setProductActionMessage('');
+    setProductError('');
+
+    try {
+      const res = await fetch('/api/san-pham', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group: XOP_PRODUCT_GROUP,
+          warehouse: goodsWarehouseName
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể đổi kho cho nhóm XOP.');
+      }
+      setProductActionMessage(
+        data.updated
+          ? `Đã đổi ${data.updated} sản phẩm nhóm ${XOP_PRODUCT_GROUP} sang ${data.ten_kho || goodsWarehouseName}.`
+          : `Không còn sản phẩm nhóm ${XOP_PRODUCT_GROUP} cần đổi kho.`
+      );
+      await loadProducts();
+    } catch (error: any) {
+      setProductError(error.message || 'Không thể đổi kho cho nhóm XOP.');
+    } finally {
+      setIsReassigningXopWarehouse(false);
+    }
+  };
+
   const isInventoryHeader = Boolean(warehouseFilter);
   const summaryStats = isCatalogMode
     ? [
@@ -2557,7 +3409,7 @@ export function ProductsPanel({
           onClick={handleDownloadBulkProductComponentsTemplate}
           disabled={isLoadingProducts}
           className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Mẫu định mức thành phần NVL (không phải danh mục SP)"
+          title="Mẫu định mức theo Mã SP + Mã NVL (tên NVL tự khớp từ kho)"
         >
           <Download className="h-4 w-4" />
           Mẫu định mức NVL
@@ -2568,9 +3420,32 @@ export function ProductsPanel({
             onClick={() => bulkComponentsFileInputRef.current?.click()}
             disabled={isLoadingProducts || isImportingBulkProductComponents}
             className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Đổ Excel định mức NVL vào bảng import_sp"
           >
             {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {isImportingBulkProductComponents ? 'Đang nhập...' : 'Nhập định mức NVL'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={openImportSpView}
+          disabled={isLoadingImportSp}
+          className="flex h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Xem dữ liệu đã đổ vào bảng import_sp"
+        >
+          {isLoadingImportSp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+          Xem import_sp
+        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => void handleSyncImportSp()}
+            disabled={isLoadingProducts || isSyncingImportSp || isImportingBulkProductComponents}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Đồng bộ import_sp → Thành phần NVL theo mã SP"
+          >
+            {isSyncingImportSp ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {isSyncingImportSp ? 'Đang đồng bộ...' : 'Đồng bộ Thành phần'}
           </button>
         ) : null}
         <input
@@ -2580,6 +3455,20 @@ export function ProductsPanel({
           className="hidden"
           onChange={event => handleImportBulkProductComponents(event.target.files?.[0])}
         />
+        {canEdit && xopCatalogProducts.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => void handleReassignXopWarehouse()}
+            disabled={isReassigningXopWarehouse || isLoadingProducts || xopProductsNeedingWarehouse.length === 0}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title={`Đổi cột Kho của mọi sản phẩm nhóm ${XOP_PRODUCT_GROUP} thành ${goodsWarehouseName}`}
+          >
+            {isReassigningXopWarehouse ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
+            {isReassigningXopWarehouse
+              ? 'Đang đổi kho...'
+              : `Đổi nhóm XOP → ${goodsWarehouseName}`}
+          </button>
+        ) : null}
         {canDelete ? (
           <button
             type="button"
@@ -2610,7 +3499,7 @@ export function ProductsPanel({
           <TableHeadCell>Tính chất</TableHeadCell>
           <TableHeadCell align="center">Nhóm</TableHeadCell>
           <TableHeadCell align="center">Đơn vị</TableHeadCell>
-          {!isCatalogMode ? <TableHeadCell align="center">Kho</TableHeadCell> : null}
+          <TableHeadCell align="center">Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng TL (kg)</TableHeadCell>
           {isCatalogMode ? (
             <>
@@ -2661,9 +3550,7 @@ export function ProductsPanel({
                 </td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.group}</td>
                 <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.unit}</td>
-                {!isCatalogMode ? (
-                  <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.warehouse || '—'}</td>
-                ) : null}
+                <td className="px-4 py-3.5 text-center font-bold text-zinc-700">{product.warehouse || '—'}</td>
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-emerald-800">
                   {formatProductSpecDisplay(product.totalWeight)}
                 </td>
@@ -2718,7 +3605,7 @@ export function ProductsPanel({
           ))}
 
           {!isLoadingProducts && filteredProducts.length === 0 && (
-            <TableEmptyRow colSpan={isCatalogMode ? 14 : 11}>
+            <TableEmptyRow colSpan={isCatalogMode ? 15 : 11}>
               {isCatalogMode
                 ? 'Không có sản phẩm phù hợp bộ lọc.'
                 : asOfDate
@@ -2875,6 +3762,147 @@ export function ProductsPanel({
                     <QrCode className="h-4 w-4" />
                     {`Xem trước ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
                   </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {isImportSpViewOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 p-4">
+              <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+                  <div>
+                    <h3 className="text-sm font-black text-zinc-900">Bảng import_sp</h3>
+                    <p className="text-xs font-semibold text-zinc-500">
+                      {importSpRows.length} dòng gần nhất · dữ liệu Excel định mức NVL
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadImportSpRows()}
+                      disabled={isLoadingImportSp}
+                      className="flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 hover:border-zinc-950 disabled:opacity-50"
+                    >
+                      {isLoadingImportSp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Tải lại
+                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleSyncImportSp()}
+                        disabled={isSyncingImportSp}
+                        className="flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                      >
+                        {isSyncingImportSp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Đồng bộ
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setIsImportSpViewOpen(false)}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 text-zinc-600 hover:border-zinc-950"
+                      aria-label="Đóng"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                {importSpError ? (
+                  <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700">
+                    {importSpError}
+                  </p>
+                ) : null}
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <table className="min-w-full border-collapse text-left text-xs">
+                    <thead className="sticky top-0 bg-zinc-50 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                      <tr>
+                        <th className="border-b border-zinc-200 px-3 py-2">Dòng</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Mã SP</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Mã NVL</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Loại</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Giá trị</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">ĐVT</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">%</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">SL</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Kg</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">File</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">TT</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Batch</th>
+                        <th className="border-b border-zinc-200 px-3 py-2">Lúc</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isLoadingImportSp ? (
+                        <tr>
+                          <td colSpan={13} className="px-3 py-8 text-center font-bold text-zinc-500">
+                            Đang tải…
+                          </td>
+                        </tr>
+                      ) : importSpRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={13} className="px-3 py-8 text-center font-bold text-zinc-500">
+                            Chưa có dữ liệu. Bấm «Nhập định mức NVL» để đổ Excel vào đây.
+                          </td>
+                        </tr>
+                      ) : (
+                        importSpRows.map(row => (
+                          <tr key={row.id} className="border-b border-zinc-100 hover:bg-amber-50/40">
+                            <td className="px-3 py-1.5 font-semibold text-zinc-500">{row.so_dong_excel ?? '—'}</td>
+                            <td className="px-3 py-1.5 font-black text-zinc-900 whitespace-pre">{row.ma_sp}</td>
+                            <td className="px-3 py-1.5 font-bold text-zinc-800">{row.ma_nvl}</td>
+                            <td className="px-3 py-1.5 text-zinc-600">{row.loai || '—'}</td>
+                            <td className="px-3 py-1.5 font-bold text-zinc-900">
+                              {row.gia_tri === null || row.gia_tri === undefined
+                                ? '—'
+                                : formatNplDecimal(row.gia_tri)}
+                            </td>
+                            <td className="px-3 py-1.5 text-zinc-600">{row.dvt || '—'}</td>
+                            <td className="px-3 py-1.5">
+                              {row.phan_tram === null || row.phan_tram === undefined
+                                ? '—'
+                                : formatNplDecimal(row.phan_tram)}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              {row.so_luong === null || row.so_luong === undefined
+                                ? '—'
+                                : formatNplDecimal(row.so_luong)}
+                            </td>
+                            <td className="px-3 py-1.5 font-bold text-amber-800">
+                              {row.khoi_luong_kg === null || row.khoi_luong_kg === undefined
+                                ? '—'
+                                : formatNplDecimal(row.khoi_luong_kg)}
+                            </td>
+                            <td className="max-w-[140px] truncate px-3 py-1.5 text-zinc-500" title={row.file_name || ''}>
+                              {row.file_name || '—'}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <span
+                                className={
+                                  row.trang_thai === 'da_ap_dung'
+                                    ? 'rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700'
+                                    : 'rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800'
+                                }
+                              >
+                                {row.trang_thai || 'moi'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 font-mono text-[10px] text-zinc-400" title={row.batch_id}>
+                              {row.batch_id ? `${row.batch_id.slice(0, 8)}…` : '—'}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-zinc-500">
+                              {row.imported_at
+                                ? new Date(row.imported_at).toLocaleString('vi-VN')
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>,

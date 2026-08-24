@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Search } from 'lucide-react';
+import { DateInput } from '../DateInput';
 
 /**
  * Khung bộ lọc dùng chung phía trên bảng: viền bo tròn, các control cùng hàng, nút "Xóa lọc".
@@ -21,7 +22,7 @@ export function TableToolbar({
   actionMessage?: string;
 }) {
   return (
-    <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+    <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm overflow-visible">
       <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
         {children}
 
@@ -95,11 +96,12 @@ export function TableDateFilter({
   return (
     <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700">
       <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">{label}</span>
-      <input
-        type="date"
+      <DateInput
         value={value}
-        onChange={event => onChange(event.target.value)}
-        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 focus:outline-none"
+        onChange={onChange}
+        aria-label={label}
+        wrapperClassName="relative inline-flex min-w-[8.5rem] flex-1 items-center"
+        className="min-w-0 flex-1 bg-transparent pr-8 font-mono text-sm font-semibold text-zinc-900 placeholder:font-sans placeholder:text-zinc-400 focus:outline-none"
       />
     </label>
   );

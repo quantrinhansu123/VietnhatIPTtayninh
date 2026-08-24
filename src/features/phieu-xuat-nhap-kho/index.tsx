@@ -45,7 +45,6 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
-  StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
@@ -103,6 +102,11 @@ const WAREHOUSE_HISTORY_TABS = [
   ['gia_cong', 'Kho gia công', Factory],
   ['tai_che', 'Kho tái chế', Recycle]
 ] as const satisfies ReadonlyArray<readonly [WarehouseKind, string, React.ComponentType<{ className?: string }>]>;
+
+const WAREHOUSE_HISTORY_SLIP_TYPE_TABS = [
+  { key: 'xuat' as const, label: 'Xuất kho', hint: 'Phiếu xuất kho đã lưu', Icon: ArrowUpFromLine },
+  { key: 'nhap' as const, label: 'Nhập kho', hint: 'Phiếu nhập kho đã lưu', Icon: ArrowDownToLine }
+];
 
 export interface WarehouseMovementRow {
   id: string;
@@ -1334,8 +1338,15 @@ export function WarehouseSlipPanel({
           // Chỉ hiển thị sản phẩm đúng nhóm của kho đang chọn.
           const selectableProducts =
             warehouseKind === 'hang_hoa'
-              ? products.filter(product => isGoodsWarehouseName(product.nature))
-              : products.filter(product => isFinishedGoodsWarehouseName(product.nature));
+              ? products.filter(
+                  product => isGoodsWarehouseName(product.warehouse) || isGoodsWarehouseName(product.nature)
+                )
+              : products.filter(
+                  product =>
+                    !isGoodsWarehouseName(product.warehouse) &&
+                    (isFinishedGoodsWarehouseName(product.nature) ||
+                      isFinishedGoodsWarehouseName(product.warehouse))
+                );
           setItemOptions(
             selectableProducts.map(product => ({
               code: product.code,
@@ -3389,7 +3400,7 @@ export function WarehouseHistoryPanel({
   const { canView, canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseTab);
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedType, setSelectedType] = useState<'all' | WarehouseSlipType>('all');
+  const [selectedType, setSelectedType] = useState<WarehouseSlipType>('xuat');
   const [fromDate, setFromDate] = useState(() => initialFilters?.dateFrom?.trim() || '');
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || '');
   const [isLoading, setIsLoading] = useState(true);
@@ -3466,7 +3477,7 @@ export function WarehouseHistoryPanel({
     try {
       const params = new URLSearchParams();
       params.set('loai_kho', warehouseTab);
-      if (selectedType !== 'all') params.set('loai', selectedType);
+      params.set('loai', selectedType);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
 
@@ -3512,10 +3523,9 @@ export function WarehouseHistoryPanel({
     loadMovements();
   }, [warehouseTab, selectedType, fromDate, toDate]);
 
-  const hasActiveFilters = selectedType !== 'all' || Boolean(fromDate) || Boolean(toDate) || Boolean(searchText);
+  const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(searchText);
 
   const resetFilters = () => {
-    setSelectedType('all');
     setFromDate('');
     setToDate('');
     setSearchText('');
@@ -3814,6 +3824,40 @@ export function WarehouseHistoryPanel({
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
+      <nav
+        aria-label="Loại phiếu xuất nhập kho"
+        className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2"
+      >
+        {WAREHOUSE_HISTORY_SLIP_TYPE_TABS.map(tab => {
+          const isActive = selectedType === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              aria-current={isActive ? 'page' : undefined}
+              onClick={() => setSelectedType(tab.key)}
+              className={`group flex min-h-[56px] min-w-0 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-left transition sm:min-h-[64px] sm:justify-start sm:gap-3 sm:px-4 ${
+                isActive
+                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+              }`}
+            >
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${
+                  isActive ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'
+                }`}
+              >
+                <tab.Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-black leading-tight text-zinc-900">{tab.label}</span>
+                <span className="mt-0.5 hidden text-xs font-semibold text-zinc-500 sm:block">{tab.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <FilterCombobox
@@ -3868,16 +3912,6 @@ export function WarehouseHistoryPanel({
           disabled={isLoading}
         />
 
-        <FilterCombobox
-          label="Loại"
-          options={['nhap', 'xuat']}
-          value={selectedType}
-          onChange={value => setSelectedType(value as 'all' | WarehouseSlipType)}
-          formatOption={value => warehouseSlipTypeLabel(value as WarehouseSlipType)}
-          searchable={false}
-          compact
-        />
-
         <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} />
         <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
       </TableToolbar>
@@ -3921,14 +3955,13 @@ export function WarehouseHistoryPanel({
               {' '}
             </TableHeadCell>
             <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
             <TableHeadCell>Máy</TableHeadCell>
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={7}>Đang tải Supabase...</TableEmptyRow>
+            <TableEmptyRow colSpan={6}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
       ) : slipDateGroups.length === 0 ? (
@@ -3938,15 +3971,14 @@ export function WarehouseHistoryPanel({
               {' '}
             </TableHeadCell>
             <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
             <TableHeadCell>Máy</TableHeadCell>
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={7}>
-              Chưa có lịch sử {warehouseKindLabel(warehouseTab).toLowerCase()}.
+            <TableEmptyRow colSpan={6}>
+              Chưa có phiếu {warehouseSlipTypeLabel(selectedType).toLowerCase()} tại {warehouseKindLabel(warehouseTab)}.
             </TableEmptyRow>
           </TableBody>
         </TableShell>
@@ -3982,7 +4014,6 @@ export function WarehouseHistoryPanel({
                     />
                   </TableHeadCell>
                   <TableHeadCell>Mã phiếu</TableHeadCell>
-                  <TableHeadCell>Loại</TableHeadCell>
                   <TableHeadCell>Ca</TableHeadCell>
                   <TableHeadCell>Máy</TableHeadCell>
                   <TableHeadCell>Người lập</TableHeadCell>
@@ -4013,12 +4044,6 @@ export function WarehouseHistoryPanel({
                             <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
                               {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
                             </p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <StatusBadge
-                              label={warehouseSlipTypeLabel(header.slipType)}
-                              color={header.slipType === 'nhap' ? 'emerald' : 'amber'}
-                            />
                           </td>
                           <td className="px-4 py-3 font-semibold text-zinc-700">{header.shift || '-'}</td>
                           <td className="px-4 py-3 font-semibold text-zinc-700">{header.machine || '-'}</td>
@@ -4086,7 +4111,7 @@ export function WarehouseHistoryPanel({
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết từng dòng</h3>
             <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-              Cuộn để xem{' '}
+              {warehouseSlipTypeLabel(selectedType)} · cuộn để xem{' '}
               {warehouseTab === 'san_pham'
                 ? 'từng dòng SP'
                 : warehouseTab === 'hang_hong'
@@ -4108,7 +4133,6 @@ export function WarehouseHistoryPanel({
         <TableShell minWidthClassName="min-w-[1080px]" maxHeightClassName="max-h-[min(70vh,720px)]">
           <TableHead>
             <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Loại</TableHeadCell>
             <TableHeadCell>Ngày</TableHeadCell>
             <TableHeadCell>Ca</TableHeadCell>
             <TableHeadCell>Máy</TableHeadCell>
@@ -4121,10 +4145,10 @@ export function WarehouseHistoryPanel({
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableEmptyRow colSpan={11}>Đang tải dữ liệu...</TableEmptyRow>
+              <TableEmptyRow colSpan={10}>Đang tải dữ liệu...</TableEmptyRow>
             ) : sortedMovementLines.length === 0 ? (
-              <TableEmptyRow colSpan={11}>
-                Chưa có dòng{' '}
+              <TableEmptyRow colSpan={10}>
+                Chưa có dòng {warehouseSlipTypeLabel(selectedType).toLowerCase()}{' '}
                 {warehouseTab === 'san_pham'
                   ? 'sản phẩm'
                   : warehouseTab === 'hang_hong'
@@ -4153,12 +4177,6 @@ export function WarehouseHistoryPanel({
                       >
                         {row.slipCode || '—'}
                       </button>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <StatusBadge
-                        label={warehouseSlipTypeLabel(row.slipType)}
-                        color={row.slipType === 'nhap' ? 'emerald' : 'amber'}
-                      />
                     </td>
                     <td className="px-3 py-2.5 font-mono text-xs font-semibold text-zinc-700">
                       {row.slipDate || '—'}

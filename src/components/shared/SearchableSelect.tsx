@@ -39,6 +39,7 @@ export function SearchableSelect({
   desktopAutoFlip = false,
   comboboxMode = false,
   comboboxSearchable = true,
+  matchDropdownWidth = false,
   searchPlaceholder
 }: {
   value: string;
@@ -67,6 +68,7 @@ export function SearchableSelect({
   comboboxMode?: boolean;
   /** Cho phép hiển thị ô tìm kiếm bên trong menu combobox. */
   comboboxSearchable?: boolean;
+  matchDropdownWidth?: boolean;
   /** Placeholder riêng cho ô tìm kiếm trong menu combobox. */
   searchPlaceholder?: string;
 }) {
@@ -193,7 +195,9 @@ export function SearchableSelect({
     // Trên mobile ô nhập rất hẹp → nới rộng menu để tên dài không bị xuống dòng nhiều
     const viewportWidth = document.documentElement.clientWidth;
     const margin = 8;
-    const width = Math.max(rect.width, Math.min(340, viewportWidth - margin * 2));
+    const width = matchDropdownWidth
+      ? Math.min(rect.width, viewportWidth - margin * 2)
+      : Math.max(rect.width, Math.min(340, viewportWidth - margin * 2));
     const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - width - margin));
     const isDesktop = window.matchMedia('(min-width: 1280px)').matches;
     const isMobile =
@@ -250,7 +254,7 @@ export function SearchableSelect({
       window.removeEventListener('scroll', handleReposition, true);
       document.removeEventListener('scroll', handleReposition, true);
     };
-  }, [open, query, filteredOptions.length, desktopAutoFlip]);
+  }, [open, query, filteredOptions.length, desktopAutoFlip, matchDropdownWidth]);
 
   useEffect(() => {
     if (!open || !comboboxMode) return;

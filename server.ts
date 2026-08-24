@@ -4972,6 +4972,21 @@ function parseWarehouseSlipDate(value: unknown): string | null {
   return parsed.toISOString().slice(0, 10);
 }
 
+function normalizeWarehouseExportReferenceText(value: unknown): string | null {
+  let normalized = String(value ?? '').trim();
+  if (!normalized) return null;
+
+  const pipeIndex = normalized.indexOf('|');
+  if (pipeIndex >= 0) normalized = normalized.slice(0, pipeIndex).trim();
+
+  normalized = normalized
+    .replace(/\s*Tự động điền từ \d+ lệnh SX\s*\([^)]*\)\.?\s*$/iu, '')
+    .trim();
+
+  if (/^LSX[\w-]+(?:\s*,\s*LSX[\w-]+)*$/i.test(normalized)) return null;
+  return normalized || null;
+}
+
 function parseWarehouseSlipLines(
   raw: unknown,
   loaiKho: WarehouseStorageType,
@@ -5080,14 +5095,19 @@ function parseWarehouseSlipBody(body: unknown): {
     return parsedItems;
   }
 
+  const rawLyDo = String(source.lyDo ?? source.ly_do ?? source.reason ?? '').trim();
+  const rawGhiChu = String(source.ghiChu ?? source.ghi_chu ?? source.note ?? '').trim();
+  const rawCa = String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim();
+  const isExport = loaiPhieu === 'xuat';
+
   return {
     loaiPhieu,
     loaiKho,
     ngayPhieu,
-    lyDo: String(source.lyDo ?? source.ly_do ?? source.reason ?? '').trim() || null,
-    ghiChu: String(source.ghiChu ?? source.ghi_chu ?? source.note ?? '').trim() || null,
+    lyDo: isExport ? normalizeWarehouseExportReferenceText(rawLyDo) : rawLyDo || null,
+    ghiChu: isExport ? normalizeWarehouseExportReferenceText(rawGhiChu) : rawGhiChu || null,
     nguoiLap: String(source.nguoiLap ?? source.nguoi_lap ?? source.createdBy ?? '').trim() || null,
-    ca: String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim() || null,
+    ca: isExport ? null : rawCa || null,
     may: String(source.may ?? source.machine ?? source.ten_may ?? '').trim() || null,
     tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
     // "Phiếu xuất kho treo" — chỉ áp dụng cho phiếu xuất, chờ thủ kho xác nhận mới tính vào tồn kho.
@@ -9305,9 +9325,20 @@ export function createApp() {
         });
       }
 
+      const movements = (data || []).map(row =>
+        String(row.loai_phieu || '').trim().toLowerCase() === 'xuat'
+          ? {
+              ...row,
+              ca: '',
+              ly_do: normalizeWarehouseExportReferenceText(row.ly_do),
+              ghi_chu: normalizeWarehouseExportReferenceText(row.ghi_chu)
+            }
+          : row
+      );
+
       return res.json({
-        movements: data || [],
-        total: data?.length || 0,
+        movements,
+        total: movements.length,
         source: 'supabase'
       });
     } catch (err: any) {
@@ -9567,6 +9598,7 @@ export function createApp() {
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .update({ ca: toShift })
         .eq('ca', fromShift)
+        .eq('loai_phieu', 'nhap')
         .select('id');
 
       if (error) {

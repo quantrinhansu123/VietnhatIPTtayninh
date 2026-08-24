@@ -322,23 +322,20 @@ const warehouseFieldClass =
 const warehouseLineFieldClass =
   'h-9 w-full rounded-md border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
 
-const warehouseLineLabelClass =
-  'mb-0.5 block text-[10px] font-black uppercase tracking-wider text-zinc-500 lg:hidden';
-
 const warehouseLineHeaderClass =
   'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
 const warehouseNhapLineGridClass =
-  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+  'grid min-w-[48rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
 
 const warehouseXuatLineGridClass =
-  'grid grid-cols-3 gap-1.5 rounded-lg border border-zinc-200/90 bg-white p-2 lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-200/80 lg:bg-transparent lg:p-0 lg:py-1.5';
+  'grid min-w-[54rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
 
 const warehouseNhapHeaderGridClass =
-  'hidden min-w-[48rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
+  'mb-1 grid min-w-[48rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
 
 const warehouseXuatHeaderGridClass =
-  'hidden min-w-[54rem] lg:mb-1 lg:grid lg:grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] lg:items-center lg:gap-1.5 lg:rounded-lg lg:bg-[#ef1b2d] lg:px-2 lg:py-2';
+  'mb-1 grid min-w-[54rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -1901,6 +1898,7 @@ export function WarehouseSlipPanel({
   const isMaterialWarehouse = warehouseKind === 'nvl' || warehouseKind === 'tai_che';
   const isNvlExport = isMaterialWarehouse && slipType === 'xuat';
   const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
+  const showOrderAndShiftFields = slipType === 'nhap';
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -2303,6 +2301,10 @@ export function WarehouseSlipPanel({
   }, [lines, warehouseKind, weightCatalog]);
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
+  const productionOrderCodesForSave = slipType === 'xuat' ? [] : productionOrderCodes;
+  const shiftLabelForSave = slipType === 'xuat' ? '' : shiftLabel;
+  const productionOrderLabelForSave = slipType === 'xuat' ? '' : productionOrderLabel;
+  const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodesForSave);
 
   const handlePrintSavedSlip = () => {
     if (!printSlip) {
@@ -2375,10 +2377,10 @@ export function WarehouseSlipPanel({
       loaiKho: warehouseKind,
       tenKho: warehouseName.trim(),
       ngayPhieu: slipDate,
-      lyDo: composeReasonWithProductionOrderCodes(reason, productionOrderCodes),
+      lyDo: savedReason,
       ghiChu: note.trim(),
       nguoiLap: createdBy.trim(),
-      ca: shiftLabel || null,
+      ca: shiftLabelForSave || null,
       may: machine.trim() || null,
       // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
       treo: false,
@@ -2410,7 +2412,6 @@ export function WarehouseSlipPanel({
       if (!savedSlipCode) {
         throw new Error('Máy chủ chưa xác nhận mã phiếu đã lưu. Phiếu sẽ không được in.');
       }
-      const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodes);
       const savedProductQrLabels: ProductQrPrintLabel[] = Array.isArray(data.qrCodes)
         ? data.qrCodes
             .map((record: Record<string, unknown>, index: number) => {
@@ -2437,9 +2438,9 @@ export function WarehouseSlipPanel({
             reason: savedReason,
             note: note.trim(),
             createdBy: createdBy.trim(),
-            productionOrderRef: productionOrderLabel,
+            productionOrderRef: productionOrderLabelForSave,
             machine: machine.trim(),
-            shift: shiftLabel,
+            shift: shiftLabelForSave,
             recipient: recipient.trim(),
             deliverer: deliverer.trim(),
             warehouseLocation: warehouseLocation.trim(),
@@ -2739,18 +2740,18 @@ export function WarehouseSlipPanel({
           <div className="space-y-2">
             <label className="block space-y-1">
               <span className="text-xs font-black uppercase tracking-wide text-zinc-700">Tên kho *</span>
-              <select
+              <SearchableSelect
                 value={warehouseName}
-                onChange={event => handleWarehouseNameChange(event.target.value)}
-                className={warehouseFieldClass}
-              >
-                <option value="">-- Chọn tên kho --</option>
-                {warehouseSelectOptions.map(name => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                onChange={handleWarehouseNameChange}
+                options={warehouseSelectOptions}
+                getLabel={item => String(item)}
+                getValue={item => String(item)}
+                placeholder="-- Chọn tên kho --"
+                inputClassName={warehouseFieldClass}
+                comboboxMode
+                comboboxSearchable={false}
+                matchDropdownWidth
+              />
               {warehouseName ? (
                 <p className="text-[11px] font-semibold text-zinc-500">
                   Loại: {warehouseKindLabel(warehouseKind)}
@@ -2800,36 +2801,38 @@ export function WarehouseSlipPanel({
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
           </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-              {isNvlInbound ? (
-                <>
-                  Ca{' '}
-                  <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
-                </>
-              ) : (
-                'Ca'
-              )}
-            </span>
-            <select
-              value={selectedShifts[0] ?? ''}
-              onChange={event => {
-                const value = event.target.value.trim();
-                setSelectedShifts(value ? [value] : []);
-              }}
-              className={warehouseFieldClass}
-              disabled={shiftOptions.length === 0}
-            >
-              <option value="">
-                {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
-              </option>
-              {shiftOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+          {showOrderAndShiftFields ? (
+            <label className="block space-y-1">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                {isNvlInbound ? (
+                  <>
+                    Ca{' '}
+                    <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
+                  </>
+                ) : (
+                  'Ca'
+                )}
+              </span>
+              <select
+                value={selectedShifts[0] ?? ''}
+                onChange={event => {
+                  const value = event.target.value.trim();
+                  setSelectedShifts(value ? [value] : []);
+                }}
+                className={warehouseFieldClass}
+                disabled={shiftOptions.length === 0}
+              >
+                <option value="">
+                  {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
                 </option>
-              ))}
-            </select>
-          </label>
+                {shiftOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
@@ -2886,7 +2889,8 @@ export function WarehouseSlipPanel({
             </label>
           )}
 
-          <div className="relative block space-y-1 sm:col-span-2 lg:col-span-4">
+          {showOrderAndShiftFields ? (
+            <div className="relative block space-y-1 sm:col-span-2 lg:col-span-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Mã đơn hàng / Lệnh SX{' '}
@@ -3004,7 +3008,8 @@ export function WarehouseSlipPanel({
                   document.body
                 )
               : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -3022,7 +3027,7 @@ export function WarehouseSlipPanel({
               </p>
             </div>
             {(editSlipCode ? canEdit : canCreate) ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                 {slipType === 'xuat' ? (
                   <button
                     type="button"
@@ -3135,31 +3140,13 @@ export function WarehouseSlipPanel({
               <span />
             </div>
 
-            <div className={`space-y-2 ${slipType === 'xuat' ? 'lg:min-w-[54rem]' : 'lg:min-w-[48rem]'} lg:space-y-0`}>
-              {lines.map((line, lineIndex) => (
+            <div>
+              {lines.map(line => (
                 <div
                   key={line.key}
                   className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}
                 >
-                  <div className="-mx-2 -mt-2 mb-1.5 col-span-3 flex items-center justify-between gap-2 rounded-t-lg bg-[#ef1b2d] px-2.5 py-1.5 lg:hidden">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-white">
-                      Dòng {lineIndex + 1}
-                    </span>
-                    {lines.length > 1 && canDelete ? (
-                      <button
-                        type="button"
-                        onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-white/30 bg-white/15 px-2 text-[10px] font-bold text-white transition hover:bg-white/25"
-                        title="Xóa dòng"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Xóa
-                      </button>
-                    ) : null}
-                  </div>
-
-                  <div className="min-w-0 col-span-1">
-                    <span className={warehouseLineLabelClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
+                  <div className="min-w-0">
                     <SearchableSelect
                       value={line.code}
                       onChange={code => pickItem(line.key, code)}
@@ -3178,7 +3165,6 @@ export function WarehouseSlipPanel({
                     />
                   </div>
                   <div className="min-w-0">
-                    <span className={warehouseLineLabelClass}>{warehouseItemNameLabel(warehouseKind)}</span>
                     <input
                       value={line.name}
                       onChange={event => updateLine(line.key, { name: event.target.value })}
@@ -3186,7 +3172,6 @@ export function WarehouseSlipPanel({
                     />
                   </div>
                   <div className="min-w-0">
-                    <span className={warehouseLineLabelClass}>Đơn vị</span>
                     <input
                       value={line.unit}
                       onChange={event => updateLine(line.key, { unit: event.target.value })}
@@ -3196,7 +3181,6 @@ export function WarehouseSlipPanel({
                   {slipType === 'xuat' ? (
                     <>
                       <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>SL CT</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -3206,7 +3190,6 @@ export function WarehouseSlipPanel({
                         />
                       </div>
                       <div className="min-w-0">
-                        <span className={warehouseLineLabelClass}>SL THỰC *</span>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -3218,7 +3201,6 @@ export function WarehouseSlipPanel({
                     </>
                   ) : (
                     <div className="min-w-0">
-                      <span className={warehouseLineLabelClass}>Số lượng *</span>
                       <input
                         type="text"
                         inputMode="decimal"
@@ -3229,7 +3211,6 @@ export function WarehouseSlipPanel({
                     </div>
                   )}
                   <div className="min-w-0">
-                    <span className={warehouseLineLabelClass}>Quy đổi kg</span>
                     <div
                       className={`${warehouseLineFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}
                       title={resolveLineWeightHint(line)}
@@ -3241,7 +3222,6 @@ export function WarehouseSlipPanel({
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <span className={warehouseLineLabelClass}>Giá</span>
                     <div className="relative">
                       <input
                         type="text"
@@ -3267,10 +3247,9 @@ export function WarehouseSlipPanel({
                       ) : null}
                     </div>
                   </div>
-                  <div className={`min-w-0 ${slipType === 'xuat' ? 'col-span-2 lg:col-span-1' : ''}`}>
-                    <span className={warehouseLineLabelClass}>Thành tiền</span>
+                  <div className="min-w-0">
                     <div
-                      className={`${warehouseLineFieldClass} flex items-center justify-end whitespace-nowrap bg-zinc-50 font-mono font-bold tabular-nums text-zinc-900 lg:bg-white`}
+                      className={`${warehouseLineFieldClass} flex items-center justify-end whitespace-nowrap bg-zinc-50 font-mono font-bold tabular-nums text-zinc-900`}
                     >
                       {formatWarehouseMoney(computeWarehouseLineAmount(line.quantity, line.unitPrice))}
                     </div>
@@ -3279,13 +3258,13 @@ export function WarehouseSlipPanel({
                     <button
                       type="button"
                       onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                      className="hidden h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 lg:flex"
+                      className="flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                       title="Xóa dòng"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   ) : (
-                    <span className="hidden lg:block" />
+                    <span />
                   )}
                 </div>
               ))}

@@ -2965,6 +2965,13 @@ input[type="number"] {
   font-weight: 700;
 }
 
+.production-order-print-section-subtitle {
+  margin: 3mm 0 2mm;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 10.5pt;
+  font-weight: 700;
+}
+
 .production-order-print-grid-table {
   width: 100%;
   border-collapse: collapse;

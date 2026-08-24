@@ -405,6 +405,20 @@ export function sumCanTuDongSanLuongTotals(records: CanTuDongWeightRow[]) {
   };
 }
 
+/** Tổng cột «Trọng lượng TT» (Cân sản phẩm — chưa trừ lõi/bì) + số lần cân (= số dòng đã lọc). */
+export function sumCanTuDongThucTeTotals(records: CanTuDongWeightRow[]) {
+  let weightKg = 0;
+  for (const row of records) {
+    const canSp = resolveCanSpKg(row);
+    if (canSp !== null) weightKg += canSp;
+  }
+  return {
+    /** Số lần cân = số bản ghi can_tu_dong trong bộ lọc. */
+    quantity: records.length,
+    weightKg
+  };
+}
+
 /** Tổng cột «Trọng lượng tiêu chuẩn» (`san_pham.tong_trong_luong` theo Mã SP từ QR). */
 export function sumCanTuDongNhuaTieuChuanKg(
   records: CanTuDongWeightRow[],

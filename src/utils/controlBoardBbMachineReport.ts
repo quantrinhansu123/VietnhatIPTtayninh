@@ -2400,6 +2400,94 @@ export function sumBbDamagedGoodsWeightKg(rows: BbDamagedGoodsLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0);
 }
 
+/** Chuẩn hóa `loai_vat_tu` trên phiếu báo cáo sản lượng (`bao_cao_nghiem_thu`). */
+function normalizeAcceptanceLoaiVatTuKey(value?: string | null): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[_/.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** SP lỗi (Hàng hỏng) trên Báo cáo sản lượng. */
+export function isAcceptanceSpLoiLoai(loaiVatTu?: string | null): boolean {
+  const key = normalizeAcceptanceLoaiVatTuKey(loaiVatTu);
+  if (!key) return false;
+  if (key.includes('sp rac') || key === 'rac') return false;
+  return (
+    key === 'sp loi' ||
+    key.includes('sp loi') ||
+    key.includes('hang loi') ||
+    key.includes('loi hong') ||
+    key.includes('hang hong')
+  );
+}
+
+/** SP rác (Kho rác) trên Báo cáo sản lượng. */
+export function isAcceptanceSpRacLoai(loaiVatTu?: string | null): boolean {
+  const key = normalizeAcceptanceLoaiVatTuKey(loaiVatTu);
+  if (!key) return false;
+  return key === 'sp rac' || key.includes('sp rac') || key.includes('kho rac') || key.includes('hang rac');
+}
+
+function acceptanceReportWeightKg(report: AcceptanceReport): number {
+  const raw = report.trong_luong;
+  const num = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim().replace(',', '.'));
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  const unit = String(report.don_vi_trong_luong || '').trim().toLowerCase();
+  // Phiếu báo cáo sản lượng lưu trọng lượng theo kg.
+  if (!unit || unit === 'kg' || unit === 'kgs' || unit === 'kilogram') return num;
+  return num;
+}
+
+/**
+ * Ô «Báo cáo lỗi hỏng» trên báo cáo máy BB:
+ * lấy từ Báo cáo sản lượng — mục SP lỗi (hàng lỗi hỏng) + SP rác.
+ * - Trọng lượng nhựa = Σ trọng lượng phiếu SP lỗi
+ * - Vật tư khác = Σ trọng lượng phiếu SP rác
+ */
+export function sumBbSanLuongLoiHongVaRacWeightByKind(input: {
+  acceptanceReports: AcceptanceReport[];
+  dateFrom: string;
+  dateTo: string;
+  shiftFilter?: string;
+  machineFilter?: string;
+  selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
+}): { plasticKg: number; otherKg: number } {
+  let plasticKg = 0;
+  let otherKg = 0;
+  for (const report of input.acceptanceReports || []) {
+    const ngay = parseProductionOrderFilterDate(report.ngay) || report.ngay;
+    if (!matchesControlBoardDateRange(ngay, input.dateFrom, input.dateTo)) continue;
+    if (input.shiftFilter && input.shiftFilter !== 'all' && !shiftNamesMatch(report.ca, input.shiftFilter)) {
+      continue;
+    }
+    if (
+      !machineValueMatchesFilter(
+        input.machineFilter || 'all',
+        input.selectedMachine ?? null,
+        report.ma_may,
+        report.ten_may
+      )
+    ) {
+      continue;
+    }
+    if (!input.includeAllMachines && !isBbMachineText(report.ma_may, report.ten_may)) continue;
+
+    const kg = acceptanceReportWeightKg(report);
+    if (kg <= 0) continue;
+    if (isAcceptanceSpLoiLoai(report.loai_vat_tu)) plasticKg += kg;
+    else if (isAcceptanceSpRacLoai(report.loai_vat_tu)) otherKg += kg;
+  }
+  return {
+    plasticKg: roundQty(plasticKg, 4),
+    otherKg: roundQty(otherKg, 4)
+  };
+}
+
 /** Tổng số phiếu lỗi hỏng + trọng lượng (kg) trên tab báo cáo hàng lỗi hỏng. */
 export function sumBbDamagedGoodsTotals(rows: BbDamagedGoodsLineRow[]) {
   const slips = new Set<string>();

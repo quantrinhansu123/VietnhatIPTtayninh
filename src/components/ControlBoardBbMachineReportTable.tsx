@@ -52,6 +52,7 @@ import {
   sumBbInboundReportTotals,
   sumBbProductionOrderPlasticRequiredKg,
   sumBbProductionOrderTotals,
+  sumBbSanLuongLoiHongVaRacWeightByKind,
   sumBbSanLuongTotals,
   sumBbThucDungWeightKg,
   sumBbTongChenhLech,
@@ -878,16 +879,28 @@ export default function ControlBoardBbMachineReportTable({
     [inboundNormGroups]
   );
   const damagedTotalKg = useMemo(() => sumBbDamagedGoodsWeightKg(damagedRows), [damagedRows]);
-  const damagedWeightByKind = useMemo(() => {
-    let plasticKg = 0;
-    let otherKg = 0;
-    damagedRows.forEach(row => {
-      const kg = row.weightKg > 0 ? row.weightKg : 0;
-      if (String(row.materialCode || '').trim().toUpperCase().startsWith('NHUA-')) plasticKg += kg;
-      else otherKg += kg;
-    });
-    return { plasticKg, otherKg };
-  }, [damagedRows]);
+  /** Ô «Báo cáo lỗi hỏng»: SP lỗi → nhựa, SP rác → vật tư khác (từ Báo cáo sản lượng). */
+  const damagedWeightByKind = useMemo(
+    () =>
+      sumBbSanLuongLoiHongVaRacWeightByKind({
+        acceptanceReports,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine,
+        includeAllMachines
+      }),
+    [
+      acceptanceReports,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
+    ]
+  );
   const cuoiCaTotalKg = useMemo(() => sumBbCuoiCaWeightKg(cuoiCaRows), [cuoiCaRows]);
   const cuoiCaWeightByKind = useMemo(() => sumBbCuoiCaWeightKgByKind(cuoiCaRows), [cuoiCaRows]);
   const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
@@ -930,18 +943,13 @@ export default function ControlBoardBbMachineReportTable({
   const displaySanLuongTotals =
     reportSnapshot?.summary?.displaySanLuongTotals ??
     (sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals);
-  const plasticDamagedWeightKg = useMemo(
-    () =>
-      damagedRows.reduce((sum, row) => {
-        const code = String(row.materialCode || '').toUpperCase();
-        if (!code.startsWith('NHUA-')) return sum;
-        return sum + (row.weightKg > 0 ? row.weightKg : 0);
-      }, 0),
-    [damagedRows]
-  );
-  /** Lượng nhựa sử dụng LT = Xuất nhựa + Tồn đầu ca − Tồn cuối ca. */
+  const plasticDamagedWeightKg = damagedWeightByKind.plasticKg;
+  /** Lượng nhựa sử dụng LT = Xuất nhựa + Tồn đầu ca − Tồn cuối ca + Lỗi hỏng (nhựa). */
   const plasticUsedLtKg =
-    exportWeightByKind.plasticKg + dauCaWeightByKind.plasticKg - cuoiCaWeightByKind.plasticKg;
+    exportWeightByKind.plasticKg +
+    dauCaWeightByKind.plasticKg -
+    cuoiCaWeightByKind.plasticKg +
+    plasticDamagedWeightKg;
   /** Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT. */
   const plasticDifferenceWeightKg = displaySanLuongTotals.weightKg - plasticUsedLtKg;
   const plasticSummaryRow = {
@@ -1604,13 +1612,13 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[92px] flex-col rounded-lg border border-white/40 bg-white/15 px-2.5 py-1.5 shadow-sm backdrop-blur-[1px]"
-            title="Trọng lượng lỗi hỏng tách riêng nhựa và các vật tư còn lại"
+            title="Lấy từ Báo cáo sản lượng: SP lỗi (hàng lỗi hỏng) + SP rác"
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo lỗi hỏng
             </p>
             <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
-              <div title="Các dòng lỗi hỏng có mã vật tư nhóm nhựa">
+              <div title="Σ trọng lượng phiếu Báo cáo sản lượng · loại SP lỗi (Hàng hỏng)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Trọng lượng nhựa</p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
@@ -1620,7 +1628,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'}
                 </p>
               </div>
-              <div title="Màng, lõi và các vật tư lỗi hỏng không thuộc nhóm nhựa">
+              <div title="Σ trọng lượng phiếu Báo cáo sản lượng · loại SP rác (Kho rác)">
                 <p className="text-[8px] font-black uppercase tracking-wider text-white/75">Vật tư khác</p>
                 <p className="font-mono text-sm font-black tabular-nums">
                   {isLoading
@@ -1680,18 +1688,19 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Lượng nhựa sử dụng LT',
-                  title: 'Lượng xuất + Đầu ca − Cuối ca (nhựa)',
+                  title: 'Xuất nhựa + Tồn đầu ca − Tồn cuối ca + Lỗi hỏng (nhựa)',
                   display: isLoading
                     ? '…'
                     : exportWeightByKind.plasticKg > 0 ||
                         dauCaWeightByKind.plasticKg > 0 ||
-                        cuoiCaWeightByKind.plasticKg > 0
+                        cuoiCaWeightByKind.plasticKg > 0 ||
+                        plasticSummaryRow.damagedKg > 0
                       ? `${formatKg(plasticSummaryRow.stockNetKg, 2)} kg`
                       : '—'
                 },
                 {
                   label: 'Tổng nhựa lỗi',
-                  title: 'Chỉ NVL mã NHUA-*',
+                  title: 'Σ trọng lượng phiếu Báo cáo sản lượng · SP lỗi (Hàng hỏng)',
                   display: isLoading
                     ? '…'
                     : plasticSummaryRow.damagedKg > 0

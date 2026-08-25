@@ -748,7 +748,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Main Content scrollable container viewport */}
-        <main className={`flex-1 min-h-0 overflow-y-auto bg-slate-50 focus:outline-none ${
+        <main className={`flex-1 min-h-0 overflow-y-auto bg-slate-50 focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
           activeTab === 'control-board'
             ? 'p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'

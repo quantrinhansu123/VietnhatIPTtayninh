@@ -485,6 +485,15 @@ input[type="number"] {
   background: rgba(100, 116, 139, 0.65);
 }
 
+/* Vẫn vuốt ngang được trên mobile nhưng không để thanh scrollbar chiếm chỗ. */
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 /* ===== Báo cáo máy BB — thanh tab cuộn ngang & bảng thân thiện điện thoại ===== */
 /* Dải tab kéo ngang: giữ 1 hàng, cuộn mượt, có thanh kéo mảnh để kéo sang */
 .bb-tab-scroller {

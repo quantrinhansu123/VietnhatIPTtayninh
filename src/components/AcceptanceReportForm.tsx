@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import ProductQrScanner from './ProductQrScanner';
 import SearchableSelect from './SearchableSelect';
+import { SearchableSelect as ComboSelect } from './shared/SearchableSelect';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
@@ -25,10 +26,10 @@ import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } 
 import { resolveTrongLuongNhuaKg } from '../utils/canTuDongWeights';
 
 const productLineGridClass =
-  'grid-cols-1 sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
+  'min-w-[50rem] grid-cols-[2.25rem_minmax(9rem,1.1fr)_minmax(12rem,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
 
-const mobileFieldLabelClass =
-  'mb-0.5 block text-[9px] font-black uppercase tracking-wider text-zinc-500 sm:hidden';
+const mobileProductColumnLabelClass =
+  'block text-[9px] font-black uppercase tracking-wider text-zinc-500';
 
 export type AcceptanceReport = {
   id: string;
@@ -86,6 +87,28 @@ interface AiWeighingRecord {
 
 const inputClass =
   'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+
+/** Danh sách loại vật tư — mỗi loại hiển thị thành 1 phiếu báo cáo độc lập trên màn hình. */
+const MATERIAL_TYPES = ['Thành phẩm', 'Gia công', 'SP lỗi', 'SP rác'] as const;
+type MaterialType = (typeof MATERIAL_TYPES)[number];
+
+const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
+  'Thành phẩm': 'Thành phẩm',
+  'Gia công': 'Gia công',
+  'SP lỗi': 'SP lỗi (Hàng hỏng)',
+  'SP rác': 'SP rác (Kho rác)'
+};
+
+const MATERIAL_TYPE_TITLE_LABELS: Record<MaterialType, string> = {
+  'Thành phẩm': 'thành phẩm',
+  'Gia công': 'gia công',
+  'SP lỗi': 'SP lỗi (Hàng hỏng)',
+  'SP rác': 'SP rác (Kho rác)'
+};
+
+function isMaterialType(value: string): value is MaterialType {
+  return (MATERIAL_TYPES as readonly string[]).includes(value);
+}
 
 /**
  * Một dòng danh mục có thể gộp nhiều mã (VD "MT- MN001, MT- MN008") kèm chuỗi tên tương ứng.
@@ -240,7 +263,7 @@ function normalizeWarehouseKey(name: string) {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\p{Diacritic}/gu, '')
     .replace(/đ/g, 'd');
 }
 
@@ -399,7 +422,18 @@ function newProductLine(): ProductLine {
   };
 }
 
-function newReportForm(overrides?: Partial<{ ngay: string; ca: string }>) {
+interface HeaderState {
+  ngay: string;
+  ca: string;
+  lan: string;
+  gio: string;
+  ma_may: string;
+  ten_may: string;
+  machineRef: string;
+  teamId: string;
+}
+
+function newHeaderState(overrides?: Partial<{ ngay: string; ca: string }>): HeaderState {
   return {
     ngay: overrides?.ngay || todayIso(),
     ca: overrides?.ca || '',
@@ -407,13 +441,28 @@ function newReportForm(overrides?: Partial<{ ngay: string; ca: string }>) {
     gio: nowTimeValue(),
     ma_may: '',
     ten_may: '',
-    loai_vat_tu: 'Thành phẩm',
     machineRef: '',
-    teamId: '',
-    lines: [newProductLine()],
-    hinh_anh: '',
-    hinh_anh_public_id: '',
-    imagePreview: ''
+    teamId: ''
+  };
+}
+
+interface SectionState {
+  lines: ProductLine[];
+  hinh_anh: string;
+  hinh_anh_public_id: string;
+  imagePreview: string;
+}
+
+function newSectionState(): SectionState {
+  return { lines: [newProductLine()], hinh_anh: '', hinh_anh_public_id: '', imagePreview: '' };
+}
+
+function newSectionsState(): Record<MaterialType, SectionState> {
+  return {
+    'Thành phẩm': newSectionState(),
+    'Gia công': newSectionState(),
+    'SP lỗi': newSectionState(),
+    'SP rác': newSectionState()
   };
 }
 
@@ -444,13 +493,14 @@ export default function AcceptanceReportForm({
   const [racMaterialOptions, setRacMaterialOptions] = useState<ProductSelectOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-  const [form, setForm] = useState(newReportForm());
-  const formLinesRef = useRef(form.lines);
-  formLinesRef.current = form.lines;
-  const isAutoReportMaterialType = form.loai_vat_tu === 'Thành phẩm';
+  const [header, setHeader] = useState<HeaderState>(newHeaderState());
+  const [sections, setSections] = useState<Record<MaterialType, SectionState>>(newSectionsState());
+  const sectionsRef = useRef(sections);
+  sectionsRef.current = sections;
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingType, setEditingType] = useState<MaterialType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingType, setUploadingType] = useState<MaterialType | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
@@ -458,9 +508,14 @@ export default function AcceptanceReportForm({
   const [isAutoReportOpen, setIsAutoReportOpen] = useState(false);
   const [isLoadingAutoReport, setIsLoadingAutoReport] = useState(false);
   const [autoReportFilter, setAutoReportFilter] = useState({ ngay: todayIso(), ca: '' });
-  const [highlightLineId, setHighlightLineId] = useState('');
+  const [highlightLine, setHighlightLine] = useState<{ type: MaterialType; lineId: string } | null>(null);
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRefs = useRef<Record<MaterialType, HTMLInputElement | null>>({
+    'Thành phẩm': null,
+    'Gia công': null,
+    'SP lỗi': null,
+    'SP rác': null
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -523,24 +578,26 @@ export default function AcceptanceReportForm({
 
   useEffect(() => {
     if (!createPrefill) return;
-    setForm(newReportForm({ ngay: createPrefill.ngay, ca: createPrefill.ca }));
+    setHeader(newHeaderState({ ngay: createPrefill.ngay, ca: createPrefill.ca }));
+    setSections(newSectionsState());
     setEditingId(null);
+    setEditingType(null);
     setError('');
     setMessage('');
     onCreatePrefillConsumed?.();
   }, [createPrefill, onCreatePrefillConsumed]);
 
   useEffect(() => {
-    if (!highlightLineId) return;
-    const timer = window.setTimeout(() => setHighlightLineId(''), 2600);
+    if (!highlightLine) return;
+    const timer = window.setTimeout(() => setHighlightLine(null), 2600);
     return () => window.clearTimeout(timer);
-  }, [highlightLineId]);
+  }, [highlightLine]);
 
   // Tự tăng "Lần" theo cùng ngày + cùng ca khi tạo phiếu mới
   useEffect(() => {
     if (editingId) return;
-    const ngay = form.ngay.trim();
-    const ca = form.ca.trim();
+    const ngay = header.ngay.trim();
+    const ca = header.ca.trim();
     if (!ngay || !ca) return;
 
     let cancelled = false;
@@ -561,7 +618,7 @@ export default function AcceptanceReportForm({
           if (Number.isFinite(parsed) && parsed > maxLan) maxLan = parsed;
         });
         if (cancelled) return;
-        setForm(prev => {
+        setHeader(prev => {
           if (prev.ngay.trim() !== ngay || prev.ca.trim() !== ca) return prev;
           return { ...prev, lan: String(maxLan + 1) };
         });
@@ -573,11 +630,11 @@ export default function AcceptanceReportForm({
     return () => {
       cancelled = true;
     };
-  }, [form.ngay, form.ca, editingId]);
+  }, [header.ngay, header.ca, editingId]);
 
   const ordersForSelectedDay = useMemo(
-    () => productionOrders.filter(order => order.startDate === form.ngay),
-    [productionOrders, form.ngay]
+    () => productionOrders.filter(order => order.startDate === header.ngay),
+    [productionOrders, header.ngay]
   );
 
   const settingShiftOptions = useMemo(
@@ -597,13 +654,13 @@ export default function AcceptanceReportForm({
   );
 
   const orderProductOptions = useMemo(() => {
-    if (!form.ca || (!form.ma_may.trim() && !form.ten_may.trim())) return [] as ProductSelectOption[];
+    if (!header.ca || (!header.ma_may.trim() && !header.ten_may.trim())) return [] as ProductSelectOption[];
 
     return ordersForSelectedDay
       .filter(
         order =>
-          shiftMatches(order.shift, form.ca) &&
-          machineMatches(order.machine, form.ma_may, form.ten_may, form.machineRef || form.ten_may || form.ma_may)
+          shiftMatches(order.shift, header.ca) &&
+          machineMatches(order.machine, header.ma_may, header.ten_may, header.machineRef || header.ten_may || header.ma_may)
       )
       .map(order => ({
         code: productCodeFromOrder(order),
@@ -612,100 +669,81 @@ export default function AcceptanceReportForm({
         totalWeightKg: null
       }))
       .filter(item => item.code && item.code !== '-');
-  }, [ordersForSelectedDay, form.ca, form.ma_may, form.ten_may, form.machineRef]);
+  }, [ordersForSelectedDay, header.ca, header.ma_may, header.ten_may, header.machineRef]);
 
-  const productSelectOptions = useMemo(() => {
-    const byCode = new Map<string, ProductSelectOption>();
-    const materialType = form.loai_vat_tu.trim();
+  const productOptionsByType = useMemo(() => {
+    const build = (materialType: MaterialType) => {
+      const byCode = new Map<string, ProductSelectOption>();
 
-    const mergeOptions = (products: ProductSelectOption[]) => {
-      products.forEach(product => {
-        const key = normalizeKey(product.code);
-        if (!key) return;
-        const existing = byCode.get(key);
-        byCode.set(key, {
-          code: product.code,
-          name: product.name || existing?.name || '',
-          unit: product.unit || existing?.unit || '',
-          totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
+      const mergeOptions = (products: ProductSelectOption[]) => {
+        products.forEach(product => {
+          const key = normalizeKey(product.code);
+          if (!key) return;
+          const existing = byCode.get(key);
+          byCode.set(key, {
+            code: product.code,
+            name: product.name || existing?.name || '',
+            unit: product.unit || existing?.unit || '',
+            totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
+          });
         });
-      });
+      };
+
+      // Thành phẩm / gia công: danh mục SP. SP lỗi / SP rác: thêm mã trong kho_nvl theo tên kho.
+      mergeOptions(catalogProducts);
+      if (materialType === 'SP lỗi') mergeOptions(hangHongMaterialOptions);
+      if (materialType === 'SP rác') mergeOptions(racMaterialOptions);
+      mergeOptions(orderProductOptions);
+
+      return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
     };
 
-    // Thành phẩm / gia công: danh mục SP. SP lỗi / SP rác: thêm mã trong kho_nvl theo tên kho.
-    mergeOptions(catalogProducts);
-    if (materialType === 'SP lỗi') mergeOptions(hangHongMaterialOptions);
-    if (materialType === 'SP rác') mergeOptions(racMaterialOptions);
-    mergeOptions(orderProductOptions);
+    return {
+      'Thành phẩm': build('Thành phẩm'),
+      'Gia công': build('Gia công'),
+      'SP lỗi': build('SP lỗi'),
+      'SP rác': build('SP rác')
+    } as Record<MaterialType, ProductSelectOption[]>;
+  }, [catalogProducts, hangHongMaterialOptions, racMaterialOptions, orderProductOptions]);
 
-    return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
-  }, [
-    catalogProducts,
-    hangHongMaterialOptions,
-    racMaterialOptions,
-    orderProductOptions,
-    form.loai_vat_tu
-  ]);
+  const updateSection = (type: MaterialType, updater: (section: SectionState) => SectionState) => {
+    setSections(prev => ({ ...prev, [type]: updater(prev[type]) }));
+  };
 
   const handleDateChange = (ngay: string) => {
-    setForm(prev => ({
-      ...prev,
-      ngay,
-      ca: '',
-      ma_may: '',
-      ten_may: '',
-      machineRef: '',
-      teamId: '',
-      lines: [newProductLine()]
-    }));
+    setHeader(prev => ({ ...prev, ngay, ca: '', ma_may: '', ten_may: '', machineRef: '', teamId: '' }));
+    setSections(newSectionsState());
   };
 
   const handleShiftChange = (ca: string) => {
-    setForm(prev => ({
-      ...prev,
-      ca,
-      lines: [newProductLine()]
-    }));
+    setHeader(prev => ({ ...prev, ca }));
+    setSections(newSectionsState());
   };
 
   const handleTeamChange = (teamId: string) => {
     const team = machines.find(machine => machine.id === teamId);
     if (!team) {
-      setForm(prev => ({
-        ...prev,
-        teamId: '',
-        machineRef: '',
-        ma_may: '',
-        ten_may: '',
-        lines: [newProductLine()]
-      }));
+      setHeader(prev => ({ ...prev, teamId: '', machineRef: '', ma_may: '', ten_may: '' }));
+      setSections(newSectionsState());
       return;
     }
 
     const machineRef = team.name || team.code;
-    setForm(prev => ({
-      ...prev,
-      teamId: team.id,
-      machineRef,
-      ma_may: team.code,
-      ten_may: team.name,
-      lines: [newProductLine()]
-    }));
+    setHeader(prev => ({ ...prev, teamId: team.id, machineRef, ma_may: team.code, ten_may: team.name }));
+    setSections(newSectionsState());
   };
 
-  const handleLineProductChange = (lineId: string, mat_hang: string) => {
-    if (
-      mat_hang &&
-      form.lines.some(line => line.id !== lineId && lineHasProductCode(line, mat_hang))
-    ) {
-      setError(`Mã SP "${parseQrProductCode(mat_hang)}" đã có trong danh sách.`);
+  const handleLineProductChange = (type: MaterialType, lineId: string, mat_hang: string) => {
+    const currentLines = sectionsRef.current[type].lines;
+    if (mat_hang && currentLines.some(line => line.id !== lineId && lineHasProductCode(line, mat_hang))) {
+      setError(`Mã SP "${parseQrProductCode(mat_hang)}" đã có trong phiếu ${MATERIAL_TYPE_LABELS[type]}.`);
       return;
     }
 
-    const match = findProductOption(mat_hang, productSelectOptions);
-    setForm(prev => ({
-      ...prev,
-      lines: prev.lines.map(line =>
+    const match = findProductOption(mat_hang, productOptionsByType[type]);
+    updateSection(type, section => ({
+      ...section,
+      lines: section.lines.map(line =>
         line.id === lineId
           ? {
               ...line,
@@ -719,38 +757,39 @@ export default function AcceptanceReportForm({
     setError('');
   };
 
-  const handleLineQuantityChange = (lineId: string, so_luong: string) => {
-    setForm(prev => ({
-      ...prev,
-      lines: prev.lines.map(line => {
+  const handleLineQuantityChange = (type: MaterialType, lineId: string, so_luong: string) => {
+    updateSection(type, section => ({
+      ...section,
+      lines: section.lines.map(line => {
         if (line.id !== lineId) return line;
-        const product = findProductOption(line.mat_hang, productSelectOptions);
+        const product = findProductOption(line.mat_hang, productOptionsByType[type]);
         return { ...line, so_luong, trong_luong: calculateProductWeight(product, so_luong) };
       })
     }));
   };
 
-  const handleLineWeightChange = (lineId: string, trong_luong: string) => {
-    setForm(prev => ({
-      ...prev,
-      lines: prev.lines.map(line => (line.id === lineId ? { ...line, trong_luong } : line))
+  const handleLineWeightChange = (type: MaterialType, lineId: string, trong_luong: string) => {
+    updateSection(type, section => ({
+      ...section,
+      lines: section.lines.map(line => (line.id === lineId ? { ...line, trong_luong } : line))
     }));
   };
 
-  const addProductLine = () => {
-    setForm(prev => ({ ...prev, lines: [...prev.lines, newProductLine()] }));
+  const addProductLine = (type: MaterialType) => {
+    updateSection(type, section => ({ ...section, lines: [...section.lines, newProductLine()] }));
   };
 
-  const removeProductLine = (lineId: string) => {
-    setForm(prev => {
-      if (prev.lines.length <= 1) return prev;
-      return { ...prev, lines: prev.lines.filter(line => line.id !== lineId) };
+  const removeProductLine = (type: MaterialType, lineId: string) => {
+    updateSection(type, section => {
+      if (section.lines.length <= 1) return section;
+      return { ...section, lines: section.lines.filter(line => line.id !== lineId) };
     });
   };
 
   const handleQrScan = useCallback(
     (raw: string): boolean | 'duplicate' => {
       setMessage('');
+      const type: MaterialType = 'Thành phẩm';
 
       const code = parseQrProductCode(raw);
       if (!code) {
@@ -763,7 +802,8 @@ export default function AcceptanceReportForm({
         return false;
       }
 
-      const matchedProduct = findProductOption(code, productSelectOptions);
+      const options = productOptionsByType[type];
+      const matchedProduct = findProductOption(code, options);
       if (!matchedProduct) {
         setError(`Không tìm thấy mã SP "${code}" trong danh mục.`);
         return false;
@@ -772,13 +812,13 @@ export default function AcceptanceReportForm({
       // Dùng mã chuẩn trong danh mục sau khi đã tách phần ngày + serial của tem QR.
       const productCode = matchedProduct.code;
       const unit = matchedProduct.unit;
-      const currentLines = formLinesRef.current;
+      const currentLines = sectionsRef.current[type].lines;
       const existingIndex = currentLines.findIndex(line => lineHasProductCode(line, productCode));
 
       if (existingIndex >= 0) {
         const targetLine = currentLines[existingIndex];
-        setHighlightLineId(targetLine.id);
-        setError(`Mã SP "${productCode}" đã có trên form, không tăng số lượng.`);
+        setHighlightLine({ type, lineId: targetLine.id });
+        setError(`Mã SP "${productCode}" đã có trên phiếu, không tăng số lượng.`);
         return 'duplicate';
       }
 
@@ -796,10 +836,9 @@ export default function AcceptanceReportForm({
               }
             : line
         );
-        formLinesRef.current = nextLines;
-        setForm(prev => ({ ...prev, lines: nextLines }));
+        updateSection(type, section => ({ ...section, lines: nextLines }));
         setError('');
-        setHighlightLineId(targetLine.id);
+        setHighlightLine({ type, lineId: targetLine.id });
         setMessage(`Đã thêm mã SP: ${productCode}`);
         return true;
       }
@@ -811,23 +850,22 @@ export default function AcceptanceReportForm({
         so_luong: '1',
         trong_luong: calculateProductWeight(matchedProduct, '1')
       };
-      const nextLines = [...currentLines, nextLine];
-      formLinesRef.current = nextLines;
-      setForm(prev => ({ ...prev, lines: nextLines }));
+      updateSection(type, section => ({ ...section, lines: [...currentLines, nextLine] }));
       setError('');
-      setHighlightLineId(nextLine.id);
+      setHighlightLine({ type, lineId: nextLine.id });
       setMessage(`Đã thêm mã SP: ${productCode}`);
       return true;
     },
-    [isLoadingProducts, productSelectOptions]
+    [isLoadingProducts, productOptionsByType]
   );
 
   const getQrConfirmMessage = useCallback((code: string) => {
-    const exists = formLinesRef.current.some(line => lineHasProductCode(line, code));
+    const currentLines = sectionsRef.current['Thành phẩm'].lines;
+    const exists = currentLines.some(line => lineHasProductCode(line, code));
     if (exists) {
-      return `Mã SP ${code} đã có trên form — hệ thống sẽ không thêm và không tăng SL.`;
+      return `Mã SP ${code} đã có trên phiếu — hệ thống sẽ không thêm và không tăng SL.`;
     }
-    const hasBlankLine = formLinesRef.current.some(line => isBlankProductLine(line));
+    const hasBlankLine = currentLines.some(line => isBlankProductLine(line));
     if (hasBlankLine) {
       return `Đã quét mã ${code}. Bấm Xác nhận để điền vào dòng trống.`;
     }
@@ -835,15 +873,15 @@ export default function AcceptanceReportForm({
   }, []);
 
   const scannedQrCount = useMemo(
-    () => form.lines.filter(line => !isBlankProductLine(line)).length,
-    [form.lines]
+    () => sections['Thành phẩm'].lines.filter(line => !isBlankProductLine(line)).length,
+    [sections]
   );
 
-  const handleImagePick = async (file: File | null) => {
+  const handleImagePick = async (type: MaterialType, file: File | null) => {
     if (!file) return;
     setError('');
     setMessage('');
-    setIsUploading(true);
+    setUploadingType(type);
     try {
       const rawDataUrl = await fileToDataUrl(file);
       let dataUrl = rawDataUrl;
@@ -852,11 +890,11 @@ export default function AcceptanceReportForm({
       } catch {
         dataUrl = rawDataUrl;
       }
-      setForm(prev => ({ ...prev, imagePreview: dataUrl, hinh_anh: dataUrl, hinh_anh_public_id: '' }));
+      updateSection(type, section => ({ ...section, imagePreview: dataUrl, hinh_anh: dataUrl, hinh_anh_public_id: '' }));
       try {
         const uploaded = await uploadImage(dataUrl);
-        setForm(prev => ({
-          ...prev,
+        updateSection(type, section => ({
+          ...section,
           hinh_anh: uploaded.imageUrl,
           hinh_anh_public_id: uploaded.imagePublicId,
           imagePreview: uploaded.imageUrl
@@ -866,23 +904,23 @@ export default function AcceptanceReportForm({
         setMessage('Đã chụp ảnh (sẽ upload khi lưu báo cáo).');
       }
     } catch (err: any) {
-      setForm(prev => ({ ...prev, imagePreview: '', hinh_anh: '', hinh_anh_public_id: '' }));
+      updateSection(type, section => ({ ...section, imagePreview: '', hinh_anh: '', hinh_anh_public_id: '' }));
       setError(err.message || 'Không thể đọc file ảnh.');
     } finally {
-      setIsUploading(false);
+      setUploadingType(null);
     }
   };
 
-  const pickImage = () => {
-    if (isUploading) return;
-    cameraInputRef.current?.click();
+  const pickImage = (type: MaterialType) => {
+    if (uploadingType) return;
+    cameraInputRefs.current[type]?.click();
   };
 
-  const resolveImageForSave = async () => {
-    const source = form.hinh_anh.trim() || form.imagePreview.trim();
+  const resolveImageForSave = async (section: SectionState) => {
+    const source = section.hinh_anh.trim() || section.imagePreview.trim();
     if (!source) return null;
     if (!source.startsWith('data:')) {
-      return { hinh_anh: source, hinh_anh_public_id: form.hinh_anh_public_id || '' };
+      return { hinh_anh: source, hinh_anh_public_id: section.hinh_anh_public_id || '' };
     }
     let dataUrl = source;
     try {
@@ -894,9 +932,11 @@ export default function AcceptanceReportForm({
     return { hinh_anh: uploaded.imageUrl, hinh_anh_public_id: uploaded.imagePublicId };
   };
 
-  const resetForm = () => {
+  const resetAll = () => {
     setEditingId(null);
-    setForm(newReportForm());
+    setEditingType(null);
+    setHeader(newHeaderState());
+    setSections(newSectionsState());
     setMessage('');
     setError('');
   };
@@ -908,59 +948,55 @@ export default function AcceptanceReportForm({
       machines.find(machine => machine.code === report.ten_may || machine.name === report.ma_may) ??
       null;
     const machineRef = report.ten_may || report.ma_may;
+    const type: MaterialType = isMaterialType(report.loai_vat_tu) ? report.loai_vat_tu : 'Thành phẩm';
+
     setEditingId(report.id);
-    setForm({
+    setEditingType(type);
+    setHeader({
       ngay: report.ngay || todayIso(),
       ca: report.ca,
       lan: report.lan || '1',
       gio: report.gio || nowTimeValue(),
       ma_may: report.ma_may,
       ten_may: report.ten_may,
-      loai_vat_tu: report.loai_vat_tu || 'Thành phẩm',
       machineRef,
-      teamId: linked?.id ?? '',
-      lines: [
-        {
-          id: report.id,
-          mat_hang: report.mat_hang,
-          don_vi: report.don_vi,
-          so_luong: report.so_luong === null ? '' : String(report.so_luong),
-          trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
-          don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
-        }
-      ],
-      hinh_anh: report.hinh_anh,
-      hinh_anh_public_id: report.hinh_anh_public_id || '',
-      imagePreview: report.hinh_anh
+      teamId: linked?.id ?? ''
     });
+    setSections(prev => ({
+      ...newSectionsState(),
+      [type]: {
+        lines: [
+          {
+            id: report.id,
+            mat_hang: report.mat_hang,
+            don_vi: report.don_vi,
+            so_luong: report.so_luong === null ? '' : String(report.so_luong),
+            trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
+            don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
+          }
+        ],
+        hinh_anh: report.hinh_anh,
+        hinh_anh_public_id: report.hinh_anh_public_id || '',
+        imagePreview: report.hinh_anh
+      }
+    }));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const parseLineQuantity = (value: string) => Number(String(value).replace(',', '.'));
 
-  const validateForm = () => {
-    if (!form.ngay.trim()) {
-      setError(showSaveFailure('Vui lòng chọn ngày.'));
-      return null;
-    }
-    if (!form.ca.trim()) {
-      setError(showSaveFailure('Vui lòng chọn ca.'));
-      return null;
-    }
-    if (!form.ma_may.trim() && !form.ten_may.trim()) {
-      setError(showSaveFailure('Vui lòng chọn máy.'));
-      return null;
-    }
-    if (!form.loai_vat_tu.trim()) {
-      setError(showSaveFailure('Vui lòng chọn loại vật tư.'));
-      return null;
-    }
-    if (!form.lan.trim()) {
-      setError(showSaveFailure('Vui lòng nhập lần ghi nhận.'));
-      return null;
-    }
+  const validateHeader = () => {
+    if (!header.ngay.trim()) return 'Vui lòng chọn ngày.';
+    if (!header.ca.trim()) return 'Vui lòng chọn ca.';
+    if (!header.ma_may.trim() && !header.ten_may.trim()) return 'Vui lòng chọn máy.';
+    if (!header.lan.trim()) return 'Vui lòng nhập lần ghi nhận.';
+    return null;
+  };
 
-    const validLines = form.lines
+  type PreparedLine = ProductLine & { soLuong: number; trongLuong: number | null };
+
+  const validateSectionLines = (type: MaterialType, section: SectionState): PreparedLine[] | string => {
+    const validLines = section.lines
       .map(line => {
         const soLuong = parseLineQuantity(line.so_luong);
         const trongLuong = line.trong_luong.trim() ? parseLineQuantity(line.trong_luong) : null;
@@ -969,87 +1005,136 @@ export default function AcceptanceReportForm({
       .filter(line => line.mat_hang.trim() || line.so_luong.trim());
 
     if (validLines.length === 0) {
-      setError(showSaveFailure('Vui lòng thêm ít nhất một dòng mã SP và số lượng.'));
-      return null;
+      return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng thêm ít nhất một dòng mã SP và số lượng.`;
     }
 
     for (const line of validLines) {
       if (!line.mat_hang.trim()) {
-        setError(showSaveFailure('Vui lòng chọn mã SP cho từng dòng.'));
-        return null;
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chọn mã SP cho từng dòng.`;
       }
       if (!Number.isFinite(line.soLuong) || line.soLuong <= 0) {
-        setError(showSaveFailure(`Số lượng phải lớn hơn 0 (${line.mat_hang}).`));
-        return null;
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: số lượng phải lớn hơn 0 (${line.mat_hang}).`;
       }
       if (line.trongLuong !== null && (!Number.isFinite(line.trongLuong) || line.trongLuong < 0)) {
-        setError(showSaveFailure(`Trọng lượng không hợp lệ (${line.mat_hang}).`));
-        return null;
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: trọng lượng không hợp lệ (${line.mat_hang}).`;
       }
     }
 
-    if (!form.hinh_anh.trim() && !form.imagePreview.trim()) {
-      setError(showSaveFailure('Vui lòng chụp ảnh chung cho các dòng sản lượng.'));
-      return null;
+    if (!section.hinh_anh.trim() && !section.imagePreview.trim()) {
+      return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chụp ảnh.`;
     }
 
     return validLines;
   };
 
-  const handleSave = async () => {
-    const validLines = validateForm();
-    if (!validLines) return;
+  const handleUpdateSingle = async () => {
+    if (!editingId || !editingType) return;
+    const headerError = validateHeader();
+    if (headerError) {
+      setError(showSaveFailure(headerError));
+      return;
+    }
+    const section = sections[editingType];
+    const prepared = validateSectionLines(editingType, section);
+    if (typeof prepared === 'string') {
+      setError(showSaveFailure(prepared));
+      return;
+    }
 
     setIsSaving(true);
     setError('');
     setMessage('');
-
     try {
-      const resolvedImage = await resolveImageForSave();
+      const resolvedImage = await resolveImageForSave(section);
       if (!resolvedImage) {
-        setError(showSaveFailure('Vui lòng chụp ảnh chung cho các dòng sản lượng.'));
+        setError(showSaveFailure(`Phiếu ${MATERIAL_TYPE_LABELS[editingType]}: vui lòng chụp ảnh.`));
         return;
       }
+      const line = prepared[0];
+      const res = await fetch(`/api/bao-cao-nghiem-thu/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ngay: header.ngay,
+          ca: header.ca,
+          lan: header.lan,
+          gio: header.gio,
+          ma_may: header.ma_may,
+          ten_may: header.ten_may,
+          loai_vat_tu: editingType,
+          hinh_anh: resolvedImage.hinh_anh,
+          hinh_anh_public_id: resolvedImage.hinh_anh_public_id,
+          mat_hang: line.mat_hang,
+          don_vi: line.don_vi,
+          so_luong: line.soLuong,
+          trong_luong: line.trongLuong,
+          don_vi_trong_luong: 'Kg'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể lưu báo cáo sản lượng.'));
+      const okMsg = 'Đã cập nhật báo cáo sản lượng.';
+      setMessage(okMsg);
+      showAppToast(okMsg);
+      resetAll();
+    } catch (err: any) {
+      setError(showSaveFailure(err, 'Không thể lưu báo cáo sản lượng.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-      const sharedPayload = {
-        ngay: form.ngay,
-        ca: form.ca,
-        lan: form.lan,
-        gio: form.gio,
-        ma_may: form.ma_may,
-        ten_may: form.ten_may,
-        loai_vat_tu: form.loai_vat_tu,
-        hinh_anh: resolvedImage.hinh_anh,
-        hinh_anh_public_id: resolvedImage.hinh_anh_public_id
-      };
+  const handleSaveAll = async () => {
+    const headerError = validateHeader();
+    if (headerError) {
+      setError(showSaveFailure(headerError));
+      return;
+    }
 
-      if (editingId) {
-        const line = validLines[0];
-        const res = await fetch(`/api/bao-cao-nghiem-thu/${editingId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...sharedPayload,
-            mat_hang: line.mat_hang,
-            don_vi: line.don_vi,
-            so_luong: line.soLuong,
-            trong_luong: line.trongLuong,
-            don_vi_trong_luong: 'Kg'
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể lưu báo cáo sản lượng.'));
-        const okMsg = 'Đã cập nhật báo cáo sản lượng.';
-        setMessage(okMsg);
-        showAppToast(okMsg);
-      } else {
-        let savedCount = 0;
+    const filledTypes = MATERIAL_TYPES.filter(type => sections[type].lines.some(line => !isBlankProductLine(line)));
+    if (filledTypes.length === 0) {
+      setError(showSaveFailure('Vui lòng nhập ít nhất một phiếu (Thành phẩm / Gia công / SP lỗi / SP rác).'));
+      return;
+    }
+
+    const preparedByType = new Map<MaterialType, PreparedLine[]>();
+    for (const type of filledTypes) {
+      const prepared = validateSectionLines(type, sections[type]);
+      if (typeof prepared === 'string') {
+        setError(showSaveFailure(prepared));
+        return;
+      }
+      preparedByType.set(type, prepared);
+    }
+
+    setIsSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const summary: string[] = [];
+      let totalSaved = 0;
+      for (const type of filledTypes) {
+        const section = sections[type];
+        const resolvedImage = await resolveImageForSave(section);
+        if (!resolvedImage) {
+          throw new Error(`Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chụp ảnh.`);
+        }
+        const validLines = preparedByType.get(type) ?? [];
+        let savedForType = 0;
         for (const line of validLines) {
           const res = await fetch('/api/bao-cao-nghiem-thu', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...sharedPayload,
+              ngay: header.ngay,
+              ca: header.ca,
+              lan: header.lan,
+              gio: header.gio,
+              ma_may: header.ma_may,
+              ten_may: header.ten_may,
+              loai_vat_tu: type,
+              hinh_anh: resolvedImage.hinh_anh,
+              hinh_anh_public_id: resolvedImage.hinh_anh_public_id,
               mat_hang: line.mat_hang,
               don_vi: line.don_vi,
               so_luong: line.soLuong,
@@ -1059,15 +1144,16 @@ export default function AcceptanceReportForm({
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể lưu báo cáo sản lượng.'));
-          savedCount += 1;
+          savedForType += 1;
+          totalSaved += 1;
         }
-        const okMsg =
-          savedCount > 1 ? `Đã lưu ${savedCount} dòng sản lượng với ảnh chung.` : 'Đã lưu báo cáo sản lượng.';
-        setMessage(okMsg);
-        showAppToast(okMsg);
+        summary.push(`${MATERIAL_TYPE_LABELS[type]}: ${savedForType} dòng`);
       }
 
-      resetForm();
+      const okMsg = `Đã lưu ${totalSaved} dòng báo cáo độc lập (${summary.join(', ')}).`;
+      setMessage(okMsg);
+      showAppToast(okMsg);
+      resetAll();
     } catch (err: any) {
       setError(showSaveFailure(err, 'Không thể lưu báo cáo sản lượng.'));
     } finally {
@@ -1076,13 +1162,13 @@ export default function AcceptanceReportForm({
   };
 
   const teamSelectValue =
-    form.teamId ||
-    machines.find(machine => machine.id === form.machineRef)?.id ||
-    machines.find(machine => machine.code === form.ma_may || machine.name === form.ten_may)?.id ||
+    header.teamId ||
+    machines.find(machine => machine.id === header.machineRef)?.id ||
+    machines.find(machine => machine.code === header.ma_may || machine.name === header.ten_may)?.id ||
     '';
 
   const openAutoReport = () => {
-    setAutoReportFilter({ ngay: form.ngay || todayIso(), ca: form.ca });
+    setAutoReportFilter({ ngay: header.ngay || todayIso(), ca: header.ca });
     setError('');
     setIsAutoReportOpen(true);
   };
@@ -1122,7 +1208,7 @@ export default function AcceptanceReportForm({
           skipped += 1;
           return;
         }
-        const product = findProductOption(qrProductCode, productSelectOptions);
+        const product = findProductOption(qrProductCode, productOptionsByType['Thành phẩm']);
         const code = product?.code || qrProductCode;
         const key = normalizeKey(code);
         const current = quantities.get(key);
@@ -1146,12 +1232,8 @@ export default function AcceptanceReportForm({
         // Trọng lượng = tổng cột «Trọng lượng nhựa» (SP − lõi − bì) của các lần cân cùng mã SP
         trong_luong: plasticWeightKg > 0 ? formatAutoWeight(plasticWeightKg) : ''
       }));
-      setForm(prev => ({
-        ...prev,
-        ngay,
-        ca,
-        lines
-      }));
+      setHeader(prev => ({ ...prev, ngay, ca }));
+      updateSection('Thành phẩm', section => ({ ...section, lines }));
       setIsAutoReportOpen(false);
       setMessage(
         `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI (SL = số lần cân, TL = tổng trọng lượng nhựa)${
@@ -1165,12 +1247,37 @@ export default function AcceptanceReportForm({
     }
   };
 
+  const visibleTypes = editingId && editingType ? [editingType] : MATERIAL_TYPES;
+
   return (
-    <div className="space-y-3 pb-24 sm:space-y-4">
+    <div className="space-y-3 pb-1 sm:space-y-4">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
-          <h2 className="min-w-0 flex-1 text-sm font-black text-zinc-950 sm:text-base">Phiếu báo cáo sản lượng</h2>
+          <h2 className="min-w-0 flex-1 text-sm font-black text-zinc-950 sm:text-base">
+            {editingId ? `Sửa phiếu ${MATERIAL_TYPE_TITLE_LABELS[editingType || 'Thành phẩm']}` : 'Báo cáo sản lượng'}
+          </h2>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {!editingId && (
+              <button
+                type="button"
+                onClick={resetAll}
+                disabled={isSaving || Boolean(uploadingType)}
+                className="inline-flex h-9 shrink-0 items-center rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
+              >
+                Làm mới
+              </button>
+            )}
+            {!editingId && (
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={isSaving || Boolean(uploadingType)}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 sm:h-10 sm:px-4 sm:text-xs"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Lưu báo cáo
+              </button>
+            )}
             {onOpenList && (
               <button
                 type="button"
@@ -1194,309 +1301,328 @@ export default function AcceptanceReportForm({
         </div>
 
         <div className="space-y-3 bg-zinc-50 p-3 sm:p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {/* Mobile: Ngày chiếm trọn 1 hàng vì ô date hiển thị dạng "ngày 22 thg 7, 2026" rất dài */}
-            <label className="field-cell col-span-2 sm:col-span-1">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="field-cell">
               <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" /> Ngày
               </span>
-              <input type="date" value={form.ngay} onChange={e => handleDateChange(e.target.value)} className={inputClass} />
+              <input type="date" value={header.ngay} onChange={e => handleDateChange(e.target.value)} className={inputClass} />
             </label>
             <label className="field-cell">
               <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 <Cpu className="h-3.5 w-3.5 text-[#ef1b2d]" /> Máy
               </span>
-              <select
+              <ComboSelect
                 value={teamSelectValue}
-                onChange={e => handleTeamChange(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Chọn máy...</option>
-                {teamOptions.map(team => (
-                  <option key={team.id} value={team.id}>
-                    {team.code && team.name && team.code !== team.name
-                      ? `${team.code} · ${team.name}`
-                      : team.name || team.code}
-                  </option>
-                ))}
-              </select>
+                onChange={handleTeamChange}
+                options={teamOptions}
+                placeholder="Chọn máy..."
+                inputClassName={inputClass}
+                comboboxMode
+                comboboxSearchable={false}
+                matchDropdownWidth
+                getValue={item => (item as MachineOption).id}
+                getLabel={item => {
+                  const team = item as MachineOption;
+                  return team.code && team.name && team.code !== team.name
+                    ? `${team.code} · ${team.name}`
+                    : team.name || team.code;
+                }}
+              />
             </label>
             <label className="field-cell">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Ca
               </span>
-              <select
-                value={form.ca}
-                onChange={e => handleShiftChange(e.target.value)}
-                className={inputClass}
+              <ComboSelect
+                value={header.ca}
+                onChange={handleShiftChange}
+                options={shiftOptions}
+                placeholder={settingShiftOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
+                inputClassName={inputClass}
                 disabled={settingShiftOptions.length === 0}
-              >
-                <option value="">
-                  {settingShiftOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
-                </option>
-                {shiftOptions.map(shift => (
-                  <option key={shift} value={shift}>
-                    {shift}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <label className="field-cell col-span-2 sm:col-span-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại vật tư *</span>
-              <select
-                value={form.loai_vat_tu}
-                onChange={e => setForm(prev => ({ ...prev, loai_vat_tu: e.target.value }))}
-                className={inputClass}
-                required
-              >
-                <option value="Thành phẩm">Thành phẩm</option>
-                <option value="Gia công">Gia công</option>
-                <option value="SP lỗi">SP lỗi (Hàng hỏng)</option>
-                <option value="SP rác">SP rác (Kho rác)</option>
-              </select>
-            </label>
-            <label className="field-cell">
-              <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                <Clock3 className="h-3.5 w-3.5 text-[#ef1b2d]" /> Giờ
-              </span>
-              <input
-                type="time"
-                value={form.gio}
-                onChange={e => setForm(prev => ({ ...prev, gio: e.target.value }))}
-                className={inputClass}
+                comboboxMode
+                comboboxSearchable={false}
+                matchDropdownWidth
+                getValue={item => String(item)}
+                getLabel={item => String(item)}
               />
             </label>
-            <label className="field-cell">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lần</span>
-              <input
-                value={form.lan}
-                onChange={e => setForm(prev => ({ ...prev, lan: e.target.value }))}
-                className={inputClass}
-                placeholder="VD: 1"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="border-t border-zinc-100 bg-white p-3 sm:p-4">
-          <RepeatableLinesBlock
-            title="Mã SP & số lượng"
-            required
-            showColumnHeaders
-            gridTemplateClass={productLineGridClass}
-            onAdd={addProductLine}
-            addLabel="Thêm dòng"
-            hideAddButton={Boolean(editingId)}
-            addButtonClassName="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-            extraHeaderButtons={
-              !editingId ? (
-                <div className="flex items-center gap-1.5">
-                  {isAutoReportMaterialType ? (
-                    <button
-                      type="button"
-                      onClick={openAutoReport}
-                      className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                      aria-label="Tạo báo cáo tự động từ phiếu cân AI"
-                      title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
-                    >
-                      <Scale className="h-3.5 w-3.5 shrink-0" />
-                      <span>Tự động BC</span>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScannerMode('camera');
-                      setIsQrScannerOpen(true);
-                    }}
-                    className="hidden"
-                    aria-label="Quét QR mã SP bằng camera"
-                    title="Quét QR mã SP bằng camera"
-                  >
-                    <ScanBarcode className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden min-[380px]:inline">Quét ĐT</span>
-                  </button>
-                </div>
-              ) : undefined
-            }
-            columns={[
-              { key: 'stt', label: 'STT', className: 'text-center' },
-              { key: 'mat_hang', label: 'Mã SP', required: true },
-              { key: 'ten_sp', label: 'Tên SP' },
-              { key: 'don_vi', label: 'ĐVT' },
-              { key: 'so_luong', label: 'SL', required: true },
-              { key: 'trong_luong', label: 'Trọng lượng' },
-              { key: 'don_vi_trong_luong', label: 'Đơn vị' },
-              { key: 'actions', label: '' }
-            ]}
-          >
-            {form.lines.map((line, index) => {
-              const matchedProduct = findProductOption(line.mat_hang, productSelectOptions);
-              const productName = matchedProduct?.name || '';
-              return (
-              <RepeatableLineRow
-                key={line.id}
-                gridTemplateClass={productLineGridClass}
-                className={line.id === highlightLineId ? 'line-added-flash rounded-lg px-1' : ''}
-              >
-                {/* Mobile: 2 dòng — (1) mã/ĐVT/SL, (2) tên SP full. Desktop: grid cột. */}
-                <div className="flex flex-col gap-1.5 sm:col-span-8">
-                  <div className="flex min-w-0 flex-wrap items-end gap-1.5 sm:grid sm:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.3fr)_4rem_6rem_7rem_4rem_2.5rem] sm:gap-2">
-                    <div className="flex shrink-0 items-center justify-center self-end pb-1.5 sm:col-start-1 sm:self-center sm:pb-0">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#ef1b2d] text-[11px] font-black text-white">
-                        {index + 1}
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-[1.4] sm:col-start-2 sm:flex-none">
-                      <span className={mobileFieldLabelClass}>Mã SP *</span>
-                      <SearchableSelect
-                        value={line.mat_hang}
-                        onChange={code => handleLineProductChange(line.id, code)}
-                        options={productSelectOptions}
-                        placeholder="Mã SP"
-                        isLoading={isLoadingProducts}
-                        inputClassName={inputClass}
-                        getValue={item => (item as ProductSelectOption).code}
-                        getLabel={item => {
-                          const product = item as ProductSelectOption;
-                          return product.name ? `${product.code} · ${product.name}` : product.code;
-                        }}
-                        getDisplayLabel={item => (item as ProductSelectOption).code}
-                        getSearchText={item => {
-                          const product = item as ProductSelectOption;
-                          return `${product.code} ${product.name}`.trim();
-                        }}
-                        renderOption={item => renderProductOption(item as ProductSelectOption)}
-                      />
-                    </div>
-                    <div className="w-12 shrink-0 sm:col-start-4 sm:w-auto sm:shrink">
-                      <span className={mobileFieldLabelClass}>ĐVT</span>
-                      <input
-                        value={line.don_vi}
-                        readOnly
-                        className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
-                        placeholder="-"
-                        aria-label="ĐVT"
-                      />
-                    </div>
-                    <div className="w-16 shrink-0 sm:col-start-5 sm:w-auto sm:shrink sm:flex-none">
-                      <span className={mobileFieldLabelClass}>SL *</span>
-                      <input
-                        value={line.so_luong}
-                        onChange={e => handleLineQuantityChange(line.id, e.target.value)}
-                        className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
-                        inputMode="decimal"
-                        placeholder="0"
-                        aria-label="Số lượng"
-                      />
-                    </div>
-                    <div className="w-24 shrink-0 sm:col-start-6 sm:w-auto sm:shrink">
-                      <span className={mobileFieldLabelClass}>Trọng lượng</span>
-                      <input
-                        value={line.trong_luong}
-                        onChange={e => handleLineWeightChange(line.id, e.target.value)}
-                        className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
-                        inputMode="decimal"
-                        placeholder="0"
-                        aria-label="Trọng lượng"
-                      />
-                    </div>
-                    <div className="w-14 shrink-0 sm:col-start-7 sm:w-auto sm:shrink">
-                      <span className={mobileFieldLabelClass}>Đơn vị</span>
-                      <input
-                        value="Kg"
-                        readOnly
-                        className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
-                        aria-label="Đơn vị trọng lượng"
-                      />
-                    </div>
-                    {!editingId && form.lines.length > 1 ? (
-                      <div className="shrink-0 self-end sm:col-start-8">
-                        <button
-                          type="button"
-                          onClick={() => removeProductLine(line.id)}
-                          className="inline-flex h-10 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 sm:w-10"
-                          aria-label={`Xóa dòng ${index + 1}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="order-last w-full min-w-0 sm:order-none sm:col-start-3 sm:row-start-1 sm:w-auto">
-                      <span className={mobileFieldLabelClass}>Tên SP</span>
-                      <div
-                        className={`${inputClass} flex h-auto min-h-10 items-center whitespace-normal break-words bg-zinc-50 py-2 leading-snug text-zinc-700`}
-                        title={productName || undefined}
-                        aria-label="Tên SP"
-                      >
-                        {productName || (
-                          <span className="font-semibold text-zinc-400">Tự động theo mã SP</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </RepeatableLineRow>
-            );
-            })}
-          </RepeatableLinesBlock>
-
-          <div className="mt-4 space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ảnh chung *</span>
-            <div className="flex items-center gap-2">
-              <input
-                ref={cameraInputRef}
-                {...CAMERA_IMAGE_INPUT_PROPS}
-                className="hidden"
-                onChange={e => {
-                  const file = e.target.files?.[0] || null;
-                  e.target.value = '';
-                  void handleImagePick(file);
-                }}
-              />
-              <button
-                type="button"
-                onClick={pickImage}
-                disabled={isUploading}
-                className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition disabled:opacity-60 ${
-                  form.imagePreview
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                    : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
-                }`}
-              >
-                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                {isUploading ? 'Đang xử lý ảnh...' : form.imagePreview ? 'Chụp lại ảnh' : 'Chụp ảnh'}
-              </button>
-              {form.imagePreview ? (
-                <WeighingImageThumbnail
-                  url={form.imagePreview}
-                  alt="Ảnh chung"
-                  title="Ảnh đã chụp — bấm để xem"
-                  onView={() => setViewingImage({ url: form.imagePreview, title: 'Ảnh báo cáo sản lượng' })}
-                  className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-emerald-200 ring-2 ring-emerald-100"
+            <div className="flex gap-3">
+              <label className="field-cell flex-1">
+                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  <Clock3 className="h-3.5 w-3.5 text-[#ef1b2d]" /> Giờ
+                </span>
+                <input
+                  type="time"
+                  value={header.gio}
+                  onChange={e => setHeader(prev => ({ ...prev, gio: e.target.value }))}
+                  className={`${inputClass} h-9`}
                 />
-              ) : null}
+              </label>
+              <label className="field-cell flex-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lần</span>
+                <input
+                  value={header.lan}
+                  onChange={e => setHeader(prev => ({ ...prev, lan: e.target.value }))}
+                  className={`${inputClass} h-9`}
+                  placeholder="VD: 1"
+                />
+              </label>
             </div>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-100 bg-white px-3 py-3 sm:px-4">
-          <button type="button" onClick={resetForm} className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-700">
-            Làm mới
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving || isUploading}
-            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-          >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {editingId ? 'Cập nhật' : 'Lưu báo cáo'}
-          </button>
-        </div>
       </section>
+
+      {visibleTypes.map(type => {
+        const section = sections[type];
+        const productSelectOptions = productOptionsByType[type];
+        const isUploading = uploadingType === type;
+        return (
+          <section key={type} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
+              <h3 className="min-w-0 flex-1 text-sm font-black text-zinc-950">
+                Phiếu {MATERIAL_TYPE_TITLE_LABELS[type]}
+              </h3>
+            </div>
+
+            <div className="border-t border-zinc-100 bg-white p-3 sm:p-4">
+              <RepeatableLinesBlock
+                title="Mã SP & số lượng"
+                required
+                showColumnHeaders
+                gridTemplateClass={productLineGridClass}
+                noWrapHeader
+                horizontalScroll
+                onAdd={() => addProductLine(type)}
+                addLabel="Thêm dòng"
+                hideAddButton={Boolean(editingId)}
+                addButtonClassName="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                mobileHeader={
+                  <div className={`grid ${productLineGridClass} items-end gap-2 border-b border-zinc-200/80 pb-1.5`}>
+                    <span className={`${mobileProductColumnLabelClass} justify-self-center text-center`}>STT</span>
+                    <span className={mobileProductColumnLabelClass}>Mã SP *</span>
+                    <span className={mobileProductColumnLabelClass}>Tên SP</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>ĐVT</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>SL *</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>Trọng lượng</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>Đơn vị</span>
+                    <span />
+                  </div>
+                }
+                extraHeaderButtons={
+                  !editingId ? (
+                    <div className="flex items-center gap-1.5">
+                      {type === 'Thành phẩm' ? (
+                        <button
+                          type="button"
+                          onClick={openAutoReport}
+                          className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                          aria-label="Tạo báo cáo tự động từ phiếu cân AI"
+                          title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
+                        >
+                          <Scale className="h-3.5 w-3.5 shrink-0" />
+                          <span>Tự động BC</span>
+                        </button>
+                      ) : null}
+                      {type === 'Thành phẩm' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScannerMode('camera');
+                            setIsQrScannerOpen(true);
+                          }}
+                          className="hidden"
+                          aria-label="Quét QR mã SP bằng camera"
+                          title="Quét QR mã SP bằng camera"
+                        >
+                          <ScanBarcode className="h-3.5 w-3.5 shrink-0" />
+                          <span className="hidden min-[380px]:inline">Quét ĐT</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : undefined
+                }
+                columns={[
+                  { key: 'stt', label: 'STT', className: 'justify-self-center text-center' },
+                  { key: 'mat_hang', label: 'Mã SP', required: true },
+                  { key: 'ten_sp', label: 'Tên SP' },
+                  { key: 'don_vi', label: 'ĐVT' },
+                  { key: 'so_luong', label: 'SL', required: true },
+                  { key: 'trong_luong', label: 'Trọng lượng' },
+                  { key: 'don_vi_trong_luong', label: 'Đơn vị' },
+                  { key: 'actions', label: '' }
+                ]}
+              >
+                {section.lines.map((line, index) => {
+                  const matchedProduct = findProductOption(line.mat_hang, productSelectOptions);
+                  const productName = matchedProduct?.name || '';
+                  return (
+                    <RepeatableLineRow
+                      key={line.id}
+                      gridTemplateClass={productLineGridClass}
+                      className={
+                        highlightLine && highlightLine.type === type && highlightLine.lineId === line.id
+                          ? 'line-added-flash rounded-lg'
+                          : ''
+                      }
+                    >
+                      <div className="flex min-w-0 items-center justify-center justify-self-center">
+                        <span className="flex h-10 w-7 items-center justify-center rounded-md bg-[#ef1b2d] text-[11px] font-black text-white">
+                          {index + 1}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <SearchableSelect
+                          value={line.mat_hang}
+                          onChange={code => handleLineProductChange(type, line.id, code)}
+                          options={productSelectOptions}
+                          placeholder="Mã SP"
+                          isLoading={isLoadingProducts}
+                          inputClassName={inputClass}
+                          getValue={item => (item as ProductSelectOption).code}
+                          getLabel={item => {
+                            const product = item as ProductSelectOption;
+                            return product.name ? `${product.code} · ${product.name}` : product.code;
+                          }}
+                          getDisplayLabel={item => (item as ProductSelectOption).code}
+                          getSearchText={item => {
+                            const product = item as ProductSelectOption;
+                            return `${product.code} ${product.name}`.trim();
+                          }}
+                          renderOption={item => renderProductOption(item as ProductSelectOption)}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div
+                          className={`${inputClass} flex h-auto min-h-10 items-center whitespace-normal break-words bg-zinc-50 py-2 leading-snug text-zinc-700`}
+                          title={productName || undefined}
+                          aria-label="Tên SP"
+                        >
+                          {productName || (
+                            <span className="font-semibold text-zinc-400">Tự động theo mã SP</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <input
+                          value={line.don_vi}
+                          readOnly
+                          className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
+                          placeholder="-"
+                          aria-label="ĐVT"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <input
+                          value={line.so_luong}
+                          onChange={e => handleLineQuantityChange(type, line.id, e.target.value)}
+                          className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
+                          inputMode="decimal"
+                          placeholder="0"
+                          aria-label="Số lượng"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <input
+                          value={line.trong_luong}
+                          onChange={e => handleLineWeightChange(type, line.id, e.target.value)}
+                          className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
+                          inputMode="decimal"
+                          placeholder="0"
+                          aria-label="Trọng lượng"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <input
+                          value="Kg"
+                          readOnly
+                          className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
+                          aria-label="Đơn vị trọng lượng"
+                        />
+                      </div>
+                      <div className="flex min-w-0 items-center justify-center">
+                        {!editingId && section.lines.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeProductLine(type, line.id)}
+                            className="inline-flex h-10 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 sm:w-10"
+                            aria-label={`Xóa dòng ${index + 1}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </RepeatableLineRow>
+                  );
+                })}
+              </RepeatableLinesBlock>
+
+              <div className="mt-4 space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ảnh *</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={el => {
+                      cameraInputRefs.current[type] = el;
+                    }}
+                    {...CAMERA_IMAGE_INPUT_PROPS}
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0] || null;
+                      e.target.value = '';
+                      void handleImagePick(type, file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => pickImage(type)}
+                    disabled={isUploading}
+                    className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition disabled:opacity-60 ${
+                      section.imagePreview
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                        : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                    }`}
+                  >
+                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    {isUploading ? 'Đang xử lý ảnh...' : section.imagePreview ? 'Chụp lại ảnh' : 'Chụp ảnh'}
+                  </button>
+                  {section.imagePreview ? (
+                    <WeighingImageThumbnail
+                      url={section.imagePreview}
+                      alt={`Ảnh phiếu ${MATERIAL_TYPE_LABELS[type]}`}
+                      title="Ảnh đã chụp — bấm để xem"
+                      onView={() =>
+                        setViewingImage({
+                          url: section.imagePreview,
+                          title: `Ảnh phiếu ${MATERIAL_TYPE_LABELS[type]}`
+                        })
+                      }
+                      className="block h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-emerald-200 ring-2 ring-emerald-100"
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {editingId ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-100 bg-white px-3 py-3 sm:px-4">
+                <button type="button" onClick={resetAll} className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-700">
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpdateSingle}
+                  disabled={isSaving || Boolean(uploadingType)}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+                >
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Cập nhật
+                </button>
+              </div>
+            ) : null}
+          </section>
+        );
+      })}
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -1539,19 +1665,21 @@ export default function AcceptanceReportForm({
               </label>
               <label className="field-cell">
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
-                <select
+                <ComboSelect
                   value={autoReportFilter.ca}
-                  onChange={event => setAutoReportFilter(prev => ({ ...prev, ca: event.target.value }))}
-                  className={inputClass}
-                >
-                  <option value="">Chọn ca...</option>
-                  {settingShiftOptions.map(shift => (
-                    <option key={shift} value={shift}>{shift}</option>
-                  ))}
-                </select>
+                  onChange={ca => setAutoReportFilter(prev => ({ ...prev, ca }))}
+                  options={settingShiftOptions}
+                  placeholder="Chọn ca..."
+                  inputClassName={inputClass}
+                  comboboxMode
+                  comboboxSearchable={false}
+                  matchDropdownWidth
+                  getValue={item => String(item)}
+                  getLabel={item => String(item)}
+                />
               </label>
               <p className="rounded-xl bg-blue-50 px-3 py-2.5 text-xs font-semibold leading-5 text-blue-800">
-                Mỗi QR cân AI được tính là 1 sản phẩm. Các QR cùng mã SP sẽ được cộng thành một dòng số lượng.
+                Mỗi QR cân AI được tính là 1 sản phẩm. Các QR cùng mã SP sẽ được cộng thành một dòng số lượng. Dữ liệu sẽ điền vào phiếu Thành phẩm.
               </p>
             </div>
             <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">

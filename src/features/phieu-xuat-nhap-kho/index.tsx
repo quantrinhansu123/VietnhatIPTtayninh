@@ -173,6 +173,16 @@ type PendingDamagedReport = {
   items: PendingDamagedReportItem[];
 };
 
+type WarehouseMachineOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type WarehouseMachineSelectOption = WarehouseMachineOption & {
+  label: string;
+};
+
 export type NvlInboundLotOption = {
   id: string;
   ma_phieu: string;
@@ -326,16 +336,16 @@ const warehouseLineHeaderClass =
   'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
 const warehouseNhapLineGridClass =
-  'grid min-w-[48rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
+  'grid min-w-[50rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
 
 const warehouseXuatLineGridClass =
-  'grid min-w-[54rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
+  'grid min-w-[56rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
 
 const warehouseNhapHeaderGridClass =
-  'mb-1 grid min-w-[48rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
+  'mb-1 grid min-w-[50rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
 
 const warehouseXuatHeaderGridClass =
-  'mb-1 grid min-w-[54rem] grid-cols-[minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
+  'mb-1 grid min-w-[56rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -1086,6 +1096,8 @@ export function WarehouseSlipPanel({
   const [activeScanningDraftId, setActiveScanningDraftId] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<number | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
+  const [machineOptions, setMachineOptions] = useState<WarehouseMachineOption[]>([]);
+  const [isLoadingMachines, setIsLoadingMachines] = useState(false);
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
@@ -1102,11 +1114,32 @@ export function WarehouseSlipPanel({
   };
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+  const machineSelectOptions = useMemo<WarehouseMachineSelectOption[]>(() => {
+    const options = machineOptions
+      .map(machineOption => ({
+        ...machineOption,
+        label: [machineOption.code, machineOption.name].filter(Boolean).join(' - ')
+      }))
+      .sort((first, second) =>
+        first.code.localeCompare(second.code, undefined, { numeric: true, sensitivity: 'base' })
+      );
+    const currentValue = machine.trim();
+    if (
+      currentValue &&
+      !options.some(option =>
+        [option.label, option.code, option.name].some(value => value.trim().toLowerCase() === currentValue.toLowerCase())
+      )
+    ) {
+      options.unshift({ id: `current-${currentValue}`, code: '', name: currentValue, label: currentValue });
+    }
+    return options;
+  }, [machine, machineOptions]);
   const ownedScanningDrafts = useMemo(
     () => scanningDrafts.filter(draft => String(draft.owner || '').trim() === loginName),
     [scanningDrafts, loginName]
   );
   const selectedWarehouseName = warehouseName.trim();
+  const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl';
   const selectedWarehouseHasDamagedReports =
     Boolean(selectedWarehouseName) &&
     warehouseKind === 'hang_hong' &&
@@ -1250,6 +1283,35 @@ export function WarehouseSlipPanel({
   }, []);
 
   useEffect(() => {
+    const loadMachines = async () => {
+      setIsLoadingMachines(true);
+      try {
+        const res = await fetch('/api/danh-sach-may');
+        const data = await res.json().catch(() => ({}));
+        const records = Array.isArray(data?.machines) ? data.machines : [];
+        if (!res.ok) throw new Error();
+        setMachineOptions(
+          records
+            .map((record: unknown, index: number) => {
+              if (!record || typeof record !== 'object') return null;
+              const source = record as Record<string, unknown>;
+              const code = String(source.ma_may ?? source.code ?? '').trim();
+              const name = String(source.ten_may ?? source.name ?? '').trim();
+              if (!code && !name) return null;
+              return { id: String(source.id ?? code ?? name ?? index), code, name };
+            })
+            .filter((item): item is WarehouseMachineOption => Boolean(item))
+        );
+      } catch {
+        setMachineOptions([]);
+      } finally {
+        setIsLoadingMachines(false);
+      }
+    };
+    void loadMachines();
+  }, []);
+
+  useEffect(() => {
     const rawDraft = localStorage.getItem(STORAGE_WAREHOUSE_SLIP_DRAFT_KEY);
     if (!rawDraft) return;
 
@@ -1382,7 +1444,7 @@ export function WarehouseSlipPanel({
                 );
                 return !materialWarehouseKey || materialWarehouseKey === selectedWarehouseKey;
               })
-            : [];
+            : materials;
           setItemOptions(
             selectableMaterials.map(material => ({
               code: canonicalCodeByKey.get(normalizeMaterialCodeKey(material.code)) || material.code,
@@ -1412,6 +1474,10 @@ export function WarehouseSlipPanel({
       setWarehouseKind(nextKind);
       setLines([createWarehouseLineDraft()]);
       setAvgInboundPriceByKey({});
+    }
+    if (!nextName || nextKind !== 'nvl') {
+      setSelectedShifts([]);
+      setMachine('');
     }
     setFormError('');
     setActionMessage('');
@@ -2073,7 +2139,7 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (!isNvlInbound && selectedShifts.length === 0) {
+    if (showNvlShiftAndMachine && !isNvlInbound && selectedShifts.length === 0) {
       setFormError('Vui lòng chọn ca trước khi tự động điền theo lệnh SX.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -2302,7 +2368,7 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
   const productionOrderCodesForSave = slipType === 'xuat' ? [] : productionOrderCodes;
-  const shiftLabelForSave = shiftLabel;
+  const shiftLabelForSave = showNvlShiftAndMachine ? shiftLabel : '';
   const productionOrderLabelForSave = slipType === 'xuat' ? '' : productionOrderLabel;
   const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodesForSave);
 
@@ -2381,7 +2447,7 @@ export function WarehouseSlipPanel({
       ghiChu: note.trim(),
       nguoiLap: createdBy.trim(),
       ca: shiftLabelForSave || null,
-      may: machine.trim() || null,
+      may: showNvlShiftAndMachine ? machine.trim() || null : null,
       // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
       treo: false,
       items: payloadItems
@@ -2584,7 +2650,7 @@ export function WarehouseSlipPanel({
                   {pendingReportsCardConfig.emptyText}
                 </div>
               ) : (
-                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
+                <div className="scrollbar-hidden grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
                   {pendingDamagedReports.map(report => {
                     const isReviewing = reviewingDamagedReportKey === report.key;
                     return (
@@ -2770,6 +2836,8 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
+      {selectedWarehouseName ? (
+        <>
       <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="flex items-center justify-between gap-3 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-3 py-1.5">
@@ -2796,35 +2864,71 @@ export function WarehouseSlipPanel({
           </p>
         </div>
 
-        <div className="grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-6">
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
-            <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
+          <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
           </label>
+          {showNvlShiftAndMachine ? (
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
               Ca{' '}
               <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
             </span>
-            <select
+            <SearchableSelect
               value={selectedShifts[0] ?? ''}
-              onChange={event => {
-                const value = event.target.value.trim();
-                setSelectedShifts(value ? [value] : []);
+              onChange={value => {
+                const nextValue = value.trim();
+                setSelectedShifts(nextValue ? [nextValue] : []);
               }}
-              className={warehouseFieldClass}
+              options={shiftOptions}
+              getLabel={item => (item as { label: string }).label}
+              getValue={item => (item as { value: string }).value}
+  placeholder={shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
+  inputClassName={warehouseFieldClass}
               disabled={shiftOptions.length === 0}
-            >
-              <option value="">
-                {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
-              </option>
-              {shiftOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              comboboxMode
+              comboboxSearchable={false}
+              desktopAutoFlip
+              matchDropdownWidth
+            />
           </label>
+          ) : null}
+          {showNvlShiftAndMachine ? (
+            <label className="block space-y-1">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Máy</span>
+              <SearchableSelect
+                value={machine}
+                onChange={setMachine}
+                options={machineSelectOptions}
+                getLabel={item => (item as WarehouseMachineSelectOption).label}
+                getValue={item => (item as WarehouseMachineSelectOption).label}
+                getSearchText={item => {
+                  const option = item as WarehouseMachineSelectOption;
+                  return `${option.code} ${option.name} ${option.label}`;
+                }}
+                resolveSelectedItem={(options, value) => {
+                  const normalized = value.trim().toLowerCase();
+                  return (
+                    options.find(item => {
+                      const option = item as WarehouseMachineSelectOption;
+                      return [option.label, option.code, option.name].some(
+                        candidate => candidate.trim().toLowerCase() === normalized
+                      );
+                    }) ?? null
+                  );
+                }}
+                placeholder="Chọn máy..."
+                searchPlaceholder="Tìm máy..."
+                inputClassName={warehouseFieldClass}
+                isLoading={isLoadingMachines}
+                comboboxMode
+                comboboxSearchable={false}
+                desktopAutoFlip
+                matchDropdownWidth
+              />
+            </label>
+          ) : null}
 
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
@@ -2856,7 +2960,7 @@ export function WarehouseSlipPanel({
 
           {slipType === 'nhap' ? (
             <>
-              <label className="block space-y-1.5">
+              <label className="col-span-2 block space-y-1.5 sm:col-span-2">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Địa điểm</span>
                 <input
                   value={warehouseLocation}
@@ -2869,20 +2973,20 @@ export function WarehouseSlipPanel({
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
                 <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài..." />
               </label>
-              <label className="block space-y-1 sm:col-span-2">
+              <label className="block space-y-1">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
                 <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Số chứng từ gốc kèm theo..." />
               </label>
             </>
           ) : (
-            <label className="block space-y-1 sm:col-span-2">
+            <label className="block space-y-1">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
               <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
             </label>
           )}
 
           {showOrderFields ? (
-            <div className="relative block space-y-1 sm:col-span-2 lg:col-span-4">
+            <div className="relative col-span-2 block space-y-1 sm:col-span-2 lg:col-span-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Mã đơn hàng / Lệnh SX{' '}
@@ -2949,7 +3053,7 @@ export function WarehouseSlipPanel({
                         {productionOrders.length === 0 ? 'Chưa có lệnh SX.' : 'Không khớp bộ lọc.'}
                       </p>
                     ) : (
-                      <div className="max-h-52 overflow-y-auto">
+                      <div className="scrollbar-hidden max-h-52 overflow-y-auto">
                         <div className="flex flex-wrap gap-1.5">
                           {filteredProductionOrders.map(order => {
                             const checked = productionOrderCodes.includes(order.orderCode);
@@ -3111,10 +3215,11 @@ export function WarehouseSlipPanel({
             ) : null}
           </div>
 
-          <div className="-mx-0.5 overflow-x-auto">
+          <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
             <div
               className={slipType === 'xuat' ? warehouseXuatHeaderGridClass : warehouseNhapHeaderGridClass}
             >
+              <span className={`${warehouseLineHeaderClass} text-center`}>STT</span>
               <span className={warehouseLineHeaderClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
               <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
               <span className={warehouseLineHeaderClass}>ĐVT</span>
@@ -3133,11 +3238,12 @@ export function WarehouseSlipPanel({
             </div>
 
             <div>
-              {lines.map(line => (
+              {lines.map((line, index) => (
                 <div
                   key={line.key}
                   className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}
                 >
+                  <div className="flex min-w-0 items-center justify-center text-xs font-bold text-zinc-500">{index + 1}</div>
                   <div className="min-w-0">
                     <SearchableSelect
                       value={line.code}
@@ -3292,6 +3398,8 @@ export function WarehouseSlipPanel({
           </>
         </div>
       </section>
+        </>
+      ) : null}
 
       <WarehouseSlipPrintModal
         open={printModalOpen}
@@ -4189,7 +4297,7 @@ export function WarehouseHistoryPanel({
               </div>
               <BackButton onClick={() => setViewingSlipCode(null)} />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
               <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
                 {[
                   ['Kho', warehouseKindLabel(viewingRows[0].warehouseKind)],
@@ -4213,6 +4321,7 @@ export function WarehouseHistoryPanel({
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>
+                    <th className="py-2 pr-3 text-center font-black">STT</th>
                     <th className="py-2 pr-3 font-black">{warehouseItemCodeLabel(viewingRows[0].warehouseKind)}</th>
                     <th className="py-2 pr-3 font-black">{warehouseItemNameLabel(viewingRows[0].warehouseKind)}</th>
                     <th className="py-2 pr-3 font-black">SL</th>
@@ -4226,8 +4335,9 @@ export function WarehouseHistoryPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {viewingRows.map(row => (
+                  {viewingRows.map((row, index) => (
                     <tr key={row.id || `${row.itemCode}-${row.quantity}`}>
+                      <td className="py-2 pr-3 text-center font-bold text-zinc-500">{index + 1}</td>
                       <td className="py-2 pr-3 font-bold text-zinc-900">{row.itemCode}</td>
                       <td className="py-2 pr-3 text-zinc-700">{row.itemName || '-'}</td>
                       <td className="py-2 pr-3 font-mono font-bold text-zinc-800">{formatNumber(row.quantity, 2)}</td>

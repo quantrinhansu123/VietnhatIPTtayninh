@@ -38,7 +38,9 @@ export type TableId =
   | 'phieu_giao_ca'
   | 'nhat_ky_chay_may'
   | 'control_board'
-  | 'bb_bao_cao_ly_do';
+  | 'bb_bao_cao_ly_do'
+  | 'bb_phan_tich_danh_gia'
+  | 'bb_bao_cao_tinh_toan';
 
 export interface TableRegistryEntry {
   table: TableId;
@@ -499,6 +501,28 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/components/ControlBoardBbMachineReportPrintSheet.tsx'
     ],
     utils: ['src/utils/bbBaoCaoLyDo.ts']
+  },
+  bb_phan_tich_danh_gia: {
+    table: 'bb_phan_tich_danh_gia',
+    label: 'Phân tích đánh giá BB',
+    sql: ['supabase-bb-phan-tich-danh-gia.sql'],
+    apiPrefix: '/api/bb-phan-tich-danh-gia',
+    serverLines: 'GET/PUT /api/bb-phan-tich-danh-gia (sau /api/bb-bao-cao-ly-do)',
+    appTab: 'dashboard | dashboard-auto | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/bbPhanTichDanhGia.ts']
+  },
+  bb_bao_cao_tinh_toan: {
+    table: 'bb_bao_cao_tinh_toan',
+    label: 'Snapshot tính toán báo cáo BB',
+    sql: ['supabase-bb-bao-cao-tinh-toan.sql'],
+    apiPrefix: '/api/bb-bao-cao-tinh-toan',
+    serverLines: 'GET/PUT /api/bb-bao-cao-tinh-toan (sau /api/bb-phan-tich-danh-gia)',
+    appTab: 'dashboard | dashboard-auto | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/bbBaoCaoTinhToan.ts', 'src/utils/controlBoardBbMachineReport.ts']
   }
 };
 

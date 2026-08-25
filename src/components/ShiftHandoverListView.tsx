@@ -190,7 +190,7 @@ function ShiftHandoverDetailModal({
                   <TableHeadCell>Chỉ tiêu</TableHeadCell>
                   <TableHeadCell align="center">SL ĐM</TableHeadCell>
                   <TableHeadCell align="center">Thực tế</TableHeadCell>
-                  <TableHeadCell align="center">Chênh lệch</TableHeadCell>
+                  <TableHeadCell align="center">Chênh lệch mức</TableHeadCell>
                 </TableHead>
                 <TableBody>
                   {slip.kpis.map(line => (

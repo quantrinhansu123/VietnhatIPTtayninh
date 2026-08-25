@@ -115,6 +115,10 @@ const SUPABASE_SHIFT_HANDOVER_TABLE =
   process.env.SUPABASE_SHIFT_HANDOVER_TABLE || 'phieu_giao_ca';
 const SUPABASE_BB_BAO_CAO_LY_DO_TABLE =
   process.env.SUPABASE_BB_BAO_CAO_LY_DO_TABLE || 'bb_bao_cao_ly_do';
+const SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE =
+  process.env.SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE || 'bb_phan_tich_danh_gia';
+const SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE =
+  process.env.SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE || 'bb_bao_cao_tinh_toan';
 const SUPABASE_MACHINE_RUN_LOG_TABLE =
   process.env.SUPABASE_MACHINE_RUN_LOG_TABLE || 'nhat_ky_chay_may';
 const SUPABASE_STAFF_DEPARTMENT = process.env.SUPABASE_STAFF_DEPARTMENT || 'Sản xuất';
@@ -307,6 +311,19 @@ function pickCanTuDongText(record: Record<string, unknown>, keys: string[]): str
     if (text && text !== '-') return text;
   }
   return '';
+}
+
+/** Đổi phần mã SP trong QR, giữ serial / phần sau `+` nếu có. */
+function replaceCanTuDongQrProductCode(raw: string | null | undefined, newProductCode: string): string {
+  const next = String(newProductCode || '').trim();
+  if (!next) return String(raw || '').trim();
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return next;
+  const plusIdx = trimmed.indexOf('+');
+  if (plusIdx > 0) return `${next}${trimmed.slice(plusIdx)}`;
+  const serialMatch = trimmed.match(/^(.+?)([_-]\d{6}[0-9A-Za-z]{2,})$/);
+  if (serialMatch?.[2]) return `${next}${serialMatch[2]}`;
+  return next;
 }
 
 /** Chuỗi ngày → YYYY-MM-DD. Hiểu dd/mm/yyyy, không dùng captured_at. */
@@ -4222,6 +4239,141 @@ function bbBaoCaoLyDoWriteError(error: { code?: string; message?: string }) {
   return `Không thể lưu lý do giải trình BB. ${error.message || ''}`.trim();
 }
 
+function normalizeBbPhanTichToken(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function buildBbPhanTichStableKey(input: {
+  ngay?: string | null;
+  ca?: string | null;
+  may?: string | null;
+  maLenh?: string | null;
+}) {
+  return [
+    String(input.ngay || '').trim(),
+    normalizeBbPhanTichToken(input.ca),
+    normalizeBbPhanTichToken(input.may),
+    normalizeBbPhanTichToken(input.maLenh)
+  ].join('|');
+}
+
+function parseBbPhanTichDanhGiaItem(source: unknown) {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const ngay = String(row.ngay ?? row.date ?? '').trim();
+  const ca = String(row.ca ?? row.shift ?? '').trim();
+  const may = String(row.may ?? row.machine ?? '').trim();
+  const ma_lenh = String(row.ma_lenh ?? row.maLenh ?? row.orderCode ?? '').trim();
+  if (!ngay || !ma_lenh) return null;
+  const noi_dung = String(row.noi_dung ?? row.noiDung ?? row.content ?? row.phanTich ?? '').trim();
+  const khoa_on_dinh =
+    String(row.khoa_on_dinh ?? row.stableKey ?? '').trim() ||
+    buildBbPhanTichStableKey({ ngay, ca, may, maLenh: ma_lenh });
+  return {
+    khoa_on_dinh,
+    ngay,
+    ca,
+    may,
+    ma_lenh,
+    group_key: String(row.group_key ?? row.groupKey ?? ma_lenh).trim() || null,
+    noi_dung,
+    nguoi_lap: String(row.nguoi_lap ?? row.nguoiLap ?? row.createdBy ?? '').trim() || null
+  };
+}
+
+function bbPhanTichDanhGiaWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE} chưa tồn tại. Hãy chạy supabase-bb-phan-tich-danh-gia.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bb-phan-tich-danh-gia.sql.`;
+  }
+  return `Không thể lưu phân tích đánh giá BB. ${error.message || ''}`.trim();
+}
+
+function buildBbBaoCaoTinhToanStableKey(input: {
+  ngayTu?: string;
+  ngayDen?: string;
+  ca?: string;
+  may?: string;
+  nguonSanLuong?: string;
+  includeAllMachines?: boolean;
+  maLenhFilter?: string[];
+}) {
+  const orders = [...new Set((input.maLenhFilter || []).map(code => String(code || '').trim().toUpperCase()).filter(Boolean))]
+    .sort()
+    .join(',');
+  return [
+    String(input.ngayTu || '').trim(),
+    String(input.ngayDen || '').trim(),
+    String(input.ca || 'all').trim().toUpperCase() || 'ALL',
+    String(input.may || 'all').trim().toUpperCase() || 'ALL',
+    String(input.nguonSanLuong || 'acceptance').trim().toLowerCase(),
+    input.includeAllMachines ? '1' : '0',
+    orders || '*'
+  ].join('|');
+}
+
+function parseBbBaoCaoTinhToanBody(source: unknown) {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const ngay_tu = String(row.ngay_tu ?? row.ngayTu ?? row.dateFrom ?? '').trim();
+  const ngay_den = String(row.ngay_den ?? row.ngayDen ?? row.dateTo ?? '').trim();
+  const ca = String(row.ca ?? row.shift ?? 'all').trim() || 'all';
+  const may = String(row.may ?? row.machine ?? 'all').trim() || 'all';
+  const nguon_san_luong =
+    String(row.nguon_san_luong ?? row.nguonSanLuong ?? row.sanLuongSource ?? 'acceptance').trim().toLowerCase() ||
+    'acceptance';
+  const include_all_machines = Boolean(row.include_all_machines ?? row.includeAllMachines ?? false);
+  const ma_lenh_filter = Array.isArray(row.ma_lenh_filter ?? row.maLenhFilter ?? row.orderCodes)
+    ? [...new Set(
+        ((row.ma_lenh_filter ?? row.maLenhFilter ?? row.orderCodes) as unknown[])
+          .map(code => String(code || '').trim())
+          .filter(Boolean)
+      )].sort()
+    : [];
+  const payload = row.payload;
+  if (!payload || typeof payload !== 'object') return null;
+  const khoa_on_dinh =
+    String(row.khoa_on_dinh ?? row.stableKey ?? '').trim() ||
+    buildBbBaoCaoTinhToanStableKey({
+      ngayTu: ngay_tu,
+      ngayDen: ngay_den,
+      ca,
+      may,
+      nguonSanLuong: nguon_san_luong,
+      includeAllMachines: include_all_machines,
+      maLenhFilter: ma_lenh_filter
+    });
+  return {
+    khoa_on_dinh,
+    ngay_tu,
+    ngay_den,
+    ca,
+    may,
+    nguon_san_luong,
+    include_all_machines,
+    ma_lenh_filter,
+    payload,
+    calculated_by: String(row.calculated_by ?? row.calculatedBy ?? '').trim() || null
+  };
+}
+
+function bbBaoCaoTinhToanWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE} chưa tồn tại. Hãy chạy supabase-bb-bao-cao-tinh-toan.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bb-bao-cao-tinh-toan.sql.`;
+  }
+  return `Không thể lưu bản tính toán báo cáo BB. ${error.message || ''}`.trim();
+}
+
 function generateMachineRunLogCode() {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -5231,6 +5383,10 @@ function parseWarehouseSlipBody(body: unknown): {
   const rawCa = String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim();
   const isExport = loaiPhieu === 'xuat';
 
+  if (isExport && !rawCa) {
+    return { error: 'Vui lòng chọn ca.' };
+  }
+
   return {
     loaiPhieu,
     loaiKho,
@@ -5238,7 +5394,7 @@ function parseWarehouseSlipBody(body: unknown): {
     lyDo: isExport ? normalizeWarehouseExportReferenceText(rawLyDo) : rawLyDo || null,
     ghiChu: isExport ? normalizeWarehouseExportReferenceText(rawGhiChu) : rawGhiChu || null,
     nguoiLap: String(source.nguoiLap ?? source.nguoi_lap ?? source.createdBy ?? '').trim() || null,
-    ca: isExport ? null : rawCa || null,
+    ca: rawCa || null,
     may: String(source.may ?? source.machine ?? source.ten_may ?? '').trim() || null,
     tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
     // "Phiếu xuất kho treo" — chỉ áp dụng cho phiếu xuất, chờ thủ kho xác nhận mới tính vào tồn kho.
@@ -9460,7 +9616,6 @@ export function createApp() {
         String(row.loai_phieu || '').trim().toLowerCase() === 'xuat'
           ? {
               ...row,
-              ca: '',
               ly_do: normalizeWarehouseExportReferenceText(row.ly_do),
               ghi_chu: normalizeWarehouseExportReferenceText(row.ghi_chu)
             }
@@ -11550,6 +11705,94 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi đổi cân lõi cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  /** Đổi cột Mã SP (phần mã trong `qr_code`) cho nhiều dòng — TL tiêu chuẩn / lõi LT tự theo mã mới. */
+  app.post('/api/can-tu-dong/bulk-set-ma-sp', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const maSp = String(body.ma_sp ?? body.product_code ?? body.qr_code ?? '').trim();
+      if (!maSp) {
+        return res.status(400).json({ error: 'Thiếu mã SP mới.' });
+      }
+
+      const { data: existingRows, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('id, qr_code')
+        .in('id', ids);
+
+      if (readError) {
+        return res.status(500).json({
+          error: readError.message || 'Không đọc được dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const rows = Array.isArray(existingRows) ? (existingRows as Array<Record<string, unknown>>) : [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const record of rows) {
+        const nextQr = replaceCanTuDongQrProductCode(
+          pickCanTuDongText(record, ['qr_code']),
+          maSp
+        );
+        const { data: updatedRows, error: updateError } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .update({ qr_code: nextQr || null })
+          .eq('id', record.id)
+          .select('id');
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể đổi Mã SP cho dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        if (Array.isArray(updatedRows) && updatedRows.length > 0) updated += updatedRows.length;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: ids.length,
+        ma_sp: maSp,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi đổi Mã SP cân tự động.',
         db: SUPABASE_WEIGHING_DB_LABEL
       });
     }
@@ -14307,6 +14550,177 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi lưu lý do giải trình BB.' });
+    }
+  });
+
+  app.get('/api/bb-phan-tich-danh-gia', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
+      const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 2000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 5000) : 2000;
+
+      let query = supabase
+        .from(SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .limit(limit);
+
+      if (dateFrom) query = query.gte('ngay', dateFrom);
+      if (dateTo) query = query.lte('ngay', dateTo);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bb_phan_tich_danh_gia query error:', error);
+        return res.status(500).json({ error: bbPhanTichDanhGiaWriteError(error), items: [], total: 0 });
+      }
+
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phân tích đánh giá BB.' });
+    }
+  });
+
+  app.put('/api/bb-phan-tich-danh-gia', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const rawItems = Array.isArray(req.body?.items)
+        ? req.body.items
+        : Array.isArray(req.body)
+          ? req.body
+          : [];
+      const records = rawItems.map(parseBbPhanTichDanhGiaItem).filter(Boolean) as Array<{
+        khoa_on_dinh: string;
+        ngay: string;
+        ca: string;
+        may: string;
+        ma_lenh: string;
+        group_key: string | null;
+        noi_dung: string;
+        nguoi_lap: string | null;
+      }>;
+
+      if (records.length === 0) {
+        return res.status(400).json({ error: 'Không có dòng phân tích hợp lệ để lưu.' });
+      }
+
+      const byKey = new Map<string, (typeof records)[number]>();
+      for (const row of records) byKey.set(row.khoa_on_dinh, row);
+      const payload = [...byKey.values()];
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE)
+        .upsert(payload, { onConflict: 'khoa_on_dinh' })
+        .select('*');
+
+      if (error) {
+        console.error('Supabase bb_phan_tich_danh_gia upsert error:', error);
+        return res.status(500).json({ error: bbPhanTichDanhGiaWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu phân tích đánh giá BB.' });
+    }
+  });
+
+  app.get('/api/bb-bao-cao-tinh-toan', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.key === 'string'
+            ? req.query.key.trim()
+            : '';
+      const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
+      const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo.trim() : '';
+      const ca = typeof req.query.ca === 'string' ? req.query.ca.trim() : '';
+      const may = typeof req.query.may === 'string' ? req.query.may.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 20;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
+
+      let query = supabase
+        .from(SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE)
+        .select('*')
+        .order('calculated_at', { ascending: false, nullsFirst: false })
+        .limit(limit);
+
+      if (khoa) {
+        query = query.eq('khoa_on_dinh', khoa).limit(1);
+      } else {
+        if (dateFrom) query = query.eq('ngay_tu', dateFrom);
+        if (dateTo) query = query.eq('ngay_den', dateTo);
+        if (ca) query = query.eq('ca', ca);
+        if (may) query = query.eq('may', may);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bb_bao_cao_tinh_toan query error:', error);
+        return res.status(500).json({ error: bbBaoCaoTinhToanWriteError(error), items: [], total: 0 });
+      }
+
+      const items = data || [];
+      return res.json({
+        item: items[0] || null,
+        items,
+        total: items.length,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải bản tính toán báo cáo BB.' });
+    }
+  });
+
+  app.put('/api/bb-bao-cao-tinh-toan', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const record = parseBbBaoCaoTinhToanBody(req.body);
+      if (!record) {
+        return res.status(400).json({ error: 'Thiếu payload tính toán hợp lệ.' });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE)
+        .upsert(
+          {
+            ...record,
+            calculated_at: new Date().toISOString()
+          },
+          { onConflict: 'khoa_on_dinh' }
+        )
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Supabase bb_bao_cao_tinh_toan upsert error:', error);
+        return res.status(500).json({ error: bbBaoCaoTinhToanWriteError(error) });
+      }
+
+      return res.json({ success: true, item: data || null });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu bản tính toán báo cáo BB.' });
     }
   });
 

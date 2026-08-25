@@ -1231,6 +1231,7 @@ export function buildBbInboundMaterialNormGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbWarehouseExportGroup[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -1256,6 +1257,7 @@ export function buildBbInboundMaterialNormGroups(input: {
     ) {
       return false;
     }
+    if (input.includeAllMachines) return true;
     return isBbMachineText(report.ma_may, report.ten_may);
   });
   if (acceptanceReports.length === 0) return [];
@@ -2285,6 +2287,7 @@ export function buildBbDamagedGoodsLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbDamagedGoodsLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -2614,6 +2617,7 @@ export function buildBbTongHopVatTuThucXuatDungGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbTongHopThucXuatGroup[] {
   const lookupSettings = (input.shiftSettings || []) as ProductionOrderLookupSetting[];
   const headers = collectBbOrderHeaders(input);
@@ -2627,7 +2631,8 @@ export function buildBbTongHopVatTuThucXuatDungGroups(input: {
     dateTo: input.dateTo,
     shiftFilter: input.shiftFilter,
     machineFilter: input.machineFilter,
-    selectedMachine: input.selectedMachine
+    selectedMachine: input.selectedMachine,
+    includeAllMachines: input.includeAllMachines
   };
   const dauCaTabRows = buildBbDauCaLineRows({
     ...tabFilter,
@@ -2909,6 +2914,7 @@ export function buildBbCuoiCaLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbCuoiCaLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -3175,6 +3181,7 @@ export function buildBbDauCaLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbDauCaLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -5441,6 +5448,7 @@ export function buildBbThucDungLineRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbThucDungLineRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -6499,6 +6507,7 @@ export function buildBbTongGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbTongGroup[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -6726,6 +6735,7 @@ export function buildBbMixingRatioGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbMixingRatioGroup[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -6834,6 +6844,7 @@ export function buildBbDanhGiaHaoHutGroups(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbDanhGiaHaoHutGroup[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);
@@ -7102,6 +7113,7 @@ export function buildBbInboundReportRows(input: {
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  includeAllMachines?: boolean;
 }): BbInboundReportRow[] {
   const shiftSettings = (input.shiftSettings || []) as ShiftSetting[];
   const shiftOptions = getProductionShiftOptions(shiftSettings);

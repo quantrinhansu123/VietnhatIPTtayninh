@@ -91,7 +91,7 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
   const products = padRows(slip.products, 6, emptyProduct);
   const scraps = padRows(slip.scraps, 5, emptyScrap);
   const closingStock = padRows(slip.closingStockLines || [], 4, emptyClosingStock);
-  const kpis = padRows(slip.kpis, 3, emptyKpi);
+  const kpis = padRows(slip.kpis, 4, emptyKpi);
   const totals = sumProductTotals(slip.products);
   const scrapTotal = sumScrapQuantity(slip.scraps);
   const closingTotals = sumClosingStockTotals(slip.closingStockLines || []);
@@ -260,21 +260,30 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
 
             <h2 className="shift-handover-print-section">III. BÁO CÁO SX CUỐI CA</h2>
             <table className="production-order-print-grid-table shift-handover-print-kpi-table">
+              <colgroup>
+                <col style={{ width: '58%' }} />
+                <col style={{ width: '21%' }} />
+                <col style={{ width: '21%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>CHỈ TIÊU</th>
                   <th>SL ĐM</th>
-                  <th>THỰC TẾ</th>
-                  <th>CHÊNH LỆCH</th>
+                  <th>CHÊNH LỆCH MỨC</th>
                 </tr>
               </thead>
               <tbody>
                 {kpis.map((line, index) => (
                   <tr key={`${line.stt}-${index}`}>
                     <td className="shift-handover-print-left">{line.criteria}</td>
-                    <td className="production-order-print-center">{printNum(line.norm)}</td>
-                    <td className="production-order-print-center">{printNum(line.actual)}</td>
-                    <td className="production-order-print-center">{printNum(line.variance)}</td>
+                    <td className="production-order-print-center shift-handover-print-kpi-split">
+                      <div className="shift-handover-print-kpi-norm">{printNum(line.norm)}</div>
+                      <div className="shift-handover-print-kpi-actual">{printNum(line.actual)}</div>
+                    </td>
+                    <td className="production-order-print-center shift-handover-print-kpi-split">
+                      <div className="shift-handover-print-kpi-norm">Chênh lệch</div>
+                      <div className="shift-handover-print-kpi-actual">{printNum(line.variance)}</div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Scale,
   Sparkles,
+  Tags,
   Trash2,
   X
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import { normalizeProductCodeKey } from '../san-pham/types';
 import {
   DEFAULT_CAN_TU_DONG_BI_KG,
   parseCanTuDongQrProductCode,
+  replaceCanTuDongQrProductCode,
   resolveCanSpKg,
   resolveCanTuDongBusinessDate,
   resolveCanTuDongMachine,
@@ -231,6 +233,24 @@ async function postCanTuDongBulkSetTare(ids: Array<string | number>, tareWeight:
   return updated;
 }
 
+async function postCanTuDongBulkSetMaSp(ids: Array<string | number>, maSp: string) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-ma-sp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, ma_sp: maSp })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi Mã SP các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
 async function postCanTuDongBulkSetCa(ids: Array<string | number>, ca: string) {
   let updated = 0;
   for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
@@ -394,10 +414,14 @@ export function CanTuDongPanel({
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isSettingCa, setIsSettingCa] = useState(false);
   const [isSettingTare, setIsSettingTare] = useState(false);
+  const [isSettingMaSp, setIsSettingMaSp] = useState(false);
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   const [showNormalizeAllModal, setShowNormalizeAllModal] = useState(false);
   const [showSetTareModal, setShowSetTareModal] = useState(false);
+  const [showSetMaSpModal, setShowSetMaSpModal] = useState(false);
   const [bulkTareInput, setBulkTareInput] = useState('');
+  const [bulkMaSpInput, setBulkMaSpInput] = useState('');
+  const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>([]);
   const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
   const [maSpFilter, setMaSpFilter] = useState('all');
@@ -463,6 +487,7 @@ export function CanTuDongPanel({
         const nameMap = new Map<string, string>();
         const weightMap = new Map<string, number>();
         const coreMap = new Map<string, number>();
+        const codes = new Set<string>();
         for (const row of rows) {
           const code = String(row.ma_sp ?? row.code ?? '').trim();
           const newCode = String(row.ma_sp_moi ?? row.newCode ?? '').trim();
@@ -480,6 +505,8 @@ export function CanTuDongPanel({
               : Number(String(coreRaw ?? '').trim().replace(',', '.'));
           const hasCore = Number.isFinite(coreNum) && coreNum > 0;
           for (const c of [code, newCode]) {
+            const trimmed = String(c || '').trim();
+            if (trimmed) codes.add(trimmed);
             const key = normalizeProductCodeKey(c);
             if (!key) continue;
             if (name) nameMap.set(key, name);
@@ -491,12 +518,14 @@ export function CanTuDongPanel({
           setProductNameByCode(nameMap);
           setProductStandardWeightByCode(weightMap);
           setProductCoreWeightByCode(coreMap);
+          setProductCatalogCodes([...codes].sort((a, b) => a.localeCompare(b, 'vi')));
         }
       } catch {
         if (!cancelled) {
           setProductNameByCode(new Map());
           setProductStandardWeightByCode(new Map());
           setProductCoreWeightByCode(new Map());
+          setProductCatalogCodes([]);
         }
       }
     })();
@@ -798,6 +827,65 @@ export function CanTuDongPanel({
     }
   };
 
+  const bulkMaSpOptions = useMemo(() => {
+    const merged = new Set<string>([...productCatalogCodes, ...maSpOptions]);
+    return [...merged].sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [productCatalogCodes, maSpOptions]);
+
+  const openSetMaSpModal = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào khớp bộ lọc hiện tại.', 'error');
+      return;
+    }
+    setBulkMaSpInput(maSpFilter !== 'all' ? maSpFilter : '');
+    setShowSetMaSpModal(true);
+  };
+
+  const handleSetMaSpByFilter = async () => {
+    const nextCode = String(bulkMaSpInput).trim();
+    if (!nextCode) {
+      showAppToast('Chọn hoặc nhập Mã SP mới.', 'error');
+      return;
+    }
+    const ids = visibleRecords.map(row => row.id).filter(id => id != null && id !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng nào khớp bộ lọc hiện tại.', 'error');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Đổi Mã SP → «${nextCode}» cho ${ids.length} dòng đang lọc?\n\nTL tiêu chuẩn / Lõi lý thuyết / Chênh lệch sẽ đổi theo mã mới.`
+      )
+    ) {
+      return;
+    }
+
+    setIsSettingMaSp(true);
+    try {
+      const updated = await postCanTuDongBulkSetMaSp(ids, nextCode);
+      const idSet = new Set(ids.map(id => String(id)));
+      setRecords(prev =>
+        prev.map(row => {
+          if (!idSet.has(String(row.id))) return row;
+          const nextQr = replaceCanTuDongQrProductCode(row.qr_code, nextCode);
+          return { ...row, qr_code: nextQr };
+        })
+      );
+      showAppToast(`Đã đổi Mã SP = ${nextCode} cho ${updated} dòng theo bộ lọc.`);
+      setShowSetMaSpModal(false);
+      setMaSpFilter(nextCode);
+      setMaSpQuery('');
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(
+        err instanceof Error ? err.message : 'Không thể đổi Mã SP theo bộ lọc.',
+        'error'
+      );
+    } finally {
+      setIsSettingMaSp(false);
+    }
+  };
+
   const openAutoFillModal = () => {
     const ids = [...selectedIds];
     if (ids.length === 0) {
@@ -1075,6 +1163,7 @@ export function CanTuDongPanel({
           disabled={
             loading ||
             isSettingTare ||
+            isSettingMaSp ||
             isAutoFilling ||
             isSettingCa ||
             isBulkDeleting ||
@@ -1090,6 +1179,24 @@ export function CanTuDongPanel({
         >
           {isSettingTare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
           {isSettingTare ? 'Đang đổi...' : 'Đổi cân lõi theo lọc'}
+        </button>
+        <button
+          type="button"
+          onClick={openSetMaSpModal}
+          disabled={
+            loading ||
+            isSettingMaSp ||
+            isSettingTare ||
+            isAutoFilling ||
+            isSettingCa ||
+            isBulkDeleting ||
+            visibleRecords.length === 0
+          }
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+          title={`Đổi cột Mã SP cho ${visibleRecords.length} dòng đang lọc — TL tiêu chuẩn / lõi LT / chênh lệch đổi theo mã mới`}
+        >
+          {isSettingMaSp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}
+          {isSettingMaSp ? 'Đang đổi...' : 'Sửa Mã SP theo lọc'}
         </button>
         <span className="text-[11px] font-semibold text-zinc-500">
           {loading
@@ -1929,6 +2036,91 @@ export function CanTuDongPanel({
               >
                 {isSettingTare ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
                 {isSettingTare ? 'Đang đổi...' : `Đổi ${visibleRecords.length} dòng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showSetMaSpModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-set-ma-sp-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-set-ma-sp-title" className="text-base font-black text-zinc-950">
+                  Sửa Mã SP theo bộ lọc
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho {visibleRecords.length} dòng đang lọc
+                  {maSpFilter !== 'all' ? ` · đang lọc ${maSpFilter}` : ''}
+                  {fromDate || toDate
+                    ? ` · Ngày ${fromDate ? formatIsoDateVi(fromDate) : '…'} → ${toDate ? formatIsoDateVi(toDate) : '…'}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetMaSpModal(false)}
+                disabled={isSettingMaSp}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <FilterCombobox
+                label="Mã SP mới"
+                options={bulkMaSpOptions}
+                value={bulkMaSpInput}
+                onChange={setBulkMaSpInput}
+                includeAll={false}
+                searchPlaceholder="Tìm mã SP..."
+                formatOption={code => {
+                  const name = productNameByCode.get(normalizeProductCodeKey(code));
+                  return name ? `${code} · ${name}` : code;
+                }}
+                dropdownWidth="w-max min-w-[16rem] max-w-[min(28rem,calc(100vw-1rem))]"
+              />
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Hoặc nhập mã SP
+                </span>
+                <input
+                  value={bulkMaSpInput}
+                  onChange={e => setBulkMaSpInput(e.target.value)}
+                  placeholder="VD: MT-MN009"
+                  disabled={isSettingMaSp}
+                  className="mt-1 h-11 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold outline-none focus:border-sky-400 disabled:opacity-60"
+                />
+              </label>
+              <p className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-950">
+                Đổi cột <span className="font-black">Mã SP</span> (phần mã trong QR). Các cột phía sau
+                lấy từ danh mục SP — <span className="font-black">TL tiêu chuẩn</span>,{' '}
+                <span className="font-black">Lõi lý thuyết</span>, chênh lệch / % — tự đổi theo mã mới.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowSetMaSpModal(false)}
+                disabled={isSettingMaSp}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSetMaSpByFilter()}
+                disabled={isSettingMaSp || !String(bulkMaSpInput).trim()}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isSettingMaSp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}
+                {isSettingMaSp ? 'Đang đổi...' : `Đổi ${visibleRecords.length} dòng`}
               </button>
             </div>
           </div>

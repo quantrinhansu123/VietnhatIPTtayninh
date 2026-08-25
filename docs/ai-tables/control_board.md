@@ -23,7 +23,10 @@ Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trê
 
 ## Bảng liên quan thêm
 
-- [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) — lưu lý do giải trình in BB
+- [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) — tồn đầu/cuối ca; `/phan-tich-tu-dong` (`includeAllMachines`) khớp phiếu tồn theo ngày + ca + máy **mọi máy** (vd Máy cách nhiệt), không chỉ Bao Bì.
+- [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) — lý do giải trình in BB
+- [bb_phan_tich_danh_gia.md](./bb_phan_tich_danh_gia.md) — phân tích đánh giá (tab Đánh giá) lưu Supabase
+- [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) — snapshot báo cáo sau nút **Tính toán** (không tự tính mỗi lần mở trang)
 
 ## Utils
 

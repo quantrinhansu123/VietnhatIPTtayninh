@@ -208,7 +208,7 @@ export function ProductNplItemFormModal({
 
   const pickMaterial = (nextCode: string) => {
     setCode(nextCode);
-    const material = materialOptions.find(option => option.code === nextCode);
+    const material = findMaterialOptionByCode(materialOptions, nextCode);
     if (material) {
       setName(material.name);
       if (material.unit && material.unit !== '-') {
@@ -220,10 +220,12 @@ export function ProductNplItemFormModal({
   useEffect(() => {
     const trimmedCode = code.trim();
     if (!trimmedCode) return;
-    const material = materialOptions.find(option => option.code === trimmedCode);
-    if (material?.unit && material.unit !== '-') {
-      setUnit(material.unit);
+    const material = findMaterialOptionByCode(materialOptions, trimmedCode);
+    if (!material) return;
+    if (material.unit && material.unit !== '-') {
+      setUnit(current => (current && current !== '-' ? current : material.unit));
     }
+    setName(current => current.trim() || material.name);
   }, [code, materialOptions]);
 
   const handleSave = async () => {
@@ -293,7 +295,7 @@ export function ProductNplItemFormModal({
               options={materialOptions}
               placeholder="Gõ để tìm mã NPL"
               isLoading={isLoadingMaterials}
-              disabled={isLoadingMaterials || mode === 'edit'}
+              disabled={isLoadingMaterials}
               inputClassName={productFieldClass}
               getLabel={item => {
                 const material = item as MaterialOption;

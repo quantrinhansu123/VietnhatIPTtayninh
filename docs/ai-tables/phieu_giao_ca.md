@@ -24,7 +24,7 @@
 
 - `src/lib/shiftHandoverModel.ts` — kiểu dữ liệu, tổng cột (6)=(3)×(5), chênh lệch KPI, `ton_cuoi_ca`
 
-- `src/utils/shiftHandoverAutofill.ts` — map autofill từ `can_tu_dong` / `bao_cao_hang_hong` / `bao_cao_may_nvl_ton`
+- `src/utils/shiftHandoverAutofill.ts` — map autofill từ `lenh_sx` + `can_tu_dong` / `bao_cao_hang_hong` / `bao_cao_may_nvl_ton`
 
 
 
@@ -38,7 +38,7 @@
 
 |-----|--------|
 
-| II. Thành phẩm | `GET /api/can-tu-dong?dateBy=ngay` — gom theo mã SP |
+| II. Thành phẩm | Dòng từ `GET /api/lenh-sx` (Ngày+Ca+Máy); **Số lượng** = số lần cân `GET /api/can-tu-dong?dateBy=ngay`; Dự kiến = SL lệnh SX |
 
 | III. Hàng lỗi | `GET /api/bao-cao-hang-hong?ngay=` |
 

@@ -1,7 +1,8 @@
 import React from 'react';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
-type AcceptanceReportSource = {
+
+export type AcceptanceReportSource = {
   id: string;
   ngay: string;
   ca: string;
@@ -247,6 +248,165 @@ export function AcceptanceReportPrintBatch({ slips }: { slips: AcceptancePrintSl
           <AcceptanceReportPrintSheet slip={slip} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Nhóm dòng DB thành 1 bảng trên màn hình (ngày + ca + máy + lần). */
+export type AcceptanceScreenSlip = {
+  key: string;
+  ngay: string;
+  ca: string;
+  lan: string;
+  gio: string;
+  machineLabel: string;
+  lines: Array<AcceptanceReportSource & { ten_sp?: string }>;
+};
+
+export function buildAcceptanceScreenSlips(
+  reports: Array<AcceptanceReportSource & { ten_sp?: string }>
+): AcceptanceScreenSlip[] {
+  const grouped = new Map<string, AcceptanceScreenSlip>();
+
+  for (const report of reports) {
+    const machineLabel = machineLabelFromReport(report);
+    const key = [report.ngay, report.ca, report.ma_may || report.ten_may, report.lan].join('|');
+    let slip = grouped.get(key);
+    if (!slip) {
+      slip = {
+        key,
+        ngay: report.ngay,
+        ca: report.ca || '-',
+        lan: report.lan || '-',
+        gio: report.gio || '-',
+        machineLabel,
+        lines: []
+      };
+      grouped.set(key, slip);
+    }
+    slip.lines.push(report);
+    if (report.gio && (slip.gio === '-' || !slip.gio || report.gio < slip.gio)) {
+      slip.gio = report.gio;
+    }
+  }
+
+  return [...grouped.values()].sort((a, b) => {
+    const byDate = b.ngay.localeCompare(a.ngay, 'vi');
+    if (byDate !== 0) return byDate;
+    const byCa = a.ca.localeCompare(b.ca, 'vi');
+    if (byCa !== 0) return byCa;
+    const byMachine = a.machineLabel.localeCompare(b.machineLabel, 'vi');
+    if (byMachine !== 0) return byMachine;
+    return String(a.lan).localeCompare(String(b.lan), 'vi', { numeric: true });
+  });
+}
+
+/** Bảng phiếu trên màn hình — xếp chồng, vuốt xuống xem, không cần chọn. */
+export function AcceptanceReportSlipStack({
+  slips,
+  emptyText = 'Chưa có báo cáo.',
+  renderLineActions
+}: {
+  slips: AcceptanceScreenSlip[];
+  emptyText?: string;
+  renderLineActions?: (line: AcceptanceReportSource & { ten_sp?: string }) => React.ReactNode;
+}) {
+  if (slips.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-8 text-center text-sm font-bold text-zinc-400">
+        {emptyText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {slips.map(slip => {
+        const totalsByUnit = sumByUnit(
+          slip.lines.map(line => ({
+            mat_hang: line.mat_hang,
+            ten_sp: line.ten_sp,
+            don_vi: line.don_vi,
+            so_luong: line.so_luong
+          }))
+        );
+        return (
+          <article
+            key={slip.key}
+            className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-200 bg-gradient-to-r from-zinc-50 to-white px-3 py-2.5 sm:px-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">
+                  Báo cáo sản lượng
+                </p>
+                <h3 className="mt-0.5 text-sm font-black text-zinc-900 sm:text-base">
+                  {formatPrintDate(slip.ngay)} · Ca {slip.ca}
+                </h3>
+                <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                  Lần {slip.lan}
+                  {slip.gio && slip.gio !== '-' ? ` · ${slip.gio}` : ''}
+                  {slip.machineLabel && slip.machineLabel !== '-'
+                    ? ` · ${slip.machineLabel}`
+                    : ''}
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-800">
+                {slip.lines.length} dòng
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-zinc-100 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 text-center">STT</th>
+                    <th className="px-3 py-2">Mặt hàng</th>
+                    <th className="px-3 py-2">Tên SP</th>
+                    <th className="px-3 py-2 text-center">ĐVT</th>
+                    <th className="px-3 py-2 text-right">Số lượng</th>
+                    {renderLineActions ? <th className="px-3 py-2 text-center">Thao tác</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {slip.lines.map((line, index) => (
+                    <tr key={line.id || `${slip.key}-${index}`} className="border-t border-zinc-100">
+                      <td className="px-3 py-2 text-center font-mono font-bold text-zinc-500">
+                        {index + 1}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-zinc-800">{line.mat_hang || '—'}</td>
+                      <td className="px-3 py-2 text-zinc-600">{line.ten_sp || '—'}</td>
+                      <td className="px-3 py-2 text-center font-semibold text-zinc-600">
+                        {line.don_vi || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
+                        {line.so_luong === null ? '—' : formatNumber(line.so_luong, 2)}
+                      </td>
+                      {renderLineActions ? (
+                        <td className="px-3 py-2 text-center">{renderLineActions(line)}</td>
+                      ) : null}
+                    </tr>
+                  ))}
+                  {totalsByUnit.map(([unit, total]) => (
+                    <tr key={unit} className="border-t border-zinc-200 bg-zinc-50">
+                      <td
+                        colSpan={renderLineActions ? 4 : 4}
+                        className="px-3 py-2 text-right text-xs font-black text-zinc-800"
+                      >
+                        Tổng cộng ({unit})
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-black text-emerald-800">
+                        {formatNumber(total, 2)}
+                      </td>
+                      {renderLineActions ? <td /> : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

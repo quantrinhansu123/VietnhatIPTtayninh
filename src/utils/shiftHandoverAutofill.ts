@@ -3,12 +3,19 @@ import {
   emptyScrapLine,
   emptyClosingStockLine,
   formatQty,
+  parseQty,
   type ClosingStockLine,
   type ProductLine,
   type ProductOption,
   type ScrapLine
 } from '../lib/shiftHandoverModel';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import {
+  getProductionOrderProductLines,
+  normalizeProductionOrders,
+  type ProductionOrderRow
+} from '../features/ke-hoach-san-xuat';
+import { parseDateToIso } from './dateFormat';
 import {
   filterCanTuDongRecordsForBoard,
   parseCanTuDongQrProductCode,
@@ -31,8 +38,52 @@ function round3(value: number) {
   return Math.round(value * 1000) / 1000;
 }
 
-/** Gom thành phẩm từ cân tự động theo Mã SP (Số SP = số lần cân). */
-export function buildProductLinesFromCanTuDong(input: {
+function normalizeMachineHay(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function machineTextMatches(candidate: string, code?: string, name?: string) {
+  const needle = normalizeMachineHay(`${code || ''} ${name || ''}`);
+  const hay = normalizeMachineHay(candidate);
+  if (!needle) return true;
+  if (!hay) return false;
+  return hay.includes(needle) || needle.includes(hay);
+}
+
+/** Lọc lệnh SX theo Ngày + Ca (+ Máy). */
+export function filterProductionOrdersForHandover(input: {
+  orders: ProductionOrderRow[];
+  date: string;
+  shift: string;
+  machineCode?: string;
+  machineName?: string;
+}): ProductionOrderRow[] {
+  const dateIso = String(input.date || '').slice(0, 10);
+  return input.orders.filter(order => {
+    const orderDate = parseDateToIso(order.startDate);
+    if (dateIso && orderDate && orderDate !== dateIso) return false;
+    if (input.shift && order.shift && order.shift !== '-' && !shiftNamesMatch(order.shift, input.shift)) {
+      return false;
+    }
+    if (input.machineCode || input.machineName) {
+      const machineHay = `${order.machine || ''} ${order.position || ''}`;
+      if (!machineTextMatches(machineHay, input.machineCode, input.machineName)) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Thành phẩm: dòng từ lệnh SX; Số lượng (SL cuộn) = số lần cân tự động theo mã SP.
+ * Dự kiến trả kho = SL trên lệnh SX (gộp theo mã).
+ */
+export function buildProductLinesFromOrdersAndCanTuDong(input: {
+  orders: unknown;
   records: CanTuDongWeightRow[];
   date: string;
   shift: string;
@@ -40,7 +91,46 @@ export function buildProductLinesFromCanTuDong(input: {
   machineName?: string;
   products: ProductOption[];
 }): ProductLine[] {
-  const filtered = filterCanTuDongRecordsForBoard(input.records, {
+  const orders = filterProductionOrdersForHandover({
+    orders: Array.isArray(input.orders)
+      ? (input.orders as ProductionOrderRow[])
+      : normalizeProductionOrders(input.orders),
+    date: input.date,
+    shift: input.shift,
+    machineCode: input.machineCode,
+    machineName: input.machineName
+  });
+
+  const catalogByCode = new Map(
+    input.products.map(product => [normalizeProductCodeKey(product.code), product] as const)
+  );
+
+  const byCode = new Map<string, { code: string; name: string; plannedReturn: number }>();
+
+  for (const order of orders) {
+    for (const line of getProductionOrderProductLines(order)) {
+      const code = String(line.productCode || '').trim();
+      const key = normalizeProductCodeKey(code);
+      if (!key) continue;
+      const qty = parseQty(line.quantity) ?? 0;
+      const catalog = catalogByCode.get(key);
+      const existing = byCode.get(key);
+      if (!existing) {
+        byCode.set(key, {
+          code: code || catalog?.code || key,
+          name: String(line.productName || '').trim() || catalog?.name || '',
+          plannedReturn: qty > 0 ? qty : 0
+        });
+        continue;
+      }
+      if (qty > 0) existing.plannedReturn += qty;
+      if (!existing.name && (line.productName || catalog?.name)) {
+        existing.name = String(line.productName || catalog?.name || '').trim();
+      }
+    }
+  }
+
+  const filteredWeighings = filterCanTuDongRecordsForBoard(input.records, {
     shiftFilter: input.shift || 'all',
     dateFrom: input.date,
     dateTo: input.date,
@@ -48,28 +138,21 @@ export function buildProductLinesFromCanTuDong(input: {
     selectedMachine:
       input.machineCode || input.machineName
         ? { code: input.machineCode || '', name: input.machineName || '' }
-        : null
+        : null,
+    productCodeKeys: byCode.size > 0 ? byCode.keys() : null
   });
 
-  const byCode = new Map<
-    string,
-    { code: string; name: string; quantity: number; weightSum: number; weightCount: number }
-  >();
-  const nameByCode = new Map(
-    input.products.map(product => [normalizeProductCodeKey(product.code), product] as const)
-  );
-
-  for (const row of filtered) {
+  const weighByCode = new Map<string, { quantity: number; weightSum: number; weightCount: number }>();
+  for (const row of filteredWeighings) {
     const code = parseCanTuDongQrProductCode(row.qr_code);
     const key = normalizeProductCodeKey(code);
     if (!key) continue;
-    const catalog = nameByCode.get(key);
-    const existing = byCode.get(key);
+    // Chỉ đếm mã có trên lệnh SX khi đã có dòng lệnh; nếu không có lệnh thì gom hết mã cân.
+    if (byCode.size > 0 && !byCode.has(key)) continue;
     const canSp = resolveCanSpKg(row);
+    const existing = weighByCode.get(key);
     if (!existing) {
-      byCode.set(key, {
-        code: code || catalog?.code || key,
-        name: catalog?.name || '',
+      weighByCode.set(key, {
         quantity: 1,
         weightSum: canSp != null && canSp > 0 ? canSp : 0,
         weightCount: canSp != null && canSp > 0 ? 1 : 0
@@ -83,24 +166,45 @@ export function buildProductLinesFromCanTuDong(input: {
     }
   }
 
+  // Không có lệnh SX khớp → không tự tạo dòng từ cân (theo yêu cầu: dòng từ lệnh SX).
+  if (byCode.size === 0) return [emptyProductLine()];
+
   const lines = [...byCode.values()]
     .sort((a, b) => a.code.localeCompare(b.code, 'vi'))
     .map(item => {
-      const catalog = nameByCode.get(normalizeProductCodeKey(item.code));
+      const key = normalizeProductCodeKey(item.code);
+      const catalog = catalogByCode.get(key);
+      const weigh = weighByCode.get(key);
       const avgWeight =
-        item.weightCount > 0 ? round3(item.weightSum / item.weightCount) : null;
+        weigh && weigh.weightCount > 0 ? round3(weigh.weightSum / weigh.weightCount) : null;
       const resinNorm = catalog?.totalWeightKg ?? avgWeight;
       return {
         ...emptyProductLine(),
         productCode: item.code,
         productName: item.name || catalog?.name || '',
-        quantity: formatQty(item.quantity, 0),
-        rollWeight: avgWeight != null ? formatQty(avgWeight) : '',
+        plannedReturn: item.plannedReturn > 0 ? formatQty(item.plannedReturn, 0) : '',
+        quantity: weigh && weigh.quantity > 0 ? formatQty(weigh.quantity, 0) : '',
+        rollWeight: avgWeight != null ? formatQty(avgWeight) : resinNorm != null ? formatQty(resinNorm) : '',
         resinNorm: resinNorm != null ? formatQty(resinNorm) : ''
       };
     });
 
   return lines.length > 0 ? lines : [emptyProductLine()];
+}
+
+/** @deprecated Dùng buildProductLinesFromOrdersAndCanTuDong */
+export function buildProductLinesFromCanTuDong(input: {
+  records: CanTuDongWeightRow[];
+  date: string;
+  shift: string;
+  machineCode?: string;
+  machineName?: string;
+  products: ProductOption[];
+}): ProductLine[] {
+  return buildProductLinesFromOrdersAndCanTuDong({
+    ...input,
+    orders: []
+  });
 }
 
 function asFiniteNumber(value: unknown): number | null {

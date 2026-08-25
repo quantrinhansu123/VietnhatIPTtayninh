@@ -3,7 +3,7 @@ export const SHIFT_HANDOVER_FORM_ISSUE = '03';
 export const SHIFT_HANDOVER_FORM_EFFECTIVE = '03/08/2022';
 export const SHIFT_HANDOVER_MIXING_FORM_EFFECTIVE = '01/04/2023';
 
-export type HandoverFormTab = 'thanh_pham' | 'vat_tu';
+export type HandoverFormTab = 'bao_cao' | 'vat_tu';
 
 export type MaterialCatalogOption = {
   code: string;
@@ -240,9 +240,10 @@ export function defaultMixingMaterialLines(): MixingMaterialLine[] {
 }
 
 export const DEFAULT_KPI_CRITERIA = [
-  'Định mức số lượng thành phẩm sản xuất 1h/cuộn',
-  'Định mức nhựa không màng. Nhựa đầu keo ca 12h/kg',
-  'Định mức nhựa thực dùng. Ca 12h/kg'
+  '1. Định mức số lượng thành phẩm sản xuất 1h(cuộn)',
+  '2. Định mức nhựa không màng. Nhựa đầu keo ca 12h(kg)',
+  '3. Định mức hàng rác *0,75. ca 12h(kg)',
+  '4. Định mức nhựa thực dùng. ca 12h(kg)'
 ] as const;
 
 export function emptyKpiLine(criteria = ''): KpiLine {
@@ -278,7 +279,8 @@ export function kpiVariance(norm: string, actual: string): number | null {
   const n = parseQty(norm);
   const a = parseQty(actual);
   if (n === null || a === null) return null;
-  return Math.round((a - n) * 1000) / 1000;
+  // Phiếu giấy: Chênh lệch mức = SL ĐM − Thực tế
+  return Math.round((n - a) * 1000) / 1000;
 }
 
 export function mixedTotalFromUses(

@@ -22,7 +22,6 @@ import {
 } from '../utils/shiftSettings';
 import {
   buildClosingStockLinesFromMachineNvl,
-  buildProductLinesFromCanTuDong,
   buildScrapLinesFromDamagedGoods
 } from '../utils/shiftHandoverAutofill';
 import { formatNumber } from '../utils';
@@ -36,20 +35,16 @@ import {
   emptyClosingStockLine,
   emptyKpiLine,
   emptyMixingMaterialLine,
-  emptyProductLine,
   emptyScrapLine,
   kpiVariance,
   normalizeShiftHandoverSlips,
   parseQty,
   sumClosingStockTotals,
-  totalNormWeight,
   type ClosingStockLine,
   type HandoverFormTab,
   type KpiLine,
   type MaterialCatalogOption,
   type MixingMaterialLine,
-  type ProductLine,
-  type ProductOption,
   type ScrapLine,
   type ShiftHandoverSlip
 } from '../lib/shiftHandoverModel';
@@ -93,30 +88,6 @@ function normalizeMachines(data: unknown): MachineOption[] {
       return { id: String(row.id ?? code), code, name };
     })
     .filter((item): item is MachineOption => Boolean(item));
-}
-
-function normalizeCatalogProducts(data: unknown): ProductOption[] {
-  const rows = Array.isArray(data)
-    ? data
-    : data && typeof data === 'object' && Array.isArray((data as { products?: unknown }).products)
-      ? (data as { products: unknown[] }).products
-      : [];
-
-  return rows
-    .map((item): ProductOption | null => {
-      if (!item || typeof item !== 'object') return null;
-      const record = item as Record<string, unknown>;
-      const code = String(record.ma_sp ?? record.ma_san_pham ?? record.productCode ?? record.code ?? '').trim();
-      const name = String(record.ten_sp ?? record.ten_san_pham ?? record.productName ?? record.name ?? '').trim();
-      const unit = String(record.don_vi ?? record.unit ?? '').trim();
-      const totalWeightRaw = record.tong_trong_luong ?? record.totalWeight;
-      const totalWeightText = String(totalWeightRaw ?? '').trim();
-      const totalWeightNumber = Number(totalWeightText.replace(',', '.'));
-      const totalWeightKg = totalWeightText && Number.isFinite(totalWeightNumber) ? totalWeightNumber : null;
-      if (!code) return null;
-      return { code, name, unit, totalWeightKg };
-    })
-    .filter((item): item is ProductOption => Boolean(item));
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
@@ -192,21 +163,15 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
-  const [products, setProducts] = useState<ProductOption[]>([]);
   const [materials, setMaterials] = useState<MaterialCatalogOption[]>([]);
   const [slips, setSlips] = useState<ShiftHandoverSlip[]>([]);
-  const [formTab, setFormTab] = useState<HandoverFormTab>('thanh_pham');
+  const [formTab, setFormTab] = useState<HandoverFormTab>('bao_cao');
   const [date, setDate] = useState(todayIso());
   const [shift, setShift] = useState('');
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo] = useState('');
   const [machineRef, setMachineRef] = useState('');
   const [operators, setOperators] = useState('');
-  const [productLines, setProductLines] = useState<ProductLine[]>([
-    emptyProductLine(),
-    emptyProductLine(),
-    emptyProductLine()
-  ]);
   const [scrapLines, setScrapLines] = useState<ScrapLine[]>([
     emptyScrapLine(),
     emptyScrapLine(),
@@ -250,17 +215,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     return filtered.length > 0 ? filtered : staffOptions;
   }, [staffOptions, shift]);
 
-  const productTotals = useMemo(() => {
-    return productLines.reduce(
-      (acc, line) => ({
-        plannedReturn: acc.plannedReturn + (parseQty(line.plannedReturn) ?? 0),
-        quantity: acc.quantity + (parseQty(line.quantity) ?? 0),
-        totalNormWeight: acc.totalNormWeight + (totalNormWeight(line.quantity, line.resinNorm) ?? 0)
-      }),
-      { plannedReturn: 0, quantity: 0, totalNormWeight: 0 }
-    );
-  }, [productLines]);
-
   const closingStockTotals = useMemo(() => {
     const saved = closingStockLines.map((line, index) => ({
       stt: index + 1,
@@ -285,19 +239,17 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [machineRes, settingRes, staffRes, productRes, materialRes, slipRes] = await Promise.all([
+        const [machineRes, settingRes, staffRes, materialRes, slipRes] = await Promise.all([
           fetch('/api/danh-sach-may'),
           fetch('/api/cai-dat'),
           fetch('/api/nhan-su?format=groups'),
-          fetch('/api/san-pham?format=table'),
           fetch('/api/kho-nvl'),
           fetch('/api/phieu-giao-ca?limit=50')
         ]);
-        const [machineData, settingData, staffData, productData, materialData, slipData] = await Promise.all([
+        const [machineData, settingData, staffData, materialData, slipData] = await Promise.all([
           machineRes.json().catch(() => ({})),
           settingRes.json().catch(() => ({})),
           staffRes.json().catch(() => ({})),
-          productRes.json().catch(() => ({})),
           materialRes.json().catch(() => ({})),
           slipRes.json().catch(() => ({}))
         ]);
@@ -306,7 +258,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
         if (machineRes.ok) setMachines(normalizeMachines(machineData));
         if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
         if (staffRes.ok) setStaffOptions(normalizeProductionStaff(staffData));
-        if (productRes.ok) setProducts(normalizeCatalogProducts(productData));
         if (materialRes.ok) setMaterials(normalizeCatalogMaterials(materialData));
         if (slipRes.ok) setSlips(normalizeShiftHandoverSlips(slipData));
       } finally {
@@ -434,19 +385,24 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       });
       if (machineCode) nvlParams.set('ma_may', machineCode);
 
-      const [canRes, scrapRes, nvlRes] = await Promise.all([
+      const [canRes, orderRes, scrapRes, nvlRes] = await Promise.all([
         fetch(`/api/can-tu-dong?${canParams.toString()}`),
+        fetch('/api/lenh-sx'),
         fetch(`/api/bao-cao-hang-hong?ngay=${encodeURIComponent(date)}`),
         fetch(`/api/bao-cao-may-nvl-ton?${nvlParams.toString()}`)
       ]);
-      const [canData, scrapData, nvlData] = await Promise.all([
+      const [canData, orderData, scrapData, nvlData] = await Promise.all([
         canRes.json().catch(() => ({})),
+        orderRes.json().catch(() => ({})),
         scrapRes.json().catch(() => []),
         nvlRes.json().catch(() => ({}))
       ]);
 
       if (!canRes.ok) {
         throw new Error(readApiErrorMessage(canRes, canData, 'Không tải được cân tự động.'));
+      }
+      if (!orderRes.ok) {
+        throw new Error(readApiErrorMessage(orderRes, orderData, 'Không tải được lệnh sản xuất.'));
       }
       if (!scrapRes.ok) {
         throw new Error(readApiErrorMessage(scrapRes, scrapData, 'Không tải được báo cáo hàng hỏng.'));
@@ -456,7 +412,8 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       }
 
       const canRecords = Array.isArray(canData?.records) ? canData.records : [];
-      const nextProducts = buildProductLinesFromCanTuDong({
+      const nextProducts = buildProductLinesFromOrdersAndCanTuDong({
+        orders: normalizeProductionOrders(orderData),
         records: canRecords,
         date,
         shift,
@@ -488,7 +445,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       const filledClosing = nextClosing.filter(
         line => line.itemCode.trim() || line.itemName.trim() || parseQty(line.quantity) !== null
       ).length;
-      const okMsg = `Đã điền: ${filledProducts} mã TP · ${filledScraps} dòng hàng lỗi · ${filledClosing} dòng tồn cuối ca.`;
+      const okMsg = `Đã điền: ${filledProducts} mã TP (lệnh SX) · ${filledScraps} dòng hàng lỗi · ${filledClosing} dòng tồn cuối ca.`;
       setMessage(okMsg);
       showAppToast(okMsg);
     } catch (err: unknown) {
@@ -505,6 +462,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       products: productLines,
       scraps: scrapLines,
       closingStockLines,
+      materials: materialLines,
       kpis: kpiLines
     });
     return buildShiftHandoverPrintSlip({
@@ -600,6 +558,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       products: productLines,
       scraps: scrapLines,
       closingStockLines,
+      materials: materialLines,
       kpis: kpiLines
     });
     const printPayload = buildCurrentPrintSlip();
@@ -815,13 +774,37 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   onClick={() => void handleAutofill()}
                   disabled={isAutofilling || isLoading || isSaving}
                   className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
-                  title="Điền Thành phẩm (cân tự động), Hàng lỗi, Tồn cuối ca theo Ngày + Ca (+ Máy)"
+                  title="Điền Thành phẩm từ lệnh SX (SL từ cân tự động), Hàng lỗi, Tồn cuối ca theo Ngày + Ca (+ Máy)"
                 >
                   {isAutofilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4 text-[#ef1b2d]" />}
                   {isAutofilling ? 'Đang điền...' : 'Tự động điền'}
                 </button>
               </div>
 
+              <div className="mt-4 flex gap-1 border-b border-zinc-200">
+                {(
+                  [
+                    { id: 'thanh_pham' as const, label: 'Thành phẩm' },
+                    { id: 'vat_tu' as const, label: 'Bảng trộn vật tư' }
+                  ]
+                ).map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFormTab(tab.id)}
+                    className={`-mb-px rounded-t-lg border px-4 py-2 text-xs font-black uppercase tracking-wider transition ${
+                      formTab === tab.id
+                        ? 'border-zinc-200 border-b-white bg-white text-[#ef1b2d]'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {formTab === 'thanh_pham' ? (
+              <>
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-xs font-black uppercase tracking-wider text-zinc-800">II. Thành phẩm</h3>
@@ -1089,7 +1072,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                           <th className="border border-zinc-200 px-2 py-1.5 text-left">Chỉ tiêu</th>
                           <th className="w-20 border border-zinc-200 px-2 py-1.5">SL ĐM</th>
                           <th className="w-20 border border-zinc-200 px-2 py-1.5">Thực tế</th>
-                          <th className="w-24 border border-zinc-200 px-2 py-1.5">Chênh lệch</th>
+                          <th className="w-28 border border-zinc-200 px-2 py-1.5">Chênh lệch mức</th>
                           <th className="w-9 border border-zinc-200" />
                         </tr>
                       </thead>
@@ -1270,6 +1253,23 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   </table>
                 </div>
               </div>
+              </>
+              ) : (
+                <div className="mt-5">
+                  <ShiftHandoverMixingTable
+                    lines={materialLines}
+                    materials={materials}
+                    isLoading={isLoading}
+                    onChange={(key, patch) =>
+                      setMaterialLines(prev => prev.map(line => (line.key === key ? { ...line, ...patch } : line)))
+                    }
+                    onAdd={() => setMaterialLines(prev => [...prev, emptyMixingMaterialLine()])}
+                    onRemove={key =>
+                      setMaterialLines(prev => (prev.length > 1 ? prev.filter(line => line.key !== key) : prev))
+                    }
+                  />
+                </div>
+              )}
 
               <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <label className="text-xs font-black uppercase tracking-wider text-zinc-500">

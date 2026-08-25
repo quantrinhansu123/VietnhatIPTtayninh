@@ -215,6 +215,22 @@ export function parseCanTuDongQrProductCode(raw?: string | null): string {
   return trimmed;
 }
 
+/** Đổi phần mã SP trong QR, giữ serial / phần sau `+` nếu có. */
+export function replaceCanTuDongQrProductCode(
+  raw: string | null | undefined,
+  newProductCode: string
+): string {
+  const next = String(newProductCode || '').trim();
+  if (!next) return String(raw || '').trim();
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return next;
+  const plusIdx = trimmed.indexOf('+');
+  if (plusIdx > 0) return `${next}${trimmed.slice(plusIdx)}`;
+  const serialMatch = trimmed.match(/^(.+?)([_-]\d{6}[0-9A-Za-z]{2,})$/);
+  if (serialMatch?.[2]) return `${next}${serialMatch[2]}`;
+  return next;
+}
+
 function addProductMatchKey(keys: Set<string>, value?: string | null) {
   const key = normalizeProductCodeKey(String(value || ''));
   if (key && key !== '-') keys.add(key);

@@ -1898,7 +1898,7 @@ export function WarehouseSlipPanel({
   const isMaterialWarehouse = warehouseKind === 'nvl' || warehouseKind === 'tai_che';
   const isNvlExport = isMaterialWarehouse && slipType === 'xuat';
   const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
-  const showOrderAndShiftFields = slipType === 'nhap';
+  const showOrderFields = slipType === 'nhap';
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -2302,7 +2302,7 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
   const productionOrderCodesForSave = slipType === 'xuat' ? [] : productionOrderCodes;
-  const shiftLabelForSave = slipType === 'xuat' ? '' : shiftLabel;
+  const shiftLabelForSave = shiftLabel;
   const productionOrderLabelForSave = slipType === 'xuat' ? '' : productionOrderLabel;
   const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodesForSave);
 
@@ -2342,6 +2342,11 @@ export function WarehouseSlipPanel({
     }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (slipType === 'xuat' && selectedShifts.length === 0) {
+      setFormError(showSaveFailure('Vui lòng chọn ca.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -2801,38 +2806,38 @@ export function WarehouseSlipPanel({
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
           </label>
-          {showOrderAndShiftFields ? (
-            <label className="block space-y-1">
-              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                {isNvlInbound ? (
-                  <>
-                    Ca{' '}
-                    <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
-                  </>
-                ) : (
-                  'Ca'
-                )}
-              </span>
-              <select
-                value={selectedShifts[0] ?? ''}
-                onChange={event => {
-                  const value = event.target.value.trim();
-                  setSelectedShifts(value ? [value] : []);
-                }}
-                className={warehouseFieldClass}
-                disabled={shiftOptions.length === 0}
-              >
-                <option value="">
-                  {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
+          <label className="block space-y-1">
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
+              {isNvlInbound ? (
+                <>
+                  Ca{' '}
+                  <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
+                </>
+              ) : slipType === 'xuat' ? (
+                'Ca *'
+              ) : (
+                'Ca'
+              )}
+            </span>
+            <select
+              value={selectedShifts[0] ?? ''}
+              onChange={event => {
+                const value = event.target.value.trim();
+                setSelectedShifts(value ? [value] : []);
+              }}
+              className={warehouseFieldClass}
+              disabled={shiftOptions.length === 0}
+            >
+              <option value="">
+                {shiftOptions.length === 0 ? 'Chưa có ca trong cài đặt' : '-- Chọn ca --'}
+              </option>
+              {shiftOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
-                {shiftOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+              ))}
+            </select>
+          </label>
 
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
@@ -2889,7 +2894,7 @@ export function WarehouseSlipPanel({
             </label>
           )}
 
-          {showOrderAndShiftFields ? (
+          {showOrderFields ? (
             <div className="relative block space-y-1 sm:col-span-2 lg:col-span-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">

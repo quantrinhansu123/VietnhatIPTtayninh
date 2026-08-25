@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Loader2, Printer, Save, X } from 'lucide-react';
+import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
 import type { ProductRow } from '../features/san-pham/types';
 import type { MachineRow } from '../features/danh-sach-may';
@@ -26,34 +26,23 @@ import {
   printLyDoLineKey,
   type BbBaoCaoLyDoRow
 } from '../utils/bbBaoCaoLyDo';
+import { buildBbPhanTichStableKey } from '../utils/bbPhanTichDanhGia';
+import {
+  buildBbBaoCaoTinhToanStableKey,
+  buildBbMachineReportSnapshot,
+  emptyBbBaoCaoTinhToanPayload,
+  isBbBaoCaoTinhToanPayload,
+  type BbBaoCaoTinhToanPayload
+} from '../utils/bbBaoCaoTinhToan';
 import {
   BB_MACHINE_REPORT_TABS,
-  buildBbCuoiCaLineRows,
-  buildBbDamagedGoodsLineRows,
-  buildBbDanhGiaHaoHutGroups,
-  buildBbDauCaLineRows,
-  buildBbInboundReportRows,
-  buildBbInboundMaterialNormGroups,
   buildBbInboundBalanceMetricDetail,
   buildBbMixingMaterialLinesForShift,
-  buildBbMixingRatioGroups,
   buildBbOrderCodeOptions,
-  buildBbProductionOrderLineRows,
-  buildBbSanLuongGroups,
-  buildBbThucDungLineRows,
   buildBbThucDungMetricDetail,
-  buildBbTongGroups,
   buildBbTongHopThucXuatMetricDetail,
-  buildBbTongHopVatTuThucXuatDungGroups,
-  buildBbWarehouseExportLineRows,
   aggregateBbWarehouseExportByMaterial,
   sumBbInboundTheoreticalNormKgForProductGroup,
-  groupBbCuoiCaLines,
-  groupBbDamagedGoodsLines,
-  groupBbDauCaLines,
-  groupBbProductionOrderLines,
-  groupBbThucDungLines,
-  groupBbWarehouseExportLines,
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
   sumBbDamagedGoodsWeightKg,
@@ -423,6 +412,13 @@ export default function ControlBoardBbMachineReportTable({
   const [dbLyDoByStableKey, setDbLyDoByStableKey] = useState<Record<string, BbBaoCaoLyDoRow>>({});
   const [savingLyDo, setSavingLyDo] = useState(false);
   const [lyDoSaveMessage, setLyDoSaveMessage] = useState('');
+  const [savingPhanTich, setSavingPhanTich] = useState(false);
+  const [phanTichSaveMessage, setPhanTichSaveMessage] = useState('');
+  const [reportSnapshot, setReportSnapshot] = useState<BbBaoCaoTinhToanPayload | null>(null);
+  const [snapshotCalculatedAt, setSnapshotCalculatedAt] = useState('');
+  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [snapshotMessage, setSnapshotMessage] = useState('');
+  const [calculatingReport, setCalculatingReport] = useState(false);
   const [hrStaffNames, setHrStaffNames] = useState<string[]>([]);
   const [selectedMaterialNorm, setSelectedMaterialNorm] = useState<BbMaterialNormFormula | null>(null);
   const [selectedTrongLuongDinhMuc, setSelectedTrongLuongDinhMuc] = useState<BbWarehouseExportLineRow | null>(null);
@@ -528,65 +524,143 @@ export default function ControlBoardBbMachineReportTable({
     [productionOrders, orderCodeFilter]
   );
 
-  const orderRows = useMemo(
+  const reportSnapshotKey = useMemo(
     () =>
-      buildBbProductionOrderLineRows({
+      buildBbBaoCaoTinhToanStableKey({
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        sanLuongSource,
+        includeAllMachines,
+        orderCodes: orderCodeFilter
+      }),
+    [dateFrom, dateTo, shiftFilter, machineFilter, sanLuongSource, includeAllMachines, orderCodeFilter]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSnapshot = async () => {
+      setSnapshotStatus('loading');
+      setSnapshotMessage('');
+      setReportSnapshot(null);
+      setSnapshotCalculatedAt('');
+      try {
+        const params = new URLSearchParams();
+        params.set('khoa_on_dinh', reportSnapshotKey);
+        const res = await fetch(`/api/bb-bao-cao-tinh-toan?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setSnapshotStatus('error');
+          setSnapshotMessage(String(data?.error || 'Không tải được bản tính toán đã lưu.'));
+          return;
+        }
+        const item = data?.item;
+        const payload = item?.payload;
+        if (item && isBbBaoCaoTinhToanPayload(payload)) {
+          setReportSnapshot(payload);
+          setSnapshotCalculatedAt(String(item.calculated_at || item.updated_at || ''));
+          setSnapshotStatus('ready');
+          return;
+        }
+        setSnapshotStatus('missing');
+        setSnapshotMessage('Chưa có bản tính toán cho bộ lọc này. Bấm «Tính toán» để tạo và lưu DB.');
+      } catch (error) {
+        if (cancelled) return;
+        setSnapshotStatus('error');
+        setSnapshotMessage(error instanceof Error ? error.message : 'Lỗi tải bản tính toán.');
+      }
+    };
+    void loadSnapshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportSnapshotKey]);
+
+  const calculateAndSaveReport = async () => {
+    if (calculatingReport || isLoading) return;
+    setCalculatingReport(true);
+    setSnapshotMessage('');
+    try {
+      const payload = buildBbMachineReportSnapshot({
         productionOrders: scopedProductionOrders,
         products,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine,
-        includeAllMachines
-      }),
-    [
-      scopedProductionOrders,
-      products,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
-    ]
-  );
-
-  const exportRows = useMemo(
-    () =>
-      buildBbWarehouseExportLineRows({
-        productionOrders: scopedProductionOrders,
-        warehouseMovements,
         materials,
         machines,
+        warehouseMovements,
+        damagedRecords,
+        machineNvlReports,
+        mixingReports,
+        acceptanceReports,
+        canTuDongRecords,
         shiftSettings,
         dateFrom,
         dateTo,
         shiftFilter,
         machineFilter,
         selectedMachine,
-        includeAllMachines
-      }),
-    [
-      scopedProductionOrders,
-      warehouseMovements,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
-    ]
-  );
+        includeAllMachines,
+        sanLuongSource
+      });
+      const body = {
+        khoa_on_dinh: reportSnapshotKey,
+        ngay_tu: dateFrom || '',
+        ngay_den: dateTo || '',
+        ca: shiftFilter || 'all',
+        may: machineFilter || 'all',
+        nguon_san_luong: sanLuongSource || 'acceptance',
+        include_all_machines: Boolean(includeAllMachines),
+        ma_lenh_filter: orderCodeFilter,
+        payload
+      };
+      const res = await fetch('/api/bb-bao-cao-tinh-toan', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSnapshotStatus('error');
+        setSnapshotMessage(String(data?.error || 'Không lưu được bản tính toán.'));
+        return;
+      }
+      const savedPayload = data?.item?.payload;
+      setReportSnapshot(isBbBaoCaoTinhToanPayload(savedPayload) ? savedPayload : payload);
+      setSnapshotCalculatedAt(String(data?.item?.calculated_at || new Date().toISOString()));
+      setSnapshotStatus('ready');
+      setSnapshotMessage('Đã tính toán và lưu DB.');
+    } catch (error) {
+      setSnapshotStatus('error');
+      setSnapshotMessage(error instanceof Error ? error.message : 'Lỗi tính toán báo cáo.');
+    } finally {
+      setCalculatingReport(false);
+    }
+  };
 
-  const orderGroups = useMemo(() => groupBbProductionOrderLines(orderRows), [orderRows]);
+  const emptySnapshot = useMemo(() => emptyBbBaoCaoTinhToanPayload(), []);
+  const activeSnapshot = reportSnapshot || emptySnapshot;
+
+  // Không tự tính khi vào trang — chỉ hiển thị bản đã lưu (hoặc rỗng).
+  const orderRows = activeSnapshot.orderRows;
+  const orderGroups = activeSnapshot.orderGroups;
+  const exportRows = activeSnapshot.exportRows;
+  const exportGroups = activeSnapshot.exportGroups;
+  const inboundNormGroups = activeSnapshot.inboundNormGroups;
+  const damagedRows = activeSnapshot.damagedRows;
+  const damagedGroups = activeSnapshot.damagedGroups;
+  const cuoiCaRows = activeSnapshot.cuoiCaRows;
+  const cuoiCaGroups = activeSnapshot.cuoiCaGroups;
+  const dauCaRows = activeSnapshot.dauCaRows;
+  const dauCaGroups = activeSnapshot.dauCaGroups;
+  const sanLuongGroups = activeSnapshot.sanLuongGroups;
+  const inboundRows = activeSnapshot.inboundRows;
+  const thucDungRows = activeSnapshot.thucDungRows;
+  const thucDungGroups = activeSnapshot.thucDungGroups;
+  const tongHopThucXuatGroups = activeSnapshot.tongHopThucXuatGroups;
+  const tongGroups = activeSnapshot.tongGroups;
+  const mixingGroups = activeSnapshot.mixingGroups;
+  const danhGiaGroups = activeSnapshot.danhGiaGroups;
 
   useEffect(() => {
     let cancelled = false;
@@ -627,15 +701,42 @@ export default function ControlBoardBbMachineReportTable({
         if (!cancelled) console.warn('Lỗi tải lý do BB:', error);
       }
     };
+    const loadPhanTich = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+        const res = await fetch(`/api/bb-phan-tich-danh-gia?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          console.warn('Không tải được phân tích đánh giá:', data?.error || res.statusText);
+          return;
+        }
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (items.length === 0) return;
+        setPhanTichMap(prev => {
+          const next = { ...prev };
+          for (const raw of items) {
+            const groupKey = String(raw?.group_key || raw?.ma_lenh || '').trim();
+            const noiDung = String(raw?.noi_dung || '').trim();
+            if (!groupKey || !noiDung) continue;
+            // DB ưu tiên hơn localStorage khi có nội dung đã lưu.
+            next[groupKey] = noiDung;
+          }
+          persistBbPhanTichMap(next);
+          return next;
+        });
+      } catch (error) {
+        if (!cancelled) console.warn('Lỗi tải phân tích đánh giá:', error);
+      }
+    };
     void loadLyDo();
+    void loadPhanTich();
     return () => {
       cancelled = true;
     };
   }, [dateFrom, dateTo]);
-  const exportGroups = useMemo(
-    () => groupBbWarehouseExportLines(exportRows, scopedProductionOrders, products, materials),
-    [exportRows, scopedProductionOrders, products, materials]
-  );
   const exportLinkStats = useMemo(() => {
     let matchedLines = 0;
     let fallbackLines = 0;
@@ -645,69 +746,6 @@ export default function ControlBoardBbMachineReportTable({
     }
     return { matchedLines, fallbackLines, totalLines: exportRows.length };
   }, [exportRows]);
-  const inboundNormGroups = useMemo(
-    () =>
-      buildBbInboundMaterialNormGroups({
-        productionOrders: scopedProductionOrders,
-        acceptanceReports,
-        products,
-        materials,
-        machines,
-        machineNvlReports,
-        warehouseMovements,
-        damagedRecords,
-        mixingReports,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      acceptanceReports,
-      products,
-      materials,
-      machines,
-      machineNvlReports,
-      warehouseMovements,
-      damagedRecords,
-      mixingReports,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const damagedRows = useMemo(
-    () =>
-      buildBbDamagedGoodsLineRows({
-        productionOrders: scopedProductionOrders,
-        damagedRecords,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      damagedRecords,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const damagedGroups = useMemo(() => groupBbDamagedGoodsLines(damagedRows), [damagedRows]);
   const damagedGroupsWithMixing = useMemo(() => {
     return damagedGroups.map(group => {
       const mixingLines = buildBbMixingMaterialLinesForShift({
@@ -724,228 +762,6 @@ export default function ControlBoardBbMachineReportTable({
       };
     });
   }, [damagedGroups, mixingReports, shiftSettings]);
-  const cuoiCaRows = useMemo(
-    () =>
-      buildBbCuoiCaLineRows({
-        productionOrders: scopedProductionOrders,
-        machineNvlReports,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      machineNvlReports,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const cuoiCaGroups = useMemo(
-    () =>
-      groupBbCuoiCaLines(cuoiCaRows, scopedProductionOrders, products, materials, {
-        machines,
-        mixingReports,
-        shiftSettings
-      }),
-    [
-      cuoiCaRows,
-      scopedProductionOrders,
-      products,
-      materials,
-      machines,
-      mixingReports,
-      shiftSettings
-    ]
-  );
-  const dauCaRows = useMemo(
-    () =>
-      buildBbDauCaLineRows({
-        productionOrders: scopedProductionOrders,
-        machineNvlReports,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      machineNvlReports,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const dauCaGroups = useMemo(
-    () =>
-      groupBbDauCaLines(dauCaRows, scopedProductionOrders, products, materials, {
-        machines,
-        mixingReports,
-        shiftSettings
-      }),
-    [
-      dauCaRows,
-      scopedProductionOrders,
-      products,
-      materials,
-      machines,
-      mixingReports,
-      shiftSettings
-    ]
-  );
-
-  const sanLuongGroups = useMemo(
-    () =>
-      buildBbSanLuongGroups({
-        productionOrders: scopedProductionOrders,
-        acceptanceReports,
-        products,
-        materials,
-        machines,
-        machineNvlReports,
-        warehouseMovements,
-        damagedRecords,
-        mixingReports,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine,
-        includeAllMachines
-      }),
-    [
-      scopedProductionOrders,
-      acceptanceReports,
-      products,
-      materials,
-      machines,
-      machineNvlReports,
-      warehouseMovements,
-      damagedRecords,
-      mixingReports,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
-    ]
-  );
-  const inboundRows = useMemo(
-    () =>
-      buildBbInboundReportRows({
-        productionOrders: scopedProductionOrders,
-        warehouseMovements,
-        machineNvlReports,
-        damagedRecords,
-        acceptanceReports,
-        mixingReports,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      warehouseMovements,
-      machineNvlReports,
-      damagedRecords,
-      acceptanceReports,
-      mixingReports,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const thucDungRows = useMemo(
-    () =>
-      buildBbThucDungLineRows({
-        productionOrders: scopedProductionOrders,
-        mixingReports,
-        warehouseMovements,
-        machineNvlReports,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      mixingReports,
-      warehouseMovements,
-      machineNvlReports,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const thucDungGroups = useMemo(() => groupBbThucDungLines(thucDungRows), [thucDungRows]);
-  const tongHopThucXuatGroups = useMemo(
-    () =>
-      buildBbTongHopVatTuThucXuatDungGroups({
-        productionOrders: scopedProductionOrders,
-        mixingReports,
-        warehouseMovements,
-        machineNvlReports,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      mixingReports,
-      warehouseMovements,
-      machineNvlReports,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
   // Tab thực xuất dùng: dòng NVL lấy từ báo cáo trộn (đã gộp tỉ lệ).
   const thucDungDetailView = useMemo<BbThucDungDetailView | null>(() => {
     if (tongHopDetail) {
@@ -1000,37 +816,6 @@ export default function ControlBoardBbMachineReportTable({
       shiftSettings
     });
   }, [inboundBalanceDetail, machineNvlReports, warehouseMovements, damagedRecords, materials, shiftSettings]);
-  const tongGroups = useMemo(
-    () =>
-      buildBbTongGroups({
-        productionOrders: scopedProductionOrders,
-        warehouseMovements,
-        machineNvlReports,
-        damagedRecords,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      warehouseMovements,
-      machineNvlReports,
-      damagedRecords,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
   const orderTotals = useMemo(() => sumBbProductionOrderTotals(orderRows), [orderRows]);
   const exportTotalKg = useMemo(() => sumBbWarehouseExportWeightKg(exportRows), [exportRows]);
   const exportWeightByKind = useMemo(
@@ -1143,7 +928,8 @@ export default function ControlBoardBbMachineReportTable({
     [scopedCanTuDongRecords]
   );
   const displaySanLuongTotals =
-    sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals;
+    reportSnapshot?.summary?.displaySanLuongTotals ??
+    (sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals);
   const plasticDamagedWeightKg = useMemo(
     () =>
       damagedRows.reduce((sum, row) => {
@@ -1174,64 +960,6 @@ export default function ControlBoardBbMachineReportTable({
   const tongTiLeChenhLech = useMemo(
     () => computePercentRatio(tongChenhLechTotalKg, tongNhapKhoTotalKg),
     [tongChenhLechTotalKg, tongNhapKhoTotalKg]
-  );
-  const mixingGroups = useMemo(
-    () =>
-      buildBbMixingRatioGroups({
-        productionOrders: scopedProductionOrders,
-        mixingReports,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      mixingReports,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const danhGiaGroups = useMemo(
-    () =>
-      buildBbDanhGiaHaoHutGroups({
-        productionOrders: scopedProductionOrders,
-        products,
-        warehouseMovements,
-        machineNvlReports,
-        damagedRecords,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      scopedProductionOrders,
-      products,
-      warehouseMovements,
-      machineNvlReports,
-      damagedRecords,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
   );
   const tongGiaTriHaoHutLoiHong = useMemo(
     () => sumBbDanhGiaMoney(danhGiaGroups, 'tongGiaTriHaoHutLoiHong'),
@@ -1297,6 +1025,43 @@ export default function ControlBoardBbMachineReportTable({
       persistBbPhanTichMap(next);
       return next;
     });
+    setPhanTichSaveMessage('');
+  };
+
+  const savePhanTichToDb = async () => {
+    if (danhGiaGroups.length === 0 || savingPhanTich) return;
+    setSavingPhanTich(true);
+    setPhanTichSaveMessage('');
+    try {
+      const items = danhGiaGroups.map(group => ({
+        ngay: group.ngay,
+        ca: group.shift,
+        may: group.machine,
+        ma_lenh: group.orderCode,
+        group_key: group.groupKey,
+        noi_dung: phanTichMap[group.groupKey] || '',
+        khoa_on_dinh: buildBbPhanTichStableKey({
+          ngay: group.ngay,
+          ca: group.shift,
+          may: group.machine,
+          maLenh: group.orderCode
+        })
+      }));
+      const res = await fetch('/api/bb-phan-tich-danh-gia', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Không thể lưu phân tích đánh giá.');
+      }
+      setPhanTichSaveMessage(`Đã lưu ${items.length} dòng phân tích lên Supabase.`);
+    } catch (error: any) {
+      setPhanTichSaveMessage(error?.message || 'Không thể lưu phân tích đánh giá.');
+    } finally {
+      setSavingPhanTich(false);
+    }
   };
 
   const handlePrint = () => {
@@ -1593,22 +1358,53 @@ export default function ControlBoardBbMachineReportTable({
     <>
     <section className="control-board-report-theme overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-red-800 bg-gradient-to-r from-[#b30d1c] to-[#ef1b2d] px-3 py-3 text-white">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Báo cáo máy BB</p>
             <h3 className="text-sm font-black sm:text-base">Báo cáo tổng hợp máy BB</h3>
+            {snapshotStatus === 'ready' && snapshotCalculatedAt ? (
+              <p className="mt-0.5 text-[10px] font-semibold text-white/80">
+                Đã tính:{' '}
+                {new Date(snapshotCalculatedAt).toLocaleString('vi-VN', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+                {snapshotMessage ? ` · ${snapshotMessage}` : ''}
+              </p>
+            ) : snapshotMessage ? (
+              <p className="mt-0.5 text-[10px] font-semibold text-amber-100">{snapshotMessage}</p>
+            ) : null}
           </div>
-          <button
-            type="button"
-            id="bb-machine-report-print-btn"
-            onClick={handlePrint}
-            disabled={isLoading || orderGroups.length === 0 || pendingPrint}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/80 bg-white px-3 text-xs font-black text-sky-950 shadow-sm transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
-            title="In báo cáo tổng hợp máy BB"
-          >
-            {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            {pendingPrint ? 'Đang chuẩn bị...' : 'In báo cáo'}
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void calculateAndSaveReport()}
+              disabled={isLoading || calculatingReport || snapshotStatus === 'loading'}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-400 px-3 text-xs font-black text-zinc-900 shadow-sm transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Tính toán từ dữ liệu nguồn và lưu vào DB — lần sau vào trang chỉ đọc bản đã lưu"
+            >
+              {calculatingReport ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Calculator className="h-4 w-4" />
+              )}
+              {calculatingReport ? 'Đang tính...' : 'Tính toán'}
+            </button>
+            <button
+              type="button"
+              id="bb-machine-report-print-btn"
+              onClick={handlePrint}
+              disabled={isLoading || orderGroups.length === 0 || pendingPrint}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/80 bg-white px-3 text-xs font-black text-sky-950 shadow-sm transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title="In báo cáo tổng hợp máy BB"
+            >
+              {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {pendingPrint ? 'Đang chuẩn bị...' : 'In báo cáo'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -1973,7 +1769,7 @@ export default function ControlBoardBbMachineReportTable({
         <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 to-transparent" />
       </div>
 
-      {activeGroupKeys.length > 0 || activeTab === 'ton_dau_ca' ? (
+      {activeGroupKeys.length > 0 || activeTab === 'ton_dau_ca' || activeTab === 'danh_gia_hao_hut' ? (
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           {activeTab === 'ton_dau_ca' ? (
             <div className="min-w-0">
@@ -1984,11 +1780,35 @@ export default function ControlBoardBbMachineReportTable({
                 Cột Tỉ lệ thực tế và phân bổ NNS-TRON đều lấy tỉ lệ ĐM máy / thành phần SP
               </p>
             </div>
+          ) : activeTab === 'danh_gia_hao_hut' ? (
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-rose-700">
+                Phân tích đánh giá
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                Gõ nội dung từng lệnh → Lưu DB (Supabase) để dùng chung giữa các máy.
+                {phanTichSaveMessage ? (
+                  <span className="ml-1 font-bold text-rose-700">{phanTichSaveMessage}</span>
+                ) : null}
+              </p>
+            </div>
           ) : (
             <div />
           )}
-          {activeGroupKeys.length > 0 ? (
-            <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {activeTab === 'danh_gia_hao_hut' ? (
+              <button
+                type="button"
+                onClick={() => void savePhanTichToDb()}
+                disabled={savingPhanTich || danhGiaGroups.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#ef1b2d]/30 bg-[#ef1b2d] px-3 py-1.5 text-xs font-black text-white shadow-sm transition hover:bg-[#d41424] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingPhanTich ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {savingPhanTich ? 'Đang lưu...' : 'Lưu phân tích DB'}
+              </button>
+            ) : null}
+            {activeGroupKeys.length > 0 ? (
+              <>
               <button
                 type="button"
                 onClick={() => setAllActiveGroupsExpanded(true)}
@@ -2008,8 +1828,9 @@ export default function ControlBoardBbMachineReportTable({
               >
                 Đóng tất cả
               </button>
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

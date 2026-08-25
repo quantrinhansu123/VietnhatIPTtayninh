@@ -202,6 +202,7 @@ export default function App() {
 
   const [acceptanceEditReport, setAcceptanceEditReport] = useState<AcceptanceReport | null>(null);
   const [acceptanceCreatePrefill, setAcceptanceCreatePrefill] = useState<AcceptanceReportCreatePrefill | null>(null);
+  const [acceptanceShowForm, setAcceptanceShowForm] = useState(false);
   const [mixingReportMachinePrefill, setMixingReportMachinePrefill] = useState<{
     id: string;
     code: string;
@@ -873,11 +874,13 @@ export default function App() {
                   onCreate={prefill => {
                     setAcceptanceEditReport(null);
                     setAcceptanceCreatePrefill(prefill ?? null);
+                    setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}
                   onEdit={report => {
                     setAcceptanceCreatePrefill(null);
                     setAcceptanceEditReport(report);
+                    setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}
                 />
@@ -1247,20 +1250,48 @@ export default function App() {
               </motion.div>
             ) : activeTab === 'acceptance-report' ? (
               <motion.div
-                key="acceptance-report"
+                key={
+                  acceptanceShowForm || acceptanceEditReport || acceptanceCreatePrefill
+                    ? 'acceptance-report-form'
+                    : 'acceptance-report-list-main'
+                }
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <AcceptanceReportForm
-                  onBack={() => goBack('report-forms')}
-                  onOpenList={() => navigateToTab('acceptance-report-list')}
-                  editReport={acceptanceEditReport}
-                  onEditConsumed={() => setAcceptanceEditReport(null)}
-                  createPrefill={acceptanceCreatePrefill}
-                  onCreatePrefillConsumed={() => setAcceptanceCreatePrefill(null)}
-                />
+                {acceptanceShowForm || acceptanceEditReport || acceptanceCreatePrefill ? (
+                  <AcceptanceReportForm
+                    onBack={() => {
+                      setAcceptanceShowForm(false);
+                      setAcceptanceEditReport(null);
+                      setAcceptanceCreatePrefill(null);
+                    }}
+                    onOpenList={() => {
+                      setAcceptanceShowForm(false);
+                      setAcceptanceEditReport(null);
+                      setAcceptanceCreatePrefill(null);
+                    }}
+                    editReport={acceptanceEditReport}
+                    onEditConsumed={() => setAcceptanceEditReport(null)}
+                    createPrefill={acceptanceCreatePrefill}
+                    onCreatePrefillConsumed={() => setAcceptanceCreatePrefill(null)}
+                  />
+                ) : (
+                  <AcceptanceReportListView
+                    onBack={() => goBack('report-forms')}
+                    onCreate={prefill => {
+                      setAcceptanceEditReport(null);
+                      setAcceptanceCreatePrefill(prefill ?? null);
+                      setAcceptanceShowForm(true);
+                    }}
+                    onEdit={report => {
+                      setAcceptanceCreatePrefill(null);
+                      setAcceptanceEditReport(report);
+                      setAcceptanceShowForm(true);
+                    }}
+                  />
+                )}
               </motion.div>
             ) : activeTab === 'machine-downtime-report' ? (
               <motion.div
@@ -1527,6 +1558,7 @@ export default function App() {
                   onEditAcceptanceReport={report => {
                     setAcceptanceCreatePrefill(null);
                     setAcceptanceEditReport(report);
+                    setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}
                   onMachineReport={(machine, type) => {

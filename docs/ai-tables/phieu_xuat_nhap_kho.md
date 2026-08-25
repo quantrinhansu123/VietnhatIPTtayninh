@@ -39,7 +39,7 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang
 
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 - **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).
-- Form phiếu lưu **Ca** (`ca`) và **Máy** (`may`) — dùng khớp dữ liệu XK trên `/phan-tich-tu-dong` theo ngày + ca + máy (phiếu cũ không có `may` suy máy từ lệnh SX gắn trên lý do/ghi chú, giống `/lich-su-xuat-nhap-kho`). **Xuất kho** bắt buộc chọn Ca trên form.
+- Form phiếu lưu **Ca** (`ca`) và **Máy** (`may`) — dùng khớp dữ liệu XK trên `/phan-tich-tu-dong` theo ngày + ca + máy (phiếu cũ không có `may` suy máy từ lệnh SX gắn trên lý do/ghi chú, giống `/lich-su-xuat-nhap-kho`). **Ca không bắt buộc** trên form (Nhập / Xuất).
 
 ## Phân quyền theo loại kho (Vật tư / Thành phẩm)
 

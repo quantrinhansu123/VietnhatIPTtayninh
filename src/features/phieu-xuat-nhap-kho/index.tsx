@@ -2345,11 +2345,6 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (slipType === 'xuat' && selectedShifts.length === 0) {
-      setFormError(showSaveFailure('Vui lòng chọn ca.'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(lines) : lines;
     if (slipType === 'xuat') setLines(orderedLines);
     const linesForSave = isNvlExport
@@ -2808,16 +2803,8 @@ export function WarehouseSlipPanel({
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-              {isNvlInbound ? (
-                <>
-                  Ca{' '}
-                  <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
-                </>
-              ) : slipType === 'xuat' ? (
-                'Ca *'
-              ) : (
-                'Ca'
-              )}
+              Ca{' '}
+              <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
             </span>
             <select
               value={selectedShifts[0] ?? ''}

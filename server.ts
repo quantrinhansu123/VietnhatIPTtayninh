@@ -5383,10 +5383,6 @@ function parseWarehouseSlipBody(body: unknown): {
   const rawCa = String(source.ca ?? source.shift ?? source.ca_san_xuat ?? '').trim();
   const isExport = loaiPhieu === 'xuat';
 
-  if (isExport && !rawCa) {
-    return { error: 'Vui lòng chọn ca.' };
-  }
-
   return {
     loaiPhieu,
     loaiKho,

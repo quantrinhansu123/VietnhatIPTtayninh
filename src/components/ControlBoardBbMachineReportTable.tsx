@@ -95,10 +95,36 @@ type BbPrintConfirmSelection = {
 
 const BB_PHAN_TICH_STORAGE_KEY = 'control-board-bb-phan-tich-v1';
 const INSULATION_FILM_KG_PER_M2 = 0.02324;
+const INSULATION_FILM_LAYERS = 2;
 
 function parsePositiveDecimal(value: string | null | undefined): number | null {
   const number = Number(String(value || '').trim().replace(',', '.'));
   return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+/**
+ * TL màng máy cách nhiệt = tổng (khổ cuộn × chiều dài cuộn × số lớp × 0,02324 kg/m²)
+ * của từng cuộn có mã sản phẩm khớp với QR cân tự động.
+ */
+function computeInsulationFilmWeightKg(products: ProductRow[], records: CanTuDongRecord[]): number {
+  const filmKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const rollWidthM = parsePositiveDecimal(product.rollWidth);
+    const rollLengthM = parsePositiveDecimal(product.rollLength);
+    if (rollWidthM === null || rollLengthM === null) continue;
+
+    // Tấm cách nhiệt gồm 2 lớp màng trên cùng một cuộn.
+    const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
+    for (const productCode of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(productCode);
+      if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
+    }
+  }
+
+  return records.reduce((total, record) => {
+    const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
+    return total + (filmKgByProductCode.get(productCode) || 0);
+  }, 0);
 }
 
 function loadBbPhanTichMap(): Record<string, string> {
@@ -974,24 +1000,7 @@ export default function ControlBoardBbMachineReportTable({
   const isInsulationMachine = /cách\s+nhiệt/i.test(String(selectedMachine?.name || ''));
   const insulationFilmWeightKg = useMemo(() => {
     if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return 0;
-
-    const filmKgByProductCode = new Map<string, number>();
-    for (const product of products) {
-      const rollWidthM = parsePositiveDecimal(product.rollWidth);
-      const rollLengthM = parsePositiveDecimal(product.rollLength);
-      if (rollWidthM === null || rollLengthM === null) continue;
-
-      const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_KG_PER_M2;
-      for (const productCode of [product.code, product.newCode, product.amisCode]) {
-        const key = normalizeProductCodeKey(productCode);
-        if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
-      }
-    }
-
-    return scopedCanTuDongRecords.reduce((total, record) => {
-      const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
-      return total + (filmKgByProductCode.get(productCode) || 0);
-    }, 0);
+    return computeInsulationFilmWeightKg(products, scopedCanTuDongRecords);
   }, [isInsulationMachine, products, sanLuongSource, scopedCanTuDongRecords]);
   const insulationPlasticNorm = useMemo(() => {
     if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return { weightKg: 0, counted: 0 };
@@ -1692,7 +1701,7 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
               {isInsulationMachine && sanLuongSource === 'can-tu-dong' ? (
-                <div className="min-w-0" title="Trọng lượng màng = Khổ cuộn (m) × Chiều dài mét/cuộn (m) × 0,02324 kg/m², chỉ áp dụng cho máy cách nhiệt.">
+                <div className="min-w-0" title="Trọng lượng màng = Khổ cuộn (m) × Chiều dài mét/cuộn (m) × 2 lớp × 0,02324 kg/m², chỉ áp dụng cho máy cách nhiệt.">
                   <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL màng</p>
                   <p className="whitespace-nowrap font-mono text-[14px] font-black tabular-nums text-zinc-800">
                     {isLoading

@@ -64,7 +64,9 @@ import {
   sumBbWarehouseExportWeightKg,
   sumBbWarehouseExportWeightKgByKind,
   allocateBbNhuaHaoHutByRatioPercent,
+  allocateBbKgByWeightShare,
   resolveBbMaterialExportUnitPrice,
+  sumBbAcceptanceLoiHongKgForHeaderByProductCodes,
   type BbMaterialNormFormula,
   type BbWarehouseExportLineRow,
   type BbInboundMaterialBalanceDetail,
@@ -1074,6 +1076,10 @@ export default function ControlBoardBbMachineReportTable({
         return tongHopThucXuatGroups.map(group => group.groupKey);
       case 'tong_dinh_muc_nvl_nhap_kho':
         return inboundNormGroups.map(group => group.groupKey);
+      case 'bao_cao_thanh_pham_nhap_kho':
+        return orderGroups.map(group => group.groupKey);
+      case 'bao_cao_tieu_hao_nvl':
+        return thucDungGroups.map(group => group.groupKey);
       case 'tong':
         return tongGroups.map(group => group.groupKey);
       case 'danh_gia_hao_hut':
@@ -1647,7 +1653,7 @@ export default function ControlBoardBbMachineReportTable({
             title={
               sanLuongSource === 'can-tu-dong'
                 ? 'Tổng cột «Trọng lượng nhựa» trên /can-tu-dong (SP − lõi − bì 0,16), cột Ngày từ Từ ngày đến Đến ngày+1 (gồm SP cân ngày hôm sau)'
-                : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng'
+                : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu cân thực tế'
             }
           >
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
@@ -3350,7 +3356,7 @@ export default function ControlBoardBbMachineReportTable({
               </tfoot>
             ) : null}
           </table>
-        ) : activeTab === 'tong_vat_tu_thuc_dung' ? (
+        ) : activeTab === 'tong_vat_tu_thuc_dung' || activeTab === 'bao_cao_tieu_hao_nvl' ? (
           <table className="min-w-[1860px] w-full whitespace-nowrap text-left text-sm font-semibold">
             <colgroup>
               <col className="w-14" />
@@ -3399,14 +3405,14 @@ export default function ControlBoardBbMachineReportTable({
                 </tr>
               ) : (
                 thucDungGroups.map(group => {
-                  const expanded = isGroupExpanded('tong_vat_tu_thuc_dung', group.groupKey);
+                  const expanded = isGroupExpanded(activeTab, group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
                       <tr className="border-y border-teal-200 bg-teal-100/80 font-bold hover:bg-teal-100">
                         <td className="px-2 py-2">
                           <button
                             type="button"
-                            onClick={() => toggleGroup('tong_vat_tu_thuc_dung', group.groupKey)}
+                            onClick={() => toggleGroup(activeTab, group.groupKey)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-teal-300 bg-white text-teal-800 shadow-sm transition hover:bg-teal-50"
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
@@ -4362,6 +4368,107 @@ export default function ControlBoardBbMachineReportTable({
               </tfoot>
             ) : null}
           </table>
+        ) : activeTab === 'bao_cao_thanh_pham_nhap_kho' ? (
+          <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
+            <thead className="bg-gradient-to-r from-emerald-100 to-emerald-50 border-b-2 border-emerald-300 text-xs uppercase tracking-wider text-emerald-900">
+              <tr>
+                <th className="w-10 px-2 py-2.5 font-black" />
+                <th className="px-3 py-2.5 font-black">Ngày</th>
+                <th className="px-3 py-2.5 font-black">Ca</th>
+                <th className="px-3 py-2.5 font-black">Lệnh SX</th>
+                <th className="px-3 py-2.5 font-black">Máy</th>
+                <th className="px-3 py-2.5 text-right font-black">Dòng SP</th>
+                <th className="px-3 py-2.5 text-right font-black">SL yêu cầu</th>
+                <th className="px-3 py-2.5 text-right font-black">TL yêu cầu (kg)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
+                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                    Đang tải thành phẩm nhập kho...
+                  </td>
+                </tr>
+              ) : orderGroups.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
+                    Chưa có lệnh SX máy BB theo bộ lọc đã chọn.
+                  </td>
+                </tr>
+              ) : (
+                orderGroups.map(group => {
+                  const expanded = isGroupExpanded('bao_cao_thanh_pham_nhap_kho', group.groupKey);
+                  return (
+                    <React.Fragment key={group.groupKey}>
+                      <tr className="border-y border-emerald-200 bg-emerald-50/60 font-bold hover:bg-emerald-100/50 transition">
+                        <td className="px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup('bao_cao_thanh_pham_nhap_kho', group.groupKey)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-300 bg-white text-emerald-800 shadow-sm transition hover:bg-emerald-50"
+                            title={expanded ? 'Đóng các dòng SP' : 'Mở các dòng SP'}
+                            aria-expanded={expanded}
+                          >
+                            <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`} />
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 font-mono font-bold text-zinc-800">{group.ngay || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-zinc-700">
+                          {group.shiftLabel || group.shift || '—'}
+                        </td>
+                        <td className="px-3 py-2 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-zinc-700">{group.machine || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-600">{group.lineCount}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-zinc-800">
+                          {formatNumber(group.quantity, 2)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
+                          {formatKg(group.totalNormKg, 2)}
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <>
+                          <tr className="bg-emerald-100/50 text-[11px] font-black uppercase tracking-wider text-emerald-900">
+                            <td />
+                            <td className="px-3 py-1.5">Mã SP</td>
+                            <td className="px-3 py-1.5" colSpan={2}>
+                              Tên SP
+                            </td>
+                            <td className="px-3 py-1.5">ĐVT</td>
+                            <td className="px-3 py-1.5 text-right">SL yêu cầu</td>
+                            <td className="px-3 py-1.5 text-right">TL yêu cầu (kg)</td>
+                            <td className="px-3 py-1.5 text-right">% KL nhựa</td>
+                          </tr>
+                          {group.lines.map(line => (
+                            <tr key={line.key} className="bg-white hover:bg-emerald-50/40">
+                              <td />
+                              <td className="px-3 py-1.5 font-mono font-bold text-zinc-800 whitespace-nowrap">
+                                {line.productCode || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-zinc-700" colSpan={2}>
+                                {line.productName || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-center text-zinc-600">{line.unit || '—'}</td>
+                              <td className="px-3 py-1.5 text-right font-mono">{formatNumber(line.quantity, 2)}</td>
+                              <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-700">
+                                {formatKg(line.totalNormKg, 2)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono text-teal-700">
+                                {group.totalNormKg > 0 && line.totalNormKg != null && line.totalNormKg > 0
+                                  ? `${formatNumber((line.totalNormKg / group.totalNormKg) * 100, 1)}%`
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      ) : null}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         ) : (
           <div className="bb-table-scroll">
             <table className="min-w-[2300px] w-full text-left text-sm font-semibold">
@@ -4423,9 +4530,43 @@ export default function ControlBoardBbMachineReportTable({
                       groupChenhLechKg,
                       mixingLines
                     );
+                    const sanLuongGroup =
+                      sanLuongGroups.find(g => g.groupKey === group.groupKey) ||
+                      sanLuongGroups.find(g => g.orderCode === group.orderCode);
+                    const sanLuongProductKeys = (sanLuongGroup?.productGroups || [])
+                      .map(pg => normalizeProductCodeKey(pg.productCode))
+                      .filter(Boolean);
+                    const hangLoiMixingTotalKg = sumBbAcceptanceLoiHongKgForHeaderByProductCodes({
+                      acceptanceReports,
+                      header: {
+                        ngay: group.ngay,
+                        shift: group.shift,
+                        machine: group.machine
+                      },
+                      productCodeKeys: sanLuongProductKeys,
+                      kind: 'sp_loi',
+                      shiftSettings,
+                      includeAllMachines
+                    });
+                    const hangLoiOtherTotalKg = sumBbAcceptanceLoiHongKgForHeaderByProductCodes({
+                      acceptanceReports,
+                      header: {
+                        ngay: group.ngay,
+                        shift: group.shift,
+                        machine: group.machine
+                      },
+                      productCodeKeys: sanLuongProductKeys,
+                      kind: 'sp_rac',
+                      shiftSettings,
+                      includeAllMachines
+                    });
                     const hangLoiByLine = allocateBbNhuaHaoHutByRatioPercent(
-                      group.soLuongNhuaLoiHong,
+                      hangLoiMixingTotalKg,
                       mixingLines
+                    );
+                    const hangLoiOtherByLine = allocateBbKgByWeightShare(
+                      hangLoiOtherTotalKg,
+                      otherLines
                     );
                     const shiftSettingsTyped = shiftSettings as ShiftSetting[];
                     const resolveLineGia = (row: BbThucDungLineRow) =>
@@ -4437,6 +4578,8 @@ export default function ControlBoardBbMachineReportTable({
                         row.materialCode,
                         row.materialName
                       );
+                    const lineCost = (kg: number | null, gia: number) =>
+                      kg !== null && Number.isFinite(kg) && gia > 0 ? kg * gia : null;
                     return (
                       <React.Fragment key={group.groupKey}>
                         <tr className="hover:bg-rose-50/30">
@@ -4568,7 +4711,7 @@ export default function ControlBoardBbMachineReportTable({
                                           </th>
                                           <th
                                             className="px-3 py-1.5 text-right font-black"
-                                            title="SL nhựa lỗi hỏng × tỉ lệ TB thực tế (%) / tổng %"
+                                            title="SP lỗi (Báo cáo sản lượng) lọc theo mã SP trên bảng Sản lượng · phân bổ theo tỉ lệ %"
                                           >
                                             Hàng lỗi (kg)
                                           </th>
@@ -4578,12 +4721,24 @@ export default function ControlBoardBbMachineReportTable({
                                           >
                                             Nhựa hao hụt (kg)
                                           </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Chi phí nhựa hao hụt = Nhựa hao hụt × Giá"
+                                          >
+                                            Chi phí nhựa hao hụt
+                                          </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Chi phí hàng lỗi = Hàng lỗi × Giá"
+                                          >
+                                            Chi phí Hàng lỗi
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-violet-50">
                                         {mixingLines.length === 0 ? (
                                           <tr>
-                                            <td colSpan={9} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                            <td colSpan={11} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có NVL khớp tỉ lệ trộn máy.
                                             </td>
                                           </tr>
@@ -4592,6 +4747,8 @@ export default function ControlBoardBbMachineReportTable({
                                             const gia = resolveLineGia(row);
                                             const hangLoiKg = hangLoiByLine[index] ?? null;
                                             const nhuaHaoHutKg = nhuaHaoHutByLine[index] ?? null;
+                                            const chiPhiHaoHut = lineCost(nhuaHaoHutKg, gia);
+                                            const chiPhiHangLoi = lineCost(hangLoiKg, gia);
                                             return (
                                               <tr key={row.key} className="hover:bg-violet-50/60">
                                                 <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
@@ -4625,6 +4782,18 @@ export default function ControlBoardBbMachineReportTable({
                                                 >
                                                   {formatKg(nhuaHaoHutKg, 2)}
                                                 </td>
+                                                <td
+                                                  className={`px-3 py-1.5 text-right font-mono font-bold ${
+                                                    chiPhiHaoHut !== null && chiPhiHaoHut < 0
+                                                      ? 'text-emerald-700'
+                                                      : 'text-rose-700'
+                                                  }`}
+                                                >
+                                                  {chiPhiHaoHut !== null ? formatVnd(chiPhiHaoHut) : '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-amber-900">
+                                                  {chiPhiHangLoi !== null ? formatVnd(chiPhiHangLoi) : '—'}
+                                                </td>
                                               </tr>
                                             );
                                           })
@@ -4647,10 +4816,32 @@ export default function ControlBoardBbMachineReportTable({
                                             </td>
                                             <td className="px-3 py-2" />
                                             <td className="px-3 py-2 text-right font-mono text-amber-800">
-                                              {formatKg(group.soLuongNhuaLoiHong, 2)}
+                                              {formatKg(hangLoiMixingTotalKg, 2)}
                                             </td>
                                             <td className="px-3 py-2 text-right font-mono text-rose-800">
                                               {formatKg(groupChenhLechKg, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono text-rose-800">
+                                              {formatVnd(
+                                                mixingLines.reduce((sum, row, index) => {
+                                                  const cost = lineCost(
+                                                    nhuaHaoHutByLine[index] ?? null,
+                                                    resolveLineGia(row)
+                                                  );
+                                                  return sum + (cost ?? 0);
+                                                }, 0)
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono text-amber-900">
+                                              {formatVnd(
+                                                mixingLines.reduce((sum, row, index) => {
+                                                  const cost = lineCost(
+                                                    hangLoiByLine[index] ?? null,
+                                                    resolveLineGia(row)
+                                                  );
+                                                  return sum + (cost ?? 0);
+                                                }, 0)
+                                              )}
                                             </td>
                                           </tr>
                                         </tfoot>
@@ -4676,18 +4867,32 @@ export default function ControlBoardBbMachineReportTable({
                                           >
                                             Giá
                                           </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="SP rác (Báo cáo sản lượng) lọc theo mã SP trên bảng Sản lượng · phân bổ theo thực dùng"
+                                          >
+                                            Hàng lỗi (kg)
+                                          </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Chi phí hàng lỗi = Hàng lỗi × Giá"
+                                          >
+                                            Chi phí Hàng lỗi
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100">
                                         {otherLines.length === 0 ? (
                                           <tr>
-                                            <td colSpan={5} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                            <td colSpan={7} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có vật tư khác ngoài tỉ lệ trộn máy.
                                             </td>
                                           </tr>
                                         ) : (
-                                          otherLines.map(row => {
+                                          otherLines.map((row, index) => {
                                             const gia = resolveLineGia(row);
+                                            const hangLoiKg = hangLoiOtherByLine[index] ?? null;
+                                            const chiPhiHangLoi = lineCost(hangLoiKg, gia);
                                             return (
                                               <tr key={row.key} className="hover:bg-slate-50/80">
                                                 <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
@@ -4702,6 +4907,12 @@ export default function ControlBoardBbMachineReportTable({
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-zinc-700">
                                                   {gia > 0 ? formatVnd(gia) : '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-amber-800">
+                                                  {formatKg(hangLoiKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-amber-900">
+                                                  {chiPhiHangLoi !== null ? formatVnd(chiPhiHangLoi) : '—'}
                                                 </td>
                                               </tr>
                                             );
@@ -4721,6 +4932,20 @@ export default function ControlBoardBbMachineReportTable({
                                               {formatKg(otherTotals.totalWeightKg, 2)}
                                             </td>
                                             <td className="px-3 py-2" />
+                                            <td className="px-3 py-2 text-right font-mono text-amber-800">
+                                              {formatKg(hangLoiOtherTotalKg, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono text-amber-900">
+                                              {formatVnd(
+                                                otherLines.reduce((sum, row, index) => {
+                                                  const cost = lineCost(
+                                                    hangLoiOtherByLine[index] ?? null,
+                                                    resolveLineGia(row)
+                                                  );
+                                                  return sum + (cost ?? 0);
+                                                }, 0)
+                                              )}
+                                            </td>
                                           </tr>
                                         </tfoot>
                                       ) : null}

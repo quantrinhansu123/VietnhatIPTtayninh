@@ -57,7 +57,7 @@ export function resolveTrongLuongBiKg(_row?: CanTuDongWeightRow) {
 }
 
 /**
- * Trọng lượng nhựa (kg) = Cân SP − Cân lõi − Trọng lượng bì.
+ * Trọng lượng nhựa / Nhựa thực tế (kg) = Cân SP − Cân lõi − Trọng lượng bì.
  * Trừ thẳng 0,16 — không làm tròn trung gian.
  */
 export function resolveTrongLuongNhuaKg(row: CanTuDongWeightRow) {
@@ -65,6 +65,23 @@ export function resolveTrongLuongNhuaKg(row: CanTuDongWeightRow) {
   const loi = resolveCanLoiKg(row);
   if (sp === null || loi === null) return null;
   return sp - loi - resolveTrongLuongBiKg(row);
+}
+
+/**
+ * Nhựa định mức (kg) theo Mã SP:
+ * ưu tiên `san_pham.trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì.
+ */
+export function resolveNhuaDinhMucKg(
+  standardKg: number | null | undefined,
+  coreKg: number | null | undefined,
+  plasticKgFromProduct?: number | null
+) {
+  if (plasticKgFromProduct != null && Number.isFinite(plasticKgFromProduct) && plasticKgFromProduct > 0) {
+    return plasticKgFromProduct;
+  }
+  if (standardKg == null || !Number.isFinite(standardKg) || !(standardKg > 0)) return null;
+  const core = coreKg != null && Number.isFinite(coreKg) && coreKg > 0 ? coreKg : 0;
+  return standardKg - core - DEFAULT_CAN_TU_DONG_BI_KG;
 }
 
 /** Ngày lịch VN (YYYY-MM-DD) từ ISO timestamp. */
@@ -433,6 +450,52 @@ export function sumCanTuDongThucTeTotals(records: CanTuDongWeightRow[]) {
     quantity: records.length,
     weightKg
   };
+}
+
+/** Tổng cột «Nhựa định mức» theo Mã SP (`trong_luong_nhua` hoặc TL − lõi − bì). */
+export function sumCanTuDongNhuaDinhMucKg(
+  records: CanTuDongWeightRow[],
+  standardKgByProductCode: Map<string, number>,
+  coreKgByProductCode: Map<string, number>,
+  plasticKgByProductCode?: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
+    const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
+    const plasticKg = maSpKey && plasticKgByProductCode ? plasticKgByProductCode.get(maSpKey) : undefined;
+    const nhua = resolveNhuaDinhMucKg(standardKg, coreKg, plasticKg);
+    if (nhua == null || !Number.isFinite(nhua)) continue;
+    weightKg += nhua;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng Nhựa chênh lệch = Σ (Nhựa thực tế − Nhựa định mức) khi đủ cả hai. */
+export function sumCanTuDongChenhLechNhuaKg(
+  records: CanTuDongWeightRow[],
+  standardKgByProductCode: Map<string, number>,
+  coreKgByProductCode: Map<string, number>,
+  plasticKgByProductCode?: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const thucTe = resolveTrongLuongNhuaKg(row);
+    if (thucTe === null) continue;
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
+    const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
+    const plasticKg = maSpKey && plasticKgByProductCode ? plasticKgByProductCode.get(maSpKey) : undefined;
+    const dinhMuc = resolveNhuaDinhMucKg(standardKg, coreKg, plasticKg);
+    if (dinhMuc == null || !Number.isFinite(dinhMuc)) continue;
+    weightKg += thucTe - dinhMuc;
+    counted += 1;
+  }
+  return { weightKg, counted };
 }
 
 /** Tổng cột «Trọng lượng tiêu chuẩn» (`san_pham.tong_trong_luong` theo Mã SP từ QR). */

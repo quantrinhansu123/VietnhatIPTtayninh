@@ -105,6 +105,8 @@ export type BbMachineReportTabId =
   | 'tong_vat_tu_thuc_dung'
   | 'tong_hop_vat_tu_thuc_xuat_dung'
   | 'tong_dinh_muc_nvl_nhap_kho'
+  | 'bao_cao_thanh_pham_nhap_kho'
+  | 'bao_cao_tieu_hao_nvl'
   | 'tong'
   | 'danh_gia_hao_hut';
 
@@ -112,12 +114,14 @@ export const BB_MACHINE_REPORT_TABS: Array<{ id: BbMachineReportTabId; label: st
   { id: 'lenh_sx', label: 'Dữ liệu trong lệnh sản xuất' },
   { id: 'phieu_xuat_kho', label: 'Dữ liệu trong phiếu xuất kho vật tư' },
   { id: 'ton_dau_ca', label: 'Báo cáo dữ liệu tồn đầu ca' },
-  { id: 'bao_cao_san_luong', label: 'Dữ liệu trong báo cáo sản lượng' },
+  { id: 'bao_cao_san_luong', label: 'Dữ liệu cân thực tế' },
   { id: 'bao_cao_loi_hong', label: 'Dữ liệu trong báo cáo hàng lỗi hỏng' },
   { id: 'kiem_ton_cuoi_ca', label: 'Dữ liệu trong báo cáo kiểm tồn cuối ca' },
   { id: 'tong_vat_tu_thuc_dung', label: 'Tổng vật tư thực xuất dùng & tỉ lệ trộn' },
   { id: 'tong_dinh_muc_nvl_nhap_kho', label: 'Tổng định mức vật tư của thành phẩm nhập kho' },
-  { id: 'danh_gia_hao_hut', label: 'Đánh giá hiệu quả lỗi hỏng & hao hụt NVL' }
+  { id: 'bao_cao_thanh_pham_nhap_kho', label: 'Báo cáo thành phẩm đạt nhập kho' },
+  { id: 'bao_cao_tieu_hao_nvl', label: 'Báo cáo tiêu hao nguyên vật liệu' },
+  { id: 'danh_gia_hao_hut', label: 'Đánh giá hiệu quả ca sản xuất' }
 ];
 
 export type BbProductionOrderLineRow = {
@@ -3817,7 +3821,7 @@ export type BbSanLuongGroup = {
 };
 
 /**
- * Tab Dữ liệu trong báo cáo sản lượng:
+ * Tab Dữ liệu cân thực tế:
  * phiếu báo cáo sản lượng → định mức NVL (công thức × SL)
  * + trọng lượng thực tế từng NVL =
  *   [Tồn đầu ca theo mã NVL (tab Tồn đầu ca)] + [Xuất thực tế] − [Lỗi hỏng] − [Tồn cuối ca]
@@ -7034,6 +7038,76 @@ export function allocateBbNhuaHaoHutByRatioPercent(
   return percents.map(pct =>
     pct > 0 ? roundQty(totalNhuaHaoHutKg * (pct / sumPct), 4) : null
   );
+}
+
+/** Phân bổ tổng kg theo tỉ trọng Thực dùng (kg) — dùng cho Vật tư khác (không có % trộn). */
+export function allocateBbKgByWeightShare(
+  totalKg: number,
+  lines: Array<{ weightKg: number }>
+): Array<number | null> {
+  if (!Number.isFinite(totalKg)) return lines.map(() => null);
+  const weights = lines.map(line =>
+    Number.isFinite(line.weightKg) && line.weightKg > 0 ? line.weightKg : 0
+  );
+  const sumW = weights.reduce((sum, w) => sum + w, 0);
+  if (sumW <= 0) return lines.map(() => null);
+  return weights.map(w => (w > 0 ? roundQty(totalKg * (w / sumW), 4) : null));
+}
+
+/**
+ * Σ trọng lượng phiếu Báo cáo sản lượng · SP lỗi hoặc SP rác,
+ * khớp ngày + ca (+ máy), chỉ mã SP thuộc tập mã trên bảng Sản lượng cùng lệnh.
+ * `productCodeKeys` rỗng → 0 (bắt buộc lọc theo mã SP Sản lượng).
+ */
+export function sumBbAcceptanceLoiHongKgForHeaderByProductCodes(input: {
+  acceptanceReports: AcceptanceReport[];
+  header: { ngay: string; shift: string; machine: string };
+  productCodeKeys: Iterable<string>;
+  kind: 'sp_loi' | 'sp_rac';
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+  includeAllMachines?: boolean;
+}): number {
+  const keys = new Set(
+    [...input.productCodeKeys]
+      .map(code => normalizeProductCodeKey(code))
+      .filter(Boolean)
+  );
+  if (keys.size === 0) return 0;
+
+  const shiftOptions = getProductionShiftOptions((input.shiftSettings || []) as ShiftSetting[]);
+  let total = 0;
+  for (const report of input.acceptanceReports || []) {
+    const ngay = parseProductionOrderFilterDate(report.ngay) || report.ngay;
+    if (
+      !matchesShiftSummaryBucket(
+        input.header.ngay,
+        input.header.shift,
+        ngay,
+        report.ca,
+        shiftOptions
+      )
+    ) {
+      continue;
+    }
+    const machineOk =
+      machineValueMatchesFilter(input.header.machine, null, report.ma_may, report.ten_may) ||
+      (isBbMachineText(input.header.machine) && isBbMachineText(report.ma_may, report.ten_may));
+    if (!machineOk) continue;
+
+    if (input.kind === 'sp_loi') {
+      if (!isAcceptanceSpLoiLoai(report.loai_vat_tu)) continue;
+    } else if (!isAcceptanceSpRacLoai(report.loai_vat_tu)) {
+      continue;
+    }
+
+    const productCode = resolveAcceptanceReportProductCode(report.mat_hang);
+    const productKey = normalizeProductCodeKey(productCode);
+    if (!productKey || !keys.has(productKey)) continue;
+
+    const kg = acceptanceReportWeightKg(report);
+    if (kg > 0) total += kg;
+  }
+  return roundQty(total, 4);
 }
 
 export type BbMixingRatioLineRow = {

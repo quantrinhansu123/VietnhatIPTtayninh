@@ -7,6 +7,7 @@ import {
   resolveCanTuDongBusinessDate,
   resolveCanTuDongMachine,
   resolveCanTuDongProductionOrder,
+  resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
   type CanTuDongWeightRow
@@ -50,6 +51,8 @@ export type CanTuDongExcelExportOptions = {
   toDate?: string;
   productNameByCode?: Map<string, string>;
   productStandardWeightByCode?: Map<string, number>;
+  productCoreWeightByCode?: Map<string, number>;
+  productPlasticWeightByCode?: Map<string, number>;
 };
 
 /** Xuất các dòng đang lọc trên `/can-tu-dong` ra file Excel. */
@@ -60,19 +63,30 @@ export function downloadCanTuDongExcel(
   const productNameByCode = options.productNameByCode ?? new Map<string, string>();
   const productStandardWeightByCode =
     options.productStandardWeightByCode ?? new Map<string, number>();
+  const productCoreWeightByCode = options.productCoreWeightByCode ?? new Map<string, number>();
+  const productPlasticWeightByCode =
+    options.productPlasticWeightByCode ?? new Map<string, number>();
   const data = records.map((row, index) => {
     const qr = String(row.qr_code ?? '').trim();
     const maSp = parseCanTuDongQrProductCode(qr) || qr;
     const nameKey = normalizeProductCodeKey(maSp);
     const unit = String(row.unit ?? 'kg').trim() || 'kg';
     const standardKg = nameKey ? productStandardWeightByCode.get(nameKey) : undefined;
+    const coreKg = nameKey ? productCoreWeightByCode.get(nameKey) : undefined;
+    const plasticFromProduct = nameKey ? productPlasticWeightByCode.get(nameKey) : undefined;
     const canSpKg = resolveCanSpKg(row);
     const standardOk = standardKg != null && Number.isFinite(standardKg);
-    const chenhLech =
-      canSpKg !== null && standardOk ? canSpKg - (standardKg as number) : null;
-    const phanTram =
-      chenhLech !== null && standardOk && (standardKg as number) !== 0
-        ? (chenhLech / (standardKg as number)) * 100
+    const nhuaDinhMuc = resolveNhuaDinhMucKg(
+      standardOk ? (standardKg as number) : null,
+      coreKg ?? null,
+      plasticFromProduct ?? null
+    );
+    const nhuaThucTe = resolveTrongLuongNhuaKg(row);
+    const nhuaChenhLech =
+      nhuaThucTe !== null && nhuaDinhMuc != null ? nhuaThucTe - nhuaDinhMuc : null;
+    const nhuaPhanTram =
+      nhuaChenhLech !== null && nhuaThucTe !== null && nhuaThucTe !== 0
+        ? (nhuaChenhLech / nhuaThucTe) * 100
         : null;
     return {
       STT: index + 1,
@@ -86,11 +100,13 @@ export function downloadCanTuDongExcel(
       'Tên SP': nameKey ? productNameByCode.get(nameKey) || '' : '',
       'Cân sản phẩm (kg)': roundKg(canSpKg),
       'Trọng lượng tiêu chuẩn (kg)': standardOk ? roundKg(standardKg as number) : '',
-      'Chênh lệch (kg)': chenhLech !== null ? roundKg(chenhLech) : '',
-      'Phần trăm (%)': phanTram !== null ? Math.round(phanTram * 100) / 100 : '',
+      'Nhựa thực tế (kg)': roundKg(nhuaThucTe),
+      'Nhựa định mức (kg)': roundKg(nhuaDinhMuc),
+      'Chênh lệch nhựa TT-ĐM (kg)': nhuaChenhLech !== null ? roundKg(nhuaChenhLech) : '',
+      'Phần trăm (%)':
+        nhuaPhanTram !== null ? Math.round(nhuaPhanTram * 100) / 100 : '',
       'Cân lõi (kg)': roundKg(resolveCanLoiKg(row)),
       'Trọng lượng bì (kg)': roundKg(resolveTrongLuongBiKg(row)),
-      'Trọng lượng nhựa (kg)': roundKg(resolveTrongLuongNhuaKg(row)),
       'Đơn vị': unit,
       'Trạng thái': String(row.status ?? '').trim(),
       'Thiết bị': String(row.device_id ?? '').trim(),
@@ -111,11 +127,12 @@ export function downloadCanTuDongExcel(
     { wch: 28 },
     { wch: 16 },
     { wch: 22 },
-    { wch: 14 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 22 },
     { wch: 12 },
     { wch: 14 },
     { wch: 16 },
-    { wch: 18 },
     { wch: 10 },
     { wch: 14 },
     { wch: 14 },

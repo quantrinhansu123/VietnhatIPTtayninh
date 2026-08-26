@@ -3504,6 +3504,27 @@ input[type="number"] {
   vertical-align: middle;
 }
 
+/* Cột STT dùng chung — đủ rộng để hiện chữ «STT». */
+.bb-machine-report-print-stt {
+  width: 4.5% !important;
+  min-width: 9mm !important;
+  max-width: none !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  padding-left: 0.6mm !important;
+  padding-right: 0.6mm !important;
+  vertical-align: middle !important;
+}
+
+.bb-machine-report-print-stt-narrow {
+  width: 0.8% !important;
+  min-width: 0 !important;
+  max-width: 3mm !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  font-size: 6pt !important;
+}
+
 /* Preview on-screen: cùng tỉ lệ cột với bản in. */
 .bb-machine-report-print-product-table,
 .bb-finished-goods-print-table.bb-machine-report-print-product-table {
@@ -3512,27 +3533,45 @@ input[type="number"] {
 }
 
 .bb-machine-report-print-product-table th:nth-child(1),
-.bb-machine-report-print-product-table td:nth-child(1) { width: 9%; }
+.bb-machine-report-print-product-table td:nth-child(1) { width: 4.5%; min-width: 9mm; }
 .bb-machine-report-print-product-table th:nth-child(2),
-.bb-machine-report-print-product-table td:nth-child(2) { width: 30%; }
+.bb-machine-report-print-product-table td:nth-child(2) { width: 9.5%; }
 .bb-machine-report-print-product-table th:nth-child(3),
-.bb-machine-report-print-product-table td:nth-child(3) { width: 6%; }
+.bb-machine-report-print-product-table td:nth-child(3) { width: 25%; }
 .bb-machine-report-print-product-table th:nth-child(4),
-.bb-machine-report-print-product-table td:nth-child(4) { width: 5.5%; }
+.bb-machine-report-print-product-table td:nth-child(4) { width: 5%; }
 .bb-machine-report-print-product-table th:nth-child(5),
-.bb-machine-report-print-product-table td:nth-child(5) { width: 6.5%; }
+.bb-machine-report-print-product-table td:nth-child(5) { width: 5.5%; }
 .bb-machine-report-print-product-table th:nth-child(6),
-.bb-machine-report-print-product-table td:nth-child(6) { width: 5.5%; }
+.bb-machine-report-print-product-table td:nth-child(6) { width: 6%; }
 .bb-machine-report-print-product-table th:nth-child(7),
-.bb-machine-report-print-product-table td:nth-child(7) { width: 6.5%; }
+.bb-machine-report-print-product-table td:nth-child(7) { width: 5.5%; }
 .bb-machine-report-print-product-table th:nth-child(8),
 .bb-machine-report-print-product-table td:nth-child(8) { width: 6%; }
 .bb-machine-report-print-product-table th:nth-child(9),
-.bb-machine-report-print-product-table td:nth-child(9) { width: 9%; }
+.bb-machine-report-print-product-table td:nth-child(9) { width: 6%; }
 .bb-machine-report-print-product-table th:nth-child(10),
-.bb-machine-report-print-product-table td:nth-child(10) { width: 16%; }
+.bb-machine-report-print-product-table td:nth-child(10) { width: 8%; }
+.bb-machine-report-print-product-table th:nth-child(11),
+.bb-machine-report-print-product-table td:nth-child(11) { width: 19.5%; }
 
+.bb-machine-report-print-product-table th:nth-child(1),
+.bb-machine-report-print-product-table td:nth-child(1) {
+  text-align: center;
+  white-space: nowrap !important;
+  padding-left: 0.8mm;
+  padding-right: 0.8mm;
+  font-size: 8pt;
+}
+
+.bb-machine-report-print-product-code,
 .bb-machine-report-print-product-table td:nth-child(2) {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bb-machine-report-print-product-table td:nth-child(3) {
   text-align: left;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -3540,8 +3579,8 @@ input[type="number"] {
 }
 
 /* ĐVT / nhãn Tổng — luôn 1 dòng (Cuộn, kg, Tổng…). */
-.bb-machine-report-print-product-table th:nth-child(3),
-.bb-machine-report-print-product-table td:nth-child(3) {
+.bb-machine-report-print-product-table th:nth-child(4),
+.bb-machine-report-print-product-table td:nth-child(4) {
   white-space: nowrap;
 }
 
@@ -3573,7 +3612,7 @@ input[type="number"] {
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
 }
 
-.bb-machine-report-print-product-table td:nth-child(9) {
+.bb-machine-report-print-product-table td:nth-child(10) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3730,49 +3769,67 @@ input[type="number"] {
     page-break-inside: avoid;
   }
 
-  /* Bảng 2 — Thành phẩm đạt nhập kho: Tên SP rộng hơn (~2 dòng), cột số hẹp lại. */
+  /* Bảng 2 — Thành phẩm đạt nhập kho: STT hẹp, Mã SP 1 dòng, Tên SP rộng hơn. */
   .bb-machine-report-print-product-table {
     table-layout: fixed;
   }
 
   .bb-machine-report-print-product-table th:nth-child(1),
-  .bb-machine-report-print-product-table td:nth-child(1) { width: 9%; }
+  .bb-machine-report-print-product-table td:nth-child(1) { width: 4.5%; min-width: 9mm; }
   .bb-machine-report-print-product-table th:nth-child(2),
-  .bb-machine-report-print-product-table td:nth-child(2) { width: 30%; }
+  .bb-machine-report-print-product-table td:nth-child(2) { width: 9.5%; }
   .bb-machine-report-print-product-table th:nth-child(3),
-  .bb-machine-report-print-product-table td:nth-child(3) { width: 6%; }
+  .bb-machine-report-print-product-table td:nth-child(3) { width: 25%; }
   .bb-machine-report-print-product-table th:nth-child(4),
-  .bb-machine-report-print-product-table td:nth-child(4) { width: 5.5%; }
+  .bb-machine-report-print-product-table td:nth-child(4) { width: 5%; }
   .bb-machine-report-print-product-table th:nth-child(5),
-  .bb-machine-report-print-product-table td:nth-child(5) { width: 6.5%; }
+  .bb-machine-report-print-product-table td:nth-child(5) { width: 5.5%; }
   .bb-machine-report-print-product-table th:nth-child(6),
-  .bb-machine-report-print-product-table td:nth-child(6) { width: 5.5%; }
+  .bb-machine-report-print-product-table td:nth-child(6) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(7),
-  .bb-machine-report-print-product-table td:nth-child(7) { width: 6.5%; }
+  .bb-machine-report-print-product-table td:nth-child(7) { width: 5.5%; }
   .bb-machine-report-print-product-table th:nth-child(8),
   .bb-machine-report-print-product-table td:nth-child(8) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(9),
-  .bb-machine-report-print-product-table td:nth-child(9) { width: 9%; }
+  .bb-machine-report-print-product-table td:nth-child(9) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(10),
-  .bb-machine-report-print-product-table td:nth-child(10) { width: 16%; }
+  .bb-machine-report-print-product-table td:nth-child(10) { width: 8%; }
+  .bb-machine-report-print-product-table th:nth-child(11),
+  .bb-machine-report-print-product-table td:nth-child(11) { width: 19.5%; }
 
+  .bb-machine-report-print-product-table th:nth-child(1),
+  .bb-machine-report-print-product-table td:nth-child(1) {
+    text-align: center !important;
+    white-space: nowrap !important;
+    padding-left: 0.6mm !important;
+    padding-right: 0.6mm !important;
+    font-size: 7.5pt !important;
+  }
+
+  .bb-machine-report-print-product-code,
   .bb-machine-report-print-product-table td:nth-child(2) {
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bb-machine-report-print-product-table td:nth-child(3) {
     text-align: left !important;
     overflow-wrap: break-word;
     word-break: break-word;
     line-height: 1.25;
   }
 
-  .bb-machine-report-print-product-table th:nth-child(3),
-  .bb-machine-report-print-product-table td:nth-child(3),
-  .bb-machine-report-print-product-table th:nth-child(n+4):nth-child(-n+8),
-  .bb-machine-report-print-product-table td:nth-child(n+4):nth-child(-n+8) {
+  .bb-machine-report-print-product-table th:nth-child(4),
+  .bb-machine-report-print-product-table td:nth-child(4),
+  .bb-machine-report-print-product-table th:nth-child(n+5):nth-child(-n+9),
+  .bb-machine-report-print-product-table td:nth-child(n+5):nth-child(-n+9) {
     white-space: nowrap;
     padding-left: 1mm !important;
     padding-right: 1mm !important;
   }
 
-  .bb-machine-report-print-product-table td:nth-child(9) {
+  .bb-machine-report-print-product-table td:nth-child(10) {
     white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3781,74 +3838,181 @@ input[type="number"] {
   }
 
   .bb-machine-report-print-material-table th:nth-child(1),
-  .bb-machine-report-print-material-table td:nth-child(1) { width: 8%; }
+  .bb-machine-report-print-material-table td:nth-child(1) {
+    width: 4%;
+    min-width: 8mm;
+    text-align: center !important;
+    white-space: nowrap !important;
+    font-size: 7.5pt !important;
+    padding-left: 0.5mm !important;
+    padding-right: 0.5mm !important;
+  }
   .bb-machine-report-print-material-table th:nth-child(2),
-  .bb-machine-report-print-material-table td:nth-child(2) { width: 12.5%; }
+  .bb-machine-report-print-material-table td:nth-child(2) {
+    width: 7%;
+    white-space: nowrap !important;
+  }
   .bb-machine-report-print-material-table th:nth-child(3),
-  .bb-machine-report-print-material-table td:nth-child(3) { width: 5.5%; }
+  .bb-machine-report-print-material-table td:nth-child(3) { width: 10.5%; }
   .bb-machine-report-print-material-table th:nth-child(4),
-  .bb-machine-report-print-material-table td:nth-child(4),
+  .bb-machine-report-print-material-table td:nth-child(4) { width: 4.5%; }
   .bb-machine-report-print-material-table th:nth-child(5),
-  .bb-machine-report-print-material-table td:nth-child(5) { width: 5.5%; }
-  .bb-machine-report-print-material-table th:nth-child(n+6):nth-child(-n+13),
-  .bb-machine-report-print-material-table td:nth-child(n+6):nth-child(-n+13) { width: 7%; }
+  .bb-machine-report-print-material-table td:nth-child(5),
+  .bb-machine-report-print-material-table th:nth-child(6),
+  .bb-machine-report-print-material-table td:nth-child(6) { width: 5%; }
+  .bb-machine-report-print-material-table th:nth-child(n+7):nth-child(-n+14),
+  .bb-machine-report-print-material-table td:nth-child(n+7):nth-child(-n+14) { width: 6.3%; }
 
-  .bb-machine-report-print-material-table th:nth-child(3),
-  .bb-machine-report-print-material-table td:nth-child(3) {
+  /* 3.2 NVL khác — không có cột tỉ lệ trộn; vẫn giữ STT cột 1 */
+  .bb-machine-report-print-material-table-other th:nth-child(1),
+  .bb-machine-report-print-material-table-other td:nth-child(1) {
+    width: 4%;
+    min-width: 8mm;
+  }
+  .bb-machine-report-print-material-table-other th:nth-child(5),
+  .bb-machine-report-print-material-table-other td:nth-child(5),
+  .bb-machine-report-print-material-table-other th:nth-child(6),
+  .bb-machine-report-print-material-table-other td:nth-child(6) { width: 8%; }
+  .bb-machine-report-print-material-table-other th:nth-child(n+5):nth-child(-n+12),
+  .bb-machine-report-print-material-table-other td:nth-child(n+5):nth-child(-n+12) { width: 8%; }
+
+  .bb-machine-report-print-material-table th:nth-child(4),
+  .bb-machine-report-print-material-table td:nth-child(4) {
     text-align: center !important;
     white-space: nowrap;
   }
 
-  .bb-machine-report-print-material-table th:nth-child(n+4),
-  .bb-machine-report-print-material-table td:nth-child(n+4) {
+  .bb-machine-report-print-material-table th:nth-child(n+5),
+  .bb-machine-report-print-material-table td:nth-child(n+5) {
     white-space: nowrap;
   }
 
-  .bb-machine-report-print-material-table th:nth-child(n+4) {
+  .bb-machine-report-print-material-table th:nth-child(n+5) {
     white-space: normal;
     line-height: 1.05 !important;
     vertical-align: middle;
     text-align: center !important;
   }
 
-  .bb-machine-report-print-material-table td:nth-child(n+4) {
+  .bb-machine-report-print-material-table td:nth-child(n+5) {
     text-align: right !important;
   }
 
   .bb-machine-report-print-evaluation-table th:first-child,
   .bb-machine-report-print-evaluation-table td:first-child {
-    width: 4.5%;
-    padding-left: 0.05mm !important;
-    padding-right: 0.05mm !important;
+    width: 1.4%;
+    max-width: 5mm;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    font-size: 7.5pt !important;
     text-align: center !important;
     white-space: nowrap;
+    vertical-align: middle !important;
+  }
+
+  .bb-machine-report-print-evaluation-summary-table th:first-child,
+  .bb-machine-report-print-evaluation-summary-table td:first-child {
+    width: 1.2%;
+    max-width: 4.5mm;
+    font-size: 7pt !important;
+  }
+
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(2) {
+    width: 58%;
+  }
+
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(3),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(3),
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(4),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(4) {
+    width: 20%;
+  }
+
+  .bb-machine-report-print-evaluation-detail-table th:first-child,
+  .bb-machine-report-print-evaluation-detail-table td:first-child {
+    width: 0.8%;
+    max-width: 3mm;
+    min-width: 0;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    font-size: 6pt !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
   }
 
   .bb-machine-report-print-evaluation-table th:nth-child(2),
   .bb-machine-report-print-evaluation-table td:nth-child(2) {
-    width: 34%;
+    width: 18%;
+  }
+
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(2),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(2) {
+    width: 42%;
+    max-width: none;
+    font-size: inherit !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(n+3):nth-child(-n+5),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(n+3):nth-child(-n+5) {
+    width: 9%;
+  }
+
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(6),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(6),
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(7),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(7) {
+    width: 8%;
   }
 
   .bb-machine-report-print-evaluation-table th:nth-child(3),
   .bb-machine-report-print-evaluation-table td:nth-child(3),
   .bb-machine-report-print-evaluation-table th:nth-child(4),
   .bb-machine-report-print-evaluation-table td:nth-child(4) {
-    width: 10%;
+    width: 7.5%;
   }
 
-  .bb-machine-report-print-evaluation-table th:nth-child(5),
-  .bb-machine-report-print-evaluation-table td:nth-child(5) {
-    width: 13%;
+  .bb-machine-report-print-eval-group-blank {
+    background: #fff !important;
   }
 
-  .bb-machine-report-print-evaluation-table th:nth-child(6),
-  .bb-machine-report-print-evaluation-table td:nth-child(6) {
-    width: 14%;
+  .bb-machine-report-print-eval-note {
+    font-size: 8pt !important;
+    font-weight: 600 !important;
+    text-align: left !important;
+    white-space: pre-wrap;
   }
 
-  .bb-machine-report-print-evaluation-table th:nth-child(7),
-  .bb-machine-report-print-evaluation-table td:nth-child(7) {
-    width: 14.5%;
+  .bb-machine-report-print-eval-total-line td {
+    font-weight: 800 !important;
+  }
+
+  .bb-machine-report-print-eval-detail-label {
+    padding-left: 2mm !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bb-machine-report-print-eval-detail-group-label {
+    padding-left: 1.5mm !important;
+    font-weight: 800 !important;
+    font-size: 8pt !important;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    background: #f4f4f5 !important;
+  }
+
+  .bb-machine-report-print-eval-detail-empty {
+    padding-left: 3.5mm !important;
+    font-style: italic;
+    color: #666;
   }
 
   .bb-machine-report-print-doc .bb-machine-report-print-info th,

@@ -22,9 +22,10 @@
 | Cân sản phẩm | `weight` | Tổng KL sản phẩm còn lõi | 7,84 kg |
 | Trọng lượng bì | (UI, mặc định) | Mặc định **0,16 kg** — chưa lưu DB | 0,16 kg |
 | Trọng lượng tiêu chuẩn | (UI, từ `san_pham`) | `tong_trong_luong` (Tổng TL / Khối lượng) khớp Mã SP từ QR | 7,5 kg |
-| Chênh lệch | (UI tính) | **Trọng lượng TT − Trọng lượng tiêu chuẩn** (thực tế − LT) | +0,12 kg |
-| Phần trăm | (UI tính) | (Chênh lệch ÷ Tiêu chuẩn) × 100% | +1,6% |
-| Trọng lượng nhựa | (UI tính) | `weight − tare_weight − bì` | 6,62 kg |
+| Nhựa thực tế | (UI tính) | `weight − tare_weight − bì` | 6,62 kg |
+| Nhựa định mức | (UI, từ `san_pham`) | `trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì | 6,28 kg |
+| Chênh lệch nhựa (TT−ĐM) | (UI tính) | **Nhựa thực tế − Nhựa định mức** | +0,34 kg |
+| Phần trăm | (UI tính) | (Chênh lệch nhựa ÷ Nhựa thực tế) × 100% | +5,1% |
 | Nhựa tiêu chuẩn | (UI tổng) | Σ cột **Trọng lượng tiêu chuẩn** (`san_pham.tong_trong_luong` theo Mã SP) | |
 | Trọng lượng TT | (UI) | = cột **Cân sản phẩm**; tổng thanh trên = Σ Cân sản phẩm | |
 | Lõi lý thuyết | (UI, từ `san_pham`) | `trong_luong_loi` khớp Mã SP từ QR; tổng thanh = **Tổng trọng lượng lõi lý thuyết** | 1,06 kg |
@@ -52,7 +53,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · cột Mã SP · Chênh lệch · Phần trăm · Tự động điền (dòng đã chọn) · Excel · In |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân theo % nhựa) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · Nhựa thực tế · Nhựa định mức · Chênh lệch nhựa (TT−ĐM) · Phần trăm (= CL ÷ Nhựa TT) · Excel · In |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |

@@ -996,6 +996,8 @@ export default function ControlBoardBbMachineReportTable({
         return inboundNormGroups.map(group => group.groupKey);
       case 'tong':
         return tongGroups.map(group => group.groupKey);
+      case 'danh_gia_hao_hut':
+        return danhGiaGroups.map(group => group.groupKey);
       default:
         return [];
     }
@@ -1010,7 +1012,8 @@ export default function ControlBoardBbMachineReportTable({
     thucDungGroups,
     tongHopThucXuatGroups,
     inboundNormGroups,
-    tongGroups
+    tongGroups,
+    danhGiaGroups
   ]);
 
   const allActiveGroupsExpanded =
@@ -3184,13 +3187,14 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
           </table>
         ) : activeTab === 'tong_vat_tu_thuc_dung' ? (
-          <table className="min-w-[1700px] w-full whitespace-nowrap text-left text-sm font-semibold">
+          <table className="min-w-[1860px] w-full whitespace-nowrap text-left text-sm font-semibold">
             <colgroup>
               <col className="w-14" />
               <col className="w-[130px]" />
               <col className="w-[320px]" />
               <col className="w-[150px]" />
               <col className="w-[180px]" />
+              <col className="w-[160px]" />
               <col className="w-[210px]" />
               <col className="w-[170px]" />
               <col className="w-[170px]" />
@@ -3203,6 +3207,12 @@ export default function ControlBoardBbMachineReportTable({
                 <th className="px-3 py-2.5 font-black">Ca</th>
                 <th className="px-3 py-2.5 font-black">Số lệnh SX</th>
                 <th className="px-3 py-2.5 font-black">Máy</th>
+                <th
+                  className="px-3 py-2.5 text-right font-black"
+                  title="Tổng KL thực tế trên danh sách báo cáo phối trộn (ngày+ca+máy)"
+                >
+                  Tổng thực trộn (kg)
+                </th>
                 <th className="px-3 py-2.5 text-right font-black">Tổng xuất trong ca (kg)</th>
                 <th className="px-3 py-2.5 text-right font-black">Tồn đầu ca (kg)</th>
                 <th className="px-3 py-2.5 text-right font-black">Tồn cuối ca (kg)</th>
@@ -3212,14 +3222,14 @@ export default function ControlBoardBbMachineReportTable({
             <tbody className="divide-y divide-zinc-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={10} className="px-3 py-10 text-center font-bold text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                     Đang tải vật tư thực dùng &amp; tỉ lệ trộn...
                   </td>
                 </tr>
               ) : thucDungGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={10} className="px-3 py-10 text-center font-bold text-zinc-400">
                     Chưa có dữ liệu thực xuất dùng / tỉ lệ trộn gắn ca/ngày lệnh máy BB.
                   </td>
                 </tr>
@@ -3246,6 +3256,9 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                         <td className="px-3 py-2 font-mono font-black text-sky-800">{group.orderCode || '—'}</td>
                         <td className="px-3 py-2 font-semibold text-zinc-800">{group.machine || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-violet-800">
+                          {formatKg(group.thucTronTotal, 2)}
+                        </td>
                         <td className="px-3 py-2 text-right font-mono font-bold text-amber-700">
                           {formatKg(group.xuatCaTotal, 2)}
                         </td>
@@ -3260,116 +3273,262 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                       </tr>
                       {expanded ? (
-                        <>
-                          <tr className="border-y border-teal-100 bg-teal-50 text-xs font-black uppercase tracking-wider text-teal-900">
-                            <td />
-                            <td className="px-3 py-1.5 font-black">Mã NVL</td>
-                            <td className="px-3 py-1.5 font-black">Tên NVL</td>
-                            <td className="px-3 py-1.5 text-right font-black">Tỉ lệ ĐM (%)</td>
-                            <td
-                              className="px-3 py-1.5 text-right font-black"
-                              title="Bằng Tỉ lệ ĐM máy (%); phân bổ NNS-TRON cũng dùng tỉ lệ này"
-                            >
-                              Tỉ lệ TB thực tế (%)
-                            </td>
-                            <td
-                              className="px-3 py-1.5 text-right font-black"
-                              title="Từ phiếu xuất kho NVL của ca hiện tại"
-                            >
-                              Xuất trong ca
-                            </td>
-                            <td className="px-3 py-1.5 text-right font-black">Tồn đầu</td>
-                            <td className="px-3 py-1.5 text-right font-black">Tồn cuối</td>
-                            <td className="px-3 py-1.5 text-right font-black" title="Xuất trong ca + Tồn đầu − Tồn cuối">
-                              Thực dùng (kg)
-                            </td>
-                          </tr>
-                          {group.lines.length === 0 ? (
-                            <tr className="bg-white">
-                              <td />
-                              <td colSpan={8} className="px-3 py-2 text-sm font-semibold text-zinc-400">
+                        <tr className="bg-zinc-50/80">
+                          <td colSpan={10} className="px-2 py-3">
+                            {group.lines.length === 0 ? (
+                              <p className="px-2 py-4 text-center text-sm font-semibold text-zinc-400">
                                 Chưa có dòng NVL từ báo cáo trộn.
-                              </td>
-                            </tr>
-                          ) : (
-                            group.lines.map(row => (
-                              <tr key={row.key} className="bg-white font-semibold hover:bg-teal-50/60">
-                                <td className="px-2 py-1.5" />
-                                <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
-                                  {row.materialCode || '—'}
-                                </td>
-                                <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                  <ThucDungMetricButton
-                                    label={formatPercent(row.tiLeDinhMucPercent, 2)}
-                                    className="font-mono text-zinc-600"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'ti_le_dinh_muc' })}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
-                                  <ThucDungMetricButton
-                                    label={formatPercent(row.tiLeThucTeTbPercent, 2)}
-                                    className="font-mono font-bold text-orange-800"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'ti_le_thuc_te' })}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-right font-mono text-amber-700">
-                                  <ThucDungMetricButton
-                                    label={formatKg(row.xuatTrongCaKg, 2)}
-                                    className="font-mono text-amber-700"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'trong_luong_da_tron' })}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                  <ThucDungMetricButton
-                                    label={formatKg(row.tonDauKg, 2)}
-                                    className="font-mono text-zinc-600"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'ton_dau' })}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                  <ThucDungMetricButton
-                                    label={formatKg(row.tonCuoiKg, 2)}
-                                    className="font-mono text-zinc-600"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'ton_cuoi' })}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
-                                  <ThucDungMetricButton
-                                    label={formatKg(row.weightKg, 2)}
-                                    className="font-mono font-bold text-teal-700"
-                                    onOpen={() => setThucDungDetail({ line: row, metric: 'thuc_dung' })}
-                                  />
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </>
+                              </p>
+                            ) : (
+                              (() => {
+                                const mixingLines = group.lines.filter(row => row.inMixingRatioTable);
+                                const otherLines = group.lines.filter(row => !row.inMixingRatioTable);
+                                const mixingTotals = group.mixingRatioTotals;
+                                const otherTotals = group.otherTotals;
+                                return (
+                                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
+                                    <div className="overflow-x-auto rounded-xl border border-violet-200 bg-white shadow-sm xl:col-span-6">
+                                      <div className="border-b border-violet-200 bg-violet-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-violet-900">
+                                        Vật tư trong bảng tỉ lệ trộn máy
+                                        {mixingLines.length > 0 ? ` (${mixingLines.length})` : ''}
+                                      </div>
+                                      <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
+                                        <thead className="bg-violet-50 text-xs uppercase tracking-wider text-violet-900">
+                                          <tr>
+                                            <th className="px-3 py-1.5 font-black">Mã NVL</th>
+                                            <th className="px-3 py-1.5 font-black">Tên NVL</th>
+                                            <th className="px-3 py-1.5 text-right font-black" title="Tỉ lệ trộn cấu hình trên Danh sách máy">
+                                              Tỉ lệ ĐM (%)
+                                            </th>
+                                            <th className="px-3 py-1.5 text-right font-black" title="KL NVL ÷ tổng KL trộn ca × 100">
+                                              Tỉ lệ TB thực tế (%)
+                                            </th>
+                                            <th className="px-3 py-1.5 text-right font-black">Thực trộn (kg)</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-violet-50">
+                                          {mixingLines.length === 0 ? (
+                                            <tr>
+                                              <td colSpan={9} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                                Không có NVL khớp tỉ lệ trộn máy.
+                                              </td>
+                                            </tr>
+                                          ) : (
+                                            mixingLines.map(row => (
+                                              <tr key={row.key} className="hover:bg-violet-50/60">
+                                                <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                  {row.materialCode || '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                  <ThucDungMetricButton
+                                                    label={formatPercent(row.tiLeDinhMucPercent, 2)}
+                                                    className="font-mono text-zinc-600"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ti_le_dinh_muc' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
+                                                  <ThucDungMetricButton
+                                                    label={formatPercent(row.tiLeThucTeTbPercent, 2)}
+                                                    className="font-mono font-bold text-orange-800"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ti_le_thuc_te' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-violet-800">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.mixingShiftMaterialKg, 2)}
+                                                    className="font-mono font-bold text-violet-800"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'thuc_tron' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.xuatTrongCaKg, 2)}
+                                                    className="font-mono text-amber-700"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({
+                                                        line: row,
+                                                        metric: 'trong_luong_da_tron'
+                                                      })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.tonDauKg, 2)}
+                                                    className="font-mono text-zinc-600"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ton_dau' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.tonCuoiKg, 2)}
+                                                    className="font-mono text-zinc-600"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ton_cuoi' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.weightKg, 2)}
+                                                    className="font-mono font-bold text-teal-700"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'thuc_dung' })
+                                                    }
+                                                  />
+                                                </td>
+                                              </tr>
+                                            ))
+                                          )}
+                                        </tbody>
+                                        {mixingTotals && mixingLines.length > 0 ? (
+                                          <tfoot className="border-t border-violet-200 bg-violet-50 text-xs font-black text-violet-900">
+                                            <tr>
+                                              <td colSpan={4} className="px-3 py-2 text-right uppercase tracking-wider">
+                                                Tổng tỉ lệ trộn
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(mixingTotals.thucTronTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(mixingTotals.xuatCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(mixingTotals.tonDauCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(mixingTotals.tonCuoiCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(mixingTotals.totalWeightKg, 2)}
+                                              </td>
+                                            </tr>
+                                          </tfoot>
+                                        ) : null}
+                                      </table>
+                                    </div>
+
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-4">
+                                      <div className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-700">
+                                        Vật tư khác
+                                        {otherLines.length > 0 ? ` (${otherLines.length})` : ''}
+                                      </div>
+                                      <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
+                                        <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-700">
+                                          <tr>
+                                            <th className="px-3 py-1.5 font-black">Mã NVL</th>
+                                            <th className="px-3 py-1.5 font-black">Tên NVL</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
+                                            <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {otherLines.length === 0 ? (
+                                            <tr>
+                                              <td colSpan={6} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                                Không có vật tư khác ngoài tỉ lệ trộn máy.
+                                              </td>
+                                            </tr>
+                                          ) : (
+                                            otherLines.map(row => (
+                                              <tr key={row.key} className="hover:bg-slate-50/80">
+                                                <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                  {row.materialCode || '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.xuatTrongCaKg, 2)}
+                                                    className="font-mono text-amber-700"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({
+                                                        line: row,
+                                                        metric: 'trong_luong_da_tron'
+                                                      })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.tonDauKg, 2)}
+                                                    className="font-mono text-zinc-600"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ton_dau' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.tonCuoiKg, 2)}
+                                                    className="font-mono text-zinc-600"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'ton_cuoi' })
+                                                    }
+                                                  />
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                  <ThucDungMetricButton
+                                                    label={formatKg(row.weightKg, 2)}
+                                                    className="font-mono font-bold text-teal-700"
+                                                    onOpen={() =>
+                                                      setThucDungDetail({ line: row, metric: 'thuc_dung' })
+                                                    }
+                                                  />
+                                                </td>
+                                              </tr>
+                                            ))
+                                          )}
+                                        </tbody>
+                                        {otherTotals && otherLines.length > 0 ? (
+                                          <tfoot className="border-t border-slate-200 bg-slate-50 text-xs font-black text-slate-800">
+                                            <tr>
+                                              <td colSpan={2} className="px-3 py-2 text-right uppercase tracking-wider">
+                                                Tổng vật tư khác
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(otherTotals.xuatCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(otherTotals.tonDauCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(otherTotals.tonCuoiCaTotal, 2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {formatKg(otherTotals.totalWeightKg, 2)}
+                                              </td>
+                                            </tr>
+                                          </tfoot>
+                                        ) : null}
+                                      </table>
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            )}
+                          </td>
+                        </tr>
                       ) : null}
                     </React.Fragment>
                   );
                 })
               )}
             </tbody>
-            {!isLoading && thucDungGroups.length > 0 ? (
-              <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
-                <tr>
-                  <td colSpan={5} className="px-3 py-2.5 text-right uppercase tracking-wider">
-                    Tổng cộng
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">
-                    {formatKg(thucDungGroups.reduce((sum, g) => sum + (g.xuatCaTotal || 0), 0), 3)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">
-                    {formatKg(thucDungGroups.reduce((sum, g) => sum + (g.tonDauCaTotal || 0), 0), 3)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">
-                    {formatKg(thucDungGroups.reduce((sum, g) => sum + (g.tonCuoiCaTotal || 0), 0), 3)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-teal-800">{formatKg(thucDungTotalKg, 2)}</td>
-                </tr>
-              </tfoot>
-            ) : null}
           </table>
         ) : activeTab === 'tong_hop_vat_tu_thuc_xuat_dung' ? (
           <table className="min-w-[1500px] w-full whitespace-nowrap text-left text-sm font-semibold">
@@ -4041,9 +4200,10 @@ export default function ControlBoardBbMachineReportTable({
           </table>
         ) : (
           <div className="bb-table-scroll">
-            <table className="min-w-[2200px] w-full text-left text-sm font-semibold">
+            <table className="min-w-[2300px] w-full text-left text-sm font-semibold">
               <thead className="bg-slate-200 text-xs uppercase tracking-wider text-slate-700">
                 <tr>
+                  <th className="w-10 px-2 py-2.5 font-black" />
                   <th className="px-3 py-2.5 font-black">Ngày</th>
                   <th className="px-3 py-2.5 font-black">Ca</th>
                   <th className="px-3 py-2.5 font-black">Số lệnh SX</th>
@@ -4068,105 +4228,297 @@ export default function ControlBoardBbMachineReportTable({
               <tbody className="divide-y divide-zinc-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={19} className="px-3 py-10 text-center font-bold text-zinc-400">
+                    <td colSpan={20} className="px-3 py-10 text-center font-bold text-zinc-400">
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                       Đang tải đánh giá hiệu quả...
                     </td>
                   </tr>
                 ) : danhGiaGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={19} className="px-3 py-10 text-center font-bold text-zinc-400">
+                    <td colSpan={20} className="px-3 py-10 text-center font-bold text-zinc-400">
                       Chưa có dữ liệu đánh giá hao hụt/lỗi hỏng gắn lệnh máy BB.
                     </td>
                   </tr>
                 ) : (
-                  danhGiaGroups.map(group => (
-                    <tr key={group.groupKey} className="hover:bg-rose-50/30">
-                      <td className="px-3 py-2 font-mono font-bold text-zinc-800">{group.ngay || '—'}</td>
-                      <td className="px-3 py-2 font-semibold text-zinc-700">
-                        {group.shiftLabel || group.shift || '—'}
-                      </td>
-                      <td className="px-3 py-2 font-mono font-black text-sky-800">{group.orderCode || '—'}</td>
-                      <td className="px-3 py-2 font-semibold text-zinc-700">{group.machine || '—'}</td>
-                      <td
-                        className="px-3 py-2 text-right font-mono font-bold text-amber-800"
-                        title={`${formatKg(group.tongNhuaThucXuat, 2)} / ${formatKg(group.tongNhuaDinhMuc, 2)} kg`}
-                      >
-                        {formatPercent(group.tiLeNhuaThucXuatVsDinhMuc, 2)}
-                      </td>
-                      <td
-                        className={`px-3 py-2 text-right font-mono font-bold ${
-                          group.giaTriHaoHutNhua < 0 ? 'text-emerald-700' : 'text-rose-700'
-                        }`}
-                        title={`${formatKg(group.giaTriHaoHutNhuaKg, 2)} kg`}
-                      >
-                        {formatVnd(group.giaTriHaoHutNhua)}
-                      </td>
-                      <td
-                        className="px-3 py-2 text-right font-mono font-bold text-fuchsia-800"
-                        title={`${formatKg(group.tongMangThucXuat, 2)} / ${formatKg(group.tongMangDinhMuc, 2)} kg`}
-                      >
-                        {formatPercent(group.tiLeMangThucXuatVsDinhMuc, 2)}
-                      </td>
-                      <td
-                        className={`px-3 py-2 text-right font-mono font-bold ${
-                          group.giaTriHaoHutMang < 0 ? 'text-emerald-700' : 'text-rose-700'
-                        }`}
-                        title={`${formatKg(group.giaTriHaoHutMangKg, 2)} kg`}
-                      >
-                        {formatVnd(group.giaTriHaoHutMang)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-rose-700">
-                        {formatPercent(group.tiLeLoiHong, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-zinc-700">
-                        {formatPercent(group.tiLeLoiHongDinhMuc, 2)}
-                      </td>
-                      <td
-                        className={`px-3 py-2 text-right font-mono font-bold ${
-                          group.lechLoiHongVsDinhMuc > 0 ? 'text-rose-700' : 'text-emerald-700'
-                        }`}
-                      >
-                        {formatPercent(group.lechLoiHongVsDinhMuc, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-amber-800">
-                        {formatKg(group.soLuongNhuaLoiHong, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
-                        {formatVnd(group.giaTriNhuaLoiHong)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-fuchsia-800">
-                        {formatKg(group.soLuongMangLoiHong, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-fuchsia-800">
-                        {formatVnd(group.giaTriMangLoiHong)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-stone-700">
-                        {formatKg(group.soLuongLoiLoiHong, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-stone-800">
-                        {formatVnd(group.giaTriLoiLoiHong)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-black text-rose-800">
-                        {formatVnd(group.tongGiaTriHaoHutLoiHong)}
-                      </td>
-                      <td className="px-3 py-2 min-w-[180px]">
-                        <textarea
-                          value={phanTichMap[group.groupKey] || ''}
-                          onChange={event => updatePhanTich(group.groupKey, event.target.value)}
-                          rows={2}
-                          placeholder="Gõ tay phân tích đánh giá..."
-                          className="w-full min-w-[160px] resize-y rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
-                        />
-                      </td>
-                    </tr>
-                  ))
+                  danhGiaGroups.map(group => {
+                    const expanded = isGroupExpanded('danh_gia_hao_hut', group.groupKey);
+                    const thucDungGroup = thucDungGroups.find(g => g.groupKey === group.groupKey);
+                    const mixingLines = (thucDungGroup?.lines || []).filter(row => row.inMixingRatioTable);
+                    const otherLines = (thucDungGroup?.lines || []).filter(row => !row.inMixingRatioTable);
+                    const mixingTotals = thucDungGroup?.mixingRatioTotals;
+                    const otherTotals = thucDungGroup?.otherTotals;
+                    return (
+                      <React.Fragment key={group.groupKey}>
+                        <tr className="hover:bg-rose-50/30">
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup('danh_gia_hao_hut', group.groupKey)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-300 bg-white text-rose-800 shadow-sm transition hover:bg-rose-50"
+                              title={expanded ? 'Đóng chi tiết vật tư' : 'Mở chi tiết vật tư (tỉ lệ trộn)'}
+                              aria-expanded={expanded}
+                            >
+                              <ChevronDown
+                                className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`}
+                              />
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 font-mono font-bold text-zinc-800">{group.ngay || '—'}</td>
+                          <td className="px-3 py-2 font-semibold text-zinc-700">
+                            {group.shiftLabel || group.shift || '—'}
+                          </td>
+                          <td className="px-3 py-2 font-mono font-black text-sky-800">{group.orderCode || '—'}</td>
+                          <td className="px-3 py-2 font-semibold text-zinc-700">{group.machine || '—'}</td>
+                          <td
+                            className="px-3 py-2 text-right font-mono font-bold text-amber-800"
+                            title={`${formatKg(group.tongNhuaThucXuat, 2)} / ${formatKg(group.tongNhuaDinhMuc, 2)} kg`}
+                          >
+                            {formatPercent(group.tiLeNhuaThucXuatVsDinhMuc, 2)}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-mono font-bold ${
+                              group.giaTriHaoHutNhua < 0 ? 'text-emerald-700' : 'text-rose-700'
+                            }`}
+                            title={`${formatKg(group.giaTriHaoHutNhuaKg, 2)} kg`}
+                          >
+                            {formatVnd(group.giaTriHaoHutNhua)}
+                          </td>
+                          <td
+                            className="px-3 py-2 text-right font-mono font-bold text-fuchsia-800"
+                            title={`${formatKg(group.tongMangThucXuat, 2)} / ${formatKg(group.tongMangDinhMuc, 2)} kg`}
+                          >
+                            {formatPercent(group.tiLeMangThucXuatVsDinhMuc, 2)}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-mono font-bold ${
+                              group.giaTriHaoHutMang < 0 ? 'text-emerald-700' : 'text-rose-700'
+                            }`}
+                            title={`${formatKg(group.giaTriHaoHutMangKg, 2)} kg`}
+                          >
+                            {formatVnd(group.giaTriHaoHutMang)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-rose-700">
+                            {formatPercent(group.tiLeLoiHong, 2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-zinc-700">
+                            {formatPercent(group.tiLeLoiHongDinhMuc, 2)}
+                          </td>
+                          <td
+                            className={`px-3 py-2 text-right font-mono font-bold ${
+                              group.lechLoiHongVsDinhMuc > 0 ? 'text-rose-700' : 'text-emerald-700'
+                            }`}
+                          >
+                            {formatPercent(group.lechLoiHongVsDinhMuc, 2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-amber-800">
+                            {formatKg(group.soLuongNhuaLoiHong, 2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
+                            {formatVnd(group.giaTriNhuaLoiHong)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-fuchsia-800">
+                            {formatKg(group.soLuongMangLoiHong, 2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-fuchsia-800">
+                            {formatVnd(group.giaTriMangLoiHong)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-stone-700">
+                            {formatKg(group.soLuongLoiLoiHong, 2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-stone-800">
+                            {formatVnd(group.giaTriLoiLoiHong)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-black text-rose-800">
+                            {formatVnd(group.tongGiaTriHaoHutLoiHong)}
+                          </td>
+                          <td className="px-3 py-2 min-w-[180px]">
+                            <textarea
+                              value={phanTichMap[group.groupKey] || ''}
+                              onChange={event => updatePhanTich(group.groupKey, event.target.value)}
+                              rows={2}
+                              placeholder="Gõ tay phân tích đánh giá..."
+                              className="w-full min-w-[160px] resize-y rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]"
+                            />
+                          </td>
+                        </tr>
+                        {expanded ? (
+                          <tr className="bg-rose-50/40">
+                            <td colSpan={20} className="px-2 py-3">
+                              {!thucDungGroup || thucDungGroup.lines.length === 0 ? (
+                                <p className="px-2 py-4 text-center text-sm font-semibold text-zinc-400">
+                                  Chưa có chi tiết vật tư tỉ lệ trộn cho lệnh này. Bấm «Tính toán» ở tab thực dùng /
+                                  tỉ lệ trộn nếu cần.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
+                                  <div className="overflow-x-auto rounded-xl border border-violet-200 bg-white shadow-sm xl:col-span-6">
+                                    <div className="border-b border-violet-200 bg-violet-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-violet-900">
+                                      Vật tư trong bảng tỉ lệ trộn máy
+                                      {mixingLines.length > 0 ? ` (${mixingLines.length})` : ''}
+                                    </div>
+                                    <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
+                                      <thead className="bg-violet-50 text-xs uppercase tracking-wider text-violet-900">
+                                        <tr>
+                                          <th className="px-3 py-1.5 font-black">Mã NVL</th>
+                                          <th className="px-3 py-1.5 font-black">Tên NVL</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tỉ lệ ĐM (%)</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tỉ lệ TB thực tế (%)</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Thực trộn (kg)</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-violet-50">
+                                        {mixingLines.length === 0 ? (
+                                          <tr>
+                                            <td colSpan={9} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                              Không có NVL khớp tỉ lệ trộn máy.
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          mixingLines.map(row => (
+                                            <tr key={row.key} className="hover:bg-violet-50/60">
+                                              <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                {row.materialCode || '—'}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                {formatPercent(row.tiLeDinhMucPercent, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
+                                                {formatPercent(row.tiLeThucTeTbPercent, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-violet-800">
+                                                {formatKg(row.mixingShiftMaterialKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                {formatKg(row.xuatTrongCaKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                {formatKg(row.tonDauKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                {formatKg(row.tonCuoiKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                {formatKg(row.weightKg, 2)}
+                                              </td>
+                                            </tr>
+                                          ))
+                                        )}
+                                      </tbody>
+                                      {mixingTotals && mixingLines.length > 0 ? (
+                                        <tfoot className="border-t border-violet-200 bg-violet-50 text-xs font-black text-violet-900">
+                                          <tr>
+                                            <td colSpan={4} className="px-3 py-2 text-right uppercase tracking-wider">
+                                              Tổng tỉ lệ trộn
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(mixingTotals.thucTronTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(mixingTotals.xuatCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(mixingTotals.tonDauCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(mixingTotals.tonCuoiCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(mixingTotals.totalWeightKg, 2)}
+                                            </td>
+                                          </tr>
+                                        </tfoot>
+                                      ) : null}
+                                    </table>
+                                  </div>
+
+                                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-4">
+                                    <div className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-700">
+                                      Vật tư khác
+                                      {otherLines.length > 0 ? ` (${otherLines.length})` : ''}
+                                    </div>
+                                    <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
+                                      <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-700">
+                                        <tr>
+                                          <th className="px-3 py-1.5 font-black">Mã NVL</th>
+                                          <th className="px-3 py-1.5 font-black">Tên NVL</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
+                                          <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {otherLines.length === 0 ? (
+                                          <tr>
+                                            <td colSpan={6} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                              Không có vật tư khác ngoài tỉ lệ trộn máy.
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          otherLines.map(row => (
+                                            <tr key={row.key} className="hover:bg-slate-50/80">
+                                              <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                {row.materialCode || '—'}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                {formatKg(row.xuatTrongCaKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                {formatKg(row.tonDauKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
+                                                {formatKg(row.tonCuoiKg, 2)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                {formatKg(row.weightKg, 2)}
+                                              </td>
+                                            </tr>
+                                          ))
+                                        )}
+                                      </tbody>
+                                      {otherTotals && otherLines.length > 0 ? (
+                                        <tfoot className="border-t border-slate-200 bg-slate-50 text-xs font-black text-slate-800">
+                                          <tr>
+                                            <td colSpan={2} className="px-3 py-2 text-right uppercase tracking-wider">
+                                              Tổng vật tư khác
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(otherTotals.xuatCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(otherTotals.tonDauCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(otherTotals.tonCuoiCaTotal, 2)}
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-mono">
+                                              {formatKg(otherTotals.totalWeightKg, 2)}
+                                            </td>
+                                          </tr>
+                                        </tfoot>
+                                      ) : null}
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
               {!isLoading && danhGiaGroups.length > 0 ? (
                 <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
                   <tr>
-                    <td colSpan={17} className="px-3 py-2.5 text-right uppercase tracking-wider">
+                    <td colSpan={18} className="px-3 py-2.5 text-right uppercase tracking-wider">
                       Tổng giá trị hao hụt + lỗi hỏng
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-rose-800">

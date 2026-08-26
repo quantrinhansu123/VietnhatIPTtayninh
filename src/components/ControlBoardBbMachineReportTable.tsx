@@ -1033,6 +1033,8 @@ export default function ControlBoardBbMachineReportTable({
     damagedKg: plasticDamagedWeightKg,
     differenceKg: plasticDifferenceWeightKg
   };
+  /** Chênh lệch nhựa theo định mức của máy cách nhiệt = Định mức − Thành phẩm. */
+  const insulationPlasticNormDifferenceKg = insulationPlasticNorm.weightKg - plasticSummaryRow.finishedKg;
   const inboundTotals = useMemo(() => sumBbInboundReportTotals(inboundRows), [inboundRows]);
   const thucDungTotalKg = useMemo(() => sumBbThucDungWeightKg(thucDungRows), [thucDungRows]);
   const tongNhapKhoTotalKg = useMemo(() => sumBbTongTrongLuongNhapKho(tongGroups), [tongGroups]);
@@ -1760,7 +1762,7 @@ export default function ControlBoardBbMachineReportTable({
           <p className="mb-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
             Tổng hợp nhựa
           </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-7">
             {(
               [
                 {
@@ -1809,6 +1811,19 @@ export default function ControlBoardBbMachineReportTable({
                         : insulationPlasticNorm.counted > 0
                           ? `${formatKg(insulationPlasticNorm.weightKg, 2)} kg`
                           : '—'
+                      : '',
+                  tertiaryLabel:
+                    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+                      ? 'Chênh lệch'
+                      : '',
+                  tertiaryTitle: 'Chênh lệch = Tổng nhựa định mức − Tổng nhựa thành phẩm.',
+                  tertiaryDisplay:
+                    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+                      ? isLoading
+                        ? '…'
+                        : insulationPlasticNorm.counted > 0 && displaySanLuongTotals.quantity > 0
+                          ? `${formatKg(insulationPlasticNormDifferenceKg, 2)} kg`
+                          : '—'
                       : ''
                 },
                 {
@@ -1847,19 +1862,27 @@ export default function ControlBoardBbMachineReportTable({
             ).map(item => (
               <div
                 key={item.label}
-                className="rounded-md border border-white/30 bg-white/10 px-2 py-1.5"
+                className={`rounded-md border border-white/30 bg-white/10 px-2 py-1.5 ${
+                  'tertiaryDisplay' in item && item.tertiaryDisplay ? 'xl:col-span-2' : ''
+                }`}
                 title={item.title}
               >
                 {'secondaryDisplay' in item && item.secondaryDisplay ? (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-wider text-white/85">{item.label}</p>
+                      <p className="whitespace-nowrap text-[8px] font-black uppercase tracking-normal text-white/85">{item.label}</p>
                       <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.display}</p>
                     </div>
                     <div className="border-l border-white/30 pl-2" title={item.secondaryTitle}>
-                      <p className="text-[9px] font-black uppercase tracking-wider text-white/85">{item.secondaryLabel}</p>
+                      <p className="whitespace-nowrap text-[8px] font-black uppercase tracking-normal text-white/85">{item.secondaryLabel}</p>
                       <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.secondaryDisplay}</p>
                     </div>
+                    {'tertiaryDisplay' in item && item.tertiaryDisplay ? (
+                      <div className="border-l border-white/30 pl-2" title={item.tertiaryTitle}>
+                        <p className="whitespace-nowrap text-[8px] font-black uppercase tracking-normal text-white/85">{item.tertiaryLabel}</p>
+                        <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.tertiaryDisplay}</p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <>

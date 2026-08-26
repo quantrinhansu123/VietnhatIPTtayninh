@@ -60,6 +60,8 @@ import {
   sumBbWarehouseExportSlipQuantity,
   sumBbWarehouseExportWeightKg,
   sumBbWarehouseExportWeightKgByKind,
+  allocateBbNhuaHaoHutByRatioPercent,
+  resolveBbMaterialExportUnitPrice,
   type BbMaterialNormFormula,
   type BbWarehouseExportLineRow,
   type BbInboundMaterialBalanceDetail,
@@ -4247,6 +4249,28 @@ export default function ControlBoardBbMachineReportTable({
                     const otherLines = (thucDungGroup?.lines || []).filter(row => !row.inMixingRatioTable);
                     const mixingTotals = thucDungGroup?.mixingRatioTotals;
                     const otherTotals = thucDungGroup?.otherTotals;
+                    /** Chênh lệch (banner) = Tổng nhựa TP − Lượng nhựa sử dụng LT. */
+                    const groupUsedLtKg = group.tongNhuaThucXuat + group.soLuongNhuaLoiHong;
+                    const groupChenhLechKg =
+                      danhGiaGroups.length <= 1
+                        ? plasticDifferenceWeightKg
+                        : plasticUsedLtKg > 0 && Number.isFinite(groupUsedLtKg)
+                          ? plasticDifferenceWeightKg * (groupUsedLtKg / plasticUsedLtKg)
+                          : plasticDifferenceWeightKg;
+                    const nhuaHaoHutByLine = allocateBbNhuaHaoHutByRatioPercent(
+                      groupChenhLechKg,
+                      mixingLines
+                    );
+                    const shiftSettingsTyped = shiftSettings as ShiftSetting[];
+                    const resolveLineGia = (row: BbThucDungLineRow) =>
+                      resolveBbMaterialExportUnitPrice(
+                        group.ngay,
+                        group.shift,
+                        warehouseMovements,
+                        shiftSettingsTyped,
+                        row.materialCode,
+                        row.materialName
+                      );
                     return (
                       <React.Fragment key={group.groupKey}>
                         <tr className="hover:bg-rose-50/30">
@@ -4361,58 +4385,79 @@ export default function ControlBoardBbMachineReportTable({
                                         <tr>
                                           <th className="px-3 py-1.5 font-black">Mã NVL</th>
                                           <th className="px-3 py-1.5 font-black">Tên NVL</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tỉ lệ ĐM (%)</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tỉ lệ TB thực tế (%)</th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="KL NVL ÷ tổng KL trộn ca × 100"
+                                          >
+                                            Tỉ lệ TB thực tế (%)
+                                          </th>
                                           <th className="px-3 py-1.5 text-right font-black">Thực trộn (kg)</th>
                                           <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
                                           <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Giá bình quân từ phiếu xuất kho NVL cùng ngày + ca"
+                                          >
+                                            Giá
+                                          </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Chênh lệch (Tổng nhựa TP − Lượng nhựa sử dụng LT) × tỉ lệ % NVL / tổng %"
+                                          >
+                                            Nhựa hao hụt (kg)
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-violet-50">
                                         {mixingLines.length === 0 ? (
                                           <tr>
-                                            <td colSpan={9} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                            <td colSpan={8} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có NVL khớp tỉ lệ trộn máy.
                                             </td>
                                           </tr>
                                         ) : (
-                                          mixingLines.map(row => (
-                                            <tr key={row.key} className="hover:bg-violet-50/60">
-                                              <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
-                                                {row.materialCode || '—'}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                                {formatPercent(row.tiLeDinhMucPercent, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
-                                                {formatPercent(row.tiLeThucTeTbPercent, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-violet-800">
-                                                {formatKg(row.mixingShiftMaterialKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-amber-700">
-                                                {formatKg(row.xuatTrongCaKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                                {formatKg(row.tonDauKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                                {formatKg(row.tonCuoiKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
-                                                {formatKg(row.weightKg, 2)}
-                                              </td>
-                                            </tr>
-                                          ))
+                                          mixingLines.map((row, index) => {
+                                            const gia = resolveLineGia(row);
+                                            const nhuaHaoHutKg = nhuaHaoHutByLine[index] ?? null;
+                                            return (
+                                              <tr key={row.key} className="hover:bg-violet-50/60">
+                                                <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                  {row.materialCode || '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
+                                                  {formatPercent(row.tiLeThucTeTbPercent, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-violet-800">
+                                                  {formatKg(row.mixingShiftMaterialKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                  {formatKg(row.xuatTrongCaKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                  {formatKg(row.weightKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-700">
+                                                  {gia > 0 ? formatVnd(gia) : '—'}
+                                                </td>
+                                                <td
+                                                  className={`px-3 py-1.5 text-right font-mono font-bold ${
+                                                    nhuaHaoHutKg !== null && nhuaHaoHutKg < 0
+                                                      ? 'text-emerald-700'
+                                                      : 'text-rose-700'
+                                                  }`}
+                                                >
+                                                  {formatKg(nhuaHaoHutKg, 2)}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
                                         )}
                                       </tbody>
                                       {mixingTotals && mixingLines.length > 0 ? (
                                         <tfoot className="border-t border-violet-200 bg-violet-50 text-xs font-black text-violet-900">
                                           <tr>
-                                            <td colSpan={4} className="px-3 py-2 text-right uppercase tracking-wider">
+                                            <td colSpan={3} className="px-3 py-2 text-right uppercase tracking-wider">
                                               Tổng tỉ lệ trộn
                                             </td>
                                             <td className="px-3 py-2 text-right font-mono">
@@ -4422,13 +4467,11 @@ export default function ControlBoardBbMachineReportTable({
                                               {formatKg(mixingTotals.xuatCaTotal, 2)}
                                             </td>
                                             <td className="px-3 py-2 text-right font-mono">
-                                              {formatKg(mixingTotals.tonDauCaTotal, 2)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-mono">
-                                              {formatKg(mixingTotals.tonCuoiCaTotal, 2)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-mono">
                                               {formatKg(mixingTotals.totalWeightKg, 2)}
+                                            </td>
+                                            <td className="px-3 py-2" />
+                                            <td className="px-3 py-2 text-right font-mono text-rose-800">
+                                              {formatKg(groupChenhLechKg, 2)}
                                             </td>
                                           </tr>
                                         </tfoot>
@@ -4447,39 +4490,43 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-1.5 font-black">Mã NVL</th>
                                           <th className="px-3 py-1.5 font-black">Tên NVL</th>
                                           <th className="px-3 py-1.5 text-right font-black">Xuất trong ca</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tồn đầu</th>
-                                          <th className="px-3 py-1.5 text-right font-black">Tồn cuối</th>
                                           <th className="px-3 py-1.5 text-right font-black">Thực dùng (kg)</th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
+                                            title="Giá bình quân từ phiếu xuất kho NVL cùng ngày + ca"
+                                          >
+                                            Giá
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100">
                                         {otherLines.length === 0 ? (
                                           <tr>
-                                            <td colSpan={6} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                            <td colSpan={5} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có vật tư khác ngoài tỉ lệ trộn máy.
                                             </td>
                                           </tr>
                                         ) : (
-                                          otherLines.map(row => (
-                                            <tr key={row.key} className="hover:bg-slate-50/80">
-                                              <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
-                                                {row.materialCode || '—'}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-amber-700">
-                                                {formatKg(row.xuatTrongCaKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                                {formatKg(row.tonDauKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono text-zinc-600">
-                                                {formatKg(row.tonCuoiKg, 2)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
-                                                {formatKg(row.weightKg, 2)}
-                                              </td>
-                                            </tr>
-                                          ))
+                                          otherLines.map(row => {
+                                            const gia = resolveLineGia(row);
+                                            return (
+                                              <tr key={row.key} className="hover:bg-slate-50/80">
+                                                <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
+                                                  {row.materialCode || '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-zinc-700">{row.materialName || '—'}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-amber-700">
+                                                  {formatKg(row.xuatTrongCaKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-teal-700">
+                                                  {formatKg(row.weightKg, 2)}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-zinc-700">
+                                                  {gia > 0 ? formatVnd(gia) : '—'}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })
                                         )}
                                       </tbody>
                                       {otherTotals && otherLines.length > 0 ? (
@@ -4492,14 +4539,9 @@ export default function ControlBoardBbMachineReportTable({
                                               {formatKg(otherTotals.xuatCaTotal, 2)}
                                             </td>
                                             <td className="px-3 py-2 text-right font-mono">
-                                              {formatKg(otherTotals.tonDauCaTotal, 2)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-mono">
-                                              {formatKg(otherTotals.tonCuoiCaTotal, 2)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-mono">
                                               {formatKg(otherTotals.totalWeightKg, 2)}
                                             </td>
+                                            <td className="px-3 py-2" />
                                           </tr>
                                         </tfoot>
                                       ) : null}

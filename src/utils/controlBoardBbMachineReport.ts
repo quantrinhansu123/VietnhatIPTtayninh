@@ -6981,6 +6981,61 @@ function resolveBbAvgExportUnitPrice(
   return Math.round(amount / qty);
 }
 
+/** Giá xuất kho NVL (đ/ĐVT) bình quân gia quyền theo ngày + ca, khớp mã/tên NVL. */
+export function resolveBbMaterialExportUnitPrice(
+  ngay: string,
+  ca: string,
+  movements: ShiftSummaryWarehouseMovement[],
+  shiftSettings: ShiftSetting[],
+  materialCode: string,
+  materialName: string
+) {
+  const codeKey = normalizeMaterialCodeKey(materialCode);
+  const nameKey = String(materialName || '')
+    .trim()
+    .toUpperCase();
+  return resolveBbAvgExportUnitPrice(ngay, ca, movements, shiftSettings, movement => {
+    const mCode = normalizeMaterialCodeKey(movement.itemCode || '');
+    if (codeKey && mCode && codeKey === mCode) return true;
+    if (!codeKey && nameKey) {
+      return String(movement.itemName || '')
+        .trim()
+        .toUpperCase() === nameKey;
+    }
+    if (codeKey && !mCode && nameKey) {
+      return String(movement.itemName || '')
+        .trim()
+        .toUpperCase() === nameKey;
+    }
+    return false;
+  });
+}
+
+/**
+ * Phân bổ kg nhựa hao hụt (Chênh lệch) theo tỉ lệ % từng NVL.
+ * Ưu tiên Tỉ lệ TB thực tế (%); không có thì dùng ĐM máy. Chuẩn hóa theo tổng % các dòng.
+ */
+export function allocateBbNhuaHaoHutByRatioPercent(
+  totalNhuaHaoHutKg: number,
+  lines: Array<{ tiLeDinhMucPercent: number | null; tiLeThucTeTbPercent: number | null }>
+): Array<number | null> {
+  if (!Number.isFinite(totalNhuaHaoHutKg)) {
+    return lines.map(() => null);
+  }
+  const percents = lines.map(line => {
+    const fromTb = line.tiLeThucTeTbPercent;
+    if (fromTb !== null && fromTb !== undefined && Number.isFinite(fromTb) && fromTb > 0) return fromTb;
+    const fromDm = line.tiLeDinhMucPercent;
+    if (fromDm !== null && fromDm !== undefined && Number.isFinite(fromDm) && fromDm > 0) return fromDm;
+    return 0;
+  });
+  const sumPct = percents.reduce((sum, pct) => sum + pct, 0);
+  if (sumPct <= 0) return lines.map(() => null);
+  return percents.map(pct =>
+    pct > 0 ? roundQty(totalNhuaHaoHutKg * (pct / sumPct), 4) : null
+  );
+}
+
 export type BbMixingRatioLineRow = {
   key: string;
   ngay: string;

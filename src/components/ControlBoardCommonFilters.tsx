@@ -178,7 +178,10 @@ export function ControlBoardCommonFilters({
   onProductionOrderQueryChange,
   productionOrderOptions,
   onClear,
-  isLoading
+  isLoading,
+  deferApply,
+  onApply,
+  hasPendingChanges
 }: {
   dateScope?: ControlBoardDateScope;
   onDateScopeChange?: (value: ControlBoardDateScope) => void;
@@ -200,6 +203,10 @@ export function ControlBoardCommonFilters({
   productionOrderOptions: ControlBoardProductionOrderOption[];
   onClear: () => void;
   isLoading?: boolean;
+  /** Chỉ cập nhật báo cáo khi bấm «Áp dụng» (vd. /phan-tich-tu-dong). */
+  deferApply?: boolean;
+  onApply?: () => void;
+  hasPendingChanges?: boolean;
 }) {
   const dateInputsDisabled = isLoading || dateScope === 'all';
   return (
@@ -210,14 +217,30 @@ export function ControlBoardCommonFilters({
             <p className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-400">Phạm vi dữ liệu</p>
             <p className="truncate text-sm font-black text-zinc-950">Bộ lọc chung</p>
           </div>
-          <button
-            type="button"
-            onClick={onClear}
-            disabled={isLoading}
-            className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-black text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Xóa lọc
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {deferApply ? (
+              <button
+                type="button"
+                onClick={onApply}
+                disabled={isLoading || !hasPendingChanges}
+                className={`h-8 rounded-lg px-2.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  hasPendingChanges
+                    ? 'border border-red-300 bg-red-600 text-white shadow-sm hover:bg-red-700'
+                    : 'border border-zinc-200 bg-zinc-50 text-zinc-500'
+                }`}
+              >
+                Áp dụng
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClear}
+              disabled={isLoading}
+              className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-black text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Xóa lọc
+            </button>
+          </div>
         </div>
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(170px,0.9fr)_minmax(180px,0.9fr)_minmax(230px,1.35fr)]">

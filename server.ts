@@ -3,6 +3,8 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import dotenv from 'dotenv';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductionReport } from './src/types';
@@ -136,6 +138,113 @@ const VIETMAP_API_URL = 'https://maps.vietmap.vn/api';
 const SUPABASE_FETCH_TIMEOUT_MS = 30_000;
 const SUPABASE_FETCH_RETRIES = 3;
 const ADDRESS_ENGINE_TIMEOUT_MS = 10_000;
+const JWT_CLOCK_SKEW_PATTERN =
+  /PGRST303|JWT issued at future|JWTExpired|token is expired|exp claim/i;
+const execFileAsync = promisify(execFile);
+
+let supabaseClockSkewMs: number | null = null;
+let supabaseClockSyncAttempted = false;
+
+function isJwtClockSkewError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || '');
+  const code = String(error?.code || '');
+  return code === 'PGRST303' || JWT_CLOCK_SKEW_PATTERN.test(message);
+}
+
+async function probeSupabaseClockSkewMs(baseUrl: string | undefined): Promise<number | null> {
+  if (!baseUrl) return null;
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/rest/v1/`, {
+      method: 'HEAD',
+      headers: { apikey: SUPABASE_KEY || 'probe' }
+    });
+    const dateHeader = response.headers.get('date');
+    if (!dateHeader) return null;
+    const serverMs = Date.parse(dateHeader);
+    if (!Number.isFinite(serverMs)) return null;
+    return Date.now() - serverMs;
+  } catch {
+    return null;
+  }
+}
+
+async function tryAutoSyncSystemClock(): Promise<boolean> {
+  if (supabaseClockSyncAttempted) return false;
+  supabaseClockSyncAttempted = true;
+
+  if (process.platform === 'win32') {
+    try {
+      await execFileAsync('w32tm', ['/resync', '/force'], {
+        timeout: 20_000,
+        windowsHide: true
+      });
+      console.log('[CLOCK] Đã chạy w32tm /resync — đồng bộ thời gian Windows với NTP.');
+      return true;
+    } catch (error) {
+      console.warn(
+        '[CLOCK] Không thể tự đồng bộ giờ (w32tm). Chạy CMD Admin: w32tm /resync /force —',
+        (error as Error).message
+      );
+      return false;
+    }
+  }
+
+  if (process.platform === 'linux') {
+    try {
+      await execFileAsync('timedatectl', ['set-ntp', 'true'], { timeout: 10_000 });
+      console.log('[CLOCK] Đã bật đồng bộ NTP (timedatectl).');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+async function ensureSupabaseClockAligned() {
+  if (!SUPABASE_URL) return;
+  const skewMs = await probeSupabaseClockSkewMs(SUPABASE_URL);
+  if (skewMs === null) return;
+  supabaseClockSkewMs = skewMs;
+  const absSkewSec = Math.round(Math.abs(skewMs) / 1000);
+  if (absSkewSec < 5) return;
+
+  console.warn(
+    `[CLOCK] Đồng hồ máy lệch ~${absSkewSec}s so với Supabase (${skewMs > 0 ? 'nhanh hơn' : 'chậm hơn'}). Đang thử tự đồng bộ...`
+  );
+  await tryAutoSyncSystemClock();
+  const skewAfter = await probeSupabaseClockSkewMs(SUPABASE_URL);
+  if (skewAfter !== null) supabaseClockSkewMs = skewAfter;
+  if (skewAfter !== null && Math.abs(skewAfter) >= 5000) {
+    console.warn(
+      `[CLOCK] Vẫn lệch ~${Math.round(Math.abs(skewAfter) / 1000)}s — bật «Đặt thời gian tự động» trên Windows rồi khởi động lại npm run dev.`
+    );
+  }
+}
+
+function formatSupabaseAuthClockHint(error: { code?: string; message?: string }) {
+  if (!isJwtClockSkewError(error)) return '';
+  const autoSyncNote = supabaseClockSyncAttempted
+    ? ' Đã thử tự đồng bộ giờ (w32tm) nhưng vẫn lỗi —'
+    : '';
+  return (
+    `${autoSyncNote} Đồng hồ máy tính lệch so với server (JWT). Vào Windows: Cài đặt → Thời gian & ngôn ngữ → bật «Đặt thời gian tự động»,` +
+    ' bấm «Đồng bộ ngay», rồi khởi động lại npm run dev.'
+  );
+}
+
+async function waitForJwtClockRecovery(body: string) {
+  const synced = await tryAutoSyncSystemClock();
+  if (supabaseClockSkewMs === null && SUPABASE_URL) {
+    supabaseClockSkewMs = await probeSupabaseClockSkewMs(SUPABASE_URL);
+  }
+  const skewMs = Math.abs(supabaseClockSkewMs ?? 0);
+  if (/JWT issued at future/i.test(body)) {
+    return synced ? 800 : Math.min(Math.max(skewMs + 500, 1500), 120_000);
+  }
+  return synced ? 800 : Math.min(Math.max(skewMs + 500, 2000), 30_000);
+}
 
 function isSupabaseNetworkError(error: unknown) {
   const message = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
@@ -153,17 +262,30 @@ function isSupabaseNetworkError(error: unknown) {
 async function fetchWithTimeoutAndRetry(
   input: RequestInfo | URL,
   init?: RequestInit,
-  attempt = 1
+  attempt = 1,
+  clockRecoveryAttempt = 0
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SUPABASE_FETCH_TIMEOUT_MS);
 
   try {
-    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+    const response = await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+
+    if (clockRecoveryAttempt < 2 && (response.status === 401 || response.status === 403)) {
+      const body = await response.clone().text();
+      if (JWT_CLOCK_SKEW_PATTERN.test(body)) {
+        const waitMs = await waitForJwtClockRecovery(body);
+        console.warn(`[SUPABASE] JWT lệch giờ — thử lại sau ${waitMs}ms (${clockRecoveryAttempt + 1}/2)...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        return fetchWithTimeoutAndRetry(input, init, 1, clockRecoveryAttempt + 1);
+      }
+    }
+
+    return response;
   } catch (error) {
     if (attempt < SUPABASE_FETCH_RETRIES && isSupabaseNetworkError(error)) {
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      return fetchWithTimeoutAndRetry(input, init, attempt + 1);
+      return fetchWithTimeoutAndRetry(input, init, attempt + 1, clockRecoveryAttempt);
     }
     throw error;
   } finally {
@@ -2471,24 +2593,6 @@ async function runOnSupabaseTableWithFallback<T>(
   }
 
   return { data: null, error: lastMissing, dbLabel: null };
-}
-
-function isJwtClockSkewError(error: { code?: string; message?: string } | null | undefined) {
-  const message = String(error?.message || '');
-  const code = String(error?.code || '');
-  return (
-    code === 'PGRST303' ||
-    /JWT issued at future/i.test(message) ||
-    /JWTExpired|token is expired|exp claim/i.test(message)
-  );
-}
-
-function formatSupabaseAuthClockHint(error: { code?: string; message?: string }) {
-  if (!isJwtClockSkewError(error)) return '';
-  return (
-    ' Đồng hồ máy tính lệch so với server (JWT). Vào Windows: Cài đặt → Thời gian & ngôn ngữ → bật «Đặt thời gian tự động»,' +
-    ' bấm «Đồng bộ ngay», rồi khởi động lại npm run dev.'
-  );
 }
 
 function respondSupabaseReadError(
@@ -6579,6 +6683,7 @@ async function startServer() {
     );
     getReportsFromDb();
     void ensureWarehouseSlipNumericColumns();
+    void ensureSupabaseClockAligned();
   });
 }
 
@@ -6884,9 +6989,7 @@ export function createApp() {
 
       if (error) {
         console.error('Supabase san_pham query error:', error);
-        return res.status(500).json({
-          error: `Không thể tải danh sách sản phẩm từ ${SUPABASE_PRODUCTS_TABLE}. ${error.message}`
-        });
+        return respondSupabaseReadError(res, error, SUPABASE_PRODUCTS_TABLE, { products: [] });
       }
 
       const unique = new Map<string, { productName: string; productCode: string; newCode: string }>();
@@ -11653,6 +11756,107 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi điền ca cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  /** Đổi cột Ngày (SOURCE_DATE / work_date) cho nhiều dòng — không đụng captured_at. */
+  app.post('/api/can-tu-dong/bulk-set-ngay', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const ngay =
+        parseCanTuDongNgayToIso(body.ngay ?? body.work_date ?? body.SOURCE_DATE) ||
+        new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+      const { data: existingRows, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('id, metadata')
+        .in('id', ids);
+
+      if (readError) {
+        return res.status(500).json({
+          error: readError.message || 'Không đọc được dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const rows = Array.isArray(existingRows) ? existingRows : [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        const metadata = mergeCanTuDongNgayLenhSxMetadata(currentMetadata, { ngay });
+        const payloads: Array<Record<string, unknown>> = [
+          { metadata, ngay, work_date: ngay },
+          { metadata, ngay },
+          { metadata }
+        ];
+        let updateError: { message?: string; code?: string } | null = null;
+        for (const payload of payloads) {
+          const result = await supabaseWeighing
+            .from(SUPABASE_CAN_TU_DONG_TABLE)
+            .update(payload)
+            .eq('id', record.id);
+          updateError = result.error;
+          if (!updateError) break;
+          if (
+            updateError.code !== 'PGRST204' &&
+            !/column|schema cache|ngay|work_date/i.test(String(updateError.message || ''))
+          ) {
+            break;
+          }
+        }
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể đổi Ngày cho dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        updated += 1;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: ids.length,
+        ngay,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi đổi Ngày cân tự động.',
         db: SUPABASE_WEIGHING_DB_LABEL
       });
     }

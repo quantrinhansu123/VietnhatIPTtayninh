@@ -33,21 +33,6 @@ function asFiniteNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
-function formatDateTime(value?: string | null) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '—';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-}
-
 function formatIsoDateVi(iso?: string | null) {
   const raw = String(iso ?? '').trim();
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -123,7 +108,6 @@ export default function BbCanTuDongSanLuongPanel({
             <th className="px-3 py-3.5 font-black" title="Cột Ngày (SOURCE_DATE), không dùng ngày cân">
               Ngày
             </th>
-            <th className="px-3 py-3.5 font-black">Thời điểm</th>
             <th className="px-3 py-3.5 font-black">Ca</th>
             <th className="px-3 py-3.5 font-black" title="SOURCE_MACHINE">
               Máy
@@ -154,13 +138,13 @@ export default function BbCanTuDongSanLuongPanel({
         <tbody className="divide-y divide-zinc-100 bg-white">
           {isLoading ? (
             <tr>
-              <td colSpan={13} className="px-4 py-8 text-center text-zinc-500">
+              <td colSpan={12} className="px-4 py-8 text-center text-zinc-500">
                 Đang tải dữ liệu cân tự động...
               </td>
             </tr>
           ) : filtered.length === 0 ? (
             <tr>
-              <td colSpan={13} className="px-4 py-8 text-center text-zinc-500">
+              <td colSpan={12} className="px-4 py-8 text-center text-zinc-500">
                 Không có dữ liệu cân tự động khớp bộ lọc.
               </td>
             </tr>
@@ -205,9 +189,6 @@ export default function BbCanTuDongSanLuongPanel({
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-900">
                     {formatIsoDateVi(ngay)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-700">
-                    {formatDateTime(row.captured_at || row.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 font-bold text-sky-900">{row.ca || '—'}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-800">

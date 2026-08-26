@@ -296,6 +296,11 @@ function roundQuantityByUnit(value: number, unit: string): number {
   return roundNonKgQuantityToInt(value);
 }
 
+/** Máy cách nhiệt: tách màng / rác màng xi khỏi cột nhựa lỗi hỏng. */
+export function isInsulationMachineText(...candidates: Array<string | undefined | null>) {
+  return candidates.some(value => /cách\s*nhiệt/i.test(String(value || '').trim()));
+}
+
 /** Máy BB: mã/tên có "BB" hoặc "bao bì" (không phân biệt hoa thường / dấu). */
 export function isBbMachineText(...candidates: Array<string | undefined | null>) {
   return candidates.some(value => {
@@ -2399,8 +2404,40 @@ function isDamagedRowKind(row: BbDamagedGoodsLineRow, kind: 'sp_loi' | 'sp_rac')
   return name.startsWith('Hàng rác');
 }
 
-/** SP lỗi → nhựa; SP rác → vật tư khác — từ snapshot dòng lỗi hỏng (không đọc phiếu live). */
-export function sumBbDamagedGoodsWeightKgByKind(rows: BbDamagedGoodsLineRow[]): {
+/** SP rác / dòng lỗi hỏng — rác màng (màng / film) không tính vào TL nhựa. */
+export function isBbDamagedFilmScrapRow(row: BbDamagedGoodsLineRow): boolean {
+  const text = `${row.productCode} ${row.productName} ${row.materialName}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (text.includes('film')) return true;
+  if (text.includes('mang xi') || text.includes('rac mang') || text.includes('racmang')) return true;
+  if (text.includes('mang') && text.includes('rac')) return true;
+  if (isDamagedRowKind(row, 'sp_rac') && text.includes('mang')) return true;
+  if (isDamagedRowKind(row, 'sp_loi') && text.includes('mang') && text.includes('rac')) return true;
+  return false;
+}
+
+/** Σ kg rác màng xi trên snapshot lỗi hỏng. */
+export function sumBbDamagedFilmScrapKg(rows: BbDamagedGoodsLineRow[]): number {
+  let total = 0;
+  for (const row of rows) {
+    if (!isBbDamagedFilmScrapRow(row)) continue;
+    const kg = row.weightKg > 0 ? row.weightKg : 0;
+    if (kg > 0) total += kg;
+  }
+  return roundQty(total, 4);
+}
+
+/**
+ * Phân loại lỗi hỏng theo nhựa / vật tư khác.
+ * - TL nhựa = SP lỗi (Hàng hỏng), không gồm rác màng.
+ * - Máy cách nhiệt: Vật tư khác = rác màng; máy khác: Vật tư khác = SP rác trừ rác màng.
+ */
+export function sumBbDamagedGoodsWeightKgByKind(
+  rows: BbDamagedGoodsLineRow[],
+  options?: { isInsulationMachine?: boolean }
+): {
   plasticKg: number;
   otherKg: number;
 } {
@@ -2409,10 +2446,48 @@ export function sumBbDamagedGoodsWeightKgByKind(rows: BbDamagedGoodsLineRow[]): 
   for (const row of rows) {
     const kg = row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
-    if (isDamagedRowKind(row, 'sp_loi')) plasticKg += kg;
-    else if (isDamagedRowKind(row, 'sp_rac')) otherKg += kg;
+
+    if (isBbDamagedFilmScrapRow(row)) {
+      otherKg += kg;
+      continue;
+    }
+
+    if (isDamagedRowKind(row, 'sp_loi')) {
+      plasticKg += kg;
+      continue;
+    }
+
+    if (isDamagedRowKind(row, 'sp_rac') && !options?.isInsulationMachine) {
+      otherKg += kg;
+    }
   }
   return { plasticKg: roundQty(plasticKg, 4), otherKg: roundQty(otherKg, 4) };
+}
+
+/** Trọng lượng nhựa lỗi hỏng dùng phân bổ NVL nhựa (tab lỗi hỏng / in BB). */
+export function resolveBbDamagedPlasticLoiHongKg(
+  rows: BbDamagedGoodsLineRow[],
+  options?: { isInsulationMachine?: boolean }
+): number {
+  return sumBbDamagedGoodsWeightKgByKind(rows, options).plasticKg;
+}
+
+/** Trọng lượng vật tư khác lỗi hỏng (máy cách nhiệt: rác màng xi). */
+export function resolveBbDamagedOtherLoiHongKg(
+  rows: BbDamagedGoodsLineRow[],
+  options?: { isInsulationMachine?: boolean }
+): number {
+  return sumBbDamagedGoodsWeightKgByKind(rows, options).otherKg;
+}
+
+/** SP lỗi (Hàng hỏng) — cột lỗi hỏng NVL nhựa trên báo cáo máy BB. */
+export function sumBbDamagedPlasticLoiHongKg(rows: BbDamagedGoodsLineRow[]): number {
+  return sumBbDamagedGoodsWeightKgByKind(rows).plasticKg;
+}
+
+/** SP rác trừ rác màng — cột lỗi hỏng NVL khác. */
+export function sumBbDamagedOtherKgExclFilmScrap(rows: BbDamagedGoodsLineRow[]): number {
+  return sumBbDamagedGoodsWeightKgByKind(rows).otherKg;
 }
 
 /** Chuẩn hóa `loai_vat_tu` trên phiếu báo cáo sản lượng (`bao_cao_nghiem_thu`). */
@@ -2604,27 +2679,16 @@ export function buildBbMixingMaterialLinesForShift(input: {
 }
 
 /**
- * Dòng NVL tab lỗi hỏng: đủ vật tư từ tỉ lệ trộn máy ∪ báo cáo phối trộn ∪ BOM lệnh SX.
- * Tỉ lệ thực tế ưu tiên phiếu trộn; không có thì dùng % định mức máy / BOM.
+ * Dòng NVL tab lỗi hỏng: chỉ từ BOM lệnh SX → thành phần NVL trên Kho sản phẩm (`san_pham.nplItems`).
+ * Tỉ lệ trộn (%) lấy từ thành phần % trên BOM; NVL theo SL không có % phân bổ trọng lượng lỗi.
  */
 export function buildBbLoiHongMaterialLinesForShift(input: {
-  mixingReports: MixingReport[];
-  machines: MachineRow[];
   productionOrders?: ProductionOrderRow[];
   products?: ProductRow[];
   ngay: string;
   shift: string;
-  machine: string;
   orderCode?: string;
-  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): BbDamagedMixingChildRow[] {
-  const mixLines = buildBbMixingMaterialLinesForShift({
-    mixingReports: input.mixingReports,
-    ngay: input.ngay,
-    shift: input.shift,
-    machine: input.machine,
-    shiftSettings: input.shiftSettings
-  });
   const byKey = new Map<string, BbDamagedMixingChildRow>();
   const upsert = (row: BbDamagedMixingChildRow) => {
     const key =
@@ -2647,32 +2711,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     if (existing.tiLeDinhMucPercent == null && row.tiLeDinhMucPercent != null) {
       existing.tiLeDinhMucPercent = row.tiLeDinhMucPercent;
     }
-    if (!(existing.totalKlThucTe > 0) && row.totalKlThucTe > 0) {
-      existing.totalKlThucTe = row.totalKlThucTe;
-    }
-    if (row.batchCount > existing.batchCount) existing.batchCount = row.batchCount;
   };
-
-  for (const line of mixLines) upsert(line);
-
-  const machineRow = findBbMachineByLabel(input.machines || [], input.machine);
-  for (const ratio of machineRow?.mixingRatios || []) {
-    const code = String(ratio.materialCode || '').trim();
-    const name = String(ratio.materialName || '').trim();
-    if (!code && !name) continue;
-    if (isNnsTronMaterial(code, name)) continue;
-    const pct = Number(String(ratio.percent ?? '').trim().replace(',', '.'));
-    upsert({
-      key: '',
-      materialCode: code,
-      materialName: name || code,
-      unit: 'kg',
-      tiLeTronPercent: null,
-      tiLeDinhMucPercent: Number.isFinite(pct) && pct > 0 ? roundQty(pct, 4) : null,
-      totalKlThucTe: 0,
-      batchCount: 0
-    });
-  }
 
   const orderCodes = String(input.orderCode || '')
     .split(',')
@@ -2720,7 +2759,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     }
   }
 
-  // Không có tỉ lệ trộn thực tế → dùng định mức để phân bổ trọng lượng lỗi.
+  // Phân bổ trọng lượng lỗi theo % trên BOM.
   for (const row of byKey.values()) {
     if (row.tiLeTronPercent == null && row.tiLeDinhMucPercent != null && row.tiLeDinhMucPercent > 0) {
       row.tiLeTronPercent = row.tiLeDinhMucPercent;
@@ -3925,6 +3964,8 @@ export type BbSanLuongProductGroup = {
   unit: string;
   /** SL mặt hàng từ báo cáo sản lượng. */
   quantity: number;
+  /** Khối lượng SP (kg) từ phiếu báo cáo sản lượng. */
+  weightKg: number;
   /** % mặt hàng = quantity ÷ tổng SL mọi SP cùng nhóm phiếu sản lượng. */
   productSharePercent: number;
   reportCount: number;
@@ -4310,6 +4351,7 @@ export function buildBbSanLuongGroups(input: {
           productName: product.productName,
           unit: product.unit,
           quantity: product.quantity,
+          weightKg: roundQty(product.weightKg, 2),
           productSharePercent,
           reportCount: product.reportCount,
           lineCount: lines.length,
@@ -7135,6 +7177,7 @@ export function sumBbDamagedRowsLoiHongKgForHeaderByProductCodes(input: {
   header: { ngay: string; shift: string; machine: string; orderCode?: string };
   productCodeKeys: Iterable<string>;
   kind: 'sp_loi' | 'sp_rac';
+  isInsulationMachine?: boolean;
 }): number {
   const keys = new Set(
     [...input.productCodeKeys]
@@ -7143,7 +7186,7 @@ export function sumBbDamagedRowsLoiHongKgForHeaderByProductCodes(input: {
   );
   if (keys.size === 0) return 0;
 
-  let total = 0;
+  const scopedRows: BbDamagedGoodsLineRow[] = [];
   for (const row of input.damagedRows || []) {
     if (row.ngay && input.header.ngay && row.ngay !== input.header.ngay) continue;
     if (input.header.shift && row.shift && !shiftNamesMatch(row.shift, input.header.shift)) continue;
@@ -7154,9 +7197,22 @@ export function sumBbDamagedRowsLoiHongKgForHeaderByProductCodes(input: {
     ) {
       continue;
     }
-    if (!isDamagedRowKind(row, input.kind)) continue;
     const productKey = normalizeProductCodeKey(row.productCode);
     if (!productKey || !keys.has(productKey)) continue;
+    scopedRows.push(row);
+  }
+
+  if (input.isInsulationMachine) {
+    if (input.kind === 'sp_loi') {
+      return resolveBbDamagedPlasticLoiHongKg(scopedRows, { isInsulationMachine: true });
+    }
+    return sumBbDamagedFilmScrapKg(scopedRows);
+  }
+
+  let total = 0;
+  for (const row of scopedRows) {
+    if (!isDamagedRowKind(row, input.kind)) continue;
+    if (input.kind === 'sp_rac' && isBbDamagedFilmScrapRow(row)) continue;
     if (row.weightKg > 0) total += row.weightKg;
   }
   return roundQty(total, 4);

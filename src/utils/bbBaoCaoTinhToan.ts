@@ -37,6 +37,7 @@ import {
   sumBbCuoiCaWeightKgByKind,
   sumBbDamagedGoodsWeightKg,
   sumBbDamagedGoodsWeightKgByKind,
+  isInsulationMachineText,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
   sumBbDauCaWeightKgByKind,
@@ -253,15 +254,11 @@ export function buildBbMachineReportSnapshot(input: {
   });
   const damagedGroups = groupBbDamagedGoodsLines(damagedRows).map(group => {
     const mixingLines = buildBbLoiHongMaterialLinesForShift({
-      mixingReports: input.mixingReports,
-      machines: input.machines,
       productionOrders: input.productionOrders,
       products: input.products,
       ngay: group.ngay,
       shift: group.shift,
-      machine: group.machine,
-      orderCode: group.orderCode,
-      shiftSettings: input.shiftSettings
+      orderCode: group.orderCode
     });
     return {
       ...group,
@@ -384,7 +381,7 @@ export function buildBbMachineReportSnapshot(input: {
   const sanLuongTotals = sumBbSanLuongTotals(sanLuongGroups);
   const canTuDongSanLuongTotals = sumCanTuDongSanLuongTotals(scopedCanTuDong);
   const displaySanLuongTotals = sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals;
-  const isInsulationMachine = /cách\s+nhiệt/i.test(String(input.selectedMachine?.name || ''));
+  const isInsulationMachine = isInsulationMachineText(input.selectedMachine?.name, input.selectedMachine?.code);
   const insulationFilmWeightKg =
     isInsulationMachine && sanLuongSource === 'can-tu-dong'
       ? computeInsulationFilmWeightKg(input.products, scopedCanTuDong)
@@ -393,7 +390,7 @@ export function buildBbMachineReportSnapshot(input: {
     isInsulationMachine && sanLuongSource === 'can-tu-dong'
       ? computeInsulationPlasticNorm(input.products, scopedCanTuDong)
       : { weightKg: 0, counted: 0 };
-  const damagedWeightByKind = sumBbDamagedGoodsWeightKgByKind(damagedRows);
+  const damagedWeightByKind = sumBbDamagedGoodsWeightKgByKind(damagedRows, { isInsulationMachine });
 
   return {
     version: 1,

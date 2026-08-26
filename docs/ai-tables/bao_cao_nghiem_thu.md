@@ -27,7 +27,7 @@ Trên `/phan-tich-tu-dong`:
   - **Không** lấy từ lệnh SX, Kho sản phẩm, tỉ lệ trộn máy, phối trộn hay kho NVL
   - Lệnh SX chỉ hiện mã (nếu khớp ngày/ca/máy) để tham chiếu
   - % NVL: kg = `trong_luong` phiếu × %; ĐVT khác: SL = ĐM × tổng SL phiếu
-- Tab **Dữ liệu trong báo cáo hàng lỗi hỏng** lấy từ cùng bảng `bao_cao_nghiem_thu` — mục **Hàng hỏng (SP lỗi)** + **Hàng rác**; mở dòng con hiện **đủ NVL** (tỉ lệ trộn máy ∪ phối trộn ∪ BOM lệnh), phân bổ theo tỉ lệ trộn
+- Tab **Dữ liệu trong báo cáo hàng lỗi hỏng** lấy từ cùng bảng `bao_cao_nghiem_thu` — mục **Hàng hỏng (SP lỗi)** + **Hàng rác**; mở dòng con hiện NVL **chỉ từ BOM lệnh SX** (`lenh_sx` → `san_pham.nplItems`), phân bổ trọng lượng lỗi theo % trên BOM. **Máy cách nhiệt:** Vật tư khác = rác màng xi (SP rác); Nhựa = tổng lỗi hỏng − rác màng xi
 
 ## Menu
 

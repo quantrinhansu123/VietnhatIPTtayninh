@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  CalendarDays,
   Copy,
   FileSpreadsheet,
   Loader2,
@@ -216,19 +217,31 @@ async function postCanTuDongBulkAutofill(
   return updated;
 }
 
-function formatDateTime(value?: string | null) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '—';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+async function postCanTuDongBulkSetNgay(ids: Array<string | number>, ngay: string) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-ngay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, ngay })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi Ngày các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
+/** YYYY-MM-DD theo lịch máy (hôm nay). */
+function localIsoDateToday() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /** Hiển thị YYYY-MM-DD → dd/MM/yyyy. */
@@ -369,6 +382,7 @@ export function CanTuDongPanel({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
+  const [isSettingNgay, setIsSettingNgay] = useState(false);
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
@@ -807,6 +821,36 @@ export function CanTuDongPanel({
     }
   };
 
+  const handleBulkSetNgayToday = async () => {
+    const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    const ngay = localIsoDateToday();
+    const ngayLabel = formatIsoDateVi(ngay);
+    if (
+      !window.confirm(
+        `Đổi cột Ngày thành ${ngayLabel} cho ${formatNumber(ids.length, 0)} dòng đang hiện (theo bộ lọc)?\n\nKhông đổi ngày cân / thời điểm.`
+      )
+    ) {
+      return;
+    }
+
+    setIsSettingNgay(true);
+    try {
+      const updated = await postCanTuDongBulkSetNgay(ids, ngay);
+      setFromDate(ngay);
+      setToDate(ngay);
+      showAppToast(`Đã đổi Ngày thành ${ngayLabel} cho ${formatNumber(updated, 0)} dòng.`);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể đổi Ngày các dòng đang lọc.', 'error');
+    } finally {
+      setIsSettingNgay(false);
+    }
+  };
+
   const openEdit = (row: CanTuDongRecord) => {
     setEditingRecord(row);
     setEditForm({
@@ -952,12 +996,24 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openAutoFillModal}
-            disabled={loading || isAutoFilling || isBulkDeleting || selectedCount === 0}
+            disabled={loading || isAutoFilling || isSettingNgay || isBulkDeleting || selectedCount === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 transition hover:bg-violet-100 disabled:opacity-60"
             title={`Điền Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
           >
             {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isAutoFilling ? 'Đang điền...' : 'Tự động điền'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleBulkSetNgayToday()}
+            disabled={
+              loading || isSettingNgay || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
+            }
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+            title="Đổi cột Ngày của mọi dòng đang hiện (theo bộ lọc Từ/Đến ngày · Ca · Mã SP · QR trùng) thành hôm nay"
+          >
+            {isSettingNgay ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
+            {isSettingNgay ? 'Đang sửa Ngày...' : 'Ngày = hôm nay'}
           </button>
           <button
             type="button"
@@ -1413,7 +1469,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openAutoFillModal}
-            disabled={isAutoFilling || isBulkDeleting}
+            disabled={isAutoFilling || isSettingNgay || isBulkDeleting}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-600 px-3 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
             title={`Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
           >
@@ -1423,7 +1479,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={isBulkDeleting || isAutoFilling}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay}
             className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Bỏ chọn
@@ -1431,7 +1487,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={() => void handleBulkDelete()}
-            disabled={isBulkDeleting || isAutoFilling}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
             {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -1460,7 +1516,6 @@ export function CanTuDongPanel({
           >
             Ngày
           </TableHeadCell>
-          <TableHeadCell className="whitespace-nowrap">Thời điểm</TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
           <TableHeadCell
             className="whitespace-nowrap"
@@ -1541,14 +1596,14 @@ export function CanTuDongPanel({
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={22}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={22}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -1634,9 +1689,6 @@ export function CanTuDongPanel({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-900">
                     {formatIsoDateVi(ngay)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
-                    {formatDateTime(row.captured_at || row.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold text-sky-900">
                     {row.ca || '—'}

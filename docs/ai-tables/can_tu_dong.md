@@ -47,6 +47,7 @@
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
 | `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`) |
+| `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong` nút **Ngày = hôm nay** gửi id các dòng **đang hiện theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới |
 
@@ -54,7 +55,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân theo % nhựa) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · Nhựa thực tế · Nhựa định mức · Chênh lệch nhựa (TT−ĐM) · Phần trăm (= CL ÷ Nhựa TT) · Excel · In |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân theo % nhựa) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · nút **Ngày = hôm nay** (sửa cột Ngày các dòng đang lọc) · Nhựa thực tế · Nhựa định mức · Chênh lệch nhựa (TT−ĐM) · Phần trăm (= CL ÷ Nhựa TT) · Excel · In |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |

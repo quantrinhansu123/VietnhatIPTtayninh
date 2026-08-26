@@ -24,9 +24,7 @@ import {
   TableHeadCell,
   TableBody,
   TableRow,
-  TableEmptyRow,
   StatusBadge,
-  RowActionsMenu,
   type StatusBadgeColor
 } from '../../components/shared/table';
 
@@ -900,160 +898,156 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
         />
       </TableToolbar>
 
-      <TableShell minWidthClassName="min-w-[1320px]">
-        <TableHead>
-          <TableHeadCell>Mã máy</TableHeadCell>
-          <TableHeadCell>Tên máy</TableHeadCell>
-          <TableHeadCell>Hình ảnh</TableHeadCell>
-          <TableHeadCell>Loại/Nhóm</TableHeadCell>
-          <TableHeadCell className="text-right">Định lượng</TableHeadCell>
-          <TableHeadCell>Tỷ lệ trộn</TableHeadCell>
-          <TableHeadCell>Chi nhánh</TableHeadCell>
-          <TableHeadCell>Vị trí</TableHeadCell>
-          <TableHeadCell>Trạng thái</TableHeadCell>
-          <TableHeadCell>Ghi chú</TableHeadCell>
-          <TableHeadCell align="center">Thao tác</TableHeadCell>
-        </TableHead>
-        <TableBody>
+      {isLoadingMachines ? (
+        <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-zinc-200 bg-white">
+          <Loader2 className="h-8 w-8 animate-spin text-[#ef1b2d]" />
+        </div>
+      ) : filteredMachines.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-12 text-center text-sm font-bold text-zinc-500">
+          Bảng danh_sach_may chưa có dữ liệu hoặc không có máy phù hợp bộ lọc.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredMachines.map(machine => (
-            <React.Fragment key={machine.id}>
-            <TableRow>
-                  <td className="px-4 py-3 font-black text-zinc-950">{machine.code || '-'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 font-black text-zinc-950">
-                      <Cpu className="h-4 w-4 text-[#ef1b2d]" />
-                      {machine.name || '-'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex min-w-[220px] flex-col gap-2">
-                      <div className="flex items-center gap-3">
-                        {machine.imageUrl ? (
-                          <a
-                            href={machine.imageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50"
-                          >
-                            <img
-                              src={cloudinaryPreviewUrl(machine.imageUrl, 240)}
-                              alt={`Ảnh ${machine.name || machine.code}`}
-                              loading="lazy"
-                              decoding="async"
-                              className="h-full w-full object-cover"
-                            />
-                          </a>
-                        ) : (
-                          <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-300 bg-zinc-50 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                            Chưa có
-                          </div>
-                        )}
+            <article
+              key={machine.id}
+              className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:border-[#ef1b2d]/30 hover:shadow-md"
+            >
+              <div className="relative w-28 shrink-0 border-r border-zinc-100 bg-zinc-50 sm:w-32">
+                {machine.imageUrl ? (
+                  <a
+                    href={machine.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block h-full min-h-[112px] w-full"
+                    title="Xem ảnh máy"
+                  >
+                    <img
+                      src={cloudinaryPreviewUrl(machine.imageUrl, 320)}
+                      alt={`Ảnh ${machine.name || machine.code}`}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full min-h-[112px] w-full object-cover"
+                    />
+                  </a>
+                ) : (
+                  <div className="flex h-full min-h-[112px] w-full flex-col items-center justify-center gap-1 px-2 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    <Cpu className="h-7 w-7 text-zinc-300" />
+                    Chưa có ảnh
+                  </div>
+                )}
 
-                        {canEdit ? (
-                          <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]">
-                            {uploadingMachineIds.has(machine.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <ImagePlus className="h-4 w-4" />
-                            )}
-                            {uploadingMachineIds.has(machine.id) ? 'Đang chụp...' : machine.imageUrl ? 'Chụp lại' : 'Chụp ảnh'}
-                            <input
-                              {...CAMERA_IMAGE_INPUT_PROPS}
-                              className="hidden"
-                              disabled={uploadingMachineIds.has(machine.id)}
-                              onChange={event => {
-                                const file = event.target.files?.[0];
-                                event.target.value = '';
-                                handleMachineImageUpload(machine, file);
-                              }}
-                            />
-                          </label>
-                        ) : null}
-                      </div>
-                      <p className="text-[10px] font-semibold text-zinc-400">JPG, PNG · lưu Cloudinary</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-bold text-zinc-700">{machine.type}</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-zinc-700">{formatMachineDinhLuong(machine.dinhLuong)}</td>
-                  <td className="px-4 py-3">
-                    {machine.mixingRatios.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => openMixingView(machine)}
-                        className="inline-flex min-w-[160px] flex-col items-start gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left transition hover:border-amber-400 hover:bg-amber-100"
-                        title="Xem định mức tỉ lệ trộn"
-                      >
-                        <span className="text-[11px] font-black uppercase tracking-wider text-amber-700">
-                          {machine.mixingRatios.length} NVL · Xem
-                        </span>
-                        <span className="line-clamp-2 text-[11px] font-bold text-amber-900">
-                          {machine.mixingRatios
-                            .slice(0, 3)
-                            .map(item => `${item.materialCode || item.materialName} ${formatMachineDinhLuong(item.percent)}%`)
-                            .join(' · ')}
-                          {machine.mixingRatios.length > 3 ? '…' : ''}
-                        </span>
-                      </button>
+                {canEdit ? (
+                  <label
+                    className="absolute bottom-2 left-2 inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-white/70 bg-white/95 px-2 text-[10px] font-black text-zinc-700 shadow-sm transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+                    title={machine.imageUrl ? 'Chụp lại ảnh máy' : 'Chụp ảnh máy'}
+                  >
+                    {uploadingMachineIds.has(machine.id) ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <span className="text-zinc-400">-</span>
+                      <ImagePlus className="h-3.5 w-3.5" />
                     )}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-zinc-600">{machine.branch}</td>
-                  <td className="px-4 py-3 font-semibold text-zinc-600">{machine.location}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge label={machine.status} color={machineStatusColor(machine.status)} />
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-zinc-500">{machine.note || '-'}</td>
-                  <td className="px-4 py-3">
-                    <RowActionsMenu label={`Thao tác ${machine.code || machine.name}`}>
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openMixingView(machine)}
-                        title="Xem định mức tỉ lệ trộn"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => openEditForm(machine)}
-                          title="Sửa"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                      {canDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMachine(machine)}
-                          disabled={deletingMachineId === machine.id}
-                          title="Xóa"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {deletingMachineId === machine.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      ) : null}
-                    </div>
-                    </RowActionsMenu>
-                  </td>
-            </TableRow>
-            </React.Fragment>
-          ))}
+                    {uploadingMachineIds.has(machine.id) ? 'Đang tải' : 'Ảnh'}
+                    <input
+                      {...CAMERA_IMAGE_INPUT_PROPS}
+                      className="hidden"
+                      disabled={uploadingMachineIds.has(machine.id)}
+                      onChange={event => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        handleMachineImageUpload(machine, file);
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </div>
 
-          {!isLoadingMachines && filteredMachines.length === 0 && (
-            <TableEmptyRow colSpan={11}>
-              Bảng danh_sach_may chưa có dữ liệu hoặc không có máy phù hợp bộ lọc.
-            </TableEmptyRow>
-          )}
-        </TableBody>
-      </TableShell>
+              <div className="flex min-w-0 flex-1 flex-col p-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="line-clamp-2 text-sm font-black leading-snug text-zinc-950">
+                    {machine.name || '—'}
+                  </h3>
+                  <p className="mt-1 truncate font-mono text-xs font-bold text-zinc-500">
+                    {machine.code || '—'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <StatusBadge label={machine.status} color={machineStatusColor(machine.status)} />
+                    {machine.type && machine.type !== 'Chưa phân loại' ? (
+                      <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600">
+                        {machine.type}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 space-y-0.5 text-[11px] font-semibold text-zinc-500">
+                    <p>
+                      Định lượng:{' '}
+                      <span className="font-mono font-black text-zinc-700">
+                        {formatMachineDinhLuong(machine.dinhLuong)}
+                      </span>
+                    </p>
+                    <p className="truncate">
+                      {machine.branch && machine.branch !== '-' ? machine.branch : '—'}
+                      {machine.location && machine.location !== '-' ? ` · ${machine.location}` : ''}
+                    </p>
+                  </div>
+                  {machine.mixingRatios.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => openMixingView(machine)}
+                      className="mt-2 inline-flex max-w-full items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-left text-[10px] font-black text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
+                      title="Xem định mức tỉ lệ trộn"
+                    >
+                      <Eye className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {machine.mixingRatios.length} NVL · Xem tỉ lệ trộn
+                      </span>
+                    </button>
+                  ) : null}
+                  {machine.note ? (
+                    <p className="mt-2 line-clamp-2 text-[11px] font-semibold text-zinc-400">{machine.note}</p>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 flex items-center justify-end gap-1 border-t border-zinc-100 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => openMixingView(machine)}
+                    title="Xem định mức tỉ lệ trộn"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(machine)}
+                      title="Sửa"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMachine(machine)}
+                      disabled={deletingMachineId === machine.id}
+                      title="Xóa"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deletingMachineId === machine.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       {viewingMachine ? (
         <div

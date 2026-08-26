@@ -147,6 +147,26 @@ export function ControlBoardPanel({
   const [boardFilterMachine, setBoardFilterMachine] = useState('all');
   const [boardFilterProductionOrder, setBoardFilterProductionOrder] = useState('all');
   const [boardFilterProductionOrderQuery, setBoardFilterProductionOrderQuery] = useState('');
+  const [draftBoardDateScope, setDraftBoardDateScope] = useState<ControlBoardDateScope>('range');
+  const [draftShiftSummaryDateFrom, setDraftShiftSummaryDateFrom] = useState(defaultShiftSummaryRange.from);
+  const [draftShiftSummaryDateTo, setDraftShiftSummaryDateTo] = useState(defaultShiftSummaryRange.to);
+  const [draftBoardFilterShift, setDraftBoardFilterShift] = useState('all');
+  const [draftBoardFilterMachine, setDraftBoardFilterMachine] = useState('all');
+  const [draftBoardFilterProductionOrder, setDraftBoardFilterProductionOrder] = useState('all');
+  const [draftBoardFilterProductionOrderQuery, setDraftBoardFilterProductionOrderQuery] = useState('');
+  const [filterReloadToken, setFilterReloadToken] = useState(0);
+  const uiBoardDateScope = isAutoReport ? draftBoardDateScope : boardDateScope;
+  const uiShiftSummaryDateFrom = isAutoReport ? draftShiftSummaryDateFrom : shiftSummaryDateFrom;
+  const uiShiftSummaryDateTo = isAutoReport ? draftShiftSummaryDateTo : shiftSummaryDateTo;
+  const uiBoardFilterShift = isAutoReport ? draftBoardFilterShift : boardFilterShift;
+  const uiBoardFilterMachine = isAutoReport ? draftBoardFilterMachine : boardFilterMachine;
+  const uiBoardFilterProductionOrder = isAutoReport ? draftBoardFilterProductionOrder : boardFilterProductionOrder;
+  const uiBoardFilterProductionOrderQuery = isAutoReport
+    ? draftBoardFilterProductionOrderQuery
+    : boardFilterProductionOrderQuery;
+  const uiDateScopeAll = uiBoardDateScope === 'all';
+  const uiEffectiveDateFrom = uiDateScopeAll ? '' : uiShiftSummaryDateFrom;
+  const uiEffectiveDateTo = uiDateScopeAll ? '' : uiShiftSummaryDateTo;
   const [showAddProductionOrder, setShowAddProductionOrder] = useState(false);
   const [showProductionPlan, setShowProductionPlan] = useState(false);
   const [viewingProductionOrder, setViewingProductionOrder] = useState<ProductionOrderRow | null>(null);
@@ -173,10 +193,18 @@ export function ControlBoardPanel({
     const defaultRange = defaultShiftSummaryDateRange(14);
     setShiftSummaryDateFrom(defaultRange.from);
     setShiftSummaryDateTo(defaultRange.to);
+    setBoardDateScope('range');
     setBoardFilterShift('all');
     setBoardFilterMachine('all');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
+    setDraftShiftSummaryDateFrom(defaultRange.from);
+    setDraftShiftSummaryDateTo(defaultRange.to);
+    setDraftBoardDateScope('range');
+    setDraftBoardFilterShift('all');
+    setDraftBoardFilterMachine('all');
+    setDraftBoardFilterProductionOrder('all');
+    setDraftBoardFilterProductionOrderQuery('');
   }, [isAutoReport]);
 
   const loadBoard = async () => {
@@ -359,7 +387,7 @@ export function ControlBoardPanel({
 
   useEffect(() => {
     loadBoard();
-  }, [boardDateScope, shiftSummaryDateFrom, shiftSummaryDateTo, isAutoReport]);
+  }, [boardDateScope, shiftSummaryDateFrom, shiftSummaryDateTo, filterReloadToken, isAutoReport]);
 
   const shiftSummaryWarehouseMovementRefs = useMemo(() => {
     const mapped = mapWarehouseMovementsForShiftSummary(shiftSummaryWarehouseMovements);
@@ -401,15 +429,18 @@ export function ControlBoardPanel({
     machineValueMatchesFilter(boardFilterMachine, selectedBoardMachine, ...candidates);
 
   /** Lệnh SX khớp bộ lọc: chọn đúng mã, hoặc gõ tìm (vd 0086 / LSX) — tìm trên mọi lệnh đã tải. */
-  /** Danh sách máy phụ thuộc ca (và khoảng ngày) được phân công trong lệnh SX. */
+  /** Danh sách máy phụ thuộc ca (và khoảng ngày) được phân công trong lệnh SX — theo giá trị đang chọn trên bộ lọc. */
   const panelMachines = useMemo(() => {
-    if (!boardFilterShift || boardFilterShift === 'all') return machines;
+    if (!uiBoardFilterShift || uiBoardFilterShift === 'all') return machines;
+
+    const matchesUiDateRange = (value?: string) =>
+      matchesControlBoardDateRange(value, uiEffectiveDateFrom, uiEffectiveDateTo);
 
     return machines.filter(machine =>
       productionOrders.some(order => {
         const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
-        if (!matchesBoardDateRange(orderDate || undefined)) return false;
-        if (!shiftNamesMatch(order.shift, boardFilterShift)) return false;
+        if (!matchesUiDateRange(orderDate || undefined)) return false;
+        if (!shiftNamesMatch(order.shift, uiBoardFilterShift)) return false;
 
         return machineValueMatchesFilter(
           machine.code,
@@ -420,29 +451,35 @@ export function ControlBoardPanel({
         );
       })
     );
-  }, [machines, productionOrders, boardFilterShift, effectiveDateFrom, effectiveDateTo]);
+  }, [machines, productionOrders, uiBoardFilterShift, uiEffectiveDateFrom, uiEffectiveDateTo]);
 
-  // Ca/ngày chỉ có một máy được phân công thì chọn sẵn máy đó.
+  // Ca/ngày chỉ có một máy được phân công thì chọn sẵn máy đó (trên bộ lọc đang chỉnh).
   useEffect(() => {
-    if (boardFilterShift === 'all' || panelMachines.length !== 1) return;
-    if (boardFilterMachine !== panelMachines[0].code) {
-      setBoardFilterMachine(panelMachines[0].code);
+    if (uiBoardFilterShift === 'all' || panelMachines.length !== 1) return;
+    if (uiBoardFilterMachine !== panelMachines[0].code) {
+      if (isAutoReport) setDraftBoardFilterMachine(panelMachines[0].code);
+      else setBoardFilterMachine(panelMachines[0].code);
     }
-  }, [boardFilterShift, boardFilterMachine, panelMachines]);
+  }, [uiBoardFilterShift, uiBoardFilterMachine, panelMachines, isAutoReport]);
 
-  const handleBoardShiftChange = (shift: string) => {
-    setBoardFilterShift(shift);
+  const handleUiBoardShiftChange = (shift: string) => {
+    if (isAutoReport) setDraftBoardFilterShift(shift);
+    else setBoardFilterShift(shift);
+
+    const currentMachine = isAutoReport ? draftBoardFilterMachine : boardFilterMachine;
+    const matchesUiDateRange = (value?: string) =>
+      matchesControlBoardDateRange(value, uiEffectiveDateFrom, uiEffectiveDateTo);
 
     // Không giữ máy của ca trước nếu máy đó không có lệnh SX ở ca vừa chọn.
     if (
-      boardFilterMachine !== 'all' &&
+      currentMachine !== 'all' &&
       shift !== 'all' &&
       !machines.some(machine =>
-        machine.code === boardFilterMachine &&
+        machine.code === currentMachine &&
         productionOrders.some(order => {
           const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
           return (
-            matchesBoardDateRange(orderDate || undefined) &&
+            matchesUiDateRange(orderDate || undefined) &&
             shiftNamesMatch(order.shift, shift) &&
             machineValueMatchesFilter(
               machine.code,
@@ -455,7 +492,8 @@ export function ControlBoardPanel({
         })
       )
     ) {
-      setBoardFilterMachine('all');
+      if (isAutoReport) setDraftBoardFilterMachine('all');
+      else setBoardFilterMachine('all');
     }
   };
 
@@ -714,6 +752,51 @@ export function ControlBoardPanel({
 
   const formatPanelShiftLabel = (shift: string) => formatProductionOrderShiftLabel(shift, productionOrderSettings);
 
+  const hasPendingFilterChanges = useMemo(() => {
+    if (!isAutoReport) return false;
+    return (
+      draftBoardDateScope !== boardDateScope ||
+      draftShiftSummaryDateFrom !== shiftSummaryDateFrom ||
+      draftShiftSummaryDateTo !== shiftSummaryDateTo ||
+      draftBoardFilterShift !== boardFilterShift ||
+      draftBoardFilterMachine !== boardFilterMachine ||
+      draftBoardFilterProductionOrder !== boardFilterProductionOrder ||
+      draftBoardFilterProductionOrderQuery !== boardFilterProductionOrderQuery
+    );
+  }, [
+    isAutoReport,
+    draftBoardDateScope,
+    boardDateScope,
+    draftShiftSummaryDateFrom,
+    shiftSummaryDateFrom,
+    draftShiftSummaryDateTo,
+    shiftSummaryDateTo,
+    draftBoardFilterShift,
+    boardFilterShift,
+    draftBoardFilterMachine,
+    boardFilterMachine,
+    draftBoardFilterProductionOrder,
+    boardFilterProductionOrder,
+    draftBoardFilterProductionOrderQuery,
+    boardFilterProductionOrderQuery
+  ]);
+
+  const applyBoardFilters = () => {
+    if (!isAutoReport) return;
+    const dateChanged =
+      draftBoardDateScope !== boardDateScope ||
+      draftShiftSummaryDateFrom !== shiftSummaryDateFrom ||
+      draftShiftSummaryDateTo !== shiftSummaryDateTo;
+    setBoardDateScope(draftBoardDateScope);
+    setShiftSummaryDateFrom(draftShiftSummaryDateFrom);
+    setShiftSummaryDateTo(draftShiftSummaryDateTo);
+    setBoardFilterShift(draftBoardFilterShift);
+    setBoardFilterMachine(draftBoardFilterMachine);
+    setBoardFilterProductionOrder(draftBoardFilterProductionOrder);
+    setBoardFilterProductionOrderQuery(draftBoardFilterProductionOrderQuery);
+    if (dateChanged) setFilterReloadToken(token => token + 1);
+  };
+
   const clearBoardFilters = () => {
     const defaultRange = defaultShiftSummaryDateRange(14);
     setBoardDateScope('range');
@@ -723,6 +806,16 @@ export function ControlBoardPanel({
     setBoardFilterMachine('all');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
+    if (isAutoReport) {
+      setDraftBoardDateScope('range');
+      setDraftShiftSummaryDateFrom(defaultRange.from);
+      setDraftShiftSummaryDateTo(defaultRange.to);
+      setDraftBoardFilterShift('all');
+      setDraftBoardFilterMachine('all');
+      setDraftBoardFilterProductionOrder('all');
+      setDraftBoardFilterProductionOrderQuery('');
+      setFilterReloadToken(token => token + 1);
+    }
     setProductionOrderStaffFilters(new Set());
   };
 
@@ -1006,26 +1099,31 @@ export function ControlBoardPanel({
 
       <div className="order-[-30] flex flex-col gap-2">
         <ControlBoardCommonFilters
-          dateScope={boardDateScope}
-          onDateScopeChange={setBoardDateScope}
-          dateFrom={shiftSummaryDateFrom}
-          dateTo={shiftSummaryDateTo}
-          onDateFromChange={setShiftSummaryDateFrom}
-          onDateToChange={setShiftSummaryDateTo}
-          shift={boardFilterShift}
-          onShiftChange={handleBoardShiftChange}
+          dateScope={uiBoardDateScope}
+          onDateScopeChange={isAutoReport ? setDraftBoardDateScope : setBoardDateScope}
+          dateFrom={uiShiftSummaryDateFrom}
+          dateTo={uiShiftSummaryDateTo}
+          onDateFromChange={isAutoReport ? setDraftShiftSummaryDateFrom : setShiftSummaryDateFrom}
+          onDateToChange={isAutoReport ? setDraftShiftSummaryDateTo : setShiftSummaryDateTo}
+          shift={uiBoardFilterShift}
+          onShiftChange={handleUiBoardShiftChange}
           shiftOptions={panelShiftOptions}
           formatShiftLabel={formatPanelShiftLabel}
-          machine={boardFilterMachine}
-          onMachineChange={setBoardFilterMachine}
+          machine={uiBoardFilterMachine}
+          onMachineChange={isAutoReport ? setDraftBoardFilterMachine : setBoardFilterMachine}
           machines={panelMachines}
-          productionOrder={boardFilterProductionOrder}
-          productionOrderQuery={boardFilterProductionOrderQuery}
-          onProductionOrderChange={setBoardFilterProductionOrder}
-          onProductionOrderQueryChange={setBoardFilterProductionOrderQuery}
+          productionOrder={uiBoardFilterProductionOrder}
+          productionOrderQuery={uiBoardFilterProductionOrderQuery}
+          onProductionOrderChange={isAutoReport ? setDraftBoardFilterProductionOrder : setBoardFilterProductionOrder}
+          onProductionOrderQueryChange={
+            isAutoReport ? setDraftBoardFilterProductionOrderQuery : setBoardFilterProductionOrderQuery
+          }
           productionOrderOptions={panelProductionOrderOptions}
           onClear={clearBoardFilters}
           isLoading={isLoading}
+          deferApply={isAutoReport}
+          onApply={applyBoardFilters}
+          hasPendingChanges={hasPendingFilterChanges}
         />
         {reportOnly ? (
           <div className="flex justify-end">
@@ -1068,6 +1166,14 @@ export function ControlBoardPanel({
           setShiftSummaryDateTo(scope.dateTo);
           setBoardFilterShift(scope.shiftFilter);
           setBoardFilterMachine(scope.machineFilter);
+          if (isAutoReport) {
+            setDraftBoardDateScope('range');
+            setDraftShiftSummaryDateFrom(scope.dateFrom);
+            setDraftShiftSummaryDateTo(scope.dateTo);
+            setDraftBoardFilterShift(scope.shiftFilter);
+            setDraftBoardFilterMachine(scope.machineFilter);
+            setFilterReloadToken(token => token + 1);
+          }
         }}
       />
 

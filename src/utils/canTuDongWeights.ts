@@ -236,14 +236,7 @@ export type InsulationProductAlias = {
   totalWeight?: string | null;
 };
 
-/**
- * TL màng máy cách nhiệt = Σ (khổ cuộn × chiều dài cuộn × 2 lớp × 0,02324 kg/m²)
- * theo mã SP khớp QR cân tự động.
- */
-export function computeInsulationFilmWeightKg(
-  products: InsulationProductAlias[],
-  records: CanTuDongWeightRow[]
-): number {
+function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
   const filmKgByProductCode = new Map<string, number>();
   for (const product of products) {
     const rollWidthM = parsePositiveDecimal(product.rollWidth);
@@ -255,13 +248,25 @@ export function computeInsulationFilmWeightKg(
       if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
     }
   }
+  return filmKgByProductCode;
+}
+
+/**
+ * TL màng máy cách nhiệt = Σ (khổ cuộn × chiều dài cuộn × 2 lớp × 0,02324 kg/m²)
+ * theo mã SP khớp QR cân tự động.
+ */
+export function computeInsulationFilmWeightKg(
+  products: InsulationProductAlias[],
+  records: CanTuDongWeightRow[]
+): number {
+  const filmKgByProductCode = buildInsulationFilmKgByProductCode(products);
   return records.reduce((total, record) => {
     const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
     return total + (filmKgByProductCode.get(productCode) || 0);
   }, 0);
 }
 
-/** Nhựa định mức máy cách nhiệt = TL tiêu chuẩn − lõi − bì, theo từng phiếu cân. */
+/** Nhựa định mức máy cách nhiệt = TL tiêu chuẩn − lõi − bì − TL màng, theo từng phiếu cân. */
 export function computeInsulationPlasticNorm(
   products: InsulationProductAlias[],
   records: CanTuDongWeightRow[]
@@ -275,14 +280,16 @@ export function computeInsulationPlasticNorm(
       if (key && key !== '-') standardKgByProductCode.set(key, standardKg);
     }
   }
+  const filmKgByProductCode = buildInsulationFilmKgByProductCode(products);
   return records.reduce(
     (total, record) => {
       const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
       const standardKg = standardKgByProductCode.get(productCode);
       const coreKg = resolveCanLoiKg(record);
       if (standardKg === undefined || coreKg === null) return total;
+      const filmKg = filmKgByProductCode.get(productCode) || 0;
       return {
-        weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record),
+        weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record) - filmKg,
         counted: total.counted + 1
       };
     },

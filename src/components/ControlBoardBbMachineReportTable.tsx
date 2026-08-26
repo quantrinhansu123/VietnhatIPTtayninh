@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X } from 'lucide-react';
+import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X, Info, Package } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 import type { MachineRow } from '../features/danh-sach-may';
@@ -3940,18 +3940,24 @@ export default function ControlBoardBbMachineReportTable({
                   </td>
                 </tr>
               </tfoot>
-            ) : null}
+) : null}
           </table>
         ) : activeTab === 'tong_dinh_muc_nvl_nhap_kho' ? (
           <>
             {inboundNormGroups.length > 0 ? (
-              <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+              <div className="flex flex-col gap-2 border-b border-zinc-200 bg-zinc-50/90 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  <p className="text-xs font-bold text-zinc-700">
+                    Định mức theo lệnh sản xuất <span className="font-mono text-zinc-500">({inboundNormGroups.length} lệnh)</span>
+                  </p>
+                </div>
                 <div className="flex shrink-0 gap-2">
                   <button
                     type="button"
                     onClick={() => setAllActiveGroupsExpanded(true)}
                     disabled={inboundNormGroups.every(g => isGroupExpanded('tong_dinh_muc_nvl_nhap_kho', g.groupKey))}
-                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-black text-amber-800 shadow-sm transition hover:bg-amber-50 disabled:cursor-default disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-black text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-default disabled:opacity-40"
                   >
                     Mở tất cả
                   </button>
@@ -3959,7 +3965,7 @@ export default function ControlBoardBbMachineReportTable({
                     type="button"
                     onClick={() => setAllActiveGroupsExpanded(false)}
                     disabled={inboundNormGroups.every(g => !isGroupExpanded('tong_dinh_muc_nvl_nhap_kho', g.groupKey))}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-default disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-black text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-default disabled:opacity-40"
                   >
                     Đóng tất cả
                   </button>
@@ -3968,285 +3974,301 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
 
             <div className="bb-table-scroll">
-          <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
-              <tr>
-                <th className="w-10 px-3 py-3.5 font-black" />
-                <th className="px-4 py-3.5 font-black">Ngày</th>
-                <th className="px-4 py-3.5 font-black">Ca</th>
-                <th className="px-4 py-3.5 font-black">Lệnh SX</th>
-                <th className="px-4 py-3.5 font-black">Máy</th>
-                <th className="px-4 py-3.5 text-right font-black">Dòng SP</th>
-                <th className="px-4 py-3.5 text-right font-black">Tổng định mức (kg)</th>
-                <th className="px-4 py-3.5 text-right font-black">SL</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
-                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                    Đang tải định mức từ phiếu báo cáo sản lượng...
-                  </td>
-                </tr>
-              ) : inboundNormGroups.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
-                    Chưa có phiếu báo cáo sản lượng theo ngày/ca đã chọn.
-                  </td>
-                </tr>
-              ) : (
-                inboundNormGroups.map(group => {
-                  const expanded = isGroupExpanded('tong_dinh_muc_nvl_nhap_kho', group.groupKey);
-                  return (
-                    <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-amber-200 bg-amber-50/60 font-bold hover:bg-amber-100/50 transition">
-                        <td className="px-3 py-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleGroup('tong_dinh_muc_nvl_nhap_kho', group.groupKey)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-amber-300 bg-white text-amber-800 shadow-sm transition hover:bg-amber-50"
-                            title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
-                            aria-expanded={expanded}
+              <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
+                <thead className="border-b-2 border-red-200 bg-red-50/80 text-xs uppercase tracking-wider text-red-950 font-black">
+                  <tr>
+                    <th className="w-12 px-3 py-3.5 text-center font-black" />
+                    <th className="px-4 py-3.5 font-black">Ngày</th>
+                    <th className="px-4 py-3.5 font-black">Ca</th>
+                    <th className="px-4 py-3.5 font-black">Lệnh SX</th>
+                    <th className="px-4 py-3.5 font-black">Máy</th>
+                    <th className="px-4 py-3.5 text-right font-black">Dòng SP</th>
+                    <th className="px-4 py-3.5 text-right font-black">Tổng định mức (kg)</th>
+                    <th className="px-4 py-3.5 text-right font-black">SL</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200 bg-white">
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center font-bold text-zinc-400">
+                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                        Đang tải định mức từ phiếu báo cáo sản lượng...
+                      </td>
+                    </tr>
+                  ) : inboundNormGroups.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center font-bold text-zinc-400">
+                        Chưa có phiếu báo cáo sản lượng theo ngày/ca đã chọn.
+                      </td>
+                    </tr>
+                  ) : (
+                    inboundNormGroups.map(group => {
+                      const expanded = isGroupExpanded('tong_dinh_muc_nvl_nhap_kho', group.groupKey);
+                      return (
+                        <React.Fragment key={group.groupKey}>
+                          {/* LEVEL 1: LỆNH SẢN XUẤT */}
+                          <tr
+                            className={`border-b transition ${
+                              expanded
+                                ? 'bg-red-50/30 border-red-200 font-bold'
+                                : 'bg-white hover:bg-zinc-50 border-zinc-200 font-bold'
+                            }`}
                           >
-                            <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`} />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
-                        <td className="px-4 py-3 font-semibold text-zinc-800">
-                          {group.shiftLabel || group.shift || '—'}
-                        </td>
-                        <td className="px-4 py-3 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
-                        <td className="px-4 py-3 font-semibold text-zinc-800">{group.machine || '—'}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-zinc-600">{group.productGroups.length}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-amber-800">
-                          {formatKg(group.totalNormWeightKg, 2)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-zinc-600">
-                          {formatNumber(group.quantity, 2)}
-                        </td>
-                      </tr>
-                      {expanded ? (
-                        <>
-                          {group.productGroups.map((productGroup, pgIdx) => {
-                            const allLines = (productGroup.lines || []).map(row => ({ ...row }));
-                            const groupedByCode = new Map<
-                              string,
-                              {
-                                itemCode: string;
-                                itemName: string;
-                                unit: string;
-                                productQuantity: number;
-                                productUnit: string;
-                                componentNormWeightKg: number | null;
-                                balanceDetail: BbInboundMaterialBalanceDetail | null;
-                                sourceLines: BbWarehouseExportLineRow[];
-                              }
-                            >();
-                            allLines.forEach(row => {
-                              const key = row.itemCode || '—';
-                              if (!groupedByCode.has(key)) {
-                                groupedByCode.set(key, {
-                                  itemCode: row.itemCode,
-                                  itemName: row.itemName,
-                                  unit: row.unit,
-                                  productQuantity: 0,
-                                  productUnit: row.materialNorm?.productUnit || productGroup.unit || '',
-                                  componentNormWeightKg: row.materialNorm?.componentWeightKg ?? null,
-                                  balanceDetail: row.balanceDetail,
-                                  sourceLines: []
-                                });
-                              }
-                              const existing = groupedByCode.get(key)!;
-                              const lineQty = row.materialNorm?.productQuantity || 0;
-                              if (lineQty > existing.productQuantity) existing.productQuantity = lineQty;
-                              existing.sourceLines.push(row);
-                              if (existing.componentNormWeightKg === null && row.materialNorm?.componentWeightKg != null) {
-                                existing.componentNormWeightKg = row.materialNorm.componentWeightKg;
-                              }
-                              if (!existing.balanceDetail && row.balanceDetail) {
-                                existing.balanceDetail = row.balanceDetail;
-                              }
-                            });
-                            const productQty =
-                              productGroup.quantity > 0
-                                ? productGroup.quantity
-                                : [...groupedByCode.values()].reduce(
-                                    (max, row) => Math.max(max, row.productQuantity),
-                                    0
-                                  );
-                            const productNvlRows = Array.from(groupedByCode.values()).map(row => {
-                              const componentPerUnit =
-                                row.componentNormWeightKg !== null && row.componentNormWeightKg > 0
-                                  ? row.componentNormWeightKg
-                                  : 0;
-                              const qty = row.productQuantity > 0 ? row.productQuantity : productQty;
-                              const displayComponentKg = roundDisplayKg(
-                                componentPerUnit > 0 && qty > 0 ? componentPerUnit * qty : 0,
-                                2
-                              );
-                              return {
-                                ...row,
-                                componentPerUnit,
-                                displayComponentKg
-                              };
-                            });
-                            const sumComponentNormKg = sumBbInboundTheoreticalNormKgForProductGroup(productGroup);
-                            return (
-                              <React.Fragment key={`${group.groupKey}-pg-${pgIdx}`}>
-                                <tr className="border-y border-amber-300 bg-amber-200/60 text-sm font-black text-amber-900">
-                                  <td className="px-3 py-2" />
-                                  <td colSpan={4} className="px-4 py-2">
-                                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-700/80">
-                                      Thành phẩm
-                                    </p>
-                                    <p className="mt-0.5">
-                                      🏷 {productGroup.productName || productGroup.productCode || '—'}
-                                      {productGroup.productCode ? (
-                                        <span className="ml-1 font-mono text-xs text-amber-700">
-                                          ({productGroup.productCode})
-                                        </span>
-                                      ) : null}
-                                    </p>
-                                  </td>
-                                  <td className="px-4 py-2 text-right" title="Định mức kg / 1 đơn vị thành phẩm">
-                                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-700/80">
-                                      ĐM SP (kg/1)
-                                    </p>
-                                    <p className="mt-0.5 font-mono text-amber-900">
-                                      {productGroup.normKgPerUnit === null
-                                        ? '—'
-                                        : formatKg(productGroup.normKgPerUnit, 2)}
-                                    </p>
-                                  </td>
-                                  <td className="px-4 py-2 text-right" title="Số lượng thành phẩm nhập kho">
-                                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-700/80">
-                                      SL thành phẩm
-                                    </p>
-                                    <p className="mt-0.5 font-mono text-amber-900">
-                                      {formatNumber(productQty, 0)}
-                                      {productGroup.unit ? ` ${productGroup.unit}` : ''}
-                                    </p>
-                                  </td>
-                                  <td
-                                    className="px-4 py-2 text-right"
-                                    title="Tổng trọng lượng định mức NVL = Σ (kg Thành phần/1 SP × SL thành phẩm)"
-                                  >
-                                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800/80">
-                                      Tổng TL định mức NVL
-                                    </p>
-                                    <p className="mt-0.5 font-mono text-emerald-900">
-                                      {formatKg(roundDisplayKg(sumComponentNormKg, 2), 2)}
-                                    </p>
-                                  </td>
-                                </tr>
-                                <tr className="border-y border-amber-100 bg-amber-100/40 text-xs font-black uppercase tracking-wider text-amber-900">
-                                  <td />
-                                  <td className="px-4 py-2.5 font-black">Mã NVL</td>
-                                  <td colSpan={2} className="px-4 py-2.5 font-black">
-                                    Tên NVL
-                                  </td>
-                                  <td className="px-4 py-2.5 font-black">ĐVT</td>
-                                  <td
-                                    className="px-4 py-2.5 text-right font-black"
-                                    title="kg NVL trên 1 đơn vị thành phẩm (tab Thành phần)"
-                                  >
-                                    ĐM NVL
-                                  </td>
-                                  <td
-                                    className="px-4 py-2.5 text-right font-black"
-                                    title="Số lượng thành phẩm dùng để nhân định mức"
-                                  >
-                                    SL thành phẩm
-                                  </td>
-                                  <td
-                                    className="px-4 py-2.5 text-right font-black"
-                                    title="= ĐM NVL (kg/1 SP) × SL thành phẩm"
-                                  >
-                                    TL định mức
-                                  </td>
-                                </tr>
-                                {productNvlRows.length === 0 ? (
-                                  <tr className="bg-white">
-                                    <td />
-                                    <td colSpan={7} className="px-4 py-2.5 text-sm font-semibold text-zinc-400">
-                                      Thành phẩm chưa có công thức NVL.
-                                    </td>
-                                  </tr>
-                                ) : null}
-                                {productNvlRows.map((row, idx) => {
-                              const openNormDetail = () =>
-                                setNormDetail({
-                                  orderCode: group.orderCode,
-                                  ngay: group.ngay,
-                                  shiftLabel: group.shiftLabel || group.shift,
-                                  machine: `${productGroup.productName || productGroup.productCode || ''} · ${group.machine}`,
-                                  itemCode: row.itemCode,
-                                  itemName: row.itemName,
-                                  unit: row.unit,
-                                  metric: 'quantity',
-                                  totalKg: row.displayComponentKg,
-                                  totalQty: row.productQuantity || productQty,
-                                  balanceDetail: row.balanceDetail,
-                                  lines: row.sourceLines
-                                });
-                              return (
-                              <tr key={`${group.groupKey}-pg-${pgIdx}-nvl-${idx}`} className="bg-white font-semibold hover:bg-amber-50/40 border-b border-slate-50">
-                                <td className="px-3 py-2.5" />
-                                <td className="px-4 py-2.5 font-mono font-bold text-zinc-800">
-                                  {row.itemCode || '—'}
-                                </td>
-                                <td colSpan={2} className="px-4 py-2.5 text-zinc-700">
-                                  {row.itemName || '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-zinc-600">{row.unit || '—'}</td>
-                                <td className="px-4 py-2.5 text-right font-mono font-bold text-zinc-700">
-                                  {row.componentPerUnit > 0 ? formatKg(roundDisplayKg(row.componentPerUnit, 2), 2) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right font-mono font-bold text-zinc-700">
-                                  {formatNumber(row.productQuantity || productQty, 2)}
-                                  {row.productUnit ? ` ${row.productUnit}` : productGroup.unit ? ` ${productGroup.unit}` : ''}
-                                </td>
-                                <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700">
-                                  {row.displayComponentKg > 0 ? (
-                                    <ThucDungMetricButton
-                                      label={formatKg(row.displayComponentKg, 2)}
-                                      className="font-mono font-bold text-emerald-700"
-                                      onOpen={openNormDetail}
-                                    />
-                                  ) : (
-                                    '—'
-                                  )}
-                                </td>
-                              </tr>
-                              );
-                                })}
-                              </React.Fragment>
-                            );
-                          })}
-                        </>
-                      ) : null}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-            {!isLoading && inboundNormGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
-                <tr>
-                  <td colSpan={6} className="px-4 py-3.5 text-right uppercase tracking-wider">
-                    Tổng định mức
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-amber-800">
-                    {formatKg(inboundNormTotalKg, 2)}
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-zinc-700">
-                    {formatNumber(inboundNormGroups.reduce((sum, g) => sum + (g.quantity || 0), 0), 2)}
-                  </td>
-                </tr>
-              </tfoot>
-            ) : null}
-          </table>
+                            <td className="px-3 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleGroup('tong_dinh_muc_nvl_nhap_kho', group.groupKey)}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition shadow-xs ${
+                                  expanded
+                                    ? 'border-red-300 bg-red-50 text-[#ef1b2d]'
+                                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50'
+                                }`}
+                                title={expanded ? 'Thu gọn lệnh này' : 'Mở rộng chi tiết lệnh này'}
+                                aria-expanded={expanded}
+                              >
+                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} />
+                              </button>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-800">{group.ngay || '—'}</td>
+                            <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
+                              {group.shiftLabel || group.shift || '—'}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
+                            <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">{group.machine || '—'}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right">
+                              <span className="inline-flex items-center rounded-md bg-zinc-100 px-2 py-0.5 font-mono text-xs font-bold text-zinc-700">
+                                {group.productGroups.length} dòng
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-[15px] font-black text-zinc-900">
+                              {formatKg(group.totalNormWeightKg, 2)} kg
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold text-zinc-700">
+                              {formatNumber(group.quantity, 2)}
+                            </td>
+                          </tr>
+
+                          {/* EXPANDED CONTENT: LEVEL 2 (THÀNH PHẨM) & LEVEL 3 (NGUYÊN VẬT LIỆU) */}
+                          {expanded ? (
+                            <tr className="bg-zinc-50/60">
+                              <td colSpan={8} className="p-3 sm:p-4">
+                                <div className="space-y-3">
+                                  {group.productGroups.map((productGroup, pgIdx) => {
+                                    const allLines = (productGroup.lines || []).map(row => ({ ...row }));
+                                    const groupedByCode = new Map<
+                                      string,
+                                      {
+                                        itemCode: string;
+                                        itemName: string;
+                                        unit: string;
+                                        productQuantity: number;
+                                        productUnit: string;
+                                        componentNormWeightKg: number | null;
+                                        balanceDetail: BbInboundMaterialBalanceDetail | null;
+                                        sourceLines: BbWarehouseExportLineRow[];
+                                      }
+                                    >();
+                                    allLines.forEach(row => {
+                                      const key = row.itemCode || '—';
+                                      if (!groupedByCode.has(key)) {
+                                        groupedByCode.set(key, {
+                                          itemCode: row.itemCode,
+                                          itemName: row.itemName,
+                                          unit: row.unit,
+                                          productQuantity: 0,
+                                          productUnit: row.materialNorm?.productUnit || productGroup.unit || '',
+                                          componentNormWeightKg: row.materialNorm?.componentWeightKg ?? null,
+                                          balanceDetail: row.balanceDetail,
+                                          sourceLines: []
+                                        });
+                                      }
+                                      const existing = groupedByCode.get(key)!;
+                                      const lineQty = row.materialNorm?.productQuantity || 0;
+                                      if (lineQty > existing.productQuantity) existing.productQuantity = lineQty;
+                                      existing.sourceLines.push(row);
+                                      if (existing.componentNormWeightKg === null && row.materialNorm?.componentWeightKg != null) {
+                                        existing.componentNormWeightKg = row.materialNorm.componentWeightKg;
+                                      }
+                                      if (!existing.balanceDetail && row.balanceDetail) {
+                                        existing.balanceDetail = row.balanceDetail;
+                                      }
+                                    });
+                                    const productQty =
+                                      productGroup.quantity > 0
+                                        ? productGroup.quantity
+                                        : [...groupedByCode.values()].reduce(
+                                            (max, row) => Math.max(max, row.productQuantity),
+                                            0
+                                          );
+                                    const productNvlRows = Array.from(groupedByCode.values()).map(row => {
+                                      const componentPerUnit =
+                                        row.componentNormWeightKg !== null && row.componentNormWeightKg > 0
+                                          ? row.componentNormWeightKg
+                                          : 0;
+                                      const qty = row.productQuantity > 0 ? row.productQuantity : productQty;
+                                      const displayComponentKg = roundDisplayKg(
+                                        componentPerUnit > 0 && qty > 0 ? componentPerUnit * qty : 0,
+                                        2
+                                      );
+                                      return {
+                                        ...row,
+                                        componentPerUnit,
+                                        displayComponentKg
+                                      };
+                                    });
+                                    const sumComponentNormKg = sumBbInboundTheoreticalNormKgForProductGroup(productGroup);
+
+                                    return (
+                                      <div
+                                        key={`${group.groupKey}-pg-${pgIdx}`}
+                                        className="overflow-hidden rounded-xl border border-zinc-200/90 bg-white shadow-xs"
+                                      >
+                                        {/* LEVEL 2: HEADER THÀNH PHẨM */}
+                                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50/80 px-4 py-2.5">
+                                          <div className="flex min-w-0 items-center gap-2">
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-100/60 text-[#ef1b2d]">
+                                              <Package className="h-4 w-4" />
+                                            </span>
+                                            <div className="min-w-0">
+                                              <div className="flex flex-wrap items-center gap-1.5">
+                                                <span className="font-black text-zinc-900 sm:text-[13.5px]">
+                                                  {productGroup.productName || productGroup.productCode || '—'}
+                                                </span>
+                                                {productGroup.productCode ? (
+                                                  <span className="rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 font-mono text-[11px] font-bold text-zinc-600">
+                                                    {productGroup.productCode}
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* 3 chỉ số KPI của Thành phẩm */}
+                                          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                                            <div className="text-right">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">ĐM SP</p>
+                                              <p className="font-mono text-xs font-bold text-zinc-700">
+                                                {productGroup.normKgPerUnit === null
+                                                  ? '—'
+                                                  : `${formatKg(productGroup.normKgPerUnit, 2)} kg/1`}
+                                              </p>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">SL thành phẩm</p>
+                                              <p className="font-mono text-xs font-black text-zinc-900">
+                                                {formatNumber(productQty, 0)}
+                                                {productGroup.unit ? ` ${productGroup.unit}` : ''}
+                                              </p>
+                                            </div>
+                                            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1 text-right">
+                                              <p className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-800">Tổng TL định mức NVL</p>
+                                              <p className="font-mono text-xs font-black text-emerald-900">
+                                                {formatKg(roundDisplayKg(sumComponentNormKg, 2), 2)} kg
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* LEVEL 3: BẢNG NGUYÊN VẬT LIỆU HOẶC EMPTY STATE */}
+                                        {productNvlRows.length === 0 ? (
+                                          <div className="flex items-center gap-2 px-4 py-3 text-xs font-medium italic text-zinc-400 bg-zinc-50/30">
+                                            <Info className="h-4 w-4 shrink-0 text-zinc-400" />
+                                            <span>Chưa thiết lập công thức nguyên vật liệu cho thành phẩm này.</span>
+                                          </div>
+                                        ) : (
+                                          <div className="overflow-x-auto">
+                                            <table className="min-w-full text-left text-xs">
+                                              <thead>
+                                                <tr className="border-b border-zinc-200 bg-zinc-100/60 text-[10.5px] font-black uppercase tracking-wider text-zinc-600">
+                                                  <th className="px-4 py-2 font-black">Mã NVL</th>
+                                                  <th className="px-4 py-2 font-black">Tên nguyên vật liệu</th>
+                                                  <th className="px-4 py-2 font-black">ĐVT</th>
+                                                  <th className="px-4 py-2 text-right font-black">ĐM NVL (kg/1)</th>
+                                                  <th className="px-4 py-2 text-right font-black">SL thành phẩm</th>
+                                                  <th className="px-4 py-2 text-right font-black">TL định mức</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-zinc-100 bg-white">
+                                                {productNvlRows.map((row, idx) => {
+                                                  const openNormDetail = () =>
+                                                    setNormDetail({
+                                                      orderCode: group.orderCode,
+                                                      ngay: group.ngay,
+                                                      shiftLabel: group.shiftLabel || group.shift,
+                                                      machine: `${productGroup.productName || productGroup.productCode || ''} · ${group.machine}`,
+                                                      itemCode: row.itemCode,
+                                                      itemName: row.itemName,
+                                                      unit: row.unit,
+                                                      metric: 'quantity',
+                                                      totalKg: row.displayComponentKg,
+                                                      totalQty: row.productQuantity || productQty,
+                                                      balanceDetail: row.balanceDetail,
+                                                      lines: row.sourceLines
+                                                    });
+                                                  return (
+                                                    <tr key={`${group.groupKey}-pg-${pgIdx}-nvl-${idx}`} className="transition hover:bg-red-50/20">
+                                                      <td className="whitespace-nowrap px-4 py-2 font-mono font-bold text-zinc-800">
+                                                        {row.itemCode || '—'}
+                                                      </td>
+                                                      <td className="px-4 py-2 font-medium text-zinc-800">
+                                                        {row.itemName || '—'}
+                                                      </td>
+                                                      <td className="whitespace-nowrap px-4 py-2 font-medium text-zinc-500">
+                                                        {row.unit || '—'}
+                                                      </td>
+                                                      <td className="whitespace-nowrap px-4 py-2 text-right font-mono font-semibold text-zinc-700">
+                                                        {row.componentPerUnit > 0 ? formatKg(roundDisplayKg(row.componentPerUnit, 2), 2) : '—'}
+                                                      </td>
+                                                      <td className="whitespace-nowrap px-4 py-2 text-right font-mono font-semibold text-zinc-700">
+                                                        {formatNumber(row.productQuantity || productQty, 2)}
+                                                        {row.productUnit ? ` ${row.productUnit}` : productGroup.unit ? ` ${productGroup.unit}` : ''}
+                                                      </td>
+                                                      <td className="whitespace-nowrap px-4 py-2 text-right font-mono font-bold text-emerald-700">
+                                                        {row.displayComponentKg > 0 ? (
+                                                          <ThucDungMetricButton
+                                                            label={formatKg(row.displayComponentKg, 2)}
+                                                            className="font-mono font-bold text-emerald-700"
+                                                            onOpen={openNormDetail}
+                                                          />
+                                                        ) : (
+                                                          '—'
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+                {!isLoading && inboundNormGroups.length > 0 ? (
+                  <tfoot className="border-t-2 border-red-200 bg-red-50/70 text-xs font-black text-red-950">
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-right uppercase tracking-wider">
+                        Tổng định mức
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-black text-red-950">
+                        {formatKg(inboundNormTotalKg, 2)} kg
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold text-zinc-800">
+                        {formatNumber(inboundNormGroups.reduce((sum, g) => sum + (g.quantity || 0), 0), 2)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
             </div>
           </>
         ) : activeTab === 'tong' ? (

@@ -220,7 +220,7 @@ export function ControlBoardCommonFilters({
           </button>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(110px,0.7fr)_minmax(150px,1fr)_minmax(230px,1.35fr)]">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(170px,0.9fr)_minmax(180px,0.9fr)_minmax(230px,1.35fr)]">
         <label className="space-y-0.5">
           <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
           <select

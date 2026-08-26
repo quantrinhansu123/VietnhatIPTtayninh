@@ -401,6 +401,64 @@ export function ControlBoardPanel({
     machineValueMatchesFilter(boardFilterMachine, selectedBoardMachine, ...candidates);
 
   /** Lệnh SX khớp bộ lọc: chọn đúng mã, hoặc gõ tìm (vd 0086 / LSX) — tìm trên mọi lệnh đã tải. */
+  /** Danh sách máy phụ thuộc ca (và khoảng ngày) được phân công trong lệnh SX. */
+  const panelMachines = useMemo(() => {
+    if (!boardFilterShift || boardFilterShift === 'all') return machines;
+
+    return machines.filter(machine =>
+      productionOrders.some(order => {
+        const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+        if (!matchesBoardDateRange(orderDate || undefined)) return false;
+        if (!shiftNamesMatch(order.shift, boardFilterShift)) return false;
+
+        return machineValueMatchesFilter(
+          machine.code,
+          machine,
+          order.machine,
+          order.position,
+          resolveProductionOrderMachine(order, machines)
+        );
+      })
+    );
+  }, [machines, productionOrders, boardFilterShift, effectiveDateFrom, effectiveDateTo]);
+
+  // Ca/ngày chỉ có một máy được phân công thì chọn sẵn máy đó.
+  useEffect(() => {
+    if (boardFilterShift === 'all' || panelMachines.length !== 1) return;
+    if (boardFilterMachine !== panelMachines[0].code) {
+      setBoardFilterMachine(panelMachines[0].code);
+    }
+  }, [boardFilterShift, boardFilterMachine, panelMachines]);
+
+  const handleBoardShiftChange = (shift: string) => {
+    setBoardFilterShift(shift);
+
+    // Không giữ máy của ca trước nếu máy đó không có lệnh SX ở ca vừa chọn.
+    if (
+      boardFilterMachine !== 'all' &&
+      shift !== 'all' &&
+      !machines.some(machine =>
+        machine.code === boardFilterMachine &&
+        productionOrders.some(order => {
+          const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+          return (
+            matchesBoardDateRange(orderDate || undefined) &&
+            shiftNamesMatch(order.shift, shift) &&
+            machineValueMatchesFilter(
+              machine.code,
+              machine,
+              order.machine,
+              order.position,
+              resolveProductionOrderMachine(order, machines)
+            )
+          );
+        })
+      )
+    ) {
+      setBoardFilterMachine('all');
+    }
+  };
+
   const boardMatchedProductionOrders = useMemo(() => {
     const exactCode =
       boardFilterProductionOrder && boardFilterProductionOrder !== 'all'
@@ -955,12 +1013,12 @@ export function ControlBoardPanel({
           onDateFromChange={setShiftSummaryDateFrom}
           onDateToChange={setShiftSummaryDateTo}
           shift={boardFilterShift}
-          onShiftChange={setBoardFilterShift}
+          onShiftChange={handleBoardShiftChange}
           shiftOptions={panelShiftOptions}
           formatShiftLabel={formatPanelShiftLabel}
           machine={boardFilterMachine}
           onMachineChange={setBoardFilterMachine}
-          machines={machines}
+          machines={panelMachines}
           productionOrder={boardFilterProductionOrder}
           productionOrderQuery={boardFilterProductionOrderQuery}
           onProductionOrderChange={setBoardFilterProductionOrder}

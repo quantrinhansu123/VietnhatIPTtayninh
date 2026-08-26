@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
-import type { ProductRow } from '../features/san-pham/types';
+import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 import type { MachineRow } from '../features/danh-sach-may';
 import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../features/ke-hoach-san-xuat';
@@ -18,6 +18,9 @@ import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReport
 import BbCanTuDongSanLuongPanel from './BbCanTuDongSanLuongPanel';
 import {
   filterCanTuDongRecordsForBoard,
+  parseCanTuDongQrProductCode,
+  resolveCanLoiKg,
+  resolveTrongLuongBiKg,
   sumCanTuDongSanLuongTotals
 } from '../utils/canTuDongWeights';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
@@ -87,6 +90,12 @@ type BbPrintConfirmSelection = {
 };
 
 const BB_PHAN_TICH_STORAGE_KEY = 'control-board-bb-phan-tich-v1';
+const INSULATION_FILM_KG_PER_M2 = 0.02324;
+
+function parsePositiveDecimal(value: string | null | undefined): number | null {
+  const number = Number(String(value || '').trim().replace(',', '.'));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
 
 function loadBbPhanTichMap(): Record<string, string> {
   try {
@@ -377,6 +386,14 @@ export default function ControlBoardBbMachineReportTable({
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
 }) {
+  const machineReportLabel = useMemo(() => {
+    const name = String(selectedMachine?.name || '').trim();
+    if (name && name !== '-') return `máy ${name.replace(/^máy\s*/i, '').trim()}`;
+
+    const code = String(selectedMachine?.code || machineFilter || '').trim();
+    return code && code !== 'all' ? `máy ${code}` : 'máy BB';
+  }, [machineFilter, selectedMachine]);
+  const machineReportTitle = `Báo cáo tổng hợp ${machineReportLabel}`;
   const [activeTab, setActiveTab] = useState<BbMachineReportTabId>(() =>
     sanLuongSource === 'can-tu-dong' ? 'bao_cao_san_luong' : 'lenh_sx'
   );
@@ -943,6 +960,59 @@ export default function ControlBoardBbMachineReportTable({
   const displaySanLuongTotals =
     reportSnapshot?.summary?.displaySanLuongTotals ??
     (sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals);
+  /** Chỉ báo cáo máy cách nhiệt tách màng khỏi trọng lượng nhựa. */
+  const isInsulationMachine = /cách\s+nhiệt/i.test(String(selectedMachine?.name || ''));
+  const insulationFilmWeightKg = useMemo(() => {
+    if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return 0;
+
+    const filmKgByProductCode = new Map<string, number>();
+    for (const product of products) {
+      const rollWidthM = parsePositiveDecimal(product.rollWidth);
+      const rollLengthM = parsePositiveDecimal(product.rollLength);
+      if (rollWidthM === null || rollLengthM === null) continue;
+
+      const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_KG_PER_M2;
+      for (const productCode of [product.code, product.newCode, product.amisCode]) {
+        const key = normalizeProductCodeKey(productCode);
+        if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
+      }
+    }
+
+    return scopedCanTuDongRecords.reduce((total, record) => {
+      const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
+      return total + (filmKgByProductCode.get(productCode) || 0);
+    }, 0);
+  }, [isInsulationMachine, products, sanLuongSource, scopedCanTuDongRecords]);
+  const insulationPlasticNorm = useMemo(() => {
+    if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return { weightKg: 0, counted: 0 };
+
+    const standardKgByProductCode = new Map<string, number>();
+    for (const product of products) {
+      const standardKg = parsePositiveDecimal(product.totalWeight);
+      if (standardKg === null) continue;
+      for (const productCode of [product.code, product.newCode, product.amisCode]) {
+        const key = normalizeProductCodeKey(productCode);
+        if (key && key !== '-') standardKgByProductCode.set(key, standardKg);
+      }
+    }
+
+    return scopedCanTuDongRecords.reduce(
+      (total, record) => {
+        const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
+        const standardKg = standardKgByProductCode.get(productCode);
+        const coreKg = resolveCanLoiKg(record);
+        if (standardKg === undefined || coreKg === null) return total;
+        return {
+          weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record),
+          counted: total.counted + 1
+        };
+      },
+      { weightKg: 0, counted: 0 }
+    );
+  }, [isInsulationMachine, products, sanLuongSource, scopedCanTuDongRecords]);
+  const displayedPlasticWeightKg = isInsulationMachine
+    ? displaySanLuongTotals.weightKg - insulationFilmWeightKg
+    : displaySanLuongTotals.weightKg;
   const plasticDamagedWeightKg = damagedWeightByKind.plasticKg;
   /** Lượng nhựa sử dụng LT = Xuất nhựa + Tồn đầu ca − Tồn cuối ca + Lỗi hỏng (nhựa). */
   const plasticUsedLtKg =
@@ -950,8 +1020,8 @@ export default function ControlBoardBbMachineReportTable({
     dauCaWeightByKind.plasticKg -
     cuoiCaWeightByKind.plasticKg +
     plasticDamagedWeightKg;
-  /** Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT. */
-  const plasticDifferenceWeightKg = displaySanLuongTotals.weightKg - plasticUsedLtKg;
+  /** Máy cách nhiệt dùng trọng lượng nhựa đã trừ màng; các máy khác giữ tổng cũ. */
+  const plasticDifferenceWeightKg = displayedPlasticWeightKg - plasticUsedLtKg;
   const plasticSummaryRow = {
     requiredKg: plasticRequiredWeightKg,
     exportKg: exportWeightByKind.plasticKg,
@@ -1371,8 +1441,8 @@ export default function ControlBoardBbMachineReportTable({
       <div className="border-b border-red-800 bg-gradient-to-r from-[#b30d1c] to-[#ef1b2d] px-3 py-3 text-white">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Báo cáo máy BB</p>
-            <h3 className="text-sm font-black sm:text-base">Báo cáo tổng hợp máy BB</h3>
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Báo cáo {machineReportLabel}</p>
+            <h3 className="text-sm font-black sm:text-base">{machineReportTitle}</h3>
             {snapshotStatus === 'ready' && snapshotCalculatedAt ? (
               <p className="mt-0.5 text-[10px] font-semibold text-white/80">
                 Đã tính:{' '}
@@ -1573,7 +1643,13 @@ export default function ControlBoardBbMachineReportTable({
             <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
               Báo cáo sản lượng
             </p>
-            <div className="mt-auto grid grid-cols-2 gap-1.5 border-t border-white/25 pt-1.5">
+            <div
+              className={`mt-auto grid gap-1.5 border-t border-white/25 pt-1.5 ${
+                isInsulationMachine && sanLuongSource === 'can-tu-dong'
+                  ? 'grid-cols-[0.65fr_1fr_1fr] gap-2'
+                  : 'grid-cols-2'
+              }`}
+            >
               <div
                 title={
                   sanLuongSource === 'can-tu-dong'
@@ -1581,10 +1657,14 @@ export default function ControlBoardBbMachineReportTable({
                     : 'Tổng cột «SL sản lượng»'
                 }
               >
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">
+                <p
+                  className={`font-black uppercase text-white/75 ${
+                    isInsulationMachine ? 'whitespace-nowrap text-[8px] tracking-normal' : 'text-[8px] tracking-wider'
+                  }`}
+                >
                   {sanLuongSource === 'can-tu-dong' ? 'Số SP' : 'Số lượng'}
                 </p>
-                <p className="font-mono text-sm font-black tabular-nums">
+                <p className={`font-mono font-black tabular-nums ${isInsulationMachine ? 'whitespace-nowrap text-[13px]' : 'text-sm'}`}>
                   {isLoading
                     ? '…'
                     : displaySanLuongTotals.quantity > 0
@@ -1592,21 +1672,43 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'}
                 </p>
               </div>
+              {isInsulationMachine && sanLuongSource === 'can-tu-dong' ? (
+                <div title="Trọng lượng màng = Khổ cuộn (m) × Chiều dài mét/cuộn (m) × 0,02324 kg/m², chỉ áp dụng cho máy cách nhiệt.">
+                  <p className="whitespace-nowrap text-[8px] font-black uppercase tracking-normal text-white/75">TL màng</p>
+                  <p className="whitespace-nowrap font-mono text-[13px] font-black tabular-nums">
+                    {isLoading
+                      ? '…'
+                      : displaySanLuongTotals.quantity > 0
+                        ? `${formatKg(insulationFilmWeightKg, 2)} kg`
+                        : '—'}
+                  </p>
+                </div>
+              ) : null}
               <div
                 title={
                   sanLuongSource === 'can-tu-dong'
-                    ? 'Tổng cột «Trọng lượng nhựa» /can-tu-dong = Cân SP − Cân lõi − bì 0,16 kg'
+                    ? isInsulationMachine
+                      ? 'Trọng lượng nhựa = Tổng cột «Trọng lượng nhựa» /can-tu-dong − Trọng lượng màng.'
+                      : 'Tổng cột «Trọng lượng nhựa» /can-tu-dong = Cân SP − Cân lõi − bì 0,16 kg'
                     : 'Tổng cột «Trọng lượng thực tế (kg)»'
                 }
               >
-                <p className="text-[8px] font-black uppercase tracking-wider text-white/75">
-                  {sanLuongSource === 'can-tu-dong' ? 'Trọng lượng nhựa' : 'Trọng lượng'}
+                <p
+                  className={`font-black uppercase text-white/75 ${
+                    isInsulationMachine ? 'whitespace-nowrap text-[8px] tracking-normal' : 'text-[8px] tracking-wider'
+                  }`}
+                >
+                  {sanLuongSource === 'can-tu-dong'
+                    ? isInsulationMachine
+                      ? 'TL nhựa'
+                      : 'Trọng lượng nhựa'
+                    : 'Trọng lượng'}
                 </p>
-                <p className="font-mono text-sm font-black tabular-nums">
+                <p className={`font-mono font-black tabular-nums ${isInsulationMachine ? 'whitespace-nowrap text-[13px]' : 'text-sm'}`}>
                   {isLoading
                     ? '…'
                     : displaySanLuongTotals.quantity > 0
-                      ? `${formatKg(displaySanLuongTotals.weightKg, 2)} kg`
+                      ? `${formatKg(displayedPlasticWeightKg, 2)} kg`
                       : '—'}
                 </p>
               </div>
@@ -1647,7 +1749,11 @@ export default function ControlBoardBbMachineReportTable({
 
         <div
           className="mt-3 rounded-lg border border-white/40 bg-white/15 px-2.5 py-2 shadow-sm backdrop-blur-[1px]"
-          title="Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT"
+          title={
+            isInsulationMachine
+              ? 'Chênh lệch = Trọng lượng nhựa (đã trừ màng) − Lượng nhựa sử dụng LT'
+              : 'Chênh lệch = Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT'
+          }
         >
           <p className="mb-2 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
             Tổng hợp nhựa
@@ -1687,7 +1793,21 @@ export default function ControlBoardBbMachineReportTable({
                         : '—'
                       : plasticSummaryRow.finishedKg > 0
                         ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
-                        : '—'
+                        : '—',
+                  secondaryLabel:
+                    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+                      ? 'Tổng nhựa định mức'
+                      : '',
+                  secondaryTitle:
+                    'Nhựa định mức = Trọng lượng định mức − Cân lõi − Bì 0,16 kg, theo từng phiếu cân AI.',
+                  secondaryDisplay:
+                    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+                      ? isLoading
+                        ? '…'
+                        : insulationPlasticNorm.counted > 0
+                          ? `${formatKg(insulationPlasticNorm.weightKg, 2)} kg`
+                          : '—'
+                      : ''
                 },
                 {
                   label: 'Lượng nhựa sử dụng LT',
@@ -1712,7 +1832,9 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Chênh lệch',
-                  title: 'Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT',
+                  title: isInsulationMachine
+                    ? 'Trọng lượng nhựa (đã trừ màng) − Lượng nhựa sử dụng LT'
+                    : 'Tổng nhựa thành phẩm − Lượng nhựa sử dụng LT',
                   display: isLoading
                     ? '…'
                     : Number.isFinite(plasticSummaryRow.differenceKg)
@@ -1726,12 +1848,23 @@ export default function ControlBoardBbMachineReportTable({
                 className="rounded-md border border-white/30 bg-white/10 px-2 py-1.5"
                 title={item.title}
               >
-                <p className="text-[9px] font-black uppercase tracking-wider text-white/85">
-                  {item.label}
-                </p>
-                <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">
-                  {item.display}
-                </p>
+                {'secondaryDisplay' in item && item.secondaryDisplay ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-wider text-white/85">{item.label}</p>
+                      <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.display}</p>
+                    </div>
+                    <div className="border-l border-white/30 pl-2" title={item.secondaryTitle}>
+                      <p className="text-[9px] font-black uppercase tracking-wider text-white/85">{item.secondaryLabel}</p>
+                      <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.secondaryDisplay}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[9px] font-black uppercase tracking-wider text-white/85">{item.label}</p>
+                    <p className="mt-1 font-mono text-sm font-black tabular-nums text-white">{item.display}</p>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -5617,7 +5750,7 @@ export default function ControlBoardBbMachineReportTable({
         className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
-        aria-label="Xác nhận in báo cáo máy BB"
+        aria-label={`Xác nhận in ${machineReportTitle}`}
         onMouseDown={event => {
           if (event.target === event.currentTarget) closePrintConfirm();
         }}
@@ -5626,7 +5759,7 @@ export default function ControlBoardBbMachineReportTable({
           <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-sky-900 to-sky-700 px-5 py-4 text-white">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">Xác nhận trước khi in</p>
-              <h4 className="mt-1 text-base font-black">Báo cáo tổng hợp máy BB</h4>
+              <h4 className="mt-1 text-base font-black">{machineReportTitle}</h4>
               <p className="mt-1 text-xs font-semibold text-sky-50">
                 Chọn nhân sự, gõ lý do giải trình — rồi xem trước trước khi in.
               </p>
@@ -5852,6 +5985,7 @@ export default function ControlBoardBbMachineReportTable({
               }
               sanLuongSource={sanLuongSource}
               canTuDongRecords={canTuDongRecords}
+              machineReportLabel={machineReportLabel}
             />
           </div>
         </div>
@@ -5877,6 +6011,7 @@ export default function ControlBoardBbMachineReportTable({
             lyDoByLine={printLyDoByLine}
             sanLuongSource={sanLuongSource}
             canTuDongRecords={canTuDongRecords}
+            machineReportLabel={machineReportLabel}
           />,
           document.body
         )

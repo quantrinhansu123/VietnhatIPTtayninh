@@ -2798,10 +2798,15 @@ export function WarehouseSlipPanel({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-6">
-          <label className="block space-y-1">
+        <div className="grid grid-cols-1 gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-6">
+          <label className="block min-w-0 space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
-          <input type="date" value={slipDate} onChange={event => setSlipDate(event.target.value)} className={warehouseFieldClass} />
+          <input
+            type="date"
+            value={slipDate}
+            onChange={event => setSlipDate(event.target.value)}
+            className={`${warehouseFieldClass} min-w-0 w-full`}
+          />
           </label>
           {showNvlShiftAndMachine ? (
           <label className="block space-y-1">

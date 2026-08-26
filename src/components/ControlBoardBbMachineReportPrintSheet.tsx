@@ -65,6 +65,8 @@ type PrintProps = {
   /** Cùng nguồn thẻ Báo cáo sản lượng trên bảng điều khiển. */
   sanLuongSource?: 'acceptance' | 'can-tu-dong';
   canTuDongRecords?: CanTuDongRecord[];
+  /** Nhãn máy đang lọc, vd: "máy cách nhiệt". */
+  machineReportLabel?: string;
 };
 
 type MaterialPrintRow = {
@@ -678,7 +680,7 @@ function BbMachineOrderPrintSheet({ order, props }: { order: BbProductionOrderGr
         </header>
 
         <h1 className="production-order-print-title">BÁO CÁO KẾT QUẢ THEO TỪNG LỆNH SẢN XUẤT</h1>
-        <p className="bb-machine-report-print-subtitle">(Báo cáo tổng hợp máy BB)</p>
+        <p className="bb-machine-report-print-subtitle">(Báo cáo tổng hợp {props.machineReportLabel || 'máy BB'})</p>
 
         <section className="shift-summary-print-section">
           <h2 className="production-order-print-section-title">1. THÔNG TIN CHUNG</h2>

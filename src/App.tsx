@@ -161,7 +161,15 @@ export default function App() {
   }, [authUser?.username, authUser?.fullAccess]);
 
   const [activeTab, setActiveTab] = useState<AppTab>(() => tabFromPath(window.location.pathname));
-  const [locationPath, setLocationPath] = useState(() => window.location.pathname);
+  const [locationPath, setLocationPath] = useState(() => {
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    // Route /phan-tich đã bỏ — ghi đè URL sang /phan-tich-tu-dong.
+    if (path === '/phan-tich') {
+      window.history.replaceState(window.history.state, '', '/phan-tich-tu-dong');
+      return '/phan-tich-tu-dong';
+    }
+    return window.location.pathname;
+  });
   const resolvedTab = useMemo(() => tabFromPath(locationPath), [locationPath]);
   const [currentStep, setCurrentStep] = useState<number>(1); // 1: Shift & Product, 2: Materials, 3: Waste & Submit
   const [reportForm, setReportForm] = useState<Omit<ProductionReport, 'id' | 'createdAt'>>(DEFAULT_REPORT);
@@ -215,7 +223,8 @@ export default function App() {
   const [machineNvlEditReport, setMachineNvlEditReport] = useState<MachineNvlSavedReport | null>(null);
   const [weighingPendingAdd, setWeighingPendingAdd] = useState<WeighingPendingAdd | null>(null);
   const navigateToTab = (tab: AppTab, options?: { replace?: boolean }) => {
-    let nextTab = tab;
+    // /phan-tich đã bỏ — mọi điều hướng dashboard cũ → Báo cáo mới.
+    let nextTab: AppTab = tab === 'dashboard' ? 'dashboard-auto' : tab;
     let nextOptions = options;
     if (authUser) {
       const fullAccess =
@@ -346,8 +355,13 @@ export default function App() {
     window.addEventListener('offline', handleOffline);
 
     const handlePopState = () => {
-      const tab = tabFromPath(window.location.pathname);
-      setLocationPath(window.location.pathname);
+      let path = window.location.pathname.replace(/\/+$/, '') || '/';
+      if (path === '/phan-tich') {
+        path = '/phan-tich-tu-dong';
+        window.history.replaceState(window.history.state, '', path);
+      }
+      const tab = tabFromPath(path);
+      setLocationPath(path);
       setActiveTab(tab);
       if (tab === 'dashboard' || tab === 'dashboard-auto') {
         fetchReports();
@@ -1538,14 +1552,14 @@ export default function App() {
               </motion.div>
             ) : activeTab === 'dashboard' || activeTab === 'dashboard-auto' ? (
               <motion.div
-                key={activeTab === 'dashboard-auto' ? 'dashboard-auto-charts' : 'dashboard-charts'}
+                key="dashboard-auto-charts"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.15 }}
               >
                 <ControlBoardPanel
-                  mode={activeTab === 'dashboard-auto' ? 'report-only-auto' : 'report-only'}
+                  mode="report-only-auto"
                   onNavigate={navigateToTab}
                   onEditWeighing={pending => {
                     setWeighingPendingAdd(pending);
@@ -1723,11 +1737,11 @@ export default function App() {
           </a>
 
           <a
-            href={pathFromTab('dashboard')}
+            href={pathFromTab('dashboard-auto')}
             id="tab-btn-dashboard"
-            onClick={event => handleNavClick(event, 'dashboard')}
+            onClick={event => handleNavClick(event, 'dashboard-auto')}
             className={`flex items-center justify-center gap-1.5 py-3 text-[11px] font-bold uppercase tracking-wider transition sm:text-xs ${
-              activeTab === 'dashboard'
+              activeTab === 'dashboard-auto' || activeTab === 'dashboard'
                 ? 'border-t-2 border-[#ef1b2d] bg-red-50/70 text-[#ef1b2d]'
                 : 'text-zinc-500 hover:text-zinc-900'
             }`}

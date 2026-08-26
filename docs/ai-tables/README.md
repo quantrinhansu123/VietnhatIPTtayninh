@@ -50,6 +50,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `bang_tron_vat_tu_dinh_muc` | *(API + component; không còn tab trên DS phối trộn)* | [bang_tron_vat_tu_dinh_muc.md](./bang_tron_vat_tu_dinh_muc.md) |
 | `phieu_tron_thuc_te` | *(API + component; không còn tab trên DS phối trộn)* | [phieu_tron_thuc_te.md](./phieu_tron_thuc_te.md) |
 | `bao_cao_nghiem_thu` | `/bao-cao-san-luong` | [bao_cao_nghiem_thu.md](./bao_cao_nghiem_thu.md) |
+| `bao_cao_san_luong_nvl_dinh_muc` | *(snapshot NVL ĐM theo phiếu)* | [bao_cao_san_luong_nvl_dinh_muc.md](./bao_cao_san_luong_nvl_dinh_muc.md) |
 | `bao_cao_may_nvl_ton` | `/bao-cao-may-nvl-ton` | [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) |
 | `phieu_bao_dung_may` | `/phieu-bao-dung-may` | [phieu_bao_dung_may.md](./phieu_bao_dung_may.md) |
 | `phieu_giao_ca` | `/phieu-giao-ca` | [phieu_giao_ca.md](./phieu_giao_ca.md) |

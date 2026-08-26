@@ -1,3 +1,5 @@
+import { sameOriginCloudinaryUrl } from '../../utils/cloudinaryUrl';
+
 export function formatCell(value: unknown) {
   return value === null || value === undefined || String(value).trim() === '' ? '-' : String(value);
 }
@@ -70,7 +72,11 @@ export function cloudinaryPreviewUrl(url: string, width = 480) {
   if (!trimmed || !/res\.cloudinary\.com/i.test(trimmed) || !trimmed.includes('/image/upload/')) {
     return trimmed;
   }
-  return trimmed.replace('/image/upload/', `/image/upload/f_auto,q_auto,w_${Math.max(64, Math.round(width))},c_limit/`);
+  const transformed = trimmed.replace(
+    '/image/upload/',
+    `/image/upload/f_auto,q_auto,w_${Math.max(64, Math.round(width))},c_limit/`
+  );
+  return sameOriginCloudinaryUrl(transformed);
 }
 
 export async function uploadImage(imageDataUrl: string, folder?: string) {

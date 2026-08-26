@@ -15,7 +15,7 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'acceptance-report': 'acceptance-report-list',
   'machine-run-log': 'machine-run-log-list',
   'damaged-goods-warehouse': 'warehouse-history',
-  /** Cùng quyền Dashboard /phan-tich */
+  /** Cùng quyền «Báo cáo mới» /phan-tich-tu-dong (alias cũ dashboard). */
   'dashboard-auto': 'dashboard'
 };
 

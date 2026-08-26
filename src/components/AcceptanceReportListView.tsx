@@ -45,6 +45,9 @@ type NvlViewState = {
   productUnit: string;
   quantity: number;
   items: ProductNplItem[];
+  /** true = đang hiển thị snapshot đã lưu DB. */
+  fromDb: boolean;
+  savedAt?: string;
 };
 
 function todayIso() {
@@ -192,6 +195,58 @@ function formatNvlTheoSanLuong(item: ProductNplItem, productQty: number) {
   return '—';
 }
 
+function resolveNvlRate(item: ProductNplItem): number | null {
+  if (item.amountType === 'percent' && item.percent != null && Number.isFinite(item.percent)) {
+    return item.percent;
+  }
+  if (item.amountType === 'quantity' && item.quantity != null && Number.isFinite(item.quantity)) {
+    return item.quantity;
+  }
+  return null;
+}
+
+function resolveNvlTheoSl(item: ProductNplItem, productQty: number): number | null {
+  const rate = resolveNvlRate(item);
+  if (rate == null) return null;
+  if (item.amountType === 'percent') return rate;
+  if (!(productQty > 0)) return null;
+  return Math.round(rate * productQty * 10000) / 10000;
+}
+
+function nplItemsToDbPayload(items: ProductNplItem[], productQty: number) {
+  return items.map((item, index) => ({
+    stt: index,
+    ma_nvl: item.code || '',
+    ten_nvl: item.name || item.code || '',
+    don_vi: item.amountType === 'percent' ? '%' : item.unit || '',
+    loai_dinh_muc: item.amountType,
+    dinh_muc: resolveNvlRate(item),
+    so_luong_theo_sl: resolveNvlTheoSl(item, productQty)
+  }));
+}
+
+function dbRowsToNplItems(rows: unknown[]): ProductNplItem[] {
+  return rows
+    .map((raw): ProductNplItem | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const row = raw as Record<string, unknown>;
+      const loai = String(row.loai_dinh_muc ?? '').trim().toLowerCase();
+      const amountType: ProductNplItem['amountType'] =
+        loai === 'percent' || loai === 'phan_tram' || loai === '%' ? 'percent' : 'quantity';
+      const dinhMuc = Number(row.dinh_muc);
+      const rate = Number.isFinite(dinhMuc) ? dinhMuc : null;
+      return {
+        code: String(row.ma_nvl ?? '').trim(),
+        name: String(row.ten_nvl ?? '').trim(),
+        amountType,
+        percent: amountType === 'percent' ? rate : null,
+        quantity: amountType === 'quantity' ? rate : null,
+        unit: String(row.don_vi ?? (amountType === 'percent' ? '%' : '')).trim()
+      };
+    })
+    .filter((item): item is ProductNplItem => Boolean(item && (item.code || item.name)));
+}
+
 export default function AcceptanceReportListView({
   onBack,
   onCreate,
@@ -230,6 +285,8 @@ export default function AcceptanceReportListView({
     () => new Map()
   );
   const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
+  const [isSyncingNvl, setIsSyncingNvl] = useState(false);
+  const [nvlSyncMessage, setNvlSyncMessage] = useState('');
 
   const shiftOptions = useMemo<string[]>(() => {
     const shifts = reports.reduce<string[]>((result, report) => {
@@ -316,20 +373,75 @@ export default function AcceptanceReportListView({
     };
   }, []);
 
+  const applyProductCatalogData = (data: unknown) => {
+    const nextNames = new Map<string, string>();
+    normalizeProductNames(data).forEach(product => {
+      const key = normalizeProductKey(product.code);
+      if (key) nextNames.set(key, product.name);
+    });
+    const nextCatalog = normalizeProductCatalog(data);
+    setProductNameByCode(nextNames);
+    setProductCatalogByKey(nextCatalog);
+    return nextCatalog;
+  };
+
+  const resolveCatalogEntry = (
+    catalog: Map<string, ProductCatalogEntry>,
+    matHang: string,
+    names?: Map<string, string>
+  ) => {
+    const productCode = resolveReportProductCode(matHang);
+    return (
+      catalog.get(normalizeProductKey(productCode)) ||
+      catalog.get(normalizeProductKey(matHang)) ||
+      (names
+        ? catalog.get(normalizeProductKey(names.get(normalizeProductKey(productCode)) || ''))
+        : null) ||
+      null
+    );
+  };
+
+  const buildNvlViewState = (
+    report: AcceptanceReport,
+    catalog: Map<string, ProductCatalogEntry>,
+    names: Map<string, string>,
+    options?: { items?: ProductNplItem[]; fromDb?: boolean; savedAt?: string }
+  ): NvlViewState => {
+    const productCode = resolveReportProductCode(report.mat_hang);
+    const entry = resolveCatalogEntry(catalog, report.mat_hang, names);
+    const qtyRaw = Number(report.so_luong);
+    const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
+    return {
+      report,
+      productCode: entry?.code || productCode || report.mat_hang,
+      productName:
+        entry?.name ||
+        report.ten_sp ||
+        names.get(normalizeProductKey(productCode)) ||
+        productCode ||
+        '—',
+      productUnit: entry?.unit || report.don_vi || '',
+      quantity,
+      items: options?.items ?? entry?.nplItems ?? [],
+      fromDb: Boolean(options?.fromDb),
+      savedAt: options?.savedAt
+    };
+  };
+
+  const loadProductCatalog = async () => {
+    const res = await fetch('/api/san-pham?format=table');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Không thể tải danh mục sản phẩm.');
+    return applyProductCatalogData(data);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/san-pham?format=table');
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        const nextNames = new Map<string, string>();
-        normalizeProductNames(data).forEach(product => {
-          const key = normalizeProductKey(product.code);
-          if (key) nextNames.set(key, product.name);
-        });
-        setProductNameByCode(nextNames);
-        setProductCatalogByKey(normalizeProductCatalog(data));
+        const catalog = await loadProductCatalog();
+        if (cancelled) return;
+        void catalog;
       } catch {
         if (!cancelled) {
           setProductNameByCode(new Map());
@@ -503,27 +615,101 @@ export default function AcceptanceReportListView({
     return map;
   }, [filteredReports]);
 
-  const openNvlView = (report: AcceptanceReport) => {
-    const productCode = resolveReportProductCode(report.mat_hang);
-    const catalog =
-      productCatalogByKey.get(normalizeProductKey(productCode)) ||
-      productCatalogByKey.get(normalizeProductKey(report.mat_hang)) ||
-      null;
-    const qtyRaw = Number(report.so_luong);
-    const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
-    setNvlView({
-      report,
-      productCode: catalog?.code || productCode || report.mat_hang,
-      productName:
-        catalog?.name ||
-        report.ten_sp ||
-        productNameByCode.get(normalizeProductKey(productCode)) ||
-        productCode ||
-        '—',
-      productUnit: catalog?.unit || report.don_vi || '',
-      quantity,
-      items: catalog?.nplItems || []
+  const openNvlView = async (report: AcceptanceReport) => {
+    setNvlSyncMessage('');
+    const fallback = buildNvlViewState(report, productCatalogByKey, productNameByCode, {
+      fromDb: false
     });
+    setNvlView(fallback);
+    try {
+      const res = await fetch(
+        `/api/bao-cao-san-luong-nvl-dinh-muc?id_bao_cao=${encodeURIComponent(report.id)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = String(data.error || '').trim();
+        if (err) {
+          setNvlSyncMessage(
+            err.includes('chưa tồn tại') || /PGRST205|schema cache/i.test(err)
+              ? 'Bảng snapshot chưa tạo — đang hiện Thành phần Kho sản phẩm. Chạy supabase-bao-cao-san-luong-nvl-dinh-muc.sql rồi Đồng bộ.'
+              : `Không đọc snapshot DB: ${err}`
+          );
+        }
+        return;
+      }
+      const rows = Array.isArray(data.items) ? data.items : [];
+      if (rows.length === 0) {
+        setNvlSyncMessage(
+          fallback.items.length > 0
+            ? `Đã có ${fallback.items.length} NVL từ Thành phần — chưa lưu snapshot phiếu. Bấm Đồng bộ & lưu DB.`
+            : 'Phiếu chưa có snapshot và sản phẩm chưa có Thành phần NVL.'
+        );
+        return;
+      }
+      const items = dbRowsToNplItems(rows);
+      const savedAt = String(rows[0]?.updated_at || rows[0]?.created_at || '').trim();
+      setNvlView(
+        buildNvlViewState(report, productCatalogByKey, productNameByCode, {
+          items,
+          fromDb: true,
+          savedAt: savedAt || undefined
+        })
+      );
+      setNvlSyncMessage(`Đã tải ${items.length} NVL từ DB (snapshot đã lưu).`);
+    } catch {
+      setNvlSyncMessage('Không kết nối được API snapshot — đang hiện Thành phần Kho sản phẩm.');
+    }
+  };
+
+  /** Đồng bộ từ Thành phần Kho sản phẩm → lưu snapshot DB. */
+  const handleSyncNvlFromProduct = async () => {
+    if (!nvlView) return;
+    setIsSyncingNvl(true);
+    setNvlSyncMessage('');
+    try {
+      const catalog = await loadProductCatalog();
+      const names = new Map<string, string>();
+      for (const entry of catalog.values()) {
+        const key = normalizeProductKey(entry.code);
+        if (key && entry.name) names.set(key, entry.name);
+      }
+      setProductNameByCode(names);
+      const withNames = buildNvlViewState(nvlView.report, catalog, names, { fromDb: false });
+      setNvlView(withNames);
+
+      const saveRes = await fetch('/api/bao-cao-san-luong-nvl-dinh-muc', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_bao_cao: nvlView.report.id,
+          ma_sp: withNames.productCode,
+          ten_sp: withNames.productName,
+          so_luong_sp: withNames.quantity,
+          don_vi_sp: withNames.productUnit,
+          items: nplItemsToDbPayload(withNames.items, withNames.quantity)
+        })
+      });
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok) {
+        throw new Error(saveData.error || 'Không thể lưu NVL định mức vào DB.');
+      }
+      const savedItems = dbRowsToNplItems(Array.isArray(saveData.items) ? saveData.items : []);
+      setNvlView({
+        ...withNames,
+        items: savedItems.length > 0 ? savedItems : withNames.items,
+        fromDb: true,
+        savedAt: new Date().toISOString()
+      });
+      setNvlSyncMessage(
+        withNames.items.length > 0
+          ? `Đã đồng bộ và lưu ${withNames.items.length} NVL vào DB.`
+          : 'Đã đồng bộ — sản phẩm chưa có Thành phần; snapshot DB trống.'
+      );
+    } catch (err: any) {
+      setNvlSyncMessage(err.message || 'Không thể đồng bộ / lưu Thành phần vào DB.');
+    } finally {
+      setIsSyncingNvl(false);
+    }
   };
 
   const renderLineActions = (line: { id: string }) => {
@@ -533,7 +719,7 @@ export default function AcceptanceReportListView({
       <div className="inline-flex items-center justify-center gap-1">
         <button
           type="button"
-          onClick={() => openNvlView(report)}
+          onClick={() => void openNvlView(report)}
           className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-800 transition hover:bg-violet-100"
           title="Xem NVL định mức"
         >
@@ -713,7 +899,7 @@ export default function AcceptanceReportListView({
                 onClick={event => event.stopPropagation()}
               >
                 <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-violet-50 px-4 py-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">
                       NVL theo định mức
                     </p>
@@ -730,20 +916,64 @@ export default function AcceptanceReportListView({
                       {' · '}
                       {nvlView.report.ngay} · {nvlView.report.ca}
                     </p>
+                    <p className="mt-1 text-[10px] font-semibold text-violet-600/80">
+                      {nvlView.fromDb
+                        ? 'Nguồn: snapshot đã lưu DB · Đồng bộ để cập nhật từ Thành phần Kho sản phẩm'
+                        : 'Nguồn: bảng Thành phần · Kho sản phẩm (chưa lưu DB — bấm Đồng bộ để lưu)'}
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setNvlView(null)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-50"
-                    title="Đóng"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleSyncNvlFromProduct()}
+                      disabled={isSyncingNvl}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 text-[11px] font-black text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Đồng bộ từ Thành phần Kho sản phẩm và lưu vào DB"
+                    >
+                      {isSyncingNvl ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                      {isSyncingNvl ? 'Đang đồng bộ...' : 'Đồng bộ & lưu DB'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNvlView(null);
+                        setNvlSyncMessage('');
+                      }}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-50"
+                      title="Đóng"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
+                {nvlSyncMessage ? (
+                  <div
+                    className={`border-b px-4 py-2 text-[11px] font-semibold ${
+                      nvlSyncMessage.includes('Không thể')
+                        ? 'border-rose-100 bg-rose-50 text-rose-700'
+                        : 'border-emerald-100 bg-emerald-50 text-emerald-800'
+                    }`}
+                  >
+                    {nvlSyncMessage}
+                  </div>
+                ) : null}
                 <div className="min-h-0 flex-1 overflow-auto">
-                  {nvlView.items.length === 0 ? (
+                  {isSyncingNvl ? (
                     <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">
-                      Sản phẩm chưa có thành phần / định mức NVL.
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                      Đang lấy Thành phần từ Kho sản phẩm...
+                    </p>
+                  ) : nvlView.items.length === 0 ? (
+                    <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">
+                      Sản phẩm chưa có thành phần / định mức NVL trên Kho sản phẩm.
+                      <br />
+                      <span className="mt-2 inline-block text-[11px] font-bold text-violet-700">
+                        Bấm Đồng bộ sau khi cập nhật bảng Thành phần.
+                      </span>
                     </p>
                   ) : (
                     <table className="min-w-full text-left text-sm">

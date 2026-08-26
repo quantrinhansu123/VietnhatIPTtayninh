@@ -54,7 +54,7 @@ export const TAB_ROUTES: Record<AppTab, string> = {
   'production-orders': '/lenh-san-xuat',
   'production-plan-history': '/ke-hoach-san-xuat',
   settings: '/cai-dat',
-  dashboard: '/phan-tich',
+  dashboard: '/phan-tich-tu-dong',
   'dashboard-auto': '/phan-tich-tu-dong'
 };
 
@@ -72,6 +72,8 @@ PATH_TO_TAB.set('/danh-sach-phieu-can-ca', 'weighing-summary-list');
 
 export function tabFromPath(pathname: string): AppTab {
   const normalized = pathname.replace(/\/+$/, '') || '/';
+  // /phan-tich đã bỏ — chuyển sang /phan-tich-tu-dong
+  if (normalized === '/phan-tich') return 'dashboard-auto';
   return PATH_TO_TAB.get(normalized) ?? 'menu';
 }
 

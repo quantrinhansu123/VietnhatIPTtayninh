@@ -42,6 +42,7 @@
 
 | Path | Ghi chú |
 |------|---------|
+| `GET /api/cloudinary/proxy?url=` | Proxy ảnh `res.cloudinary.com/.../image/upload/` (tránh ERR_CERT_VERIFIER_CHANGED trên Chrome) |
 | `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`), không lọc ngày cân |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |

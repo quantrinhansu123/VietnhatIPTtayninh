@@ -3,26 +3,21 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X, Info, Package } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
+import { findProductByCode } from '../features/san-pham';
 import type { MachineRow } from '../features/danh-sach-may';
 import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../features/ke-hoach-san-xuat';
-import { splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
+import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
 import type { MixingReport } from './MixingReportForm';
 import type { AcceptanceReport } from './AcceptanceReportForm';
-import { getProductionShiftOptions, shiftIsoDateByDays, type ShiftSetting } from '../utils/shiftSettings';
+import { getProductionShiftOptions, shiftIsoDateByDays, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
+import { computePercentRatio, machineValueMatchesFilter } from '../utils/controlBoardShiftSummary';
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
 import BbCanTuDongSanLuongPanel from './BbCanTuDongSanLuongPanel';
-import {
-  filterCanTuDongRecordsForBoard,
-  parseCanTuDongQrProductCode,
-  resolveCanLoiKg,
-  resolveTrongLuongBiKg,
-  sumCanTuDongSanLuongTotals
-} from '../utils/canTuDongWeights';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
 import {
   buildBbLyDoStableKey,
@@ -40,7 +35,6 @@ import {
 import {
   BB_MACHINE_REPORT_TABS,
   buildBbInboundBalanceMetricDetail,
-  buildBbLoiHongMaterialLinesForShift,
   buildBbOrderCodeOptions,
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
@@ -49,13 +43,14 @@ import {
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
   sumBbDamagedGoodsWeightKg,
+  sumBbDamagedGoodsWeightKgByKind,
+  sumBbDamagedRowsLoiHongKgForHeaderByProductCodes,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
   sumBbDauCaWeightKgByKind,
   sumBbInboundReportTotals,
   sumBbProductionOrderPlasticRequiredKg,
   sumBbProductionOrderTotals,
-  sumBbSanLuongLoiHongVaRacWeightByKind,
   sumBbSanLuongTotals,
   sumBbThucDungWeightKg,
   sumBbTongChenhLech,
@@ -66,7 +61,9 @@ import {
   allocateBbNhuaHaoHutByRatioPercent,
   allocateBbKgByWeightShare,
   resolveBbMaterialExportUnitPrice,
-  sumBbAcceptanceLoiHongKgForHeaderByProductCodes,
+  mapAcceptanceNvlDinhMucRowsToNplItems,
+  buildAcceptanceNvlDinhMucPutItems,
+  isAcceptanceThanhPhamLoai,
   type BbMaterialNormFormula,
   type BbWarehouseExportLineRow,
   type BbInboundMaterialBalanceDetail,
@@ -81,7 +78,6 @@ import {
   type BbTongHopThucXuatDetailMetric,
   type BbTongHopThucXuatLineRow
 } from '../utils/controlBoardBbMachineReport';
-import { computePercentRatio } from '../utils/controlBoardShiftSummary';
 import { isWarehouseKgUnit } from '../utils/warehouseWeight';
 import type { BbProductionOrderGroup } from '../utils/controlBoardBbMachineReport';
 
@@ -94,38 +90,6 @@ type BbPrintConfirmSelection = {
 };
 
 const BB_PHAN_TICH_STORAGE_KEY = 'control-board-bb-phan-tich-v1';
-const INSULATION_FILM_KG_PER_M2 = 0.02324;
-const INSULATION_FILM_LAYERS = 2;
-
-function parsePositiveDecimal(value: string | null | undefined): number | null {
-  const number = Number(String(value || '').trim().replace(',', '.'));
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
-
-/**
- * TL màng máy cách nhiệt = tổng (khổ cuộn × chiều dài cuộn × số lớp × 0,02324 kg/m²)
- * của từng cuộn có mã sản phẩm khớp với QR cân tự động.
- */
-function computeInsulationFilmWeightKg(products: ProductRow[], records: CanTuDongRecord[]): number {
-  const filmKgByProductCode = new Map<string, number>();
-  for (const product of products) {
-    const rollWidthM = parsePositiveDecimal(product.rollWidth);
-    const rollLengthM = parsePositiveDecimal(product.rollLength);
-    if (rollWidthM === null || rollLengthM === null) continue;
-
-    // Tấm cách nhiệt gồm 2 lớp màng trên cùng một cuộn.
-    const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
-    for (const productCode of [product.code, product.newCode, product.amisCode]) {
-      const key = normalizeProductCodeKey(productCode);
-      if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
-    }
-  }
-
-  return records.reduce((total, record) => {
-    const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
-    return total + (filmKgByProductCode.get(productCode) || 0);
-  }, 0);
-}
 
 function loadBbPhanTichMap(): Record<string, string> {
   try {
@@ -398,7 +362,8 @@ export default function ControlBoardBbMachineReportTable({
   dateTo,
   shiftFilter = 'all',
   machineFilter = 'all',
-  selectedMachine = null
+  selectedMachine = null,
+  onApplyCalcScope
 }: {
   productionOrders: ProductionOrderRow[];
   products: ProductRow[];
@@ -421,6 +386,13 @@ export default function ControlBoardBbMachineReportTable({
   shiftFilter?: string;
   machineFilter?: string;
   selectedMachine?: { code?: string; name?: string } | null;
+  /** Sau Tính toán: đồng bộ bộ lọc Ngày/Ca/Máy của trang với phạm vi vừa tính (mọi tab cùng scope). */
+  onApplyCalcScope?: (scope: {
+    dateFrom: string;
+    dateTo: string;
+    shiftFilter: string;
+    machineFilter: string;
+  }) => void;
 }) {
   const machineReportLabel = useMemo(() => {
     const name = String(selectedMachine?.name || '').trim();
@@ -473,6 +445,11 @@ export default function ControlBoardBbMachineReportTable({
   const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [snapshotMessage, setSnapshotMessage] = useState('');
   const [calculatingReport, setCalculatingReport] = useState(false);
+  const [calcDialogOpen, setCalcDialogOpen] = useState(false);
+  const [calcNgay, setCalcNgay] = useState('');
+  const [calcCa, setCalcCa] = useState('');
+  const [calcMay, setCalcMay] = useState('');
+  const [calcDialogError, setCalcDialogError] = useState('');
   const [hrStaffNames, setHrStaffNames] = useState<string[]>([]);
   const [selectedMaterialNorm, setSelectedMaterialNorm] = useState<BbMaterialNormFormula | null>(null);
   const [selectedTrongLuongDinhMuc, setSelectedTrongLuongDinhMuc] = useState<BbWarehouseExportLineRow | null>(null);
@@ -632,11 +609,136 @@ export default function ControlBoardBbMachineReportTable({
     };
   }, [reportSnapshotKey]);
 
-  const calculateAndSaveReport = async () => {
+  const openCalcDialog = () => {
+    if (calculatingReport || isLoading || snapshotStatus === 'loading') return;
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+      today.getDate()
+    ).padStart(2, '0')}`;
+    setCalcNgay(String(dateFrom || dateTo || todayIso).trim());
+    setCalcCa(shiftFilter && shiftFilter !== 'all' ? String(shiftFilter).trim() : '');
+    setCalcMay(machineFilter && machineFilter !== 'all' ? String(machineFilter).trim() : '');
+    setCalcDialogError('');
+    setCalcDialogOpen(true);
+  };
+
+  const calculateAndSaveReport = async (scope: {
+    dateFrom: string;
+    dateTo: string;
+    shiftFilter: string;
+    machineFilter: string;
+    selectedMachine: { code?: string; name?: string } | null;
+  }) => {
     if (calculatingReport || isLoading) return;
     setCalculatingReport(true);
     setSnapshotMessage('');
     try {
+      const acceptanceNvlDinhMucByReportId = new Map<
+        string,
+        ReturnType<typeof mapAcceptanceNvlDinhMucRowsToNplItems>
+      >();
+
+      const scopedAcceptanceReports = acceptanceReports.filter(report => {
+        if (!isAcceptanceThanhPhamLoai(report.loai_vat_tu)) return false;
+        const ngay = parseProductionOrderFilterDate(report.ngay) || String(report.ngay || '').trim();
+        if (ngay < scope.dateFrom || ngay > scope.dateTo) return false;
+        if (!shiftNamesMatch(report.ca, scope.shiftFilter)) return false;
+        return machineValueMatchesFilter(
+          scope.machineFilter,
+          scope.selectedMachine,
+          report.ma_may,
+          report.ten_may
+        );
+      });
+
+      const reportIds = [
+        ...new Set(scopedAcceptanceReports.map(report => String(report.id || '').trim()).filter(Boolean))
+      ];
+
+      let nvlTableReady = false;
+      if (reportIds.length > 0) {
+        const nvlRes = await fetch(
+          `/api/bao-cao-san-luong-nvl-dinh-muc?ids=${encodeURIComponent(reportIds.join(','))}`
+        );
+        const nvlData = await nvlRes.json().catch(() => ({}));
+        if (nvlRes.ok) {
+          nvlTableReady = true;
+          const byId =
+            nvlData.by_id && typeof nvlData.by_id === 'object'
+              ? (nvlData.by_id as Record<string, unknown[]>)
+              : null;
+          if (byId) {
+            for (const [id, rows] of Object.entries(byId)) {
+              const items = mapAcceptanceNvlDinhMucRowsToNplItems(Array.isArray(rows) ? rows : []);
+              if (items.length > 0) acceptanceNvlDinhMucByReportId.set(id, items);
+            }
+          } else if (reportIds.length === 1 && Array.isArray(nvlData.items)) {
+            const items = mapAcceptanceNvlDinhMucRowsToNplItems(nvlData.items);
+            if (items.length > 0) acceptanceNvlDinhMucByReportId.set(reportIds[0], items);
+          }
+        }
+      }
+
+      // Phiếu chưa có snapshot: lấy Thành phần SP trên phiếu → gắn vào bản tính;
+      // nếu bảng snapshot đã có thì ghi DB luôn.
+      let syncedFromPhieu = 0;
+      for (const report of scopedAcceptanceReports) {
+        const id = String(report.id || '').trim();
+        if (!id || acceptanceNvlDinhMucByReportId.has(id)) continue;
+
+        const matHang = String(report.mat_hang || '').trim();
+        const plusIdx = matHang.indexOf('+');
+        const productCodeRaw = (plusIdx > 0 ? matHang.slice(0, plusIdx) : matHang).trim();
+        const catalog =
+          findProductByCode(products, productCodeRaw) ||
+          products.find(
+            product =>
+              normalizeProductCodeKey(product.name) === normalizeProductCodeKey(productCodeRaw) ||
+              normalizeProductCodeKey(product.name).includes(normalizeProductCodeKey(productCodeRaw))
+          );
+        const nplItems = catalog?.nplItems || [];
+        const qtyRaw = Number(report.so_luong);
+        const productQty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
+        const putItems = buildAcceptanceNvlDinhMucPutItems(nplItems, productQty);
+        if (putItems.length === 0) continue;
+
+        const fromProduct = mapAcceptanceNvlDinhMucRowsToNplItems(putItems);
+        acceptanceNvlDinhMucByReportId.set(id, fromProduct);
+        syncedFromPhieu += fromProduct.length;
+
+        if (nvlTableReady) {
+          const saveRes = await fetch('/api/bao-cao-san-luong-nvl-dinh-muc', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id_bao_cao: id,
+              ma_sp: catalog?.code || productCodeRaw,
+              ten_sp: catalog?.name || String(report.ten_sp || '').trim() || productCodeRaw,
+              so_luong_sp: productQty,
+              don_vi_sp: String(report.don_vi || catalog?.unit || '').trim(),
+              items: putItems
+            })
+          });
+          const saveData = await saveRes.json().catch(() => ({}));
+          if (saveRes.ok) {
+            const saved = mapAcceptanceNvlDinhMucRowsToNplItems(
+              Array.isArray(saveData.items) ? saveData.items : []
+            );
+            if (saved.length > 0) acceptanceNvlDinhMucByReportId.set(id, saved);
+          }
+        }
+      }
+
+      const snapshotKey = buildBbBaoCaoTinhToanStableKey({
+        dateFrom: scope.dateFrom,
+        dateTo: scope.dateTo,
+        shiftFilter: scope.shiftFilter,
+        machineFilter: scope.machineFilter,
+        sanLuongSource,
+        includeAllMachines,
+        orderCodes: orderCodeFilter
+      });
+
       const payload = buildBbMachineReportSnapshot({
         productionOrders: scopedProductionOrders,
         products,
@@ -647,22 +749,23 @@ export default function ControlBoardBbMachineReportTable({
         machineNvlReports,
         mixingReports,
         acceptanceReports,
+        acceptanceNvlDinhMucByReportId,
         canTuDongRecords,
         shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine,
+        dateFrom: scope.dateFrom,
+        dateTo: scope.dateTo,
+        shiftFilter: scope.shiftFilter,
+        machineFilter: scope.machineFilter,
+        selectedMachine: scope.selectedMachine,
         includeAllMachines,
         sanLuongSource
       });
       const body = {
-        khoa_on_dinh: reportSnapshotKey,
-        ngay_tu: dateFrom || '',
-        ngay_den: dateTo || '',
-        ca: shiftFilter || 'all',
-        may: machineFilter || 'all',
+        khoa_on_dinh: snapshotKey,
+        ngay_tu: scope.dateFrom || '',
+        ngay_den: scope.dateTo || '',
+        ca: scope.shiftFilter || 'all',
+        may: scope.machineFilter || 'all',
         nguon_san_luong: sanLuongSource || 'acceptance',
         include_all_machines: Boolean(includeAllMachines),
         ma_lenh_filter: orderCodeFilter,
@@ -683,13 +786,62 @@ export default function ControlBoardBbMachineReportTable({
       setReportSnapshot(isBbBaoCaoTinhToanPayload(savedPayload) ? savedPayload : payload);
       setSnapshotCalculatedAt(String(data?.item?.calculated_at || new Date().toISOString()));
       setSnapshotStatus('ready');
-      setSnapshotMessage('Đã tính toán và lưu DB.');
+      const nvlCount = [...acceptanceNvlDinhMucByReportId.values()].reduce(
+        (sum, items) => sum + items.length,
+        0
+      );
+      setSnapshotMessage(
+        `Đã đồng bộ mọi tab · ${scope.dateFrom} · ${scope.shiftFilter} · ${scope.machineFilter}` +
+          (nvlCount > 0
+            ? ` · ${nvlCount} NVL` +
+              (syncedFromPhieu > 0 ? ' (từ Thành phần SP trên phiếu)' : ' (snapshot DB)')
+            : ' · phiếu chưa có Thành phần NVL') +
+          (nvlTableReady
+            ? ''
+            : ' · chưa tạo bảng bao_cao_san_luong_nvl_dinh_muc (NVL đã nằm trong bản tính)')
+      );
+      onApplyCalcScope?.({
+        dateFrom: scope.dateFrom,
+        dateTo: scope.dateTo,
+        shiftFilter: scope.shiftFilter,
+        machineFilter: scope.machineFilter
+      });
     } catch (error) {
       setSnapshotStatus('error');
       setSnapshotMessage(error instanceof Error ? error.message : 'Lỗi tính toán báo cáo.');
     } finally {
       setCalculatingReport(false);
     }
+  };
+
+  const confirmCalcDialog = () => {
+    const ngay = String(calcNgay || '').trim();
+    const ca = String(calcCa || '').trim();
+    const may = String(calcMay || '').trim();
+    if (!ngay) {
+      setCalcDialogError('Vui lòng chọn Ngày.');
+      return;
+    }
+    if (!ca || ca === 'all') {
+      setCalcDialogError('Vui lòng chọn Ca.');
+      return;
+    }
+    if (!may || may === 'all') {
+      setCalcDialogError('Vui lòng chọn Máy.');
+      return;
+    }
+    const machineRow = machines.find(machine => machine.code === may) || null;
+    setCalcDialogOpen(false);
+    setCalcDialogError('');
+    void calculateAndSaveReport({
+      dateFrom: ngay,
+      dateTo: ngay,
+      shiftFilter: ca,
+      machineFilter: may,
+      selectedMachine: machineRow
+        ? { code: machineRow.code, name: machineRow.name }
+        : { code: may, name: may }
+    });
   };
 
   const emptySnapshot = useMemo(() => emptyBbBaoCaoTinhToanPayload(), []);
@@ -802,24 +954,14 @@ export default function ControlBoardBbMachineReportTable({
   }, [exportRows]);
   const damagedGroupsWithMixing = useMemo(() => {
     return damagedGroups.map(group => {
-      const mixingLines = buildBbLoiHongMaterialLinesForShift({
-        mixingReports,
-        machines,
-        productionOrders: scopedProductionOrders,
-        products,
-        ngay: group.ngay,
-        shift: group.shift,
-        machine: group.machine,
-        orderCode: group.orderCode,
-        shiftSettings
-      });
+      const mixingLines = group.mixingLines || [];
       return {
         ...group,
         mixingLines,
-        mixingLineCount: mixingLines.length
+        mixingLineCount: group.mixingLineCount ?? mixingLines.length
       };
     });
-  }, [damagedGroups, mixingReports, machines, scopedProductionOrders, products, shiftSettings]);
+  }, [damagedGroups]);
   // Tab thực xuất dùng: dòng NVL lấy từ báo cáo trộn (đã gộp tỉ lệ).
   const thucDungDetailView = useMemo<BbThucDungDetailView | null>(() => {
     if (tongHopDetail) {
@@ -936,27 +1078,11 @@ export default function ControlBoardBbMachineReportTable({
     [inboundNormGroups]
   );
   const damagedTotalKg = useMemo(() => sumBbDamagedGoodsWeightKg(damagedRows), [damagedRows]);
-  /** Ô «Báo cáo lỗi hỏng»: SP lỗi → nhựa, SP rác → vật tư khác (từ Báo cáo sản lượng). */
+  /** Ô «Báo cáo lỗi hỏng»: lấy từ snapshot đã Tính toán (SP lỗi → nhựa, SP rác → vật tư khác). */
   const damagedWeightByKind = useMemo(
     () =>
-      sumBbSanLuongLoiHongVaRacWeightByKind({
-        acceptanceReports,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine,
-        includeAllMachines
-      }),
-    [
-      acceptanceReports,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
-    ]
+      activeSnapshot.summary.damagedWeightByKind ?? sumBbDamagedGoodsWeightKgByKind(damagedRows),
+    [activeSnapshot.summary.damagedWeightByKind, damagedRows]
   );
   const cuoiCaTotalKg = useMemo(() => sumBbCuoiCaWeightKg(cuoiCaRows), [cuoiCaRows]);
   const cuoiCaWeightByKind = useMemo(() => sumBbCuoiCaWeightKgByKind(cuoiCaRows), [cuoiCaRows]);
@@ -964,75 +1090,25 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
   /**
-   * `/phan-tich-tu-dong`: tổng cột «Trọng lượng nhựa» trên `/can-tu-dong`.
-   * Lọc cột Ngày [Từ ngày, Đến ngày + 1] khi chọn khoảng ngày.
-   * Ngày = Tất cả: không cắt Ngày, kể cả dòng trống / không chênh lệch.
+   * Tab «Dữ liệu cân thực tế» vẫn liệt kê phiếu `can_tu_dong` theo bộ lọc.
+   * KPI header không tự cộng từ phiếu — chỉ đọc snapshot.
    */
   const canTuDongDateTo = useMemo(() => {
     if (sanLuongSource !== 'can-tu-dong' || !dateTo) return dateTo;
     return shiftIsoDateByDays(dateTo, 1) || dateTo;
   }, [sanLuongSource, dateTo]);
-  const scopedCanTuDongRecords = useMemo(
-    () =>
-      sanLuongSource === 'can-tu-dong'
-        ? filterCanTuDongRecordsForBoard(canTuDongRecords, {
-            shiftFilter,
-            dateFrom,
-            dateTo: canTuDongDateTo,
-            machineFilter,
-            selectedMachine
-          })
-        : [],
-    [
-      sanLuongSource,
-      canTuDongRecords,
-      shiftFilter,
-      dateFrom,
-      canTuDongDateTo,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const canTuDongSanLuongTotals = useMemo(
-    () => sumCanTuDongSanLuongTotals(scopedCanTuDongRecords),
-    [scopedCanTuDongRecords]
-  );
   const displaySanLuongTotals =
-    reportSnapshot?.summary?.displaySanLuongTotals ??
-    (sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals);
+    activeSnapshot.summary.displaySanLuongTotals ??
+    (sanLuongSource === 'can-tu-dong'
+      ? activeSnapshot.summary.canTuDongSanLuongTotals
+      : sanLuongTotals);
   /** Chỉ báo cáo máy cách nhiệt tách màng khỏi trọng lượng nhựa. */
   const isInsulationMachine = /cách\s+nhiệt/i.test(String(selectedMachine?.name || ''));
-  const insulationFilmWeightKg = useMemo(() => {
-    if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return 0;
-    return computeInsulationFilmWeightKg(products, scopedCanTuDongRecords);
-  }, [isInsulationMachine, products, sanLuongSource, scopedCanTuDongRecords]);
-  const insulationPlasticNorm = useMemo(() => {
-    if (!isInsulationMachine || sanLuongSource !== 'can-tu-dong') return { weightKg: 0, counted: 0 };
-
-    const standardKgByProductCode = new Map<string, number>();
-    for (const product of products) {
-      const standardKg = parsePositiveDecimal(product.totalWeight);
-      if (standardKg === null) continue;
-      for (const productCode of [product.code, product.newCode, product.amisCode]) {
-        const key = normalizeProductCodeKey(productCode);
-        if (key && key !== '-') standardKgByProductCode.set(key, standardKg);
-      }
-    }
-
-    return scopedCanTuDongRecords.reduce(
-      (total, record) => {
-        const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
-        const standardKg = standardKgByProductCode.get(productCode);
-        const coreKg = resolveCanLoiKg(record);
-        if (standardKg === undefined || coreKg === null) return total;
-        return {
-          weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record),
-          counted: total.counted + 1
-        };
-      },
-      { weightKg: 0, counted: 0 }
-    );
-  }, [isInsulationMachine, products, sanLuongSource, scopedCanTuDongRecords]);
+  const insulationFilmWeightKg = activeSnapshot.summary.insulationFilmWeightKg ?? 0;
+  const insulationPlasticNorm = activeSnapshot.summary.insulationPlasticNorm ?? {
+    weightKg: 0,
+    counted: 0
+  };
   const displayedPlasticWeightKg = isInsulationMachine
     ? displaySanLuongTotals.weightKg - insulationFilmWeightKg
     : displaySanLuongTotals.weightKg;
@@ -1492,10 +1568,10 @@ export default function ControlBoardBbMachineReportTable({
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => void calculateAndSaveReport()}
+              onClick={openCalcDialog}
               disabled={isLoading || calculatingReport || snapshotStatus === 'loading'}
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-400 px-3.5 text-xs font-black text-zinc-950 shadow-xs transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
-              title="Tính toán từ dữ liệu nguồn và lưu vào DB — lần sau vào trang chỉ đọc bản đã lưu"
+              title="Chọn Ngày · Ca · Máy — tính và đồng bộ tất cả tab, lưu DB"
             >
               {calculatingReport ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2848,7 +2924,7 @@ export default function ControlBoardBbMachineReportTable({
                             type="button"
                             onClick={() => toggleGroup(activeTab, group.groupKey)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-violet-300 bg-white text-violet-800 shadow-sm transition hover:bg-violet-50"
-                            title={expanded ? 'Đóng các dòng NVL' : 'Mở các dòng NVL'}
+                            title={expanded ? 'Đóng các sản phẩm' : 'Mở từng sản phẩm'}
                             aria-expanded={expanded}
                           >
                             <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? '' : '-rotate-90'}`} />
@@ -2880,75 +2956,177 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                       </tr>
                       {expanded ? (
-                        <>
-                          <tr className="border-y border-violet-100 bg-violet-100/50 text-xs font-black uppercase tracking-wider text-violet-900">
+                        (group.productGroups || []).length === 0 &&
+                        (group.nvlTotals || []).length === 0 ? (
+                          <tr className="bg-white">
                             <td />
-                            <td className="px-4 py-2 font-black">Mã NVL</td>
-                            <td colSpan={3} className="px-4 py-2 font-black">
-                              Tên nguyên vật liệu
-                            </td>
-                            <td className="px-4 py-2 text-right font-black">ĐVT</td>
-                            <td
-                              className="px-4 py-2 text-right font-black"
-                              title="ĐVT ≠ %: định mức/SP × tổng SL sản lượng. ĐVT %: tỉ lệ trộn thực tế (%)"
-                            >
-                              SL
-                            </td>
-                            <td className="px-4 py-2 text-right font-mono text-violet-700/70">—</td>
-                            <td className="px-4 py-2 text-right font-black">Định mức (kg)</td>
-                            <td
-                              className="px-4 py-2 text-right font-black"
-                              title="ĐVT kg: Tổng nhựa SL × tỉ lệ trộn thực tế. ĐVT khác: định mức × SL"
-                            >
-                              Trọng lượng thực tế (kg)
+                            <td colSpan={9} className="px-4 py-2 text-sm font-semibold text-zinc-400">
+                              Chưa có NVL snapshot trên phiếu. Vào danh sách phiếu → Xem → Đồng bộ, rồi bấm
+                              «Tính toán» lại.
                             </td>
                           </tr>
-                          {(group.nvlTotals || []).length === 0 ? (
-                            <tr className="bg-white">
-                              <td />
-                              <td colSpan={9} className="px-4 py-2 text-sm font-semibold text-zinc-400">
-                                Chưa có nguyên vật liệu trong công thức sản phẩm.
-                              </td>
-                            </tr>
-                          ) : (
-                            (group.nvlTotals || []).map(row => {
-                              return (
-                                <tr
-                                  key={row.key}
-                                  className="bg-white font-semibold hover:bg-violet-50/50 border-b border-slate-50"
-                                >
-                                  <td className="px-3 py-2" />
-                                  <td className="px-4 py-2 font-mono font-bold text-zinc-800">
-                                    {row.itemCode || '—'}
+                        ) : (group.productGroups || []).length > 0 ? (
+                          (group.productGroups || []).map(productGroup => {
+                            const productGroupKey = `${group.groupKey}|product:${productGroup.key}`;
+                            const productExpanded = isGroupExpanded(activeTab, productGroupKey);
+                            return (
+                              <React.Fragment key={productGroupKey}>
+                                <tr className="border-y border-sky-200 bg-sky-50 font-bold text-sky-950 hover:bg-sky-100/80">
+                                  <td className="px-3 py-1.5 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroup(activeTab, productGroupKey)}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-sky-300 bg-white text-sky-800 shadow-sm transition hover:bg-sky-50"
+                                      title={
+                                        productExpanded
+                                          ? 'Đóng NVL của sản phẩm'
+                                          : 'Mở NVL của sản phẩm'
+                                      }
+                                      aria-expanded={productExpanded}
+                                    >
+                                      <ChevronDown
+                                        className={`h-4 w-4 transition-transform ${productExpanded ? '' : '-rotate-90'}`}
+                                      />
+                                    </button>
                                   </td>
-                                  <td colSpan={3} className="px-4 py-2 text-zinc-700">
-                                    {row.itemName || '—'}
+                                  <td colSpan={4} className="px-4 py-2">
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-600">
+                                        Sản phẩm
+                                      </span>
+                                      {productGroup.productCode ? (
+                                        <span className="font-mono font-black text-sky-900">
+                                          {productGroup.productCode}
+                                        </span>
+                                      ) : null}
+                                      <span className="font-black text-zinc-900">
+                                        {productGroup.productName || '—'}
+                                      </span>
+                                      {productGroup.unit ? (
+                                        <span className="text-[11px] font-bold text-zinc-500">
+                                          ({productGroup.unit})
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </td>
-                                  <td className="px-4 py-2 text-right font-mono text-zinc-600">
-                                    {row.unit || '—'}
+                                  <td className="px-4 py-2 text-right font-mono text-sky-800">
+                                    {productGroup.lineCount}
                                   </td>
-                                  <td className="px-4 py-2 text-right font-mono font-bold text-violet-800">
-                                    {row.quantity == null || !(row.quantity > 0)
-                                      ? '—'
-                                      : row.amountType === 'percent' ||
-                                          String(row.unit || '')
-                                            .trim()
-                                            .toLowerCase() === '%'
-                                        ? formatPercent(row.quantity, 2)
-                                        : formatNumber(row.quantity, 2)}
+                                  <td className="px-4 py-2 text-right font-mono font-black text-violet-800">
+                                    {formatNumber(productGroup.quantity, 2)}
                                   </td>
-                                  <td className="px-4 py-2 text-right font-mono text-zinc-400">—</td>
+                                  <td className="px-4 py-2 text-right font-mono font-bold text-orange-800">
+                                    {formatPercent(productGroup.productSharePercent, 2)}
+                                  </td>
                                   <td className="px-4 py-2 text-right font-mono font-black text-emerald-700">
-                                    {formatKg(row.normWeightKg, 2)}
+                                    {formatKg(productGroup.totalNormWeightKg, 2)}
                                   </td>
                                   <td className="px-4 py-2 text-right font-mono font-black text-amber-800">
-                                    {formatKg(row.actualWeightKg, 2)}
+                                    {formatKg(productGroup.totalActualWeightKg, 2)}
                                   </td>
                                 </tr>
-                              );
-                            })
-                          )}
-                        </>
+                                {productExpanded ? (
+                                  <>
+                                    <tr className="border-y border-violet-100 bg-violet-100/50 text-xs font-black uppercase tracking-wider text-violet-900">
+                                      <td />
+                                      <td className="px-4 py-2 font-black">Mã NVL</td>
+                                      <td colSpan={3} className="px-4 py-2 font-black">
+                                        Tên nguyên vật liệu
+                                      </td>
+                                      <td className="px-4 py-2 text-right font-black">ĐVT</td>
+                                      <td className="px-4 py-2 text-right font-black">SL</td>
+                                      <td className="px-4 py-2 text-right font-mono text-violet-700/70">
+                                        —
+                                      </td>
+                                      <td className="px-4 py-2 text-right font-black">Định mức (kg)</td>
+                                      <td className="px-4 py-2 text-right font-black">
+                                        Trọng lượng thực tế (kg)
+                                      </td>
+                                    </tr>
+                                    {productGroup.lines.length === 0 ? (
+                                      <tr className="bg-white">
+                                        <td />
+                                        <td colSpan={9} className="px-4 py-2 text-sm font-semibold text-zinc-400">
+                                          Sản phẩm này chưa có NVL snapshot trên phiếu.
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      productGroup.lines.map(row => (
+                                        <tr
+                                          key={row.key}
+                                          className="bg-white font-semibold hover:bg-violet-50/50 border-b border-slate-50"
+                                        >
+                                          <td className="px-3 py-2" />
+                                          <td className="px-4 py-2 font-mono font-bold text-zinc-800">
+                                            {row.itemCode || '—'}
+                                          </td>
+                                          <td colSpan={3} className="px-4 py-2 text-zinc-700">
+                                            {row.itemName || '—'}
+                                          </td>
+                                          <td className="px-4 py-2 text-right font-mono text-zinc-600">
+                                            {row.unit || '—'}
+                                          </td>
+                                          <td className="px-4 py-2 text-right font-mono font-bold text-violet-800">
+                                            {row.quantity == null || !(row.quantity > 0)
+                                              ? '—'
+                                              : row.amountType === 'percent' ||
+                                                  String(row.unit || '')
+                                                    .trim()
+                                                    .toLowerCase() === '%'
+                                                ? formatPercent(row.quantity, 2)
+                                                : formatNumber(row.quantity, 2)}
+                                          </td>
+                                          <td className="px-4 py-2 text-right font-mono text-zinc-400">—</td>
+                                          <td className="px-4 py-2 text-right font-mono font-black text-emerald-700">
+                                            {formatKg(row.normWeightKg, 2)}
+                                          </td>
+                                          <td className="px-4 py-2 text-right font-mono font-black text-amber-800">
+                                            {formatKg(row.actualWeightKg, 2)}
+                                          </td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </>
+                                ) : null}
+                              </React.Fragment>
+                            );
+                          })
+                        ) : (
+                          (group.nvlTotals || []).map(row => (
+                            <tr
+                              key={row.key}
+                              className="bg-white font-semibold hover:bg-violet-50/50 border-b border-slate-50"
+                            >
+                              <td className="px-3 py-2" />
+                              <td className="px-4 py-2 font-mono font-bold text-zinc-800">
+                                {row.itemCode || '—'}
+                              </td>
+                              <td colSpan={3} className="px-4 py-2 text-zinc-700">
+                                {row.itemName || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono text-zinc-600">
+                                {row.unit || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono font-bold text-violet-800">
+                                {row.quantity == null || !(row.quantity > 0)
+                                  ? '—'
+                                  : row.amountType === 'percent' ||
+                                      String(row.unit || '')
+                                        .trim()
+                                        .toLowerCase() === '%'
+                                    ? formatPercent(row.quantity, 2)
+                                    : formatNumber(row.quantity, 2)}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono text-zinc-400">—</td>
+                              <td className="px-4 py-2 text-right font-mono font-black text-emerald-700">
+                                {formatKg(row.normWeightKg, 2)}
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono font-black text-amber-800">
+                                {formatKg(row.actualWeightKg, 2)}
+                              </td>
+                            </tr>
+                          ))
+                        )
                       ) : null}
                     </React.Fragment>
                   );
@@ -4559,29 +4737,27 @@ export default function ControlBoardBbMachineReportTable({
                     const sanLuongProductKeys = (sanLuongGroup?.productGroups || [])
                       .map(pg => normalizeProductCodeKey(pg.productCode))
                       .filter(Boolean);
-                    const hangLoiMixingTotalKg = sumBbAcceptanceLoiHongKgForHeaderByProductCodes({
-                      acceptanceReports,
+                    const hangLoiMixingTotalKg = sumBbDamagedRowsLoiHongKgForHeaderByProductCodes({
+                      damagedRows,
                       header: {
                         ngay: group.ngay,
                         shift: group.shift,
-                        machine: group.machine
+                        machine: group.machine,
+                        orderCode: group.orderCode
                       },
                       productCodeKeys: sanLuongProductKeys,
-                      kind: 'sp_loi',
-                      shiftSettings,
-                      includeAllMachines
+                      kind: 'sp_loi'
                     });
-                    const hangLoiOtherTotalKg = sumBbAcceptanceLoiHongKgForHeaderByProductCodes({
-                      acceptanceReports,
+                    const hangLoiOtherTotalKg = sumBbDamagedRowsLoiHongKgForHeaderByProductCodes({
+                      damagedRows,
                       header: {
                         ngay: group.ngay,
                         shift: group.shift,
-                        machine: group.machine
+                        machine: group.machine,
+                        orderCode: group.orderCode
                       },
                       productCodeKeys: sanLuongProductKeys,
-                      kind: 'sp_rac',
-                      shiftSettings,
-                      includeAllMachines
+                      kind: 'sp_rac'
                     });
                     const hangLoiByLine = allocateBbNhuaHaoHutByRatioPercent(
                       hangLoiMixingTotalKg,
@@ -5003,6 +5179,128 @@ export default function ControlBoardBbMachineReportTable({
       </div>
 
     </section>
+    {calcDialogOpen
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[10060] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Chọn Ngày Ca Máy để tính toán"
+            onMouseDown={event => {
+              if (event.target === event.currentTarget && !calculatingReport) setCalcDialogOpen(false);
+            }}
+          >
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-amber-500 to-amber-400 px-5 py-4 text-zinc-950">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-950/70">
+                    Tính toán báo cáo
+                  </p>
+                  <h4 className="mt-1 text-base font-black">Chọn Ngày · Ca · Máy</h4>
+                  <p className="mt-1 text-xs font-semibold text-amber-950/80">
+                    Đồng bộ tất cả tab (lệnh SX, xuất kho, tồn đầu, cân, sản lượng, lỗi hỏng…) theo đúng phạm
+                    vi này rồi lưu DB.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCalcDialogOpen(false)}
+                  disabled={calculatingReport}
+                  className="rounded-lg border border-zinc-900/15 bg-white/40 px-3 py-1.5 text-xs font-black hover:bg-white/70 disabled:opacity-50"
+                >
+                  Đóng
+                </button>
+              </div>
+
+              <div className="space-y-3 p-5">
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
+                  <input
+                    type="date"
+                    value={calcNgay}
+                    onChange={event => {
+                      setCalcNgay(event.target.value);
+                      setCalcDialogError('');
+                    }}
+                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none ring-amber-300 focus:ring-2"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
+                  <select
+                    value={calcCa}
+                    onChange={event => {
+                      setCalcCa(event.target.value);
+                      setCalcDialogError('');
+                    }}
+                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none ring-amber-300 focus:ring-2"
+                  >
+                    <option value="">— Chọn ca —</option>
+                    {productionShiftOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
+                  <select
+                    value={calcMay}
+                    onChange={event => {
+                      setCalcMay(event.target.value);
+                      setCalcDialogError('');
+                    }}
+                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none ring-amber-300 focus:ring-2"
+                  >
+                    <option value="">— Chọn máy —</option>
+                    {machines.map(machine => (
+                      <option key={machine.id || machine.code} value={machine.code}>
+                        {machine.name && machine.name !== machine.code
+                          ? `${machine.code} · ${machine.name}`
+                          : machine.code || machine.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {calcDialogError ? (
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+                    {calcDialogError}
+                  </p>
+                ) : null}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setCalcDialogOpen(false)}
+                    disabled={calculatingReport}
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmCalcDialog}
+                    disabled={calculatingReport}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-400 px-4 text-xs font-black text-zinc-950 hover:bg-amber-300 disabled:opacity-50"
+                  >
+                    {calculatingReport ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Calculator className="h-4 w-4" />
+                    )}
+                    Tính toán
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null}
     {selectedExportSummary ? (
       <div
         className="fixed inset-0 z-[10050] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"

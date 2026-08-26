@@ -107,6 +107,8 @@ const SUPABASE_MIXING_NORM_TABLE =
 const SUPABASE_ACTUAL_MIXING_SHEET_TABLE =
   process.env.SUPABASE_ACTUAL_MIXING_SHEET_TABLE || 'phieu_tron_thuc_te';
 const SUPABASE_ACCEPTANCE_REPORTS_TABLE = process.env.SUPABASE_ACCEPTANCE_REPORTS_TABLE || 'bao_cao_nghiem_thu';
+const SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE =
+  process.env.SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE || 'bao_cao_san_luong_nvl_dinh_muc';
 const SUPABASE_MACHINE_NVL_REPORTS_TABLE =
   process.env.SUPABASE_MACHINE_NVL_REPORTS_TABLE || 'bao_cao_may_nvl_ton';
 const SUPABASE_MACHINE_DOWNTIME_TABLE =
@@ -212,6 +214,7 @@ if (useSupabase) {
     mixingReports: SUPABASE_MIXING_REPORTS_TABLE,
     mixingNormMaterials: SUPABASE_MIXING_NORM_TABLE,
     acceptanceReports: SUPABASE_ACCEPTANCE_REPORTS_TABLE,
+    acceptanceNvlDinhMuc: SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE,
     machineNvlReports: SUPABASE_MACHINE_NVL_REPORTS_TABLE,
     machineDowntime: SUPABASE_MACHINE_DOWNTIME_TABLE,
     key: usingServiceKey ? 'service_role' : 'anon/public'
@@ -2470,6 +2473,24 @@ async function runOnSupabaseTableWithFallback<T>(
   return { data: null, error: lastMissing, dbLabel: null };
 }
 
+function isJwtClockSkewError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || '');
+  const code = String(error?.code || '');
+  return (
+    code === 'PGRST303' ||
+    /JWT issued at future/i.test(message) ||
+    /JWTExpired|token is expired|exp claim/i.test(message)
+  );
+}
+
+function formatSupabaseAuthClockHint(error: { code?: string; message?: string }) {
+  if (!isJwtClockSkewError(error)) return '';
+  return (
+    ' Đồng hồ máy tính lệch so với server (JWT). Vào Windows: Cài đặt → Thời gian & ngôn ngữ → bật «Đặt thời gian tự động»,' +
+    ' bấm «Đồng bộ ngay», rồi khởi động lại npm run dev.'
+  );
+}
+
 function respondSupabaseReadError(
   res: express.Response,
   error: { code?: string; message?: string },
@@ -2485,7 +2506,10 @@ function respondSupabaseReadError(
     });
   }
   console.error(`Supabase ${table} error:`, error);
-  return res.status(500).json({ error: `Không thể tải từ ${table}. ${error.message}` });
+  const clockHint = formatSupabaseAuthClockHint(error);
+  return res.status(500).json({
+    error: `Không thể tải từ ${table}. ${error.message || ''}${clockHint}`.trim()
+  });
 }
 
 type ProductNplPhanTramItem = {
@@ -14828,6 +14852,51 @@ export function createApp() {
     }
   });
 
+  app.get('/api/cloudinary/proxy', async (req, res) => {
+    const raw = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      return res.status(400).json({ error: 'URL ảnh không hợp lệ.' });
+    }
+    if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== 'res.cloudinary.com') {
+      return res.status(400).json({ error: 'Chỉ cho phép ảnh res.cloudinary.com.' });
+    }
+    if (parsed.username || parsed.password || !parsed.pathname.includes('/image/upload/')) {
+      return res.status(400).json({ error: 'URL Cloudinary không được phép.' });
+    }
+
+    try {
+      const upstream = await fetch(parsed.toString(), {
+        redirect: 'manual',
+        headers: { Accept: 'image/*,*/*;q=0.8' }
+      });
+      if (upstream.status >= 300 && upstream.status < 400) {
+        return res.status(502).json({ error: 'Cloudinary chuyển hướng không được phép.' });
+      }
+      if (!upstream.ok) {
+        return res.status(upstream.status === 404 ? 404 : 502).json({
+          error: 'Không tải được ảnh Cloudinary.'
+        });
+      }
+      const contentType = String(upstream.headers.get('content-type') || '').split(';')[0].trim();
+      if (!contentType.startsWith('image/')) {
+        return res.status(502).json({ error: 'Phản hồi Cloudinary không phải ảnh.' });
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      if (buf.length > 8 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Ảnh quá lớn.' });
+      }
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(buf);
+    } catch (err: any) {
+      console.error('Cloudinary proxy error:', err);
+      return res.status(502).json({ error: err.message || 'Lỗi tải ảnh Cloudinary.' });
+    }
+  });
+
   app.get('/api/bao-cao-nghiem-thu', async (req, res) => {
     if (!supabase) {
       return res.json({ reports: [], total: 0, source: 'local' });
@@ -15021,6 +15090,167 @@ export function createApp() {
       return res.json({ success: true, deleted });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa nhiều báo cáo sản lượng.' });
+    }
+  });
+
+  function acceptanceNvlDinhMucWriteError(error: { code?: string; message?: string }) {
+    if (isMissingTableError(error)) {
+      return `Bảng ${SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-san-luong-nvl-dinh-muc.sql.`;
+    }
+    if (isMissingColumnError(error)) {
+      return `Bảng ${SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-san-luong-nvl-dinh-muc.sql.`;
+    }
+    return error.message || 'Lỗi khi ghi NVL định mức báo cáo sản lượng.';
+  }
+
+  function parseAcceptanceNvlDinhMucItem(raw: unknown, index: number) {
+    if (!raw || typeof raw !== 'object') return null;
+    const row = raw as Record<string, unknown>;
+    const ma_nvl = String(row.ma_nvl ?? row.materialCode ?? row.code ?? '').trim();
+    const ten_nvl = String(row.ten_nvl ?? row.materialName ?? row.name ?? '').trim();
+    if (!ma_nvl && !ten_nvl) return null;
+    const loaiRaw = String(row.loai_dinh_muc ?? row.amountType ?? 'quantity')
+      .trim()
+      .toLowerCase();
+    const loai_dinh_muc = loaiRaw === 'percent' || loaiRaw === 'phan_tram' || loaiRaw === '%' ? 'percent' : 'quantity';
+    const dinh_muc = parseAcceptanceNumber(row.dinh_muc ?? row.rate ?? row.percent ?? row.quantity);
+    const so_luong_theo_sl = parseAcceptanceNumber(
+      row.so_luong_theo_sl ?? row.quantityBySl ?? row.theo_sl
+    );
+    return {
+      stt: Number.isFinite(Number(row.stt)) ? Number(row.stt) : index,
+      ma_nvl,
+      ten_nvl: ten_nvl || ma_nvl,
+      don_vi: String(row.don_vi ?? row.unit ?? (loai_dinh_muc === 'percent' ? '%' : '')).trim(),
+      loai_dinh_muc,
+      dinh_muc,
+      so_luong_theo_sl
+    };
+  }
+
+  app.get('/api/bao-cao-san-luong-nvl-dinh-muc', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const idBaoCao = String(req.query.id_bao_cao ?? req.query.idBaoCao ?? '').trim();
+      const idsRaw = String(req.query.ids ?? req.query.id_bao_caos ?? '').trim();
+      const ids = [
+        ...new Set(
+          (idsRaw
+            ? idsRaw.split(/[,;\s]+/)
+            : idBaoCao
+              ? [idBaoCao]
+              : []
+          )
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu id_bao_cao hoặc ids.' });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE)
+        .select('*')
+        .in('id_bao_cao_nghiem_thu', ids)
+        .order('stt', { ascending: true });
+      if (error) {
+        console.error('Supabase bao_cao_san_luong_nvl_dinh_muc query error:', error);
+        return res.status(500).json({ error: acceptanceNvlDinhMucWriteError(error) });
+      }
+
+      const items = data || [];
+      if (ids.length === 1) {
+        return res.json({ items, total: items.length });
+      }
+
+      const byId: Record<string, typeof items> = {};
+      for (const id of ids) byId[id] = [];
+      for (const row of items) {
+        const reportId = String((row as { id_bao_cao_nghiem_thu?: string }).id_bao_cao_nghiem_thu || '').trim();
+        if (!reportId) continue;
+        if (!byId[reportId]) byId[reportId] = [];
+        byId[reportId].push(row);
+      }
+      return res.json({ by_id: byId, items, total: items.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải NVL định mức.' });
+    }
+  });
+
+  app.put('/api/bao-cao-san-luong-nvl-dinh-muc', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idBaoCao = String(body.id_bao_cao ?? body.idBaoCao ?? body.id_bao_cao_nghiem_thu ?? '').trim();
+      if (!idBaoCao) {
+        return res.status(400).json({ error: 'Thiếu id_bao_cao.' });
+      }
+      const itemsRaw = Array.isArray(body.items) ? body.items : [];
+      const items = itemsRaw
+        .map((item, index) => parseAcceptanceNvlDinhMucItem(item, index))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+      const { data: report, error: reportError } = await supabase
+        .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+        .select('id')
+        .eq('id', idBaoCao)
+        .maybeSingle();
+      if (reportError) {
+        return res.status(500).json({ error: acceptanceReportWriteError(reportError) });
+      }
+      if (!report) {
+        return res.status(404).json({ error: 'Không tìm thấy báo cáo sản lượng.' });
+      }
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE)
+        .delete()
+        .eq('id_bao_cao_nghiem_thu', idBaoCao);
+      if (deleteError) {
+        console.error('Supabase bao_cao_san_luong_nvl_dinh_muc delete error:', deleteError);
+        return res.status(500).json({ error: acceptanceNvlDinhMucWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0 });
+      }
+
+      const ma_sp = String(body.ma_sp ?? body.productCode ?? '').trim();
+      const ten_sp = String(body.ten_sp ?? body.productName ?? '').trim();
+      const so_luong_sp = parseAcceptanceNumber(body.so_luong_sp ?? body.productQuantity);
+      const don_vi_sp = String(body.don_vi_sp ?? body.productUnit ?? '').trim() || null;
+
+      const rows = items.map(item => ({
+        id_bao_cao_nghiem_thu: idBaoCao,
+        ma_sp,
+        ten_sp,
+        so_luong_sp,
+        don_vi_sp,
+        stt: item.stt,
+        ma_nvl: item.ma_nvl,
+        ten_nvl: item.ten_nvl,
+        don_vi: item.don_vi,
+        loai_dinh_muc: item.loai_dinh_muc,
+        dinh_muc: item.dinh_muc,
+        so_luong_theo_sl: item.so_luong_theo_sl
+      }));
+
+      const { data, error } = await supabase
+        .from(SUPABASE_ACCEPTANCE_NVL_DINH_MUC_TABLE)
+        .insert(rows)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_san_luong_nvl_dinh_muc insert error:', error);
+        return res.status(500).json({ error: acceptanceNvlDinhMucWriteError(error) });
+      }
+      return res.json({ success: true, items: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu NVL định mức.' });
     }
   });
 

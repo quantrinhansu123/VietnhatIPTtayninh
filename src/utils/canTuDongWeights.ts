@@ -218,6 +218,78 @@ export function resolveCanTuDongMachine(row: CanTuDongWeightRow): string | null 
   return null;
 }
 
+/** kg/m² màng cách nhiệt (2 lớp trên một cuộn). */
+export const INSULATION_FILM_KG_PER_M2 = 0.02324;
+export const INSULATION_FILM_LAYERS = 2;
+
+function parsePositiveDecimal(value: string | null | undefined): number | null {
+  const number = Number(String(value || '').trim().replace(',', '.'));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+export type InsulationProductAlias = {
+  code?: string | null;
+  newCode?: string | null;
+  amisCode?: string | null;
+  rollWidth?: string | null;
+  rollLength?: string | null;
+  totalWeight?: string | null;
+};
+
+/**
+ * TL màng máy cách nhiệt = Σ (khổ cuộn × chiều dài cuộn × 2 lớp × 0,02324 kg/m²)
+ * theo mã SP khớp QR cân tự động.
+ */
+export function computeInsulationFilmWeightKg(
+  products: InsulationProductAlias[],
+  records: CanTuDongWeightRow[]
+): number {
+  const filmKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const rollWidthM = parsePositiveDecimal(product.rollWidth);
+    const rollLengthM = parsePositiveDecimal(product.rollLength);
+    if (rollWidthM === null || rollLengthM === null) continue;
+    const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
+    for (const productCode of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(productCode);
+      if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
+    }
+  }
+  return records.reduce((total, record) => {
+    const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
+    return total + (filmKgByProductCode.get(productCode) || 0);
+  }, 0);
+}
+
+/** Nhựa định mức máy cách nhiệt = TL tiêu chuẩn − lõi − bì, theo từng phiếu cân. */
+export function computeInsulationPlasticNorm(
+  products: InsulationProductAlias[],
+  records: CanTuDongWeightRow[]
+): { weightKg: number; counted: number } {
+  const standardKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const standardKg = parsePositiveDecimal(product.totalWeight);
+    if (standardKg === null) continue;
+    for (const productCode of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(productCode);
+      if (key && key !== '-') standardKgByProductCode.set(key, standardKg);
+    }
+  }
+  return records.reduce(
+    (total, record) => {
+      const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
+      const standardKg = standardKgByProductCode.get(productCode);
+      const coreKg = resolveCanLoiKg(record);
+      if (standardKg === undefined || coreKg === null) return total;
+      return {
+        weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record),
+        counted: total.counted + 1
+      };
+    },
+    { weightKg: 0, counted: 0 }
+  );
+}
+
 /**
  * Tem QR: `MãSP_ddmmyy` + serial (vd MT-MN009_3107268472) hoặc `MãSP+LSX...`.
  * Trả về mã SP để khớp lệnh sản xuất.

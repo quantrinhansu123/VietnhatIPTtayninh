@@ -2,7 +2,6 @@
 import { Icon as IconifyIcon } from '@iconify/react';
 import type { IconifyIcon as IconifyIconData } from '@iconify/types';
 import gear3d from '@iconify-icons/fluent-emoji/gear';
-import barChart3d from '@iconify-icons/fluent-emoji/bar-chart';
 import people3d from '@iconify-icons/fluent-emoji/busts-in-silhouette';
 import briefcase3d from '@iconify-icons/fluent-emoji/briefcase';
 import factory3d from '@iconify-icons/fluent-emoji/factory';
@@ -394,15 +393,8 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
 
 export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
   {
-    title: 'Dashboard quản trị',
-    desc: 'Báo cáo tổng hợp máy BB theo ngày/ca — cùng mục báo cáo trên Bảng điều khiển.',
-    icon: LayoutDashboard,
-    icon3d: barChart3d,
-    tab: 'dashboard'
-  },
-  {
     title: 'Báo cáo mới',
-    desc: 'Phân tích tự động — cùng báo cáo tổng hợp máy BB như /phan-tich.',
+    desc: 'Phân tích tự động — báo cáo tổng hợp máy BB theo ngày/ca.',
     icon: ClipboardList,
     icon3d: chartIncreasing3d,
     tab: 'dashboard-auto'
@@ -940,7 +932,6 @@ export const PRIMARY_NAV_GROUPS: {
     icon: Settings,
     tab: 'quan-tri',
     children: [
-      { label: 'Dashboard quản trị', tab: 'dashboard' },
       { label: 'Báo cáo mới', tab: 'dashboard-auto' },
       { label: 'Người dùng và phân quyền', tab: 'settings' },
       { label: 'Cấu hình hệ thống', tab: 'settings' },
@@ -1088,7 +1079,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'factory-qc': { group: 'Trang chủ', sub: 'QC' },
   'factory-cong-nhan': { group: 'Trang chủ', sub: 'Sản xuất' },
   'factory-kho': { group: 'Trang chủ', sub: 'Kho' },
-  'dashboard': { group: 'Quản trị', sub: 'Dashboard quản trị' },
+  'dashboard': { group: 'Quản trị', sub: 'Báo cáo mới' },
   'dashboard-auto': { group: 'Quản trị', sub: 'Báo cáo mới' }
 };
 

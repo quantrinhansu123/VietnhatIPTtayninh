@@ -1,14 +1,10 @@
 import React from 'react';
+import { sameOriginCloudinaryUrl } from '../utils/cloudinaryUrl';
 
 export type WeighingPreviewImage = {
   url: string;
   title: string;
 };
-
-function imageCrossOrigin(url: string): 'anonymous' | undefined {
-  // data:/blob: + crossOrigin có thể làm ảnh không hiện trên một số trình duyệt.
-  return /^https?:\/\//i.test(url) ? 'anonymous' : undefined;
-}
 
 export function WeighingImageThumbnail({
   url,
@@ -23,6 +19,7 @@ export function WeighingImageThumbnail({
   onView: () => void;
   className?: string;
 }) {
+  const src = sameOriginCloudinaryUrl(url);
   return (
     <button
       type="button"
@@ -31,9 +28,9 @@ export function WeighingImageThumbnail({
       className={className}
     >
       <img
-        src={url}
+        src={src}
         alt={alt}
-        crossOrigin={imageCrossOrigin(url)}
+        referrerPolicy="no-referrer"
         className="h-full w-full object-cover"
       />
     </button>
@@ -67,9 +64,9 @@ export default function WeighingImagePreviewModal({
         </div>
         <div className="flex max-h-[calc(90vh-58px)] items-center justify-center bg-black p-3">
           <img
-            src={image.url}
+            src={sameOriginCloudinaryUrl(image.url)}
             alt={image.title}
-            crossOrigin={imageCrossOrigin(image.url)}
+            referrerPolicy="no-referrer"
             className="max-h-[calc(90vh-82px)] max-w-full rounded-lg object-contain"
           />
         </div>

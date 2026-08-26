@@ -2,7 +2,11 @@
 
 Snapshot báo cáo tổng hợp máy BB sau khi bấm **Tính toán** — `/phan-tich-tu-dong` · `/phan-tich` · bảng điều khiển.
 
-Vào trang **không** tự tính lại; chỉ đọc bản đã lưu theo bộ lọc. Bấm **Tính toán** mới build + upsert DB.
+Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao_tinh_toan`. Bấm **Tính toán** mới build + upsert DB.
+
+KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũng **chỉ** lấy từ `payload.summary` — không cộng live từ `can_tu_dong` / phiếu.
+
+Tab **Báo cáo sản lượng**: NVL chỉ từ snapshot `bao_cao_san_luong_nvl_dinh_muc` (Đồng bộ trên danh sách phiếu). Tính toán **không** tự ghi Thành phần SP.
 
 ## SQL
 

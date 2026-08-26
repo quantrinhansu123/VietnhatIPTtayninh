@@ -1062,6 +1062,13 @@ export function ControlBoardPanel({
         shiftFilter={boardFilterShift}
         machineFilter={boardFilterMachine}
         selectedMachine={selectedBoardMachine}
+        onApplyCalcScope={scope => {
+          setBoardDateScope('range');
+          setShiftSummaryDateFrom(scope.dateFrom);
+          setShiftSummaryDateTo(scope.dateTo);
+          setBoardFilterShift(scope.shiftFilter);
+          setBoardFilterMachine(scope.machineFilter);
+        }}
       />
 
       {reportOnly ? (

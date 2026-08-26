@@ -5,9 +5,12 @@ import type { MachineRow } from '../features/danh-sach-may';
 import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../features/ke-hoach-san-xuat';
 import type { ProductRow } from '../features/san-pham/types';
+import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
 import {
   filterCanTuDongRecordsForBoard,
-  sumCanTuDongSanLuongTotals
+  sumCanTuDongSanLuongTotals,
+  computeInsulationFilmWeightKg,
+  computeInsulationPlasticNorm
 } from './canTuDongWeights';
 import {
   buildBbCuoiCaLineRows,
@@ -16,6 +19,7 @@ import {
   buildBbDauCaLineRows,
   buildBbInboundMaterialNormGroups,
   buildBbInboundReportRows,
+  buildBbLoiHongMaterialLinesForShift,
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
   buildBbSanLuongGroups,
@@ -32,6 +36,7 @@ import {
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
   sumBbDamagedGoodsWeightKg,
+  sumBbDamagedGoodsWeightKgByKind,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
   sumBbDauCaWeightKgByKind,
@@ -100,9 +105,12 @@ export type BbBaoCaoTinhToanPayload = {
     cuoiCaTotalKg: number;
     cuoiCaWeightByKind: ReturnType<typeof sumBbCuoiCaWeightKgByKind>;
     damagedTotalKg: number;
+    damagedWeightByKind?: { plasticKg: number; otherKg: number };
     sanLuongTotals: ReturnType<typeof sumBbSanLuongTotals>;
     canTuDongSanLuongTotals: ReturnType<typeof sumCanTuDongSanLuongTotals>;
     displaySanLuongTotals: ReturnType<typeof sumBbSanLuongTotals>;
+    insulationFilmWeightKg?: number;
+    insulationPlasticNorm?: { weightKg: number; counted: number };
     inboundTotals: ReturnType<typeof sumBbInboundReportTotals>;
     thucDungTotalKg: number;
     tongNhapKhoTotalKg: number;
@@ -159,6 +167,8 @@ export function buildBbMachineReportSnapshot(input: {
   machineNvlReports: MachineNvlSavedReport[];
   mixingReports: MixingReport[];
   acceptanceReports: AcceptanceReport[];
+  /** Snapshot NVL định mức theo id phiếu báo cáo sản lượng. */
+  acceptanceNvlDinhMucByReportId?: Map<string, BbAcceptanceNvlDinhMucItem[]>;
   canTuDongRecords: CanTuDongRecord[];
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   dateFrom: string;
@@ -241,11 +251,29 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     ...filter
   });
-  const damagedGroups = groupBbDamagedGoodsLines(damagedRows);
+  const damagedGroups = groupBbDamagedGoodsLines(damagedRows).map(group => {
+    const mixingLines = buildBbLoiHongMaterialLinesForShift({
+      mixingReports: input.mixingReports,
+      machines: input.machines,
+      productionOrders: input.productionOrders,
+      products: input.products,
+      ngay: group.ngay,
+      shift: group.shift,
+      machine: group.machine,
+      orderCode: group.orderCode,
+      shiftSettings: input.shiftSettings
+    });
+    return {
+      ...group,
+      mixingLines,
+      mixingLineCount: mixingLines.length
+    };
+  });
 
   const sanLuongGroups = buildBbSanLuongGroups({
     productionOrders: input.productionOrders,
     acceptanceReports: input.acceptanceReports,
+    acceptanceNvlDinhMucByReportId: input.acceptanceNvlDinhMucByReportId,
     products: input.products,
     materials: input.materials,
     machines: input.machines,
@@ -356,6 +384,16 @@ export function buildBbMachineReportSnapshot(input: {
   const sanLuongTotals = sumBbSanLuongTotals(sanLuongGroups);
   const canTuDongSanLuongTotals = sumCanTuDongSanLuongTotals(scopedCanTuDong);
   const displaySanLuongTotals = sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals;
+  const isInsulationMachine = /cách\s+nhiệt/i.test(String(input.selectedMachine?.name || ''));
+  const insulationFilmWeightKg =
+    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+      ? computeInsulationFilmWeightKg(input.products, scopedCanTuDong)
+      : 0;
+  const insulationPlasticNorm =
+    isInsulationMachine && sanLuongSource === 'can-tu-dong'
+      ? computeInsulationPlasticNorm(input.products, scopedCanTuDong)
+      : { weightKg: 0, counted: 0 };
+  const damagedWeightByKind = sumBbDamagedGoodsWeightKgByKind(damagedRows);
 
   return {
     version: 1,
@@ -388,9 +426,12 @@ export function buildBbMachineReportSnapshot(input: {
       cuoiCaTotalKg: sumBbCuoiCaWeightKg(cuoiCaRows),
       cuoiCaWeightByKind: sumBbCuoiCaWeightKgByKind(cuoiCaRows),
       damagedTotalKg: sumBbDamagedGoodsWeightKg(damagedRows),
+      damagedWeightByKind,
       sanLuongTotals,
       canTuDongSanLuongTotals,
       displaySanLuongTotals,
+      insulationFilmWeightKg,
+      insulationPlasticNorm,
       inboundTotals: sumBbInboundReportTotals(inboundRows),
       thucDungTotalKg: sumBbThucDungWeightKg(thucDungRows),
       tongNhapKhoTotalKg: sumBbTongTrongLuongNhapKho(tongGroups),
@@ -439,9 +480,12 @@ export function emptyBbBaoCaoTinhToanPayload(): BbBaoCaoTinhToanPayload {
       cuoiCaTotalKg: 0,
       cuoiCaWeightByKind: { plasticKg: 0, otherKg: 0, totalKg: 0 },
       damagedTotalKg: 0,
+      damagedWeightByKind: { plasticKg: 0, otherKg: 0 },
       sanLuongTotals: { quantity: 0, weightKg: 0 },
       canTuDongSanLuongTotals: { quantity: 0, weightKg: 0 },
       displaySanLuongTotals: { quantity: 0, weightKg: 0 },
+      insulationFilmWeightKg: 0,
+      insulationPlasticNorm: { weightKg: 0, counted: 0 },
       inboundTotals: { acceptedRolls: 0, mixedPlasticKg: 0, finishedGoodsInboundKg: 0 },
       thucDungTotalKg: 0,
       tongNhapKhoTotalKg: 0,

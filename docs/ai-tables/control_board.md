@@ -2,9 +2,7 @@
 
 Tab `control-board` → `/bang-dieu-khien` — **đọc nhiều bảng**, không có bảng riêng.
 
-Tab `dashboard` → `/phan-tich` — cùng **Báo cáo tổng hợp máy BB** (`ControlBoardPanel` `mode="report-only"`), không dùng `AnalyticsDashboard` / bảng `reports` legacy.
-
-Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`. Ô **Trọng lượng xuất** khớp footer phiếu xuất kho NVL: **Tổng nhựa** = Σ cột Quy về kg mọi dòng ĐVT = kg (kể cả túi); **vật tư khác** = Σ Quy về kg dòng ĐVT ≠ kg (lõi); dòng không quy được kg không cộng. Tab phiếu xuất lấy `phieu_xuat_nhap_kho` (xuất NVL) khớp **ngày + ca + máy**. `/phan-tich-tu-dong` lấy lệnh/xuất của **mọi máy**. Bộ lọc **Ngày = Tất cả** tải mọi bản ghi (kể cả không có Ngày / không chênh lệch); **Theo khoảng** lọc Từ ngày → Đến ngày.
+Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`. Route cũ `/phan-tich` đã bỏ, mở sẽ chuyển sang `/phan-tich-tu-dong`. Ô **Trọng lượng xuất** khớp footer phiếu xuất kho NVL: **Tổng nhựa** = Σ cột Quy về kg mọi dòng ĐVT = kg (kể cả túi); **vật tư khác** = Σ Quy về kg dòng ĐVT ≠ kg (lõi); dòng không quy được kg không cộng. Tab phiếu xuất lấy `phieu_xuat_nhap_kho` (xuất NVL) khớp **ngày + ca + máy**. `/phan-tich-tu-dong` lấy lệnh/xuất của **mọi máy**. Bộ lọc **Ngày = Tất cả** tải mọi bản ghi (kể cả không có Ngày / không chênh lệch); **Theo khoảng** lọc Từ ngày → Đến ngày.
 
 ## UI
 

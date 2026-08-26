@@ -22,6 +22,7 @@ import {
   Save,
   ScanBarcode,
   Search,
+  Scale,
   TriangleAlert,
   Trash2,
   Wrench
@@ -57,7 +58,12 @@ import {
 } from '../_shared/storageKeys';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } from '../../utils/shiftSettings';
 import { findProductByCode, normalizeProducts } from '../san-pham';
-import { buildProductionOrderMaterialProposal, loadProductionOrderProductCatalog } from '../ke-hoach-san-xuat';
+import { normalizeProductCodeKey } from '../san-pham/types';
+import {
+  buildProductionOrderMaterialProposal,
+  buildProductionOrderMaterialProposalFromActualWeighing,
+  loadProductionOrderProductCatalog
+} from '../ke-hoach-san-xuat';
 import { normalizeMaterialsInventory } from '../kho-nvl';
 import {
   composeReasonWithProductionOrderCodes,
@@ -65,6 +71,13 @@ import {
   stripProductionOrderCodesFromReason,
   type ShiftSummaryWarehouseMovement
 } from '../../utils/controlBoardShiftSummary';
+import {
+  canTuDongShiftMatches,
+  parseCanTuDongQrProductCode,
+  resolveCanTuDongMachine,
+  resolveTrongLuongNhuaKg,
+  type CanTuDongWeightRow
+} from '../../utils/canTuDongWeights';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import type { MaterialOption } from '../san-pham/types';
 import {
@@ -1094,6 +1107,7 @@ export function WarehouseSlipPanel({
   const [isLoadingMachines, setIsLoadingMachines] = useState(false);
   const [productionOrders, setProductionOrders] = useState<WarehouseProductionOrderOption[]>([]);
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
+  const [isAutofillingFromCanTuDong, setIsAutofillingFromCanTuDong] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
   const [pendingDamagedReports, setPendingDamagedReports] = useState<PendingDamagedReport[]>([]);
   const [isLoadingDamagedReports, setIsLoadingDamagedReports] = useState(false);
@@ -2075,6 +2089,187 @@ export function WarehouseSlipPanel({
     return materialLines.length;
   };
 
+  const fillLinesFromCanTuDongActual = async (
+    matchedOrders: WarehouseProductionOrderOption[],
+    shiftValues: string[]
+  ) => {
+    if (warehouseKind === 'san_pham') {
+      throw new Error('Điền từ cân thực tế chỉ dùng cho phiếu xuất kho NVL.');
+    }
+
+    const ngay = slipDate.trim().slice(0, 10);
+    const params = new URLSearchParams({ from: ngay, to: ngay, limit: '10000', dateBy: 'ngay' });
+    const response = await fetch(`/api/can-tu-dong?${params.toString()}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(readApiErrorMessage(response, data, 'Không thể tải phiếu cân thực tế (cân tự động).'));
+    }
+
+    const records = (Array.isArray(data.records) ? data.records : []) as CanTuDongWeightRow[];
+    const machineFilter = machine.trim();
+    const shiftFilters = shiftValues.map(value => String(value || '').trim()).filter(Boolean);
+
+    const matchedRecords = records.filter(record => {
+      if (shiftFilters.length > 0) {
+        const rowCa = String(record.ca ?? '').trim();
+        if (!shiftFilters.some(shift => canTuDongShiftMatches(rowCa, shift))) return false;
+      }
+      if (machineFilter) {
+        const rowMachine = resolveCanTuDongMachine(record) || '';
+        if (rowMachine) {
+          const a = normalizeProductCodeKey(rowMachine);
+          const b = normalizeProductCodeKey(machineFilter);
+          if (
+            a &&
+            b &&
+            a !== b &&
+            !a.includes(b) &&
+            !b.includes(a)
+          ) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    if (matchedRecords.length === 0) {
+      throw new Error(
+        `Không có phiếu cân thực tế khớp ngày ${ngay}${
+          shiftFilters.length > 0 ? ` · ca ${shiftFilters.join(', ')}` : ''
+        }${machineFilter ? ` · máy ${machineFilter}` : ''}.`
+      );
+    }
+
+    const byProduct = new Map<string, { code: string; quantity: number; plasticKg: number }>();
+    for (const record of matchedRecords) {
+      const maSp = parseCanTuDongQrProductCode(String(record.qr_code ?? ''));
+      if (!maSp) continue;
+      const key = normalizeProductCodeKey(maSp);
+      if (!key) continue;
+      const current = byProduct.get(key);
+      const plasticKg = resolveTrongLuongNhuaKg(record) ?? 0;
+      byProduct.set(key, {
+        code: maSp,
+        quantity: (current?.quantity ?? 0) + 1,
+        plasticKg: (current?.plasticKg ?? 0) + (Number.isFinite(plasticKg) ? plasticKg : 0)
+      });
+    }
+
+    if (byProduct.size === 0) {
+      throw new Error('Phiếu cân thực tế không có mã SP hợp lệ trong QR.');
+    }
+
+    const catalog = await loadProductionOrderProductCatalog();
+    const materialMap = new Map<
+      string,
+      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number }
+    >();
+
+    const productCodesFromOrders = new Set(
+      matchedOrders.flatMap(order =>
+        order.lines.map(line => normalizeProductCodeKey(line.code)).filter(Boolean)
+      )
+    );
+
+    for (const [productKey, actual] of byProduct.entries()) {
+      if (productCodesFromOrders.size > 0 && !productCodesFromOrders.has(productKey)) continue;
+      const product = findProductByCode(catalog, actual.code);
+      if (!product || product.nplItems.length === 0) continue;
+      const materials = buildProductionOrderMaterialProposalFromActualWeighing(
+        actual.quantity,
+        actual.plasticKg,
+        product.nplItems,
+        product
+      );
+      for (const material of materials) {
+        const key = material.code.trim().toLowerCase();
+        if (!key || !(material.proposedQuantity > 0)) continue;
+        const existing = materialMap.get(key);
+        if (existing) {
+          existing.quantity += material.proposedQuantity;
+          existing.quotaQuantity += material.proposedQuantity;
+          if (!existing.name && material.name) existing.name = material.name;
+          if (!existing.unit && material.unit) existing.unit = material.unit;
+        } else {
+          materialMap.set(key, {
+            code: material.code,
+            name: material.name || material.code,
+            unit: material.unit || 'kg',
+            quantity: material.proposedQuantity,
+            quotaQuantity: material.proposedQuantity
+          });
+        }
+      }
+    }
+
+    // Fallback: lệnh có SP nhưng cân không khớp mã → thử điền theo SP lệnh với qty/kg cân gộp theo ca.
+    if (materialMap.size === 0 && productCodesFromOrders.size > 0) {
+      for (const order of matchedOrders) {
+        for (const line of order.lines) {
+          const productCode = line.code.trim();
+          if (!productCode) continue;
+          const product = findProductByCode(catalog, productCode);
+          if (!product || product.nplItems.length === 0) continue;
+          const key = normalizeProductCodeKey(productCode);
+          const actual = key ? byProduct.get(key) : undefined;
+          if (!actual) continue;
+          const materials = buildProductionOrderMaterialProposalFromActualWeighing(
+            actual.quantity,
+            actual.plasticKg,
+            product.nplItems,
+            product
+          );
+          for (const material of materials) {
+            const mKey = material.code.trim().toLowerCase();
+            if (!mKey || !(material.proposedQuantity > 0)) continue;
+            const existing = materialMap.get(mKey);
+            if (existing) {
+              existing.quantity += material.proposedQuantity;
+              existing.quotaQuantity += material.proposedQuantity;
+            } else {
+              materialMap.set(mKey, {
+                code: material.code,
+                name: material.name || material.code,
+                unit: material.unit || 'kg',
+                quantity: material.proposedQuantity,
+                quotaQuantity: material.proposedQuantity
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const materialLines = sortWarehouseLinesKgFirst(
+      [...materialMap.values()].filter(line => line.quantity > 0)
+    );
+
+    if (materialLines.length === 0) {
+      throw new Error(
+        'Không ghép được NVL định mức với phiếu cân thực tế. Kiểm tra BOM sản phẩm và mã SP trên QR cân.'
+      );
+    }
+
+    setLines(
+      reorderExportLinesKgFirst(
+        materialLines.map(line =>
+          createWarehouseLineDraftFromPrefill({
+            code: line.code,
+            name: line.name,
+            unit: line.unit,
+            quantity: String(line.quantity),
+            documentQuantity: String(line.quantity),
+            quotaQuantity: String(line.quotaQuantity),
+            suggestedQuantity: String(line.quantity),
+            unitPrice: ''
+          })
+        )
+      )
+    );
+    return { lineCount: materialLines.length, weighingCount: matchedRecords.length };
+  };
+
   const handleAutofillFromProductionOrders = async () => {
     if (!slipDate.trim()) {
       setFormError('Vui lòng chọn Ngày phiếu trước khi tự động điền.');
@@ -2164,6 +2359,97 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsAutofillingFromOrders(false);
+    }
+  };
+
+  const handleAutofillFromCanTuDong = async () => {
+    if (!isNvlExport) {
+      setFormError('Nút này chỉ dùng cho phiếu xuất kho NVL.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!slipDate.trim()) {
+      setFormError('Vui lòng chọn Ngày phiếu trước khi điền từ cân thực tế.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (showNvlShiftAndMachine && selectedShifts.length === 0) {
+      setFormError('Vui lòng chọn ca trước khi điền NVL từ cân thực tế.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!warehouseName.trim()) {
+      setFormError('Vui lòng chọn tên kho trước khi tự động điền.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const matchedOrders = filterWarehouseProductionOrdersByDateShift(
+      productionOrders,
+      slipDate,
+      selectedShifts
+    );
+    if (matchedOrders.length === 0) {
+      setFormError(
+        `Không có lệnh SX khớp ngày ${slipDate}${
+          selectedShifts.length > 0 ? ` và ca đã chọn` : ''
+        } — cần lệnh SX để lấy danh sách NVL định mức.`
+      );
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const hasExistingLines = lines.some(line => line.code.trim() || line.name.trim() || line.quantity.trim());
+    if (hasExistingLines) {
+      const ok = window.confirm(
+        `Điền NVL theo định mức BOM, khối lượng lấy từ phiếu cân thực tế (cân tự động).\n` +
+          `Tìm thấy ${matchedOrders.length} lệnh SX. Thay danh sách dòng hiện tại?`
+      );
+      if (!ok) return;
+    }
+
+    setIsAutofillingFromCanTuDong(true);
+    setFormError('');
+    setActionMessage('');
+    try {
+      const orderCodes = matchedOrders.map(order => order.orderCode);
+      setProductionOrderCodes(orderCodes);
+
+      const machines = [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))];
+      if (machines.length > 0 && !machine.trim()) setMachine(machines.join(', '));
+
+      const resolvedShift =
+        selectedShifts[0] ||
+        matchedOrders.find(order => order.shift)?.shift ||
+        '';
+      if (resolvedShift) setSelectedShifts([resolvedShift]);
+
+      setReason(
+        stripProductionOrderCodesFromReason(
+          reason.trim() ||
+            (resolvedShift
+              ? `Xuất theo cân thực tế · ${slipDate} · ${resolvedShift}`
+              : `Xuất theo cân thực tế · ${slipDate}`)
+        )
+      );
+      if (!note.trim()) {
+        setNote(
+          `Tự động điền NVL theo ĐM · KG từ cân thực tế (${matchedOrders.length} lệnh: ${orderCodes.join(', ')}).`
+        );
+      }
+
+      const { lineCount, weighingCount } = await fillLinesFromCanTuDongActual(
+        matchedOrders,
+        resolvedShift ? [resolvedShift] : selectedShifts
+      );
+      const msg = `Đã điền ${lineCount} NVL theo định mức, kg lấy từ ${weighingCount} phiếu cân thực tế.`;
+      setActionMessage(msg);
+      showAppToast(msg);
+    } catch (error: any) {
+      setFormError(error?.message || 'Không thể điền NVL từ cân thực tế.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setIsAutofillingFromCanTuDong(false);
     }
   };
 
@@ -2959,20 +3245,46 @@ export function WarehouseSlipPanel({
                   (chọn nhiều)
                 </span>
               </span>
-              <button
-                type="button"
-                onClick={() => void handleAutofillFromProductionOrders()}
-                disabled={isAutofillingFromOrders || isLoadingProductionOrders}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Điền máy, lệnh SX và dòng hàng theo Ngày phiếu + Ca"
-              >
-                {isAutofillingFromOrders ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ClipboardCheck className="h-3.5 w-3.5" />
-                )}
-                Tự động điền theo lệnh SX
-              </button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void handleAutofillFromProductionOrders()}
+                  disabled={
+                    isAutofillingFromOrders ||
+                    isAutofillingFromCanTuDong ||
+                    isLoadingProductionOrders
+                  }
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Điền máy, lệnh SX và dòng NVL theo định mức BOM × SL lệnh SX"
+                >
+                  {isAutofillingFromOrders ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="h-3.5 w-3.5" />
+                  )}
+                  Tự động điền theo lệnh SX
+                </button>
+                {isNvlExport ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleAutofillFromCanTuDong()}
+                    disabled={
+                      isAutofillingFromOrders ||
+                      isAutofillingFromCanTuDong ||
+                      isLoadingProductionOrders
+                    }
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Điền danh sách NVL theo định mức BOM; khối lượng kg lấy từ phiếu cân thực tế (cân tự động) cùng ngày · ca · máy"
+                  >
+                    {isAutofillingFromCanTuDong ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Scale className="h-3.5 w-3.5" />
+                    )}
+                    Điền ĐM · KG cân thực tế
+                  </button>
+                ) : null}
+              </div>
             </div>
             <button
               type="button"

@@ -584,6 +584,17 @@ export function isWarehouseBagExportItem(code: string, name: string) {
   );
 }
 
+/** Băng dính (BDT): ĐVT kho là Cuộn — không phải NVL nhựa kg, dù BOM chỉ ghi kg/SP. */
+export function isWarehouseTapeExportItem(code: string, name: string) {
+  const codeKey = String(code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (codeKey === 'BDT' || codeKey.startsWith('BDT-') || codeKey.startsWith('BDT_')) return true;
+  const hay = normalizeWarehouseItemHay(code, name);
+  return hay.includes('bang dinh');
+}
+
 export function isWarehouseFilmItem(code: string, name: string, unit: string) {
   if (isM2Unit(unit)) return true;
   const hay = normalizeWarehouseItemHay(code, name);
@@ -1156,13 +1167,14 @@ export function computeSoTienLoLaiNhua(giaTriLoLaiNhua: number, gia: number) {
   return Math.round(giaTriLoLaiNhua * gia);
 }
 
-/** Dòng NVL nhựa (kg): không phải lõi/túi/màng m2 — cùng quy tắc xuất NPL trong tổng hợp ca. */
+/** Dòng NVL nhựa (kg): không phải lõi/túi/băng dính/màng m2 — cùng quy tắc xuất NPL trong tổng hợp ca. */
 export function isWarehousePlasticNvlLine(
   movement: Pick<ShiftSummaryWarehouseMovement, 'warehouseKind' | 'itemCode' | 'itemName' | 'unit'>
 ) {
   if (movement.warehouseKind !== 'nvl') return false;
   if (isWarehouseCoreExportItem(movement.itemCode || '', movement.itemName || '')) return false;
   if (isWarehouseBagExportItem(movement.itemCode || '', movement.itemName || '')) return false;
+  if (isWarehouseTapeExportItem(movement.itemCode || '', movement.itemName || '')) return false;
   const unit = movement.unit || '';
   if (isM2Unit(unit)) return false;
   return isKgUnit(unit) || !unit.trim();

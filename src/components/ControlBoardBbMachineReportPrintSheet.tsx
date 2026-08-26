@@ -3,6 +3,7 @@ import { formatMoney, formatNumber } from '../utils';
 import {
   computeMaterialUsageKg,
   isWarehousePlasticNvlLine,
+  isWarehouseTapeExportItem,
   machineValueMatchesFilter
 } from '../utils/controlBoardShiftSummary';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
@@ -14,7 +15,9 @@ import { shiftNamesMatch } from '../utils/shiftSettings';
 import {
   convertWarehouseQuantityToKg,
   isWarehouseKgUnit,
-  mapMaterialToWeightCatalogItem
+  mapMaterialToWeightCatalogItem,
+  normalizeWarehouseCodeKey,
+  type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
 import {
   allocateBbNhuaHaoHutByRatioPercent,
@@ -100,10 +103,52 @@ type MaterialPrintTotals = {
   varianceKg: number;
 };
 
-/** Khớp footer phiếu xuất: nhựa = ĐVT kg; vật tư khác = ĐVT ≠ kg. */
-function isPlasticMaterialPrintRow(row: Pick<MaterialPrintRow, 'unit'>) {
-  const unit = String(row.unit || '').trim();
-  return !unit || unit === '-' || isWarehouseKgUnit(unit);
+/** 3.1 NVL nhựa: ĐVT kg và không phải lõi/túi/băng dính. */
+function isPlasticMaterialPrintRow(row: Pick<MaterialPrintRow, 'code' | 'name' | 'unit'>) {
+  return isWarehousePlasticNvlLine({
+    warehouseKind: 'nvl',
+    itemCode: row.code,
+    itemName: row.name,
+    unit: row.unit
+  });
+}
+
+function lookupCatalogMaterialUnit(
+  catalog: WarehouseWeightCatalogItem[],
+  code: string,
+  name: string
+) {
+  const codeKey = normalizeWarehouseCodeKey(code);
+  if (codeKey) {
+    const byCode = catalog.find(item => normalizeWarehouseCodeKey(item.code) === codeKey);
+    const unit = String(byCode?.unit || '').trim();
+    if (unit && unit !== '-') return unit;
+  }
+  const nameKey = normalizeWarehouseCodeKey(name);
+  if (!nameKey) return '';
+  const byName = catalog.find(item => normalizeWarehouseCodeKey(item.name || '') === nameKey);
+  return String(byName?.unit || '').trim();
+}
+
+function resolvePrintMaterialUnit(
+  code: string,
+  name: string,
+  current: string,
+  catalog: WarehouseWeightCatalogItem[]
+) {
+  const catalogUnit = lookupCatalogMaterialUnit(catalog, code, name);
+  const currentUnit = String(current || '').trim();
+  const preferNonKg = (unit: string) => unit && unit !== '-' && !isWarehouseKgUnit(unit);
+
+  if (isWarehouseTapeExportItem(code, name)) {
+    if (preferNonKg(catalogUnit)) return catalogUnit;
+    if (preferNonKg(currentUnit)) return currentUnit;
+    return 'Cuộn';
+  }
+  if (preferNonKg(catalogUnit) && (!currentUnit || currentUnit === '-' || isWarehouseKgUnit(currentUnit))) {
+    return catalogUnit;
+  }
+  return currentUnit || catalogUnit || 'kg';
 }
 
 function sumMaterialPrintTotals(
@@ -426,9 +471,17 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
           row.finishedKg += unitNormKg * actualProductQuantity * (Math.max(0, item.percent ?? 0) / 100);
         }
       } else {
-        const rawQuantity = Math.max(0, item.quantity ?? 0) * actualProductQuantity;
         const unit = String(item.unit || '').trim();
-        if (rawQuantity > 0) {
+        const qtyPerSp =
+          item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+            ? item.quantity
+            : null;
+        const weightPerSp =
+          item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0
+            ? item.weightKg
+            : null;
+        if (qtyPerSp != null && actualProductQuantity > 0) {
+          const rawQuantity = qtyPerSp * actualProductQuantity;
           if (!unit || unit === '-' || isWarehouseKgUnit(unit)) {
             row.finishedKg += rawQuantity;
           } else {
@@ -441,8 +494,16 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
               warehouseKind: 'nvl',
               materials: materialsCatalog
             });
-            if (converted !== null && Number.isFinite(converted)) row.finishedKg += converted;
+            if (converted !== null && Number.isFinite(converted)) {
+              row.finishedKg += converted;
+            } else if (weightPerSp != null) {
+              // Không quy được từ ĐVT kho → lấy kg/SP trong BOM (vd BDT 0,0085).
+              row.finishedKg += weightPerSp * actualProductQuantity;
+            }
           }
+        } else if (weightPerSp != null && actualProductQuantity > 0) {
+          // BOM chỉ có Kg/SP (vd BDT): hiện khối lượng = kg định mức × SL thực tế.
+          row.finishedKg += weightPerSp * actualProductQuantity;
         }
       }
     }
@@ -477,15 +538,23 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   const tonCuoiMaps = buildBbMaterialKgMapsFromTabLines(closingLines);
   const nnsTronTonCuoiKg = lookupNnsTronTonDauKg(tonCuoiMaps);
   const damagedGroup = findOrderGroup(props.damagedGroups, order);
-  for (const line of damagedGroup?.lines || []) {
-    ensure(line.materialCode, line.materialName, line.unit || 'kg').damagedKg += line.weightKg || 0;
-  }
+  const damagedTotalKg = damagedGroup?.totalWeightKg || 0;
   const mixingGroup = findOrderGroup(props.mixingGroups, order);
   for (const line of mixingGroup?.lines || []) {
     const row = ensure(line.materialCode, line.materialName, 'kg');
     if (line.tiLeDinhMucPercent !== null) row.normPercents.push(line.tiLeDinhMucPercent);
     row.actualPercent = line.tiLeThucTeTbPercent;
     row.actualMixedKg += line.totalKlThucTe;
+  }
+  // Lỗi hỏng từ Báo cáo sản lượng (Hàng hỏng + Hàng rác): phân bổ theo tỉ lệ trộn như tab UI.
+  if (damagedTotalKg > 0) {
+    for (const line of mixingGroup?.lines || []) {
+      const pct = line.tiLeThucTeTbPercent;
+      if (pct == null || !Number.isFinite(pct) || !(pct > 0)) continue;
+      ensure(line.materialCode, line.materialName, 'kg').damagedKg += round4(
+        (damagedTotalKg * pct) / 100
+      );
+    }
   }
 
   // Nếu có NNS-TRON tồn đầu ca (hỗn hợp chưa tách), phân bổ tồn đầu của NNS-TRON cho từng NVL
@@ -547,6 +616,10 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
           (nnsTronTonDauKg > 0 || nnsTronTonCuoiKg > 0 || closingMaterialLines.length > 0)
         )
     )
+    .map(row => ({
+      ...row,
+      unit: resolvePrintMaterialUnit(row.code, row.name, row.unit, materialsCatalog)
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
   // Căn cột «Trọng lượng vật tư nhập thành phẩm» (nhóm nhựa) theo ô Báo cáo sản lượng phía trên.
@@ -971,7 +1044,15 @@ function BbMachineOrderPrintSheet({
                       <td className="shift-summary-print-center bb-machine-report-print-stt">{index + 1}</td>
                       <td>{row.code || '-'}</td>
                       <td>{row.name || '-'}</td>
-                      <td className="shift-summary-print-center">{row.unit || '-'}</td>
+                      <td className="shift-summary-print-center">
+                        {row.unit || '-'}
+                        {row.finishedKg > 0 &&
+                        row.unit &&
+                        row.unit !== '-' &&
+                        !isWarehouseKgUnit(row.unit)
+                          ? ` · ${printNumber(row.finishedKg, 3)} kg`
+                          : ''}
+                      </td>
                       <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>

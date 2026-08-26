@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ClipboardList, Loader2, Pencil, Plus, Printer, Trash2 } from 'lucide-react';
+import { ChevronLeft, ClipboardList, Eye, Loader2, Pencil, Plus, Printer, RefreshCw, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { waitForPrintImagesReady } from '../utils/printReady';
@@ -18,10 +18,33 @@ import {
   TableSearchInput,
   TableDateFilter
 } from './shared/table';
+import {
+  formatNplDecimal,
+  formatProductNplAmount,
+  parseProductNplItems,
+  type ProductNplItem
+} from '../features/san-pham/types';
 
 type ProductNameOption = {
   code: string;
   name: string;
+};
+
+type ProductCatalogEntry = {
+  code: string;
+  name: string;
+  unit: string;
+  totalWeightKg: number | null;
+  nplItems: ProductNplItem[];
+};
+
+type NvlViewState = {
+  report: AcceptanceReport;
+  productCode: string;
+  productName: string;
+  productUnit: string;
+  quantity: number;
+  items: ProductNplItem[];
 };
 
 function todayIso() {
@@ -33,6 +56,51 @@ function normalizeProductKey(value: string) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '');
+}
+
+/** Mã SP từ mặt hàng phiếu (bỏ phần sau dấu + nếu có). */
+function resolveReportProductCode(matHang: string) {
+  const trimmed = String(matHang || '').trim();
+  if (!trimmed) return '';
+  const plusIdx = trimmed.indexOf('+');
+  return (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+}
+
+function isKgUnit(value: string) {
+  return ['kg', 'kilogram', 'kilograms'].includes(String(value || '').trim().toLowerCase());
+}
+
+function parseWeightKgFromLabel(label: string): number | null {
+  const match = String(label || '')
+    .trim()
+    .match(/\((\d+(?:[.,]\d+)?)\s*kg\)/i);
+  if (!match) return null;
+  const value = Number(String(match[1]).replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function resolveProductTotalWeightKg(unit: string, totalWeightRaw: unknown, name: string): number | null {
+  const totalWeightText = String(totalWeightRaw ?? '').trim();
+  const totalWeightNumber = Number(totalWeightText.replace(',', '.'));
+  if (totalWeightText && Number.isFinite(totalWeightNumber) && totalWeightNumber > 0) {
+    return totalWeightNumber;
+  }
+  const fromName = parseWeightKgFromLabel(name);
+  if (fromName != null) return fromName;
+  if (isKgUnit(unit)) return 1;
+  return null;
+}
+
+function calculateSyncedTrongLuong(
+  catalog: ProductCatalogEntry | null,
+  soLuong: number | null
+): number | null {
+  if (!catalog || soLuong == null || !(soLuong > 0)) return null;
+  if (isKgUnit(catalog.unit)) return Math.round(soLuong * 1000) / 1000;
+  if (catalog.totalWeightKg != null && catalog.totalWeightKg >= 0) {
+    return Math.round(soLuong * catalog.totalWeightKg * 1000) / 1000;
+  }
+  return null;
 }
 
 function normalizeProductNames(data: unknown): ProductNameOption[] {
@@ -56,6 +124,72 @@ function normalizeProductNames(data: unknown): ProductNameOption[] {
       return { code, name };
     })
     .filter((item): item is ProductNameOption => Boolean(item));
+}
+
+function normalizeProductCatalog(data: unknown): Map<string, ProductCatalogEntry> {
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { products?: unknown }).products)
+      ? (data as { products: unknown[] }).products
+      : [];
+  const map = new Map<string, ProductCatalogEntry>();
+  for (const item of rows) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const code = String(
+      record.ma_sp ?? record.ma_san_pham ?? record.productCode ?? record.code ?? ''
+    ).trim();
+    if (!code) continue;
+    const unit = String(record.don_vi ?? record.unit ?? '').trim();
+    const name = String(
+      record.ten_sp ?? record.ten_san_pham ?? record.productName ?? record.name ?? ''
+    ).trim();
+    const nplItems = parseProductNplItems(
+      record.npl_phan_tram ?? record.nplPhanTram ?? record.nplItems ?? record.thanh_phan ?? record.dinh_muc
+    );
+    const entry: ProductCatalogEntry = {
+      code,
+      name: name || code,
+      unit,
+      totalWeightKg: resolveProductTotalWeightKg(
+        unit,
+        record.tong_trong_luong ?? record.totalWeight,
+        name
+      ),
+      nplItems
+    };
+    const key = normalizeProductKey(code);
+    if (key) map.set(key, entry);
+    const nameKey = normalizeProductKey(name);
+    if (nameKey && !map.has(nameKey)) map.set(nameKey, entry);
+  }
+  return map;
+}
+
+function formatDinhMucPerUnit(item: ProductNplItem) {
+  if (item.amountType === 'percent' && item.percent != null && Number.isFinite(item.percent)) {
+    return `${formatNplDecimal(item.percent)}%`;
+  }
+  if (item.amountType === 'quantity' && item.quantity != null && Number.isFinite(item.quantity)) {
+    const unit = String(item.unit || '').trim();
+    const unitSuffix = unit && unit !== '-' && unit !== '%' ? ` ${unit}` : '';
+    return `${formatNplDecimal(item.quantity)}${unitSuffix}`;
+  }
+  return formatProductNplAmount(item);
+}
+
+function formatNvlTheoSanLuong(item: ProductNplItem, productQty: number) {
+  if (!(productQty > 0)) return '—';
+  if (item.amountType === 'percent' && item.percent != null && Number.isFinite(item.percent)) {
+    return `${formatNplDecimal(item.percent)}%`;
+  }
+  if (item.amountType === 'quantity' && item.quantity != null && Number.isFinite(item.quantity)) {
+    const total = item.quantity * productQty;
+    const unit = String(item.unit || '').trim();
+    const unitSuffix = unit && unit !== '-' && unit !== '%' ? ` ${unit}` : '';
+    return `${formatNplDecimal(total)}${unitSuffix}`;
+  }
+  return '—';
 }
 
 export default function AcceptanceReportListView({
@@ -90,7 +224,12 @@ export default function AcceptanceReportListView({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [activePrintSlips, setActivePrintSlips] = useState<ReturnType<typeof buildAcceptancePrintSlips>>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isSyncingWeight, setIsSyncingWeight] = useState(false);
   const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
+  const [productCatalogByKey, setProductCatalogByKey] = useState<Map<string, ProductCatalogEntry>>(
+    () => new Map()
+  );
+  const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
 
   const shiftOptions = useMemo<string[]>(() => {
     const shifts = reports.reduce<string[]>((result, report) => {
@@ -184,14 +323,18 @@ export default function AcceptanceReportListView({
         const res = await fetch('/api/san-pham?format=table');
         const data = await res.json().catch(() => ({}));
         if (!res.ok || cancelled) return;
-        const next = new Map<string, string>();
+        const nextNames = new Map<string, string>();
         normalizeProductNames(data).forEach(product => {
           const key = normalizeProductKey(product.code);
-          if (key) next.set(key, product.name);
+          if (key) nextNames.set(key, product.name);
         });
-        setProductNameByCode(next);
+        setProductNameByCode(nextNames);
+        setProductCatalogByKey(normalizeProductCatalog(data));
       } catch {
-        if (!cancelled) setProductNameByCode(new Map());
+        if (!cancelled) {
+          setProductNameByCode(new Map());
+          setProductCatalogByKey(new Map());
+        }
       }
     })();
     return () => {
@@ -256,17 +399,149 @@ export default function AcceptanceReportListView({
     }
   };
 
+  const findCatalogForReport = (report: AcceptanceReport) => {
+    const productCode = resolveReportProductCode(report.mat_hang);
+    return (
+      productCatalogByKey.get(normalizeProductKey(productCode)) ||
+      productCatalogByKey.get(normalizeProductKey(report.mat_hang)) ||
+      null
+    );
+  };
+
+  /** Đồng bộ trọng lượng = Tổng TL SP × SL (hoặc kg trong tên SP), ghi vào DB. */
+  const handleSyncTrongLuong = async () => {
+    if (filteredReports.length === 0) {
+      setError('Không có dòng nào trong bộ lọc để đồng bộ.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Đồng bộ trọng lượng cho ${filteredReports.length} dòng đang lọc theo định mức SP (Tổng TL × SL)?`
+      )
+    ) {
+      return;
+    }
+
+    setIsSyncingWeight(true);
+    setError('');
+    setMessage('');
+    let updated = 0;
+    let skipped = 0;
+    const failures: string[] = [];
+
+    try {
+      for (const report of filteredReports) {
+        const catalog = findCatalogForReport(report);
+        const nextWeight = calculateSyncedTrongLuong(catalog, report.so_luong);
+        if (nextWeight == null || !(nextWeight > 0)) {
+          skipped += 1;
+          continue;
+        }
+        const current =
+          report.trong_luong !== null &&
+          report.trong_luong !== undefined &&
+          Number.isFinite(Number(report.trong_luong))
+            ? Number(report.trong_luong)
+            : null;
+        if (current !== null && Math.abs(current - nextWeight) < 0.0005) {
+          skipped += 1;
+          continue;
+        }
+        if (!report.hinh_anh) {
+          failures.push(`${report.mat_hang}: thiếu ảnh, không cập nhật được`);
+          continue;
+        }
+
+        const res = await fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(report.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ngay: report.ngay,
+            ca: report.ca,
+            lan: report.lan,
+            gio: report.gio,
+            ma_may: report.ma_may,
+            ten_may: report.ten_may,
+            loai_vat_tu: report.loai_vat_tu || 'Thành phẩm',
+            mat_hang: report.mat_hang,
+            don_vi: report.don_vi,
+            so_luong: report.so_luong,
+            trong_luong: nextWeight,
+            don_vi_trong_luong: report.don_vi_trong_luong || 'Kg',
+            hinh_anh: report.hinh_anh,
+            hinh_anh_public_id: report.hinh_anh_public_id || ''
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failures.push(`${report.mat_hang}: ${data.error || 'lỗi cập nhật'}`);
+          continue;
+        }
+        updated += 1;
+      }
+
+      await loadReports(filterFromDate, filterToDate);
+      if (failures.length > 0) {
+        setError(
+          `Đồng bộ xong: ${updated} cập nhật, ${skipped} bỏ qua. Lỗi: ${failures.slice(0, 3).join('; ')}${
+            failures.length > 3 ? '…' : ''
+          }`
+        );
+      } else {
+        setMessage(`Đã đồng bộ trọng lượng: ${updated} dòng cập nhật, ${skipped} dòng bỏ qua.`);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Không thể đồng bộ trọng lượng.');
+    } finally {
+      setIsSyncingWeight(false);
+    }
+  };
+
   const reportById = useMemo(() => {
     const map = new Map<string, AcceptanceReport>();
     for (const report of filteredReports) map.set(report.id, report);
     return map;
   }, [filteredReports]);
 
+  const openNvlView = (report: AcceptanceReport) => {
+    const productCode = resolveReportProductCode(report.mat_hang);
+    const catalog =
+      productCatalogByKey.get(normalizeProductKey(productCode)) ||
+      productCatalogByKey.get(normalizeProductKey(report.mat_hang)) ||
+      null;
+    const qtyRaw = Number(report.so_luong);
+    const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
+    setNvlView({
+      report,
+      productCode: catalog?.code || productCode || report.mat_hang,
+      productName:
+        catalog?.name ||
+        report.ten_sp ||
+        productNameByCode.get(normalizeProductKey(productCode)) ||
+        productCode ||
+        '—',
+      productUnit: catalog?.unit || report.don_vi || '',
+      quantity,
+      items: catalog?.nplItems || []
+    });
+  };
+
   const renderLineActions = (line: { id: string }) => {
     const report = reportById.get(line.id);
     if (!report) return null;
     return (
       <div className="inline-flex items-center justify-center gap-1">
+        <button
+          type="button"
+          onClick={() => openNvlView(report)}
+          className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-800 transition hover:bg-violet-100"
+          title="Xem NVL định mức"
+        >
+          <span className="inline-flex items-center gap-1">
+            <Eye className="h-3.5 w-3.5" />
+            Xem
+          </span>
+        </button>
         {canEdit ? (
           <button
             type="button"
@@ -320,44 +595,63 @@ export default function AcceptanceReportListView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Quay lại
+              </button>
               {canCreate ? (
                 <button
                   type="button"
-                  onClick={onCreate}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  onClick={() => onCreate()}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#d91628]"
                 >
                   <Plus className="h-4 w-4" />
                   Thêm mới
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Quay lại
-              </button>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-emerald-700" />
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-600">
-              {screenSlips.length} phiếu · {filteredReports.length} dòng
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-zinc-600">
+            <ClipboardList className="h-4 w-4 text-zinc-400" />
+            <span>
+              {filteredReports.length} dòng
+              {hasActiveFilters ? ' (đã lọc)' : ''}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={printSlipCount === 0 || pendingPrint || isLoading}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" />
-            {pendingPrint ? 'Đang in...' : `In tất cả (${printSlipCount})`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => void handleSyncTrongLuong()}
+                disabled={filteredReports.length === 0 || isSyncingWeight || isLoading}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Đồng bộ trọng lượng = Tổng TL sản phẩm × số lượng"
+              >
+                {isSyncingWeight ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                {isSyncingWeight ? 'Đang đồng bộ...' : 'Đồng bộ trọng lượng'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={printSlipCount === 0 || pendingPrint || isLoading}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Printer className="h-4 w-4" />
+              {pendingPrint ? 'Đang in...' : `In tất cả (${printSlipCount})`}
+            </button>
+          </div>
         </div>
 
         <div className="border-b border-zinc-100 bg-white px-4 py-3">
@@ -391,7 +685,7 @@ export default function AcceptanceReportListView({
             <AcceptanceReportSlipStack
               slips={screenSlips}
               emptyText="Chưa có báo cáo phù hợp với bộ lọc."
-              renderLineActions={canEdit || canDelete ? renderLineActions : undefined}
+              renderLineActions={renderLineActions}
             />
           )}
         </div>
@@ -407,6 +701,100 @@ export default function AcceptanceReportListView({
           {message}
         </div>
       ) : null}
+
+      {nvlView
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-3 sm:items-center"
+              onClick={() => setNvlView(null)}
+            >
+              <div
+                className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+                onClick={event => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-violet-50 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">
+                      NVL theo định mức
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-black text-zinc-900">
+                      {nvlView.productCode}
+                    </p>
+                    <p className="text-xs font-semibold text-zinc-600">{nvlView.productName}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                      SL sản lượng:{' '}
+                      <span className="font-mono font-black text-emerald-700">
+                        {nvlView.quantity > 0 ? formatNplDecimal(nvlView.quantity) : '—'}
+                      </span>
+                      {nvlView.productUnit ? ` ${nvlView.productUnit}` : ''}
+                      {' · '}
+                      {nvlView.report.ngay} · {nvlView.report.ca}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNvlView(null)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-50"
+                    title="Đóng"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto">
+                  {nvlView.items.length === 0 ? (
+                    <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">
+                      Sản phẩm chưa có thành phần / định mức NVL.
+                    </p>
+                  ) : (
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-zinc-50 text-[10px] font-black uppercase tracking-wider text-zinc-600">
+                        <tr>
+                          <th className="px-3 py-2.5">Mã NVL</th>
+                          <th className="px-3 py-2.5">Tên NVL</th>
+                          <th className="px-3 py-2.5 text-right">ĐVT</th>
+                          <th className="px-3 py-2.5 text-right" title="Định mức trên 1 SP">
+                            ĐM / 1 SP
+                          </th>
+                          <th
+                            className="px-3 py-2.5 text-right"
+                            title="Số lượng: ĐM × SL sản lượng. %: giữ tỉ lệ định mức"
+                          >
+                            Theo SL
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {nvlView.items.map((item, index) => (
+                          <tr key={`${item.code}|${index}`} className="hover:bg-violet-50/40">
+                            <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-800">
+                              {item.code || '—'}
+                            </td>
+                            <td className="px-3 py-2 text-xs font-semibold text-zinc-700">
+                              {item.name || '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs text-zinc-600">
+                              {item.amountType === 'percent' ? '%' : item.unit || '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs font-bold text-violet-800">
+                              {formatDinhMucPerUnit(item)}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs font-black text-emerald-700">
+                              {formatNvlTheoSanLuong(item, nvlView.quantity)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <div className="border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-right text-[11px] font-semibold text-zinc-500">
+                  {nvlView.items.length} NVL định mức
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {pendingPrint &&
         activePrintSlips.length > 0 &&

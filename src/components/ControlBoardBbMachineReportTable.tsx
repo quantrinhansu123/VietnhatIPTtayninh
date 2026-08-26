@@ -40,7 +40,7 @@ import {
 import {
   BB_MACHINE_REPORT_TABS,
   buildBbInboundBalanceMetricDetail,
-  buildBbMixingMaterialLinesForShift,
+  buildBbLoiHongMaterialLinesForShift,
   buildBbOrderCodeOptions,
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
@@ -802,11 +802,15 @@ export default function ControlBoardBbMachineReportTable({
   }, [exportRows]);
   const damagedGroupsWithMixing = useMemo(() => {
     return damagedGroups.map(group => {
-      const mixingLines = buildBbMixingMaterialLinesForShift({
+      const mixingLines = buildBbLoiHongMaterialLinesForShift({
         mixingReports,
+        machines,
+        productionOrders: scopedProductionOrders,
+        products,
         ngay: group.ngay,
         shift: group.shift,
         machine: group.machine,
+        orderCode: group.orderCode,
         shiftSettings
       });
       return {
@@ -815,7 +819,7 @@ export default function ControlBoardBbMachineReportTable({
         mixingLineCount: mixingLines.length
       };
     });
-  }, [damagedGroups, mixingReports, shiftSettings]);
+  }, [damagedGroups, mixingReports, machines, scopedProductionOrders, products, shiftSettings]);
   // Tab thực xuất dùng: dòng NVL lấy từ báo cáo trộn (đã gộp tỉ lệ).
   const thucDungDetailView = useMemo<BbThucDungDetailView | null>(() => {
     if (tongHopDetail) {
@@ -1074,6 +1078,7 @@ export default function ControlBoardBbMachineReportTable({
       case 'ton_dau_ca':
         return dauCaGroups.map(group => group.groupKey);
       case 'bao_cao_san_luong':
+      case 'bao_cao_san_luong_phieu':
         return sanLuongGroups.map(group => group.groupKey);
       case 'bao_cao_loi_hong':
         return damagedGroupsWithMixing.map(group => group.groupKey);
@@ -2777,9 +2782,8 @@ export default function ControlBoardBbMachineReportTable({
               </tfoot>
             ) : null}
           </table>
-        ) : activeTab === 'bao_cao_san_luong' ? (
-          sanLuongSource === 'can-tu-dong' ? (
-            <BbCanTuDongSanLuongPanel
+        ) : activeTab === 'bao_cao_san_luong' && sanLuongSource === 'can-tu-dong' ? (
+          <BbCanTuDongSanLuongPanel
               records={canTuDongRecords}
               isLoading={isLoading}
               shiftFilter={shiftFilter}
@@ -2788,7 +2792,7 @@ export default function ControlBoardBbMachineReportTable({
               machineFilter={machineFilter}
               selectedMachine={selectedMachine}
             />
-          ) : (
+        ) : activeTab === 'bao_cao_san_luong' || activeTab === 'bao_cao_san_luong_phieu' ? (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
             <thead className="bg-gradient-to-r from-violet-100 to-fuchsia-50 border-b-2 border-violet-300 text-xs uppercase tracking-wider text-violet-900">
               <tr>
@@ -2813,7 +2817,7 @@ export default function ControlBoardBbMachineReportTable({
                 </th>
                 <th
                   className="px-4 py-3.5 text-right font-black"
-                  title="Tổng trọng lượng thực tế theo từng NVL"
+                  title="ĐVT kg: Tổng nhựa định mức SL × tỉ lệ trộn thực tế (%). ĐVT khác: định mức × SL sản lượng"
                 >
                   Trọng lượng thực tế (kg)
                 </th>
@@ -2835,14 +2839,14 @@ export default function ControlBoardBbMachineReportTable({
                 </tr>
               ) : (
                 sanLuongGroups.map(group => {
-                  const expanded = isGroupExpanded('bao_cao_san_luong', group.groupKey);
+                  const expanded = isGroupExpanded(activeTab, group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
                       <tr className="border-y border-violet-200 bg-violet-50/70 font-bold hover:bg-violet-100/60 transition">
                         <td className="px-3 py-2.5">
                           <button
                             type="button"
-                            onClick={() => toggleGroup('bao_cao_san_luong', group.groupKey)}
+                            onClick={() => toggleGroup(activeTab, group.groupKey)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-violet-300 bg-white text-violet-800 shadow-sm transition hover:bg-violet-50"
                             title={expanded ? 'Đóng các dòng NVL' : 'Mở các dòng NVL'}
                             aria-expanded={expanded}
@@ -2868,29 +2872,11 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-4 py-2.5 text-right font-mono font-black text-emerald-700">
                           {formatKg(group.totalNormWeightKg, 2)}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono font-black text-amber-800">
-                          {group.balanceSummary ? (
-                            <ThucDungMetricButton
-                              label={formatKg(group.totalActualWeightKg, 2)}
-                              className="font-mono font-black text-amber-800"
-                              title="Tồn đầu (tab Tồn đầu ca) + Xuất − Lỗi hỏng − Tồn cuối"
-                              onOpen={() =>
-                                setInboundBalanceDetail({
-                                  metric: 'thuc_te',
-                                  itemCode: '',
-                                  itemName: 'Tất cả NVL',
-                                  ngay: group.ngay,
-                                  shift: group.shift,
-                                  shiftLabel: group.shiftLabel,
-                                  orderCode: group.orderCode,
-                                  machine: group.machine,
-                                  balanceDetail: group.balanceSummary
-                                })
-                              }
-                            />
-                          ) : (
-                            formatKg(group.totalActualWeightKg, 2)
-                          )}
+                        <td
+                          className="px-4 py-2.5 text-right font-mono font-black text-amber-800"
+                          title="ĐVT kg: Tổng nhựa SL × tỉ lệ trộn thực tế. ĐVT khác: định mức × SL"
+                        >
+                          {formatKg(group.totalActualWeightKg, 2)}
                         </td>
                       </tr>
                       {expanded ? (
@@ -2902,10 +2888,20 @@ export default function ControlBoardBbMachineReportTable({
                               Tên nguyên vật liệu
                             </td>
                             <td className="px-4 py-2 text-right font-black">ĐVT</td>
-                            <td className="px-4 py-2 text-right font-mono text-violet-700/70">—</td>
+                            <td
+                              className="px-4 py-2 text-right font-black"
+                              title="ĐVT ≠ %: định mức/SP × tổng SL sản lượng. ĐVT %: tỉ lệ trộn thực tế (%)"
+                            >
+                              SL
+                            </td>
                             <td className="px-4 py-2 text-right font-mono text-violet-700/70">—</td>
                             <td className="px-4 py-2 text-right font-black">Định mức (kg)</td>
-                            <td className="px-4 py-2 text-right font-black">Trọng lượng thực tế (kg)</td>
+                            <td
+                              className="px-4 py-2 text-right font-black"
+                              title="ĐVT kg: Tổng nhựa SL × tỉ lệ trộn thực tế. ĐVT khác: định mức × SL"
+                            >
+                              Trọng lượng thực tế (kg)
+                            </td>
                           </tr>
                           {(group.nvlTotals || []).length === 0 ? (
                             <tr className="bg-white">
@@ -2916,18 +2912,6 @@ export default function ControlBoardBbMachineReportTable({
                             </tr>
                           ) : (
                             (group.nvlTotals || []).map(row => {
-                              const openBalanceDetail = () =>
-                                setInboundBalanceDetail({
-                                  metric: 'thuc_te',
-                                  itemCode: row.itemCode,
-                                  itemName: row.itemName,
-                                  ngay: group.ngay,
-                                  shift: group.shift,
-                                  shiftLabel: group.shiftLabel,
-                                  orderCode: group.orderCode,
-                                  machine: group.machine,
-                                  balanceDetail: row.balanceDetail
-                                });
                               return (
                                 <tr
                                   key={row.key}
@@ -2943,22 +2927,22 @@ export default function ControlBoardBbMachineReportTable({
                                   <td className="px-4 py-2 text-right font-mono text-zinc-600">
                                     {row.unit || '—'}
                                   </td>
-                                  <td className="px-4 py-2 text-right font-mono text-zinc-400">—</td>
+                                  <td className="px-4 py-2 text-right font-mono font-bold text-violet-800">
+                                    {row.quantity == null || !(row.quantity > 0)
+                                      ? '—'
+                                      : row.amountType === 'percent' ||
+                                          String(row.unit || '')
+                                            .trim()
+                                            .toLowerCase() === '%'
+                                        ? formatPercent(row.quantity, 2)
+                                        : formatNumber(row.quantity, 2)}
+                                  </td>
                                   <td className="px-4 py-2 text-right font-mono text-zinc-400">—</td>
                                   <td className="px-4 py-2 text-right font-mono font-black text-emerald-700">
                                     {formatKg(row.normWeightKg, 2)}
                                   </td>
                                   <td className="px-4 py-2 text-right font-mono font-black text-amber-800">
-                                    {row.balanceDetail ? (
-                                      <ThucDungMetricButton
-                                        label={formatKg(row.actualWeightKg, 2)}
-                                        className="font-mono font-black text-amber-800"
-                                        title={`(Tồn đầu tab ${formatKg(row.balanceDetail.tonDauKg, 2)}) + (Xuất ${formatKg(row.balanceDetail.xuatThucTeKg, 2)}) − (Lỗi ${formatKg(row.balanceDetail.loiHongKg, 2)}) − (Tồn cuối ${formatKg(row.balanceDetail.tonCuoiKg, 2)})`}
-                                        onOpen={openBalanceDetail}
-                                      />
-                                    ) : (
-                                      formatKg(row.actualWeightKg, 2)
-                                    )}
+                                    {formatKg(row.actualWeightKg, 2)}
                                   </td>
                                 </tr>
                               );
@@ -2993,7 +2977,6 @@ export default function ControlBoardBbMachineReportTable({
               </tfoot>
             ) : null}
           </table>
-          )
         ) : activeTab === 'bao_cao_loi_hong' ? (
           <>
             {damagedGroupsWithMixing.length > 0 ? (
@@ -3028,7 +3011,7 @@ export default function ControlBoardBbMachineReportTable({
                 <th className="px-4 py-3.5 font-black">Ca</th>
                 <th className="px-4 py-3.5 font-black">Lệnh SX</th>
                 <th className="px-4 py-3.5 font-black">Máy</th>
-                <th className="px-4 py-3.5 text-right font-black">Dòng NVL trộn</th>
+                <th className="px-4 py-3.5 text-right font-black">Dòng NVL</th>
                 <th className="px-4 py-3.5 text-right font-black">Lỗi hỏng (kg)</th>
               </tr>
             </thead>
@@ -3037,13 +3020,13 @@ export default function ControlBoardBbMachineReportTable({
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                    Đang tải báo cáo hàng lỗi hỏng...
+                    Đang tải dữ liệu lỗi hỏng từ Báo cáo sản lượng...
                   </td>
                 </tr>
               ) : damagedGroupsWithMixing.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
-                    Chưa có báo cáo hàng lỗi hỏng gắn ca/ngày lệnh máy BB.
+                    Chưa có phiếu Báo cáo sản lượng loại Hàng hỏng / Hàng rác gắn ca/ngày lệnh máy BB.
                   </td>
                 </tr>
               ) : (
@@ -3082,7 +3065,7 @@ export default function ControlBoardBbMachineReportTable({
                             <td />
                             <td className="px-4 py-2.5 font-black">Mã NVL</td>
                             <td colSpan={2} className="px-4 py-2.5 font-black">
-                              Tên nguyên phụ liệu (báo cáo phối trộn)
+                              Tên nguyên phụ liệu
                             </td>
                             <td className="px-4 py-2.5 font-black">ĐVT</td>
                             <td className="px-4 py-2.5 text-right font-black">Tỉ lệ trộn (%)</td>
@@ -3097,16 +3080,21 @@ export default function ControlBoardBbMachineReportTable({
                             <tr className="bg-white">
                               <td />
                               <td colSpan={6} className="px-4 py-2.5 text-sm font-semibold text-zinc-400">
-                                Chưa có NVL trong báo cáo phối trộn của ngày/ca này.
+                                Chưa có NVL trên tỉ lệ trộn máy / phối trộn / BOM lệnh SX.
                               </td>
                             </tr>
                           ) : (
                             group.mixingLines.map(row => {
+                              const tiLe =
+                                row.tiLeTronPercent != null && row.tiLeTronPercent > 0
+                                  ? row.tiLeTronPercent
+                                  : row.tiLeDinhMucPercent;
                               const trongLuongLoiKg =
-                                row.tiLeTronPercent !== null &&
-                                Number.isFinite(row.tiLeTronPercent) &&
+                                tiLe !== null &&
+                                Number.isFinite(tiLe) &&
+                                tiLe > 0 &&
                                 Number.isFinite(group.totalWeightKg)
-                                  ? Math.round(((group.totalWeightKg * row.tiLeTronPercent) / 100) * 100) / 100
+                                  ? Math.round(((group.totalWeightKg * tiLe) / 100) * 100) / 100
                                   : null;
                               return (
                               <tr
@@ -3122,7 +3110,7 @@ export default function ControlBoardBbMachineReportTable({
                                 </td>
                                 <td className="px-4 py-2.5 text-zinc-600">{row.unit || 'kg'}</td>
                                 <td className="px-4 py-2.5 text-right font-mono font-bold text-orange-800">
-                                  {formatPercent(row.tiLeTronPercent, 2)}
+                                  {formatPercent(tiLe, 2)}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-700">
                                   {trongLuongLoiKg === null ? '—' : formatKg(trongLuongLoiKg, 2)}

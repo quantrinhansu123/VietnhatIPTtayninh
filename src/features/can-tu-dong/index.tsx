@@ -128,17 +128,17 @@ export type CanTuDongRecord = {
 /** Ngưỡng phân tích kém/hơn cân theo |% chênh lệch|. */
 const PHAN_TICH_NGUONG_PCT = 2;
 
-/** Bộ lọc danh sách theo chênh lệch Cân SP vs TL tiêu chuẩn. */
+/** Bộ lọc danh sách theo chênh lệch nhựa (TT−ĐM). */
 type CanTuDongDiffFilter = 'all' | 'all-diff' | 'gt-2pct';
 
 type CanTuDongPhanTichBucket = {
   /** Tổng số dòng kém/hơn cân (không lọc 2%). */
   rowCount: number;
-  /** Σ |chênh lệch kg| mọi dòng trong nhóm. */
+  /** Σ |Chênh lệch nhựa| mọi dòng trong nhóm. */
   weightDiffAllKg: number;
   rowsLe2Pct: number;
   rowsGt2Pct: number;
-  /** Σ |chênh lệch kg| của các dòng có |%| > 2%. */
+  /** Σ |Chênh lệch nhựa| của các dòng có |%| > 2%. */
   weightDiffGt2Kg: number;
 };
 
@@ -1353,9 +1353,9 @@ export function CanTuDongPanel({
                         <tr className="bg-white/40">
                           <td
                             className="px-4 py-2.5"
-                            title={`Tổng |Cân SP − TL tiêu chuẩn| của dòng |%| > ${PHAN_TICH_NGUONG_PCT}%`}
+                            title={`Tổng |Chênh lệch nhựa| (cột Chênh lệch nhựa TT−ĐM) của dòng |%| > ${PHAN_TICH_NGUONG_PCT}%`}
                           >
-                            Khối lượng chênh lệch &gt;{PHAN_TICH_NGUONG_PCT}%
+                            Chênh lệch nhựa &gt;{PHAN_TICH_NGUONG_PCT}%
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                             {loading
@@ -1369,7 +1369,7 @@ export function CanTuDongPanel({
                     ) : (
                       <>
                         <tr className="border-b border-black/5 bg-white/40">
-                          <td className="px-4 py-2.5" title="Tổng số dòng có chênh lệch trong nhóm">
+                          <td className="px-4 py-2.5" title="Tổng số dòng có chênh lệch nhựa trong nhóm">
                             Số dòng
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums">
@@ -1379,9 +1379,9 @@ export function CanTuDongPanel({
                         <tr className="bg-white/40">
                           <td
                             className="px-4 py-2.5"
-                            title="Tổng |Cân SP − TL tiêu chuẩn| mọi dòng trong nhóm"
+                            title="Tổng |Chênh lệch nhựa| = Σ |Nhựa thực tế − Nhựa định mức| (cột Chênh lệch nhựa TT−ĐM)"
                           >
-                            Khối lượng chênh lệch
+                            Chênh lệch nhựa
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums">
                             {loading

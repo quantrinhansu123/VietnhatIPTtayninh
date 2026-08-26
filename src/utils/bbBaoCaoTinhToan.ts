@@ -236,7 +236,7 @@ export function buildBbMachineReportSnapshot(input: {
 
   const damagedRows = buildBbDamagedGoodsLineRows({
     productionOrders: input.productionOrders,
-    damagedRecords: input.damagedRecords,
+    acceptanceReports: input.acceptanceReports,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
     ...filter

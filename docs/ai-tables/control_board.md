@@ -14,7 +14,7 @@ Tab `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trê
 | `src/components/ControlBoardCommonFilters.tsx` | Bộ lọc chung: **Ngày** (Tất cả / Theo khoảng) · Ca · Máy · Lệnh SX |
 | `src/features/dashboard/index.tsx` | Re-export; routing `/phan-tich` qua `App.tsx` |
 | `ControlBoardShiftSummaryTable.tsx` | Bảng tổng hợp ca |
-| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, **lỗi hỏng từ Báo cáo sản lượng SP lỗi/SP rác**, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt) |
+| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, **tab lỗi hỏng từ Báo cáo sản lượng · Hàng hỏng + Hàng rác**, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt). `/phan-tich-tu-dong`: tab **Dữ liệu cân thực tế** = `can_tu_dong`; tab **Báo cáo sản lượng** = phiếu `bao_cao_nghiem_thu` (`sanLuongGroups`) |
 | `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`, bên dưới = list view tương ứng |
 | `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in báo cáo tổng hợp máy BB (gồm mục 2 thành phẩm đạt nhập kho + lý do từng dòng) |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |

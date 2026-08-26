@@ -28,7 +28,7 @@
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
-**Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP).
+**Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP × SL lệnh). Nút **Điền ĐM · KG cân thực tế** (xuất NVL) — cùng danh sách NVL theo BOM, nhưng **kg nhựa %** lấy từ tổng **Nhựa thực tế** trên `/can-tu-dong` (ngày · ca · máy); NVL chỉ có kg/SP (vd BDT) lấy `khoi_luong_kg × số lần cân`.
 
 Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Màn `/lich-su-xuat-nhap-kho` chia 2 tab **Xuất kho** / **Nhập kho** (lọc `loai`), dropdown **Chọn kho** giữ các loại kho. Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
 

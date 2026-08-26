@@ -14,6 +14,8 @@ export type AcceptanceReportSource = {
   ten_sp?: string;
   don_vi: string;
   so_luong: number | null;
+  trong_luong?: number | null;
+  don_vi_trong_luong?: string;
 };
 
 export type AcceptancePrintLine = {
@@ -21,6 +23,8 @@ export type AcceptancePrintLine = {
   ten_sp?: string;
   don_vi: string;
   so_luong: number | null;
+  trong_luong?: number | null;
+  don_vi_trong_luong?: string;
 };
 
 export type AcceptancePrintSlip = {
@@ -68,6 +72,13 @@ export function sumByUnit(lines: AcceptancePrintLine[]) {
   return [...totals.entries()].sort(([a], [b]) => unitOrder(a, b));
 }
 
+export function sumTrongLuongKg(lines: Array<{ trong_luong?: number | null }>) {
+  return lines.reduce((sum, line) => {
+    const kg = Number(line.trong_luong);
+    return sum + (Number.isFinite(kg) && kg > 0 ? kg : 0);
+  }, 0);
+}
+
 export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): AcceptancePrintSlip[] {
   type AcceptanceSlipAcc = {
     id: string;
@@ -105,14 +116,23 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
 
     const lineKey = [report.mat_hang, report.ten_sp || '', report.don_vi].join('|');
     const existing = acc.lineMap.get(lineKey);
+    const weightKg =
+      report.trong_luong !== null &&
+      report.trong_luong !== undefined &&
+      Number.isFinite(Number(report.trong_luong))
+        ? Number(report.trong_luong)
+        : 0;
     if (existing) {
       existing.so_luong = (existing.so_luong ?? 0) + (report.so_luong ?? 0);
+      existing.trong_luong = (existing.trong_luong ?? 0) + weightKg;
     } else {
       const line: AcceptancePrintLine = {
         mat_hang: report.mat_hang,
         ten_sp: report.ten_sp,
         don_vi: report.don_vi,
-        so_luong: report.so_luong
+        so_luong: report.so_luong,
+        trong_luong: weightKg > 0 ? weightKg : null,
+        don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
       };
       acc.lineMap.set(lineKey, line);
       acc.lineOrder.push(lineKey);
@@ -148,6 +168,7 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
 
 export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip }) {
   const totalsByUnit = sumByUnit(slip.lines);
+  const totalTrongLuongKg = sumTrongLuongKg(slip.lines);
 
   return (
     <div className="production-order-print-sheet">
@@ -192,6 +213,7 @@ export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip
               <th>Tên SP</th>
               <th>ĐVT</th>
               <th>Số lượng</th>
+              <th>Trọng lượng</th>
             </tr>
           </thead>
           <tbody>
@@ -204,6 +226,11 @@ export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip
                 <td className="production-order-print-right">
                   {line.so_luong === null ? '-' : formatNumber(line.so_luong, 2)}
                 </td>
+                <td className="production-order-print-right">
+                  {line.trong_luong == null || !(line.trong_luong > 0)
+                    ? '-'
+                    : `${formatNumber(line.trong_luong, 2)} ${line.don_vi_trong_luong || 'Kg'}`}
+                </td>
               </tr>
             ))}
             {totalsByUnit.map(([unit, total]) => (
@@ -213,6 +240,9 @@ export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip
                 </td>
                 <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                   {formatNumber(total, 2)}
+                </td>
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '-'}
                 </td>
               </tr>
             ))}
@@ -330,6 +360,7 @@ export function AcceptanceReportSlipStack({
             so_luong: line.so_luong
           }))
         );
+        const totalTrongLuongKg = sumTrongLuongKg(slip.lines);
         return (
           <article
             key={slip.key}
@@ -365,6 +396,7 @@ export function AcceptanceReportSlipStack({
                     <th className="px-3 py-2">Tên SP</th>
                     <th className="px-3 py-2 text-center">ĐVT</th>
                     <th className="px-3 py-2 text-right">Số lượng</th>
+                    <th className="px-3 py-2 text-right">Trọng lượng</th>
                     {renderLineActions ? <th className="px-3 py-2 text-center">Thao tác</th> : null}
                   </tr>
                 </thead>
@@ -382,6 +414,13 @@ export function AcceptanceReportSlipStack({
                       <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
                         {line.so_luong === null ? '—' : formatNumber(line.so_luong, 2)}
                       </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
+                        {line.trong_luong == null || !(Number(line.trong_luong) > 0)
+                          ? '—'
+                          : `${formatNumber(Number(line.trong_luong), 2)} ${
+                              line.don_vi_trong_luong || 'Kg'
+                            }`}
+                      </td>
                       {renderLineActions ? (
                         <td className="px-3 py-2 text-center">{renderLineActions(line)}</td>
                       ) : null}
@@ -390,13 +429,16 @@ export function AcceptanceReportSlipStack({
                   {totalsByUnit.map(([unit, total]) => (
                     <tr key={unit} className="border-t border-zinc-200 bg-zinc-50">
                       <td
-                        colSpan={renderLineActions ? 4 : 4}
+                        colSpan={4}
                         className="px-3 py-2 text-right text-xs font-black text-zinc-800"
                       >
                         Tổng cộng ({unit})
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-black text-emerald-800">
                         {formatNumber(total, 2)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-black text-amber-800">
+                        {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '—'}
                       </td>
                       {renderLineActions ? <td /> : null}
                     </tr>

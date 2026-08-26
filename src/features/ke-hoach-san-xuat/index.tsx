@@ -3941,21 +3941,107 @@ export function buildProductionOrderMaterialProposal(
     const isPercent = item.amountType !== 'quantity';
     const percent = isPercent ? item.percent ?? 0 : null;
     const weightKg = isPercent ? roundNplNumber((finishedWeightKg * (item.percent ?? 0)) / 100) : null;
-    const proposedQuantity = isPercent ? weightKg ?? 0 : roundNplNumber((item.quantity ?? 0) * orderQuantity);
+    if (isPercent) {
+      return {
+        code: item.code,
+        name: item.name || item.code,
+        normLabel: formatProductionOrderNormLabel(item),
+        percent,
+        weightKg,
+        proposedQuantity: weightKg ?? 0,
+        unit: 'kg'
+      };
+    }
 
+    const qtyPerSp =
+      item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : null;
+    const weightPerSp =
+      item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0 ? item.weightKg : null;
+    if (qtyPerSp != null) {
+      return {
+        code: item.code,
+        name: item.name || item.code,
+        normLabel: formatProductionOrderNormLabel(item),
+        percent: null,
+        weightKg: weightPerSp != null ? roundNplNumber(weightPerSp * orderQuantity) : null,
+        proposedQuantity: roundNplNumber(qtyPerSp * orderQuantity),
+        unit: item.unit && item.unit !== '-' ? item.unit : ''
+      };
+    }
+    // BOM chỉ có Kg/SP (vd BDT 0.0085): điền khối lượng kg.
+    const kgTotal = weightPerSp != null ? roundNplNumber(weightPerSp * orderQuantity) : 0;
     return {
       code: item.code,
       name: item.name || item.code,
       normLabel: formatProductionOrderNormLabel(item),
-      percent,
-      weightKg,
-      proposedQuantity,
-      unit:
-        isPercent
-          ? 'kg'
-          : item.unit && item.unit !== '-'
-            ? item.unit
-            : ''
+      percent: null,
+      weightKg: kgTotal > 0 ? kgTotal : null,
+      proposedQuantity: kgTotal,
+      unit: 'kg'
+    };
+  });
+}
+
+/**
+ * Điền NVL theo định mức BOM, nhưng tổng kg nhựa lấy từ phiếu cân thực tế (can_tu_dong).
+ * - NVL %: phân bổ actualPlasticKg theo % ĐM
+ * - NVL SL/ĐVT khác: SL = định mức × số lần cân; nếu BOM chỉ có kg/SP thì lấy kg × số lần cân
+ */
+export function buildProductionOrderMaterialProposalFromActualWeighing(
+  actualProductQty: number,
+  actualPlasticKg: number,
+  items: ProductNplItem[],
+  product?: Pick<ProductRow, 'plasticWeight' | 'totalWeight' | 'coreWeight' | 'bagWeight'> | null
+): ProductionOrderMaterialLine[] {
+  const qty = Number.isFinite(actualProductQty) && actualProductQty > 0 ? actualProductQty : 0;
+  const plasticBase =
+    Number.isFinite(actualPlasticKg) && actualPlasticKg > 0
+      ? actualPlasticKg
+      : (() => {
+          const unitNorm = resolveProductUnitNormKg(product);
+          return unitNorm != null && unitNorm > 0 && qty > 0 ? unitNorm * qty : 0;
+        })();
+
+  return items.map(item => {
+    const isPercent = item.amountType !== 'quantity';
+    const percent = isPercent ? item.percent ?? 0 : null;
+    if (isPercent) {
+      const weightKg = roundNplNumber((plasticBase * (item.percent ?? 0)) / 100);
+      return {
+        code: item.code,
+        name: item.name || item.code,
+        normLabel: formatProductionOrderNormLabel(item),
+        percent,
+        weightKg,
+        proposedQuantity: weightKg,
+        unit: 'kg'
+      };
+    }
+
+    const qtyPerSp =
+      item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : null;
+    const weightPerSp =
+      item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0 ? item.weightKg : null;
+    if (qtyPerSp != null) {
+      return {
+        code: item.code,
+        name: item.name || item.code,
+        normLabel: formatProductionOrderNormLabel(item),
+        percent: null,
+        weightKg: weightPerSp != null ? roundNplNumber(weightPerSp * qty) : null,
+        proposedQuantity: roundNplNumber(qtyPerSp * qty),
+        unit: item.unit && item.unit !== '-' ? item.unit : ''
+      };
+    }
+    const kgTotal = weightPerSp != null ? roundNplNumber(weightPerSp * qty) : 0;
+    return {
+      code: item.code,
+      name: item.name || item.code,
+      normLabel: formatProductionOrderNormLabel(item),
+      percent: null,
+      weightKg: kgTotal > 0 ? kgTotal : null,
+      proposedQuantity: kgTotal,
+      unit: 'kg'
     };
   });
 }

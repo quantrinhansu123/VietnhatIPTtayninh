@@ -57,7 +57,7 @@
 | `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân theo % nhựa) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · Nhựa thực tế · Nhựa định mức · Chênh lệch nhựa (TT−ĐM) · Phần trăm (= CL ÷ Nhựa TT) · Excel · In |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
-| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
+| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` + `sumCanTuDongNhuaTieuChuanKg` + `sumCanTuDongLoiTieuChuanKg` |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel sản lượng từ cân AI trên `/phan-tich-tu-dong` (`sanLuongSource='can-tu-dong'`) — ô **Báo cáo sản lượng** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) trên `/can-tu-dong`, lọc **Ngày · Ca · Máy**. **Ngày = Tất cả** không cắt cột Ngày (kể cả trống / không chênh lệch) |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |

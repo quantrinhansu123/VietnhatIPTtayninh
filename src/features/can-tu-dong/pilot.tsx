@@ -1,7 +1,7 @@
 import React from 'react';
 
-export const CAN_TU_DONG_PILOT_URL = 'https://tram-can-qr-pilot.onrender.com/';
-export const CAN_KIEM_KHO_PILOT_URL = 'https://tram-can-qr-pilot.onrender.com/kiem-kho';
+export const CAN_TU_DONG_PILOT_URL = 'https://tram-can-qr-pilot-0wrt.onrender.com/';
+export const CAN_KIEM_KHO_PILOT_URL = 'https://tram-can-qr-pilot-0wrt.onrender.com/kiem-kho';
 
 /** Trạm cân QR / Cân kiểm kho — nhúng trong trang, không mở tab mới. */
 export function CanTuDongPilotPanel({

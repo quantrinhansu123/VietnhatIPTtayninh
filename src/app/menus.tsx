@@ -61,6 +61,7 @@ import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
 import { pathFromTab } from '../routes';
 import MachineDowntimeIcon from '../components/icons/MachineDowntimeIcon';
+import { CAN_TU_DONG_PILOT_URL } from '../features/can-tu-dong/pilot';
 
 export type MenuCardConfig = {
   title: string;
@@ -184,7 +185,7 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong-pilot',
-    modalUrl: 'https://tram-can-qr-pilot.onrender.com/'
+    modalUrl: CAN_TU_DONG_PILOT_URL
   },
   {
     title: 'Cân kiểm kho',

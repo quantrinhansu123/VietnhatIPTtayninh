@@ -1615,6 +1615,35 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
+  /**
+   * Nhập kho và Xuất kho là hai phiếu độc lập. Không giữ các dòng của form
+   * trước khi người dùng đổi loại phiếu, vì điều này làm NVL vừa tự điền cho
+   * phiếu xuất xuất hiện nhầm trong phiếu nhập (và ngược lại).
+   */
+  const handleSlipModeChange = (nextSlipType: WarehouseSlipType, nextIsXuatTreoMode: boolean) => {
+    const modeChanged = slipType !== nextSlipType || isXuatTreoMode !== nextIsXuatTreoMode;
+    if (!modeChanged) return;
+
+    clearSavedPrint();
+    setSlipType(nextSlipType);
+    setIsXuatTreoMode(nextIsXuatTreoMode);
+    setReason('');
+    setNote('');
+    setProductionOrderCodes([]);
+    setProductionOrderSearch('');
+    setProductionOrderPickerOpen(false);
+    setMachine('');
+    setSelectedShifts([]);
+    setRecipient('');
+    setDeliverer('');
+    setAvgInboundPriceByKey({});
+    setFormError('');
+    setActionMessage('');
+    const emptyLines = [createWarehouseLineDraft()];
+    linesRef.current = emptyLines;
+    setLines(emptyLines);
+  };
+
   // Ô Mã NPL/SP chỉ lưu tiền tố (mã gốc trong danh mục), không mang hậu tố lô/serial — nên
   // phải nhớ riêng từng mã đầy đủ (tiền tố+hậu tố) đã quét theo tiền tố để chống quét trùng tem.
   // Tổng SL trên modal: cộng SL các dòng đã quét (mã chỉ tiền tố quét lại vẫn tăng SL).
@@ -2693,15 +2722,7 @@ export function WarehouseSlipPanel({
                   <button
                     key={option.key}
                     type="button"
-                    onClick={() => {
-                      const modeChanged = slipType !== option.slipType || isXuatTreoMode !== option.treoMode;
-                      if (modeChanged) clearSavedPrint();
-                      setSlipType(option.slipType);
-                      setIsXuatTreoMode(option.treoMode);
-                      if (option.slipType === 'xuat') {
-                        setLines(current => reorderExportLinesKgFirst(current));
-                      }
-                    }}
+                    onClick={() => handleSlipModeChange(option.slipType, option.treoMode)}
                     className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
                       isActive
                         ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'

@@ -116,7 +116,7 @@ export default function BbCanTuDongSanLuongPanel({
   return (
     <>
       <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
-        <thead className="bg-[#ef1b2d] border-b border-red-700 text-xs uppercase tracking-wider text-white">
+        <thead className="border-b-2 border-red-200 bg-red-50/80 text-xs uppercase tracking-wider text-red-950 font-black">
           <tr>
             <th className="px-3 py-3.5 font-black">Ảnh lõi</th>
             <th className="px-3 py-3.5 font-black">Ảnh SP</th>
@@ -138,31 +138,30 @@ export default function BbCanTuDongSanLuongPanel({
             </th>
             <th
               className="px-3 py-3.5 text-right font-black"
-              title={`Mặc định ${formatNumber(DEFAULT_CAN_TU_DONG_BI_KG, 2)} kg`}
+              title="Khối lượng bì trừ thêm (mặc định 0,16 kg cho máy cách nhiệt)"
             >
               Trọng lượng bì
             </th>
             <th
               className="px-3 py-3.5 text-right font-black"
-              title="Cân SP − Cân lõi − Trọng lượng bì"
+              title="Trọng lượng nhựa = Cân sản phẩm − Cân lõi − Trọng lượng bì"
             >
               Trọng lượng nhựa
             </th>
             <th className="px-3 py-3.5 font-black">Trạng thái</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-violet-100">
+        <tbody className="divide-y divide-zinc-100 bg-white">
           {isLoading ? (
             <tr>
-              <td colSpan={13} className="px-3 py-10 text-center font-bold text-zinc-400">
-                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                Đang tải cân AI...
+              <td colSpan={13} className="px-4 py-8 text-center text-zinc-500">
+                Đang tải dữ liệu cân tự động...
               </td>
             </tr>
           ) : filtered.length === 0 ? (
             <tr>
-              <td colSpan={13} className="px-3 py-10 text-center font-bold text-zinc-400">
-                Chưa có lần cân AI khớp cột Ngày · Ca · Máy đang lọc.
+              <td colSpan={13} className="px-4 py-8 text-center text-zinc-500">
+                Không có dữ liệu cân tự động khớp bộ lọc.
               </td>
             </tr>
           ) : (
@@ -179,7 +178,7 @@ export default function BbCanTuDongSanLuongPanel({
               const coreTitle = `Ảnh cân lõi · ${row.qr_code || row.event_id || row.id}`;
               const productTitle = `Ảnh cân sản phẩm · ${row.qr_code || row.event_id || row.id}`;
               return (
-                <tr key={String(row.id)} className="transition hover:bg-violet-50/50">
+                <tr key={String(row.id)} className="transition hover:bg-red-50/40">
                   <td className="px-3 py-2">
                     {coreUrl ? (
                       <WeighingImageThumbnail
@@ -241,7 +240,7 @@ export default function BbCanTuDongSanLuongPanel({
           )}
         </tbody>
         {!isLoading && filtered.length > 0 ? (
-          <tfoot className="border-t-2 border-red-300 bg-red-50 text-xs font-black text-red-950">
+          <tfoot className="border-t-2 border-red-200 bg-red-50/70 text-xs font-black text-red-950">
             <tr>
               <td colSpan={11} className="px-3 py-3 text-right uppercase tracking-wider">
                 Tổng ({formatNumber(totals.quantity, 0)} lần cân)

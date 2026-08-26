@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react';
 import type { MachineRow } from '../features/danh-sach-may';
 
 const inputClass =
-  'h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-800 outline-none transition focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 sm:text-xs';
+  'h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-800 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 sm:text-xs';
 
 export type ControlBoardProductionOrderOption = {
   code: string;

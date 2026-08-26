@@ -357,6 +357,8 @@ export default function ControlBoardShiftSummaryTable({
       onDeleteWeighingRecords={onDeleteWeighingRecords}
       onDeleteWarehouseSlip={onDeleteWarehouseSlip}
       onDeleteWarehouseSlips={onDeleteWarehouseSlips}
+      onOpenReportHistoryModal={onOpenReportHistoryModal}
+      onOpenReportListsModal={onOpenReportListsModal}
       onDeleteMachineNvlReport={onDeleteMachineNvlReport}
       onDeleteMachineNvlReports={onDeleteMachineNvlReports}
     />
@@ -364,21 +366,20 @@ export default function ControlBoardShiftSummaryTable({
 
   return (
     <>
-      <section className="control-board-report-theme min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <div className="border-b border-red-800 bg-gradient-to-r from-[#b30d1c] to-[#ef1b2d] px-3 py-2 text-white">
+      <section className="control-board-report-theme min-w-0 overflow-hidden rounded-2xl border-2 border-red-200/90 bg-white shadow-sm">
+        <div className="border-b border-red-100 bg-gradient-to-b from-red-50/50 via-red-50/20 to-white px-3 py-2.5 text-zinc-900">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/90">Tổng hợp sản xuất</p>
-              <h3 className="text-sm font-black sm:text-base">Tổng hợp máy cách nhiệt</h3>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">Tổng hợp sản xuất</p>
+              <h3 className="text-sm font-black text-zinc-900 sm:text-base">Tổng hợp máy cách nhiệt</h3>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-              <label className="col-span-1 flex min-w-0 flex-col gap-1 text-[10px] font-bold text-sky-100 sm:flex-row sm:items-center sm:gap-1.5 sm:text-xs">
+              <label className="col-span-1 flex min-w-0 flex-col gap-1 text-[10px] font-bold text-zinc-600 sm:flex-row sm:items-center sm:gap-1.5 sm:text-xs">
                 <span className="shrink-0">NV</span>
                 <select
                   value={staffFilter}
                   onChange={event => {
                     setStaffFilter(event.target.value);
-                    onStaffFilterChange?.(event.target.value);
                   }}
                   className={`${inputClass} w-full min-w-0 sm:max-w-[180px]`}
                 >
@@ -394,7 +395,7 @@ export default function ControlBoardShiftSummaryTable({
                 type="button"
                 onClick={handlePrint}
                 disabled={isLoading}
-                className="col-span-2 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-white/80 bg-white px-3 text-[11px] font-black text-sky-950 shadow-sm transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1 sm:w-auto"
+                className="col-span-2 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-1 sm:w-auto"
               >
                 <Printer className="h-4 w-4" />
                 In báo cáo
@@ -403,16 +404,16 @@ export default function ControlBoardShiftSummaryTable({
           </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-b border-zinc-100 bg-zinc-50/80 px-2 py-1">
+        <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 bg-zinc-50/80 px-2 py-1.5">
           {SHIFT_SUMMARY_TABS.map(tab => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 rounded-md px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide transition ${
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wide transition ${
                 activeTab === tab.id
-                  ? 'bg-[#ef1b2d] text-white shadow-sm'
-                  : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
+                  ? 'border border-red-200 bg-red-50 text-[#ef1b2d] shadow-xs'
+                  : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-50 hover:text-zinc-900'
               }`}
             >
               {tab.label}

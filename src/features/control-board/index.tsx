@@ -1032,10 +1032,10 @@ export function ControlBoardPanel({
             <button
               type="button"
               onClick={() => setShowReportListsModal(true)}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#ef1b2d]/30 bg-white px-3 text-xs font-black text-[#b30d1c] shadow-sm transition hover:bg-red-50"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-black text-red-700 shadow-xs transition hover:border-red-300 hover:bg-red-50"
               title="Mở danh sách báo cáo như trang /danh-sach-bao-cao"
             >
-              <ClipboardList className="h-4 w-4" />
+              <ClipboardList className="h-4 w-4 text-[#ef1b2d]" />
               Danh sách báo cáo
             </button>
           </div>

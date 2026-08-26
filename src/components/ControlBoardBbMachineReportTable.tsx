@@ -4261,6 +4261,10 @@ export default function ControlBoardBbMachineReportTable({
                       groupChenhLechKg,
                       mixingLines
                     );
+                    const hangLoiByLine = allocateBbNhuaHaoHutByRatioPercent(
+                      group.soLuongNhuaLoiHong,
+                      mixingLines
+                    );
                     const shiftSettingsTyped = shiftSettings as ShiftSetting[];
                     const resolveLineGia = (row: BbThucDungLineRow) =>
                       resolveBbMaterialExportUnitPrice(
@@ -4402,6 +4406,12 @@ export default function ControlBoardBbMachineReportTable({
                                           </th>
                                           <th
                                             className="px-3 py-1.5 text-right font-black"
+                                            title="SL nhựa lỗi hỏng × tỉ lệ TB thực tế (%) / tổng %"
+                                          >
+                                            Hàng lỗi (kg)
+                                          </th>
+                                          <th
+                                            className="px-3 py-1.5 text-right font-black"
                                             title="Chênh lệch (Tổng nhựa TP − Lượng nhựa sử dụng LT) × tỉ lệ % NVL / tổng %"
                                           >
                                             Nhựa hao hụt (kg)
@@ -4411,13 +4421,14 @@ export default function ControlBoardBbMachineReportTable({
                                       <tbody className="divide-y divide-violet-50">
                                         {mixingLines.length === 0 ? (
                                           <tr>
-                                            <td colSpan={8} className="px-3 py-3 text-sm font-semibold text-zinc-400">
+                                            <td colSpan={9} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có NVL khớp tỉ lệ trộn máy.
                                             </td>
                                           </tr>
                                         ) : (
                                           mixingLines.map((row, index) => {
                                             const gia = resolveLineGia(row);
+                                            const hangLoiKg = hangLoiByLine[index] ?? null;
                                             const nhuaHaoHutKg = nhuaHaoHutByLine[index] ?? null;
                                             return (
                                               <tr key={row.key} className="hover:bg-violet-50/60">
@@ -4439,6 +4450,9 @@ export default function ControlBoardBbMachineReportTable({
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-zinc-700">
                                                   {gia > 0 ? formatVnd(gia) : '—'}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-amber-800">
+                                                  {formatKg(hangLoiKg, 2)}
                                                 </td>
                                                 <td
                                                   className={`px-3 py-1.5 text-right font-mono font-bold ${
@@ -4470,6 +4484,9 @@ export default function ControlBoardBbMachineReportTable({
                                               {formatKg(mixingTotals.totalWeightKg, 2)}
                                             </td>
                                             <td className="px-3 py-2" />
+                                            <td className="px-3 py-2 text-right font-mono text-amber-800">
+                                              {formatKg(group.soLuongNhuaLoiHong, 2)}
+                                            </td>
                                             <td className="px-3 py-2 text-right font-mono text-rose-800">
                                               {formatKg(groupChenhLechKg, 2)}
                                             </td>

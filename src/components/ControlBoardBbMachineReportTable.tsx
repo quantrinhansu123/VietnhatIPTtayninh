@@ -130,6 +130,12 @@ function formatKg(value: number | null | undefined, digits = 2) {
   return formatNumber(value, digits);
 }
 
+function formatSignedKg(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${formatKg(Math.abs(value), digits)}`;
+}
+
 /** Làm tròn kg giống số đang hiện trên bảng (tránh tổng SP lệch 0,01 so với cộng tay các dòng). */
 function roundDisplayKg(value: number | null | undefined, digits = 2) {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return 0;
@@ -1822,7 +1828,7 @@ export default function ControlBoardBbMachineReportTable({
                       ? isLoading
                         ? '…'
                         : insulationPlasticNorm.counted > 0 && displaySanLuongTotals.quantity > 0
-                          ? `${formatKg(insulationPlasticNormDifferenceKg, 2)} kg`
+                          ? `${formatSignedKg(insulationPlasticNormDifferenceKg, 2)} kg`
                           : '—'
                       : ''
                 },
@@ -1855,7 +1861,7 @@ export default function ControlBoardBbMachineReportTable({
                   display: isLoading
                     ? '…'
                     : Number.isFinite(plasticSummaryRow.differenceKg)
-                      ? `${formatKg(plasticSummaryRow.differenceKg, 2)} kg`
+                      ? `${formatSignedKg(plasticSummaryRow.differenceKg, 2)} kg`
                       : '—'
                 }
               ] as const

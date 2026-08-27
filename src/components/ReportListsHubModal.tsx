@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ClipboardList, X } from 'lucide-react';
+import { ClipboardList, X, Printer, Loader2 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { REPORT_LIST_MENU_ITEMS, type MenuCardConfig } from '../app/menus';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../lib/weighingSlipConfig';
@@ -17,6 +17,13 @@ import { CanTuDongPanel } from '../features/can-tu-dong';
 import { CanTuDongPilotPanel, CanKiemKhoPilotPanel } from '../features/can-tu-dong/pilot';
 import { KiemKhoPanel } from '../features/kiem-kho';
 import { WarehouseHistoryPanel } from '../features/phieu-xuat-nhap-kho';
+import {
+  loadProductionPlanRelatedReports,
+  ProductionPlanRelatedPrintContent,
+  type ProductionPlanRelatedReports
+} from '../features/ke-hoach-san-xuat/relatedReportsPrint';
+import { normalizeProducts } from '../features/san-pham';
+import { waitForPrintImagesReady } from '../utils/printReady';
 
 export type ReportListHubTab = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'];
 
@@ -60,6 +67,11 @@ function normalizeHubFilters(filters?: ReportListHubFilters): ReportListHubFilte
   };
 }
 
+function getLocalTodayIso(): string {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
 export default function ReportListsHubModal({
   open,
   onClose,
@@ -87,6 +99,63 @@ export default function ReportListsHubModal({
   const [activeTab, setActiveTab] = useState<ReportListHubTab>(
     () => (menuItems[0]?.tab ?? 'machine-nvl-report-list') as ReportListHubTab
   );
+  const initialDate = getLocalTodayIso();
+  const [printDate, setPrintDate] = useState(initialDate);
+  const [printShift, setPrintShift] = useState(filters?.shift || '');
+  const [printData, setPrintData] = useState<ProductionPlanRelatedReports | null>(null);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+  const [printError, setPrintError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setPrintDate(getLocalTodayIso());
+    setPrintShift(filters?.shift && filters.shift !== 'all' ? filters.shift : '');
+    setPrintData(null);
+    setPrintError('');
+  }, [open, filters?.dateFrom, filters?.dateTo, filters?.shift]);
+
+  const prepareAndPrint = async () => {
+    if (!printDate || !printShift) {
+      setPrintError('Vui lòng chọn ngày và ca trước khi in.');
+      return;
+    }
+    setIsPreparingPrint(true);
+    setPrintError('');
+    try {
+      const productRes = await fetch('/api/san-pham');
+      const productJson = await productRes.json().catch(() => []);
+      const catalog = productRes.ok ? normalizeProducts(productJson) : [];
+      const data = await loadProductionPlanRelatedReports(printDate, [printShift], catalog);
+      if (data.isEmpty) {
+        setPrintError('Không có phiếu nào của ngày và ca đã chọn để in.');
+        return;
+      }
+      setPrintData(data);
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Không thể chuẩn bị bản in.');
+    } finally {
+      setIsPreparingPrint(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!printData) return;
+    document.body.classList.add('production-plan-related-print-active');
+    const timer = window.setTimeout(() => {
+      void waitForPrintImagesReady().then(() => window.print());
+    }, 350);
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      document.body.classList.remove('production-plan-related-print-active');
+      setPrintData(null);
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('afterprint', cleanup);
+      document.body.classList.remove('production-plan-related-print-active');
+    };
+  }, [printData]);
 
   useEffect(() => {
     if (!open) return;
@@ -114,12 +183,65 @@ export default function ReportListsHubModal({
     onNavigate(tab);
   };
 
+  const selectedHubFilters = useMemo<ReportListHubFilters>(() => ({
+    ...hubFilters,
+    dateFrom: printDate || hubFilters.dateFrom,
+    dateTo: printDate || hubFilters.dateTo,
+    shift: printShift || undefined
+  }), [hubFilters, printDate, printShift]);
   if (!open) return null;
 
   const activeItem = menuItems.find(item => item.tab === activeTab) ?? menuItems[0];
-  const panelKey = `${activeTab}:${filtersKey}`;
+  const panelKey = `${activeTab}:${filtersKey}:${printDate}:${printShift}`;
 
-  return createPortal(
+  // Trang phân tích tự động chỉ cần popup chọn phạm vi để in gộp; không hiển thị
+  // lại trung tâm các danh sách báo cáo ở đây.
+  return <>
+    {createPortal(
+      <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Chọn ngày và ca để in">
+        <div className="w-full max-w-md overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-3.5 text-zinc-950">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">In báo cáo</p>
+              <h3 className="mt-0.5 text-base font-black">Chọn ngày và ca</h3>
+              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối và sản lượng nếu có.</p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Đóng" title="Đóng" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="space-y-3.5 px-4 py-4">
+            <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
+              Ngày
+              <input type="date" value={printDate} onChange={event => setPrintDate(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100" />
+            </label>
+            <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
+              Ca
+              <select value={printShift} onChange={event => setPrintShift(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100">
+                <option value="">— Chọn ca —</option>
+                <option value="12C1">12C1 (06:00 - 18:00)</option>
+                <option value="12C2">12C2 (18:00 - 06:00)</option>
+                <option value="HC1">HC1 (06:00 - 14:00)</option>
+                <option value="HC2">HC2 (14:00 - 22:00)</option>
+                <option value="HC3">HC3 (22:00 - 06:00)</option>
+              </select>
+            </label>
+            {printError ? <p className="text-sm font-bold text-rose-600">{printError}</p> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50">Hủy</button>
+              <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !printDate || !printShift} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">
+                {isPreparingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                {isPreparingPrint ? 'Đang chuẩn bị...' : 'In'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    {printData ? createPortal(<div className="production-order-print-batch"><ProductionPlanRelatedPrintContent data={printData} /></div>, document.body) : null}
+  </>;
+
+  return <>
+    {createPortal(
     <div
       className="fixed inset-0 z-[10040] flex flex-col bg-slate-950/55 p-2 backdrop-blur-sm sm:p-3"
       role="dialog"
@@ -176,6 +298,31 @@ export default function ReportListsHubModal({
           <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 to-transparent" />
         </div>
 
+        <div className="shrink-0 border-b border-red-100 bg-white px-4 py-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] sm:items-end">
+            <label className="text-xs font-black uppercase tracking-wide text-zinc-500">
+              Ngày
+              <input type="date" value={printDate} onChange={event => setPrintDate(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-base font-bold text-zinc-900" />
+            </label>
+            <label className="text-xs font-black uppercase tracking-wide text-zinc-500">
+              Ca
+              <select value={printShift} onChange={event => setPrintShift(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-base font-bold text-zinc-900">
+                <option value="">— Chọn ca —</option>
+                <option value="12C1">12C1 (06:00 - 18:00)</option>
+                <option value="12C2">12C2 (18:00 - 06:00)</option>
+                <option value="HC1">HC1 (06:00 - 14:00)</option>
+                <option value="HC2">HC2 (14:00 - 22:00)</option>
+                <option value="HC3">HC3 (22:00 - 06:00)</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !printDate || !printShift} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {isPreparingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {isPreparingPrint ? 'Đang chuẩn bị...' : 'In tất cả phiếu'}
+            </button>
+          </div>
+          {printError ? <p className="mt-2 text-xs font-bold text-rose-600">{printError}</p> : null}
+        </div>
+
         {activeItem ? (
           <div className="shrink-0 border-b border-zinc-100 bg-white px-4 py-2">
             <div className="flex items-start gap-2">
@@ -192,7 +339,7 @@ export default function ReportListsHubModal({
           {activeTab === 'machine-nvl-report-list' ? (
             <MachineNvlReportListView
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBack={onClose}
               onCreate={() => goAndClose('machine-nvl-report')}
               onEdit={report => {
@@ -203,17 +350,17 @@ export default function ReportListsHubModal({
             />
           ) : null}
           {activeTab === 'mixing-report-list' ? (
-            <MixingReportListView key={panelKey} initialFilters={hubFilters} onBack={onClose} />
+            <MixingReportListView key={panelKey} initialFilters={selectedHubFilters} onBack={onClose} />
           ) : null}
           {activeTab === 'weighing-summary-list' ? (
             <WeighingShiftSummary
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBackToMenu={onClose}
             />
           ) : null}
           {activeTab === 'can-tu-dong' ? (
-            <CanTuDongPanel key={panelKey} initialFilters={hubFilters} onBack={onClose} />
+            <CanTuDongPanel key={panelKey} initialFilters={selectedHubFilters} onBack={onClose} />
           ) : null}
           {activeTab === 'can-tu-dong-pilot' ? <CanTuDongPilotPanel key={panelKey} /> : null}
           {activeTab === 'can-kiem-kho' ? <CanKiemKhoPilotPanel key={panelKey} /> : null}
@@ -222,14 +369,14 @@ export default function ReportListsHubModal({
             <WeighingShiftSummary
               key={panelKey}
               config={DAMAGED_GOODS_SLIP_CONFIG}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBackToMenu={onClose}
             />
           ) : null}
           {activeTab === 'acceptance-report-list' ? (
             <AcceptanceReportListView
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBack={onClose}
               onCreate={prefill => {
                 onClose();
@@ -246,7 +393,7 @@ export default function ReportListsHubModal({
           {activeTab === 'warehouse-history' ? (
             <WarehouseHistoryPanel
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBack={onClose}
               onOpenSlip={() => goAndClose('warehouse-slip')}
             />
@@ -254,7 +401,7 @@ export default function ReportListsHubModal({
           {activeTab === 'machine-downtime-list' ? (
             <MachineDowntimeReportListView
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBack={onClose}
               onCreate={() => goAndClose('machine-downtime-report')}
             />
@@ -263,7 +410,7 @@ export default function ReportListsHubModal({
           {activeTab === 'shift-handover-list' ? (
             <ShiftHandoverListView
               key={panelKey}
-              initialFilters={hubFilters}
+              initialFilters={selectedHubFilters}
               onBack={onClose}
               onCreate={() => goAndClose('shift-handover-report')}
             />
@@ -272,5 +419,7 @@ export default function ReportListsHubModal({
       </div>
     </div>,
     document.body
-  );
+    )}
+    {printData ? createPortal(<div className="production-order-print-batch"><ProductionPlanRelatedPrintContent data={printData} /></div>, document.body) : null}
+  </>;
 }

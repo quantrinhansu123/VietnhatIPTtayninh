@@ -3311,11 +3311,15 @@ input[type="number"] {
   page-break-after: auto;
 }
 
-.acceptance-report-print-table th:nth-child(1) { width: 8%; }
-.acceptance-report-print-table th:nth-child(2) { width: 28%; }
-.acceptance-report-print-table th:nth-child(3) { width: 34%; }
-.acceptance-report-print-table th:nth-child(4) { width: 12%; }
-.acceptance-report-print-table th:nth-child(5) { width: 18%; }
+.acceptance-report-print-table { table-layout: fixed; width: 100%; }
+.acceptance-report-print-table th:nth-child(1) { width: 7%; }
+.acceptance-report-print-table th:nth-child(2) { width: 22%; }
+.acceptance-report-print-table th:nth-child(3) { width: 31%; }
+.acceptance-report-print-table th:nth-child(4) { width: 11%; }
+.acceptance-report-print-table th:nth-child(5) { width: 14%; }
+.acceptance-report-print-table th:nth-child(6) { width: 15%; }
+.acceptance-report-print-table th,
+.acceptance-report-print-table td { box-sizing: border-box; overflow-wrap: anywhere; }
 
 .can-tu-dong-print-table th:nth-child(1) { width: 5%; }
 .can-tu-dong-print-table th:nth-child(2) { width: 12%; }
@@ -4943,6 +4947,23 @@ input[type="number"] {
 
   .warehouse-slip-print-batch .warehouse-slip-print-doc--compact .warehouse-slip-print-signatures span {
     margin-top: 9mm !important;
+  }
+
+  /* Phiếu xuất kho nằm trong batch báo cáo dùng page margin 8mm;
+     giới hạn đúng vùng in A4 để không cắt cột ngoài cùng. */
+  .production-order-print-batch .warehouse-slip-print-doc {
+    width: 194mm !important;
+    max-width: 194mm !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  .production-order-print-batch .warehouse-slip-print-batch {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
   }
 }
 

@@ -724,6 +724,18 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
   );
 }
 
+/** Batch dùng chung cho các luồng in tổng hợp; giữ nguyên mẫu phiếu hiện hữu. */
+export function WarehouseSlipPrintBatch({ slips }: { slips: WarehouseSlipPrintData[] }) {
+  if (!slips.length) return null;
+  return (
+    <div className="warehouse-slip-print-batch">
+      {slips.map((slip, index) => (
+        <WarehouseSlipPrintSheet key={`${slip.slipCode || 'slip'}-${index}`} data={slip} />
+      ))}
+    </div>
+  );
+}
+
 export default function WarehouseSlipPrintModal({
   open,
   data = null,

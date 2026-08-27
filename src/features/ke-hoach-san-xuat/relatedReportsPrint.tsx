@@ -38,7 +38,7 @@ import { WeighingSlipPrintSheet, type WeighingSlipPrintData } from '../../compon
 import { MachineDowntimePrintSheet, buildMachineDowntimePrintSlip } from '../../components/MachineDowntimePrintSheet';
 import { AcceptanceReportPrintSheet, buildAcceptancePrintSlips } from '../../components/AcceptanceReportPrintSheet';
 import {
-  WarehouseSlipPrintSheet,
+  WarehouseSlipPrintBatch,
   type WarehouseSlipPrintData
 } from '../../components/WarehouseSlipPrintModal';
 import {
@@ -485,11 +485,11 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
   return (
     <>
       {/* 4. Phiếu xuất kho vật tư */}
-      {data.warehouseSlips.map((slip, index) => (
-        <div key={`warehouse-${slip.slipCode || index}`} className="production-order-print-page">
-          <WarehouseSlipPrintSheet data={slip} />
+      {data.warehouseSlips.length > 0 ? (
+        <div className="production-order-print-page">
+          <WarehouseSlipPrintBatch slips={data.warehouseSlips} />
         </div>
-      ))}
+      ) : null}
 
       {/* 5. Bảng kiểm kê vật tư tồn đầu ca */}
       {nvlDauCaReports.map((report, index) => (

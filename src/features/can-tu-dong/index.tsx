@@ -252,6 +252,23 @@ function formatIsoDateVi(iso?: string | null) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+/** Ngày giờ cân (`captured_at`) — theo dõi thời điểm ghi nhận. */
+function formatCapturedAtVi(value?: string | null) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+}
+
 function formatWeight(
   value?: number | string | null,
   unit?: string | null,
@@ -1496,7 +1513,7 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <TableShell minWidthClassName="min-w-[2360px]">
+      <TableShell minWidthClassName="min-w-[2520px]">
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input
@@ -1515,6 +1532,12 @@ export function CanTuDongPanel({
             title="Ngày nghiệp vụ (SOURCE_DATE / work_date), không dùng ngày cân"
           >
             Ngày
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="Thời điểm cân thực tế (captured_at) — dùng để theo dõi"
+          >
+            Ngày giờ
           </TableHeadCell>
           <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
           <TableHeadCell
@@ -1596,14 +1619,14 @@ export function CanTuDongPanel({
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={22}>
+            <TableEmptyRow colSpan={23}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={22}>
+            <TableEmptyRow colSpan={23}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -1689,6 +1712,12 @@ export function CanTuDongPanel({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-900">
                     {formatIsoDateVi(ngay)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 font-mono text-[11px] font-semibold text-zinc-700"
+                    title={String(row.captured_at || '').trim() || undefined}
+                  >
+                    {formatCapturedAtVi(row.captured_at)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold text-sky-900">
                     {row.ca || '—'}

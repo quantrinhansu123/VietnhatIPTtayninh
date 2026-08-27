@@ -4026,13 +4026,11 @@ input[type="number"] {
   .bb-machine-report-print-material-table th:nth-child(n+7):nth-child(-n+14),
   .bb-machine-report-print-material-table td:nth-child(n+7):nth-child(-n+14) { width: 5.5%; }
 
-  /* 3.2 NVL khác — không có cột tỉ lệ trộn */
+  /* 3.2 NVL khác — có cột Số lượng (ĐVT gốc) sau ĐVT, không có tỉ lệ trộn */
   .bb-machine-report-print-material-table-other th:nth-child(5),
-  .bb-machine-report-print-material-table-other td:nth-child(5),
-  .bb-machine-report-print-material-table-other th:nth-child(6),
-  .bb-machine-report-print-material-table-other td:nth-child(6) { width: 6.5%; }
-  .bb-machine-report-print-material-table-other th:nth-child(n+5):nth-child(-n+12),
-  .bb-machine-report-print-material-table-other td:nth-child(n+5):nth-child(-n+12) { width: 6.5%; }
+  .bb-machine-report-print-material-table-other td:nth-child(5) { width: 5.5%; }
+  .bb-machine-report-print-material-table-other th:nth-child(n+6):nth-child(-n+13),
+  .bb-machine-report-print-material-table-other td:nth-child(n+6):nth-child(-n+13) { width: 6%; }
 
   .bb-machine-report-print-material-table th:nth-child(4),
   .bb-machine-report-print-material-table td:nth-child(4) {
@@ -4124,15 +4122,15 @@ input[type="number"] {
     text-overflow: ellipsis;
   }
 
-  .bb-machine-report-print-evaluation-detail-table th:nth-child(n+3):nth-child(-n+5),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(n+3):nth-child(-n+5) {
-    width: 9%;
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(n+3):nth-child(-n+6),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(n+3):nth-child(-n+6) {
+    width: 8%;
   }
 
-  .bb-machine-report-print-evaluation-detail-table th:nth-child(6),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(6),
   .bb-machine-report-print-evaluation-detail-table th:nth-child(7),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(7) {
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(7),
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(8),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(8) {
     width: 8%;
   }
 

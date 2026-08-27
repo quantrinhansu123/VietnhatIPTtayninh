@@ -600,6 +600,12 @@ function resolveExportWeightKg(
   if (!Number.isFinite(qty) || qty <= 0) return null;
 
   const catalog = materials.map(mapMaterialToWeightCatalogItem);
+  /** Ưu tiên: Số lượng xuất × Số Kg (Tổng kg) của NVL trên kho. */
+  const tongKg = findMaterialTongKgPerUnit(movement.itemCode, catalog);
+  if (tongKg !== null && tongKg > 0) {
+    return roundQty(qty * tongKg, 4);
+  }
+
   const converted = convertWarehouseQuantityToKg({
     quantity: qty,
     unit: movement.unit,

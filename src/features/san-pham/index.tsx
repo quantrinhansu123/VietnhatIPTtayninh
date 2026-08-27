@@ -180,7 +180,7 @@ export function ProductNplItemFormModal({
   materialOptions,
   isLoadingMaterials,
   isSaving,
-  existingCodes,
+  existingItems,
   onClose,
   onSave
 }: {
@@ -189,7 +189,8 @@ export function ProductNplItemFormModal({
   materialOptions: MaterialOption[];
   isLoadingMaterials: boolean;
   isSaving: boolean;
-  existingCodes: string[];
+  /** Thành phần hiện có (trừ dòng đang sửa) — cho phép trùng mã nếu khác loại ĐVT. */
+  existingItems: ProductNplItem[];
   onClose: () => void;
   onSave: (item: ProductNplItem) => Promise<void>;
 }) {
@@ -236,13 +237,10 @@ export function ProductNplItemFormModal({
       setFormError('Vui lòng chọn mã NPL.');
       return;
     }
-    if (existingCodes.includes(trimmedCode)) {
-      setFormError(`Mã NPL ${trimmedCode} đã có trong thành phần.`);
-      return;
-    }
 
     const material = materialOptions.find(option => option.code === trimmedCode);
-    const resolvedUnit = unit.trim() || material?.unit || '-';
+    const resolvedUnit =
+      amountType === 'percent' ? '%' : unit.trim() || material?.unit || '-';
 
     if (amountType === 'percent') {
       if (!Number.isFinite(numericValue) || numericValue < 0 || numericValue > 100) {
@@ -254,17 +252,34 @@ export function ProductNplItemFormModal({
       return;
     }
 
+    const draft: ProductNplItem = {
+      code: trimmedCode,
+      name: name.trim() || material?.name || '',
+      amountType,
+      percent: amountType === 'percent' ? numericValue : null,
+      quantity: amountType === 'quantity' ? numericValue : null,
+      unit: resolvedUnit,
+      weightKg:
+        amountType === 'quantity' && isProductNplKgUnit(resolvedUnit)
+          ? numericValue
+          : initialItem?.weightKg ?? null
+    };
+    const draftKind = resolveProductNplUnitKind(draft);
+    const sameCode = existingItems.filter(
+      item => normalizeProductCodeKey(item.code) === normalizeProductCodeKey(trimmedCode)
+    );
+    const sameKind = sameCode.find(item => resolveProductNplUnitKind(item) === draftKind);
+    if (sameKind) {
+      setFormError(
+        `Mã NPL ${trimmedCode} đã có loại ${productNplUnitKindLabel(draftKind)}. ` +
+          `Có thể thêm cùng mã với loại đơn vị khác (vd Cái + kg).`
+      );
+      return;
+    }
+
     setFormError('');
     try {
-      await onSave({
-        code: trimmedCode,
-        name: name.trim() || material?.name || '',
-        amountType,
-        percent: amountType === 'percent' ? numericValue : null,
-        quantity: amountType === 'quantity' ? numericValue : null,
-        unit: resolvedUnit,
-        weightKg: initialItem?.weightKg ?? null
-      });
+      await onSave(draft);
     } catch (error: any) {
       setFormError(error.message || 'Không thể lưu thành phần.');
     }
@@ -369,6 +384,9 @@ export function ProductNplItemFormModal({
               </label>
             </div>
           )}
+          <p className="text-[11px] font-medium leading-relaxed text-zinc-500">
+            Cùng mã NPL nhưng khác đơn vị (vd Cái rồi kg) sẽ gộp thành một thành phần có cả hai loại.
+          </p>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
           <BackButton onClick={onClose} className="h-10 rounded-lg bg-white" />
@@ -492,6 +510,82 @@ function isProductNplKgUnit(unit: string) {
     normalized === 'kilograms' ||
     normalized.startsWith('kg')
   );
+}
+
+/** Phân loại đơn vị thành phần: % / kg / số lượng (Cái, Cuộn…). */
+export type ProductNplUnitKind = 'percent' | 'kg' | 'qty';
+
+export function resolveProductNplUnitKind(
+  item: Pick<ProductNplItem, 'amountType' | 'unit'>
+): ProductNplUnitKind {
+  if (item.amountType === 'percent') return 'percent';
+  if (isProductNplKgUnit(item.unit || '')) return 'kg';
+  return 'qty';
+}
+
+function productNplUnitKindLabel(kind: ProductNplUnitKind) {
+  if (kind === 'percent') return 'phần trăm (%)';
+  if (kind === 'kg') return 'kg';
+  return 'số lượng (Cái/Cuộn…)';
+}
+
+/**
+ * Gộp hai dòng cùng mã NVL khác loại đơn vị → 1 thành phần
+ * (vd Cái + kg, hoặc % + Cái) — khớp 2 loại đơn vị trên cùng mã.
+ */
+export function mergeProductNplItemsByUnitKinds(
+  existing: ProductNplItem,
+  incoming: ProductNplItem
+): ProductNplItem {
+  const exKind = resolveProductNplUnitKind(existing);
+  const inKind = resolveProductNplUnitKind(incoming);
+
+  let percent = existing.percent;
+  let quantity = existing.quantity;
+  let unit = existing.unit;
+  let weightKg = existing.weightKg ?? null;
+  let amountType: ProductNplAmountType = existing.amountType;
+
+  const apply = (item: ProductNplItem, kind: ProductNplUnitKind) => {
+    if (kind === 'percent') {
+      if (item.percent != null && Number.isFinite(item.percent)) percent = item.percent;
+      return;
+    }
+    if (kind === 'kg') {
+      const kg =
+        item.weightKg != null && Number.isFinite(item.weightKg)
+          ? item.weightKg
+          : item.quantity != null && Number.isFinite(item.quantity)
+            ? item.quantity
+            : null;
+      if (kg != null) weightKg = kg;
+      return;
+    }
+    if (item.quantity != null && Number.isFinite(item.quantity)) {
+      quantity = item.quantity;
+      unit = item.unit && item.unit !== '-' ? item.unit : unit;
+    }
+  };
+
+  apply(existing, exKind);
+  apply(incoming, inKind);
+
+  if (quantity != null && Number.isFinite(quantity)) amountType = 'quantity';
+  else if (percent != null && Number.isFinite(percent)) amountType = 'percent';
+  else if (weightKg != null && Number.isFinite(weightKg)) {
+    amountType = 'quantity';
+    if (!unit || unit === '-' || unit === '%') unit = 'kg';
+  }
+
+  return {
+    code: incoming.code || existing.code,
+    name: incoming.name || existing.name,
+    amountType,
+    percent: percent ?? null,
+    quantity: quantity ?? null,
+    unit: unit || (amountType === 'percent' ? '%' : '-'),
+    weightKg: weightKg ?? null
+  };
 }
 
 function parseWeightKgFromLabel(label: string): number | null {
@@ -1022,9 +1116,23 @@ export function ProductViewModal({
     let nextItems: ProductNplItem[];
 
     if (formMode === 'edit' && formIndex !== null) {
-      nextItems = items.map((existing, index) => (index === formIndex ? item : existing));
+      // Gộp với dòng cũ để giữ loại ĐVT còn lại khi chỉ sửa một loại.
+      nextItems = items.map((existing, index) =>
+        index === formIndex ? mergeProductNplItemsByUnitKinds(existing, item) : existing
+      );
     } else {
-      nextItems = [...items, item];
+      const codeKey = normalizeProductCodeKey(item.code);
+      const existingIndex = items.findIndex(
+        row => normalizeProductCodeKey(row.code) === codeKey
+      );
+      if (existingIndex >= 0) {
+        // Trùng mã + khác loại ĐVT → gộp 2 loại đơn vị trên cùng dòng thành phần.
+        nextItems = items.map((row, index) =>
+          index === existingIndex ? mergeProductNplItemsByUnitKinds(row, item) : row
+        );
+      } else {
+        nextItems = [...items, item];
+      }
     }
 
     try {
@@ -1869,9 +1977,7 @@ export function ProductViewModal({
           materialOptions={materialOptions}
           isLoadingMaterials={isLoadingMaterials}
           isSaving={isSaving}
-          existingCodes={items
-            .filter((_, index) => formMode !== 'edit' || index !== formIndex)
-            .map(item => item.code)}
+          existingItems={items.filter((_, index) => formMode !== 'edit' || index !== formIndex)}
           onClose={() => {
             setFormMode(null);
             setFormIndex(null);

@@ -12,13 +12,19 @@ import type { MaterialRow } from '../features/kho-nvl';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { parseProductionOrderFilterDate } from '../features/cai-dat-thoi-gian';
-import { shiftNamesMatch } from '../utils/shiftSettings';
+import { shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
+import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import {
+  convertWarehouseQuantityToKg,
+  findMaterialTongKgPerUnit,
   isWarehouseKgUnit,
   mapMaterialToWeightCatalogItem,
   normalizeWarehouseCodeKey,
+  resolveMaterialTongKgPerUnit,
   type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
+import { resolveProductNplItemWeightKg } from '../features/san-pham';
+import { resolveProductUnitNormKg } from '../features/ke-hoach-san-xuat';
 import {
   allocateBbKgByWeightShare,
   allocateBbNhuaHaoHutByRatioPercent,
@@ -30,6 +36,7 @@ import {
   isInsulationMachineText,
   resolveBbDamagedPlasticLoiHongKg,
   resolveBbDamagedOtherLoiHongKg,
+  resolveBbMaterialExportUnitPrice,
   type BbCuoiCaGroup,
   type BbDamagedGoodsGroup,
   type BbDanhGiaHaoHutGroup,
@@ -83,6 +90,9 @@ type PrintProps = {
   canTuDongRecords?: CanTuDongRecord[];
   /** Nhãn máy đang lọc, vd: "máy cách nhiệt". */
   machineReportLabel?: string;
+  /** Phiếu xuất/nhập kho — lấy đơn giá NVL theo ngày + ca lệnh. */
+  warehouseMovements?: ShiftSummaryWarehouseMovement[];
+  shiftSettings?: Array<ShiftSetting | { name?: string; label?: string }>;
 };
 
 type MaterialPrintRow = {
@@ -95,9 +105,12 @@ type MaterialPrintRow = {
   actualMixedKg: number;
   openingKg: number;
   exportKg: number;
-  /** SL xuất từ phiếu xuất NVL (ĐVT gốc, dùng mục 3.2 Cái). */
+  /** SL xuất từ phiếu xuất NVL (ĐVT gốc). */
   exportQty: number;
-  /** SL thực tế = SL báo cáo sản lượng × định mức theo cái (mục 3.2). */
+  /**
+   * Số lượng mục 3.2 (ĐVT gốc) =
+   * Σ theo từng mã SP: (SL sản lượng SP × định mức thành phần NVL / 1 SP).
+   */
   actualQty: number;
   finishedKg: number;
   damagedKg: number;
@@ -203,15 +216,17 @@ function sumMaterialPrintTotals(
 function renderMaterialPrintTotalRow(
   label: string,
   totals: MaterialPrintTotals,
-  options?: { includeMixingRatioCols?: boolean }
+  options?: { includeMixingRatioCols?: boolean; includeQtyCol?: boolean }
 ) {
   const includeMixingRatioCols = options?.includeMixingRatioCols !== false;
+  const includeQtyCol = options?.includeQtyCol === true;
   return (
     <tr className="shift-summary-print-total-row">
       <td className="shift-summary-print-center bb-machine-report-print-stt">&nbsp;</td>
       <td colSpan={3} className="shift-summary-print-total-label">
         {label}
       </td>
+      {includeQtyCol ? <td className="shift-summary-print-num">—</td> : null}
       {includeMixingRatioCols ? (
         <>
           <td className="shift-summary-print-num">&nbsp;</td>
@@ -244,6 +259,39 @@ function printNumber(value: number | null | undefined, digits = 2) {
 function printPercent(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '-';
   return `${formatNumber(value, 2)}%`;
+}
+
+/** Quy kg → SL theo ĐVT gốc (Tổng kg kho NVL); ĐVT kg giữ nguyên. */
+function resolveUsageQtyFromKg(
+  kg: number | null | undefined,
+  unit: string,
+  code: string,
+  name: string,
+  catalog: WarehouseWeightCatalogItem[]
+): number | null {
+  if (kg === null || kg === undefined || !Number.isFinite(kg)) return null;
+  const unitRaw = String(unit || '').trim();
+  if (!unitRaw || unitRaw === '-' || isWarehouseKgUnit(unitRaw)) return kg;
+
+  const codeKey = normalizeWarehouseCodeKey(code);
+  const nameKey = normalizeWarehouseCodeKey(name);
+  const item =
+    (codeKey
+      ? catalog.find(row => normalizeWarehouseCodeKey(row.code) === codeKey)
+      : undefined) ||
+    (nameKey
+      ? catalog.find(row => normalizeWarehouseCodeKey(row.name || '') === nameKey)
+      : undefined);
+  const perUnit = resolveMaterialTongKgPerUnit(item);
+  if (perUnit === null || !(perUnit > 0)) return null;
+  return Math.round((kg / perUnit) * 10000) / 10000;
+}
+
+function printQtyWithUnit(qty: number | null | undefined, unit: string) {
+  if (qty === null || qty === undefined || !Number.isFinite(qty)) return '—';
+  const unitLabel = String(unit || '').trim();
+  if (!unitLabel || unitLabel === '-') return printNumber(qty, 2);
+  return `${printNumber(qty, 2)} ${unitLabel}`;
 }
 
 /** Cùng công thức tab «Báo cáo lỗi hỏng»: ưu tiên tỉ lệ trộn thực tế, không có thì định mức. */
@@ -493,6 +541,23 @@ function resolveActualQuantityForProduct(
   return acceptanceQuantityForProduct(order, productCode, productName, props.acceptanceReports);
 }
 
+/** SL sản lượng theo mã SP — ưu tiên tab Báo cáo sản lượng, không thì nguồn cân/nghiệm thu. */
+function resolveProductSanLuongQuantity(
+  order: BbProductionOrderGroup,
+  productCode: string,
+  productName: string,
+  props: PrintProps
+) {
+  const productGroup = findSanLuongProductGroup(
+    order,
+    productCode,
+    productName,
+    props.sanLuongGroups || []
+  );
+  if (productGroup && productGroup.quantity > 0) return productGroup.quantity;
+  return resolveActualQuantityForProduct(order, productCode, productName, props);
+}
+
 function isInsulationMachineReport(props: PrintProps, order?: BbProductionOrderGroup) {
   if (/cách\s+nhiệt/i.test(String(props.machineReportLabel || ''))) return true;
   return /cách\s+nhiệt/i.test(String(order?.machine || ''));
@@ -570,6 +635,94 @@ function resolveOrderSanLuongFilmKg(order: BbProductionOrderGroup, props: PrintP
   return filmKg > 0 ? filmKg : 0;
 }
 
+/**
+ * Định mức NVL (kg) theo lệnh = Σ (SL thực tế SP × định mức BOM / 1 SP).
+ * Dùng cột «Định mức Vật tư của Số lượng nhập TP» mục 4.2.
+ */
+function buildBomDinhMucKgByMaterial(order: BbProductionOrderGroup, props: PrintProps): Map<string, number> {
+  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
+  const byKey = new Map<string, number>();
+  const round4 = (value: number) => Math.round(value * 10000) / 10000;
+  const add = (code: string, name: string, kg: number) => {
+    if (!(kg > 0)) return;
+    const key =
+      normalizeProductCodeKey(code) ||
+      normalizeProductCodeKey(name) ||
+      String(code || name || '').trim().toUpperCase();
+    if (!key) return;
+    byKey.set(key, round4((byKey.get(key) || 0) + kg));
+  };
+
+  for (const productLine of order.lines) {
+    const product = findProduct(props.products, productLine.productCode);
+    if (!product) continue;
+    const actualQty = resolveProductSanLuongQuantity(
+      order,
+      productLine.productCode,
+      productLine.productName,
+      props
+    );
+    if (!(actualQty > 0)) continue;
+
+    const unitNormKg =
+      productLine.normKgPerUnit != null && productLine.normKgPerUnit > 0
+        ? productLine.normKgPerUnit
+        : resolveProductUnitNormKg(product);
+
+    for (const item of product.nplItems || []) {
+      // Ưu tiên kg/SP đã khai trên BOM (Khối lượng kg).
+      const perSpKg = resolveProductNplItemWeightKg(product, item, props.materials);
+      if (perSpKg != null && Number.isFinite(perSpKg) && perSpKg > 0) {
+        add(item.code, item.name, perSpKg * actualQty);
+        continue;
+      }
+
+      if (item.amountType === 'percent') {
+        if (unitNormKg != null && unitNormKg > 0) {
+          add(item.code, item.name, unitNormKg * actualQty * (Math.max(0, item.percent ?? 0) / 100));
+        }
+        continue;
+      }
+
+      const qtyPerSp =
+        item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+          ? item.quantity
+          : null;
+      if (qtyPerSp == null) continue;
+      const rawQty = qtyPerSp * actualQty;
+      const unit = String(item.unit || '').trim();
+      if (!unit || unit === '-' || isWarehouseKgUnit(unit)) {
+        add(item.code, item.name, rawQty);
+        continue;
+      }
+      const converted = convertWarehouseQuantityToKg({
+        quantity: rawQty,
+        unit,
+        itemCode: item.code,
+        warehouseKind: 'nvl',
+        materials: materialsCatalog
+      });
+      if (converted != null && Number.isFinite(converted) && converted > 0) {
+        add(item.code, item.name, converted);
+      }
+    }
+  }
+
+  return byKey;
+}
+
+function lookupBomDinhMucKg(
+  map: Map<string, number>,
+  code?: string | null,
+  name?: string | null
+): number {
+  const codeKey = normalizeProductCodeKey(code || '');
+  if (codeKey && map.has(codeKey)) return map.get(codeKey) || 0;
+  const nameKey = normalizeProductCodeKey(name || '');
+  if (nameKey && map.has(nameKey)) return map.get(nameKey) || 0;
+  return 0;
+}
+
 function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   const rows = new Map<string, MaterialPrintRow>();
   const round4 = (value: number) => Math.round(value * 10000) / 10000;
@@ -599,9 +752,10 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   };
 
   // Seed danh sách NVL / % định mức từ BOM — không ghi finishedKg (cột nhập TP chỉ từ snapshot).
+  // Số lượng (3.2) = Σ (SL sản lượng từng mã SP × định mức thành phần NVL của SP đó).
   for (const productLine of order.lines) {
     const product = findProduct(props.products, productLine.productCode);
-    const actualProductQuantity = resolveActualQuantityForProduct(
+    const actualProductQuantity = resolveProductSanLuongQuantity(
       order,
       productLine.productCode,
       productLine.productName,
@@ -623,7 +777,6 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
           unit !== '-' &&
           !isWarehouseKgUnit(unit)
         ) {
-          // Mục 3.2: SL thực tế = SL sản lượng × định mức theo cái (giữ ĐVT gốc).
           row.actualQty += qtyPerSp * actualProductQuantity;
         }
       }
@@ -631,6 +784,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   }
 
   const exportGroup = findOrderGroup(props.exportGroups, order);
+  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
   // Mỗi dòng phiếu xuất chỉ cộng 1 lần (tránh nhân khi phân bổ nhiều SP).
   const seenExportSlipKeys = new Set<string>();
   for (const line of exportGroup?.lines || []) {
@@ -639,11 +793,33 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     const isFirstSlipHit = !slipId || !seenExportSlipKeys.has(slipId);
     if (slipId) seenExportSlipKeys.add(slipId);
 
-    // KL xuất (kg): các phần phân bổ theo SP cộng lại = tổng phiếu → cộng mọi dòng.
-    row.exportKg += line.weightKg || 0;
-    // SL xuất (Cái…): dòng ≠ kg thường copy nguyên SL phiếu cho mỗi SP → chỉ cộng 1 lần / slipLineKey.
+    // SL xuất: chỉ cộng 1 lần / slipLineKey.
     if (isFirstSlipHit) {
       row.exportQty += line.quantity > 0 ? line.quantity : 0;
+    }
+  }
+  // Trọng lượng xuất kho = Số lượng xuất × Số Kg (Tổng kg) của NVL.
+  for (const row of rows.values()) {
+    if (!(row.exportQty > 0)) {
+      row.exportKg = 0;
+      continue;
+    }
+    const tongKg =
+      findMaterialTongKgPerUnit(row.code, materialsCatalog) ??
+      resolveMaterialTongKgPerUnit(
+        materialsCatalog.find(
+          item =>
+            normalizeWarehouseCodeKey(item.code) === normalizeWarehouseCodeKey(row.code) ||
+            normalizeWarehouseCodeKey(item.name || '') === normalizeWarehouseCodeKey(row.name)
+        )
+      );
+    if (tongKg != null && tongKg > 0) {
+      row.exportKg = round4(row.exportQty * tongKg);
+    } else if (isWarehouseKgUnit(row.unit)) {
+      // ĐVT kg mà chưa có Tổng kg → coi SL đã là kg.
+      row.exportKg = round4(row.exportQty);
+    } else {
+      row.exportKg = 0;
     }
   }
   const openingGroups = findOrderGroups(props.dauCaGroups, order);
@@ -736,25 +912,48 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     }
   }
 
-  // Cột «Trọng lượng vật tư nhập thành phẩm» (3.1): chỉ snapshot NVL báo cáo sản lượng
+  // Cột «Trọng lượng vật tư nhập thành phẩm» (3.1/3.2): chỉ snapshot NVL báo cáo sản lượng
   // (`bao_cao_san_luong_nvl_dinh_muc` qua sanLuongGroups.nvlTotals) — không BOM / không scale.
+  // Không ghi đè actualQty — cột Số lượng 3.2 giữ Σ (SL SP × ĐM thành phần).
   for (const row of rows.values()) {
     row.finishedKg = 0;
   }
   const sanLuongNvls = collectSanLuongNvlTotalsForOrder(order, props.sanLuongGroups || []);
   if (sanLuongNvls.length > 0) {
-    for (const row of rows.values()) {
-      row.actualQty = 0;
-    }
     for (const nvl of sanLuongNvls) {
       const unit = nvl.unit || (nvl.amountType === 'percent' ? 'kg' : 'Cái');
       const row = ensure(nvl.itemCode, nvl.itemName, unit);
       if (nvl.actualWeightKg > 0) {
         row.finishedKg = round4(nvl.actualWeightKg);
       }
-      if (nvl.amountType === 'quantity' && nvl.quantity != null && nvl.quantity > 0) {
-        row.actualQty = round4(nvl.quantity);
-      }
+    }
+  }
+
+  // Tính lại Số lượng 3.2 sau khi gom đủ mã NVL (kể cả chỉ có trên snapshot/xuất).
+  for (const row of rows.values()) {
+    if (!isPlasticMaterialPrintRow(row)) row.actualQty = 0;
+  }
+  for (const productLine of order.lines) {
+    const product = findProduct(props.products, productLine.productCode);
+    const sl = resolveProductSanLuongQuantity(
+      order,
+      productLine.productCode,
+      productLine.productName,
+      props
+    );
+    if (!(sl > 0)) continue;
+    for (const item of product?.nplItems || []) {
+      if (item.amountType !== 'quantity') continue;
+      const qtyPerSp =
+        item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+          ? item.quantity
+          : null;
+      if (qtyPerSp == null) continue;
+      const unit = String(item.unit || '').trim();
+      if (!unit || unit === '-' || isWarehouseKgUnit(unit)) continue;
+      const row = ensure(item.code, item.name, unit);
+      if (isPlasticMaterialPrintRow(row)) continue;
+      row.actualQty = round4(row.actualQty + qtyPerSp * sl);
     }
   }
 
@@ -772,7 +971,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     });
   }
 
-  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
+  const materialsCatalogForUnit = props.materials.map(mapMaterialToWeightCatalogItem);
   const result = [...rows.values()]
     .filter(
       row =>
@@ -783,7 +982,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     )
     .map(row => ({
       ...row,
-      unit: resolvePrintMaterialUnit(row.code, row.name, row.unit, materialsCatalog)
+      unit: resolvePrintMaterialUnit(row.code, row.name, row.unit, materialsCatalogForUnit)
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
@@ -889,35 +1088,23 @@ function BbMachineOrderPrintSheet({
 
   /** Hao hụt nhựa: tách theo từng loại trong phiếu trộn; dòng «Hao hụt nhựa» chỉ còn tổng. */
   const mixingGroup = findOrderGroup(props.mixingGroups, order);
+  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
   const plasticLossTotalKg = evaluation?.giaTriHaoHutNhuaKg ?? 0;
-  const plasticLossTotalMoney = evaluation?.giaTriHaoHutNhua ?? 0;
-  const plasticDinhMucKg = evaluation?.tongNhuaDinhMuc ?? 0;
   const plasticThucXuatKg = evaluation?.tongNhuaThucXuat ?? 0;
-  const plasticChenhLechKg = plasticThucXuatKg - plasticDinhMucKg;
-  const plasticLossBlendedPrice = unitPrice(plasticLossTotalMoney, plasticLossTotalKg);
-  const filmDinhMucKg = evaluation?.tongMangDinhMuc ?? 0;
-  const filmThucXuatKg = evaluation?.tongMangThucXuat ?? 0;
-  const filmChenhLechKg = filmThucXuatKg - filmDinhMucKg;
-  const filmLossKg = evaluation?.giaTriHaoHutMangKg ?? 0;
-  const filmLossMoney = evaluation?.giaTriHaoHutMang ?? 0;
   const danhGiaText = String(props.phanTichMap?.[order.groupKey] || '').trim();
+  /** 4.2 Định mức = SL thực tế × định mức BOM. */
+  const bomDinhMucByMaterial = buildBomDinhMucKgByMaterial(order, props);
   const mixingPlasticLines = (mixingGroup?.lines || []).filter(line => {
     const hasName = Boolean(String(line.materialCode || '').trim() || String(line.materialName || '').trim());
     if (!hasName) return false;
     return !isNnsTronMaterial(line.materialCode, line.materialName);
   });
   const plasticLossKgByLine = allocateBbNhuaHaoHutByRatioPercent(plasticLossTotalKg, mixingPlasticLines);
-  const plasticDinhMucByLine = allocateBbNhuaHaoHutByRatioPercent(plasticDinhMucKg, mixingPlasticLines);
   const plasticThucXuatByLine = allocateBbNhuaHaoHutByRatioPercent(plasticThucXuatKg, mixingPlasticLines);
+  const shiftSettingsTyped = (props.shiftSettings || []) as ShiftSetting[];
+  const warehouseMovements = props.warehouseMovements || [];
   const plasticLossDetailRows = mixingPlasticLines.map((line, index) => {
     const kg = plasticLossKgByLine[index];
-    const qty = kg !== null && Number.isFinite(kg) ? kg : 0;
-    const share =
-      plasticLossTotalKg !== 0 && Number.isFinite(qty) ? qty / plasticLossTotalKg : 0;
-    const money =
-      plasticLossTotalKg !== 0
-        ? Math.round(plasticLossTotalMoney * share)
-        : 0;
     const tiLeDm =
       line.tiLeDinhMucPercent !== null && Number.isFinite(line.tiLeDinhMucPercent)
         ? line.tiLeDinhMucPercent
@@ -926,57 +1113,90 @@ function BbMachineOrderPrintSheet({
       line.tiLeThucTeTbPercent !== null && Number.isFinite(line.tiLeThucTeTbPercent)
         ? line.tiLeThucTeTbPercent
         : null;
-    const dinhMucKg = plasticDinhMucByLine[index];
+    const bomDinhMucKg = lookupBomDinhMucKg(bomDinhMucByMaterial, line.materialCode, line.materialName);
+    const dinhMucKg = bomDinhMucKg > 0 ? bomDinhMucKg : null;
     const thucXuatKg = plasticThucXuatByLine[index];
+    const chenhLechKg =
+      dinhMucKg !== null &&
+      thucXuatKg !== null &&
+      Number.isFinite(dinhMucKg) &&
+      Number.isFinite(thucXuatKg)
+        ? thucXuatKg - dinhMucKg
+        : null;
+    /** Đơn giá từ phiếu xuất NVL cùng ngày + ca lệnh. */
+    const exportUnitPrice = resolveBbMaterialExportUnitPrice(
+      order.ngay,
+      order.shift,
+      warehouseMovements,
+      shiftSettingsTyped,
+      line.materialCode,
+      line.materialName
+    );
+    const lineUnitPrice = exportUnitPrice > 0 ? exportUnitPrice : null;
+    const money =
+      chenhLechKg !== null && lineUnitPrice !== null
+        ? Math.round(chenhLechKg * lineUnitPrice)
+        : 0;
+    const thucXuatKgResolved =
+      thucXuatKg !== null && Number.isFinite(thucXuatKg) ? thucXuatKg : null;
     const label = [line.materialCode, line.materialName].filter(Boolean).join(' — ') || '—';
     return {
       key: line.key,
       label,
+      unit: 'kg',
       tiLeDm,
       tiLeTt,
-      dinhMucKg: dinhMucKg !== null && Number.isFinite(dinhMucKg) ? dinhMucKg : null,
-      thucXuatKg: thucXuatKg !== null && Number.isFinite(thucXuatKg) ? thucXuatKg : null,
-      chenhLechKg:
-        dinhMucKg !== null &&
-        thucXuatKg !== null &&
-        Number.isFinite(dinhMucKg) &&
-        Number.isFinite(thucXuatKg)
-          ? thucXuatKg - dinhMucKg
-          : null,
+      dinhMucKg,
+      thucXuatKg: thucXuatKgResolved,
+      thucXuatQty: thucXuatKgResolved,
+      chenhLechKg,
       kg: kg !== null && Number.isFinite(kg) ? kg : null,
-      unitPrice: unitPrice(money, qty),
+      unitPrice: lineUnitPrice,
       money
     };
   });
-  // Chỉnh dòng cuối để tổng thành tiền khớp evaluation (làm tròn).
-  if (plasticLossDetailRows.length > 0) {
-    const moneySumExceptLast = plasticLossDetailRows
-      .slice(0, -1)
-      .reduce((sum, row) => sum + row.money, 0);
-    plasticLossDetailRows[plasticLossDetailRows.length - 1].money =
-      plasticLossTotalMoney - moneySumExceptLast;
-    const last = plasticLossDetailRows[plasticLossDetailRows.length - 1];
-    last.unitPrice = unitPrice(last.money, last.kg ?? undefined);
-  }
 
-  /** Vật tư khác (ĐVT ≠ kg): định mức = nhập TP; thực xuất = tồn đầu + xuất − tồn cuối. */
+  /** Vật tư khác: định mức = SL thực tế × BOM; thực xuất = tồn đầu + xuất − tồn cuối. */
   const otherLossDetailRows = otherMaterialRows.map(row => {
     const thucXuatKg = computeMaterialUsageKg(row.exportKg, row.openingKg, row.closingKg);
-    const dinhMucKg = row.finishedKg;
+    const bomDinhMucKg = lookupBomDinhMucKg(bomDinhMucByMaterial, row.code, row.name);
+    const dinhMucKg = bomDinhMucKg > 0 ? bomDinhMucKg : row.finishedKg;
     const chenhLechKg = thucXuatKg - dinhMucKg;
+    const unit = row.unit || '-';
+    const thucXuatQty =
+      resolveUsageQtyFromKg(thucXuatKg, unit, row.code, row.name, materialsCatalog) ??
+      (row.exportQty > 0 ? row.exportQty : null);
+    const exportUnitPrice = resolveBbMaterialExportUnitPrice(
+      order.ngay,
+      order.shift,
+      warehouseMovements,
+      shiftSettingsTyped,
+      row.code,
+      row.name
+    );
+    const lineUnitPrice = exportUnitPrice > 0 ? exportUnitPrice : null;
+    const money =
+      Number.isFinite(chenhLechKg) && lineUnitPrice !== null
+        ? Math.round(chenhLechKg * lineUnitPrice)
+        : 0;
     const label = [row.code, row.name].filter(Boolean).join(' — ') || '—';
     return {
       key: row.key,
       label,
       dinhMucKg,
       thucXuatKg,
+      thucXuatQty,
       chenhLechKg,
-      unit: row.unit || '-'
+      unitPrice: lineUnitPrice,
+      money,
+      unit
     };
   });
   const otherLossTotalDinhMuc = otherLossDetailRows.reduce((sum, row) => sum + row.dinhMucKg, 0);
   const otherLossTotalThucXuat = otherLossDetailRows.reduce((sum, row) => sum + row.thucXuatKg, 0);
   const otherLossTotalChenhLech = otherLossTotalThucXuat - otherLossTotalDinhMuc;
+  const otherLossDetailTotalMoney = otherLossDetailRows.reduce((sum, row) => sum + row.money, 0);
+  const otherLossTotalUnitPrice = unitPrice(otherLossDetailTotalMoney, otherLossTotalChenhLech);
   const plasticLossTotalDinhMuc = plasticLossDetailRows.reduce(
     (sum, row) => sum + (row.dinhMucKg ?? 0),
     0
@@ -1185,6 +1405,7 @@ function BbMachineOrderPrintSheet({
               <th>Mã NVL</th>
               <th>Tên NVL</th>
               <th>ĐVT</th>
+              <th>Số lượng</th>
               <th>Trọng lượng<br />tồn đầu ca</th>
               <th>Trọng lượng<br />vật tư xuất kho</th>
               <th>Trọng lượng<br />vật tư nhập<br />thành phẩm</th>
@@ -1196,18 +1417,21 @@ function BbMachineOrderPrintSheet({
             </tr></thead>
             <tbody>
               {otherMaterialRows.length === 0 ? (
-                <tr><td colSpan={12} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
+                <tr><td colSpan={13} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
               ) : (
                 otherMaterialRows.map((row, index) => {
                   const actualUsedKg = computeMaterialUsageKg(row.exportKg, row.openingKg, row.closingKg);
                   const finishedAndDamagedKg = row.finishedKg + row.damagedKg;
                   const varianceKg = actualUsedKg - finishedAndDamagedKg;
+                  /** Số lượng = Σ (SL sản lượng SP × ĐM thành phần NVL) — ĐVT gốc. */
+                  const soLuong = row.actualQty > 0 ? row.actualQty : null;
                   return (
                     <tr key={row.key}>
                       <td className="shift-summary-print-center bb-machine-report-print-stt">{index + 1}</td>
                       <td>{row.code || '-'}</td>
                       <td className="bb-machine-report-print-material-name">{row.name || '-'}</td>
                       <td className="shift-summary-print-center">{row.unit || '-'}</td>
+                      <td className="shift-summary-print-num">{printNumber(soLuong, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
@@ -1221,7 +1445,8 @@ function BbMachineOrderPrintSheet({
                 })
               )}
               {renderMaterialPrintTotalRow('Tổng vật tư khác', otherMaterialTotals, {
-                includeMixingRatioCols: false
+                includeMixingRatioCols: false,
+                includeQtyCol: true
               })}
             </tbody>
           </table>
@@ -1309,7 +1534,8 @@ function BbMachineOrderPrintSheet({
                 <th className="bb-machine-report-print-stt">STT</th>
                 <th>Giá trị phân tích dữ liệu</th>
                 <th>Định mức Vật tư<br />của Số lượng nhập TP</th>
-                <th>Số lượng thực<br />xuất dùng (kg)</th>
+                <th>Trọng lượng thực<br />xuất dùng (kg)</th>
+                <th>Số lượng thực<br />xuất dùng</th>
                 <th>Chênh lệch<br />(Thực xuất Trừ Đ mức)</th>
                 <th>Đơn giá</th>
                 <th>Thành tiền</th>
@@ -1318,7 +1544,7 @@ function BbMachineOrderPrintSheet({
             <tbody>
               {!hasEvalDetailRows ? (
                 <tr>
-                  <td colSpan={7} className="shift-summary-print-center bb-machine-report-print-eval-detail-empty">
+                  <td colSpan={8} className="shift-summary-print-center bb-machine-report-print-eval-detail-empty">
                     Không có dòng chi tiết.
                   </td>
                 </tr>
@@ -1331,9 +1557,18 @@ function BbMachineOrderPrintSheet({
                         <td className="bb-machine-report-print-eval-detail-group-label">Hao hụt nhựa</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalDinhMuc, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalThucXuat, 2)} kg</td>
+                        <td className="shift-summary-print-num">{printNumber(plasticLossTotalThucXuat, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalChenhLech, 2)} kg</td>
-                        <td className="shift-summary-print-num">{printNumber(plasticLossTotalUnitPrice, 0)} đ/kg</td>
-                        <td className="shift-summary-print-num">{formatMoney(plasticLossDetailTotalMoney, 0)} đ</td>
+                        <td className="shift-summary-print-num">
+                          {plasticLossTotalUnitPrice !== null && plasticLossTotalUnitPrice > 0
+                            ? `${printNumber(plasticLossTotalUnitPrice, 0)} đ/kg`
+                            : '—'}
+                        </td>
+                        <td className="shift-summary-print-num">
+                          {plasticLossDetailTotalMoney !== 0
+                            ? `${formatMoney(plasticLossDetailTotalMoney, 0)} đ`
+                            : '—'}
+                        </td>
                       </tr>
                       {plasticLossDetailRows.map((row, index) => (
                         <tr key={row.key} className="bb-machine-report-print-eval-detail-line">
@@ -1341,9 +1576,16 @@ function BbMachineOrderPrintSheet({
                           <td className="bb-machine-report-print-eval-detail-label">{row.label}</td>
                           <td className="shift-summary-print-num">{printNumber(row.dinhMucKg, 2)} kg</td>
                           <td className="shift-summary-print-num">{printNumber(row.thucXuatKg, 2)} kg</td>
+                          <td className="shift-summary-print-num">{printQtyWithUnit(row.thucXuatQty, row.unit)}</td>
                           <td className="shift-summary-print-num">{printNumber(row.chenhLechKg, 2)} kg</td>
-                          <td className="shift-summary-print-num">{printNumber(row.unitPrice, 0)} đ/kg</td>
-                          <td className="shift-summary-print-num">{formatMoney(row.money, 0)} đ</td>
+                          <td className="shift-summary-print-num">
+                            {row.unitPrice !== null && row.unitPrice > 0
+                              ? `${printNumber(row.unitPrice, 0)} đ/kg`
+                              : '—'}
+                          </td>
+                          <td className="shift-summary-print-num">
+                            {row.money !== 0 ? `${formatMoney(row.money, 0)} đ` : '—'}
+                          </td>
                         </tr>
                       ))}
                     </>
@@ -1355,24 +1597,37 @@ function BbMachineOrderPrintSheet({
                         <td className="bb-machine-report-print-eval-detail-group-label">Vật tư khác</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalDinhMuc, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalThucXuat, 2)} kg</td>
+                        <td className="shift-summary-print-num">—</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalChenhLech, 2)} kg</td>
-                        <td className="shift-summary-print-num">—</td>
-                        <td className="shift-summary-print-num">—</td>
+                        <td className="shift-summary-print-num">
+                          {otherLossTotalUnitPrice !== null && otherLossTotalUnitPrice > 0
+                            ? `${printNumber(otherLossTotalUnitPrice, 0)} đ/kg`
+                            : '—'}
+                        </td>
+                        <td className="shift-summary-print-num">
+                          {otherLossDetailTotalMoney !== 0
+                            ? `${formatMoney(otherLossDetailTotalMoney, 0)} đ`
+                            : '—'}
+                        </td>
                       </tr>
                       {otherLossDetailRows.map((row, index) => (
                         <tr key={row.key} className="bb-machine-report-print-eval-detail-line">
                           <td className="shift-summary-print-center bb-machine-report-print-stt bb-machine-report-print-stt-narrow">
                             {plasticLossDetailRows.length + index + 1}
                           </td>
-                          <td className="bb-machine-report-print-eval-detail-label">
-                            {row.label}
-                            {row.unit && row.unit !== '-' ? ` (${row.unit})` : ''}
-                          </td>
+                          <td className="bb-machine-report-print-eval-detail-label">{row.label}</td>
                           <td className="shift-summary-print-num">{printNumber(row.dinhMucKg, 2)} kg</td>
                           <td className="shift-summary-print-num">{printNumber(row.thucXuatKg, 2)} kg</td>
+                          <td className="shift-summary-print-num">{printQtyWithUnit(row.thucXuatQty, row.unit)}</td>
                           <td className="shift-summary-print-num">{printNumber(row.chenhLechKg, 2)} kg</td>
-                          <td className="shift-summary-print-num">—</td>
-                          <td className="shift-summary-print-num">—</td>
+                          <td className="shift-summary-print-num">
+                            {row.unitPrice !== null && row.unitPrice > 0
+                              ? `${printNumber(row.unitPrice, 0)} đ/kg`
+                              : '—'}
+                          </td>
+                          <td className="shift-summary-print-num">
+                            {row.money !== 0 ? `${formatMoney(row.money, 0)} đ` : '—'}
+                          </td>
                         </tr>
                       ))}
                     </>

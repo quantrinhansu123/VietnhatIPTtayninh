@@ -6426,6 +6426,8 @@ export default function ControlBoardBbMachineReportTable({
               sanLuongGroups={sanLuongGroups}
               canTuDongRecords={canTuDongRecords}
               machineReportLabel={machineReportLabel}
+              warehouseMovements={warehouseMovements}
+              shiftSettings={shiftSettings}
             />
           </div>
         </div>
@@ -6453,6 +6455,8 @@ export default function ControlBoardBbMachineReportTable({
             sanLuongGroups={sanLuongGroups}
             canTuDongRecords={canTuDongRecords}
             machineReportLabel={machineReportLabel}
+            warehouseMovements={warehouseMovements}
+            shiftSettings={shiftSettings}
           />,
           document.body
         )

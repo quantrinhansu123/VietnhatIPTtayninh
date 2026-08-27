@@ -33,6 +33,7 @@
 | Chênh lệch lõi | (UI tính) | **Cân lõi − Lõi lý thuyết** (cùng kiểu công thức Chênh lệch TT−LT) | +0,02 kg |
 | Ca | `ca` (API) | Từ `metadata` (`SOURCE_SHIFT=…`) hoặc suy theo giờ `captured_at` + khung giờ `cai_dat_thoi_gian` | HC1 |
 | Ngày | `metadata.SOURCE_DATE` / `work_date` (UI) | Ngày nghiệp vụ — **không** lấy từ `captured_at` (Ngày cân / Thời điểm) | 20/08/2026 |
+| Ngày giờ | `captured_at` (UI) | Thời điểm cân thực tế — theo dõi khi nào ghi nhận | 20/08/2026, 14:32:05 |
 | Máy | `metadata.machine` / `SOURCE_MACHINE` (UI) | Máy sản xuất | Máy 01 |
 | Lệnh SX | `metadata.production_order` (UI) | `SOURCE_PRODUCTION_ORDER` trong `weight_raw` | LSX100 |
 | Ảnh lõi | `core_image_*` | Ảnh chụp bước cân lõi | Cloudinary |
@@ -55,7 +56,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** (Kém/Hơn cân theo % nhựa) · **Bộ lọc** (Từ/Đến ngày theo cột Ngày · **Ca** · Mã SP · **Lọc QR trùng** · Tất cả chênh lệch / So sánh với 2%) · nút **Ngày = hôm nay** (sửa cột Ngày các dòng đang lọc) · Nhựa thực tế · Nhựa định mức · Chênh lệch nhựa (TT−ĐM) · Phần trăm (= CL ÷ Nhựa TT) · Excel · In |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · cột **Ngày** (nghiệp vụ) + **Ngày giờ** (`captured_at`) · Nhựa thực tế / định mức · Excel · In |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |

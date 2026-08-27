@@ -23,7 +23,7 @@ import WeighingImagePreviewModal, {
 import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
-import { resolveTrongLuongNhuaKg } from '../utils/canTuDongWeights';
+import { resolveCanSpKg } from '../utils/canTuDongWeights';
 
 const productLineGridClass =
   'min-w-[50rem] grid-cols-[2.25rem_minmax(9rem,1.1fr)_minmax(12rem,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
@@ -1199,7 +1199,7 @@ export default function AcceptanceReportForm({
 
       const quantities = new Map<
         string,
-        { code: string; unit: string; quantity: number; plasticWeightKg: number }
+        { code: string; unit: string; quantity: number; rollWeightKg: number }
       >();
       let skipped = 0;
       matched.forEach(record => {
@@ -1212,31 +1212,31 @@ export default function AcceptanceReportForm({
         const code = product?.code || qrProductCode;
         const key = normalizeKey(code);
         const current = quantities.get(key);
-        const plasticKg = resolveTrongLuongNhuaKg(record);
+        const rollKg = resolveCanSpKg(record);
         quantities.set(key, {
           code,
           unit: product?.unit || current?.unit || String(record.unit ?? '').trim(),
           quantity: (current?.quantity ?? 0) + 1,
-          plasticWeightKg: (current?.plasticWeightKg ?? 0) + (plasticKg ?? 0)
+          rollWeightKg: (current?.rollWeightKg ?? 0) + (rollKg ?? 0)
         });
       });
       if (quantities.size === 0) {
         throw new Error('Phiếu cân AI không có mã QR sản phẩm hợp lệ.');
       }
 
-      const lines = [...quantities.values()].map(({ code, unit, quantity, plasticWeightKg }) => ({
+      const lines = [...quantities.values()].map(({ code, unit, quantity, rollWeightKg }) => ({
         ...newProductLine(),
         mat_hang: code,
         don_vi: unit,
         so_luong: String(quantity),
-        // Trọng lượng = tổng cột «Trọng lượng nhựa» (SP − lõi − bì) của các lần cân cùng mã SP
-        trong_luong: plasticWeightKg > 0 ? formatAutoWeight(plasticWeightKg) : ''
+        // Trọng lượng cuộn = tổng cột «Cân sản phẩm» (cả lõi, chưa trừ bì)
+        trong_luong: rollWeightKg > 0 ? formatAutoWeight(rollWeightKg) : ''
       }));
       setHeader(prev => ({ ...prev, ngay, ca }));
       updateSection('Thành phẩm', section => ({ ...section, lines }));
       setIsAutoReportOpen(false);
       setMessage(
-        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI (SL = số lần cân, TL = tổng trọng lượng nhựa)${
+        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI (SL = số lần cân, TL = tổng Cân sản phẩm / trọng lượng cuộn)${
           skipped ? `; bỏ qua ${skipped} bản ghi không có QR hợp lệ` : ''
         }.`
       );

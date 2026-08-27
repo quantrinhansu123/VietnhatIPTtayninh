@@ -6,6 +6,12 @@
 
 Snapshot NVL định mức gắn **từng dòng** `bao_cao_nghiem_thu`. Khi bấm **Đồng bộ** trên modal: lấy Thành phần từ Kho sản phẩm (`san_pham.npl_phan_tram`) × SL phiếu, rồi **ghi DB**.
 
+Modal **NVL theo định mức**: cột **Trọng lượng**
+- ĐVT `%` = trọng lượng cuộn (**Cân sản phẩm**) × %; không cân thì SL × kg/cuộn định mức
+- ĐVT `Cái` = định lượng Thành phần × SL sản lượng, quy kg (Tổng kg kho NVL / `khoi_luong_kg` / kg trong tên)
+
+Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** **chỉ đọc** snapshot này theo id phiếu; **không** tự tính/ghi từ Thành phần SP, máy hay trộn. Chưa Đồng bộ trên danh sách phiếu → tab không có dòng NVL.
+
 Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** **chỉ đọc** snapshot này theo id phiếu; **không** tự tính/ghi từ Thành phần SP, máy hay trộn. Chưa Đồng bộ trên danh sách phiếu → tab không có dòng NVL.
 
 ```bash

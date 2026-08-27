@@ -20,10 +20,24 @@ import {
 } from './shared/table';
 import {
   formatNplDecimal,
+  formatNplWeightKg,
   formatProductNplAmount,
+  normalizeProductCodeKey,
   parseProductNplItems,
   type ProductNplItem
 } from '../features/san-pham/types';
+import { normalizeMaterialsInventory } from '../features/kho-nvl';
+import {
+  convertWarehouseQuantityToKg,
+  isWarehouseKgUnit,
+  mapMaterialToWeightCatalogItem,
+  type WarehouseWeightCatalogItem
+} from '../utils/warehouseWeight';
+import {
+  filterCanTuDongRecordsForBoard,
+  sumCanTuDongCanSanPhamKg,
+  type CanTuDongWeightRow
+} from '../utils/canTuDongWeights';
 
 type ProductNameOption = {
   code: string;
@@ -48,6 +62,9 @@ type NvlViewState = {
   /** true = đang hiển thị snapshot đã lưu DB. */
   fromDb: boolean;
   savedAt?: string;
+  /** Tổng Cân sản phẩm từ phiếu cân AI khớp ngày·ca·máy·mã SP. */
+  actualWeightKg: number | null;
+  actualWeightCount: number;
 };
 
 function todayIso() {
@@ -74,12 +91,110 @@ function isKgUnit(value: string) {
 }
 
 function parseWeightKgFromLabel(label: string): number | null {
-  const match = String(label || '')
-    .trim()
-    .match(/\((\d+(?:[.,]\d+)?)\s*kg\)/i);
-  if (!match) return null;
-  const value = Number(String(match[1]).replace(',', '.'));
+  const text = String(label || '').trim();
+  const withParens = text.match(/\((\d+(?:[.,]\d+)?)\s*kg\)/i);
+  const anyKg = withParens || text.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+  if (!anyKg) return null;
+  const value = Number(String(anyKg[1]).replace(',', '.'));
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function mergeNplItemsWithCatalog(
+  items: ProductNplItem[],
+  catalogItems: ProductNplItem[]
+): ProductNplItem[] {
+  if (catalogItems.length === 0) return items;
+  return items.map(item => {
+    const key = normalizeProductCodeKey(item.code);
+    if (!key) return item;
+    const match = catalogItems.find(row => normalizeProductCodeKey(row.code) === key);
+    if (!match) return item;
+    return {
+      ...item,
+      name: item.name || match.name,
+      unit: item.unit && item.unit !== '-' ? item.unit : match.unit,
+      weightKg:
+        item.weightKg != null && Number.isFinite(item.weightKg)
+          ? item.weightKg
+          : match.weightKg ?? null
+    };
+  });
+}
+
+/**
+ * Trọng lượng cuộn dùng cho NVL %:
+ * 1) Tổng Cân sản phẩm (cân AI, cả lõi)
+ * 2) SL × kg/cuộn định mức (Tổng TL SP / kg trong tên)
+ * 3) Trọng lượng đã lưu trên phiếu
+ */
+function resolveSlipKhoiLuongKg(
+  report: Pick<AcceptanceReport, 'trong_luong'>,
+  catalog: ProductCatalogEntry | null | undefined,
+  quantity: number,
+  actualCanSpKg?: number | null
+): number | null {
+  if (actualCanSpKg != null && Number.isFinite(actualCanSpKg) && actualCanSpKg > 0) {
+    return actualCanSpKg;
+  }
+  if (catalog?.totalWeightKg != null && catalog.totalWeightKg > 0 && quantity > 0) {
+    return Math.round(catalog.totalWeightKg * quantity * 1000) / 1000;
+  }
+  const fromReport = Number(report.trong_luong);
+  if (Number.isFinite(fromReport) && fromReport > 0) return fromReport;
+  return null;
+}
+
+/**
+ * Trọng lượng NVL:
+ * - %: trọng lượng cuộn (Cân sản phẩm) × %
+ * - Cái/ĐVT khác: định lượng Thành phần × SL sản lượng, quy kg
+ */
+function resolveNvlTrongLuongKg(
+  item: ProductNplItem,
+  productQty: number,
+  slipKhoiLuongKg: number | null,
+  materials: WarehouseWeightCatalogItem[]
+): number | null {
+  if (item.amountType === 'percent') {
+    if (item.percent == null || !Number.isFinite(item.percent) || slipKhoiLuongKg == null || !(slipKhoiLuongKg > 0)) {
+      return null;
+    }
+    return Math.round(slipKhoiLuongKg * (item.percent / 100) * 10000) / 10000;
+  }
+
+  if (item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg >= 0 && productQty > 0) {
+    return Math.round(item.weightKg * productQty * 10000) / 10000;
+  }
+
+  const qtyPerSp =
+    item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : null;
+  if (qtyPerSp == null || !(productQty > 0)) return null;
+  const totalQty = qtyPerSp * productQty;
+  const unit = String(item.unit || '').trim();
+  if (isKgUnit(unit) || isWarehouseKgUnit(unit)) {
+    return Math.round(totalQty * 10000) / 10000;
+  }
+
+  const converted = convertWarehouseQuantityToKg({
+    quantity: totalQty,
+    unit: unit || 'Cái',
+    itemCode: item.code,
+    warehouseKind: 'nvl',
+    materials,
+    preferTongKgOnly: false
+  });
+  if (converted != null && Number.isFinite(converted) && converted > 0) {
+    return Math.round(converted * 10000) / 10000;
+  }
+
+  const fromName = parseWeightKgFromLabel(item.name || item.code || '');
+  if (fromName != null) return Math.round(totalQty * fromName * 10000) / 10000;
+  return null;
+}
+
+function formatNvlTrongLuongKg(value: number | null): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return '—';
+  return `${formatNplWeightKg(value)} kg`;
 }
 
 function resolveProductTotalWeightKg(unit: string, totalWeightRaw: unknown, name: string): number | null {
@@ -91,18 +206,6 @@ function resolveProductTotalWeightKg(unit: string, totalWeightRaw: unknown, name
   const fromName = parseWeightKgFromLabel(name);
   if (fromName != null) return fromName;
   if (isKgUnit(unit)) return 1;
-  return null;
-}
-
-function calculateSyncedTrongLuong(
-  catalog: ProductCatalogEntry | null,
-  soLuong: number | null
-): number | null {
-  if (!catalog || soLuong == null || !(soLuong > 0)) return null;
-  if (isKgUnit(catalog.unit)) return Math.round(soLuong * 1000) / 1000;
-  if (catalog.totalWeightKg != null && catalog.totalWeightKg >= 0) {
-    return Math.round(soLuong * catalog.totalWeightKg * 1000) / 1000;
-  }
   return null;
 }
 
@@ -195,6 +298,53 @@ function formatNvlTheoSanLuong(item: ProductNplItem, productQty: number) {
   return '—';
 }
 
+function formatActualCanWeightKg(weightKg: number | null) {
+  if (weightKg == null || !Number.isFinite(weightKg) || !(weightKg > 0)) return '—';
+  return `${formatNplDecimal(weightKg)} Kg`;
+}
+
+async function fetchCanTuDongByNgay(ngay: string): Promise<CanTuDongWeightRow[]> {
+  const day = String(ngay || '').trim();
+  if (!day) return [];
+  const params = new URLSearchParams({
+    from: day,
+    to: day,
+    limit: '5000',
+    dateBy: 'ngay'
+  });
+  const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(String(data.error || 'Không thể tải phiếu cân AI.'));
+  }
+  return Array.isArray(data.records) ? (data.records as CanTuDongWeightRow[]) : [];
+}
+
+/** Tổng Cân sản phẩm (trọng lượng thực tế) khớp ngày · ca · máy · mã SP. */
+function sumTrongLuongCanThucTeForReport(
+  records: CanTuDongWeightRow[],
+  report: AcceptanceReport,
+  productCode: string,
+  productName: string
+) {
+  const machineToken = String(report.ma_may || report.ten_may || '').trim();
+  const productKeys = [productCode, productName, report.mat_hang, resolveReportProductCode(report.mat_hang)]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+  const filtered = filterCanTuDongRecordsForBoard(records, {
+    shiftFilter: report.ca || 'all',
+    dateFrom: report.ngay,
+    dateTo: report.ngay,
+    machineFilter: machineToken || 'all',
+    selectedMachine: {
+      code: report.ma_may,
+      name: report.ten_may
+    },
+    productCodeKeys: productKeys
+  });
+  return sumCanTuDongCanSanPhamKg(filtered);
+}
+
 function resolveNvlRate(item: ProductNplItem): number | null {
   if (item.amountType === 'percent' && item.percent != null && Number.isFinite(item.percent)) {
     return item.percent;
@@ -284,6 +434,7 @@ export default function AcceptanceReportListView({
   const [productCatalogByKey, setProductCatalogByKey] = useState<Map<string, ProductCatalogEntry>>(
     () => new Map()
   );
+  const [materialWeightCatalog, setMaterialWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
   const [isSyncingNvl, setIsSyncingNvl] = useState(false);
   const [nvlSyncMessage, setNvlSyncMessage] = useState('');
@@ -405,7 +556,13 @@ export default function AcceptanceReportListView({
     report: AcceptanceReport,
     catalog: Map<string, ProductCatalogEntry>,
     names: Map<string, string>,
-    options?: { items?: ProductNplItem[]; fromDb?: boolean; savedAt?: string }
+    options?: {
+      items?: ProductNplItem[];
+      fromDb?: boolean;
+      savedAt?: string;
+      actualWeightKg?: number | null;
+      actualWeightCount?: number;
+    }
   ): NvlViewState => {
     const productCode = resolveReportProductCode(report.mat_hang);
     const entry = resolveCatalogEntry(catalog, report.mat_hang, names);
@@ -422,11 +579,41 @@ export default function AcceptanceReportListView({
         '—',
       productUnit: entry?.unit || report.don_vi || '',
       quantity,
-      items: options?.items ?? entry?.nplItems ?? [],
+      items: mergeNplItemsWithCatalog(
+        options?.items ?? entry?.nplItems ?? [],
+        entry?.nplItems ?? []
+      ),
       fromDb: Boolean(options?.fromDb),
-      savedAt: options?.savedAt
+      savedAt: options?.savedAt,
+      actualWeightKg:
+        options?.actualWeightKg !== undefined ? options.actualWeightKg : null,
+      actualWeightCount:
+        options?.actualWeightCount !== undefined ? options.actualWeightCount : 0
     };
   };
+
+  const nvlLineWeightsKg = useMemo(() => {
+    if (!nvlView) return [] as Array<number | null>;
+    const entry = resolveCatalogEntry(
+      productCatalogByKey,
+      nvlView.report.mat_hang,
+      productNameByCode
+    );
+    const slipKg = resolveSlipKhoiLuongKg(
+      nvlView.report,
+      entry,
+      nvlView.quantity,
+      nvlView.actualWeightKg
+    );
+    return nvlView.items.map(item =>
+      resolveNvlTrongLuongKg(item, nvlView.quantity, slipKg, materialWeightCatalog)
+    );
+  }, [materialWeightCatalog, nvlView, productCatalogByKey, productNameByCode]);
+
+  const nvlTrongLuongTotalKg = useMemo(
+    () => nvlLineWeightsKg.reduce((sum, value) => sum + (value != null && value > 0 ? value : 0), 0),
+    [nvlLineWeightsKg]
+  );
 
   const loadProductCatalog = async () => {
     const res = await fetch('/api/san-pham?format=table');
@@ -439,9 +626,18 @@ export default function AcceptanceReportListView({
     let cancelled = false;
     (async () => {
       try {
-        const catalog = await loadProductCatalog();
+        const [catalog, materialRes] = await Promise.all([
+          loadProductCatalog(),
+          fetch('/api/kho-nvl')
+        ]);
         if (cancelled) return;
         void catalog;
+        const materialData = await materialRes.json().catch(() => ({}));
+        if (materialRes.ok) {
+          setMaterialWeightCatalog(
+            normalizeMaterialsInventory(materialData).map(mapMaterialToWeightCatalogItem)
+          );
+        }
       } catch {
         if (!cancelled) {
           setProductNameByCode(new Map());
@@ -520,7 +716,7 @@ export default function AcceptanceReportListView({
     );
   };
 
-  /** Đồng bộ trọng lượng = Tổng TL SP × SL (hoặc kg trong tên SP), ghi vào DB. */
+  /** Đồng bộ trọng lượng từ phiếu cân AI (Cân sản phẩm), ghi vào DB. */
   const handleSyncTrongLuong = async () => {
     if (filteredReports.length === 0) {
       setError('Không có dòng nào trong bộ lọc để đồng bộ.');
@@ -528,7 +724,7 @@ export default function AcceptanceReportListView({
     }
     if (
       !window.confirm(
-        `Đồng bộ trọng lượng cho ${filteredReports.length} dòng đang lọc theo định mức SP (Tổng TL × SL)?`
+        `Đồng bộ trọng lượng cho ${filteredReports.length} dòng đang lọc từ phiếu cân thực tế (tổng Cân sản phẩm theo ngày·ca·máy·mã SP)?`
       )
     ) {
       return;
@@ -542,9 +738,32 @@ export default function AcceptanceReportListView({
     const failures: string[] = [];
 
     try {
+      const recordsByNgay = new Map<string, CanTuDongWeightRow[]>();
+      for (const report of filteredReports) {
+        const ngay = String(report.ngay || '').trim();
+        if (!ngay || recordsByNgay.has(ngay)) continue;
+        try {
+          recordsByNgay.set(ngay, await fetchCanTuDongByNgay(ngay));
+        } catch (err: any) {
+          failures.push(`${ngay}: ${err.message || 'không tải được cân AI'}`);
+          recordsByNgay.set(ngay, []);
+        }
+      }
+
       for (const report of filteredReports) {
         const catalog = findCatalogForReport(report);
-        const nextWeight = calculateSyncedTrongLuong(catalog, report.so_luong);
+        const productCode =
+          catalog?.code || resolveReportProductCode(report.mat_hang) || report.mat_hang;
+        const productName = catalog?.name || report.ten_sp || productCode;
+        const canRows = recordsByNgay.get(String(report.ngay || '').trim()) || [];
+        const { weightKg, counted } = sumTrongLuongCanThucTeForReport(
+          canRows,
+          report,
+          productCode,
+          productName
+        );
+        const nextWeight =
+          counted > 0 && weightKg > 0 ? Math.round(weightKg * 1000) / 1000 : null;
         if (nextWeight == null || !(nextWeight > 0)) {
           skipped += 1;
           continue;
@@ -600,7 +819,9 @@ export default function AcceptanceReportListView({
           }`
         );
       } else {
-        setMessage(`Đã đồng bộ trọng lượng: ${updated} dòng cập nhật, ${skipped} dòng bỏ qua.`);
+        setMessage(
+          `Đã đồng bộ trọng lượng từ cân AI: ${updated} dòng cập nhật, ${skipped} dòng bỏ qua.`
+        );
       }
     } catch (err: any) {
       setError(err.message || 'Không thể đồng bộ trọng lượng.');
@@ -621,11 +842,41 @@ export default function AcceptanceReportListView({
       fromDb: false
     });
     setNvlView(fallback);
+
+    const loadActualWeight = async (): Promise<{
+      actualWeightKg: number | null;
+      actualWeightCount: number;
+    }> => {
+      try {
+        const canRows = await fetchCanTuDongByNgay(report.ngay);
+        const { weightKg, counted } = sumTrongLuongCanThucTeForReport(
+          canRows,
+          report,
+          fallback.productCode,
+          fallback.productName
+        );
+        return {
+          actualWeightKg: counted > 0 && weightKg > 0 ? Math.round(weightKg * 1000) / 1000 : null,
+          actualWeightCount: counted
+        };
+      } catch {
+        return { actualWeightKg: null, actualWeightCount: 0 };
+      }
+    };
+
     try {
-      const res = await fetch(
-        `/api/bao-cao-san-luong-nvl-dinh-muc?id_bao_cao=${encodeURIComponent(report.id)}`
-      );
+      const [weightResult, res] = await Promise.all([
+        loadActualWeight(),
+        fetch(`/api/bao-cao-san-luong-nvl-dinh-muc?id_bao_cao=${encodeURIComponent(report.id)}`)
+      ]);
       const data = await res.json().catch(() => ({}));
+
+      const applyWeight = <T extends NvlViewState>(state: T): T => ({
+        ...state,
+        actualWeightKg: weightResult.actualWeightKg,
+        actualWeightCount: weightResult.actualWeightCount
+      });
+
       if (!res.ok) {
         const err = String(data.error || '').trim();
         if (err) {
@@ -635,10 +886,12 @@ export default function AcceptanceReportListView({
               : `Không đọc snapshot DB: ${err}`
           );
         }
+        setNvlView(applyWeight(fallback));
         return;
       }
       const rows = Array.isArray(data.items) ? data.items : [];
       if (rows.length === 0) {
+        setNvlView(applyWeight(fallback));
         setNvlSyncMessage(
           fallback.items.length > 0
             ? `Đã có ${fallback.items.length} NVL từ Thành phần — chưa lưu snapshot phiếu. Bấm Đồng bộ & lưu DB.`
@@ -649,14 +902,17 @@ export default function AcceptanceReportListView({
       const items = dbRowsToNplItems(rows);
       const savedAt = String(rows[0]?.updated_at || rows[0]?.created_at || '').trim();
       setNvlView(
-        buildNvlViewState(report, productCatalogByKey, productNameByCode, {
-          items,
-          fromDb: true,
-          savedAt: savedAt || undefined
-        })
+        applyWeight(
+          buildNvlViewState(report, productCatalogByKey, productNameByCode, {
+            items,
+            fromDb: true,
+            savedAt: savedAt || undefined
+          })
+        )
       );
       setNvlSyncMessage(`Đã tải ${items.length} NVL từ DB (snapshot đã lưu).`);
     } catch {
+      setNvlView(fallback);
       setNvlSyncMessage('Không kết nối được API snapshot — đang hiện Thành phần Kho sản phẩm.');
     }
   };
@@ -674,7 +930,11 @@ export default function AcceptanceReportListView({
         if (key && entry.name) names.set(key, entry.name);
       }
       setProductNameByCode(names);
-      const withNames = buildNvlViewState(nvlView.report, catalog, names, { fromDb: false });
+      const withNames = buildNvlViewState(nvlView.report, catalog, names, {
+        fromDb: false,
+        actualWeightKg: nvlView.actualWeightKg,
+        actualWeightCount: nvlView.actualWeightCount
+      });
       setNvlView(withNames);
 
       const saveRes = await fetch('/api/bao-cao-san-luong-nvl-dinh-muc', {
@@ -818,7 +1078,7 @@ export default function AcceptanceReportListView({
                 onClick={() => void handleSyncTrongLuong()}
                 disabled={filteredReports.length === 0 || isSyncingWeight || isLoading}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Đồng bộ trọng lượng = Tổng TL sản phẩm × số lượng"
+                title="Đồng bộ trọng lượng từ phiếu cân AI (tổng Cân sản phẩm theo ngày·ca·máy·mã SP)"
               >
                 {isSyncingWeight ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -895,7 +1155,7 @@ export default function AcceptanceReportListView({
               onClick={() => setNvlView(null)}
             >
               <div
-                className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+                className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
                 onClick={event => event.stopPropagation()}
               >
                 <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-violet-50 px-4 py-3">
@@ -907,13 +1167,37 @@ export default function AcceptanceReportListView({
                       {nvlView.productCode}
                     </p>
                     <p className="text-xs font-semibold text-zinc-600">{nvlView.productName}</p>
-                    <p className="mt-1 text-[11px] font-semibold text-zinc-500">
-                      SL sản lượng:{' '}
-                      <span className="font-mono font-black text-emerald-700">
-                        {nvlView.quantity > 0 ? formatNplDecimal(nvlView.quantity) : '—'}
-                      </span>
-                      {nvlView.productUnit ? ` ${nvlView.productUnit}` : ''}
-                      {' · '}
+                    <div className="mt-2 grid max-w-sm grid-cols-2 gap-2">
+                      <div
+                        className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5"
+                        title="Tổng Cân sản phẩm từ phiếu cân AI (ngày · ca · máy · mã SP)"
+                      >
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                          Trọng lượng
+                        </p>
+                        <p className="mt-0.5 font-mono text-sm font-black text-emerald-700">
+                          {formatActualCanWeightKg(nvlView.actualWeightKg)}
+                        </p>
+                        <p className="mt-0.5 text-[9px] font-semibold text-zinc-400">
+                          {nvlView.actualWeightCount > 0
+                            ? `${nvlView.actualWeightCount} lần cân AI`
+                            : 'Chưa khớp phiếu cân AI'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                          Số lượng
+                        </p>
+                        <p className="mt-0.5 font-mono text-sm font-black text-emerald-700">
+                          {nvlView.quantity > 0
+                            ? `${formatNplDecimal(nvlView.quantity)}${
+                                nvlView.productUnit ? ` ${nvlView.productUnit}` : ''
+                              }`
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
                       {nvlView.report.ngay} · {nvlView.report.ca}
                     </p>
                     <p className="mt-1 text-[10px] font-semibold text-violet-600/80">
@@ -991,6 +1275,12 @@ export default function AcceptanceReportListView({
                           >
                             Theo SL
                           </th>
+                          <th
+                            className="px-3 py-2.5 text-right"
+                            title="% = Khối lượng phiếu × %. Cái = định lượng Thành phần × SL (quy kg)"
+                          >
+                            Trọng lượng
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
@@ -1011,14 +1301,20 @@ export default function AcceptanceReportListView({
                             <td className="px-3 py-2 text-right font-mono text-xs font-black text-emerald-700">
                               {formatNvlTheoSanLuong(item, nvlView.quantity)}
                             </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs font-black text-amber-800">
+                              {formatNvlTrongLuongKg(nvlLineWeightsKg[index] ?? null)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   )}
                 </div>
-                <div className="border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-right text-[11px] font-semibold text-zinc-500">
-                  {nvlView.items.length} NVL định mức
+                <div className="flex items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
+                  <span>{nvlView.items.length} NVL định mức</span>
+                  <span className="font-mono font-black text-amber-800">
+                    Tổng trọng lượng: {nvlTrongLuongTotalKg > 0 ? formatNvlTrongLuongKg(nvlTrongLuongTotalKg) : '—'}
+                  </span>
                 </div>
               </div>
             </div>,

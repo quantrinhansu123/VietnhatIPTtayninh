@@ -3,6 +3,9 @@ import { formatMoney, formatNumber } from '../utils';
 import {
   computeMaterialUsageKg,
   computePercentRatio,
+  isWarehouseBagExportItem,
+  isWarehouseCoreExportItem,
+  isWarehouseFilmItem,
   isWarehousePlasticNvlLine,
   isWarehouseTapeExportItem,
   machineValueMatchesFilter
@@ -136,6 +139,27 @@ function isPlasticMaterialPrintRow(row: Pick<MaterialPrintRow, 'code' | 'name' |
     itemName: row.name,
     unit: row.unit
   });
+}
+
+/** Túi / lõi / tem — không nhận phân bổ «Trọng lượng vật tư lỗi hỏng». */
+function isExcludedFromDamagedOtherPrintRow(row: Pick<MaterialPrintRow, 'code' | 'name' | 'unit'>) {
+  if (isWarehouseBagExportItem(row.code, row.name)) return true;
+  if (isWarehouseCoreExportItem(row.code, row.name)) return true;
+  if (isWarehouseTapeExportItem(row.code, row.name)) return true;
+  const text = `${row.code} ${row.name}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return text.includes('tem ') || text.startsWith('tem') || text.includes(' tem');
+}
+
+function isFilmMaterialPrintRow(row: Pick<MaterialPrintRow, 'code' | 'name' | 'unit'>) {
+  if (isWarehouseFilmItem(row.code, row.name, row.unit)) return true;
+  const text = `${row.code} ${row.name}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return text.includes('mang') || text.includes('film');
 }
 
 function lookupCatalogMaterialUnit(
@@ -304,8 +328,8 @@ function resolveLoiHongMixingTiLePercent(line: {
   return null;
 }
 
-/** Lượng nhựa sử dụng LT = Xuất + Tồn đầu ca − Tồn cuối ca + Lỗi hỏng (nhựa). */
-function computePlasticUsedLtKg(
+/** Xuất thực dùng = Xuất kho + Tồn đầu − Tồn cuối + Lỗi hỏng. */
+function computeVatTuXuatThucDungKg(
   exportKg: number,
   openingKg: number,
   closingKg: number,
@@ -853,6 +877,13 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   // Lỗi hỏng nhựa: chỉ SP lỗi, phân bổ theo tab «Báo cáo lỗi hỏng» (mixingLines snapshot).
   if (damagedPlasticKg > 0) {
     for (const line of damagedGroup?.mixingLines || []) {
+      if (isExcludedFromDamagedOtherPrintRow({
+        code: line.materialCode,
+        name: line.materialName,
+        unit: line.unit || 'kg'
+      })) {
+        continue;
+      }
       const tiLe = resolveLoiHongMixingTiLePercent(line);
       if (tiLe == null || !Number.isFinite(tiLe) || !(tiLe > 0)) continue;
       ensure(line.materialCode, line.materialName, line.unit || 'kg').damagedKg += round4(
@@ -957,9 +988,18 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     }
   }
 
-  // Lỗi hỏng NVL khác: máy cách nhiệt = rác màng xi; máy khác = SP rác trừ rác màng.
+  // Lỗi hỏng NVL khác: máy cách nhiệt = rác màng; máy khác = SP rác trừ rác màng.
+  // Không phân bổ vào túi / lõi / tem.
   if (damagedOtherKg > 0) {
-    const otherRows = [...rows.values()].filter(row => !isPlasticMaterialPrintRow(row));
+    const candidates = [...rows.values()].filter(row => {
+      if (isPlasticMaterialPrintRow(row)) return false;
+      if (isExcludedFromDamagedOtherPrintRow(row)) return false;
+      return true;
+    });
+    const filmOnly = groupIsInsulation
+      ? candidates.filter(row => isFilmMaterialPrintRow(row))
+      : [];
+    const otherRows = filmOnly.length > 0 ? filmOnly : candidates;
     const shareWeights = otherRows.map(row => Math.max(row.finishedKg, row.exportKg, 0));
     const allocated = allocateBbKgByWeightShare(
       damagedOtherKg,
@@ -1023,7 +1063,7 @@ function BbMachineOrderPrintSheet({
   const plasticMaterialRows = materialRows.filter(isPlasticMaterialPrintRow).sort(sortByUnitThenName);
   const otherMaterialRows = materialRows.filter(row => !isPlasticMaterialPrintRow(row)).sort(sortByUnitThenName);
   const plasticMaterialTotals = sumMaterialPrintTotals(plasticMaterialRows, { addDamagedToUsage: true });
-  const otherMaterialTotals = sumMaterialPrintTotals(otherMaterialRows);
+  const otherMaterialTotals = sumMaterialPrintTotals(otherMaterialRows, { addDamagedToUsage: true });
   const useCanTuDong = props.sanLuongSource === 'can-tu-dong';
   const qtyDigits = useCanTuDong ? 0 : 2;
   const editableLyDo = Boolean(props.editableLyDo && props.onLyDoChange);
@@ -1156,9 +1196,14 @@ function BbMachineOrderPrintSheet({
     };
   });
 
-  /** Vật tư khác: định mức = SL thực tế × BOM; thực xuất = tồn đầu + xuất − tồn cuối. */
+  /** Vật tư khác: định mức = SL thực tế × BOM; thực xuất = xuất kho + tồn đầu − tồn cuối + lỗi hỏng. */
   const otherLossDetailRows = otherMaterialRows.map(row => {
-    const thucXuatKg = computeMaterialUsageKg(row.exportKg, row.openingKg, row.closingKg);
+    const thucXuatKg = computeVatTuXuatThucDungKg(
+      row.exportKg,
+      row.openingKg,
+      row.closingKg,
+      row.damagedKg
+    );
     const bomDinhMucKg = lookupBomDinhMucKg(bomDinhMucByMaterial, row.code, row.name);
     const dinhMucKg = bomDinhMucKg > 0 ? bomDinhMucKg : row.finishedKg;
     const chenhLechKg = thucXuatKg - dinhMucKg;
@@ -1368,7 +1413,7 @@ function BbMachineOrderPrintSheet({
                   const norm = row.normPercents.length > 0
                     ? row.normPercents.reduce((sum, value) => sum + value, 0) / row.normPercents.length
                     : null;
-                  const actualUsedKg = computePlasticUsedLtKg(
+                  const actualUsedKg = computeVatTuXuatThucDungKg(
                     row.exportKg,
                     row.openingKg,
                     row.closingKg,
@@ -1420,7 +1465,12 @@ function BbMachineOrderPrintSheet({
                 <tr><td colSpan={13} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
               ) : (
                 otherMaterialRows.map((row, index) => {
-                  const actualUsedKg = computeMaterialUsageKg(row.exportKg, row.openingKg, row.closingKg);
+                  const actualUsedKg = computeVatTuXuatThucDungKg(
+                    row.exportKg,
+                    row.openingKg,
+                    row.closingKg,
+                    row.damagedKg
+                  );
                   const finishedAndDamagedKg = row.finishedKg + row.damagedKg;
                   const varianceKg = actualUsedKg - finishedAndDamagedKg;
                   /** Số lượng = Σ (SL sản lượng SP × ĐM thành phần NVL) — ĐVT gốc. */

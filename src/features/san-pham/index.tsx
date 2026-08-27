@@ -1997,16 +1997,19 @@ function resolveGoodsWarehouseName(warehouseOptions: string[]) {
 }
 
 export function normalizeProducts(data: unknown): ProductRow[] {
-  if (!data || typeof data !== 'object') return [];
-  const products = (data as { products?: unknown }).products;
+  const products = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { products?: unknown }).products)
+      ? (data as { products: unknown[] }).products
+      : [];
   if (!Array.isArray(products)) return [];
 
   return products
     .map((item): ProductRow | null => {
       if (!item || typeof item !== 'object') return null;
       const record = item as Record<string, unknown>;
-      const code = String(record.ma_sp ?? record.code ?? '').trim();
-      const name = String(record.ten_sp ?? record.name ?? '').trim();
+      const code = String(record.ma_sp ?? record.ma_san_pham ?? record.productCode ?? record.code ?? '').trim();
+      const name = String(record.ten_sp ?? record.ten_san_pham ?? record.productName ?? record.name ?? '').trim();
       if (!code && !name) return null;
 
       return {

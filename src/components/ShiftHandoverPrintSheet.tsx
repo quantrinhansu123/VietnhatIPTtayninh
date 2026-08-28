@@ -5,12 +5,13 @@ import {
   SHIFT_HANDOVER_FORM_CODE,
   SHIFT_HANDOVER_FORM_EFFECTIVE,
   SHIFT_HANDOVER_FORM_ISSUE,
+  mixingLineHasData,
+  mixedTotalFromUses,
   sumClosingStockTotals,
-  sumProductTotals,
-  sumScrapQuantity,
   type SavedClosingStockLine,
   type SavedHandoverTask,
   type SavedKpiLine,
+  type SavedMixingMaterialLine,
   type SavedProductLine,
   type SavedScrapLine,
   type ShiftHandoverSlip
@@ -27,6 +28,7 @@ export type ShiftHandoverPrintSlip = {
   products: SavedProductLine[];
   scraps: SavedScrapLine[];
   closingStockLines: SavedClosingStockLine[];
+  materials: SavedMixingMaterialLine[];
   kpis: SavedKpiLine[];
   lines: SavedHandoverTask[];
   note: string;
@@ -59,43 +61,44 @@ function padRows<T>(rows: T[], min: number, factory: (index: number) => T): T[] 
   return [...rows, ...Array.from({ length: min - rows.length }, (_, index) => factory(rows.length + index))];
 }
 
-function emptyProduct(stt: number): SavedProductLine {
-  return {
-    stt,
-    productCode: '',
-    productName: '',
-    plannedReturn: null,
-    quantity: null,
-    rollWeight: null,
-    resinNorm: null,
-    totalNormWeight: null,
-    defect20: '',
-    defect30: ''
-  };
-}
-
-function emptyScrap(stt: number): SavedScrapLine {
-  return { stt, name: '', quantity: null };
-}
-
 function emptyClosingStock(stt: number): SavedClosingStockLine {
   return { stt, itemCode: '', itemName: '', unit: '', quantity: null, weightKg: null };
 }
 
-function emptyKpi(stt: number): SavedKpiLine {
-  return { stt, criteria: '', norm: null, actual: null, variance: null };
+function emptyMixing(stt: number): SavedMixingMaterialLine {
+  return {
+    stt,
+    materialCode: '',
+    materialName: '',
+    unit: '',
+    normKg: null,
+    percent: null,
+    opening: null,
+    takenFromWh: null,
+    use1: null,
+    use2: null,
+    use3: null,
+    use4: null,
+    use5: null,
+    mixedTotal: null,
+    closing: null,
+    actualUsage: null
+  };
 }
 
 export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip }) {
   const dateParts = formatPrintDate(slip.date);
-  const products = padRows(slip.products, 6, emptyProduct);
-  const scraps = padRows(slip.scraps, 5, emptyScrap);
-  const closingStock = padRows(slip.closingStockLines || [], 4, emptyClosingStock);
-  const kpis = padRows(slip.kpis, 4, emptyKpi);
-  const totals = sumProductTotals(slip.products);
-  const scrapTotal = sumScrapQuantity(slip.scraps);
+  const closingStock = padRows(slip.closingStockLines || [], 5, emptyClosingStock);
   const closingTotals = sumClosingStockTotals(slip.closingStockLines || []);
-  const showLegacyTasks = slip.products.length === 0 && slip.lines.length > 0;
+  const mixingLines = (slip.materials || []).filter(
+    line => mixingLineHasData(line) || Boolean(line.materialCode)
+  );
+  const mixing = padRows(mixingLines, 6, emptyMixing);
+  const mixingTotal = mixingLines.reduce((sum, line) => {
+    const mixed = line.mixedTotal ?? mixedTotalFromUses(line.use1, line.use2, line.use3, line.use4, line.use5);
+    return sum + (mixed ?? 0);
+  }, 0);
+  const showLegacyTasks = (slip.closingStockLines || []).length === 0 && mixingLines.length === 0 && slip.lines.length > 0;
 
   return (
     <div className="production-order-print-sheet shift-handover-print-sheet">
@@ -156,168 +159,104 @@ export function ShiftHandoverPrintSheet({ slip }: { slip: ShiftHandoverPrintSlip
         </table>
 
         <div className="shift-handover-print-body">
-          <div className="shift-handover-print-main">
-            <h2 className="shift-handover-print-section">II. THÀNH PHẨM</h2>
-            <table className="production-order-print-grid-table shift-handover-print-products-table">
+          <section className="shift-handover-print-block">
+            <h2 className="shift-handover-print-section">1. Số lượng tồn cuối ca</h2>
+            <table className="production-order-print-grid-table shift-handover-print-scrap-table">
               <colgroup>
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '10%' }} />
+                <col className="shift-handover-col-code" />
+                <col className="shift-handover-col-name" />
+                <col className="shift-handover-col-unit" />
+                <col className="shift-handover-col-qty" />
+                <col className="shift-handover-col-kg" />
               </colgroup>
               <thead>
                 <tr>
-                  <th rowSpan={2}>MÃ HÀNG</th>
-                  <th rowSpan={2}>
-                    THÀNH PHẨM
-                    <span>(2)</span>
-                  </th>
-                  <th rowSpan={2}>
-                    DỰ KIẾN TP TRẢ KHO
-                    <span>(Cuộn)</span>
-                  </th>
-                  <th colSpan={3}>THÀNH PHẨM THỰC TẾ NHẬP KHO</th>
-                  <th rowSpan={2}>
-                    TỔNG TL THEO ĐM NHỰA
-                    <span>(6) = (3) × (5)</span>
-                  </th>
-                  <th colSpan={2}>LÕI / CUỘN</th>
-                </tr>
-                <tr>
-                  <th>
-                    SỐ LƯỢNG
-                    <span>(Cuộn) (3)</span>
-                  </th>
-                  <th>
-                    TL CUỘN GỒM TÚI, LÕI
-                    <span>(4)</span>
-                  </th>
-                  <th>
-                    ĐỊNH MỨC NHỰA
-                    <span>(5)</span>
-                  </th>
-                  <th>20cm</th>
-                  <th>30cm</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((line, index) => (
-                  <tr key={`${line.stt}-${index}`}>
-                    <td>{line.productCode}</td>
-                    <td className="shift-handover-print-left">{line.productName}</td>
-                    <td className="production-order-print-center">{printNum(line.plannedReturn)}</td>
-                    <td className="production-order-print-center">{printNum(line.quantity)}</td>
-                    <td className="production-order-print-center">{printNum(line.rollWeight)}</td>
-                    <td className="production-order-print-center">{printNum(line.resinNorm)}</td>
-                    <td className="production-order-print-center">{printNum(line.totalNormWeight)}</td>
-                    <td className="production-order-print-center">{line.defect20}</td>
-                    <td className="production-order-print-center">{line.defect30}</td>
-                  </tr>
-                ))}
-                <tr className="shift-handover-print-total-row">
-                  <td colSpan={2}>TỔNG CỘNG</td>
-                  <td className="production-order-print-center">{printNum(totals.plannedReturn)}</td>
-                  <td className="production-order-print-center">{printNum(totals.quantity)}</td>
-                  <td />
-                  <td />
-                  <td className="production-order-print-center">{printNum(totals.totalNormWeight)}</td>
-                  <td />
-                  <td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div className="shift-handover-print-side">
-            <h2 className="shift-handover-print-section">III. HÀNG LỖI HỎNG / PHẾ / SỰ CỐ SX</h2>
-            <table className="production-order-print-grid-table shift-handover-print-scrap-table">
-              <thead>
-                <tr>
-                  <th>TÊN LỖI HỎNG / PHẾ / SỰ CỐ SẢN XUẤT</th>
-                  <th>SỐ LƯỢNG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scraps.map((line, index) => (
-                  <tr key={`${line.stt}-${index}`}>
-                    <td className="shift-handover-print-left">{line.name}</td>
-                    <td className="production-order-print-center">
-                      {line.quantity !== null ? `${printNum(line.quantity)} KG` : ''}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="shift-handover-print-total-row">
-                  <td>TỔNG CỘNG</td>
-                  <td className="production-order-print-center">{scrapTotal ? `${printNum(scrapTotal)} KG` : ''}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <h2 className="shift-handover-print-section">III. BÁO CÁO SX CUỐI CA</h2>
-            <table className="production-order-print-grid-table shift-handover-print-kpi-table">
-              <colgroup>
-                <col style={{ width: '58%' }} />
-                <col style={{ width: '21%' }} />
-                <col style={{ width: '21%' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>CHỈ TIÊU</th>
-                  <th>SL ĐM</th>
-                  <th>CHÊNH LỆCH MỨC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kpis.map((line, index) => (
-                  <tr key={`${line.stt}-${index}`}>
-                    <td className="shift-handover-print-left">{line.criteria}</td>
-                    <td className="production-order-print-center shift-handover-print-kpi-split">
-                      <div className="shift-handover-print-kpi-norm">{printNum(line.norm)}</div>
-                      <div className="shift-handover-print-kpi-actual">{printNum(line.actual)}</div>
-                    </td>
-                    <td className="production-order-print-center shift-handover-print-kpi-split">
-                      <div className="shift-handover-print-kpi-norm">Chênh lệch</div>
-                      <div className="shift-handover-print-kpi-actual">{printNum(line.variance)}</div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <h2 className="shift-handover-print-section">IV. SỐ LƯỢNG TỒN CUỐI CA</h2>
-            <table className="production-order-print-grid-table shift-handover-print-scrap-table">
-              <thead>
-                <tr>
-                  <th>MÃ NVL</th>
-                  <th>TÊN NVL</th>
+                  <th>Mã NVL</th>
+                  <th>Tên NVL</th>
                   <th>ĐVT</th>
-                  <th>SỐ LƯỢNG</th>
-                  <th>TL (KG)</th>
+                  <th>Số lượng</th>
+                  <th>TL (kg)</th>
                 </tr>
               </thead>
               <tbody>
                 {closingStock.map((line, index) => (
                   <tr key={`${line.stt}-${index}`}>
-                    <td className="production-order-print-center">{line.itemCode}</td>
+                    <td className="shift-handover-print-code">{line.itemCode}</td>
                     <td className="shift-handover-print-left">{line.itemName}</td>
                     <td className="production-order-print-center">{line.unit}</td>
-                    <td className="production-order-print-center">{printNum(line.quantity)}</td>
-                    <td className="production-order-print-center">{printNum(line.weightKg)}</td>
+                    <td className="production-order-print-right">{printNum(line.quantity)}</td>
+                    <td className="production-order-print-right">{printNum(line.weightKg)}</td>
                   </tr>
                 ))}
                 <tr className="shift-handover-print-total-row">
-                  <td colSpan={3}>TỔNG CỘNG</td>
-                  <td className="production-order-print-center">{printNum(closingTotals.quantity)}</td>
-                  <td className="production-order-print-center">{printNum(closingTotals.weightKg)}</td>
+                  <td colSpan={3}>Tổng cộng</td>
+                  <td className="production-order-print-right">{printNum(closingTotals.quantity)}</td>
+                  <td className="production-order-print-right">{printNum(closingTotals.weightKg)}</td>
                 </tr>
               </tbody>
             </table>
-          </div>
+          </section>
+
+          <section className="shift-handover-print-block">
+            <h2 className="shift-handover-print-section">2. Bảng trộn vật tư</h2>
+            <table className="production-order-print-grid-table shift-handover-print-mixing-table">
+              <colgroup>
+                <col className="shift-handover-mix-stt" />
+                <col className="shift-handover-mix-name" />
+                <col className="shift-handover-mix-unit" />
+                <col className="shift-handover-mix-pct" />
+                <col className="shift-handover-mix-use" />
+                <col className="shift-handover-mix-use" />
+                <col className="shift-handover-mix-use" />
+                <col className="shift-handover-mix-use" />
+                <col className="shift-handover-mix-use" />
+                <col className="shift-handover-mix-total" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th rowSpan={2}>STT</th>
+                  <th rowSpan={2}>Tên vật tư</th>
+                  <th rowSpan={2}>ĐVT</th>
+                  <th rowSpan={2}>Tỉ lệ ĐM<br />(%)</th>
+                  <th colSpan={5}>Sử dụng (kg)</th>
+                  <th rowSpan={2}>Tổng nhựa<br />trộn</th>
+                </tr>
+                <tr>
+                  <th>Lần 1</th>
+                  <th>Lần 2</th>
+                  <th>Lần 3</th>
+                  <th>Lần 4</th>
+                  <th>Lần 5</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mixing.map((line, index) => {
+                  const mixed =
+                    line.mixedTotal ?? mixedTotalFromUses(line.use1, line.use2, line.use3, line.use4, line.use5);
+                  return (
+                    <tr key={`${line.stt}-${index}`}>
+                      <td className="production-order-print-center">{index + 1}</td>
+                      <td className="shift-handover-print-left">
+                        {line.materialName || line.materialCode}
+                      </td>
+                      <td className="production-order-print-center">{line.unit}</td>
+                      <td className="production-order-print-right">{printNum(line.percent, 1)}</td>
+                      <td className="production-order-print-right">{printNum(line.use1)}</td>
+                      <td className="production-order-print-right">{printNum(line.use2)}</td>
+                      <td className="production-order-print-right">{printNum(line.use3)}</td>
+                      <td className="production-order-print-right">{printNum(line.use4)}</td>
+                      <td className="production-order-print-right">{printNum(line.use5)}</td>
+                      <td className="production-order-print-right">{printNum(mixed)}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="shift-handover-print-total-row">
+                  <td colSpan={9}>Tổng cộng</td>
+                  <td className="production-order-print-right">{printNum(mixingTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
         </div>
 
         {showLegacyTasks ? (
@@ -401,6 +340,7 @@ export function buildShiftHandoverPrintSlip(input: {
   products: SavedProductLine[];
   scraps: SavedScrapLine[];
   closingStockLines?: SavedClosingStockLine[];
+  materials?: SavedMixingMaterialLine[];
   kpis: SavedKpiLine[];
   lines?: SavedHandoverTask[];
   note?: string;
@@ -421,6 +361,7 @@ export function buildShiftHandoverPrintSlip(input: {
     products: input.products,
     scraps: input.scraps,
     closingStockLines: input.closingStockLines || [],
+    materials: input.materials || [],
     kpis: input.kpis,
     lines: input.lines || [],
     note: input.note || ''
@@ -440,6 +381,7 @@ export function slipToPrintSlip(slip: ShiftHandoverSlip): ShiftHandoverPrintSlip
     products: slip.products,
     scraps: slip.scraps,
     closingStockLines: slip.closingStockLines || [],
+    materials: slip.materials || [],
     kpis: slip.kpis,
     lines: slip.lines,
     note: slip.note

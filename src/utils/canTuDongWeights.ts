@@ -236,13 +236,19 @@ export type InsulationProductAlias = {
   totalWeight?: string | null;
 };
 
+/** TL màng 1 cuộn = khổ (m) × chiều dài (m) × 2 lớp × 0,02324 kg/m². */
+export function resolveInsulationFilmKgPerRoll(product: InsulationProductAlias): number | null {
+  const rollWidthM = parsePositiveDecimal(product.rollWidth);
+  const rollLengthM = parsePositiveDecimal(product.rollLength);
+  if (rollWidthM === null || rollLengthM === null) return null;
+  return rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
+}
+
 function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
   const filmKgByProductCode = new Map<string, number>();
   for (const product of products) {
-    const rollWidthM = parsePositiveDecimal(product.rollWidth);
-    const rollLengthM = parsePositiveDecimal(product.rollLength);
-    if (rollWidthM === null || rollLengthM === null) continue;
-    const filmKg = rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
+    const filmKg = resolveInsulationFilmKgPerRoll(product);
+    if (filmKg === null) continue;
     for (const productCode of [product.code, product.newCode, product.amisCode]) {
       const key = normalizeProductCodeKey(productCode);
       if (key && key !== '-') filmKgByProductCode.set(key, filmKg);

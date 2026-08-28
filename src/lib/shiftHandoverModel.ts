@@ -236,7 +236,7 @@ export function emptyMixingMaterialLine(name = '', unit = 'kg'): MixingMaterialL
 }
 
 export function defaultMixingMaterialLines(): MixingMaterialLine[] {
-  return DEFAULT_MIXING_MATERIALS.map(item => emptyMixingMaterialLine(item.name, item.unit));
+  return [];
 }
 
 export const DEFAULT_KPI_CRITERIA = [
@@ -558,7 +558,6 @@ export function closingStockLinesToForm(lines: SavedClosingStockLine[]): Closing
 }
 
 export function mixingMaterialLinesToForm(lines: SavedMixingMaterialLine[]): MixingMaterialLine[] {
-  if (lines.length === 0) return defaultMixingMaterialLines();
   return lines.map(line => ({
     key: newKey(),
     materialCode: line.materialCode,

@@ -1,59 +1,30 @@
 # phieu_giao_ca
 
-
-
 | **Bảng** | `phieu_giao_ca` |
-
 | **Tab** | `shift-handover-report`, `shift-handover-list` |
-
 | **SQL** | `supabase-phieu-giao-ca.sql` |
 
-
-
 **API:** `server.ts` — `GET/POST/DELETE /api/phieu-giao-ca` (sau `/api/phieu-bao-dung-may`)
-
-
 
 **Components:**
 
 - `ShiftHandoverPanel.tsx` — form nhật ký sản xuất kiêm phiếu giao ca (QT-16-BM02)
-
 - `ShiftHandoverListView.tsx` — danh sách `/danh-sach-phieu-giao-ca`
-
 - `ShiftHandoverPrintSheet.tsx` — bản in A4 ngang
+- `src/lib/shiftHandoverModel.ts` — kiểu dữ liệu, `ton_cuoi_ca`, bảng trộn vật tư
+- `src/utils/shiftHandoverAutofill.ts` — map autofill từ `bao_cao_phoi_tron` + `bao_cao_may_nvl_ton`
 
-- `src/lib/shiftHandoverModel.ts` — kiểu dữ liệu, tổng cột (6)=(3)×(5), chênh lệch KPI, `ton_cuoi_ca`
+**`chi_tiet` JSON:** `{ loai: "nk_sx", gio_tu, gio_den, thanh_pham[], hang_loi[], ton_cuoi_ca[], vat_tu[], bao_cao_cuoi_ca[] }`
 
-- `src/utils/shiftHandoverAutofill.ts` — map autofill từ `lenh_sx` + `can_tu_dong` / `bao_cao_hang_hong` / `bao_cao_may_nvl_ton`
-
-
-
-**`chi_tiet` JSON:** `{ loai: "nk_sx", gio_tu, gio_den, thanh_pham[], hang_loi[], ton_cuoi_ca[], bao_cao_cuoi_ca[] }`
-
-
-
-**Tự động điền** (cần Ngày + Ca; xác nhận nếu form đã có dữ liệu):
+Form hiện chỉ nhập:
 
 | Mục | Nguồn |
-
 |-----|--------|
+| Số lượng tồn cuối ca | `GET /api/bao-cao-may-nvl-ton?loai_bao_cao=cuoi_ca` |
+| Bảng trộn vật tư | `GET /api/bao-cao-phoi-tron` theo Ngày + Ca + **Máy** — Lần 1–5 từ phiếu trộn; **Tỉ lệ ĐM** từ `ty_le_tron` máy |
 
-| II. Thành phẩm | Dòng từ `GET /api/lenh-sx` (Ngày+Ca+Máy); **Số lượng** = số lần cân `GET /api/can-tu-dong?dateBy=ngay`; Dự kiến = SL lệnh SX |
+Tự động điền **Máy** và **Người thực hiện** theo Ngày + Ca từ `GET /api/lenh-sx`. Tự động điền bảng chi tiết cần Ngày + Ca + Máy.
 
-| III. Hàng lỗi | `GET /api/bao-cao-hang-hong?ngay=` |
+`ton_cuoi_ca[]`: `{ ma_nvl, ten_nvl, dvt, so_luong, trong_luong_kg }`
 
-| IV. Tồn cuối ca | `GET /api/bao-cao-may-nvl-ton?loai_bao_cao=cuoi_ca` |
-
-| III. Báo cáo SX cuối ca (KPI) | không autofill |
-
-| Lõi 20/30cm | để trống |
-
-
-
-`ton_cuoi_ca[]`: `{ ma_nvl, ten_nvl, dvt, so_luong, trong_luong_kg }` — lưu trong JSON, không đổi schema SQL.
-
-
-
-Phiếu cũ (mảng việc bàn giao) vẫn đọc được; bản in mới hiện bảng công việc khi không có thành phẩm.
-
-
+Phiếu cũ (thành phẩm / hàng lỗi / KPI / việc bàn giao) vẫn đọc được. Bản in A4 ngang gồm **cả 2 mục trên 1 trang**: tồn cuối ca + bảng trộn vật tư (nút **Lưu phiếu** không in; in từ lịch sử).

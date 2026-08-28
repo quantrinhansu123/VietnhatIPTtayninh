@@ -4,10 +4,11 @@ import { SearchableSelect } from './shared/SearchableSelect';
 import { formatNumber } from '../utils';
 import {
   mixedTotalFromUses,
-  mixingActualUsage,
+  formatQty,
   type MaterialCatalogOption,
   type MixingMaterialLine
 } from '../lib/shiftHandoverModel';
+import { lookupMachineMixingPercent } from '../utils/shiftHandoverAutofill';
 
 const cellClass =
   'h-9 w-full min-w-0 border-0 bg-transparent px-1.5 text-sm font-semibold text-zinc-800 outline-none focus:bg-red-50';
@@ -21,6 +22,7 @@ function displayNum(value: number | null, digits = 2) {
 export default function ShiftHandoverMixingTable({
   lines,
   materials,
+  mixingRatios = [],
   isLoading,
   onChange,
   onAdd,
@@ -28,23 +30,25 @@ export default function ShiftHandoverMixingTable({
 }: {
   lines: MixingMaterialLine[];
   materials: MaterialCatalogOption[];
+  mixingRatios?: Array<{ materialCode: string; materialName: string; percent: number }>;
   isLoading?: boolean;
   onChange: (key: string, patch: Partial<MixingMaterialLine>) => void;
   onAdd: () => void;
   onRemove: (key: string) => void;
 }) {
-  const actualTotal = lines.reduce((sum, line) => {
+  const mixedTotal = lines.reduce((sum, line) => {
     const mixed = mixedTotalFromUses(line.use1, line.use2, line.use3, line.use4, line.use5);
-    const actual = mixingActualUsage(line.opening, mixed, line.closing);
-    return sum + (actual ?? 0);
+    return sum + (mixed ?? 0);
   }, 0);
 
   const selectMaterial = (key: string, item: MaterialCatalogOption | null, code: string) => {
     if (item) {
+      const percent = lookupMachineMixingPercent(mixingRatios, item.code, item.name);
       onChange(key, {
         materialCode: item.code,
         materialName: item.name || '',
-        unit: item.unit || 'kg'
+        unit: item.unit || 'kg',
+        ...(percent !== null ? { percent: formatQty(percent) } : {})
       });
       return;
     }
@@ -54,7 +58,12 @@ export default function ShiftHandoverMixingTable({
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-black uppercase tracking-wider text-zinc-800">I. Vật tư</h3>
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-wider text-zinc-800">I. Vật tư</h3>
+          <p className="mt-0.5 text-[10px] font-semibold text-zinc-400">
+            Nguồn: phiếu trộn của máy đã chọn · Tỉ lệ ĐM lấy từ tỉ lệ trộn máy
+          </p>
+        </div>
         <button
           type="button"
           onClick={onAdd}
@@ -65,7 +74,7 @@ export default function ShiftHandoverMixingTable({
         </button>
       </div>
       <div className="overflow-x-auto rounded-xl border border-zinc-200">
-        <table className="min-w-[1280px] w-full border-collapse text-xs">
+        <table className="min-w-[880px] w-full border-collapse text-xs">
           <thead className="bg-zinc-100 text-[10px] font-black uppercase tracking-wide text-zinc-600">
             <tr>
               <th rowSpan={2} className="w-10 border border-zinc-200 px-1 py-1.5">
@@ -78,25 +87,13 @@ export default function ShiftHandoverMixingTable({
                 ĐVT
               </th>
               <th rowSpan={2} className="w-24 border border-zinc-200 px-1 py-1.5">
-                Định mức VT kg
-              </th>
-              <th rowSpan={2} className="w-16 border border-zinc-200 px-1 py-1.5">
-                Tỉ lệ %
-              </th>
-              <th rowSpan={2} className="w-24 border border-zinc-200 px-1 py-1.5">
-                Tồn đầu ca
-              </th>
-              <th rowSpan={2} className="w-24 border border-zinc-200 px-1 py-1.5">
-                Lấy trong kho
+                Tỉ lệ ĐM (%)
               </th>
               <th colSpan={5} className="border border-zinc-200 px-1 py-1.5">
                 Sử dụng (kg)
               </th>
               <th rowSpan={2} className="w-28 border border-zinc-200 px-1 py-1.5">
                 Tổng nhựa trộn
-              </th>
-              <th rowSpan={2} className="w-24 border border-zinc-200 px-1 py-1.5">
-                Tồn cuối ca
               </th>
               <th rowSpan={2} className="w-9 border border-zinc-200" />
             </tr>
@@ -109,6 +106,13 @@ export default function ShiftHandoverMixingTable({
             </tr>
           </thead>
           <tbody>
+            {lines.length === 0 ? (
+              <tr>
+                <td colSpan={11} className="border border-zinc-200 px-3 py-6 text-center text-xs font-semibold text-zinc-400">
+                  Chưa có dòng. Chọn Ngày + Ca + Máy rồi bấm Tự động điền, hoặc Thêm vật tư.
+                </td>
+              </tr>
+            ) : null}
             {lines.map((line, index) => {
               const mixed = mixedTotalFromUses(line.use1, line.use2, line.use3, line.use4, line.use5);
               return (
@@ -156,10 +160,7 @@ export default function ShiftHandoverMixingTable({
                   </td>
                   {(
                     [
-                      ['normKg', line.normKg],
                       ['percent', line.percent],
-                      ['opening', line.opening],
-                      ['takenFromWh', line.takenFromWh],
                       ['use1', line.use1],
                       ['use2', line.use2],
                       ['use3', line.use3],
@@ -179,40 +180,26 @@ export default function ShiftHandoverMixingTable({
                   <td className="border border-zinc-200 bg-zinc-50 px-1.5 text-center font-black text-zinc-800">
                     {displayNum(mixed)}
                   </td>
-                  <td className="border border-zinc-200 p-0.5">
-                    <input
-                      value={line.closing}
-                      onChange={e => onChange(line.key, { closing: e.target.value })}
-                      className={cellCenterClass}
-                      inputMode="decimal"
-                    />
-                  </td>
                   <td className="border border-zinc-200 text-center">
-                    {lines.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => onRemove(line.key)}
-                        className="inline-flex h-8 w-8 items-center justify-center text-zinc-400 hover:text-rose-600"
-                        title="Xóa dòng"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onRemove(line.key)}
+                      className="inline-flex h-8 w-8 items-center justify-center text-zinc-400 hover:text-rose-600"
+                      title="Xóa dòng"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </td>
                 </tr>
               );
             })}
             <tr className="bg-zinc-100 font-black text-zinc-800">
-              <td colSpan={12} className="border border-zinc-200 px-2 py-2 text-right uppercase">
-                Thực tế sử dụng
-                <span className="ml-2 block text-[10px] font-semibold normal-case text-zinc-500">
-                  = Tồn đầu ca + Thực tế trộn trong ca − Tồn cuối ca
-                </span>
+              <td colSpan={9} className="border border-zinc-200 px-2 py-2 text-right uppercase">
+                Tổng nhựa trộn
               </td>
               <td className="border border-zinc-200 px-2 py-2 text-center text-base">
-                {displayNum(actualTotal)}
+                {displayNum(mixedTotal)}
               </td>
-              <td className="border border-zinc-200" />
               <td className="border border-zinc-200" />
             </tr>
           </tbody>

@@ -2,14 +2,22 @@ import {
   emptyProductLine,
   emptyScrapLine,
   emptyClosingStockLine,
+  emptyMixingMaterialLine,
   formatQty,
   parseQty,
   type ClosingStockLine,
+  type MixingMaterialLine,
   type ProductLine,
   type ProductOption,
   type ScrapLine
 } from '../lib/shiftHandoverModel';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import {
+  MIXING_ROUND_KEYS,
+  getRoundBatchWeight,
+  getRoundItems,
+  normalizeMixingReport
+} from '../lib/mixingReportModel';
 import {
   getProductionOrderProductLines,
   normalizeProductionOrders,
@@ -28,6 +36,7 @@ import {
   type MachineNvlSavedReport
 } from './machineNvlReports';
 import { shiftNamesMatch } from './shiftSettings';
+import { splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
 import {
   damagedGoodsMaterialTypeLabel,
   inferDamagedGoodsFormFields,
@@ -76,6 +85,90 @@ export function filterProductionOrdersForHandover(input: {
     }
     return true;
   });
+}
+
+function resolveMachineCodeFromOrder(
+  order: ProductionOrderRow,
+  machines: Array<{ code: string; name: string }>
+) {
+  const ref = `${order.machine || ''} ${order.position || ''}`.trim();
+  if (!ref || ref === '-') return '';
+  const found = machines.find(machine => machineTextMatches(ref, machine.code, machine.name));
+  return found?.code || '';
+}
+
+function staffNamesFromOrder(order: ProductionOrderRow) {
+  const fromStaff = splitProductionOrderStaffNames(order.staff);
+  if (fromStaff.length > 0) return fromStaff;
+  return [
+    ...splitProductionOrderStaffNames(order.mainStaff),
+    ...splitProductionOrderStaffNames(order.shiftLead),
+    ...splitProductionOrderStaffNames(order.assistantStaff),
+    ...splitProductionOrderStaffNames(order.traineeStaff)
+  ];
+}
+
+function mostFrequent(values: string[]) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (!value) continue;
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  let best = '';
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/** Máy + Người thực hiện từ lệnh SX theo Ngày + Ca (+ Máy nếu đã chọn). */
+export function pickHandoverMachineAndOperators(input: {
+  orders: ProductionOrderRow[];
+  date: string;
+  shift: string;
+  machines: Array<{ code: string; name: string }>;
+  machineCode?: string;
+}): { machineCode: string; operators: string } {
+  const all = filterProductionOrdersForHandover({
+    orders: input.orders,
+    date: input.date,
+    shift: input.shift
+  });
+  if (all.length === 0) return { machineCode: '', operators: '' };
+
+  const codes = all
+    .map(order => resolveMachineCodeFromOrder(order, input.machines))
+    .filter(Boolean);
+  const requested = String(input.machineCode || '').trim();
+  const machineCode = requested || mostFrequent(codes) || codes[0] || '';
+  const machineName = input.machines.find(machine => machine.code === machineCode)?.name || '';
+
+  const scoped = machineCode
+    ? filterProductionOrdersForHandover({
+        orders: all,
+        date: input.date,
+        shift: input.shift,
+        machineCode,
+        machineName
+      })
+    : all;
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const order of scoped) {
+    for (const name of staffNamesFromOrder(order)) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+  }
+
+  return { machineCode, operators: names.join(', ') };
 }
 
 /**
@@ -348,4 +441,220 @@ export function buildClosingStockLinesFromMachineNvl(input: {
     }));
 
   return lines.length > 0 ? lines : [emptyClosingStockLine()];
+}
+
+function materialMergeKey(code: string, name: string) {
+  return normalizeProductCodeKey(code) || `name:${name.trim().toLowerCase()}`;
+}
+
+function addNullable(a: number | null, b: number | null): number | null {
+  if (a === null && b === null) return null;
+  return round3((a ?? 0) + (b ?? 0));
+}
+
+function roundItemQty(items: Array<{ so_luong: number | null; kl_thuc_te: number | null }>): number | null {
+  if (items.length === 0) return null;
+  const hasActual = items.some(item => item.kl_thuc_te != null && Number.isFinite(item.kl_thuc_te));
+  const sum = items.reduce((total, item) => {
+    const value = hasActual ? item.kl_thuc_te : item.so_luong;
+    return total + (value != null && Number.isFinite(value) ? value : 0);
+  }, 0);
+  return sum !== 0 || hasActual ? round3(sum) : null;
+}
+
+function parseRatioPercent(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  const num = Number(
+    String(raw)
+      .trim()
+      .replace('%', '')
+      .replace(/\s/g, '')
+      .replace(',', '.')
+  );
+  return Number.isFinite(num) ? num : null;
+}
+
+function roundItemPercent(
+  items: Array<{ ti_le_phan_tram?: number | null; don_vi?: string; so_luong?: number | null }>
+): number | null {
+  const values: number[] = [];
+  for (const item of items) {
+    const fromField = parseRatioPercent(item.ti_le_phan_tram);
+    if (fromField !== null) {
+      values.push(fromField);
+      continue;
+    }
+    if (String(item.don_vi || '').trim() === '%') {
+      const fromQty = parseRatioPercent(item.so_luong);
+      if (fromQty !== null) values.push(fromQty);
+    }
+  }
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+export function parseMachineMixingRatios(value: unknown): Array<{
+  materialCode: string;
+  materialName: string;
+  percent: number;
+}> {
+  let source: unknown = value;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(source)) return [];
+  return source
+    .map(item => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const materialCode = String(record.ma_nvl ?? record.materialCode ?? record.code ?? '').trim();
+      const materialName = String(record.ten_nvl ?? record.materialName ?? record.name ?? '').trim();
+      const percent = parseRatioPercent(record.phan_tram ?? record.percent);
+      if ((!materialCode && !materialName) || percent === null) return null;
+      return { materialCode, materialName, percent };
+    })
+    .filter((item): item is { materialCode: string; materialName: string; percent: number } => Boolean(item));
+}
+
+export function lookupMachineMixingPercent(
+  ratios: Array<{ materialCode: string; materialName: string; percent: number }>,
+  code: string,
+  name: string
+): number | null {
+  const codeKey = normalizeProductCodeKey(code);
+  if (codeKey) {
+    const exact = ratios.find(item => normalizeProductCodeKey(item.materialCode) === codeKey);
+    if (exact) return exact.percent;
+  }
+  const nameKey = name.trim().toLowerCase();
+  if (nameKey) {
+    const exactName = ratios.find(item => item.materialName.trim().toLowerCase() === nameKey);
+    if (exactName) return exactName.percent;
+  }
+  const hayName = normalizeMachineHay(name);
+  if (hayName) {
+    const accent = ratios.find(item => normalizeMachineHay(item.materialName) === hayName);
+    if (accent) return accent.percent;
+  }
+  return null;
+}
+
+/** Bảng trộn phiếu giao ca ← phiếu trộn (`bao_cao_phoi_tron`); Tỉ lệ ĐM ← `ty_le_tron` máy. */
+export function buildMixingMaterialLinesFromPhoiTron(input: {
+  reports: unknown;
+  date: string;
+  shift: string;
+  machineCode?: string;
+  machineName?: string;
+  mixingRatios?: unknown;
+}): MixingMaterialLine[] {
+  const dateIso = String(input.date || '').slice(0, 10);
+  const raw = Array.isArray(input.reports)
+    ? input.reports
+    : input.reports && typeof input.reports === 'object' && Array.isArray((input.reports as { reports?: unknown }).reports)
+      ? (input.reports as { reports: unknown[] }).reports
+      : [];
+
+  const reports = raw
+    .map(row => (row && typeof row === 'object' ? normalizeMixingReport(row as Record<string, unknown>) : null))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .filter(report => {
+      if (dateIso && report.ngay && report.ngay !== dateIso) return false;
+      if (input.shift && report.ca && !shiftNamesMatch(report.ca, input.shift)) return false;
+      if (input.machineCode || input.machineName) {
+        const reportCode = String(report.ma_may || '').trim();
+        const reportName = String(report.ten_may || '').trim();
+        const codeMatch =
+          input.machineCode &&
+          reportCode &&
+          reportCode.replace(/\s+/g, '').toLowerCase() === input.machineCode.replace(/\s+/g, '').toLowerCase();
+        if (!codeMatch && !machineTextMatches(`${reportCode} ${reportName}`, input.machineCode, input.machineName)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+      return true;
+    });
+
+  type Acc = {
+    materialCode: string;
+    materialName: string;
+    unit: string;
+    uses: Array<number | null>;
+    percentSum: number;
+    percentCount: number;
+  };
+  const byKey = new Map<string, Acc>();
+  const machineRatios = parseMachineMixingRatios(input.mixingRatios);
+
+  for (const report of reports) {
+    const offset = report.lan_thu && report.lan_thu > 1 ? report.lan_thu - 1 : 0;
+    for (const line of report.chi_tiet) {
+      const code = String(line.ma_nvl || '').trim();
+      const name = String(line.ten_vat_tu || '').trim();
+      if (!code && !name) continue;
+      const key = materialMergeKey(code, name);
+      const existing = byKey.get(key) ?? {
+        materialCode: code,
+        materialName: name,
+        unit: String(line.don_vi || 'kg').trim() || 'kg',
+        uses: [null, null, null, null, null],
+        percentSum: 0,
+        percentCount: 0
+      };
+      if (!existing.materialCode && code) existing.materialCode = code;
+      if (!existing.materialName && name) existing.materialName = name;
+      if (!existing.unit && line.don_vi) existing.unit = String(line.don_vi).trim();
+
+      MIXING_ROUND_KEYS.forEach((roundKey, index) => {
+        const items = getRoundItems(line.lan_su_dung, roundKey);
+        let roundPct = roundItemPercent(items);
+        if (roundPct === null) {
+          const batchWeight = getRoundBatchWeight(line.lan_su_dung, roundKey);
+          const normKg = items.reduce((sum, item) => sum + (item.so_luong ?? 0), 0);
+          if (batchWeight && batchWeight > 0 && normKg > 0) {
+            roundPct = (normKg / batchWeight) * 100;
+          }
+        }
+        if (roundPct !== null) {
+          existing.percentSum += roundPct;
+          existing.percentCount += 1;
+        }
+        const qty = roundItemQty(items);
+        if (qty === null) return;
+        const col = Math.min(4, offset + index);
+        existing.uses[col] = addNullable(existing.uses[col], qty);
+      });
+
+      byKey.set(key, existing);
+    }
+  }
+
+  return [...byKey.values()]
+    .filter(item => item.materialCode || item.materialName || item.uses.some(value => value != null))
+    .sort((a, b) =>
+      (a.materialCode || a.materialName).localeCompare(b.materialCode || b.materialName, 'vi')
+    )
+    .map(item => {
+      const fromMachine = lookupMachineMixingPercent(machineRatios, item.materialCode, item.materialName);
+      const fromSlip = item.percentCount > 0 ? item.percentSum / item.percentCount : null;
+      return {
+        ...emptyMixingMaterialLine(item.materialName, item.unit || 'kg'),
+        materialCode: item.materialCode,
+        materialName: item.materialName || item.materialCode,
+        unit: item.unit || 'kg',
+        percent: formatQty(fromMachine ?? fromSlip),
+        use1: formatQty(item.uses[0]),
+        use2: formatQty(item.uses[1]),
+        use3: formatQty(item.uses[2]),
+        use4: formatQty(item.uses[3]),
+        use5: formatQty(item.uses[4])
+      };
+    });
 }

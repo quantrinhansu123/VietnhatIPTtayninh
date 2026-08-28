@@ -191,7 +191,7 @@ export function MachineNvlPrintSheet({ report }: { report: MachineNvlPrintReport
         </header>
 
         <h1 className="production-order-print-title">
-          {isDauCaReport ? 'BẢNG KIỂM KÊ VẬT TƯ TỒN CA' : 'BẢNG KIỂM KÊ VẬT TƯ CUỐI CA'}
+          {isDauCaReport ? 'BẢNG KIỂM KÊ VẬT TƯ ĐẦU CA' : 'BẢNG KIỂM KÊ VẬT TƯ CUỐI CA'}
         </h1>
 
         <div className="production-order-print-meta">

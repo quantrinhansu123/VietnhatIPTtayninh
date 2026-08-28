@@ -32,11 +32,30 @@ import {
 } from '../../components/AcceptanceReportForm';
 import { findProductByCode, normalizeProductCodeKey } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
-import { MachineNvlPrintSheet, savedReportToMachineNvlPrintReport } from '../../components/MachineNvlPrintSheet';
+import { savedReportToMachineNvlPrintReport } from '../../components/MachineNvlPrintSheet';
+import {
+  buildCombinedMachineNvlReports,
+  MachineNvlCombinedPrintSheet
+} from '../../components/MachineNvlCombinedPrintSheet';
 import { MixingReportPrintSheet } from '../../components/MixingReportPrintSheet';
 import { WeighingSlipPrintSheet, type WeighingSlipPrintData } from '../../components/WeighingSlipPrintSheet';
 import { MachineDowntimePrintSheet, buildMachineDowntimePrintSlip } from '../../components/MachineDowntimePrintSheet';
 import { AcceptanceReportPrintSheet, buildAcceptancePrintSlips } from '../../components/AcceptanceReportPrintSheet';
+import {
+  buildCanTuDongPrintData,
+  CanTuDongPrintSheet,
+  type CanTuDongPrintData
+} from '../../components/CanTuDongPrintSheet';
+import type { CanTuDongWeightRow } from '../../utils/canTuDongWeights';
+import {
+  ShiftHandoverPrintSheetV2,
+  slipToPrintSlip,
+  type ShiftHandoverPrintSlip
+} from '../../components/ShiftHandoverPrintSheetV2';
+import {
+  normalizeShiftHandoverSlips,
+  type ShiftHandoverSlip
+} from '../../lib/shiftHandoverModel';
 import {
   WarehouseSlipPrintBatch,
   type WarehouseSlipPrintData
@@ -110,6 +129,8 @@ export type ProductionPlanRelatedReports = {
   downtime: MachineDowntimeSlip[];
   damaged: WeighingRecord[];
   acceptance: AcceptanceReport[];
+  shiftHandovers: ShiftHandoverSlip[];
+  canTuDong: CanTuDongPrintData | null;
   warehouseSlips: WarehouseSlipPrintData[];
   isEmpty: boolean;
   errors: string[];
@@ -280,7 +301,7 @@ export async function loadProductionPlanRelatedReports(
   const encodedDate = encodeURIComponent(planDate);
   const shiftOptions = await loadShiftOptions();
 
-  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes] =
+  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes] =
     await Promise.all([
       fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
@@ -288,6 +309,8 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/phieu-bao-dung-may?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-hang-hong?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
+      fetchJson(`/api/phieu-giao-ca?ngay=${encodedDate}&limit=300`),
+      fetchJson(`/api/can-tu-dong?from=${encodedDate}&to=${encodedDate}&dateBy=ngay&images=0&limit=10000`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
       fetchJson('/api/kho-nvl')
@@ -334,6 +357,53 @@ export async function loadProductionPlanRelatedReports(
   );
   if (!acceptanceRes.ok) errors.push('Báo cáo sản lượng');
 
+  const shiftHandoversAll = shiftHandoverRes.ok ? normalizeShiftHandoverSlips(shiftHandoverRes.data) : [];
+  const shiftHandovers = shiftHandoversAll.filter(slip =>
+    shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions)
+  );
+  if (!shiftHandoverRes.ok) errors.push('Phiếu giao ca');
+
+  const canTuDongAll = canTuDongRes.ok && Array.isArray((canTuDongRes.data as { records?: unknown })?.records)
+    ? (canTuDongRes.data as { records: CanTuDongWeightRow[] }).records
+    : [];
+  const canTuDongRecords = canTuDongAll.filter(row =>
+    shouldIncludeRelatedReport(String(row.ca ?? ''), shifts, shiftOptions)
+  );
+  if (!canTuDongRes.ok) errors.push('Phiếu cân tự động');
+  const productNameByCode = new Map<string, string>();
+  const productStandardWeightByCode = new Map<string, number>();
+  const productCoreWeightByCode = new Map<string, number>();
+  const productPlasticWeightByCode = new Map<string, number>();
+  const asPositiveNumber = (value: string) => {
+    const parsed = Number(String(value ?? '').trim().replace(',', '.'));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+  productCatalog.forEach(product => {
+    const name = product.name || '';
+    const totalWeight = asPositiveNumber(product.totalWeight);
+    const coreWeight = asPositiveNumber(product.coreWeight);
+    const plasticWeight = asPositiveNumber(product.plasticWeight);
+    [product.code, product.newCode].forEach(code => {
+      const key = normalizeProductKey(code);
+      if (!key) return;
+      if (name) productNameByCode.set(key, name);
+      if (totalWeight !== null) productStandardWeightByCode.set(key, totalWeight);
+      if (coreWeight !== null) productCoreWeightByCode.set(key, coreWeight);
+      if (plasticWeight !== null) productPlasticWeightByCode.set(key, plasticWeight);
+    });
+  });
+  const canTuDong = canTuDongRecords.length > 0
+    ? buildCanTuDongPrintData(canTuDongRecords, {
+        fromDate: planDate,
+        toDate: planDate,
+        ca: shifts.length === 1 ? shifts[0] : 'all',
+        productNameByCode,
+        productStandardWeightByCode,
+        productCoreWeightByCode,
+        productPlasticWeightByCode
+      })
+    : null;
+
   const warehouseMovementsAll = [
     ...(warehouseRes.ok ? normalizeWarehouseMovements(warehouseRes.data) : []),
     ...(finishedGoodsInboundRes.ok ? normalizeWarehouseMovements(finishedGoodsInboundRes.data) : [])
@@ -355,6 +425,8 @@ export async function loadProductionPlanRelatedReports(
     downtime.length === 0 &&
     getWeighingDataRows(damaged).length === 0 &&
     acceptance.length === 0 &&
+    shiftHandovers.length === 0 &&
+    canTuDong === null &&
     warehouseSlips.length === 0;
 
   const diagnostics: ProductionPlanReportDiagnostic[] = [
@@ -364,10 +436,12 @@ export async function loadProductionPlanRelatedReports(
     { label: 'Phiếu báo dừng máy', matched: downtime.length, dayTotal: downtimeAll.length },
     { label: 'Báo cáo hàng hỏng', matched: getWeighingDataRows(damaged).length, dayTotal: getWeighingDataRows(damagedAll).length },
     { label: 'Báo cáo sản lượng', matched: acceptance.length, dayTotal: acceptanceAll.length },
+    { label: 'Phiếu giao ca', matched: shiftHandovers.length, dayTotal: shiftHandoversAll.length },
+    { label: 'Phiếu cân tự động', matched: canTuDongRecords.length, dayTotal: canTuDongAll.length },
     { label: 'Phiếu xuất vật tư', matched: warehouseMovements.length, dayTotal: warehouseMovementsAll.length }
   ];
 
-  return { machineNvl, mixing, weighing, downtime, damaged, acceptance, warehouseSlips, isEmpty, errors, diagnostics };
+  return { machineNvl, mixing, weighing, downtime, damaged, acceptance, shiftHandovers, canTuDong, warehouseSlips, isEmpty, errors, diagnostics };
 }
 
 function buildWarehouseExportSlips(
@@ -462,6 +536,7 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
   const nvlReports = data.machineNvl.map(savedReportToMachineNvlPrintReport);
   const nvlDauCaReports = nvlReports.filter(report => report.reportKind === 'dau_ca');
   const nvlCuoiCaReports = nvlReports.filter(report => report.reportKind === 'cuoi_ca');
+  const combinedNvlReports = buildCombinedMachineNvlReports(nvlDauCaReports, nvlCuoiCaReports);
   const mixingGroups = groupMixingReportsForPrint(data.mixing);
   const weighingSlips = buildWeighingSlips(data.weighing);
   const damagedSlips = buildWeighingSlips(data.damaged);
@@ -486,6 +561,7 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
     })
   );
   const acceptanceSlips = buildAcceptancePrintSlips(data.acceptance);
+  const shiftHandoverSlips: ShiftHandoverPrintSlip[] = data.shiftHandovers.map(slipToPrintSlip);
 
   return (
     <>
@@ -496,10 +572,10 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
         </div>
       ) : null}
 
-      {/* 5. Bảng kiểm kê vật tư tồn đầu ca */}
-      {nvlDauCaReports.map((report, index) => (
-        <div key={`nvl-dauca-${index}`} className="production-order-print-page">
-          <MachineNvlPrintSheet report={report} />
+      {/* 5. Phiếu tồn đầu/cuối ca gộp — chỉ dùng trong Danh sách báo cáo */}
+      {combinedNvlReports.map((report, index) => (
+        <div key={`nvl-combined-${report.key}-${index}`} className="production-order-print-page">
+          <MachineNvlCombinedPrintSheet report={report} />
         </div>
       ))}
 
@@ -524,6 +600,20 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
         </div>
       ))}
 
+      {/* Phiếu cân tự động — tái dùng đúng mẫu in của /can-tu-dong */}
+      {data.canTuDong ? (
+        <div className="production-order-print-page">
+          <CanTuDongPrintSheet data={data.canTuDong} />
+        </div>
+      ) : null}
+
+      {/* 9. Nhật ký sản xuất kiêm phiếu giao ca */}
+      {shiftHandoverSlips.map((slip, index) => (
+        <div key={`shift-handover-${slip.slipCode}-${index}`} className="production-order-print-page shift-print-v2-page">
+          <ShiftHandoverPrintSheetV2 slip={slip} />
+        </div>
+      ))}
+
       {/* 10. Phiếu báo dừng máy */}
       {downtimeSlips.map((slip, index) => (
         <div key={`downtime-${index}`} className="production-order-print-page">
@@ -543,11 +633,6 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
       ))}
 
       {/* 13. Bảng kiểm kê vật tư cuối ca */}
-      {nvlCuoiCaReports.map((report, index) => (
-        <div key={`nvl-cuoica-${index}`} className="production-order-print-page">
-          <MachineNvlPrintSheet report={report} />
-        </div>
-      ))}
     </>
   );
 }

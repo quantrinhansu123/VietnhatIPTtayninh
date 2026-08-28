@@ -2247,6 +2247,31 @@ input[type="number"] {
     overflow: visible !important;
   }
 
+  /* Phiếu giao ca trong bản in tổng hợp dùng nguyên mẫu in V2 của trang
+     /phieu-giao-ca; chỉ mở hiển thị khi batch tổng hợp đang được in. */
+  body.production-plan-related-print-active .shift-print-v2-page,
+  body.production-plan-related-print-active .shift-print-v2-sheet {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  body.production-plan-related-print-active .shift-print-v2-sheet * {
+    visibility: visible !important;
+  }
+
+  body.production-plan-related-print-active .can-tu-dong-print-sheet {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    visibility: visible !important;
+  }
+
+  body.production-plan-related-print-active .can-tu-dong-print-sheet * {
+    visibility: visible !important;
+  }
+
   body.production-order-print-active #root {
     display: none !important;
   }
@@ -4546,6 +4571,28 @@ input[type="number"] {
 .machine-nvl-print-table th:nth-child(9) { width: 10%; }
 .machine-nvl-print-table th:nth-child(10) { width: 8%; }
 .machine-nvl-print-table th:nth-child(11) { width: 8%; }
+
+/* Chỉ dùng cho phiếu gộp tồn đầu/cuối trong Danh sách báo cáo. */
+.machine-nvl-combined-print-table th,
+.machine-nvl-combined-print-table td {
+  padding-left: 0.8mm;
+  padding-right: 0.8mm;
+  font-size: 7.5pt;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.machine-nvl-combined-print-table th { font-size: 7.5pt; line-height: 1.1; }
+.machine-nvl-combined-print-table th:nth-child(1) { width: 4%; }
+.machine-nvl-combined-print-table th:nth-child(2) { width: 10%; }
+.machine-nvl-combined-print-table th:nth-child(3) { width: 19%; }
+.machine-nvl-combined-print-table th:nth-child(4) { width: 6%; }
+.machine-nvl-combined-print-table th:nth-child(5),
+.machine-nvl-combined-print-table th:nth-child(6) { width: 13%; }
+.machine-nvl-combined-print-table th:nth-child(7),
+.machine-nvl-combined-print-table th:nth-child(8) { width: 11%; }
+.machine-nvl-combined-print-table th:nth-child(9) { width: 13%; }
 
 .machine-nvl-print-note {
   margin: 6mm 0 0;

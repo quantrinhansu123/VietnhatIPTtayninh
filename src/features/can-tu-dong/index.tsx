@@ -929,7 +929,10 @@ export function CanTuDongPanel({
         fromDate,
         toDate,
         ca: 'all',
-        productNameByCode
+        productNameByCode,
+        productStandardWeightByCode,
+        productCoreWeightByCode,
+        productPlasticWeightByCode
       })
     );
     setPendingPrint(true);

@@ -57,7 +57,7 @@
 | File | Nội dung |
 |------|----------|
 | `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · cột **Ngày** (nghiệp vụ) + **Ngày giờ** (`captured_at`) · Nhựa thực tế / định mức · Excel · In |
-| `src/components/CanTuDongPrintSheet.tsx` | Mẫu in tổng hợp: STT · Mã SP · Tên SP · Số lượng · Tổng TL (Cân SP) · Tổng TL lõi · Tổng TL bì · TL nhựa + dòng Tổng cộng |
+| `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP (8 cột + Tổng cộng) · khối **Tổng hợp nhựa** (TL nhựa · ĐM · chênh lệch · %) |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` + `sumCanTuDongNhuaTieuChuanKg` + `sumCanTuDongLoiTieuChuanKg` |

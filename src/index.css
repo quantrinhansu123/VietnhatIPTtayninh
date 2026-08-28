@@ -3395,6 +3395,20 @@ input[type="number"] {
 .can-tu-dong-print-table th:nth-child(7) { width: 13%; }
 .can-tu-dong-print-table th:nth-child(8) { width: 14%; }
 
+.can-tu-dong-print-nhua-summary {
+  margin-top: 2mm;
+}
+.can-tu-dong-print-nhua-summary th,
+.can-tu-dong-print-nhua-summary td {
+  text-align: center;
+}
+.can-tu-dong-print-nhua-summary th:nth-child(1),
+.can-tu-dong-print-nhua-summary th:nth-child(2),
+.can-tu-dong-print-nhua-summary th:nth-child(3),
+.can-tu-dong-print-nhua-summary th:nth-child(4) {
+  width: 25%;
+}
+
 .shift-summary-print-doc {
   width: 190mm;
   max-width: 100%;

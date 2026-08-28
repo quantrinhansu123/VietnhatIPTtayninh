@@ -6,6 +6,7 @@ import {
   parseCanTuDongQrProductCode,
   resolveCanLoiKg,
   resolveCanSpKg,
+  resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
   resolveTrongLuongNhuaKg,
   type CanTuDongWeightRow
@@ -22,6 +23,8 @@ export type CanTuDongPrintLine = {
   /** Tổng Trọng lượng bì. */
   tongTrongLuongBi: number;
   trongLuongNhua: number;
+  /** Σ nhựa định mức từng lần cân (theo mã SP). */
+  trongLuongNhuaDinhMuc: number;
 };
 
 export type CanTuDongPrintData = {
@@ -35,6 +38,8 @@ export type CanTuDongPrintData = {
   totalTongTrongLuongLoi: number;
   totalTongTrongLuongBi: number;
   totalTrongLuongNhua: number;
+  totalTrongLuongNhuaDinhMuc: number;
+  totalChenhLechNhua: number;
 };
 
 function formatPrintDate(iso: string) {
@@ -60,6 +65,27 @@ function addFinite(sum: number, value: number | null) {
   return value === null ? sum : sum + value;
 }
 
+function chenhLechNhuaKg(thucTe: number, dinhMuc: number) {
+  return thucTe - dinhMuc;
+}
+
+/** % = chênh lệch ÷ nhựa thực tế × 100 — cùng công thức cột màn hình. */
+function phanTramChenhLech(thucTe: number, dinhMuc: number): number | null {
+  if (!Number.isFinite(thucTe) || thucTe === 0) return null;
+  return (chenhLechNhuaKg(thucTe, dinhMuc) / thucTe) * 100;
+}
+
+function formatSignedKg(value: number) {
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${formatNumber(value, 2)} kg`;
+}
+
+function formatSignedPercent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '—';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${formatNumber(value, 2)}%`;
+}
+
 /**
  * Gộp các lần cân theo mã SP.
  * Số lượng = số lần cân; các cột tổng cộng dồn từ Cân hàng / Cân lõi / Bì / Nhựa.
@@ -71,9 +97,15 @@ export function buildCanTuDongPrintData(
     toDate?: string;
     ca?: string;
     productNameByCode?: Map<string, string>;
+    productStandardWeightByCode?: Map<string, number>;
+    productCoreWeightByCode?: Map<string, number>;
+    productPlasticWeightByCode?: Map<string, number>;
   } = {}
 ): CanTuDongPrintData {
   const productNameByCode = options.productNameByCode ?? new Map<string, string>();
+  const productStandardWeightByCode = options.productStandardWeightByCode ?? new Map<string, number>();
+  const productCoreWeightByCode = options.productCoreWeightByCode ?? new Map<string, number>();
+  const productPlasticWeightByCode = options.productPlasticWeightByCode ?? new Map<string, number>();
   const lineMap = new Map<string, CanTuDongPrintLine>();
 
   for (const row of records) {
@@ -86,6 +118,11 @@ export function buildCanTuDongPrintData(
     const canLoi = resolveCanLoiKg(row);
     const trongLuongBi = resolveTrongLuongBiKg(row);
     const nhua = resolveTrongLuongNhuaKg(row);
+    const nhuaDinhMuc = resolveNhuaDinhMucKg(
+      productStandardWeightByCode.get(key),
+      productCoreWeightByCode.get(key),
+      productPlasticWeightByCode.get(key)
+    );
     const existing = lineMap.get(key);
     if (existing) {
       existing.soLuong += 1;
@@ -93,6 +130,7 @@ export function buildCanTuDongPrintData(
       existing.tongTrongLuongLoi = addFinite(existing.tongTrongLuongLoi, canLoi);
       existing.tongTrongLuongBi += trongLuongBi;
       if (nhua !== null) existing.trongLuongNhua += nhua;
+      if (nhuaDinhMuc !== null) existing.trongLuongNhuaDinhMuc += nhuaDinhMuc;
     } else {
       lineMap.set(key, {
         maSp,
@@ -101,7 +139,8 @@ export function buildCanTuDongPrintData(
         tongTrongLuong: canHang ?? 0,
         tongTrongLuongLoi: canLoi ?? 0,
         tongTrongLuongBi: trongLuongBi,
-        trongLuongNhua: nhua ?? 0
+        trongLuongNhua: nhua ?? 0,
+        trongLuongNhuaDinhMuc: nhuaDinhMuc ?? 0
       });
     }
   }
@@ -109,6 +148,8 @@ export function buildCanTuDongPrintData(
   const lines = [...lineMap.values()].sort((a, b) =>
     a.maSp.localeCompare(b.maSp, 'vi', { numeric: true })
   );
+  const totalTrongLuongNhua = lines.reduce((sum, line) => sum + line.trongLuongNhua, 0);
+  const totalTrongLuongNhuaDinhMuc = lines.reduce((sum, line) => sum + line.trongLuongNhuaDinhMuc, 0);
 
   return {
     fromDate: String(options.fromDate || '').trim(),
@@ -120,7 +161,9 @@ export function buildCanTuDongPrintData(
     totalTongTrongLuong: lines.reduce((sum, line) => sum + line.tongTrongLuong, 0),
     totalTongTrongLuongLoi: lines.reduce((sum, line) => sum + line.tongTrongLuongLoi, 0),
     totalTongTrongLuongBi: lines.reduce((sum, line) => sum + line.tongTrongLuongBi, 0),
-    totalTrongLuongNhua: lines.reduce((sum, line) => sum + line.trongLuongNhua, 0)
+    totalTrongLuongNhua,
+    totalTrongLuongNhuaDinhMuc,
+    totalChenhLechNhua: chenhLechNhuaKg(totalTrongLuongNhua, totalTrongLuongNhuaDinhMuc)
   };
 }
 
@@ -209,6 +252,36 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               </td>
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalTrongLuongNhua, 2)} kg
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 className="production-order-print-section-title">Tổng hợp nhựa</h2>
+        <table className="production-order-print-grid-table can-tu-dong-print-nhua-summary">
+          <thead>
+            <tr>
+              <th>Trọng lượng nhựa</th>
+              <th>Trọng lượng nhựa định mức</th>
+              <th>Chênh lệch nhựa</th>
+              <th>Phần trăm chênh lệch</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTrongLuongNhua, 2)} kg
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTrongLuongNhuaDinhMuc, 2)} kg
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatSignedKg(data.totalChenhLechNhua)}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatSignedPercent(
+                  phanTramChenhLech(data.totalTrongLuongNhua, data.totalTrongLuongNhuaDinhMuc)
+                )}
               </td>
             </tr>
           </tbody>

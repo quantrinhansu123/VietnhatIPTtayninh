@@ -2,17 +2,17 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
 import {
-  ShiftHandoverPrintBatch,
+  ShiftHandoverPrintBatchV2 as ShiftHandoverPrintBatch,
   slipToPrintSlip,
   type ShiftHandoverPrintSlip
-} from './ShiftHandoverPrintSheet';
+} from './ShiftHandoverPrintSheetV2';
 import ShiftHandoverMixingTable from './ShiftHandoverMixingTable';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { SearchableSelect } from './shared/SearchableSelect';
 import {
   waitForPrintImagesReady,
-  enableLandscapePrintPage,
-  disableLandscapePrintPage
+  enablePortraitPrintPage,
+  disablePortraitPrintPage
 } from '../utils/printReady';
 import {
   getProductionShiftOptions,
@@ -276,15 +276,15 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     if (!pendingPrint || !printSlip) return;
     let cancelled = false;
     document.body.classList.add('shift-handover-print-active');
-    enableLandscapePrintPage('shift-handover-page-landscape');
+    enablePortraitPrintPage('shift-handover-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
         try {
           window.print();
-        } finally {
+        } catch {
           setPendingPrint(false);
-          disableLandscapePrintPage('shift-handover-page-landscape');
+          disablePortraitPrintPage('shift-handover-page-portrait');
         }
       });
     }, 150);
@@ -292,7 +292,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('shift-handover-print-active');
-      disableLandscapePrintPage('shift-handover-page-landscape');
+      disablePortraitPrintPage('shift-handover-page-portrait');
     };
   }, [pendingPrint, printSlip]);
 

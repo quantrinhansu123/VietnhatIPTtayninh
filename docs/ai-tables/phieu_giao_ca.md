@@ -10,7 +10,7 @@
 
 - `ShiftHandoverPanel.tsx` — form nhật ký sản xuất kiêm phiếu giao ca (QT-16-BM02)
 - `ShiftHandoverListView.tsx` — danh sách `/danh-sach-phieu-giao-ca`
-- `ShiftHandoverPrintSheet.tsx` — bản in A4 ngang
+- `ShiftHandoverPrintSheetV2.tsx` — bản in A4 dọc (cấu trúc in mới)
 - `src/lib/shiftHandoverModel.ts` — kiểu dữ liệu, `ton_cuoi_ca`, bảng trộn vật tư
 - `src/utils/shiftHandoverAutofill.ts` — map autofill từ `bao_cao_phoi_tron` + `bao_cao_may_nvl_ton`
 
@@ -27,4 +27,4 @@ Tự động điền **Máy** và **Người thực hiện** theo Ngày + Ca t�
 
 `ton_cuoi_ca[]`: `{ ma_nvl, ten_nvl, dvt, so_luong, trong_luong_kg }`
 
-Phiếu cũ (thành phẩm / hàng lỗi / KPI / việc bàn giao) vẫn đọc được. Bản in A4 ngang gồm **cả 2 mục trên 1 trang**: tồn cuối ca + bảng trộn vật tư (nút **Lưu phiếu** không in; in từ lịch sử).
+Phiếu cũ (thành phẩm / hàng lỗi / KPI / việc bàn giao) vẫn đọc được. Bản in A4 dọc gồm **cả 2 mục trên 1 trang**: tồn cuối ca + bảng trộn vật tư (nút **Lưu phiếu** không in; in từ lịch sử). Khi in nhiều phiếu, chỉ ngắt trang giữa các phiếu, không tạo trang trắng cuối.

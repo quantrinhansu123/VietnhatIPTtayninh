@@ -5,11 +5,11 @@ import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import {
   waitForPrintImagesReady,
-  enableLandscapePrintPage,
-  disableLandscapePrintPage
+  enablePortraitPrintPage,
+  disablePortraitPrintPage
 } from '../utils/printReady';
 import { formatNumber } from '../utils';
-import { ShiftHandoverPrintBatch, slipToPrintSlip, type ShiftHandoverPrintSlip } from './ShiftHandoverPrintSheet';
+import { ShiftHandoverPrintBatchV2 as ShiftHandoverPrintBatch, slipToPrintSlip, type ShiftHandoverPrintSlip } from './ShiftHandoverPrintSheetV2';
 import { normalizeShiftHandoverSlips, sumClosingStockTotals, type ShiftHandoverSlip } from '../lib/shiftHandoverModel';
 import {
   FilterCombobox,
@@ -305,22 +305,22 @@ export default function ShiftHandoverListView({
   useEffect(() => {
     if (!pendingPrint || printSlips.length === 0) return;
     let cancelled = false;
-    enableLandscapePrintPage('shift-handover-page-landscape');
+    enablePortraitPrintPage('shift-handover-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
         try {
           window.print();
-        } finally {
+        } catch {
           setPendingPrint(false);
-          disableLandscapePrintPage('shift-handover-page-landscape');
+          disablePortraitPrintPage('shift-handover-page-portrait');
         }
       });
     }, 120);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      disableLandscapePrintPage('shift-handover-page-landscape');
+      disablePortraitPrintPage('shift-handover-page-portrait');
     };
   }, [pendingPrint, printSlips]);
 

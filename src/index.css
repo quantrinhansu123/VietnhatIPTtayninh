@@ -806,8 +806,8 @@ input[type="number"] {
   }
 
   @page shift-handover-page {
-    size: 297mm 210mm;
-    margin: 5mm;
+    size: 210mm 297mm;
+    margin: 8mm;
   }
 
   @page bb-machine-report-page {
@@ -2352,6 +2352,34 @@ input[type="number"] {
     margin: 0 !important;
     padding: 0 !important;
   }
+
+  /* Chỉ ngắt giữa các phiếu; phiếu cuối không được tạo thêm trang trắng. */
+  body.shift-handover-print-active .shift-handover-print-page {
+    break-after: auto !important;
+    page-break-after: auto !important;
+    page: shift-handover-page !important;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-mixing-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-mixing-table th,
+  body.shift-handover-print-active .shift-handover-print-mixing-table td {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    padding: 0.65mm 0.7mm !important;
+    font-size: 7pt !important;
+  }
+
+  body.shift-handover-print-active .shift-handover-print-mixing-table thead th {
+    font-size: 6.5pt !important;
+    line-height: 1.05 !important;
+  }
 }
 
 .production-order-print-sheet {
@@ -3278,20 +3306,98 @@ input[type="number"] {
   text-align: center;
 }
 
-.shift-handover-print-mixing-table.production-order-print-grid-table th:nth-child(1),
-.shift-handover-print-mixing-table.production-order-print-grid-table th:nth-child(2),
-.shift-handover-print-mixing-table.production-order-print-grid-table th:nth-child(3),
-.shift-handover-print-mixing-table.production-order-print-grid-table th:nth-child(4),
-.shift-handover-print-mixing-table.production-order-print-grid-table th:nth-child(5) {
-  width: auto;
-}
-
 .shift-handover-print-mixing-table col.shift-handover-mix-stt { width: 5%; }
 .shift-handover-print-mixing-table col.shift-handover-mix-name { width: 32%; }
 .shift-handover-print-mixing-table col.shift-handover-mix-unit { width: 7%; }
 .shift-handover-print-mixing-table col.shift-handover-mix-pct { width: 8%; }
 .shift-handover-print-mixing-table col.shift-handover-mix-use { width: 8%; }
 .shift-handover-print-mixing-table col.shift-handover-mix-total { width: 8%; }
+
+/* Giữ đủ 10 cột của mẫu biểu nhưng ổn định khi thu vào A4 dọc. */
+.shift-handover-print-mixing-table {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+/* Layout in mới cho phiếu giao ca: ưu tiên cấu trúc phẳng, dễ đọc trên A4 dọc. */
+.shift-print-v2-batch,
+.shift-print-v2-sheet { display: none; }
+
+.shift-print-v2-sheet {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  color: #111;
+  font-family: "Times New Roman", serif;
+  font-size: 9pt;
+  line-height: 1.2;
+}
+.shift-print-v2-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4mm; padding-bottom: 2.5mm; }
+.shift-print-v2-brand { display: flex; min-width: 0; gap: 2.5mm; align-items: center; }
+.shift-print-v2-brand img { width: 28mm; max-height: 13mm; object-fit: contain; }
+.shift-print-v2-brand b, .shift-print-v2-brand span { display: block; }
+.shift-print-v2-brand b { font-size: 8.5pt; text-transform: uppercase; white-space: nowrap; }
+.shift-print-v2-brand span { margin-top: 1mm; font-size: 7pt; }
+.shift-print-v2-heading { margin: 1mm 0 2.5mm; text-align: center; }
+.shift-print-v2-heading h1 { white-space: nowrap; }
+.shift-print-v2-heading h1 { margin: 0; font-size: 14pt; font-weight: 700; line-height: 1.15; }
+.shift-print-v2-heading p { margin: 1mm 0 0; font-size: 8pt; font-weight: 700; }
+.shift-print-v2-control { width: 33mm; margin: 0 0 0 auto; border-collapse: collapse; flex: 0 0 33mm; font-size: 6.4pt; table-layout: fixed; }
+.shift-print-v2-control th, .shift-print-v2-control td { border: .4pt solid #111; padding: .65mm .9mm; white-space: nowrap; }
+.shift-print-v2-control th { width: 42%; }
+.shift-print-v2-control td { font-weight: 400; }
+.shift-print-v2-control th { text-align: left; background: #f3f3f3; }
+.shift-print-v2-meta { display: none; }
+.shift-print-v2-info { width: 100%; margin: 2.5mm 0; border-collapse: collapse; table-layout: fixed; }
+.shift-print-v2-info th, .shift-print-v2-info td { border: .45pt solid #222; padding: 1.4mm 1.8mm; vertical-align: middle; }
+.shift-print-v2-info th { width: 15%; text-align: left; background: #f1f1f1; font-weight: 700; }
+.shift-print-v2-info td { width: 35%; font-weight: 400; }
+.shift-print-v2-meta > div { min-height: 10mm; padding: 1.4mm 1.8mm; }
+.shift-print-v2-meta .wide { grid-column: span 2; }
+.shift-print-v2-meta small, .shift-print-v2-meta b { display: block; }
+.shift-print-v2-meta small { font-size: 7pt; color: #444; }
+.shift-print-v2-meta b { margin-top: .8mm; font-size: 9pt; }
+.shift-print-v2-section { margin-top: 2.5mm; break-inside: avoid; page-break-inside: avoid; }
+.shift-print-v2-section h2 { margin: 0 0 1mm; padding: 1mm 0; font-size: 9.5pt; }
+.shift-print-v2-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.shift-print-v2-table th, .shift-print-v2-table td { border: .45pt solid #222; padding: 1.1mm 1.2mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+.shift-print-v2-table th { background: #e9edf2; font-weight: 700; }
+.shift-print-v2-table td { font-weight: 400; }
+.shift-print-v2-table .left { text-align: left; }
+.shift-print-v2-table .total td { background: #f3f3f3; font-weight: 700; }
+.shift-print-v2-materials th:nth-child(1) { width: 6%; }
+.shift-print-v2-materials th:nth-child(2) { width: 31%; }
+.shift-print-v2-materials th:nth-child(3) { width: 8%; }
+.shift-print-v2-materials th:nth-child(4) { width: 11%; }
+.shift-print-v2-materials th:nth-child(5) { width: 29%; }
+.shift-print-v2-materials th:nth-child(6) { width: 15%; }
+.shift-print-v2-table .uses { display: grid; grid-template-columns: repeat(5, 1fr); gap: .7mm; font-size: 7.5pt; }
+.shift-print-v2-table .uses span, .shift-print-v2-table .uses b { font-weight: 400; white-space: nowrap; }
+.shift-print-v2-note { margin: 3mm 0 0; padding: 1.5mm 0; }
+.shift-print-v2-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; margin-top: 10mm; text-align: center; }
+.shift-print-v2-signatures span { display: block; margin-top: 16mm; font-style: italic; font-size: 8pt; }
+
+@media print {
+  body.shift-handover-print-active .shift-print-v2-batch,
+  body.shift-handover-print-active .shift-print-v2-page,
+  body.shift-handover-print-active .shift-print-v2-sheet { display: block; visibility: visible !important; }
+  body.shift-handover-print-active .shift-print-v2-sheet * { visibility: visible !important; }
+  body.shift-handover-print-active .shift-print-v2-batch { margin: 0; padding: 0; }
+  body.shift-handover-print-active .shift-print-v2-page { break-after: auto; page-break-after: auto; }
+  body.shift-handover-print-active .shift-print-v2-page + .shift-print-v2-page { break-before: page; page-break-before: always; }
+  body.shift-handover-print-active .shift-print-v2-header { display: flex !important; flex-wrap: nowrap !important; align-items: flex-start !important; }
+  body.shift-handover-print-active .shift-print-v2-info { display: table; }
+  body.shift-handover-print-active .shift-print-v2-section { display: block; }
+  body.shift-handover-print-active .shift-print-v2-table .uses { display: grid; }
+}
+
+.shift-handover-print-mixing-table th,
+.shift-handover-print-mixing-table td {
+  box-sizing: border-box;
+  min-width: 0;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
 
 .shift-handover-print-kpi-table th:nth-child(2),
 .shift-handover-print-kpi-table td:nth-child(2),

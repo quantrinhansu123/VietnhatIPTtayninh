@@ -32,11 +32,7 @@ import {
 } from '../../components/AcceptanceReportForm';
 import { findProductByCode, normalizeProductCodeKey } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
-import { savedReportToMachineNvlPrintReport } from '../../components/MachineNvlPrintSheet';
-import {
-  buildCombinedMachineNvlReports,
-  MachineNvlCombinedPrintSheet
-} from '../../components/MachineNvlCombinedPrintSheet';
+import { MachineNvlPrintSheet, savedReportToMachineNvlPrintReport } from '../../components/MachineNvlPrintSheet';
 import { MixingReportPrintSheet } from '../../components/MixingReportPrintSheet';
 import { WeighingSlipPrintSheet, type WeighingSlipPrintData } from '../../components/WeighingSlipPrintSheet';
 import { MachineDowntimePrintSheet, buildMachineDowntimePrintSlip } from '../../components/MachineDowntimePrintSheet';
@@ -536,7 +532,6 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
   const nvlReports = data.machineNvl.map(savedReportToMachineNvlPrintReport);
   const nvlDauCaReports = nvlReports.filter(report => report.reportKind === 'dau_ca');
   const nvlCuoiCaReports = nvlReports.filter(report => report.reportKind === 'cuoi_ca');
-  const combinedNvlReports = buildCombinedMachineNvlReports(nvlDauCaReports, nvlCuoiCaReports);
   const mixingGroups = groupMixingReportsForPrint(data.mixing);
   const weighingSlips = buildWeighingSlips(data.weighing);
   const damagedSlips = buildWeighingSlips(data.damaged);
@@ -572,10 +567,17 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
         </div>
       ) : null}
 
-      {/* 5. Phiếu tồn đầu/cuối ca gộp — chỉ dùng trong Danh sách báo cáo */}
-      {combinedNvlReports.map((report, index) => (
-        <div key={`nvl-combined-${report.key}-${index}`} className="production-order-print-page">
-          <MachineNvlCombinedPrintSheet report={report} />
+      {/* 5. Bảng kiểm kê vật tư tồn đầu ca — mẫu gốc /bao-cao-may-nvl-ton */}
+      {nvlDauCaReports.map((report, index) => (
+        <div key={`nvl-dauca-${index}`} className="production-order-print-page">
+          <MachineNvlPrintSheet report={report} />
+        </div>
+      ))}
+
+      {/* 6. Bảng kiểm kê vật tư tồn cuối ca — mẫu gốc /bao-cao-may-nvl-ton */}
+      {nvlCuoiCaReports.map((report, index) => (
+        <div key={`nvl-cuoica-${index}`} className="production-order-print-page">
+          <MachineNvlPrintSheet report={report} />
         </div>
       ))}
 

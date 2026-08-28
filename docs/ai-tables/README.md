@@ -23,6 +23,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `reports` | `/nhap-bao-cao` | [reports.md](./reports.md) |
 | `phieu_can_dinh_ki` | `/tong-hop-ca` | [phieu_can_dinh_ki.md](./phieu_can_dinh_ki.md) |
 | `can_tu_dong` | `/can-tu-dong` | [can_tu_dong.md](./can_tu_dong.md) |
+| `can_tu_dong_tong_hop` | `/phan-tich-tu-dong` (tab Dữ liệu cân thực tế) | [can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) |
 | `kiem_kho` | `/kiem-kho` | [kiem_kho.md](./kiem_kho.md) |
 | `quan_ly_kho` | `/quan-ly-kho` | [quan_ly_kho.md](./quan_ly_kho.md) |
 | `bao_cao_hang_hong` | `/bao-cao-hang-hong` | [bao_cao_hang_hong.md](./bao_cao_hang_hong.md) |

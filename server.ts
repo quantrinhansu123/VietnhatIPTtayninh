@@ -123,6 +123,9 @@ const SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE =
   process.env.SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE || 'bb_phan_tich_danh_gia';
 const SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE =
   process.env.SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE || 'bb_bao_cao_tinh_toan';
+const SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE =
+  process.env.SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE || 'can_tu_dong_tong_hop';
+const CAN_TU_DONG_BI_KG = 0.16;
 const SUPABASE_MACHINE_RUN_LOG_TABLE =
   process.env.SUPABASE_MACHINE_RUN_LOG_TABLE || 'nhat_ky_chay_may';
 const SUPABASE_STAFF_DEPARTMENT = process.env.SUPABASE_STAFF_DEPARTMENT || 'Sản xuất';
@@ -737,6 +740,119 @@ function resolveCanTuDongCa(
   const capturedAt = String(row.captured_at ?? row.created_at ?? '').trim();
   if (!capturedAt) return null;
   return resolveCanTuDongCaFromCapturedAt(capturedAt, windows);
+}
+
+function shiftCanTuDongIsoDateByDays(iso: string, days: number): string {
+  const match = String(iso || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(iso || '').trim();
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function buildCanTuDongTongHopKey(ngay: string, ca: string, may: string) {
+  return [String(ngay || '').trim(), String(ca || '').trim() || '-', String(may || '').trim() || '-'].join(
+    '|'
+  );
+}
+
+function canTuDongTongHopWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE} chưa tồn tại. Hãy chạy supabase-can-tu-dong-tong-hop.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-can-tu-dong-tong-hop.sql.`;
+  }
+  return `Không thể lưu tổng hợp cân thực tế. ${error.message || ''}`.trim();
+}
+
+function mapCanTuDongRowForTongHop(
+  row: Record<string, unknown>,
+  windows: CanTuDongShiftWindow[]
+) {
+  const sp = asFiniteNumber(row.weight ?? row.can_san_pham);
+  const loi = asFiniteNumber(row.tare_weight ?? row.can_loi);
+  const nhua = sp != null && loi != null ? sp - loi - CAN_TU_DONG_BI_KG : null;
+  return {
+    ngay: resolveCanTuDongNgayColumn(row) || '',
+    ca: resolveCanTuDongCa(row, windows) || '',
+    may: resolveCanTuDongMachine(row) || '',
+    weightKg: sp,
+    nhuaKg: nhua
+  };
+}
+
+function groupCanTuDongTongHopRows(
+  rows: Record<string, unknown>[],
+  windows: CanTuDongShiftWindow[],
+  dateFrom: string,
+  dateTo: string
+) {
+  const buckets = new Map<
+    string,
+    {
+      khoa_on_dinh: string;
+      ngay: string;
+      ca: string;
+      may: string;
+      so_cuon: number;
+      tong_trong_luong_kg: number;
+      tong_trong_luong_nhua_kg: number;
+    }
+  >();
+  for (const row of rows) {
+    const mapped = mapCanTuDongRowForTongHop(row, windows);
+    if (!mapped.ngay) continue;
+    if (dateFrom && mapped.ngay < dateFrom) continue;
+    if (dateTo && mapped.ngay > dateTo) continue;
+    const key = buildCanTuDongTongHopKey(mapped.ngay, mapped.ca, mapped.may);
+    const current = buckets.get(key) || {
+      khoa_on_dinh: key,
+      ngay: mapped.ngay,
+      ca: mapped.ca,
+      may: mapped.may,
+      so_cuon: 0,
+      tong_trong_luong_kg: 0,
+      tong_trong_luong_nhua_kg: 0
+    };
+    current.so_cuon += 1;
+    if (mapped.weightKg != null) current.tong_trong_luong_kg += mapped.weightKg;
+    if (mapped.nhuaKg != null) current.tong_trong_luong_nhua_kg += mapped.nhuaKg;
+    buckets.set(key, current);
+  }
+  return [...buckets.values()].map(item => ({
+    ...item,
+    tong_trong_luong_kg: Math.round(item.tong_trong_luong_kg * 1000) / 1000,
+    tong_trong_luong_nhua_kg: Math.round(item.tong_trong_luong_nhua_kg * 1000) / 1000
+  }));
+}
+
+async function fetchCanTuDongRowsForTongHop(from: string, to: string): Promise<Record<string, unknown>[]> {
+  if (!supabaseWeighing) return [];
+  const pageSize = 1000;
+  const capturedFrom = from ? shiftCanTuDongIsoDateByDays(from, -3) : '';
+  const capturedTo = to ? shiftCanTuDongIsoDateByDays(to, 3) : '';
+  const rows: Record<string, unknown>[] = [];
+  let offset = 0;
+
+  while (offset < 50000) {
+    let query = supabaseWeighing
+      .from(SUPABASE_CAN_TU_DONG_TABLE)
+      .select('*')
+      .order('captured_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (capturedFrom) query = query.gte('captured_at', `${capturedFrom}T00:00:00+07:00`);
+    if (capturedTo) query = query.lte('captured_at', `${capturedTo}T23:59:59.999+07:00`);
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(error.message || 'Không đọc được bảng can_tu_dong để tổng hợp.');
+    }
+    const chunk = Array.isArray(data) ? data : [];
+    rows.push(...(chunk as Record<string, unknown>[]));
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
 }
 
 function getSeedReports(): ProductionReport[] {
@@ -11314,6 +11430,9 @@ export function createApp() {
     const dateBy = String(req.query.dateBy ?? req.query.date_by ?? '').trim().toLowerCase();
     const filterByNgay =
       dateBy === 'ngay' || dateBy === 'source_date' || dateBy === 'work_date';
+    const includeImages = !['0', 'false', 'no'].includes(
+      String(req.query.images ?? req.query.includeImages ?? '1').trim().toLowerCase()
+    );
 
     try {
       let query = db
@@ -11327,12 +11446,12 @@ export function createApp() {
       if (deviceId) query = query.eq('device_id', deviceId);
       if (status) query = query.eq('status', status);
       if (qrCode) query = query.eq('qr_code', qrCode);
-      // Mặc định lọc captured_at (thời điểm cân). `dateBy=ngay` → không cắt theo ngày cân,
-      // lọc cột Ngày (SOURCE_DATE) sau khi map.
-      if (!filterByNgay) {
-        if (from) query = query.gte('captured_at', `${from}T00:00:00+07:00`);
-        if (to) query = query.lte('captured_at', `${to}T23:59:59.999+07:00`);
-      }
+      // Mặc định lọc captured_at. `dateBy=ngay` vẫn cắt captured_at ±3 ngày để không quét 10k dòng,
+      // rồi lọc cột Ngày (SOURCE_DATE) sau khi map.
+      const capturedFrom = from ? (filterByNgay ? shiftCanTuDongIsoDateByDays(from, -3) : from) : '';
+      const capturedTo = to ? (filterByNgay ? shiftCanTuDongIsoDateByDays(to, 3) : to) : '';
+      if (capturedFrom) query = query.gte('captured_at', `${capturedFrom}T00:00:00+07:00`);
+      if (capturedTo) query = query.lte('captured_at', `${capturedTo}T23:59:59.999+07:00`);
 
       const { data, error } = await query;
       if (error) {
@@ -11354,11 +11473,13 @@ export function createApp() {
             })
           : rows;
       const shiftWindows = await loadCanTuDongShiftWindows();
-      const records = await Promise.all(
-        matchedRows.map(async row => {
-          const record = row as Record<string, unknown>;
-
-          const [productUrl, coreUrl, qrUrl] = await Promise.all([
+      const mapRecord = async (row: unknown) => {
+        const record = row as Record<string, unknown>;
+        let productUrl = String(record.product_image_url ?? '').trim();
+        let coreUrl = String(record.core_image_url ?? '').trim();
+        let qrUrl = String(record.qr_image_url ?? '').trim();
+        if (includeImages) {
+          [productUrl, coreUrl, qrUrl] = await Promise.all([
             resolveCanTuDongImageUrl(db, record, {
               urlKey: 'product_image_url',
               pathKey: 'product_image_path',
@@ -11375,35 +11496,55 @@ export function createApp() {
               publicIdKey: 'qr_image_public_id'
             })
           ]);
+        }
 
-          const netWeight = resolveCanTuDongNetWeight(record);
-          const ca = resolveCanTuDongCa(record, shiftWindows);
-          const lenhSx = resolveCanTuDongProductionOrder(record);
-          const may = resolveCanTuDongMachine(record);
-          const ngay = resolveCanTuDongNgayColumn(record);
+        const netWeight = resolveCanTuDongNetWeight(record);
+        const ca = resolveCanTuDongCa(record, shiftWindows);
+        const lenhSx = resolveCanTuDongProductionOrder(record);
+        const may = resolveCanTuDongMachine(record);
+        const ngay = resolveCanTuDongNgayColumn(record);
 
-          return {
-            ...record,
-            // Chuẩn hoá net nếu DB để trống nhưng đã có weight + tare
-            net_weight: netWeight ?? record.net_weight ?? null,
-            ca,
-            ngay,
-            lenh_sx: lenhSx,
-            ma_lenh_sx: lenhSx,
-            may,
-            machine: may,
-            // Alias đọc UI theo nghĩa nghiệp vụ
-            can_loi: asFiniteNumber(record.tare_weight),
-            can_san_pham: asFiniteNumber(record.weight),
-            khoi_luong_thuc: netWeight,
-            product_preview_url: productUrl || null,
-            core_preview_url: coreUrl || null,
-            qr_preview_url: qrUrl || null,
-            // Giữ tên cũ để client cũ không vỡ — map đúng nguồn
-            preview_url: productUrl || null
-          };
-        })
-      );
+        return {
+          ...record,
+          net_weight: netWeight ?? record.net_weight ?? null,
+          ca,
+          ngay,
+          lenh_sx: lenhSx,
+          ma_lenh_sx: lenhSx,
+          may,
+          machine: may,
+          can_loi: asFiniteNumber(record.tare_weight),
+          can_san_pham: asFiniteNumber(record.weight),
+          khoi_luong_thuc: netWeight,
+          product_preview_url: productUrl || null,
+          core_preview_url: coreUrl || null,
+          qr_preview_url: qrUrl || null,
+          preview_url: productUrl || null
+        };
+      };
+      const records = includeImages
+        ? await Promise.all(matchedRows.map(mapRecord))
+        : matchedRows.map(row => {
+            const record = row as Record<string, unknown>;
+            const netWeight = resolveCanTuDongNetWeight(record);
+            const ca = resolveCanTuDongCa(record, shiftWindows);
+            const lenhSx = resolveCanTuDongProductionOrder(record);
+            const may = resolveCanTuDongMachine(record);
+            const ngay = resolveCanTuDongNgayColumn(record);
+            return {
+              ...record,
+              net_weight: netWeight ?? record.net_weight ?? null,
+              ca,
+              ngay,
+              lenh_sx: lenhSx,
+              ma_lenh_sx: lenhSx,
+              may,
+              machine: may,
+              can_loi: asFiniteNumber(record.tare_weight),
+              can_san_pham: asFiniteNumber(record.weight),
+              khoi_luong_thuc: netWeight
+            };
+          });
 
       return res.json({
         records,
@@ -11417,6 +11558,91 @@ export function createApp() {
         error: err?.message || 'Lỗi khi tải cân tự động.',
         db: dbLabel
       });
+    }
+  });
+
+  app.get('/api/can-tu-dong-tong-hop', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const from = String(req.query.from ?? req.query.tu_ngay ?? '').trim();
+      const to = String(req.query.to ?? req.query.den_ngay ?? '').trim();
+      let query = supabase
+        .from(SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ca', { ascending: true })
+        .order('may', { ascending: true });
+      if (from) query = query.gte('ngay', from);
+      if (to) query = query.lte('ngay', to);
+      const { data, error } = await query;
+      if (error) {
+        return res.status(500).json({
+          error: canTuDongTongHopWriteError(error),
+          items: [],
+          total: 0
+        });
+      }
+      const items = data || [];
+      return res.json({ items, total: items.length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err.message || 'Lỗi khi tải tổng hợp cân thực tế.',
+        items: [],
+        total: 0
+      });
+    }
+  });
+
+  app.post('/api/can-tu-dong-tong-hop/dong-bo', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const from = String(body.from ?? body.tu_ngay ?? req.query.from ?? '').trim();
+      const to = String(body.to ?? body.den_ngay ?? req.query.to ?? '').trim();
+      const rebuild = body.rebuild !== false && body.rebuild !== '0';
+      const rawRows = await fetchCanTuDongRowsForTongHop(from, to);
+      const shiftWindows = await loadCanTuDongShiftWindows();
+      const items = groupCanTuDongTongHopRows(rawRows, shiftWindows, from, to);
+
+      if (rebuild && (from || to)) {
+        let del = supabase.from(SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE).delete();
+        if (from) del = del.gte('ngay', from);
+        if (to) del = del.lte('ngay', to);
+        const { error: deleteError } = await del;
+        if (deleteError) {
+          return res.status(500).json({ error: canTuDongTongHopWriteError(deleteError) });
+        }
+      }
+
+      if (items.length > 0) {
+        const { error } = await supabase
+          .from(SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE)
+          .upsert(items, { onConflict: 'khoa_on_dinh' });
+        if (error) {
+          return res.status(500).json({ error: canTuDongTongHopWriteError(error) });
+        }
+      }
+
+      return res.json({
+        success: true,
+        items,
+        total: items.length,
+        scanned: rawRows.length
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đồng bộ tổng hợp cân thực tế.' });
     }
   });
 

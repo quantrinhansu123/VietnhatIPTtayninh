@@ -44,7 +44,7 @@
 | Path | Ghi chú |
 |------|---------|
 | `GET /api/cloudinary/proxy?url=` | Proxy ảnh `res.cloudinary.com/.../image/upload/` (tránh ERR_CERT_VERIFIER_CHANGED trên Chrome) |
-| `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`), không lọc ngày cân |
+| `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày. **`images=0`** bỏ ký URL ảnh (dùng khi Tính toán) |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
 | `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`) |
@@ -61,10 +61,15 @@
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
 | `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` + `sumCanTuDongNhuaTieuChuanKg` + `sumCanTuDongLoiTieuChuanKg` |
-| `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel sản lượng từ cân AI trên `/phan-tich-tu-dong` (`sanLuongSource='can-tu-dong'`) — ô **Báo cáo sản lượng** = tổng cột **Trọng lượng nhựa** (`SP − lõi − bì 0,16`) trên `/can-tu-dong`, lọc **Ngày · Ca · Máy**. **Ngày = Tất cả** không cắt cột Ngày (kể cả trống / không chênh lệch) |
+| `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel từng phiếu cân AI — giữ cho `/can-tu-dong`; **không** còn dùng trên `/phan-tich-tu-dong` |
+| `src/components/BbCanTuDongTongHopPanel.tsx` | Tab **Dữ liệu cân thực tế** trên `/phan-tich-tu-dong`: đọc `can_tu_dong_tong_hop` (Số cuộn thực tế + Tổng trọng lượng thực tế), không load từng phiếu |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |
 | `src/App.tsx` | Import + route tab |
 
 ## Rule Cursor
 
 `.cursor/rules/weighing-image-preview.mdc` — ảnh mở modal trong app.
+
+## Liên quan
+
+[can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) — tổng hợp số cuộn / trọng lượng cho `/phan-tich-tu-dong`.

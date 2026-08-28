@@ -10,21 +10,17 @@ import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../featur
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
 import type { MixingReport } from './MixingReportForm';
 import type { AcceptanceReport } from './AcceptanceReportForm';
-import { getProductionShiftOptions, shiftIsoDateByDays, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
+import { getProductionShiftOptions, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import { computePercentRatio, machineValueMatchesFilter } from '../utils/controlBoardShiftSummary';
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
-import BbCanTuDongSanLuongPanel from './BbCanTuDongSanLuongPanel';
+import BbCanTuDongTongHopPanel from './BbCanTuDongTongHopPanel';
 import BbSanLuongReportPanel from './BbSanLuongReportPanel';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
-import {
-  computeInsulationFilmWeightKg,
-  computeInsulationPlasticNorm,
-  filterCanTuDongRecordsForBoard
-} from '../utils/canTuDongWeights';
+import { fetchCanTuDongSlimRecords, syncCanTuDongTongHop } from '../utils/canTuDongTongHop';
 import {
   buildBbLyDoStableKey,
   printLyDoLineKey,
@@ -453,6 +449,7 @@ export default function ControlBoardBbMachineReportTable({
   const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [snapshotMessage, setSnapshotMessage] = useState('');
   const [calculatingReport, setCalculatingReport] = useState(false);
+  const [calcCanTuDongRecords, setCalcCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const [calcDialogOpen, setCalcDialogOpen] = useState(false);
   const [calcNgay, setCalcNgay] = useState('');
   const [calcCa, setCalcCa] = useState('');
@@ -641,6 +638,20 @@ export default function ControlBoardBbMachineReportTable({
     setCalculatingReport(true);
     setSnapshotMessage('');
     try {
+      let scopedCanTuDongRecords = canTuDongRecords;
+      if (sanLuongSource === 'can-tu-dong') {
+        scopedCanTuDongRecords = await fetchCanTuDongSlimRecords({
+          from: scope.dateFrom,
+          to: scope.dateTo
+        });
+        setCalcCanTuDongRecords(scopedCanTuDongRecords);
+        void syncCanTuDongTongHop({
+          from: scope.dateFrom,
+          to: scope.dateTo,
+          rebuild: true
+        }).catch(() => undefined);
+      }
+
       const acceptanceNvlDinhMucByReportId = new Map<
         string,
         ReturnType<typeof mapAcceptanceNvlDinhMucRowsToNplItems>
@@ -758,7 +769,7 @@ export default function ControlBoardBbMachineReportTable({
         mixingReports,
         acceptanceReports,
         acceptanceNvlDinhMucByReportId,
-        canTuDongRecords,
+        canTuDongRecords: scopedCanTuDongRecords,
         shiftSettings,
         dateFrom: scope.dateFrom,
         dateTo: scope.dateTo,
@@ -1102,60 +1113,19 @@ export default function ControlBoardBbMachineReportTable({
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
   /**
-   * Tab «Dữ liệu cân thực tế» vẫn liệt kê phiếu `can_tu_dong` theo bộ lọc.
-   * KPI header không tự cộng từ phiếu — chỉ đọc snapshot.
+   * Tab «Dữ liệu cân thực tế» đọc bảng `can_tu_dong_tong_hop` (số cuộn + tổng TL).
+   * KPI header chỉ lấy từ snapshot — không cộng live từ phiếu cân.
    */
-  const canTuDongDateTo = useMemo(() => {
-    if (sanLuongSource !== 'can-tu-dong' || !dateTo) return dateTo;
-    return shiftIsoDateByDays(dateTo, 1) || dateTo;
-  }, [sanLuongSource, dateTo]);
-  const scopedCanTuDongForKpi = useMemo(() => {
-    if (sanLuongSource !== 'can-tu-dong') return [];
-    return filterCanTuDongRecordsForBoard(canTuDongRecords, {
-      shiftFilter,
-      dateFrom,
-      dateTo: canTuDongDateTo,
-      machineFilter,
-      selectedMachine
-    });
-  }, [
-    sanLuongSource,
-    canTuDongRecords,
-    shiftFilter,
-    dateFrom,
-    canTuDongDateTo,
-    machineFilter,
-    selectedMachine
-  ]);
   const displaySanLuongTotals =
     activeSnapshot.summary.displaySanLuongTotals ??
     (sanLuongSource === 'can-tu-dong'
       ? activeSnapshot.summary.canTuDongSanLuongTotals
       : sanLuongTotals);
-  const insulationFilmWeightKg = useMemo(() => {
-    if (isInsulationMachine && sanLuongSource === 'can-tu-dong') {
-      return computeInsulationFilmWeightKg(products, scopedCanTuDongForKpi);
-    }
-    return activeSnapshot.summary.insulationFilmWeightKg ?? 0;
-  }, [
-    isInsulationMachine,
-    sanLuongSource,
-    products,
-    scopedCanTuDongForKpi,
-    activeSnapshot.summary.insulationFilmWeightKg
-  ]);
-  const insulationPlasticNorm = useMemo(() => {
-    if (isInsulationMachine && sanLuongSource === 'can-tu-dong') {
-      return computeInsulationPlasticNorm(products, scopedCanTuDongForKpi);
-    }
-    return activeSnapshot.summary.insulationPlasticNorm ?? { weightKg: 0, counted: 0 };
-  }, [
-    isInsulationMachine,
-    sanLuongSource,
-    products,
-    scopedCanTuDongForKpi,
-    activeSnapshot.summary.insulationPlasticNorm
-  ]);
+  const insulationFilmWeightKg = activeSnapshot.summary.insulationFilmWeightKg ?? 0;
+  const insulationPlasticNorm = activeSnapshot.summary.insulationPlasticNorm ?? {
+    weightKg: 0,
+    counted: 0
+  };
   const displayedPlasticWeightKg = isInsulationMachine
     ? displaySanLuongTotals.weightKg - insulationFilmWeightKg
     : displaySanLuongTotals.weightKg;
@@ -2918,15 +2888,14 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
           </table>
         ) : activeTab === 'bao_cao_san_luong' && sanLuongSource === 'can-tu-dong' ? (
-          <BbCanTuDongSanLuongPanel
-              records={canTuDongRecords}
-              isLoading={isLoading}
-              shiftFilter={shiftFilter}
-              dateFrom={dateFrom}
-              dateTo={canTuDongDateTo}
-              machineFilter={machineFilter}
-              selectedMachine={selectedMachine}
-            />
+          <BbCanTuDongTongHopPanel
+            isLoading={isLoading}
+            shiftFilter={shiftFilter}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            machineFilter={machineFilter}
+            selectedMachine={selectedMachine}
+          />
         ) : activeTab === 'bao_cao_san_luong' || activeTab === 'bao_cao_san_luong_phieu' ? (
           <BbSanLuongReportPanel
             groups={sanLuongGroups}
@@ -6424,7 +6393,7 @@ export default function ControlBoardBbMachineReportTable({
               }
               sanLuongSource={sanLuongSource}
               sanLuongGroups={sanLuongGroups}
-              canTuDongRecords={canTuDongRecords}
+              canTuDongRecords={calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords}
               machineReportLabel={machineReportLabel}
               warehouseMovements={warehouseMovements}
               shiftSettings={shiftSettings}
@@ -6453,7 +6422,7 @@ export default function ControlBoardBbMachineReportTable({
             lyDoByLine={printLyDoByLine}
             sanLuongSource={sanLuongSource}
             sanLuongGroups={sanLuongGroups}
-            canTuDongRecords={canTuDongRecords}
+            canTuDongRecords={calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords}
             machineReportLabel={machineReportLabel}
             warehouseMovements={warehouseMovements}
             shiftSettings={shiftSettings}

@@ -6,6 +6,7 @@ export type TableId =
   | 'reports'
   | 'phieu_can_dinh_ki'
   | 'can_tu_dong'
+  | 'can_tu_dong_tong_hop'
   | 'kiem_kho'
   | 'kiem_kho_chenh_lech'
   | 'quan_ly_kho'
@@ -88,6 +89,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/features/can-tu-dong/index.tsx',
     components: ['src/components/WeighingImagePreviewModal.tsx'],
     utils: ['src/utils/canTuDongWeights.ts', 'src/utils/canTuDongExcel.ts']
+  },
+  can_tu_dong_tong_hop: {
+    table: 'can_tu_dong_tong_hop',
+    label: 'Tổng hợp số cuộn / trọng lượng cân thực tế',
+    sql: ['supabase-can-tu-dong-tong-hop.sql'],
+    apiPrefix: '/api/can-tu-dong-tong-hop',
+    serverLines: 'GET /api/can-tu-dong-tong-hop + POST /api/can-tu-dong-tong-hop/dong-bo',
+    appTab: 'dashboard | dashboard-auto',
+    appLines: 'src/components/BbCanTuDongTongHopPanel.tsx',
+    components: ['src/components/BbCanTuDongTongHopPanel.tsx', 'src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/canTuDongTongHop.ts']
   },
   kiem_kho: {
     table: 'kiem_kho',

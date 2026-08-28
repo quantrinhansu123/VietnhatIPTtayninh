@@ -12,7 +12,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 | `src/components/ControlBoardCommonFilters.tsx` | Bộ lọc chung: **Ngày** (Tất cả / Theo khoảng) · Ca · Máy · Lệnh SX |
 | `src/features/dashboard/index.tsx` | Re-export; routing `/phan-tich` qua `App.tsx` |
 | `ControlBoardShiftSummaryTable.tsx` | Bảng tổng hợp ca |
-| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, **tab lỗi hỏng từ Báo cáo sản lượng · Hàng hỏng + Hàng rác**, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt). `/phan-tich-tu-dong`: tab **Dữ liệu cân thực tế** = `can_tu_dong`; tab **Báo cáo sản lượng** = phiếu `bao_cao_nghiem_thu` (`sanLuongGroups`) |
+| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, **tab lỗi hỏng từ Báo cáo sản lượng · Hàng hỏng + Hàng rác**, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, đánh giá hao hụt). `/phan-tich-tu-dong`: tab **Dữ liệu cân thực tế** = bảng `can_tu_dong_tong_hop` (Số cuộn + Tổng TL, không load từng phiếu `can_tu_dong`); tab **Báo cáo sản lượng** = phiếu `bao_cao_nghiem_thu` (`sanLuongGroups`) |
 | `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`, bên dưới = list view tương ứng |
 | `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in báo cáo tổng hợp máy BB (gồm mục 2 thành phẩm đạt nhập kho + lý do từng dòng) |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |
@@ -22,6 +22,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 ## Bảng liên quan thêm
 
 - [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) — tồn đầu/cuối ca; `/phan-tich-tu-dong` (`includeAllMachines`) khớp phiếu tồn theo ngày + ca + máy **mọi máy** (vd Máy cách nhiệt), không chỉ Bao Bì.
+- [can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) — tab **Dữ liệu cân thực tế**: số cuộn + tổng trọng lượng, không load từng phiếu cân.
 - [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) — lý do giải trình in BB
 - [bb_phan_tich_danh_gia.md](./bb_phan_tich_danh_gia.md) — phân tích đánh giá (tab Đánh giá) lưu Supabase
 - [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) — snapshot báo cáo sau nút **Tính toán** (không tự tính mỗi lần mở trang)

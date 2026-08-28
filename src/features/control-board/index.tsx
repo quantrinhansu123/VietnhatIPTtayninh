@@ -37,7 +37,6 @@ import {
   normalizeMachineNvlReports,
   type MachineNvlSavedReport
 } from '../../utils/machineNvlReports';
-import type { CanTuDongRecord } from '../can-tu-dong';
 import { DashboardWindow } from '../dashboard';
 import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import { normalizeOrders, type OrderRow } from '../don-hang';
@@ -124,7 +123,6 @@ export function ControlBoardPanel({
   const [productionOrderSettings, setProductionOrderSettings] = useState<ProductionOrderLookupSetting[]>([]);
   const [acceptanceReports, setAcceptanceReports] = useState<AcceptanceReport[]>([]);
   const [shiftSummaryAcceptanceReports, setShiftSummaryAcceptanceReports] = useState<AcceptanceReport[]>([]);
-  const [canTuDongRecords, setCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const [mixingReports, setMixingReports] = useState<MixingReport[]>([]);
   const [weighingRecords, setWeighingRecords] = useState<WeighingRecord[]>([]);
   const [damagedRecords, setDamagedRecords] = useState<WeighingRecord[]>([]);
@@ -224,10 +222,6 @@ export function ControlBoardPanel({
       };
       // Tỉ lệ TB thực tế lấy phiếu trộn ca liền trước (12C1 → 12C2 ngày hôm trước) → tải thêm 1 ngày trước.
       const mixingFrom = summaryFrom ? shiftIsoDateByDays(summaryFrom, -1) || summaryFrom : '';
-      // API mặc định cắt theo captured_at (ngày cân). Nới ±3 ngày để không mất dòng
-      // cột Ngày = 20/08 nhưng cân ngày 21/08; client vẫn lọc đúng cột Ngày.
-      const canTuDongFrom = summaryFrom ? shiftIsoDateByDays(summaryFrom, -3) || summaryFrom : '';
-      const canTuDongTo = summaryTo ? shiftIsoDateByDays(summaryTo, 3) || summaryTo : '';
       const [
         orderRes,
         productRes,
@@ -241,8 +235,7 @@ export function ControlBoardPanel({
         weighingRes,
         damagedRes,
         machineNvlRes,
-        warehouseMovementRes,
-        canTuDongRes
+        warehouseMovementRes
       ] = await Promise.all([
         fetch('/api/don-hang'),
         fetch('/api/san-pham?format=table'),
@@ -256,17 +249,7 @@ export function ControlBoardPanel({
         fetch(withQuery('/api/phieu-can-dinh-ki', { from: summaryFrom, to: summaryTo })),
         fetch(withQuery('/api/bao-cao-hang-hong', { from: summaryFrom, to: summaryTo })),
         fetch(withQuery('/api/bao-cao-may-nvl-ton?limit=300', { tu_ngay: summaryFrom, den_ngay: summaryTo })),
-        fetch(withQuery('/api/phieu-xuat-nhap-kho', { from: summaryFrom, to: summaryTo })),
-        isAutoReport
-          ? fetch(
-              withQuery(
-                '/api/can-tu-dong?limit=10000',
-                dateScopeAll
-                  ? {}
-                  : { dateBy: 'ngay', from: canTuDongFrom, to: canTuDongTo }
-              )
-            )
-          : Promise.resolve(null)
+        fetch(withQuery('/api/phieu-xuat-nhap-kho', { from: summaryFrom, to: summaryTo }))
       ]);
 
       const orderData = await orderRes.json().catch(() => ({}));
@@ -282,10 +265,6 @@ export function ControlBoardPanel({
       const damagedData = await damagedRes.json().catch(() => ([]));
       const machineNvlData = await machineNvlRes.json().catch(() => ({}));
       const warehouseMovementData = await warehouseMovementRes.json().catch(() => ({}));
-      const canTuDongData =
-        canTuDongRes && typeof canTuDongRes.json === 'function'
-          ? await canTuDongRes.json().catch(() => ({}))
-          : {};
 
       if (!orderRes.ok) throw new Error(orderData.error || 'Không thể tải đơn hàng.');
       if (!productRes.ok) throw new Error(productData.error || 'Không thể tải sản phẩm.');
@@ -342,14 +321,6 @@ export function ControlBoardPanel({
         setShiftSummaryWarehouseMovements([]);
       }
 
-      if (canTuDongRes && 'ok' in canTuDongRes && canTuDongRes.ok) {
-        setCanTuDongRecords(
-          Array.isArray(canTuDongData?.records) ? (canTuDongData.records as CanTuDongRecord[]) : []
-        );
-      } else {
-        setCanTuDongRecords([]);
-      }
-
       const localPayloads = [machineData, orderData, materialData, productionData].filter(
         payload => payload && typeof payload === 'object' && (payload as { source?: string }).source === 'local'
       ) as Array<{ source?: string; warning?: string }>;
@@ -378,7 +349,6 @@ export function ControlBoardPanel({
       setDamagedRecords([]);
       setMachineNvlReports([]);
       setShiftSummaryWarehouseMovements([]);
-      setCanTuDongRecords([]);
       setLoadError(error.message || 'Không thể tải dữ liệu bảng điều khiển.');
     } finally {
       setIsLoading(false);
@@ -1150,7 +1120,7 @@ export function ControlBoardPanel({
         machineNvlReports={boardScopedMachineNvlReports}
         mixingReports={boardScopedMixingReports}
         acceptanceReports={boardScopedAcceptanceReports}
-        canTuDongRecords={isAutoReport ? canTuDongRecords : []}
+        canTuDongRecords={[]}
         sanLuongSource={isAutoReport ? 'can-tu-dong' : 'acceptance'}
         includeAllMachines={isAutoReport}
         shiftSettings={productionOrderSettings}

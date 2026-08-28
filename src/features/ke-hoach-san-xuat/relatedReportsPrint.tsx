@@ -280,7 +280,7 @@ export async function loadProductionPlanRelatedReports(
   const encodedDate = encodeURIComponent(planDate);
   const shiftOptions = await loadShiftOptions();
 
-  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, warehouseRes, materialCatalogRes] =
+  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes] =
     await Promise.all([
       fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
@@ -289,6 +289,7 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/bao-cao-hang-hong?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
+      fetchJson(`/api/phieu-xuat-nhap-kho?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
       fetchJson('/api/kho-nvl')
     ]);
 
@@ -333,11 +334,15 @@ export async function loadProductionPlanRelatedReports(
   );
   if (!acceptanceRes.ok) errors.push('Báo cáo sản lượng');
 
-  const warehouseMovementsAll = warehouseRes.ok ? normalizeWarehouseMovements(warehouseRes.data) : [];
+  const warehouseMovementsAll = [
+    ...(warehouseRes.ok ? normalizeWarehouseMovements(warehouseRes.data) : []),
+    ...(finishedGoodsInboundRes.ok ? normalizeWarehouseMovements(finishedGoodsInboundRes.data) : [])
+  ];
   const warehouseMovements = warehouseMovementsAll.filter(row =>
     shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
   );
   if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
+  if (!finishedGoodsInboundRes.ok) errors.push('Phiếu nhập kho thành phẩm');
   const materialWeightCatalog = materialCatalogRes.ok
     ? normalizeMaterialsInventory(materialCatalogRes.data).map(mapMaterialToWeightCatalogItem)
     : [];

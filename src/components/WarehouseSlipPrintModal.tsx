@@ -179,7 +179,7 @@ export const mergeNvlExportPrintSlips = mergeWarehousePrintSlips;
 function warehouseKindTitleLabel(kind: WarehouseSlipPrintData['warehouseKind']) {
   switch (kind) {
     case 'san_pham':
-      return 'SẢN PHẨM';
+      return 'THÀNH PHẨM';
     case 'tai_che':
       return 'TÁI CHẾ';
     case 'hang_hong':

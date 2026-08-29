@@ -58,55 +58,22 @@ type ProductDetailCode = {
   created_at: string;
 };
 
+type ProductIssuedQrCode = {
+  id: string;
+  ma_qr: string;
+  ma_sp_goc: string;
+  ten_kho: string;
+  so_lan_in: number;
+  ngay_in_gan_nhat: string;
+  nguoi_tao: string;
+  trang_thai: string;
+  created_at: string;
+};
+
 function parsePrintCopyCount(raw: string) {
   const value = Math.floor(Number(String(raw ?? '').trim().replace(',', '.')));
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.min(value, 999);
-}
-
-/** Giống server `buildProductQrTimeSerial`: ssmmhhddmm (Asia/Ho_Chi_Minh). */
-function buildProductQrTimeSerial(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    second: '2-digit',
-    minute: '2-digit',
-    hour: '2-digit',
-    day: '2-digit',
-    month: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find(part => part.type === type)?.value.padStart(2, '0') || '00';
-  return `${value('second')}${value('minute')}${value('hour')}${value('day')}${value('month')}`;
-}
-
-function randomProductQrSuffix(length: number): string {
-  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let result = '';
-  for (let index = 0; index < length; index += 1) {
-    result += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return result;
-}
-
-/**
- * Tem in nhanh từ danh mục — cùng quy tắc Nhập kho (`buildStoredProductQrCodes`):
- * `MãSP_` + ssmmhhddmm + 1 chuỗi ký tự random (tăng độ dài khi trùng trong lô in).
- * Không lưu CSDL; khi quét, tiền tố trước `_` vẫn khớp mã SP gốc.
- */
-function buildCatalogQrPayload(productCode: string, used: Set<string>): string {
-  const code = productCode.trim();
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const randomLength = attempt < 24 ? 1 : attempt < 64 ? 2 : 3;
-    const candidate = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(randomLength)}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
-  const fallback = `${code}_${buildProductQrTimeSerial()}${randomProductQrSuffix(4)}`;
-  used.add(fallback);
-  return fallback;
 }
 
 async function createQrDataUrl(payload: string) {
@@ -121,7 +88,7 @@ async function createQrDataUrl(payload: string) {
   });
 }
 
-export type ProductViewTab = 'info' | 'codes' | 'components' | 'kiem-kho' | 'nhap-kho' | 'xuat-kho';
+export type ProductViewTab = 'info' | 'codes' | 'issued-qr' | 'components' | 'kiem-kho' | 'nhap-kho' | 'xuat-kho';
 
 type ProductWarehouseSlipRow = {
   id: string;
@@ -632,7 +599,9 @@ export function ProductViewModal({
   onDelete,
   isDeleting,
   onPrintCodes,
-  canEditComponents: canEditComponentsProp
+  onPrintIssuedQrCodes,
+  canEditComponents: canEditComponentsProp,
+  canEditQrCodes = false
 }: {
   product: ProductRow;
   initialTab?: ProductViewTab;
@@ -645,7 +614,9 @@ export function ProductViewModal({
   onDelete?: () => void;
   isDeleting?: boolean;
   onPrintCodes?: (codes: ProductDetailCode[]) => Promise<void>;
+  onPrintIssuedQrCodes?: (codes: ProductIssuedQrCode[]) => Promise<void>;
   canEditComponents?: boolean;
+  canEditQrCodes?: boolean;
 }) {
   const canEditComponents = canEditComponentsProp ?? Boolean(onEdit);
   const [tab, setTab] = useState<ProductViewTab>(initialTab);
@@ -662,6 +633,13 @@ export function ProductViewModal({
   const [detailCodesError, setDetailCodesError] = useState('');
   const [selectedDetailCodeIds, setSelectedDetailCodeIds] = useState<Set<string>>(() => new Set());
   const [isPrintingDetailCodes, setIsPrintingDetailCodes] = useState(false);
+  const [issuedQrCodes, setIssuedQrCodes] = useState<ProductIssuedQrCode[]>([]);
+  const [isLoadingIssuedQrCodes, setIsLoadingIssuedQrCodes] = useState(false);
+  const [issuedQrCodesError, setIssuedQrCodesError] = useState('');
+  const [selectedIssuedQrIds, setSelectedIssuedQrIds] = useState<Set<string>>(() => new Set());
+  const [isPrintingIssuedQrCodes, setIsPrintingIssuedQrCodes] = useState(false);
+  const [issuedQrStatusFilter, setIssuedQrStatusFilter] = useState<'all' | 'dang_dung' | 'da_huy'>('all');
+  const [updatingIssuedQrId, setUpdatingIssuedQrId] = useState('');
   const [kiemKhoRows, setKiemKhoRows] = useState<ProductKiemKhoRow[]>([]);
   const [isLoadingKiemKho, setIsLoadingKiemKho] = useState(false);
   const [kiemKhoError, setKiemKhoError] = useState('');
@@ -729,6 +707,43 @@ export function ProductViewModal({
         }
       })
       .finally(() => setIsLoadingDetailCodes(false));
+
+    return () => controller.abort();
+  }, [product.id, tab]);
+
+  useEffect(() => {
+    if (tab !== 'issued-qr') return;
+    const controller = new AbortController();
+    setIsLoadingIssuedQrCodes(true);
+    setIssuedQrCodesError('');
+
+    void fetch(`/api/san-pham/${encodeURIComponent(product.id)}/ma-qr-hang-hoa`, { signal: controller.signal })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Không thể tải danh sách QR đã cấp.');
+        const records = Array.isArray(data.records) ? data.records : [];
+        const normalizedRecords: ProductIssuedQrCode[] = records.map((record: Record<string, unknown>) => ({
+          id: String(record.id ?? ''),
+          ma_qr: String(record.ma_qr ?? ''),
+          ma_sp_goc: String(record.ma_sp_goc ?? ''),
+          ten_kho: String(record.ten_kho ?? ''),
+          so_lan_in: Number(record.so_lan_in) || 0,
+          ngay_in_gan_nhat: String(record.ngay_in_gan_nhat ?? ''),
+          nguoi_tao: String(record.nguoi_tao ?? ''),
+          trang_thai: String(record.trang_thai ?? ''),
+          created_at: String(record.created_at ?? '')
+        }));
+        setIssuedQrCodes(normalizedRecords);
+        const availableIds = new Set(normalizedRecords.map(record => record.id));
+        setSelectedIssuedQrIds(previous => new Set([...previous].filter(id => availableIds.has(id))));
+      })
+      .catch(error => {
+        if (error?.name !== 'AbortError') {
+          setIssuedQrCodes([]);
+          setIssuedQrCodesError(error?.message || 'Không thể tải danh sách QR đã cấp.');
+        }
+      })
+      .finally(() => setIsLoadingIssuedQrCodes(false));
 
     return () => controller.abort();
   }, [product.id, tab]);
@@ -1005,6 +1020,7 @@ export function ProductViewModal({
 
   useEffect(() => {
     setSelectedDetailCodeIds(new Set());
+    setSelectedIssuedQrIds(new Set());
   }, [product.id]);
 
   const printableDetailCodes = detailCodes.filter(code => code.trang_thai !== 'da_huy');
@@ -1040,6 +1056,65 @@ export function ProductViewModal({
       setDetailCodesError(error?.message || 'Không thể in các mã QR đã chọn.');
     } finally {
       setIsPrintingDetailCodes(false);
+    }
+  };
+
+  const filteredIssuedQrCodes = issuedQrCodes.filter(code =>
+    issuedQrStatusFilter === 'all' || code.trang_thai === issuedQrStatusFilter
+  );
+  const printableIssuedQrCodes = filteredIssuedQrCodes.filter(code => code.trang_thai !== 'da_huy');
+  const selectedIssuedQrCodes = filteredIssuedQrCodes.filter(
+    code => code.trang_thai !== 'da_huy' && selectedIssuedQrIds.has(code.id)
+  );
+  const allIssuedQrCodesSelected = printableIssuedQrCodes.length > 0
+    && printableIssuedQrCodes.every(code => selectedIssuedQrIds.has(code.id));
+
+  const toggleAllIssuedQrCodes = () => {
+    setSelectedIssuedQrIds(previous => {
+      const next = new Set(previous);
+      if (allIssuedQrCodesSelected) printableIssuedQrCodes.forEach(code => next.delete(code.id));
+      else printableIssuedQrCodes.forEach(code => next.add(code.id));
+      return next;
+    });
+  };
+
+  const handlePrintSelectedIssuedQrCodes = async () => {
+    if (!onPrintIssuedQrCodes || selectedIssuedQrCodes.length === 0) return;
+    setIsPrintingIssuedQrCodes(true);
+    setIssuedQrCodesError('');
+    try {
+      await onPrintIssuedQrCodes(selectedIssuedQrCodes);
+    } catch (error: any) {
+      setIssuedQrCodesError(error?.message || 'Không thể in lại các mã QR đã chọn.');
+    } finally {
+      setIsPrintingIssuedQrCodes(false);
+    }
+  };
+
+  const handleUpdateIssuedQrStatus = async (code: ProductIssuedQrCode, trangThai: 'dang_dung' | 'da_huy') => {
+    if (code.trang_thai === trangThai) return;
+    setUpdatingIssuedQrId(code.id);
+    setIssuedQrCodesError('');
+    try {
+      const response = await fetch(`/api/ma-qr-hang-hoa/${encodeURIComponent(code.id)}/trang-thai`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trang_thai: trangThai })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể cập nhật trạng thái QR.');
+      setIssuedQrCodes(previous => previous.map(item => item.id === code.id ? { ...item, trang_thai: trangThai } : item));
+      if (trangThai === 'da_huy') {
+        setSelectedIssuedQrIds(previous => {
+          const next = new Set(previous);
+          next.delete(code.id);
+          return next;
+        });
+      }
+    } catch (error: any) {
+      setIssuedQrCodesError(error?.message || 'Không thể cập nhật trạng thái QR.');
+    } finally {
+      setUpdatingIssuedQrId('');
     }
   };
 
@@ -1495,6 +1570,16 @@ export function ProductViewModal({
             <Upload className="h-4 w-4" />
             Xuất kho
           </button>
+          <button
+            type="button"
+            onClick={() => setTab('issued-qr')}
+            className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-black uppercase tracking-wider transition ${
+              tab === 'issued-qr' ? 'border-[#ef1b2d] text-[#ef1b2d]' : 'border-transparent text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <QrCode className="h-4 w-4" />
+            Mã QR đã cấp
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1613,6 +1698,122 @@ export function ProductViewModal({
                   </div>
                 )}
               </section>
+            </div>
+          ) : tab === 'issued-qr' ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black text-zinc-950">Danh sách QR đã cấp</p>
+                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                    Mỗi mã đã được lưu duy nhất trong CSDL; chọn mã để in lại mà không sinh mã mới.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FilterCombobox
+                    label="Trạng thái"
+                    options={['dang_dung', 'da_huy']}
+                    value={issuedQrStatusFilter}
+                    onChange={value => {
+                      setIssuedQrStatusFilter(value as 'all' | 'dang_dung' | 'da_huy');
+                      setSelectedIssuedQrIds(new Set());
+                    }}
+                    formatOption={value => value === 'dang_dung' ? 'Đang dùng' : 'Đã hủy'}
+                    searchPlaceholder="Tìm trạng thái..."
+                    searchable={false}
+                    compact
+                    buttonClassName="h-9 text-xs font-bold"
+                  />
+                  <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-[#ef1b2d]">
+                    {selectedIssuedQrCodes.length > 0
+                      ? `Đã chọn ${selectedIssuedQrCodes.length}/${printableIssuedQrCodes.length}`
+                      : `${filteredIssuedQrCodes.length} mã`}
+                  </span>
+                  {onPrintIssuedQrCodes ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePrintSelectedIssuedQrCodes()}
+                      disabled={selectedIssuedQrCodes.length === 0 || isPrintingIssuedQrCodes}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isPrintingIssuedQrCodes ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                      {isPrintingIssuedQrCodes ? 'Đang chuẩn bị...' : 'In lại mã đã chọn'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {issuedQrCodesError ? (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {issuedQrCodesError}
+                </p>
+              ) : null}
+
+              <TableShell minWidthClassName="min-w-[980px]" maxHeightClassName="max-h-[58vh]">
+                <TableHead>
+                  <TableHeadCell align="center" className="w-12">
+                    <input
+                      type="checkbox"
+                      checked={allIssuedQrCodesSelected}
+                      onChange={toggleAllIssuedQrCodes}
+                      disabled={printableIssuedQrCodes.length === 0}
+                      aria-label="Chọn tất cả QR đã cấp"
+                      className="h-4 w-4 cursor-pointer accent-[#ef1b2d] disabled:cursor-not-allowed"
+                    />
+                  </TableHeadCell>
+                  <TableHeadCell>STT</TableHeadCell>
+                  <TableHeadCell>Mã QR đầy đủ</TableHeadCell>
+                  <TableHeadCell>Trạng thái</TableHeadCell>
+                  <TableHeadCell>Kho</TableHeadCell>
+                  <TableHeadCell align="center">Số lần in</TableHeadCell>
+                  <TableHeadCell>Ngày in gần nhất</TableHeadCell>
+                  <TableHeadCell>Ngày cấp</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {filteredIssuedQrCodes.map((code, index) => (
+                    <TableRow key={code.id || code.ma_qr}>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIssuedQrIds.has(code.id)}
+                          disabled={code.trang_thai === 'da_huy'}
+                          onChange={() => setSelectedIssuedQrIds(previous => {
+                            const next = new Set(previous);
+                            if (next.has(code.id)) next.delete(code.id);
+                            else next.add(code.id);
+                            return next;
+                          })}
+                          aria-label={`Chọn in ${code.ma_qr}`}
+                          className="h-4 w-4 cursor-pointer accent-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
+                      <td className="px-4 py-3 font-mono font-black text-zinc-950">{code.ma_qr}</td>
+                      <td className="px-4 py-3">
+                        {canEditQrCodes ? (
+                          <select
+                            value={code.trang_thai}
+                            disabled={updatingIssuedQrId === code.id}
+                            onChange={event => void handleUpdateIssuedQrStatus(code, event.target.value as 'dang_dung' | 'da_huy')}
+                            className="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-xs font-bold text-zinc-700 outline-none transition focus:border-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label={`Đổi trạng thái ${code.ma_qr}`}
+                          >
+                            <option value="dang_dung">Đang dùng</option>
+                            <option value="da_huy">Đã hủy</option>
+                          </select>
+                        ) : (
+                          <StatusBadge label={code.trang_thai === 'dang_dung' ? 'Đang dùng' : code.trang_thai === 'da_huy' ? 'Đã hủy' : code.trang_thai || '-'} color={code.trang_thai === 'dang_dung' ? 'emerald' : 'rose'} />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-zinc-700">{code.ten_kho || '-'}</td>
+                      <td className="px-4 py-3 text-center font-bold text-zinc-700">{code.so_lan_in}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-zinc-600">{code.ngay_in_gan_nhat ? new Date(code.ngay_in_gan_nhat).toLocaleString('vi-VN') : '-'}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-zinc-600">{code.created_at ? new Date(code.created_at).toLocaleString('vi-VN') : '-'}</td>
+                    </TableRow>
+                  ))}
+                  {!isLoadingIssuedQrCodes && filteredIssuedQrCodes.length === 0 ? <TableEmptyRow colSpan={8}>{issuedQrCodes.length === 0 ? 'Sản phẩm này chưa có mã QR đã cấp.' : 'Không có mã QR theo trạng thái đã chọn.'}</TableEmptyRow> : null}
+                  {isLoadingIssuedQrCodes ? <TableEmptyRow colSpan={8}>Đang tải danh sách QR đã cấp...</TableEmptyRow> : null}
+                </TableBody>
+              </TableShell>
             </div>
           ) : tab === 'codes' ? (
             <div className="space-y-3">
@@ -3135,29 +3336,58 @@ export function ProductsPanel({
     }
   };
 
-  const handleConfirmPrintQrLabels = () => {
+  const handleConfirmPrintQrLabels = async () => {
     setPrintQtyError('');
-    const usedPayloads = new Set<string>();
-    const labels: WarehouseProductQrPrintLabel[] = selectedPrintProducts.flatMap(product => {
-      const productCode = String(product.code || '').trim();
-      const copies = parsePrintCopyCount(printQtyById[product.id] ?? '0');
-      if (!productCode || copies <= 0) return [];
-
-      return Array.from({ length: copies }, (_, copyIndex) => ({
-        key: `catalog-${product.id}-${copyIndex}`,
-        payload: buildCatalogQrPayload(productCode, usedPayloads),
-        productCode,
-        productName: product.name || '-'
-      }));
-    });
-
-    if (labels.length === 0) {
+    const items = selectedPrintProducts
+      .map(product => ({
+        sanPhamId: product.id,
+        soLuongTem: parsePrintCopyCount(printQtyById[product.id] ?? '0')
+      }))
+      .filter(item => item.sanPhamId && item.soLuongTem > 0);
+    if (items.length === 0) {
       setPrintQtyError('Nhập số lượng (> 0) cho ít nhất một mã SP.');
       return;
     }
+    setIsGeneratingPrintQr(true);
+    try {
+      const response = await fetch('/api/ma-qr-hang-hoa/cap-moi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể cấp mã QR mới.');
+      const records: Array<Record<string, unknown>> = Array.isArray(data.records) ? data.records : [];
+      const labels: WarehouseProductQrPrintLabel[] = records.map(record => ({
+        key: String(record.id ?? record.ma_qr ?? ''),
+        payload: String(record.ma_qr ?? '').trim(),
+        productCode: String(record.ma_sp_goc ?? '').trim(),
+        productName: String(record.ten_sp ?? '').trim() || '-'
+      })).filter(label => Boolean(label.key && label.payload && label.productCode));
+      if (labels.length !== totalPrintCopies) {
+        throw new Error('CSDL trả về thiếu mã QR. Chưa thể mở tem để in.');
+      }
+      setCatalogQrPrintLabels(labels);
+      setShowPrintQtyModal(false);
+      setCatalogQrPrintOpen(true);
+    } catch (reason: unknown) {
+      setPrintQtyError(reason instanceof Error ? reason.message : 'Không thể cấp mã QR mới.');
+    } finally {
+      setIsGeneratingPrintQr(false);
+    }
+  };
 
+  const handlePrintIssuedGoodsQrCodes = async (codes: ProductIssuedQrCode[]) => {
+    const labels: WarehouseProductQrPrintLabel[] = codes
+      .map(code => ({
+        key: code.id || code.ma_qr,
+        payload: code.ma_qr,
+        productCode: code.ma_sp_goc,
+        productName: viewingProduct?.name || '-'
+      }))
+      .filter(label => Boolean(label.key && label.payload && label.productCode));
+    if (labels.length !== codes.length) throw new Error('Có mã QR không hợp lệ, không thể in lại.');
     setCatalogQrPrintLabels(labels);
-    setShowPrintQtyModal(false);
     setCatalogQrPrintOpen(true);
   };
 
@@ -3832,7 +4062,9 @@ export function ProductsPanel({
           onSaveItems={items => saveProductNplItems(viewingProduct.id, items)}
           onEdit={canEdit ? () => openProductEdit(viewingProduct) : undefined}
           onDelete={canDelete ? () => handleDeleteProduct(viewingProduct) : undefined}
+          onPrintIssuedQrCodes={handlePrintIssuedGoodsQrCodes}
           canEditComponents={canEdit}
+          canEditQrCodes={canEdit}
           isDeleting={deletingProductId === viewingProduct.id}
         />
       )}
@@ -3946,12 +4178,12 @@ export function ProductsPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={handleConfirmPrintQrLabels}
-                    disabled={totalPrintCopies <= 0}
+                    onClick={() => void handleConfirmPrintQrLabels()}
+                    disabled={totalPrintCopies <= 0 || isGeneratingPrintQr}
                     className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <QrCode className="h-4 w-4" />
-                    {`Xem trước ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
+                    {isGeneratingPrintQr ? 'Đang cấp QR...' : `Xem trước ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
                   </button>
                 </div>
               </div>
@@ -4129,9 +4361,10 @@ export function ProductsPanel({
         open={catalogQrPrintOpen}
         labels={catalogQrPrintLabels}
         trackProductPrint={false}
+        trackGoodsCatalogPrint
         showPayload={false}
         title="Mã QR sản phẩm"
-        description={`${catalogQrPrintLabels.length} tem có mã đầy đủ (tiền tố + hậu tố) · không lưu vào CSDL`}
+        description={`${catalogQrPrintLabels.length} tem có mã QR duy nhất, đã được lưu trong CSDL`}
         onClose={() => {
           setCatalogQrPrintOpen(false);
           setCatalogQrPrintLabels([]);

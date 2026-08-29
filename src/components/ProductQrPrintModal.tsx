@@ -95,6 +95,7 @@ export default function ProductQrPrintModal({
   labels,
   autoPrint = false,
   trackProductPrint = true,
+  trackGoodsCatalogPrint = false,
   showPayload = true,
   title = 'Mã QR sản phẩm nhập kho',
   description,
@@ -105,6 +106,8 @@ export default function ProductQrPrintModal({
   autoPrint?: boolean;
   /** QR NVL không phải serial thành phẩm nên không ghi lịch sử in ở bảng mã sản phẩm. */
   trackProductPrint?: boolean;
+  /** QR cấp từ danh mục Kho hàng hóa có bảng lịch sử in riêng. */
+  trackGoodsCatalogPrint?: boolean;
   /** Ẩn hậu tố trên tem/khung xem trước, không làm thay đổi dữ liệu được mã hóa trong QR. */
   showPayload?: boolean;
   title?: string;
@@ -147,8 +150,13 @@ export default function ProductQrPrintModal({
     setIsPreparing(true);
     setError('');
     try {
-      if (trackProductPrint) {
-        const response = await fetch('/api/ma-san-pham/danh-dau-in', {
+      const trackingEndpoint = trackProductPrint
+        ? '/api/ma-san-pham/danh-dau-in'
+        : trackGoodsCatalogPrint
+          ? '/api/ma-qr-hang-hoa/danh-dau-in'
+          : '';
+      if (trackingEndpoint) {
+        const response = await fetch(trackingEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ codes: labels.map(label => label.payload) })
@@ -192,7 +200,7 @@ export default function ProductQrPrintModal({
               <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">File 2/2</p>
               <h3 className="text-lg font-black text-zinc-950">{title}</h3>
               <p className="mt-1 text-sm font-medium text-zinc-500">
-                {description || (trackProductPrint
+                {description || ((trackProductPrint || trackGoodsCatalogPrint)
                   ? `${labels.length} tem · mỗi tem là một serial đã lưu trong CSDL`
                   : `${labels.length} tem · mỗi mã NVL in một lần`)}
               </p>

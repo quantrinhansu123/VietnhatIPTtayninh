@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `san_pham` |
 | **Tab** | `inventory-catalog` → `/kho-hang` (route cũ: `products` → `/san-pham`) |
-| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-ten-kho.sql`, `supabase-san-pham-ma-chi-tiet.sql` |
+| **SQL** | `supabase-san-pham.sql`, `supabase-san-pham-dinh-muc.sql`, `supabase-san-pham-npl-phan-tram.sql`, `supabase-san-pham-ton-dau-ky.sql`, `supabase-san-pham-ten-kho.sql`, `supabase-san-pham-ma-chi-tiet.sql`, `supabase-ma-qr-hang-hoa.sql` |
 
 ## API (`server.ts`)
 
@@ -16,6 +16,10 @@
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | nhật ký nhập/xuất từ `phieu_xuat_nhap_kho` theo mã SP |
 | PATCH | `/api/san-pham` | bulk đổi `ten_kho` theo `ids` (ưu tiên bộ lọc UI) hoặc theo `nhom_vthh` |
 | PATCH | `/api/san-pham/:id` | 3629 |
+| POST | `/api/ma-qr-hang-hoa/cap-moi` | Cấp/lưu QR duy nhất khi in từ danh mục Kho hàng hóa |
+| POST | `/api/ma-qr-hang-hoa/danh-dau-in` | Tăng số lần in QR đã cấp từ danh mục |
+| GET | `/api/san-pham/:id/ma-qr-hang-hoa` | Danh sách QR đã cấp của sản phẩm, dùng tab Xem sản phẩm |
+| PATCH | `/api/ma-qr-hang-hoa/:id/trang-thai` | Đổi trạng thái QR hàng hóa: `dang_dung` / `da_huy` |
 | DELETE | `/api/san-pham` | bulk — xóa `ma_san_pham_chi_tiet` trước rồi `san_pham` |
 
 ## Frontend
@@ -51,6 +55,13 @@ Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Vi�
 Xóa SP: `DELETE /api/san-pham` gọi RPC `xoa_san_pham_hang_loat` (hoặc FK `ON DELETE CASCADE`). Chạy `supabase-ma-san-pham-chi-tiet-delete.sql` nếu chưa.
 
 > Tính năng "Đồng bộ" (cộng số liệu kiểm kho vào `ton_dau_ky`) đã bị **gỡ bỏ**. File `supabase-san-pham-kiem-kho-dong-bo.sql` giờ chỉ còn migration `DROP` để dọn RPC/bảng so cái cũ trên DB đã từng chạy — không cần chạy lại nếu DB chưa từng có tính năng này.
+
+### QR in từ danh mục Kho hàng hóa
+
+- Nút **In mã QR** tại `/kho-hang` gọi RPC `cap_ma_qr_hang_hoa` để lưu mã vào `ma_qr_hang_hoa` trước khi xem trước/in.
+- Dạng mã: `MãSP_` + hậu tố random **11 ký tự** từ `A-Z` và `0-9`; hậu tố luôn có cả chữ và số. `UNIQUE(ma_qr)` chống trùng khi nhiều người in cùng lúc.
+- Bấm in cập nhật `so_lan_in` và `ngay_in_gan_nhat`.
+- Trong **Xem sản phẩm** có tab **Mã QR đã cấp**: xem mã, trạng thái, ngày cấp, lịch sử in và chọn mã để in lại.
 
 ### Excel danh mục SP
 

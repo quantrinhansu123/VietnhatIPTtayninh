@@ -66,6 +66,7 @@ const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE ||
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
 const SUPABASE_IMPORT_SP_TABLE = process.env.SUPABASE_IMPORT_SP_TABLE || 'import_sp';
 const SUPABASE_PRODUCT_CODES_TABLE = process.env.SUPABASE_PRODUCT_CODES_TABLE || 'ma_san_pham_chi_tiet';
+const SUPABASE_GOODS_QR_CODES_TABLE = process.env.SUPABASE_GOODS_QR_CODES_TABLE || 'ma_qr_hang_hoa';
 /** Sửa typo env phổ biến: anh_sach_may → danh_sach_may */
 const SUPABASE_MACHINES_TABLE = (() => {
   const raw = String(process.env.SUPABASE_MACHINES_TABLE || '')
@@ -7186,6 +7187,54 @@ export function createApp() {
     }
   });
 
+  /** QR đã cấp từ nút In mã QR của Danh mục Kho hàng hóa. */
+  app.get('/api/san-pham/:id/ma-qr-hang-hoa', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const productId = String(req.params.id || '').trim();
+      if (!productId) return res.status(400).json({ error: 'Thiếu ID sản phẩm.' });
+      const { data, error } = await supabase
+        .from(SUPABASE_GOODS_QR_CODES_TABLE)
+        .select('id, ma_qr, ma_sp_goc, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, created_at')
+        .eq('san_pham_id', productId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        const missingMigration = isMissingTableError(error);
+        return res.status(500).json({
+          error: missingMigration
+            ? 'Chưa có bảng QR hàng hóa. Hãy chạy file supabase-ma-qr-hang-hoa.sql.'
+            : error.message || 'Không thể tải danh sách QR đã cấp.'
+        });
+      }
+      return res.json({ records: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải danh sách QR đã cấp.' });
+    }
+  });
+
+  app.patch('/api/ma-qr-hang-hoa/:id/trang-thai', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const id = String(req.params.id || '').trim();
+    const trangThai = String(req.body?.trang_thai ?? req.body?.trangThai ?? '').trim().toLowerCase();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID mã QR.' });
+    if (!['dang_dung', 'da_huy'].includes(trangThai)) {
+      return res.status(400).json({ error: 'Trạng thái QR chỉ có thể là Đang dùng hoặc Đã hủy.' });
+    }
+    const { data, error } = await supabase
+      .from(SUPABASE_GOODS_QR_CODES_TABLE)
+      .update({ trang_thai: trangThai, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id, trang_thai')
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật trạng thái QR.' });
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy mã QR cần cập nhật.' });
+    return res.json({ success: true, record: data });
+  });
+
   /** Nhật ký xuất/nhập kho thành phẩm theo mã SP (bảng phieu_xuat_nhap_kho). */
   app.get('/api/san-pham/:id/phieu-kho', async (req, res) => {
     if (!supabase) {
@@ -7312,6 +7361,70 @@ export function createApp() {
       });
     }
 
+    return res.json({ success: true, updated: Number(data) || 0 });
+  });
+
+  /** Cấp QR từ Danh mục Kho hàng hóa. Mã được DB giữ trước khi giao diện cho in. */
+  app.post('/api/ma-qr-hang-hoa/cap-moi', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    const items = Array.isArray(req.body?.items)
+      ? req.body.items.map((item: unknown) => {
+          const raw = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+          return {
+            san_pham_id: String(raw.sanPhamId ?? raw.san_pham_id ?? '').trim(),
+            so_luong: Math.floor(Number(raw.soLuongTem ?? raw.so_luong ?? 0))
+          };
+        })
+      : [];
+    const invalidItem = items.find(item => !item.san_pham_id || !Number.isInteger(item.so_luong) || item.so_luong < 1 || item.so_luong > 999);
+    const total = items.reduce((sum, item) => sum + item.so_luong, 0);
+    if (items.length === 0 || invalidItem) {
+      return res.status(400).json({ error: 'Mỗi sản phẩm cần có mã và số tem nguyên từ 1 đến 999.' });
+    }
+    if (total > 999) {
+      return res.status(400).json({ error: 'Tổng số tem cấp trong một lần không được vượt quá 999.' });
+    }
+
+    const nguoiTao = String(req.body?.nguoiTao ?? req.body?.nguoi_tao ?? '').trim() || null;
+    const { data, error } = await supabase.rpc('cap_ma_qr_hang_hoa', {
+      p_items: items,
+      p_nguoi_tao: nguoiTao
+    });
+    if (error) {
+      const message = String(error.message || '');
+      const missingFunction = error.code === 'PGRST202' || /cap_ma_qr_hang_hoa/i.test(message);
+      return res.status(500).json({
+        error: missingFunction
+          ? 'Chưa có chức năng cấp QR trong CSDL. Hãy chạy file supabase-ma-qr-hang-hoa.sql.'
+          : `Không thể cấp mã QR: ${message}`
+      });
+    }
+
+    return res.status(201).json({ success: true, records: data || [], total: data?.length || 0 });
+  });
+
+  app.post('/api/ma-qr-hang-hoa/danh-dau-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const codes = Array.isArray(req.body?.codes)
+      ? req.body.codes.map((code: unknown) => String(code ?? '').trim()).filter(Boolean)
+      : [];
+    if (codes.length === 0) return res.status(400).json({ error: 'Không có mã QR để đánh dấu in.' });
+
+    const { data, error } = await supabase.rpc('danh_dau_in_ma_qr_hang_hoa', { p_codes: codes });
+    if (error) {
+      const message = String(error.message || '');
+      const missingFunction = error.code === 'PGRST202' || /danh_dau_in_ma_qr_hang_hoa/i.test(message);
+      return res.status(500).json({
+        error: missingFunction
+          ? 'Chưa có chức năng lưu lịch sử in QR. Hãy chạy file supabase-ma-qr-hang-hoa.sql.'
+          : `Không thể lưu lịch sử in QR: ${message}`
+      });
+    }
     return res.json({ success: true, updated: Number(data) || 0 });
   });
 

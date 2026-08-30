@@ -67,6 +67,18 @@ export function resolveTrongLuongNhuaKg(row: CanTuDongWeightRow) {
   return sp - loi - resolveTrongLuongBiKg(row);
 }
 
+/** Nhựa TT tab cân thực tế = SP − lõi − bì − màng (BOM / cuộn). */
+export function resolveTrongLuongNhuaKgMinusFilm(
+  row: CanTuDongWeightRow,
+  filmKgPerRoll?: number | null
+): number | null {
+  const base = resolveTrongLuongNhuaKg(row);
+  if (base === null) return null;
+  const film =
+    filmKgPerRoll != null && Number.isFinite(filmKgPerRoll) && filmKgPerRoll > 0 ? filmKgPerRoll : 0;
+  return base - film;
+}
+
 /**
  * Nhựa định mức (kg) theo Mã SP:
  * ưu tiên `san_pham.trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì.
@@ -82,6 +94,14 @@ export function resolveNhuaDinhMucKg(
   if (standardKg == null || !Number.isFinite(standardKg) || !(standardKg > 0)) return null;
   const core = coreKg != null && Number.isFinite(coreKg) && coreKg > 0 ? coreKg : 0;
   return standardKg - core - DEFAULT_CAN_TU_DONG_BI_KG;
+}
+
+/** Tab cân thực tế — Nhựa ĐM / cuộn: chỉ cột «Trọng lượng nhựa + phụ gia (kg)» Kho hàng. */
+export function resolveCanTuDongNhuaDinhMucKgPerRoll(plasticKgFromProduct?: number | null): number | null {
+  if (plasticKgFromProduct != null && Number.isFinite(plasticKgFromProduct) && plasticKgFromProduct > 0) {
+    return plasticKgFromProduct;
+  }
+  return null;
 }
 
 /** Ngày lịch VN (YYYY-MM-DD) từ ISO timestamp. */
@@ -218,14 +238,24 @@ export function resolveCanTuDongMachine(row: CanTuDongWeightRow): string | null 
   return null;
 }
 
-/** kg/m² màng cách nhiệt (2 lớp trên một cuộn). */
-export const INSULATION_FILM_KG_PER_M2 = 0.02324;
+/** Hệ số lớp màng cách nhiệt trên một cuộn. */
 export const INSULATION_FILM_LAYERS = 2;
+/** @deprecated Không còn dùng — TL màng lấy từ BOM × 2 × SL. */
+export const INSULATION_FILM_KG_PER_M2 = 0.02324;
 
 function parsePositiveDecimal(value: string | null | undefined): number | null {
   const number = Number(String(value || '').trim().replace(',', '.'));
   return Number.isFinite(number) && number > 0 ? number : null;
 }
+
+export type InsulationFilmBomItem = {
+  code?: string | null;
+  name?: string | null;
+  amountType?: 'percent' | 'quantity' | null;
+  quantity?: number | null;
+  weightKg?: number | null;
+  unit?: string | null;
+};
 
 export type InsulationProductAlias = {
   code?: string | null;
@@ -234,14 +264,77 @@ export type InsulationProductAlias = {
   rollWidth?: string | null;
   rollLength?: string | null;
   totalWeight?: string | null;
+  nplItems?: InsulationFilmBomItem[] | null;
 };
 
-/** TL màng 1 cuộn = khổ (m) × chiều dài (m) × 2 lớp × 0,02324 kg/m². */
+function normalizeInsulationFilmText(...parts: Array<string | null | undefined>) {
+  return parts
+    .map(part => String(part || ''))
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+/** Dòng BOM màng (màng xi / film) — không lấy rác màng. */
+export function isInsulationFilmBomItem(item: InsulationFilmBomItem): boolean {
+  const text = normalizeInsulationFilmText(item.code, item.name);
+  if (!text.trim()) return false;
+  if (text.includes('rac mang') || text.includes('racmang')) return false;
+  return text.includes('mang') || text.includes('film');
+}
+
+/**
+ * Trọng lượng màng trong BOM (1 SP): ưu tiên `weightKg`, không thì `quantity` (ĐVT số lượng).
+ */
+export function resolveInsulationFilmBomWeightPerUnit(product: InsulationProductAlias): number | null {
+  const lines = listInsulationFilmBomLines(product);
+  if (lines.length === 0) return null;
+  return lines.reduce((sum, line) => sum + line.dinhLuong, 0);
+}
+
+/** Định lượng từng dòng NVL màng trên Thành phần SP (Kho sản phẩm). */
+export type InsulationFilmBomLineDetail = {
+  code: string;
+  name: string;
+  unit: string;
+  /** Định lượng / 1 SP từ BOM. */
+  dinhLuong: number;
+};
+
+export function listInsulationFilmBomLines(product: InsulationProductAlias): InsulationFilmBomLineDetail[] {
+  const items = Array.isArray(product.nplItems) ? product.nplItems : [];
+  const lines: InsulationFilmBomLineDetail[] = [];
+  for (const item of items) {
+    if (!isInsulationFilmBomItem(item)) continue;
+    let dinhLuong: number | null = null;
+    // TL màng quy về kg: ưu tiên weightKg; không thì lấy số lượng BOM (dùng như kg).
+    if (item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0) {
+      dinhLuong = item.weightKg;
+    } else if (
+      item.amountType === 'quantity' &&
+      item.quantity != null &&
+      Number.isFinite(item.quantity) &&
+      item.quantity > 0
+    ) {
+      dinhLuong = item.quantity;
+    }
+    if (dinhLuong == null) continue;
+    lines.push({
+      code: String(item.code || '').trim(),
+      name: String(item.name || item.code || '').trim(),
+      unit: 'kg',
+      dinhLuong
+    });
+  }
+  return lines;
+}
+
+/** TL màng 1 cuộn = trọng lượng màng trong BOM × 2. */
 export function resolveInsulationFilmKgPerRoll(product: InsulationProductAlias): number | null {
-  const rollWidthM = parsePositiveDecimal(product.rollWidth);
-  const rollLengthM = parsePositiveDecimal(product.rollLength);
-  if (rollWidthM === null || rollLengthM === null) return null;
-  return rollWidthM * rollLengthM * INSULATION_FILM_LAYERS * INSULATION_FILM_KG_PER_M2;
+  const bomWeight = resolveInsulationFilmBomWeightPerUnit(product);
+  if (bomWeight === null) return null;
+  return bomWeight * INSULATION_FILM_LAYERS;
 }
 
 function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
@@ -258,8 +351,8 @@ function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]):
 }
 
 /**
- * TL màng máy cách nhiệt = Σ (khổ cuộn × chiều dài cuộn × 2 lớp × 0,02324 kg/m²)
- * theo mã SP khớp QR cân tự động.
+ * TL màng máy cách nhiệt = Σ (trọng lượng màng BOM × 2) theo từng phiếu cân
+ * = trọng lượng BOM × 2 × số lượng cuộn.
  */
 export function computeInsulationFilmWeightKg(
   products: InsulationProductAlias[],
@@ -272,30 +365,29 @@ export function computeInsulationFilmWeightKg(
   }, 0);
 }
 
-/** Nhựa định mức máy cách nhiệt = TL tiêu chuẩn − lõi − bì − TL màng, theo từng phiếu cân. */
+/** Nhựa định mức máy cách nhiệt = Σ (KL nhựa+phụ gia Kho hàng × 1 cuộn) theo Mã SP từ QR. */
 export function computeInsulationPlasticNorm(
   products: InsulationProductAlias[],
   records: CanTuDongWeightRow[]
 ): { weightKg: number; counted: number } {
-  const standardKgByProductCode = new Map<string, number>();
+  const plasticKgByProductCode = new Map<string, number>();
   for (const product of products) {
-    const standardKg = parsePositiveDecimal(product.totalWeight);
-    if (standardKg === null) continue;
+    const plasticKg = parsePositiveDecimal(
+      (product as InsulationProductAlias & { plasticWeight?: string | null }).plasticWeight
+    );
+    if (plasticKg === null) continue;
     for (const productCode of [product.code, product.newCode, product.amisCode]) {
       const key = normalizeProductCodeKey(productCode);
-      if (key && key !== '-') standardKgByProductCode.set(key, standardKg);
+      if (key && key !== '-') plasticKgByProductCode.set(key, plasticKg);
     }
   }
-  const filmKgByProductCode = buildInsulationFilmKgByProductCode(products);
   return records.reduce(
     (total, record) => {
       const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
-      const standardKg = standardKgByProductCode.get(productCode);
-      const coreKg = resolveCanLoiKg(record);
-      if (standardKg === undefined || coreKg === null) return total;
-      const filmKg = filmKgByProductCode.get(productCode) || 0;
+      const nhuaDm = resolveCanTuDongNhuaDinhMucKgPerRoll(plasticKgByProductCode.get(productCode));
+      if (nhuaDm === null) return total;
       return {
-        weightKg: total.weightKg + standardKg - coreKg - resolveTrongLuongBiKg(record) - filmKg,
+        weightKg: total.weightKg + nhuaDm,
         counted: total.counted + 1
       };
     },

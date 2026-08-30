@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays,
+  Clock,
   Copy,
   FileSpreadsheet,
   Loader2,
@@ -235,6 +236,24 @@ async function postCanTuDongBulkSetNgay(ids: Array<string | number>, ngay: strin
   return updated;
 }
 
+async function postCanTuDongBulkSetCa(ids: Array<string | number>, ca: string) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-ca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, ca })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi Ca các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
 /** YYYY-MM-DD theo lịch máy (hôm nay). */
 function localIsoDateToday() {
   const now = new Date();
@@ -378,6 +397,15 @@ function resolveRowMaSp(row: CanTuDongRecord): string {
   return parseCanTuDongQrProductCode(row.qr_code);
 }
 
+function resolveRowLenhSx(row: CanTuDongRecord): string {
+  return String(resolveCanTuDongProductionOrder(row) ?? '').trim();
+}
+
+function lenhSxMatches(rowLenh: string, filter: string): boolean {
+  if (filter === 'all') return true;
+  return rowLenh.trim().toUpperCase() === filter.trim().toUpperCase();
+}
+
 function normalizeQrKey(qr?: string | null): string {
   return String(qr ?? '').trim();
 }
@@ -400,6 +428,11 @@ export function CanTuDongPanel({
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isSettingNgay, setIsSettingNgay] = useState(false);
+  const [isSettingCa, setIsSettingCa] = useState(false);
+  const [showBulkNgayModal, setShowBulkNgayModal] = useState(false);
+  const [bulkNgayValue, setBulkNgayValue] = useState(() => localIsoDateToday());
+  const [showBulkCaModal, setShowBulkCaModal] = useState(false);
+  const [bulkCaValue, setBulkCaValue] = useState(AUTO_FILL_CA);
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
@@ -411,6 +444,8 @@ export function CanTuDongPanel({
   const [toDate, setToDate] = useState('');
   /** Lọc cột Ca (`all` = tất cả). */
   const [caFilter, setCaFilter] = useState('all');
+  /** Lọc Lệnh SX (`all` = tất cả). */
+  const [lenhSxFilter, setLenhSxFilter] = useState('all');
   /** Chỉ hiện dòng có mã QR trùng trong phạm vi bộ lọc ngày/ca/Mã SP. */
   const [onlyDuplicateQr, setOnlyDuplicateQr] = useState(false);
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
@@ -571,27 +606,48 @@ export function CanTuDongPanel({
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [recordsByDate]);
 
+  const bulkCaOptions = useMemo(() => {
+    const set = new Set<string>(caOptions);
+    if (AUTO_FILL_CA) set.add(AUTO_FILL_CA);
+    if (caFilter !== 'all' && caFilter.trim()) set.add(caFilter.trim());
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [caOptions, caFilter]);
+
   const recordsByCa = useMemo(() => {
     if (caFilter === 'all') return recordsByDate;
     return recordsByDate.filter(row => canTuDongShiftMatches(String(row.ca ?? ''), caFilter));
   }, [recordsByDate, caFilter]);
 
+  const lenhSxOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of recordsByCa) {
+      const lenhSx = resolveRowLenhSx(row);
+      if (lenhSx) set.add(lenhSx);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [recordsByCa]);
+
+  const recordsByLenhSx = useMemo(() => {
+    if (lenhSxFilter === 'all') return recordsByCa;
+    return recordsByCa.filter(row => lenhSxMatches(resolveRowLenhSx(row), lenhSxFilter));
+  }, [recordsByCa, lenhSxFilter]);
+
   const maSpOptions = useMemo(() => {
     const byKey = new Map<string, string>();
-    for (const row of recordsByCa) {
+    for (const row of recordsByLenhSx) {
       const maSp = resolveRowMaSp(row);
       const key = normalizeProductCodeKey(maSp);
       if (!key) continue;
       if (!byKey.has(key)) byKey.set(key, maSp);
     }
     return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [recordsByCa]);
+  }, [recordsByLenhSx]);
 
   const recordsByMaSp = useMemo(() => {
     const queryKey = normalizeProductCodeKey(maSpQuery);
     const pickKey = maSpFilter === 'all' ? '' : normalizeProductCodeKey(maSpFilter);
-    if (!queryKey && !pickKey) return recordsByCa;
-    return recordsByCa.filter(row => {
+    if (!queryKey && !pickKey) return recordsByLenhSx;
+    return recordsByLenhSx.filter(row => {
       const maSp = resolveRowMaSp(row);
       const maSpKey = normalizeProductCodeKey(maSp);
       if (pickKey && maSpKey !== pickKey) return false;
@@ -603,7 +659,7 @@ export function CanTuDongPanel({
       if (name && normalizeProductCodeKey(name).includes(queryKey)) return true;
       return false;
     });
-  }, [recordsByCa, maSpFilter, maSpQuery, productNameByCode]);
+  }, [recordsByLenhSx, maSpFilter, maSpQuery, productNameByCode]);
 
   const qrDuplicateInfo = useMemo(() => {
     const counts = new Map<string, number>();
@@ -709,8 +765,10 @@ export function CanTuDongPanel({
 
   const hasDateFilters = Boolean(fromDate || toDate);
   const hasCaFilter = caFilter !== 'all';
+  const hasLenhSxFilter = lenhSxFilter !== 'all';
   const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
-  const hasActiveFilters = hasDateFilters || hasCaFilter || hasMaSpFilters || onlyDuplicateQr;
+  const hasActiveFilters =
+    hasDateFilters || hasCaFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr;
 
   /** Phân tích kém cân / hơn cân theo |%| chênh lệch nhựa ÷ Nhựa thực tế (ngưỡng 2%). */
   const phanTichCan = useMemo(() => {
@@ -838,33 +896,75 @@ export function CanTuDongPanel({
     }
   };
 
-  const handleBulkSetNgayToday = async () => {
+  const openBulkNgayModal = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    setBulkNgayValue(localIsoDateToday());
+    setShowBulkNgayModal(true);
+  };
+
+  const handleBulkSetNgayForVisible = async () => {
     const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
     if (ids.length === 0) {
       showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
       return;
     }
-    const ngay = localIsoDateToday();
-    const ngayLabel = formatIsoDateVi(ngay);
-    if (
-      !window.confirm(
-        `Đổi cột Ngày thành ${ngayLabel} cho ${formatNumber(ids.length, 0)} dòng đang hiện (theo bộ lọc)?\n\nKhông đổi ngày cân / thời điểm.`
-      )
-    ) {
+    const ngay = bulkNgayValue.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay)) {
+      showAppToast('Chọn ngày hợp lệ.', 'error');
       return;
     }
+    const ngayLabel = formatIsoDateVi(ngay);
 
     setIsSettingNgay(true);
     try {
       const updated = await postCanTuDongBulkSetNgay(ids, ngay);
       setFromDate(ngay);
       setToDate(ngay);
-      showAppToast(`Đã đổi Ngày thành ${ngayLabel} cho ${formatNumber(updated, 0)} dòng.`);
+      showAppToast(`Đã điền Ngày ${ngayLabel} cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`);
+      setShowBulkNgayModal(false);
       await loadRecords();
     } catch (err: unknown) {
-      showAppToast(err instanceof Error ? err.message : 'Không thể đổi Ngày các dòng đang lọc.', 'error');
+      showAppToast(err instanceof Error ? err.message : 'Không thể điền Ngày các dòng đang lọc.', 'error');
     } finally {
       setIsSettingNgay(false);
+    }
+  };
+
+  const openBulkCaModal = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    setBulkCaValue(caFilter !== 'all' && caFilter.trim() ? caFilter.trim() : AUTO_FILL_CA);
+    setShowBulkCaModal(true);
+  };
+
+  const handleBulkSetCaForVisible = async () => {
+    const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    const ca = bulkCaValue.trim();
+    if (!ca) {
+      showAppToast('Chọn ca hợp lệ.', 'error');
+      return;
+    }
+
+    setIsSettingCa(true);
+    try {
+      const updated = await postCanTuDongBulkSetCa(ids, ca);
+      setCaFilter(ca);
+      showAppToast(`Đã điền Ca ${ca} cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`);
+      setShowBulkCaModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể điền Ca các dòng đang lọc.', 'error');
+    } finally {
+      setIsSettingCa(false);
     }
   };
 
@@ -964,6 +1064,7 @@ export function CanTuDongPanel({
     setFromDate('');
     setToDate('');
     setCaFilter('all');
+    setLenhSxFilter('all');
     setOnlyDuplicateQr(false);
   };
 
@@ -1016,7 +1117,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openAutoFillModal}
-            disabled={loading || isAutoFilling || isSettingNgay || isBulkDeleting || selectedCount === 0}
+            disabled={loading || isAutoFilling || isSettingNgay || isSettingCa || isBulkDeleting || selectedCount === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 transition hover:bg-violet-100 disabled:opacity-60"
             title={`Điền Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
           >
@@ -1025,15 +1126,27 @@ export function CanTuDongPanel({
           </button>
           <button
             type="button"
-            onClick={() => void handleBulkSetNgayToday()}
+            onClick={openBulkNgayModal}
             disabled={
-              loading || isSettingNgay || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
+              loading || isSettingNgay || isSettingCa || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
             }
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Đổi cột Ngày của mọi dòng đang hiện (theo bộ lọc Từ/Đến ngày · Ca · Mã SP · QR trùng) thành hôm nay"
+            title="Chọn ngày rồi điền cột Ngày hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
           >
             {isSettingNgay ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
-            {isSettingNgay ? 'Đang sửa Ngày...' : 'Ngày = hôm nay'}
+            {isSettingNgay ? 'Đang điền Ngày...' : 'Chọn Ngày · điền hàng loạt'}
+          </button>
+          <button
+            type="button"
+            onClick={openBulkCaModal}
+            disabled={
+              loading || isSettingCa || isSettingNgay || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
+            }
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 text-xs font-bold text-indigo-900 transition hover:bg-indigo-100 disabled:opacity-60"
+            title="Chọn ca rồi điền cột Ca hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
+          >
+            {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+            {isSettingCa ? 'Đang điền Ca...' : 'Chọn Ca · điền hàng loạt'}
           </button>
           <button
             type="button"
@@ -1080,6 +1193,14 @@ export function CanTuDongPanel({
           value={caFilter}
           onChange={setCaFilter}
           searchPlaceholder="Tìm ca..."
+          compact
+        />
+        <FilterCombobox
+          label="Lệnh SX"
+          options={lenhSxOptions}
+          value={lenhSxFilter}
+          onChange={setLenhSxFilter}
+          searchPlaceholder="Tìm lệnh SX..."
           compact
         />
         <TableSearchInput
@@ -1489,7 +1610,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openAutoFillModal}
-            disabled={isAutoFilling || isSettingNgay || isBulkDeleting}
+            disabled={isAutoFilling || isSettingNgay || isSettingCa || isBulkDeleting}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-600 px-3 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
             title={`Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
           >
@@ -1499,7 +1620,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa}
             className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Bỏ chọn
@@ -1507,7 +1628,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={() => void handleBulkDelete()}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
             {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -1866,6 +1987,127 @@ export function CanTuDongPanel({
           )}
         </TableBody>
       </TableShell>
+
+      {showBulkNgayModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-bulk-ngay-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-bulk-ngay-title" className="text-base font-black text-zinc-950">
+                  Điền Ngày hàng loạt
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkNgayModal(false)}
+                disabled={isSettingNgay}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <TableDateFilter label="Ngày điền" value={bulkNgayValue} onChange={setBulkNgayValue} />
+              <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-900">
+                <p>Chỉ đổi cột <strong>Ngày</strong> (SOURCE_DATE / work_date).</p>
+                <p className="mt-1 text-sky-800">Không đổi ngày cân · Ca · Lệnh SX · Máy.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkNgayModal(false)}
+                disabled={isSettingNgay}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkSetNgayForVisible()}
+                disabled={isSettingNgay}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isSettingNgay ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
+                {isSettingNgay ? 'Đang điền...' : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showBulkCaModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-bulk-ca-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-bulk-ca-title" className="text-base font-black text-zinc-950">
+                  Điền Ca hàng loạt
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkCaModal(false)}
+                disabled={isSettingCa}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <FilterCombobox
+                label="Ca điền"
+                options={bulkCaOptions}
+                value={bulkCaValue}
+                onChange={setBulkCaValue}
+                searchPlaceholder="Tìm ca..."
+                includeAll={false}
+              />
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900">
+                <p>
+                  Chỉ đổi cột <strong>Ca</strong> (SOURCE_SHIFT / metadata).
+                </p>
+                <p className="mt-1 text-indigo-800">Không đổi Ngày · Lệnh SX · Máy · ngày cân.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkCaModal(false)}
+                disabled={isSettingCa}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkSetCaForVisible()}
+                disabled={isSettingCa || !bulkCaValue.trim()}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-xs font-extrabold text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                {isSettingCa ? 'Đang điền...' : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showAutoFillModal ? (
         <div

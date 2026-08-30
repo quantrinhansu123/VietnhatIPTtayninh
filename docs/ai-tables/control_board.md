@@ -2,7 +2,7 @@
 
 Tab `control-board` → `/bang-dieu-khien` — **đọc nhiều bảng**, không có bảng riêng.
 
-Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`. Route cũ `/phan-tich` đã bỏ, mở sẽ chuyển sang `/phan-tich-tu-dong`. Ô **Trọng lượng xuất** khớp footer phiếu xuất kho NVL: **Tổng nhựa** = Σ cột Quy về kg mọi dòng ĐVT = kg (kể cả túi); **vật tư khác** = Σ Quy về kg dòng ĐVT ≠ kg (lõi); dòng không quy được kg không cộng. Tab phiếu xuất lấy `phieu_xuat_nhap_kho` (xuất NVL) khớp **ngày + ca + máy**. `/phan-tich-tu-dong` lấy lệnh/xuất của **mọi máy**. Bộ lọc **Ngày = Tất cả** tải mọi bản ghi (kể cả không có Ngày / không chênh lệch); **Theo khoảng** lọc Từ ngày → Đến ngày.
+Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cáo mới** trên `/quan-tri`. Route cũ `/phan-tich` đã bỏ, mở sẽ chuyển sang `/phan-tich-tu-dong`. Ô **Trọng lượng xuất** khớp footer phiếu xuất kho NVL: **Tổng nhựa** = Σ cột Quy về kg mọi dòng ĐVT = kg (kể cả túi); **vật tư khác** = Σ Quy về kg dòng ĐVT ≠ kg (lõi); dòng không quy được kg không cộng. Tab **Dữ liệu trong phiếu xuất kho** đã **bỏ khỏi UI** (dữ liệu xuất vẫn tính trong snapshot/KPI). Cột **Xuất trong ngày** (mục in) vẫn gom phiếu xuất NVL theo ngày, không theo ca. `/phan-tich-tu-dong` lấy lệnh/xuất của **mọi máy**. Bộ lọc **Ngày = Tất cả** tải mọi bản ghi (kể cả không có Ngày / không chênh lệch); **Theo khoảng** lọc Từ ngày → Đến ngày. Trên `/phan-tich-tu-dong`, **Lệnh SX** tự chọn theo **Ngày + Ca** (+ **Máy** nếu đã chọn); dropdown chỉ liệt kê lệnh khớp bucket.
 
 ## UI
 
@@ -25,6 +25,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 - [can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) — tab **Dữ liệu cân thực tế**: số cuộn + tổng trọng lượng, không load từng phiếu cân.
 - [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) — lý do giải trình in BB
 - [bb_phan_tich_danh_gia.md](./bb_phan_tich_danh_gia.md) — phân tích đánh giá (tab Đánh giá) lưu Supabase
+- [bb_giai_trinh.md](./bb_giai_trinh.md) — giải trình (tab Giải trình) lưu Supabase
 - [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) — snapshot báo cáo sau nút **Tính toán** (không tự tính mỗi lần mở trang)
 
 ## Utils
@@ -32,7 +33,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 | File | Vai trò |
 |------|---------|
 | `controlBoardShiftSummary.ts` | Tổng hợp theo ca từ phiếu cân, kho, NVL |
-| `controlBoardBbMachineReport.ts` | Dòng lệnh SX máy BB + xuất kho NVL theo ngày/ca |
+| `controlBoardBbMachineReport.ts` | Dòng lệnh SX máy BB + xuất kho NVL theo **ngày + ca** (tab xuất kho); cột Xuất trong ngày vẫn theo ngày. Tab lệnh SX: cột **Trọng lượng nhựa + phụ gia (kg)** = thẳng `san_pham.trong_luong_nhua` trên `/kho-hang` |
 
 ## Bảng liên quan
 

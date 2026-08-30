@@ -42,6 +42,7 @@ export type TableId =
   | 'control_board'
   | 'bb_bao_cao_ly_do'
   | 'bb_phan_tich_danh_gia'
+  | 'bb_giai_trinh'
   | 'bb_bao_cao_tinh_toan';
 
 export interface TableRegistryEntry {
@@ -192,7 +193,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   kho_nvl: {
     table: 'kho_nvl',
     label: 'Kho nguyên vật liệu',
-    sql: ['supabase-kho-nvl.sql'],
+    sql: ['supabase-kho-nvl.sql', 'supabase-kho-nvl-anh-thuc-te.sql'],
     apiPrefix: '/api/kho-nvl',
     serverLines: '4605–4784',
     appTab: 'materials',
@@ -537,12 +538,23 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
     utils: ['src/utils/bbPhanTichDanhGia.ts']
   },
+  bb_giai_trinh: {
+    table: 'bb_giai_trinh',
+    label: 'Giải trình BB',
+    sql: ['supabase-bb-giai-trinh.sql'],
+    apiPrefix: '/api/bb-giai-trinh',
+    serverLines: 'GET/PUT /api/bb-giai-trinh (sau /api/bb-phan-tich-danh-gia)',
+    appTab: 'dashboard | dashboard-auto | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/bbGiaiTrinh.ts']
+  },
   bb_bao_cao_tinh_toan: {
     table: 'bb_bao_cao_tinh_toan',
     label: 'Snapshot tính toán báo cáo BB',
     sql: ['supabase-bb-bao-cao-tinh-toan.sql'],
     apiPrefix: '/api/bb-bao-cao-tinh-toan',
-    serverLines: 'GET/PUT /api/bb-bao-cao-tinh-toan (sau /api/bb-phan-tich-danh-gia)',
+    serverLines: 'GET/PUT /api/bb-bao-cao-tinh-toan (sau /api/bb-giai-trinh)',
     appTab: 'dashboard | dashboard-auto | control-board',
     appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
     components: ['src/components/ControlBoardBbMachineReportTable.tsx'],

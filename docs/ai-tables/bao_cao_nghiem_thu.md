@@ -18,13 +18,14 @@ Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng 
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
-Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm`).
+Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm` + mã SP thuộc **Kho thành phẩm** trên `san_pham`).
 Trên `/phan-tich-tu-dong`:
 - Tab **Dữ liệu cân thực tế** lấy từ `can_tu_dong` (Cân AI)
-- Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm)
-  - Sau **Tính toán**: chỉ từ bảng Báo cáo sản lượng — SL/`trong_luong` trên phiếu + snapshot NVL `bao_cao_san_luong_nvl_dinh_muc`
+- Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm · Kho thành phẩm)
+  - Sau **Tính toán**: SL/`trong_luong` trên phiếu + snapshot NVL `bao_cao_san_luong_nvl_dinh_muc`
+  - **Bổ sung NVL thiếu** từ Thành phần SP (`san_pham.nplItems`) để hiện đủ BOM
   - Hiện **từng sản phẩm** (mã SP + NVL của SP đó); **không** gộp NVL mọi SP thành một danh sách
-  - **Không** lấy từ lệnh SX, Kho sản phẩm, tỉ lệ trộn máy, phối trộn hay kho NVL
+  - Không lấy SP lỗi / SP rác / mã ngoài Kho thành phẩm
   - Lệnh SX chỉ hiện mã (nếu khớp ngày/ca/máy) để tham chiếu
   - % NVL: kg = `trong_luong` phiếu × %; ĐVT khác: SL = ĐM × tổng SL phiếu
 - Tab **Dữ liệu trong báo cáo hàng lỗi hỏng** lấy từ cùng bảng `bao_cao_nghiem_thu` — mục **Hàng hỏng (SP lỗi)** + **Hàng rác**; mở dòng con hiện NVL **chỉ từ BOM lệnh SX** (`lenh_sx` → `san_pham.nplItems`), phân bổ trọng lượng lỗi theo % trên BOM. **Máy cách nhiệt:** Vật tư khác = rác màng xi (SP rác); Nhựa = tổng lỗi hỏng − rác màng xi

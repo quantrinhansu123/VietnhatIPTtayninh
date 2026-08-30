@@ -405,7 +405,7 @@ export async function loadProductionPlanRelatedReports(
     ...(finishedGoodsInboundRes.ok ? normalizeWarehouseMovements(finishedGoodsInboundRes.data) : [])
   ];
   const warehouseMovements = warehouseMovementsAll.filter(row =>
-    shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
+    row.slipType === 'xuat' ? true : shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
   );
   if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
   if (!finishedGoodsInboundRes.ok) errors.push('Phiếu nhập kho thành phẩm');

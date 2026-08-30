@@ -16,8 +16,15 @@ import {
   matchesControlBoardDateRange,
   matchesShiftSummaryBucket,
   machineValueMatchesFilter,
-  resolveWarehouseMovementMachineCandidates
+  resolveWarehouseMovementMachineCandidates,
+  movementHasLinkedProductionOrderCodes,
+  movementLinksProductionOrderCode
 } from '../../utils/controlBoardShiftSummary';
+import {
+  filterMachinesByReportKind,
+  machineMatchesReportKind,
+  type BbMachineReportKind
+} from '../../utils/controlBoardBbMachineReport';
 import {
   getProductionShiftOptions,
   resolvePreviousProductionShift,
@@ -88,11 +95,44 @@ function formatProductionOrderPanelDate(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
+const BB_MACHINE_KIND_STORAGE_KEY = 'control-board-bb-machine-kind-v1';
+
+function loadBoardMachineKind(): BbMachineReportKind {
+  if (typeof window === 'undefined') return 'insulation';
+  const raw = localStorage.getItem(BB_MACHINE_KIND_STORAGE_KEY);
+  return raw === 'packaging' ? 'packaging' : 'insulation';
+}
+
+function persistBoardMachineKind(kind: BbMachineReportKind) {
+  try {
+    localStorage.setItem(BB_MACHINE_KIND_STORAGE_KEY, kind);
+  } catch {
+    /* ignore quota */
+  }
+}
+
 function compareProductionOrderByRecentDate(a: ProductionOrderRow, b: ProductionOrderRow): number {
   const dateA = parseProductionOrderFilterDate(a.startDate);
   const dateB = parseProductionOrderFilterDate(b.startDate);
   if (dateA !== dateB) return dateB.localeCompare(dateA);
   return compareProductionOrderPriority(a, b);
+}
+
+function buildPanelProductionOrderOptionLabel(
+  order: ProductionOrderRow,
+  machines: MachineRow[],
+  productionOrderSettings: ProductionOrderLookupSetting[]
+): { code: string; label: string; ngay: string } {
+  const code = String(order.code || '').trim();
+  const ngay = parseProductionOrderFilterDate(order.startDate);
+  const shiftLabel = formatProductionOrderShiftLabel(order.shift, productionOrderSettings);
+  const machineLabel = resolveProductionOrderMachine(order, machines);
+  const parts = [code];
+  if (ngay) parts.push(ngay);
+  else if (order.startDate && order.startDate !== '-') parts.push(String(order.startDate));
+  if (shiftLabel && shiftLabel !== '-') parts.push(shiftLabel);
+  if (machineLabel && machineLabel !== '-') parts.push(machineLabel);
+  return { code, label: parts.join(' · '), ngay: ngay || '' };
 }
 
 export function ControlBoardPanel({
@@ -152,6 +192,8 @@ export function ControlBoardPanel({
   const [draftBoardFilterMachine, setDraftBoardFilterMachine] = useState('all');
   const [draftBoardFilterProductionOrder, setDraftBoardFilterProductionOrder] = useState('all');
   const [draftBoardFilterProductionOrderQuery, setDraftBoardFilterProductionOrderQuery] = useState('');
+  const [boardMachineKind, setBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
+  const [draftBoardMachineKind, setDraftBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
   const [filterReloadToken, setFilterReloadToken] = useState(0);
   const uiBoardDateScope = isAutoReport ? draftBoardDateScope : boardDateScope;
   const uiShiftSummaryDateFrom = isAutoReport ? draftShiftSummaryDateFrom : shiftSummaryDateFrom;
@@ -162,6 +204,7 @@ export function ControlBoardPanel({
   const uiBoardFilterProductionOrderQuery = isAutoReport
     ? draftBoardFilterProductionOrderQuery
     : boardFilterProductionOrderQuery;
+  const uiBoardMachineKind = isAutoReport ? draftBoardMachineKind : boardMachineKind;
   const uiDateScopeAll = uiBoardDateScope === 'all';
   const uiEffectiveDateFrom = uiDateScopeAll ? '' : uiShiftSummaryDateFrom;
   const uiEffectiveDateTo = uiDateScopeAll ? '' : uiShiftSummaryDateTo;
@@ -194,6 +237,7 @@ export function ControlBoardPanel({
     setBoardDateScope('range');
     setBoardFilterShift('all');
     setBoardFilterMachine('all');
+    setBoardMachineKind('insulation');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
     setDraftShiftSummaryDateFrom(defaultRange.from);
@@ -201,6 +245,7 @@ export function ControlBoardPanel({
     setDraftBoardDateScope('range');
     setDraftBoardFilterShift('all');
     setDraftBoardFilterMachine('all');
+    setDraftBoardMachineKind('insulation');
     setDraftBoardFilterProductionOrder('all');
     setDraftBoardFilterProductionOrderQuery('');
   }, [isAutoReport]);
@@ -399,8 +444,8 @@ export function ControlBoardPanel({
     machineValueMatchesFilter(boardFilterMachine, selectedBoardMachine, ...candidates);
 
   /** Lệnh SX khớp bộ lọc: chọn đúng mã, hoặc gõ tìm (vd 0086 / LSX) — tìm trên mọi lệnh đã tải. */
-  /** Danh sách máy phụ thuộc ca (và khoảng ngày) được phân công trong lệnh SX — theo giá trị đang chọn trên bộ lọc. */
-  const panelMachines = useMemo(() => {
+  /** Danh sách máy phụ thuộc ca (và khoảng ngày) được phân công trong lệnh SX. */
+  const shiftScopedMachines = useMemo(() => {
     if (!uiBoardFilterShift || uiBoardFilterShift === 'all') return machines;
 
     const matchesUiDateRange = (value?: string) =>
@@ -423,6 +468,12 @@ export function ControlBoardPanel({
     );
   }, [machines, productionOrders, uiBoardFilterShift, uiEffectiveDateFrom, uiEffectiveDateTo]);
 
+  /** `/phan-tich-tu-dong`: lọc máy theo loại bao bì / cách nhiệt. */
+  const panelMachines = useMemo(() => {
+    if (!isAutoReport) return shiftScopedMachines;
+    return filterMachinesByReportKind(shiftScopedMachines, uiBoardMachineKind);
+  }, [isAutoReport, shiftScopedMachines, uiBoardMachineKind]);
+
   // Ca/ngày chỉ có một máy được phân công thì chọn sẵn máy đó (trên bộ lọc đang chỉnh).
   useEffect(() => {
     if (uiBoardFilterShift === 'all' || panelMachines.length !== 1) return;
@@ -431,6 +482,117 @@ export function ControlBoardPanel({
       else setBoardFilterMachine(panelMachines[0].code);
     }
   }, [uiBoardFilterShift, uiBoardFilterMachine, panelMachines, isAutoReport]);
+
+  const syncMachineFilterToPanelMachines = (
+    machineList: MachineRow[],
+    currentMachine: string,
+    setMachine: (value: string) => void
+  ) => {
+    if (currentMachine === 'all') return;
+    if (machineList.some(machine => machine.code === currentMachine)) return;
+    setMachine(machineList[0]?.code || 'all');
+  };
+
+  useEffect(() => {
+    if (!isAutoReport) return;
+    syncMachineFilterToPanelMachines(panelMachines, uiBoardFilterMachine, value => {
+      setDraftBoardFilterMachine(value);
+    });
+  }, [isAutoReport, panelMachines, uiBoardFilterMachine]);
+
+  const handleBoardMachineKindChange = (kind: BbMachineReportKind) => {
+    persistBoardMachineKind(kind);
+    if (isAutoReport) {
+      setDraftBoardMachineKind(kind);
+      const filtered = filterMachinesByReportKind(shiftScopedMachines, kind);
+      const current = machines.find(machine => machine.code === draftBoardFilterMachine);
+      if (draftBoardFilterMachine !== 'all' && current && machineMatchesReportKind(current, kind)) return;
+      setDraftBoardFilterMachine(filtered[0]?.code || 'all');
+      return;
+    }
+    setBoardMachineKind(kind);
+    const filtered = filterMachinesByReportKind(shiftScopedMachines, kind);
+    syncMachineFilterToPanelMachines(filtered, boardFilterMachine, setBoardFilterMachine);
+  };
+
+  /** Lệnh SX khớp ngày + ca (+ máy) đang chọn trên bộ lọc (draft khi `/phan-tich-tu-dong`). */
+  const uiBucketProductionOrders = useMemo(() => {
+    if (uiDateScopeAll || !uiBoardFilterShift || uiBoardFilterShift === 'all') return [];
+
+    const matchesUiDateRange = (value?: string) =>
+      matchesControlBoardDateRange(value, uiEffectiveDateFrom, uiEffectiveDateTo);
+    const selectedUiMachine =
+      uiBoardFilterMachine !== 'all'
+        ? machines.find(machine => machine.code === uiBoardFilterMachine) ?? { code: uiBoardFilterMachine }
+        : null;
+
+    return productionOrders.filter(order => {
+      const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+      if (!matchesUiDateRange(orderDate || undefined)) return false;
+      if (!shiftNamesMatch(order.shift, uiBoardFilterShift)) return false;
+      if (uiBoardFilterMachine === 'all') return true;
+      return machineValueMatchesFilter(
+        uiBoardFilterMachine,
+        selectedUiMachine,
+        order.machine,
+        order.position,
+        resolveProductionOrderMachine(order, machines)
+      );
+    });
+  }, [
+    productionOrders,
+    machines,
+    uiDateScopeAll,
+    uiBoardFilterShift,
+    uiBoardFilterMachine,
+    uiEffectiveDateFrom,
+    uiEffectiveDateTo
+  ]);
+
+  // `/phan-tich-tu-dong`: đổi ngày/ca (và máy nếu có) thì tự chọn lệnh SX khớp bucket.
+  useEffect(() => {
+    if (!isAutoReport) return;
+
+    const resetProductionOrderFilter = () => {
+      if (draftBoardFilterProductionOrder !== 'all' || draftBoardFilterProductionOrderQuery) {
+        setDraftBoardFilterProductionOrder('all');
+        setDraftBoardFilterProductionOrderQuery('');
+      }
+    };
+
+    if (uiDateScopeAll || uiBoardFilterShift === 'all') {
+      resetProductionOrderFilter();
+      return;
+    }
+
+    const matched = [...uiBucketProductionOrders].sort(compareProductionOrderByRecentDate);
+    if (matched.length === 0) {
+      resetProductionOrderFilter();
+      return;
+    }
+
+    const { code, label } = buildPanelProductionOrderOptionLabel(
+      matched[0],
+      machines,
+      productionOrderSettings
+    );
+    if (draftBoardFilterProductionOrder !== code || draftBoardFilterProductionOrderQuery !== label) {
+      setDraftBoardFilterProductionOrder(code);
+      setDraftBoardFilterProductionOrderQuery(label);
+    }
+  }, [
+    isAutoReport,
+    uiDateScopeAll,
+    uiBoardFilterShift,
+    uiBoardFilterMachine,
+    uiEffectiveDateFrom,
+    uiEffectiveDateTo,
+    uiBucketProductionOrders,
+    machines,
+    productionOrderSettings,
+    draftBoardFilterProductionOrder,
+    draftBoardFilterProductionOrderQuery
+  ]);
 
   const handleUiBoardShiftChange = (shift: string) => {
     if (isAutoReport) setDraftBoardFilterShift(shift);
@@ -550,9 +712,10 @@ export function ControlBoardPanel({
 
   const boardScopedAcceptanceReports = useMemo(() => {
     if (!hasBoardProductionOrderFilter) return shiftSummaryAcceptanceReports;
-    return shiftSummaryAcceptanceReports.filter(report =>
-      matchesBoardProductionOrderBucket(report.ngay, report.ca, report.ma_may, report.ten_may)
-    );
+    return shiftSummaryAcceptanceReports.filter(report => {
+      const ngay = parseProductionOrderFilterDate(report.ngay) || report.ngay;
+      return matchesBoardProductionOrderBucket(ngay, report.ca, report.ma_may, report.ten_may);
+    });
   }, [
     shiftSummaryAcceptanceReports,
     hasBoardProductionOrderFilter,
@@ -569,6 +732,41 @@ export function ControlBoardPanel({
         productionOrders,
         order => resolveProductionOrderMachine(order as ProductionOrderRow, machines)
       );
+      if (movement.slipType === 'xuat') {
+        const movementNgay = parseProductionOrderFilterDate(movement.slipDate) || movement.slipDate;
+        const hasLinkedCodes = movementHasLinkedProductionOrderCodes(movement);
+        return boardMatchedProductionOrders!.some(order => {
+          const orderNgay = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+          if (orderNgay && movementNgay && orderNgay !== movementNgay) return false;
+
+          const hasMachineHint = machineCandidates.some(value => {
+            const raw = String(value || '').trim();
+            return Boolean(raw && raw !== '-');
+          });
+          if (hasMachineHint) {
+            if (
+              !machineValueMatchesFilter(
+                order.machine || 'all',
+                {
+                  code: order.machine,
+                  name: resolveProductionOrderMachine(order, machines)
+                },
+                ...machineCandidates,
+                order.machine,
+                order.position,
+                resolveProductionOrderMachine(order, machines)
+              )
+            ) {
+              return false;
+            }
+          }
+
+          if (hasLinkedCodes) {
+            return movementLinksProductionOrderCode(movement, order.code);
+          }
+          return true;
+        });
+      }
       return matchesBoardProductionOrderBucket(
         movement.slipDate,
         movement.shift,
@@ -582,6 +780,83 @@ export function ControlBoardPanel({
     boardShiftOptions,
     productionOrders,
     machines
+  ]);
+
+  /** Phiếu xuất NVL cùng ngày lệnh (mọi ca) — cột «Xuất trong ngày» & in phiếu mục 3.1/3.2. */
+  const boardWarehouseMovementsByDate = useMemo(() => {
+    return shiftSummaryWarehouseMovementRefs.filter(movement => {
+      if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') return false;
+
+      const movementNgay = parseProductionOrderFilterDate(movement.slipDate) || movement.slipDate;
+      if (!matchesBoardDateRange(movementNgay)) return false;
+
+      const machineCandidates = resolveWarehouseMovementMachineCandidates(
+        movement,
+        productionOrders,
+        order => resolveProductionOrderMachine(order as ProductionOrderRow, machines)
+      );
+
+      if (boardFilterMachine && boardFilterMachine !== 'all') {
+        if (
+          !machineValueMatchesFilter(
+            boardFilterMachine,
+            selectedBoardMachine,
+            ...machineCandidates,
+            movement.machine
+          )
+        ) {
+          return false;
+        }
+      }
+
+      if (!hasBoardProductionOrderFilter || !boardMatchedProductionOrders) {
+        return true;
+      }
+      if (boardMatchedProductionOrders.length === 0) return false;
+
+      const hasLinkedCodes = movementHasLinkedProductionOrderCodes(movement);
+
+      return boardMatchedProductionOrders.some(order => {
+        const orderNgay = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+        if (orderNgay && movementNgay && orderNgay !== movementNgay) return false;
+
+        const hasMachineHint = machineCandidates.some(value => {
+          const raw = String(value || '').trim();
+          return Boolean(raw && raw !== '-');
+        });
+        if (hasMachineHint) {
+          if (
+            !machineValueMatchesFilter(
+              order.machine || 'all',
+              {
+                code: order.machine,
+                name: resolveProductionOrderMachine(order, machines)
+              },
+              ...machineCandidates,
+              order.machine,
+              order.position,
+              resolveProductionOrderMachine(order, machines)
+            )
+          ) {
+            return false;
+          }
+        }
+
+        if (hasLinkedCodes) {
+          return movementLinksProductionOrderCode(movement, order.code);
+        }
+        return true;
+      });
+    });
+  }, [
+    shiftSummaryWarehouseMovementRefs,
+    matchesBoardDateRange,
+    boardFilterMachine,
+    selectedBoardMachine,
+    productionOrders,
+    machines,
+    hasBoardProductionOrderFilter,
+    boardMatchedProductionOrders
   ]);
 
   const boardScopedWeighingRecords = useMemo(() => {
@@ -670,7 +945,12 @@ export function ControlBoardPanel({
         shiftSettings: productionOrderSettings,
         productionOrders: boardScopedProductionOrders,
         products: products.map(product => ({ code: product.code, totalWeight: product.totalWeight })),
-        materials: materials.map(material => ({ code: material.code, totalWeight: material.totalWeight })),
+        materials: materials.map(material => ({
+          code: material.code,
+          name: material.name,
+          warehouse: material.warehouse,
+          totalWeight: material.totalWeight
+        })),
         acceptanceReports: boardScopedAcceptanceReports,
         warehouseMovements: boardScopedWarehouseMovements,
         weighingRecords: boardScopedWeighingRecords,
@@ -730,6 +1010,7 @@ export function ControlBoardPanel({
       draftShiftSummaryDateTo !== shiftSummaryDateTo ||
       draftBoardFilterShift !== boardFilterShift ||
       draftBoardFilterMachine !== boardFilterMachine ||
+      draftBoardMachineKind !== boardMachineKind ||
       draftBoardFilterProductionOrder !== boardFilterProductionOrder ||
       draftBoardFilterProductionOrderQuery !== boardFilterProductionOrderQuery
     );
@@ -745,6 +1026,8 @@ export function ControlBoardPanel({
     boardFilterShift,
     draftBoardFilterMachine,
     boardFilterMachine,
+    draftBoardMachineKind,
+    boardMachineKind,
     draftBoardFilterProductionOrder,
     boardFilterProductionOrder,
     draftBoardFilterProductionOrderQuery,
@@ -762,6 +1045,7 @@ export function ControlBoardPanel({
     setShiftSummaryDateTo(draftShiftSummaryDateTo);
     setBoardFilterShift(draftBoardFilterShift);
     setBoardFilterMachine(draftBoardFilterMachine);
+    setBoardMachineKind(draftBoardMachineKind);
     setBoardFilterProductionOrder(draftBoardFilterProductionOrder);
     setBoardFilterProductionOrderQuery(draftBoardFilterProductionOrderQuery);
     if (dateChanged) setFilterReloadToken(token => token + 1);
@@ -774,6 +1058,8 @@ export function ControlBoardPanel({
     setShiftSummaryDateTo(defaultRange.to);
     setBoardFilterShift('all');
     setBoardFilterMachine('all');
+    setBoardMachineKind('insulation');
+    persistBoardMachineKind('insulation');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
     if (isAutoReport) {
@@ -782,6 +1068,7 @@ export function ControlBoardPanel({
       setDraftShiftSummaryDateTo(defaultRange.to);
       setDraftBoardFilterShift('all');
       setDraftBoardFilterMachine('all');
+      setDraftBoardMachineKind('insulation');
       setDraftBoardFilterProductionOrder('all');
       setDraftBoardFilterProductionOrderQuery('');
       setFilterReloadToken(token => token + 1);
@@ -792,24 +1079,30 @@ export function ControlBoardPanel({
   const panelProductionOrderOptions = useMemo(() => {
     const seen = new Set<string>();
     const options: Array<{ code: string; label: string; ngay: string; inRange: boolean }> = [];
+    const optionDateFrom = isAutoReport ? uiEffectiveDateFrom : effectiveDateFrom;
+    const optionDateTo = isAutoReport ? uiEffectiveDateTo : effectiveDateTo;
+    const optionDateScopeAll = isAutoReport ? uiDateScopeAll : dateScopeAll;
+    const matchesOptionDateRange = (value?: string) =>
+      matchesControlBoardDateRange(value, optionDateFrom, optionDateTo);
+    const bucketCodes =
+      isAutoReport && !uiDateScopeAll && uiBoardFilterShift !== 'all'
+        ? new Set(uiBucketProductionOrders.map(order => order.code))
+        : null;
 
     for (const order of productionOrders) {
-      const code = String(order.code || '').trim();
+      const { code, label, ngay } = buildPanelProductionOrderOptionLabel(
+        order,
+        machines,
+        productionOrderSettings
+      );
       if (!code || seen.has(code)) continue;
+      if (bucketCodes && !bucketCodes.has(code)) continue;
       seen.add(code);
-      const ngay = parseProductionOrderFilterDate(order.startDate);
-      const shiftLabel = formatProductionOrderShiftLabel(order.shift, productionOrderSettings);
-      const machineLabel = resolveProductionOrderMachine(order, machines);
-      const parts = [code];
-      if (ngay) parts.push(ngay);
-      else if (order.startDate && order.startDate !== '-') parts.push(String(order.startDate));
-      if (shiftLabel && shiftLabel !== '-') parts.push(shiftLabel);
-      if (machineLabel && machineLabel !== '-') parts.push(machineLabel);
       options.push({
         code,
-        label: parts.join(' · '),
-        ngay: ngay || '',
-        inRange: matchesBoardDateRange(ngay || order.startDate)
+        label,
+        ngay,
+        inRange: optionDateScopeAll ? true : matchesOptionDateRange(ngay || order.startDate)
       });
     }
 
@@ -819,7 +1112,20 @@ export function ControlBoardPanel({
       if (dateCmp !== 0) return dateCmp;
       return a.code.localeCompare(b.code, 'vi', { numeric: true });
     });
-  }, [productionOrders, machines, productionOrderSettings, effectiveDateFrom, effectiveDateTo]);
+  }, [
+    productionOrders,
+    machines,
+    productionOrderSettings,
+    effectiveDateFrom,
+    effectiveDateTo,
+    isAutoReport,
+    uiEffectiveDateFrom,
+    uiEffectiveDateTo,
+    uiDateScopeAll,
+    dateScopeAll,
+    uiBoardFilterShift,
+    uiBucketProductionOrders
+  ]);
 
   useEffect(() => {
     if (boardFilterProductionOrder === 'all') return;
@@ -1094,6 +1400,9 @@ export function ControlBoardPanel({
           deferApply={isAutoReport}
           onApply={applyBoardFilters}
           hasPendingChanges={hasPendingFilterChanges}
+          showMachineKindToggle={isAutoReport}
+          machineKindFilter={uiBoardMachineKind}
+          onMachineKindFilterChange={handleBoardMachineKindChange}
         />
         {reportOnly ? (
           <div className="flex justify-end">
@@ -1116,6 +1425,7 @@ export function ControlBoardPanel({
         materials={materials}
         machines={machines}
         warehouseMovements={boardScopedWarehouseMovements}
+        warehouseMovementsByDate={boardWarehouseMovementsByDate}
         damagedRecords={boardScopedDamagedRecords}
         machineNvlReports={boardScopedMachineNvlReports}
         mixingReports={boardScopedMixingReports}

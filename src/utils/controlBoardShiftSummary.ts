@@ -1,9 +1,7 @@
 import type { AcceptanceReport } from '../components/AcceptanceReportForm';
 import type { WeighingRecord } from './weighingRecords';
 import {
-  getWeighingDataRows,
   parseWeighingWeight,
-  splitDamagedGoodsDefectWeights,
   sumWeighingRowTotalWeight
 } from './weighingRecords';
 import { roundNormWeight } from '../lib/mixingReportModel';
@@ -20,6 +18,7 @@ import {
   type ShiftOption,
   type ShiftSetting
 } from './shiftSettings';
+import { splitAcceptanceLoiHongWeightKg } from './controlBoardBbMachineReport';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
 import { parseDateToIso } from './dateFormat';
 
@@ -269,6 +268,8 @@ type ProductRef = {
 
 type MaterialRef = {
   code: string;
+  name?: string;
+  warehouse?: string;
   totalWeight: string;
 };
 
@@ -864,6 +865,12 @@ export function matchesShiftSummaryBucket(
   );
 }
 
+/** Phiếu xuất kho: chỉ khớp ngày (bộ lọc ngày), không lọc ca. */
+export function matchesWarehouseExportDate(bucketNgay: string, slipDate: string) {
+  const date = parseIsoDate(slipDate);
+  return Boolean(date && date === parseIsoDate(bucketNgay));
+}
+
 function compareSummaryRows(a: ControlBoardShiftSummaryRow, b: ControlBoardShiftSummaryRow, shiftOptions: ShiftOption[]) {
   const byDate = b.ngay.localeCompare(a.ngay);
   if (byDate !== 0) return byDate;
@@ -963,31 +970,59 @@ export function buildControlBoardShiftSummary(input: {
   // Không lấy Khối lượng hàng TT từ phiếu cân ca nữa (phieu_can_dinh_ki).
   // KL lõi không lấy từ phiếu cân ca; lấy từ SL cuộn thực tế (báo cáo sản lượng) × 1kg.
 
-  for (const record of getWeighingDataRows(input.damagedRecords ?? [])) {
-    const ngay = parseIsoDate(record.productionDate || record.reportDate);
-    if (!ngay || !inRange(ngay)) continue;
-    const bucket = getOrCreateBucket(map, ngay, record.shiftName, shiftOptions);
+  const materialRowsForLoiHong = (input.materials ?? []).map(material => ({
+    id: material.code,
+    code: material.code,
+    name: material.name || material.code,
+    unit: '',
+    warehouse: material.warehouse || '',
+    totalWeight: material.totalWeight,
+    plasticWeight: '',
+    bagWeight: '',
+    coreWeight: '',
+    rollWidth: '',
+    unitLength: '',
+    openingStock: '',
+    inbound: '',
+    outbound: ''
+  }));
+
+  for (const report of input.acceptanceReports) {
+    if (!inRange(report.ngay)) continue;
+    const bucket = getOrCreateBucket(map, report.ngay, report.ca, shiftOptions);
     if (!bucket) continue;
-    const defectSplit = splitDamagedGoodsDefectWeights(record);
-    bucket.hangHong += defectSplit.tong;
-    bucket.hangHongNhua += defectSplit.nhuaKhongMang + defectSplit.nhuaCucDauNong + defectSplit.nhuaDinhMang;
-    bucket.hangHongMang += defectSplit.mang;
-    bucket.tlNhuaKhongMangLoiHong += defectSplit.nhuaKhongMang;
-    bucket.tlNhuaCucDauNongLoiHong += defectSplit.nhuaCucDauNong;
-    bucket.tlNhuaDinhMangLoiHong += defectSplit.nhuaDinhMang;
-    bucket.tlMangLoiHong += defectSplit.mang;
-    bucket.soCuonLoiDinhHangHong += defectSplit.loi;
-    bucket.tongTrongLuongLoiHong += defectSplit.tong;
+    const split = splitAcceptanceLoiHongWeightKg(report, materialRowsForLoiHong);
+    if (!split) continue;
+    bucket.hangHong += split.tongKg;
+    bucket.hangHongNhua += split.nhuaKg;
+    bucket.hangHongMang += split.mangKg;
+    bucket.tlNhuaKhongMangLoiHong += split.nhuaKg;
+    bucket.tlMangLoiHong += split.mangKg;
+    bucket.tongTrongLuongLoiHong += split.tongKg;
   }
 
   for (const movement of input.warehouseMovements ?? []) {
     if (!inRange(movement.slipDate)) continue;
-    const bucket = getOrCreateBucket(map, movement.slipDate, movement.shift, shiftOptions);
-    if (!bucket) continue;
-    bucket.khoiLuongNpl += sumWarehouseMovementNplKg(movement, resolveKgFactor);
-    bucket.khoiLuongMangXuat += sumWarehouseMovementMangKg(movement, resolveKgFactor);
-    bucket.khoiLuongLoiXuatKho += sumWarehouseMovementLoiXuatKg(movement, resolveKgFactor);
-    bucket.khoiLuongTuiXuatKho += sumWarehouseMovementTuiXuatKg(movement, resolveKgFactor);
+    const ngay = parseIsoDate(movement.slipDate);
+    if (!ngay) continue;
+    const dayBuckets = [...map.values()].filter(bucket => bucket.ngay === ngay);
+    const targets =
+      dayBuckets.length > 0
+        ? dayBuckets
+        : (() => {
+            const created = getOrCreateBucket(map, movement.slipDate, movement.shift, shiftOptions);
+            return created ? [created] : [];
+          })();
+    const nplKg = sumWarehouseMovementNplKg(movement, resolveKgFactor);
+    const mangKg = sumWarehouseMovementMangKg(movement, resolveKgFactor);
+    const loiKg = sumWarehouseMovementLoiXuatKg(movement, resolveKgFactor);
+    const tuiKg = sumWarehouseMovementTuiXuatKg(movement, resolveKgFactor);
+    for (const bucket of targets) {
+      bucket.khoiLuongNpl += nplKg;
+      bucket.khoiLuongMangXuat += mangKg;
+      bucket.khoiLuongLoiXuatKho += loiKg;
+      bucket.khoiLuongTuiXuatKho += tuiKg;
+    }
   }
 
   for (const report of input.machineNvlReports ?? []) {
@@ -1181,25 +1216,24 @@ export function isWarehousePlasticNvlLine(
 }
 
 /**
- * Giá nhựa (đ/kg) từ phiếu xuất kho cùng ngày + ca.
+ * Giá nhựa (đ/kg) từ phiếu xuất kho cùng ngày (mọi ca, theo bộ lọc ngày).
  * Chỉ lấy từ phiếu xuất NVL nhựa — không được phép tính từ phiếu nhập kho.
  * Nhiều dòng → bình quân gia quyền theo số lượng.
  */
 export function resolveShiftSummaryGiaNhuaFromWarehouse(
   ngay: string,
-  ca: string,
+  _ca: string,
   movements: ShiftSummaryWarehouseMovement[] | undefined,
-  shiftSettings: ShiftSetting[]
+  _shiftSettings: ShiftSetting[]
 ): number {
   if (!movements || movements.length === 0) return 0;
-  const shiftOptions = getProductionShiftOptions(shiftSettings);
 
   let amount = 0;
   let qty = 0;
   for (const movement of movements) {
     if (movement.slipType !== 'xuat') continue;
     if (!isWarehousePlasticNvlLine(movement)) continue;
-    if (!matchesShiftSummaryBucket(ngay, ca, movement.slipDate, movement.shift, shiftOptions)) continue;
+    if (!matchesWarehouseExportDate(ngay, movement.slipDate)) continue;
     const unitPrice = Number(movement.unitPrice);
     const quantity = Number(movement.quantity);
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue;

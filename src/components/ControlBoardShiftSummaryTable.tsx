@@ -1210,7 +1210,7 @@ export default function ControlBoardShiftSummaryTable({
                     <SummaryValueCell row={row} metric="tiLeLoiHong" formatted={formatShiftSummaryPercent(row.tiLeLoiHong)} className="px-3 py-2 text-right font-mono font-bold text-rose-700" onOpen={openDetail} />
                     <SummaryValueCell row={row} metric="lechLoiHongVsDinhMuc" formatted={formatShiftSummaryPercent(row.lechLoiHongVsDinhMuc)} className="px-3 py-2 text-right font-mono font-bold text-amber-700" onOpen={openDetail} />
                     <SummaryValueCell row={row} metric="giaTriLoLaiNhua" formatted={formatShiftSummaryKg(row.giaTriLoLaiNhua, 3)} className="px-3 py-2 text-right font-mono font-bold text-amber-800" onOpen={openDetail} />
-                    <td className="px-3 py-2 text-right font-mono font-bold text-zinc-800" title="Giá NVL nhựa từ phiếu xuất/nhập kho cùng ngày + ca">
+                    <td className="px-3 py-2 text-right font-mono font-bold text-zinc-800" title="Giá NVL nhựa từ phiếu xuất kho cùng ngày (mọi ca)">
                       {giaNhua > 0 ? `${formatMoney(giaNhua, 0)} đ` : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-mono font-bold text-emerald-800">

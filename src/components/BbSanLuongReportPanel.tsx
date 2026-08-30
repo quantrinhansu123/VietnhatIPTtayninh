@@ -8,10 +8,12 @@ import {
   shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
-import type {
-  BbSanLuongGroup,
-  BbSanLuongNvlLine,
-  BbSanLuongProductGroup
+import {
+  isBbSanLuongNvlKgLine,
+  orderBbSanLuongNvlLinesByKg,
+  resolveBbSanLuongNvlDisplayUnit,
+  type BbSanLuongGroup,
+  type BbSanLuongNvlLine
 } from '../utils/controlBoardBbMachineReport';
 
 function formatKg(value: number | null | undefined, digits = 2) {
@@ -24,14 +26,6 @@ function formatPercent(value: number | null | undefined, digits = 1) {
   return `${formatNumber(value, digits)}%`;
 }
 
-function formatNgayCompact(ngay: string) {
-  const raw = String(ngay || '').trim();
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return { day: iso[3], month: iso[2] };
-  const vi = raw.match(/^(\d{1,2})\/(\d{1,2})/);
-  if (vi) return { day: vi[1].padStart(2, '0'), month: vi[2].padStart(2, '0') };
-  return { day: '—', month: '—' };
-}
 
 function resolveShiftTimeRange(
   shift: string,
@@ -80,8 +74,7 @@ function resolveNvlQuantity(line: BbSanLuongNvlLine) {
     return formatPercent(line.tiLeDinhMucPercent, 0);
   }
   if (line.quantity != null && line.quantity > 0) {
-    const unit = String(line.unit || '').trim();
-    return unit ? `${formatNumber(line.quantity, 0)} ${unit}` : formatNumber(line.quantity, 0);
+    return formatNumber(line.quantity, 0);
   }
   return '—';
 }
@@ -92,68 +85,6 @@ function resolveNvlWeight(line: BbSanLuongNvlLine) {
   return '—';
 }
 
-function SanLuongProductColumn({ product }: { product: BbSanLuongProductGroup }) {
-  const unitLabel = formatUnitLabel(product.unit);
-  const weightKg = product.weightKg > 0 ? product.weightKg : product.totalActualWeightKg;
-  const kgPerUnit =
-    product.quantity > 0 && weightKg > 0 ? weightKg / product.quantity : null;
-
-  return (
-    <div className="min-w-[280px] flex-1 border-l border-zinc-200 pl-4 first:border-l-0 first:pl-0">
-      <div className="flex items-start justify-between gap-3">
-        <span className="truncate font-semibold text-zinc-900">{product.productCode || product.productName}</span>
-        <span className="shrink-0 font-semibold tabular-nums text-zinc-900">{formatKg(weightKg, 0)} kg</span>
-      </div>
-      <p className="mt-0.5 text-xs text-zinc-500">
-        {formatNumber(product.quantity, 0)} {unitLabel}
-        {kgPerUnit != null ? (
-          <>
-            {' · '}
-            {formatKg(kgPerUnit, 2)} kg/{unitLabel}
-          </>
-        ) : null}
-        {' · '}
-        {formatPercent(product.productSharePercent, 1)} sản lượng ca
-      </p>
-      <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-zinc-100">
-        <div
-          className="h-full rounded-full bg-sky-500/70"
-          style={{ width: `${Math.min(100, Math.max(0, product.productSharePercent))}%` }}
-        />
-      </div>
-
-      {product.lines.length === 0 ? (
-        <p className="mt-3 py-2 text-xs text-zinc-400">Chưa có NVL snapshot.</p>
-      ) : (
-        <table className="mt-3 w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-zinc-200 text-zinc-400">
-              <th className="pb-1.5 pr-2 font-normal">Mã NVL</th>
-              <th className="pb-1.5 pr-2 font-normal">Tên NVL</th>
-              <th className="pb-1.5 pr-2 text-right font-normal">Số lượng</th>
-              <th className="pb-1.5 text-right font-normal">Trọng lượng</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {product.lines.map(line => (
-              <tr key={line.key}>
-                <td className="py-2 pr-2 font-mono text-zinc-500">{line.itemCode || '—'}</td>
-                <td className="py-2 pr-2 text-zinc-700" title={line.itemName}>
-                  {line.itemName || '—'}
-                </td>
-                <td className="py-2 pr-2 text-right tabular-nums text-zinc-800">
-                  {resolveNvlQuantity(line)}
-                </td>
-                <td className="py-2 text-right tabular-nums text-zinc-800">{resolveNvlWeight(line)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
 function SanLuongShiftSection({
   group,
   shiftSettings
@@ -161,7 +92,6 @@ function SanLuongShiftSection({
   group: BbSanLuongGroup;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
 }) {
-  const { day, month } = formatNgayCompact(group.ngay);
   const shiftName = resolveShiftName(group.shift, group.shiftLabel);
   const timeRange = resolveShiftTimeRange(group.shift, group.shiftLabel, shiftSettings);
   const normStatus = resolveNormStatus(group);
@@ -169,40 +99,125 @@ function SanLuongShiftSection({
   const totalWeight =
     productGroups.reduce((sum, pg) => sum + (pg.weightKg > 0 ? pg.weightKg : pg.totalActualWeightKg), 0) ||
     group.totalActualWeightKg;
+  const captionParts = [
+    group.ngay || '—',
+    shiftName,
+    timeRange || null,
+    group.orderCode ? `Lệnh ${group.orderCode}` : null,
+    group.machine || null,
+    `${formatNumber(group.totalQuantity, 0)} cuộn · ${formatKg(totalWeight, 0)} kg`,
+    normStatus ? normStatus.label : null
+  ].filter(Boolean);
+
+  const productRows = productGroups.map(product => {
+    const weightKg = product.weightKg > 0 ? product.weightKg : product.totalActualWeightKg;
+    const unitLabel = formatUnitLabel(product.unit);
+    const lines = (
+      product.lines.length > 0
+        ? orderBbSanLuongNvlLinesByKg([...product.lines])
+        : [
+            {
+              key: `${product.key}|empty`,
+              itemCode: '—',
+              itemName: '—',
+              amountType: 'quantity' as const,
+              tiLeDinhMucPercent: null,
+              quantity: null,
+              unit: '',
+              actualWeightKg: 0,
+              normWeightKg: 0
+            }
+          ]
+    ) as BbSanLuongNvlLine[];
+    return {
+      key: product.key,
+      productCode: product.productCode,
+      productName: product.productName,
+      productQty: `${formatNumber(product.quantity, 0)} ${unitLabel}`,
+      productWeight: formatKg(weightKg, 1),
+      rowSpan: lines.length,
+      lines
+    };
+  });
 
   return (
-    <section className="border-b border-zinc-200 pb-6 last:border-b-0 last:pb-0">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
-            {day} · {month}
-          </span>
-          <span className="text-sm font-medium text-zinc-800">{shiftName}</span>
-          {timeRange ? <span className="text-sm text-zinc-400">{timeRange}</span> : null}
-          {group.orderCode ? (
-            <span className="text-sm font-medium text-sky-700">{group.orderCode}</span>
-          ) : null}
-          {group.machine ? <span className="text-xs text-zinc-400">{group.machine}</span> : null}
-        </div>
-        <div className="text-right">
-          <div className="text-sm text-zinc-500">{formatNumber(group.totalQuantity, 0)} cuộn</div>
-          <div className="text-2xl font-semibold tabular-nums text-zinc-900">{formatKg(totalWeight, 0)} kg</div>
-          {normStatus ? (
-            <div className={`text-xs font-medium ${normStatus.tone}`}>{normStatus.label}</div>
-          ) : null}
-        </div>
-      </div>
-
+    <section>
       {productGroups.length === 0 ? (
-        <p className="py-6 text-sm text-zinc-400">
-          Chưa có NVL snapshot trên phiếu. Vào danh sách phiếu → Xem → Đồng bộ, rồi bấm «Tính toán» lại.
-        </p>
+        <table className="bb-sheet-table">
+          <caption>{captionParts.join(' · ')}</caption>
+          <tbody>
+            <tr>
+              <td colSpan={9} className="py-6 text-center text-slate-400">
+                Chưa có NVL snapshot trên phiếu. Vào danh sách phiếu → Xem → Đồng bộ, rồi bấm «Tính toán» lại.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       ) : (
-        <div className="mt-4 flex flex-col gap-6 lg:flex-row lg:items-start">
-          {productGroups.map(product => (
-            <SanLuongProductColumn key={product.key} product={product} />
-          ))}
-        </div>
+        <table className="bb-sheet-table bb-san-luong-sheet min-w-[960px]">
+          <caption className="font-bold text-zinc-900">{captionParts.join(' · ')}</caption>
+          <thead>
+            <tr className="text-zinc-900">
+              <th className="font-black">Mã SP</th>
+              <th className="font-black">Tên SP</th>
+              <th className="text-right font-black">SL SP</th>
+              <th className="text-right font-black">TL SP (kg)</th>
+              <th className="font-black">Mã NVL</th>
+              <th className="font-black">Tên NVL</th>
+              <th className="font-black">ĐVT</th>
+              <th className="text-right font-black">SL NVL</th>
+              <th className="text-right font-black">TL NVL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {productRows.flatMap(product => {
+              const kgLineCount = product.lines.filter(line => isBbSanLuongNvlKgLine(line)).length;
+              return product.lines.map((line, lineIndex) => {
+                const isKgLine = isBbSanLuongNvlKgLine(line);
+                const isFirstOtherLine = !isKgLine && lineIndex === kgLineCount && kgLineCount > 0;
+                return (
+                <tr
+                  key={line.key}
+                  className={`text-zinc-900 ${isKgLine ? 'bb-san-luong-nvl-kg' : ''} ${isFirstOtherLine ? 'bb-san-luong-nvl-other-start' : ''}`}
+                >
+                  {lineIndex === 0 ? (
+                    <>
+                      <td rowSpan={product.rowSpan} className="align-middle font-mono font-bold text-zinc-900">
+                        {product.productCode || '—'}
+                      </td>
+                      <td
+                        rowSpan={product.rowSpan}
+                        className="max-w-[180px] truncate align-middle font-semibold text-zinc-900"
+                        title={product.productName || undefined}
+                      >
+                        {product.productName || '—'}
+                      </td>
+                      <td rowSpan={product.rowSpan} className="bb-sheet-num align-middle font-bold text-zinc-900">
+                        {product.productQty}
+                      </td>
+                      <td rowSpan={product.rowSpan} className="bb-sheet-num align-middle font-bold text-emerald-800">
+                        {product.productWeight}
+                      </td>
+                    </>
+                  ) : null}
+                  <td className="font-mono font-bold text-zinc-900">{line.itemCode || '—'}</td>
+                  <td
+                    className="max-w-[160px] truncate font-semibold text-zinc-900"
+                    title={line.itemName && line.itemName !== '—' ? line.itemName : undefined}
+                  >
+                    {line.itemName || '—'}
+                  </td>
+                  <td className="text-center font-bold text-zinc-800">
+                    {line.itemName === '—' ? '—' : resolveBbSanLuongNvlDisplayUnit(line)}
+                  </td>
+                  <td className="bb-sheet-num font-bold text-zinc-900">{resolveNvlQuantity(line)}</td>
+                  <td className="bb-sheet-num font-bold text-emerald-800">{resolveNvlWeight(line)}</td>
+                </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
       )}
     </section>
   );
@@ -229,7 +244,7 @@ export default function BbSanLuongReportPanel({
   if (groups.length === 0) {
     return (
       <div className="py-16 text-center text-sm text-zinc-400">
-        Chưa có phiếu báo cáo sản lượng gắn ca/ngày lệnh máy BB.
+        Chưa có phiếu Báo cáo sản lượng (Thành phẩm · Kho thành phẩm) gắn ca/ngày lệnh.
       </div>
     );
   }
@@ -238,13 +253,13 @@ export default function BbSanLuongReportPanel({
   const totalActual = groups.reduce((sum, g) => sum + (g.totalActualWeightKg || 0), 0);
 
   return (
-    <div className="px-4 py-4">
-      <div className="space-y-8">
+    <div className="bb-report-sheet-scroll px-2 py-3">
+      <div className="space-y-6">
         {groups.map(group => (
           <SanLuongShiftSection key={group.groupKey} group={group} shiftSettings={shiftSettings} />
         ))}
       </div>
-      <div className="mt-6 flex justify-end gap-6 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+      <div className="mt-6 flex justify-end gap-6 border-t border-zinc-200 pt-3 text-xs font-bold text-zinc-800">
         <span>Tổng định mức NVL: {formatKg(totalNorm, 1)} kg</span>
         <span>Tổng thực tế: {formatKg(totalActual, 1)} kg</span>
       </div>

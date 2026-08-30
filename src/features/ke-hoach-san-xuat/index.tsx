@@ -3869,7 +3869,7 @@ export interface ProductionOrderMaterialLine {
   weightKg: number | null;
   proposedQuantity: number;
   unit: string;
-  /** KL xuất thực tế từ Lệnh xuất vật tư (phiếu xuất kho NVL) cùng ngày + ca của lệnh SX. */
+  /** KL xuất thực tế từ Lệnh xuất vật tư (phiếu xuất kho NVL) cùng ngày của lệnh SX (mọi ca). */
   actualQuantity?: number | null;
 }
 
@@ -4143,20 +4143,9 @@ export async function loadProductionOrderPrintMaterials(
   return { materials: [...merged.values()], product: primaryProduct };
 }
 
-function warehouseSlipShiftMatchesOrder(slipShift: string | undefined, orderShift: string): boolean {
-  const slipShifts = String(slipShift || '')
-    .split(/[,;+]/)
-    .map(part => part.trim())
-    .filter(Boolean);
-  if (slipShifts.length === 0) return true;
-  const target = (orderShift || '').trim();
-  if (!target || target === '-') return true;
-  return slipShifts.some(part => shiftNamesMatch(part, target));
-}
-
 /**
  * Gán KL xuất thực tế từ các Lệnh xuất vật tư (phiếu xuất kho NVL cùng ngày kế hoạch)
- * vào bảng định mức NVL của từng lệnh SX, khớp theo ca của lệnh + mã NVL.
+ * vào bảng định mức NVL của từng lệnh SX, khớp theo ngày + mã NVL (không lọc ca).
  */
 export function applyWarehouseActualQuantities(
   items: PrintableProductionOrder[],
@@ -4165,7 +4154,6 @@ export function applyWarehouseActualQuantities(
   return items.map(item => {
     const totalsByMaterial = new Map<string, number>();
     warehouseSlips.forEach(slip => {
-      if (!warehouseSlipShiftMatchesOrder(slip.shift, item.order.shift)) return;
       slip.lines.forEach(line => {
         const key = normalizeProductCodeKey(line.code);
         if (!key) return;
@@ -4227,7 +4215,7 @@ export function ProductionOrderPrintSheet({
   product?: ProductRow | null;
   productCatalog?: ProductRow[];
   shiftSettings?: ProductionOrderLookupSetting[];
-  /** Hiện cột KL thực tế lấy từ Lệnh xuất vật tư cùng ngày + ca. */
+  /** Hiện cột KL thực tế lấy từ Lệnh xuất vật tư cùng ngày (mọi ca). */
   showActualQuantity?: boolean;
   /** Portal ra body để tránh #root overflow:hidden làm phiếu in trắng. */
   portal?: boolean;

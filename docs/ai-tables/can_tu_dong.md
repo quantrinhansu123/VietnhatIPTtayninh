@@ -47,8 +47,8 @@
 | `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày. **`images=0`** bỏ ký URL ảnh (dùng khi Tính toán) |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
-| `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`) |
-| `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong` nút **Ngày = hôm nay** gửi id các dòng **đang hiện theo bộ lọc** |
+| `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`). UI nút **Chọn Ca · điền hàng loạt** mở modal chọn ca rồi gửi id các dòng **đang hiện theo bộ lọc** |
+| `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong` nút **Chọn Ngày · điền hàng loạt** mở modal chọn ngày rồi gửi id các dòng **đang hiện theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới |
 
@@ -56,7 +56,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · cột **Ngày** (nghiệp vụ) + **Ngày giờ** (`captured_at`) · Nhựa thực tế / định mức · Excel · In |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** (Từ/Đến ngày · Ca · **Lệnh SX** · Mã SP · QR trùng) · cột **Ngày** + **Ngày giờ** · Excel · In |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP (8 cột + Tổng cộng) · khối **Tổng hợp nhựa** (TL nhựa · ĐM · chênh lệch · %) |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
 | `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |

@@ -343,16 +343,18 @@ const warehouseLineHeaderClass =
   'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
 const warehouseNhapLineGridClass =
-  'grid min-w-[50rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
+  'grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]';
 
 const warehouseXuatLineGridClass =
-  'grid min-w-[56rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 border-b border-zinc-200/80 py-1.5';
+  'grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]';
 
 const warehouseNhapHeaderGridClass =
-  'mb-1 grid min-w-[50rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
+  'mb-1 grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]';
 
 const warehouseXuatHeaderGridClass =
-  'mb-1 grid min-w-[56rem] grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2';
+  'mb-1 grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]';
+
+const warehouseLineMobileHiddenClass = 'hidden md:block';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -2505,11 +2507,6 @@ export function WarehouseSlipPanel({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [productionOrderPickerOpen]);
 
-  const slipTotal = useMemo(
-    () => lines.reduce((sum, line) => sum + computeWarehouseLineAmount(line.quantity, line.unitPrice), 0),
-    [lines]
-  );
-
   const resolveLineWeightKg = (line: WarehouseSlipLineDraft) =>
     convertWarehouseQuantityToKg({
       quantity: parsePercentInput(line.quantity),
@@ -2572,27 +2569,6 @@ export function WarehouseSlipPanel({
     }
     return `ĐVT ${unit} → SL × Tổng kg kho = ${formatNumber(quantity, 3)} × ${formatNumber(tongKg, 6)} = ${formatWarehouseWeightKg(quantity * tongKg)}`;
   };
-
-  const slipTotalWeightKg = useMemo(() => {
-    let total = 0;
-    let hasWeight = false;
-    for (const line of lines) {
-      const weight = convertWarehouseQuantityToKg({
-        quantity: parsePercentInput(line.quantity),
-        unit: line.unit,
-        itemCode: line.code,
-        warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
-        materials: warehouseKind === 'san_pham' ? [] : weightCatalog,
-        products: warehouseKind === 'san_pham' ? weightCatalog : [],
-        preferTongKgOnly: true
-      });
-      if (weight !== null) {
-        total += weight;
-        hasWeight = true;
-      }
-    }
-    return hasWeight ? total : null;
-  }, [lines, warehouseKind, weightCatalog]);
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
   const productionOrderCodesForSave = showOrderFields ? productionOrderCodes : [];
@@ -3059,24 +3035,7 @@ export function WarehouseSlipPanel({
       {selectedWarehouseName ? (
         <>
       <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-3 py-1.5">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">Tổng tiền</p>
-              <p className="text-lg font-black leading-tight text-zinc-950">{formatWarehouseMoney(slipTotal)} đ</p>
-            </div>
-            <p className="text-[10px] font-semibold text-zinc-400">Giá × SL</p>
-          </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-600/20 bg-emerald-50 px-3 py-1.5">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Khối lượng</p>
-              <p className="text-lg font-black leading-tight text-zinc-950">{formatWarehouseWeightKg(slipTotalWeightKg)}</p>
-            </div>
-            <p className="text-[10px] font-semibold text-zinc-400">SL × định mức kg</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 border-b border-zinc-100 pb-1.5">
+        <div className="flex items-center gap-2 border-b border-zinc-100 pb-2">
           <p className="text-sm font-black text-zinc-950">Thông tin phiếu</p>
           <p className="text-xs font-semibold text-zinc-400">
             {slipType === 'xuat' && isXuatTreoMode ? 'Xuất kho treo' : warehouseSlipTypeLabel(slipType)} ·{' '}
@@ -3249,11 +3208,7 @@ export function WarehouseSlipPanel({
                 <button
                   type="button"
                   onClick={() => void handleAutofillFromProductionOrders()}
-                  disabled={
-                    isAutofillingFromOrders ||
-                    isAutofillingFromCanTuDong ||
-                    isLoadingProductionOrders
-                  }
+                  disabled={isAutofillingFromOrders || isLoadingProductionOrders}
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Điền máy, lệnh SX và dòng NVL theo định mức BOM × SL lệnh SX"
                 >
@@ -3264,26 +3219,6 @@ export function WarehouseSlipPanel({
                   )}
                   Tự động điền theo lệnh SX
                 </button>
-                {isNvlExport ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleAutofillFromCanTuDong()}
-                    disabled={
-                      isAutofillingFromOrders ||
-                      isAutofillingFromCanTuDong ||
-                      isLoadingProductionOrders
-                    }
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Điền danh sách NVL theo định mức BOM; khối lượng kg lấy từ phiếu cân thực tế (cân tự động) cùng ngày · ca · máy"
-                  >
-                    {isAutofillingFromCanTuDong ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Scale className="h-3.5 w-3.5" />
-                    )}
-                    Điền ĐM · KG cân thực tế
-                  </button>
-                ) : null}
               </div>
             </div>
             <button
@@ -3303,6 +3238,20 @@ export function WarehouseSlipPanel({
                 }`}
               />
             </button>
+            {(editSlipCode ? canEdit : canCreate) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setScannerMode('camera');
+                  setQrScannerOpen(true);
+                }}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
+                title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+              >
+                <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
+                Quét QR
+              </button>
+            ) : null}
             {productionOrderPickerOpen && productionOrderMenuStyle
               ? createPortal(
                   <div
@@ -3382,6 +3331,21 @@ export function WarehouseSlipPanel({
                 )
               : null}
             </div>
+          ) : (editSlipCode ? canEdit : canCreate) ? (
+            <div className="relative col-span-2 block min-w-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setScannerMode('camera');
+                  setQrScannerOpen(true);
+                }}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
+                title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+              >
+                <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
+                Quét QR
+              </button>
+            </div>
           ) : null}
         </div>
       </section>
@@ -3393,24 +3357,9 @@ export function WarehouseSlipPanel({
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Chi tiết {warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}
               </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                {isNvlExport
-                  ? 'Quy đổi kg: ĐVT kg giữ SL; ĐVT khác = SL × Tổng kg kho NVL. Giá gợi ý theo BQ nhập tháng — có thể sửa tay.'
-                  : `Mỗi dòng là một ${warehouseKind === 'san_pham' ? 'mã SP' : 'mã NPL'} trong phiếu. Quy đổi kg: ĐVT ≠ kg thì nhân Tổng kg kho.`}
-              </p>
             </div>
             {(editSlipCode ? canEdit : canCreate) ? (
               <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
-                {slipType === 'xuat' ? (
-                  <button
-                    type="button"
-                    onClick={applyExportLineOrder}
-                    className="flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100"
-                    title="ĐVT kg lên đầu, các ĐVT khác xếp theo khối lượng quy đổi"
-                  >
-                    Xếp kg lên đầu
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -3422,18 +3371,6 @@ export function WarehouseSlipPanel({
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét máy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScannerMode('camera');
-                    setQrScannerOpen(true);
-                  }}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-2.5 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100"
-                  title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
-                >
-                  <ScanBarcode className="h-3.5 w-3.5" />
-                  Quét QR
                 </button>
                 <button
                   type="button"
@@ -3462,26 +3399,37 @@ export function WarehouseSlipPanel({
             ) : null}
           </div>
 
-          <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
+          <div className="scrollbar-hidden -mx-0.5 md:overflow-x-auto">
             <div
               className={slipType === 'xuat' ? warehouseXuatHeaderGridClass : warehouseNhapHeaderGridClass}
             >
-              <span className={`${warehouseLineHeaderClass} text-center`}>STT</span>
-              <span className={warehouseLineHeaderClass}>{warehouseItemCodeLabel(warehouseKind)} *</span>
-              <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
-              <span className={warehouseLineHeaderClass}>ĐVT</span>
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-center`}>STT</span>
+              <span className={warehouseLineHeaderClass}>
+                <span className="md:hidden">{warehouseKind === 'san_pham' ? 'Mã SP *' : 'Mã NVL *'}</span>
+                <span className="hidden md:inline">{warehouseItemCodeLabel(warehouseKind)} *</span>
+              </span>
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>
+                {warehouseItemNameLabel(warehouseKind)}
+              </span>
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>ĐVT</span>
               {slipType === 'xuat' ? (
                 <>
-                  <span className={warehouseLineHeaderClass}>SL CT</span>
-                  <span className={warehouseLineHeaderClass}>SL THỰC *</span>
+                  <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>SL CT</span>
+                  <span className={warehouseLineHeaderClass}>
+                    <span className="md:hidden">Số lượng *</span>
+                    <span className="hidden md:inline">SL THỰC *</span>
+                  </span>
                 </>
               ) : (
                 <span className={warehouseLineHeaderClass}>Số lượng *</span>
               )}
-              <span className={warehouseLineHeaderClass}>Quy đổi kg</span>
-              <span className={warehouseLineHeaderClass}>Giá</span>
-              <span className={`${warehouseLineHeaderClass} text-right`}>Thành tiền</span>
-              <span />
+              <span className={warehouseLineHeaderClass}>
+                <span className="md:hidden">Trọng lượng</span>
+                <span className="hidden md:inline">Quy đổi kg</span>
+              </span>
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>Giá</span>
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-right`}>Thành tiền</span>
+              <span className={warehouseLineMobileHiddenClass} />
             </div>
 
             <div>
@@ -3490,7 +3438,9 @@ export function WarehouseSlipPanel({
                   key={line.key}
                   className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}
                 >
-                  <div className="flex min-w-0 items-center justify-center text-xs font-bold text-zinc-500">{index + 1}</div>
+                  <div className={`hidden min-w-0 items-center justify-center text-xs font-bold text-zinc-500 md:flex`}>
+                    {index + 1}
+                  </div>
                   <div className="min-w-0">
                     <SearchableSelect
                       value={line.code}
@@ -3509,14 +3459,14 @@ export function WarehouseSlipPanel({
                       getValue={item => (item as MaterialOption).code}
                     />
                   </div>
-                  <div className="min-w-0">
+                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <input
                       value={line.name}
                       onChange={event => updateLine(line.key, { name: event.target.value })}
                       className={warehouseLineFieldClass}
                     />
                   </div>
-                  <div className="min-w-0">
+                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <input
                       value={line.unit}
                       onChange={event => updateLine(line.key, { unit: event.target.value })}
@@ -3525,7 +3475,7 @@ export function WarehouseSlipPanel({
                   </div>
                   {slipType === 'xuat' ? (
                     <>
-                      <div className="min-w-0">
+                      <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -3566,7 +3516,7 @@ export function WarehouseSlipPanel({
                       })()}
                     </div>
                   </div>
-                  <div className="min-w-0">
+                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <div className="relative">
                       <input
                         type="text"
@@ -3592,7 +3542,7 @@ export function WarehouseSlipPanel({
                       ) : null}
                     </div>
                   </div>
-                  <div className="min-w-0">
+                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <div
                       className={`${warehouseLineFieldClass} flex items-center justify-end whitespace-nowrap bg-zinc-50 font-mono font-bold tabular-nums text-zinc-900`}
                     >
@@ -3603,13 +3553,13 @@ export function WarehouseSlipPanel({
                     <button
                       type="button"
                       onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                      className="flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                      className={`hidden h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 md:flex`}
                       title="Xóa dòng"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   ) : (
-                    <span />
+                    <span className={warehouseLineMobileHiddenClass} />
                   )}
                 </div>
               ))}
@@ -3711,6 +3661,7 @@ export function WarehouseHistoryPanel({
   initialFilters?: {
     dateFrom?: string;
     dateTo?: string;
+    shift?: string;
   };
   initialWarehouseTab?: WarehouseKind;
 }) {
@@ -3729,6 +3680,10 @@ export function WarehouseHistoryPanel({
   const [selectedType, setSelectedType] = useState<WarehouseSlipType>('xuat');
   const [fromDate, setFromDate] = useState(() => initialFilters?.dateFrom?.trim() || '');
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || '');
+  const [filterShift, setFilterShift] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? '' : shift;
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -3849,27 +3804,53 @@ export function WarehouseHistoryPanel({
     loadMovements();
   }, [warehouseTab, selectedType, fromDate, toDate]);
 
-  const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(searchText);
+  const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(filterShift) || Boolean(searchText);
 
   const resetFilters = () => {
     setFromDate('');
     setToDate('');
+    setFilterShift('');
     setSearchText('');
+  };
+
+  const shiftOptions = useMemo(() => {
+    const shifts = new Set<string>();
+    for (const row of movements) {
+      const raw = String(row.shift || '').trim();
+      if (!raw) continue;
+      raw.split(',').forEach(part => {
+        const shift = part.trim();
+        if (shift) shifts.add(shift);
+      });
+    }
+    return [...shifts].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [movements]);
+
+  const movementMatchesShiftFilter = (rowShift: string | undefined, shiftFilter: string) => {
+    if (!shiftFilter) return true;
+    const raw = String(rowShift || '').trim();
+    if (!raw) return false;
+    return raw
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean)
+      .some(part => shiftNamesMatch(part, shiftFilter));
   };
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMovements = useMemo(() => {
     return movements.filter(row => {
+      if (!movementMatchesShiftFilter(row.shift, filterShift)) return false;
       if (!normalizedSearch) return true;
       return `${row.slipCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
         .toLowerCase()
         .includes(normalizedSearch);
     });
-  }, [movements, normalizedSearch]);
+  }, [movements, filterShift, normalizedSearch]);
 
   useEffect(() => {
     setSelectedSlipCodes(new Set());
-  }, [normalizedSearch]);
+  }, [normalizedSearch, filterShift]);
 
   const slipGroups = useMemo(() => {
     const map = new Map<string, WarehouseMovementRow[]>();
@@ -4240,6 +4221,14 @@ export function WarehouseHistoryPanel({
 
         <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} />
         <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
+        <FilterCombobox
+          label="Ca"
+          options={shiftOptions}
+          value={filterShift || 'all'}
+          onChange={value => setFilterShift(value === 'all' ? '' : value)}
+          searchPlaceholder="Tìm ca..."
+          compact
+        />
       </TableToolbar>
 
       {selectableSlips.length > 0 && (

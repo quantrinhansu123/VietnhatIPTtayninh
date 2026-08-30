@@ -906,7 +906,7 @@ export function FourStepMenuFlow({
         aria-label={showFlow ? 'Lưu đồ chức năng nhà máy' : 'Chức năng quản trị'}
       >
         {items.map((item, index) => (
-          <React.Fragment key={item.tab}>
+          <React.Fragment key={`${item.tab}-${item.title}`}>
             <div style={showFlow ? { gridColumnStart: index * 2 + 1 } : undefined}>
               <MainMenuFlowCard item={item} step={index + 1} showStep={showFlow} onNavigate={onNavigate} />
             </div>

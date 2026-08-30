@@ -20,6 +20,7 @@ import {
   buildBbInboundMaterialNormGroups,
   buildBbInboundReportRows,
   buildBbLoiHongMaterialLinesForShift,
+  resolveBbLoiHongFilmScrapMaterialForShift,
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
   buildBbSanLuongGroups,
@@ -27,6 +28,7 @@ import {
   buildBbTongGroups,
   buildBbTongHopVatTuThucXuatDungGroups,
   buildBbWarehouseExportLineRows,
+  enrichBbProductionOrderRowsFromSanLuong,
   groupBbCuoiCaLines,
   groupBbDamagedGoodsLines,
   groupBbDauCaLines,
@@ -164,6 +166,8 @@ export function buildBbMachineReportSnapshot(input: {
   materials: MaterialRow[];
   machines: MachineRow[];
   warehouseMovements: ShiftSummaryWarehouseMovement[];
+  /** Phiếu xuất NVL cùng ngày lệnh (mọi ca) — cột «Xuất trong ngày». */
+  warehouseMovementsByDate?: ShiftSummaryWarehouseMovement[];
   damagedRecords: WeighingRecord[];
   machineNvlReports: MachineNvlSavedReport[];
   mixingReports: MixingReport[];
@@ -188,15 +192,15 @@ export function buildBbMachineReportSnapshot(input: {
     selectedMachine: input.selectedMachine,
     includeAllMachines: input.includeAllMachines
   };
+  const sanLuongSource = input.sanLuongSource || 'acceptance';
 
-  const orderRows = buildBbProductionOrderLineRows({
+  const orderRowsBase = buildBbProductionOrderLineRows({
     productionOrders: input.productionOrders,
     products: input.products,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
     ...filter
   });
-  const orderGroups = groupBbProductionOrderLines(orderRows);
 
   const exportRows = buildBbWarehouseExportLineRows({
     productionOrders: input.productionOrders,
@@ -204,6 +208,7 @@ export function buildBbMachineReportSnapshot(input: {
     materials: input.materials,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
+    exportMatchScope: 'shift',
     ...filter
   });
   const exportGroups = groupBbWarehouseExportLines(
@@ -248,6 +253,7 @@ export function buildBbMachineReportSnapshot(input: {
   const damagedRows = buildBbDamagedGoodsLineRows({
     productionOrders: input.productionOrders,
     acceptanceReports: input.acceptanceReports,
+    materials: input.materials,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
     ...filter
@@ -260,10 +266,22 @@ export function buildBbMachineReportSnapshot(input: {
       shift: group.shift,
       orderCode: group.orderCode
     });
+    const filmScrapMaterial = resolveBbLoiHongFilmScrapMaterialForShift({
+      productionOrders: input.productionOrders,
+      products: input.products,
+      materials: input.materials,
+      warehouseMovements: input.warehouseMovements,
+      shiftSettings: input.shiftSettings,
+      ngay: group.ngay,
+      shift: group.shift,
+      orderCode: group.orderCode,
+      damagedLines: group.lines
+    });
     return {
       ...group,
       mixingLines,
-      mixingLineCount: mixingLines.length
+      mixingLineCount: mixingLines.length,
+      filmScrapMaterial: filmScrapMaterial ?? undefined
     };
   });
 
@@ -282,6 +300,9 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
 
+  const orderRows = enrichBbProductionOrderRowsFromSanLuong(orderRowsBase, sanLuongGroups);
+  const orderGroups = groupBbProductionOrderLines(orderRows);
+
   const inboundRows = buildBbInboundReportRows({
     productionOrders: input.productionOrders,
     warehouseMovements: input.warehouseMovements,
@@ -299,9 +320,17 @@ export function buildBbMachineReportSnapshot(input: {
     productionOrders: input.productionOrders,
     mixingReports: input.mixingReports,
     warehouseMovements: input.warehouseMovements,
+    warehouseMovementsByDate: input.warehouseMovementsByDate,
     machineNvlReports: input.machineNvlReports,
     materials: input.materials,
     machines: input.machines,
+    dauCaGroups,
+    cuoiCaGroups,
+    sanLuongGroups,
+    damagedGroups,
+    sanLuongSource,
+    canTuDongRecords: input.canTuDongRecords,
+    products: input.products,
     shiftSettings: input.shiftSettings,
     ...filter
   });
@@ -311,6 +340,7 @@ export function buildBbMachineReportSnapshot(input: {
     productionOrders: input.productionOrders,
     mixingReports: input.mixingReports,
     warehouseMovements: input.warehouseMovements,
+    warehouseMovementsByDate: input.warehouseMovementsByDate,
     machineNvlReports: input.machineNvlReports,
     materials: input.materials,
     machines: input.machines,
@@ -336,7 +366,7 @@ export function buildBbMachineReportSnapshot(input: {
     productionOrders: input.productionOrders,
     warehouseMovements: input.warehouseMovements,
     machineNvlReports: input.machineNvlReports,
-    damagedRecords: input.damagedRecords,
+    acceptanceReports: input.acceptanceReports,
     materials: input.materials,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
@@ -356,14 +386,13 @@ export function buildBbMachineReportSnapshot(input: {
     products: input.products,
     warehouseMovements: input.warehouseMovements,
     machineNvlReports: input.machineNvlReports,
-    damagedRecords: input.damagedRecords,
+    acceptanceReports: input.acceptanceReports,
     materials: input.materials,
     machines: input.machines,
     shiftSettings: input.shiftSettings,
     ...filter
   });
 
-  const sanLuongSource = input.sanLuongSource || 'acceptance';
   const canTuDongDateTo =
     sanLuongSource === 'can-tu-dong' && input.dateTo
       ? shiftIsoDateByDays(input.dateTo, 1) || input.dateTo

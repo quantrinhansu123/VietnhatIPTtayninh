@@ -21,6 +21,7 @@ import {
   isWarehouseBagExportItem,
   isWarehouseCoreExportItem,
   matchesShiftSummaryBucket,
+  matchesWarehouseExportDate,
   resolveMachineNvlLineMaterialType,
   acceptanceRollQuantity,
   type ControlBoardShiftSummaryRow,
@@ -29,6 +30,7 @@ import {
 import { formatNumber } from '../utils';
 import { sumMachineNvlDauCaLineTotal, type MachineNvlSavedReport } from './machineNvlReports';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import { splitAcceptanceLoiHongWeightKg } from './controlBoardBbMachineReport';
 
 export type ShiftSummaryMetric =
   | 'slHang'
@@ -95,7 +97,7 @@ export const SHIFT_SUMMARY_METRIC_META: Record<
     label: 'KL nhựa TP',
     source: '(KL hàng TT − KL lõi − KL bì) × 0,75'
   },
-  hangHong: { label: 'Hàng hỏng', source: 'Báo cáo hàng hỏng' },
+  hangHong: { label: 'Hàng hỏng', source: 'Báo cáo sản lượng · Kho hàng hỏng' },
   khoiLuongNpl: { label: 'Số lượng nhựa thực tế xuất dùng (kg)', source: 'Phiếu xuất kho NVL (kg)' },
   khoiLuongMangXuat: { label: 'KL màng xuất (kg)', source: 'Xuất kho NVL đơn vị m² → quy đổi kg' },
   khoiLuongLoi: { label: 'KL lõi', source: 'Báo cáo sản lượng (SL cuộn TT × 1kg)' },
@@ -168,12 +170,12 @@ export const SHIFT_SUMMARY_METRIC_META: Record<
     source: '1 × Số lượng đạt thực tế'
   },
   tongTpNhapKho: { label: 'Tổng TP nhập kho', source: 'Nhựa + màng + túi + lõi TP nhập kho' },
-  tlNhuaKhongMangLoiHong: { label: 'TL Nhựa không mảng lỗi hỏng (Kg)', source: 'Báo cáo lỗi hỏng' },
-  tlNhuaCucDauNongLoiHong: { label: 'TL Nhựa cục đầu nòng lỗi hỏng (Kg)', source: 'Báo cáo lỗi hỏng' },
-  tlNhuaDinhMangLoiHong: { label: 'TL Nhựa lỗi dính màng lỗi hỏng (Kg)', source: 'Báo cáo lỗi hỏng' },
-  tlMangLoiHong: { label: 'TL Màng lỗi hỏng (kg)', source: 'Báo cáo lỗi hỏng' },
-  soCuonLoiDinhHangHong: { label: 'Số cuộn lõi dính trong hàng hỏng (Kg)', source: 'Báo cáo lỗi hỏng' },
-  tongTrongLuongLoiHong: { label: 'Tổng trọng lượng lỗi hỏng', source: 'Báo cáo lỗi hỏng' },
+  tlNhuaKhongMangLoiHong: { label: 'TL Nhựa không mảng lỗi hỏng (Kg)', source: 'Báo cáo sản lượng · SP lỗi (Kho hàng hỏng)' },
+  tlNhuaCucDauNongLoiHong: { label: 'TL Nhựa cục đầu nòng lỗi hỏng (Kg)', source: 'Báo cáo sản lượng · SP lỗi (Kho hàng hỏng)' },
+  tlNhuaDinhMangLoiHong: { label: 'TL Nhựa lỗi dính màng lỗi hỏng (Kg)', source: 'Báo cáo sản lượng · SP lỗi (Kho hàng hỏng)' },
+  tlMangLoiHong: { label: 'TL Màng lỗi hỏng (kg)', source: 'Báo cáo sản lượng · SP rác' },
+  soCuonLoiDinhHangHong: { label: 'Số cuộn lõi dính trong hàng hỏng (Kg)', source: 'Báo cáo sản lượng · Kho hàng hỏng' },
+  tongTrongLuongLoiHong: { label: 'Tổng trọng lượng lỗi hỏng', source: 'Báo cáo sản lượng · Kho hàng hỏng + kho rác' },
   tongTrongLuongNhapKho: {
     label: 'Tổng trọng lượng nhập kho',
     source: 'Tổng TP nhập kho + Tổng trọng lượng lỗi hỏng'
@@ -341,7 +343,7 @@ export function getShiftSummaryDetail(input: {
   shiftSettings: ShiftSetting[];
   productionOrders: ProductionOrderRef[];
   products: ProductRef[];
-  materials?: Array<{ code: string; totalWeight: string }>;
+  materials?: Array<{ code: string; name?: string; warehouse?: string; totalWeight: string }>;
   acceptanceReports: AcceptanceReport[];
   warehouseMovements?: ShiftSummaryWarehouseMovement[];
   weighingRecords: WeighingRecord[];
@@ -512,48 +514,57 @@ export function getShiftSummaryDetail(input: {
   if (metric === 'hangHong') {
     const rows: ShiftSummaryDetailRow[] = [];
     let total = 0;
+    const materialRowsForLoiHong = (input.materials ?? []).map(material => ({
+      id: material.code,
+      code: material.code,
+      name: material.name || material.code,
+      unit: '',
+      warehouse: material.warehouse || '',
+      totalWeight: material.totalWeight,
+      plasticWeight: '',
+      bagWeight: '',
+      coreWeight: '',
+      rollWidth: '',
+      unitLength: '',
+      openingStock: '',
+      inbound: '',
+      outbound: ''
+    }));
 
-    for (const record of getWeighingDataRows(input.damagedRecords ?? [])) {
+    for (const report of input.acceptanceReports) {
       if (
-        !matchesShiftSummaryBucket(
-          ngay,
-          ca,
-          record.productionDate || record.reportDate,
-          record.shiftName,
-          shiftOptions
-        )
+        !matchesShiftSummaryBucket(ngay, ca, report.ngay, report.ca, shiftOptions)
       ) {
         continue;
       }
 
-      const lineWeight = sumDamagedGoodsRowWeight(record);
-      if (lineWeight <= 0 && !record.note?.trim()) continue;
+      const split = splitAcceptanceLoiHongWeightKg(report, materialRowsForLoiHong);
+      if (!split || split.tongKg <= 0) continue;
 
-      total += lineWeight;
+      total += split.tongKg;
       rows.push({
-        rowKey: String(record.id ?? `${record.documentNo}|${record.weighNo}|${record.weighTime}`),
-        recordId: record.id != null ? String(record.id) : '',
-        soPhieu: record.documentNo || '-',
-        gio: record.weighTime || '-',
-        may: record.machineName || '-',
-        klNhua: formatWeighingWeightField(record.weight),
-        klMang: formatWeighingWeightField(record.shellWeight),
-        lanCan: record.weighNo || '-',
-        khoiLuong: formatDetailNumber(lineWeight, 3),
-        ghiChu: record.note || '-'
+        rowKey: String(report.id ?? `${report.ngay}|${report.ca}|${report.lan}|${report.mat_hang}`),
+        soPhieu: String(report.id || report.lan || '-'),
+        gio: String(report.ca || '-'),
+        may: String(report.ten_may || report.ma_may || '-'),
+        klNhua: formatDetailNumber(split.nhuaKg, 3),
+        klMang: formatDetailNumber(split.mangKg, 3),
+        lanCan: String(report.lan ?? '-'),
+        khoiLuong: formatDetailNumber(split.tongKg, 3),
+        ghiChu: String(report.loai_vat_tu || report.mat_hang || '-')
       });
     }
 
     return {
       columns: [
-        { key: 'soPhieu', label: 'Mã phiếu' },
-        { key: 'gio', label: 'Giờ', mono: true },
+        { key: 'soPhieu', label: 'Phiếu SL' },
+        { key: 'gio', label: 'Ca', mono: true },
         { key: 'may', label: 'Máy' },
-        { key: 'klNhua', label: 'KL nhựa', align: 'right', mono: true },
-        { key: 'klMang', label: 'KL màng', align: 'right', mono: true },
+        { key: 'klNhua', label: 'KL nhựa (SP lỗi)', align: 'right', mono: true },
+        { key: 'klMang', label: 'KL rác/màng', align: 'right', mono: true },
         { key: 'lanCan', label: 'Lần' },
         { key: 'khoiLuong', label: 'Tổng KL', align: 'right', mono: true, accent: true },
-        { key: 'ghiChu', label: 'Ghi chú' }
+        { key: 'ghiChu', label: 'Loại / Mã SP' }
       ],
       rows,
       totalLabel: 'Tổng hàng hỏng',
@@ -773,7 +784,7 @@ export function getShiftSummaryDetail(input: {
     let total = 0;
 
     for (const movement of input.warehouseMovements ?? []) {
-      if (!matchesShiftSummaryBucket(ngay, ca, movement.slipDate, movement.shift, shiftOptions)) continue;
+      if (!matchesWarehouseExportDate(ngay, movement.slipDate)) continue;
       if (movement.warehouseKind !== 'nvl') continue;
       if (movement.slipType !== 'xuat') continue;
       if (!Number.isFinite(movement.quantity) || movement.quantity <= 0) continue;
@@ -820,7 +831,7 @@ export function getShiftSummaryDetail(input: {
     let total = 0;
 
     for (const movement of input.warehouseMovements ?? []) {
-      if (!matchesShiftSummaryBucket(ngay, ca, movement.slipDate, movement.shift, shiftOptions)) continue;
+      if (!matchesWarehouseExportDate(ngay, movement.slipDate)) continue;
       if (movement.warehouseKind !== 'nvl') continue;
       if (movement.slipType !== 'xuat') continue;
       if (!Number.isFinite(movement.quantity) || movement.quantity <= 0) continue;
@@ -870,7 +881,7 @@ export function getShiftSummaryDetail(input: {
     const matchesItem = metric === 'khoiLuongLoiXuatKho' ? isWarehouseCoreExportItem : isWarehouseBagExportItem;
 
     for (const movement of input.warehouseMovements ?? []) {
-      if (!matchesShiftSummaryBucket(ngay, ca, movement.slipDate, movement.shift, shiftOptions)) continue;
+      if (!matchesWarehouseExportDate(ngay, movement.slipDate)) continue;
       if (movement.warehouseKind !== 'nvl') continue;
       if (movement.slipType !== 'xuat') continue;
       if (!Number.isFinite(movement.quantity) || movement.quantity <= 0) continue;

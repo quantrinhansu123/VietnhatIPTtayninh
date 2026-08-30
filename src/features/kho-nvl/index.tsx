@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   History,
+  ImagePlus,
   Loader2,
   Package,
   Pencil,
@@ -15,10 +16,15 @@ import {
   Trash2,
   Upload
 } from 'lucide-react';
+import { CAMERA_IMAGE_INPUT_PROPS } from '../../utils/cameraCapture';
+import WeighingImagePreviewModal, {
+  WeighingImageThumbnail,
+  type WeighingPreviewImage
+} from '../../components/WeighingImagePreviewModal';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
-import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
+import { pickText, fileToOptimizedImageDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
 import {
   downloadBulkMaterialTotalWeightTemplate,
   parseBulkMaterialTotalWeightExcel,
@@ -60,6 +66,8 @@ export interface MaterialRow {
   openingStock: string;
   inbound: string;
   outbound: string;
+  actualWeightImageUrl: string;
+  actualBagImageUrl: string;
   /** Dòng tồn phát sinh từ phiếu kho nhưng chưa có bản ghi riêng trong danh mục kho_nvl. */
   inventoryBalanceOnly?: boolean;
 }
@@ -109,7 +117,9 @@ export function normalizeMaterialsInventory(data: unknown): MaterialRow[] {
         unitLength: formatCell(record.chieu_dai_don_vi),
         openingStock: formatCell(record.ton_dau_ky),
         inbound: formatCell(record.nhap_trong_ky),
-        outbound: formatCell(record.xuat_trong_ky)
+        outbound: formatCell(record.xuat_trong_ky),
+        actualWeightImageUrl: formatCell(record.link_anh_can_thuc_te),
+        actualBagImageUrl: formatCell(record.link_anh_bao_thuc_te)
       };
     })
     .filter((material): material is MaterialRow => Boolean(material));
@@ -129,6 +139,10 @@ export type MaterialFormState = {
   openingStock: string;
   inbound: string;
   outbound: string;
+  actualWeightImageUrl: string;
+  actualWeightImagePublicId: string;
+  actualBagImageUrl: string;
+  actualBagImagePublicId: string;
 };
 
 const emptyMaterialForm = (): MaterialFormState => ({
@@ -144,7 +158,11 @@ const emptyMaterialForm = (): MaterialFormState => ({
   unitLength: '',
   openingStock: '',
   inbound: '',
-  outbound: ''
+  outbound: '',
+  actualWeightImageUrl: '',
+  actualWeightImagePublicId: '',
+  actualBagImageUrl: '',
+  actualBagImagePublicId: ''
 });
 
 export function materialCellToInput(value: string) {
@@ -165,7 +183,11 @@ export function materialToForm(material: MaterialRow): MaterialFormState {
     unitLength: materialCellToInput(material.unitLength),
     openingStock: materialCellToInput(material.openingStock),
     inbound: materialCellToInput(material.inbound),
-    outbound: materialCellToInput(material.outbound)
+    outbound: materialCellToInput(material.outbound),
+    actualWeightImageUrl: materialCellToInput(material.actualWeightImageUrl),
+    actualWeightImagePublicId: '',
+    actualBagImageUrl: materialCellToInput(material.actualBagImageUrl),
+    actualBagImagePublicId: ''
   };
 }
 
@@ -600,6 +622,10 @@ export function MaterialViewModal({
     ['Dài ĐV', material.unitLength]
   ];
 
+  const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
+  const hasWeightImage = material.actualWeightImageUrl && material.actualWeightImageUrl !== '-';
+  const hasBagImage = material.actualBagImageUrl && material.actualBagImageUrl !== '-';
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div
@@ -718,13 +744,51 @@ export function MaterialViewModal({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {[...infoRows, ...nvlInfoRows].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>
-                  <p className="mt-1 font-bold text-zinc-900">{value || '-'}</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {[...infoRows, ...nvlInfoRows].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>
+                    <p className="mt-1 font-bold text-zinc-900">{value || '-'}</p>
+                  </div>
+                ))}
+              </div>
+              {(hasWeightImage || hasBagImage) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {hasWeightImage ? (
+                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số cân thực tế</p>
+                      <div className="mt-2">
+                        <WeighingImageThumbnail
+                          url={material.actualWeightImageUrl}
+                          alt="Ảnh số cân thực tế"
+                          title="Ảnh số cân thực tế"
+                          onView={() =>
+                            setViewingImage({ url: material.actualWeightImageUrl, title: 'Ảnh số cân thực tế' })
+                          }
+                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {hasBagImage ? (
+                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số bao thực tế</p>
+                      <div className="mt-2">
+                        <WeighingImageThumbnail
+                          url={material.actualBagImageUrl}
+                          alt="Ảnh số bao thực tế"
+                          title="Ảnh số bao thực tế"
+                          onView={() =>
+                            setViewingImage({ url: material.actualBagImageUrl, title: 'Ảnh số bao thực tế' })
+                          }
+                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -749,6 +813,7 @@ export function MaterialViewModal({
           ) : null}
         </div>
       </div>
+      <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
     </div>
   );
 }
@@ -786,7 +851,11 @@ export function MaterialsInventoryPanel({
   const [showBulkTotalWeight, setShowBulkTotalWeight] = useState(false);
   const [isImportingCatalog, setIsImportingCatalog] = useState(false);
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
+  const actualWeightCameraInputRef = useRef<HTMLInputElement>(null);
+  const actualBagCameraInputRef = useRef<HTMLInputElement>(null);
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
+  const [isUploadingMaterialImage, setIsUploadingMaterialImage] = useState(false);
+  const [viewingMaterialImage, setViewingMaterialImage] = useState<WeighingPreviewImage | null>(null);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -882,6 +951,8 @@ export function MaterialsInventoryPanel({
         openingStock: String(balance.ton_dau_ky),
         inbound: String(balance.nhap_trong_ky),
         outbound: String(balance.xuat_trong_ky),
+        actualWeightImageUrl: '-',
+        actualBagImageUrl: '-',
         inventoryBalanceOnly: true
       }];
     });
@@ -1072,6 +1143,54 @@ export function MaterialsInventoryPanel({
     setFormMode(null);
     setEditingId(null);
     setFormError('');
+  };
+
+  const handleActualWeightImageUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    setIsUploadingMaterialImage(true);
+    setFormError('');
+
+    try {
+      const dataUrl = await fileToOptimizedImageDataUrl(file);
+      const uploaded = await uploadImage(dataUrl, 'kho_nvl');
+      setMaterialForm(prev => ({
+        ...prev,
+        actualWeightImageUrl: uploaded.imageUrl,
+        actualWeightImagePublicId: uploaded.imagePublicId
+      }));
+      showAppToast('Đã upload ảnh số cân thực tế.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số cân thực tế.';
+      setFormError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsUploadingMaterialImage(false);
+    }
+  };
+
+  const handleActualBagImageUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    setIsUploadingMaterialImage(true);
+    setFormError('');
+
+    try {
+      const dataUrl = await fileToOptimizedImageDataUrl(file);
+      const uploaded = await uploadImage(dataUrl, 'kho_nvl');
+      setMaterialForm(prev => ({
+        ...prev,
+        actualBagImageUrl: uploaded.imageUrl,
+        actualBagImagePublicId: uploaded.imagePublicId
+      }));
+      showAppToast('Đã upload ảnh số bao thực tế.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số bao thực tế.';
+      setFormError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsUploadingMaterialImage(false);
+    }
   };
 
   const handleSaveMaterial = async () => {
@@ -1399,6 +1518,90 @@ export function MaterialsInventoryPanel({
                   />
                 </label>
               ))}
+              <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
+                    <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
+                    Ảnh số cân thực tế
+                  </span>
+                  <input
+                    ref={actualWeightCameraInputRef}
+                    {...CAMERA_IMAGE_INPUT_PROPS}
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0] || null;
+                      e.target.value = '';
+                      if (file) void handleActualWeightImageUpload(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => actualWeightCameraInputRef.current?.click()}
+                    disabled={isUploadingMaterialImage || isSavingMaterial}
+                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isUploadingMaterialImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    {materialForm.actualWeightImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
+                  </button>
+                  {materialForm.actualWeightImageUrl ? (
+                    <WeighingImageThumbnail
+                      url={materialForm.actualWeightImageUrl}
+                      alt="Ảnh số cân thực tế"
+                      title="Ảnh số cân thực tế"
+                      onView={() =>
+                        setViewingMaterialImage({
+                          url: materialForm.actualWeightImageUrl,
+                          title: 'Ảnh số cân thực tế'
+                        })
+                      }
+                      className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                    />
+                  ) : (
+                    <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — bấm Chụp ảnh để lưu lên Cloudinary</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
+                    <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
+                    Ảnh số bao thực tế
+                  </span>
+                  <input
+                    ref={actualBagCameraInputRef}
+                    {...CAMERA_IMAGE_INPUT_PROPS}
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0] || null;
+                      e.target.value = '';
+                      if (file) void handleActualBagImageUpload(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => actualBagCameraInputRef.current?.click()}
+                    disabled={isUploadingMaterialImage || isSavingMaterial}
+                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isUploadingMaterialImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    {materialForm.actualBagImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
+                  </button>
+                  {materialForm.actualBagImageUrl ? (
+                    <WeighingImageThumbnail
+                      url={materialForm.actualBagImageUrl}
+                      alt="Ảnh số bao thực tế"
+                      title="Ảnh số bao thực tế"
+                      onView={() =>
+                        setViewingMaterialImage({
+                          url: materialForm.actualBagImageUrl,
+                          title: 'Ảnh số bao thực tế'
+                        })
+                      }
+                      className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                    />
+                  ) : (
+                    <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — bấm Chụp ảnh để lưu lên Cloudinary</p>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
               <button type="button" onClick={closeForm} className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50">
@@ -1417,6 +1620,11 @@ export function MaterialsInventoryPanel({
           </div>
         </div>
       )}
+
+      <WeighingImagePreviewModal
+        image={viewingMaterialImage}
+        onClose={() => setViewingMaterialImage(null)}
+      />
 
       {viewingMaterial && (
         <MaterialViewModal

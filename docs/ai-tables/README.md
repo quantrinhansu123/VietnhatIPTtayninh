@@ -58,6 +58,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | *(tổng hợp)* | `/bang-dieu-khien`, `/phan-tich` | [control_board.md](./control_board.md) |
 | `bb_bao_cao_ly_do` | *(lý do in BB)* | [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) |
 | `bb_phan_tich_danh_gia` | *(phân tích đánh giá BB)* | [bb_phan_tich_danh_gia.md](./bb_phan_tich_danh_gia.md) |
+| `bb_giai_trinh` | *(giải trình /phan-tich-tu-dong)* | [bb_giai_trinh.md](./bb_giai_trinh.md) |
 | `bb_bao_cao_tinh_toan` | *(snapshot tính toán BB)* | [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) |
 
 ## File dùng chung (chỉ khi cần)

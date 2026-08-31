@@ -121,7 +121,7 @@ type MaterialPrintRow = {
   /** SL xuất từ phiếu xuất NVL (ĐVT gốc). */
   exportQty: number;
   /**
-   * Số lượng mục 3.2 (ĐVT gốc) =
+   * Số lượng thành phẩm mục 3.2 (ĐVT gốc) =
    * Σ theo từng mã SP: (SL sản lượng SP × định mức thành phần NVL / 1 SP).
    */
   actualQty: number;
@@ -886,7 +886,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   };
 
   // Seed danh sách NVL / % định mức từ BOM — không ghi finishedKg (cột nhập TP chỉ từ snapshot).
-  // Số lượng (3.2) = Σ (SL sản lượng từng mã SP × định mức thành phần NVL của SP đó).
+  // Số lượng thành phẩm (3.2) = Σ (SL sản lượng từng mã SP × định mức thành phần NVL của SP đó).
   for (const productLine of order.lines) {
     const product = findProduct(props.products, productLine.productCode);
     const actualProductQuantity = resolveProductSanLuongQuantity(
@@ -1059,7 +1059,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     }
   }
 
-  // Tính lại Số lượng 3.2 sau khi gom đủ mã NVL (kể cả chỉ có trên snapshot/xuất).
+  // Tính lại Số lượng thành phẩm 3.2 sau khi gom đủ mã NVL (kể cả chỉ có trên snapshot/xuất).
   const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
   for (const row of rows.values()) {
     if (!isPlasticMaterialPrintRow(row)) row.actualQty = 0;
@@ -1673,7 +1673,7 @@ function BbMachineOrderPrintSheet({
               <th>Mã NVL</th>
               <th>Tên NVL</th>
               <th>ĐVT</th>
-              <th>Số lượng</th>
+              <th>Số lượng<br />thành phẩm</th>
               <th>Trọng lượng<br />tồn đầu ca</th>
               <th title="Tab «Phiếu xuất kho» · cột «Quy về kg» · lọc theo ca">
                 Trọng lượng<br />vật tư xuất kho
@@ -1707,7 +1707,7 @@ function BbMachineOrderPrintSheet({
                     row.finishedKg,
                     row.damagedKg
                   );
-                  /** Số lượng = Σ (SL sản lượng SP × ĐM thành phần NVL) — ĐVT gốc. */
+                  /** Số lượng thành phẩm = Σ (SL sản lượng SP × ĐM thành phần NVL) — ĐVT gốc. */
                   const soLuong = row.actualQty > 0 ? row.actualQty : null;
                   return (
                     <tr key={row.key}>

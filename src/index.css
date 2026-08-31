@@ -4535,7 +4535,7 @@ input[type="number"] {
   .bb-machine-report-print-material-table th:nth-child(n+7):nth-child(-n+14),
   .bb-machine-report-print-material-table td:nth-child(n+7):nth-child(-n+14) { width: 5.5%; }
 
-  /* 3.2 NVL khác — có cột Số lượng (ĐVT gốc) sau ĐVT, không có tỉ lệ trộn */
+  /* 3.2 NVL khác — có cột Số lượng thành phẩm (ĐVT gốc) sau ĐVT, không có tỉ lệ trộn */
   .bb-machine-report-print-material-table-other th:nth-child(5),
   .bb-machine-report-print-material-table-other td:nth-child(5) { width: 5.5%; }
   .bb-machine-report-print-material-table-other th:nth-child(n+6):nth-child(-n+13),

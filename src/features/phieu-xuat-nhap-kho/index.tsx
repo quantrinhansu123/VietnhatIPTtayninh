@@ -3298,14 +3298,14 @@ export function WarehouseSlipPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setScannerMode('camera');
+                  setScannerMode('hardware');
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
-                title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
               >
                 <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
-                Quét QR
+                Quét máy
               </button>
             ) : null}
             {productionOrderPickerOpen && productionOrderMenuStyle
@@ -3392,14 +3392,14 @@ export function WarehouseSlipPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setScannerMode('camera');
+                  setScannerMode('hardware');
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
-                title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
               >
                 <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
-                Quét QR
+                Quét máy
               </button>
             </div>
           ) : null}
@@ -3419,14 +3419,14 @@ export function WarehouseSlipPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    setScannerMode('hardware');
+                    setScannerMode('camera');
                     setQrScannerOpen(true);
                   }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                  title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
-                  Quét máy
+                  Quét QR
                 </button>
                 <button
                   type="button"

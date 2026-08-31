@@ -23,7 +23,11 @@ import {
   type ProductionPlanRelatedReports
 } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import { normalizeProducts } from '../features/san-pham';
-import { waitForPrintImagesReady } from '../utils/printReady';
+import {
+  disablePortraitPrintPage,
+  enablePortraitPrintPage,
+  waitForPrintImagesReady
+} from '../utils/printReady';
 
 export type ReportListHubTab = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'];
 
@@ -141,12 +145,22 @@ export default function ReportListsHubModal({
   useEffect(() => {
     if (!printData) return;
     document.body.classList.add('production-plan-related-print-active');
+    // Báo cáo kết quả theo từng lệnh SX có layout A4 dọc riêng. Khi được in
+    // trong batch "Danh sách báo cáo", phải bật cùng ngữ cảnh với trang gốc
+    // để giữ nguyên phân trang tự nhiên của mẫu (có thể kéo dài nhiều trang),
+    // không bị Chrome thu nhỏ để dồn nội dung.
+    document.body.classList.add('shift-summary-print-active');
+    document.body.classList.add('bb-machine-report-print-active');
+    enablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     const timer = window.setTimeout(() => {
       void waitForPrintImagesReady().then(() => window.print());
     }, 350);
     const cleanup = () => {
       window.clearTimeout(timer);
       document.body.classList.remove('production-plan-related-print-active');
+      document.body.classList.remove('shift-summary-print-active');
+      document.body.classList.remove('bb-machine-report-print-active');
+      disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
       setPrintData(null);
     };
     window.addEventListener('afterprint', cleanup, { once: true });
@@ -154,6 +168,9 @@ export default function ReportListsHubModal({
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', cleanup);
       document.body.classList.remove('production-plan-related-print-active');
+      document.body.classList.remove('shift-summary-print-active');
+      document.body.classList.remove('bb-machine-report-print-active');
+      disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     };
   }, [printData]);
 

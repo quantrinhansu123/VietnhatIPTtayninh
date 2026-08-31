@@ -67,6 +67,30 @@ import {
   type WarehouseWeightCatalogItem
 } from '../../utils/warehouseWeight';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
+import ControlBoardBbMachineReportPrintBatch from '../../components/ControlBoardBbMachineReportPrintSheet';
+import {
+  BbGiaiTrinhPrintSheet,
+  buildBbGiaiTrinhPrintReport,
+  type BbGiaiTrinhPrintReport
+} from '../../components/BbGiaiTrinhPrintSheet';
+import {
+  buildBbBaoCaoTinhToanStableKey,
+  isBbBaoCaoTinhToanPayload,
+  type BbBaoCaoTinhToanPayload
+} from '../../utils/bbBaoCaoTinhToan';
+import { parseBbGiaiTrinhFields, type BbGiaiTrinhFields } from '../../utils/bbGiaiTrinh';
+import {
+  loadProductionOrderPrintMaterials,
+  normalizeProductionOrders,
+  normalizeProductionPlanHistory,
+  normalizeProductionPlanHistoryLines,
+  productionOrderToPlanLine,
+  ProductionOrderPrintSheet,
+  ProductionPlanPrintSheet,
+  resolveProductionOrderMachineLabel,
+  type PrintableProductionOrder,
+  type ProductionPlanLine
+} from './index';
 
 function splitOrderRefCodes(value: string): string[] {
   return String(value || '')
@@ -119,6 +143,10 @@ export type ProductionPlanReportDiagnostic = {
 };
 
 export type ProductionPlanRelatedReports = {
+  productCatalog: ProductRow[];
+  materialCatalog: ReturnType<typeof normalizeMaterialsInventory>;
+  productionPlans: Array<{ id: string; planDate: string; lines: ProductionPlanLine[]; note: string }>;
+  productionOrders: PrintableProductionOrder[];
   machineNvl: MachineNvlSavedReport[];
   mixing: MixingReport[];
   weighing: WeighingRecord[];
@@ -127,7 +155,14 @@ export type ProductionPlanRelatedReports = {
   acceptance: AcceptanceReport[];
   shiftHandovers: ShiftHandoverSlip[];
   canTuDong: CanTuDongPrintData | null;
+  warehouseExportSlips: WarehouseSlipPrintData[];
+  warehouseInboundSlips: WarehouseSlipPrintData[];
   warehouseSlips: WarehouseSlipPrintData[];
+  /** Nguồn phiếu kho thô để mẫu Báo cáo kết quả theo lệnh SX tính đúng cột chi tiết/đơn giá. */
+  warehouseMovements: WarehouseMovementRow[];
+  shiftOptions: ShiftOption[];
+  totalReport: BbBaoCaoTinhToanPayload | null;
+  totalReportGiaiTrinh: BbGiaiTrinhPrintReport | null;
   isEmpty: boolean;
   errors: string[];
   diagnostics: ProductionPlanReportDiagnostic[];
@@ -239,6 +274,14 @@ function shouldIncludeRelatedReport(rowShift: string, shiftList: string[], shift
   return matchShift(rowShift, shiftList, shiftOptions);
 }
 
+function matchesIsoPrintDate(value: string, isoDate: string) {
+  const text = String(value || '').trim();
+  if (!text || !isoDate) return false;
+  if (text.slice(0, 10) === isoDate) return true;
+  const [year, month, day] = isoDate.split('-');
+  return Boolean(year && month && day && text === `${day}/${month}/${year}`);
+}
+
 function normalizeProductKey(value: string) {
   return normalizeProductCodeKey(value || '');
 }
@@ -296,9 +339,19 @@ export async function loadProductionPlanRelatedReports(
   const errors: string[] = [];
   const encodedDate = encodeURIComponent(planDate);
   const shiftOptions = await loadShiftOptions();
+  const totalReportKey = buildBbBaoCaoTinhToanStableKey({
+    dateFrom: planDate,
+    dateTo: planDate,
+    shiftFilter: shifts[0] || 'all',
+    machineFilter: 'all',
+    sanLuongSource: 'can-tu-dong',
+    includeAllMachines: true
+  });
 
-  const [nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes] =
+  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
     await Promise.all([
+      fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
+      fetchJson('/api/lenh-sx'),
       fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-can-dinh-ki?ngay=${encodedDate}`),
@@ -309,8 +362,72 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/can-tu-dong?from=${encodedDate}&to=${encodedDate}&dateBy=ngay&images=0&limit=10000`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
-      fetchJson('/api/kho-nvl')
+      fetchJson('/api/kho-nvl'),
+      fetchJson(`/api/bb-bao-cao-tinh-toan?khoa_on_dinh=${encodeURIComponent(totalReportKey)}`),
+      fetchJson(`/api/bb-giai-trinh?dateFrom=${encodedDate}&dateTo=${encodedDate}`)
     ]);
+
+  const productionOrdersAll = productionOrderRes.ok ? normalizeProductionOrders(productionOrderRes.data) : [];
+  const productionOrdersForPrint = productionOrdersAll.filter(order =>
+    matchesIsoPrintDate(order.startDate, planDate) && shouldIncludeRelatedReport(order.shift, shifts, shiftOptions)
+  );
+  const productionOrders = (
+    await Promise.all(
+      productionOrdersForPrint.map(async order => {
+        const [{ materials, product }, machineLabel] = await Promise.all([
+          loadProductionOrderPrintMaterials(order),
+          resolveProductionOrderMachineLabel(order.machine)
+        ]);
+        return { order, materials, product, machineLabel } as PrintableProductionOrder;
+      })
+    )
+  );
+  if (!productionOrderRes.ok) errors.push('Lệnh sản xuất');
+
+  const planSummaries = planRes.ok ? normalizeProductionPlanHistory(planRes.data) : [];
+  const planDetails = await Promise.all(
+    planSummaries
+      .filter(plan => matchesIsoPrintDate(plan.planDate, planDate))
+      .map(async plan => ({ plan, detail: await fetchJson(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`) }))
+  );
+  const productionPlans = planDetails
+    .filter(({ detail }) => detail.ok)
+    .map(({ plan, detail }) => {
+      const lines = normalizeProductionPlanHistoryLines(detail.data)
+        .filter(line => shouldIncludeRelatedReport(line.shift, shifts, shiftOptions))
+        .map(line => {
+          const source = productionOrdersAll.find(order =>
+            (line.productionOrderId && order.id === line.productionOrderId) ||
+            (line.orderCode && order.code === line.orderCode)
+          );
+          if (source) return productionOrderToPlanLine(source, line.priority);
+          const firstProduct = line.products[0];
+          return {
+            id: line.productionOrderId || line.id,
+            code: line.orderCode,
+            name: line.orderCode,
+            productCode: firstProduct?.productCode || '',
+            productName: firstProduct?.productName || '',
+            quantity: firstProduct?.quantity || '',
+            unit: firstProduct?.unit || '',
+            products: line.products,
+            status: '',
+            orderRef: line.orderRef,
+            position: line.machine !== '-' ? line.machine : line.position,
+            staff: line.staff,
+            shiftLead: line.shiftLead,
+            mainStaff: line.mainStaff,
+            assistantStaff: line.assistantStaff,
+            traineeStaff: line.traineeStaff,
+            shift: line.shift,
+            priority: line.priority,
+            note: line.note
+          } as ProductionPlanLine;
+        });
+      return { id: plan.id, planDate, lines, note: plan.note };
+    })
+    .filter(plan => plan.lines.length > 0);
+  if (!planRes.ok) errors.push('Kế hoạch sản xuất');
 
   const machineNvlAll = nvlRes.ok ? normalizeMachineNvlReports(nvlRes.data) : [];
   const machineNvl = machineNvlAll.filter(report =>
@@ -404,17 +521,44 @@ export async function loadProductionPlanRelatedReports(
     ...(warehouseRes.ok ? normalizeWarehouseMovements(warehouseRes.data) : []),
     ...(finishedGoodsInboundRes.ok ? normalizeWarehouseMovements(finishedGoodsInboundRes.data) : [])
   ];
+  // Cả phiếu xuất lẫn phiếu nhập trong batch phải khớp đúng ca người dùng chọn.
+  // Không lấy tất cả phiếu xuất của cùng ngày, vì sẽ lẫn vật tư của ca khác.
   const warehouseMovements = warehouseMovementsAll.filter(row =>
-    row.slipType === 'xuat' ? true : shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
+    shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
   );
   if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
   if (!finishedGoodsInboundRes.ok) errors.push('Phiếu nhập kho thành phẩm');
-  const materialWeightCatalog = materialCatalogRes.ok
-    ? normalizeMaterialsInventory(materialCatalogRes.data).map(mapMaterialToWeightCatalogItem)
-    : [];
+  const materialCatalog = materialCatalogRes.ok ? normalizeMaterialsInventory(materialCatalogRes.data) : [];
+  const materialWeightCatalog = materialCatalog.map(mapMaterialToWeightCatalogItem);
   const warehouseSlips = buildWarehouseExportSlips(warehouseMovements, materialWeightCatalog);
+  const warehouseExportSlips = warehouseSlips.filter(slip => slip.slipType === 'xuat');
+  const warehouseInboundSlips = warehouseSlips.filter(slip => slip.slipType === 'nhap');
+
+  const rawTotalReport = (totalReportRes.data as { item?: { payload?: unknown } } | null)?.item?.payload;
+  const totalReport = isBbBaoCaoTinhToanPayload(rawTotalReport) ? rawTotalReport : null;
+  const giaiTrinhMap: Record<string, BbGiaiTrinhFields> = {};
+  const giaiTrinhItems = Array.isArray((giaiTrinhRes.data as { items?: unknown } | null)?.items)
+    ? ((giaiTrinhRes.data as { items: unknown[] }).items)
+    : [];
+  for (const raw of giaiTrinhItems) {
+    const row = raw as Record<string, unknown>;
+    const key = String(row.group_key || row.ma_lenh || '').trim();
+    if (key) giaiTrinhMap[key] = parseBbGiaiTrinhFields(row);
+  }
+  const totalReportGiaiTrinh = totalReport
+    ? buildBbGiaiTrinhPrintReport({
+        orderGroups: totalReport.orderGroups,
+        giaiTrinhMap,
+        dateFrom: planDate,
+        dateTo: planDate,
+        shiftFilter: shifts[0] || 'all',
+        machineFilter: 'all'
+      })
+    : null;
 
   const isEmpty =
+    productionPlans.length === 0 &&
+    productionOrders.length === 0 &&
     machineNvl.length === 0 &&
     mixing.length === 0 &&
     getWeighingDataRows(weighing).length === 0 &&
@@ -426,6 +570,8 @@ export async function loadProductionPlanRelatedReports(
     warehouseSlips.length === 0;
 
   const diagnostics: ProductionPlanReportDiagnostic[] = [
+    { label: 'Kế hoạch sản xuất', matched: productionPlans.length, dayTotal: planSummaries.length },
+    { label: 'Lệnh sản xuất', matched: productionOrders.length, dayTotal: productionOrdersAll.length },
     { label: 'Báo cáo tồn NVL', matched: machineNvl.length, dayTotal: machineNvlAll.length },
     { label: 'Trộn nguyên vật liệu', matched: mixing.length, dayTotal: mixingAll.length },
     { label: 'Phiếu cân', matched: getWeighingDataRows(weighing).length, dayTotal: getWeighingDataRows(weighingAll).length },
@@ -437,7 +583,30 @@ export async function loadProductionPlanRelatedReports(
     { label: 'Phiếu xuất vật tư', matched: warehouseMovements.length, dayTotal: warehouseMovementsAll.length }
   ];
 
-  return { machineNvl, mixing, weighing, downtime, damaged, acceptance, shiftHandovers, canTuDong, warehouseSlips, isEmpty, errors, diagnostics };
+  return {
+    productCatalog,
+    materialCatalog,
+    productionPlans,
+    productionOrders,
+    machineNvl,
+    mixing,
+    weighing,
+    downtime,
+    damaged,
+    acceptance,
+    shiftHandovers,
+    canTuDong,
+    warehouseExportSlips,
+    warehouseInboundSlips,
+    warehouseSlips,
+    warehouseMovements,
+    shiftOptions,
+    totalReport,
+    totalReportGiaiTrinh,
+    isEmpty,
+    errors,
+    diagnostics
+  };
 }
 
 function buildWarehouseExportSlips(
@@ -534,7 +703,8 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
   const nvlCuoiCaReports = nvlReports.filter(report => report.reportKind === 'cuoi_ca');
   const mixingGroups = groupMixingReportsForPrint(data.mixing);
   const weighingSlips = buildWeighingSlips(data.weighing);
-  const damagedSlips = buildWeighingSlips(data.damaged);
+  // Hàng hỏng không nằm trong bộ phiếu Danh sách báo cáo đã chốt.
+  const damagedSlips: WeighingSlipPrintData[] = [];
   const downtimeSlips = data.downtime.map(slip =>
     buildMachineDowntimePrintSlip({
       slipCode: slip.slipCode,
@@ -560,10 +730,34 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
 
   return (
     <>
+      {data.productionPlans.map(plan => (
+        <div key={`production-plan-${plan.id}`} className="production-order-print-page">
+          <ProductionPlanPrintSheet
+            lines={plan.lines}
+            materialsByLine={{}}
+            planDate={plan.planDate}
+            planNote={plan.note}
+          />
+        </div>
+      ))}
+
+      {data.productionOrders.map(item => (
+        <div key={`production-order-${item.order.id}`} className="production-order-print-page">
+          <ProductionOrderPrintSheet
+            order={item.order}
+            materials={item.materials}
+            machineLabel={item.machineLabel}
+            product={item.product}
+            productCatalog={data.productCatalog}
+            showActualQuantity
+            portal={false}
+          />
+        </div>
+      ))}
       {/* 4. Phiếu xuất kho vật tư */}
-      {data.warehouseSlips.length > 0 ? (
+      {data.warehouseExportSlips.length > 0 ? (
         <div className="production-order-print-page">
-          <WarehouseSlipPrintBatch slips={data.warehouseSlips} />
+          <WarehouseSlipPrintBatch slips={data.warehouseExportSlips} />
         </div>
       ) : null}
 
@@ -575,16 +769,23 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
       ))}
 
       {/* 6. Bảng kiểm kê vật tư tồn cuối ca — mẫu gốc /bao-cao-may-nvl-ton */}
+
+      {/* 6. Nhật kí trộn nguyên liệu */}
+      {mixingGroups.map((group, index) => (
+        <div key={`mixing-${index}`} className="production-order-print-page">
+          <MixingReportPrintSheet reports={group} context={buildMixingReportPrintContext(group)} />
+        </div>
+      ))}
+
       {nvlCuoiCaReports.map((report, index) => (
         <div key={`nvl-cuoica-${index}`} className="production-order-print-page">
           <MachineNvlPrintSheet report={report} />
         </div>
       ))}
 
-      {/* 6. Nhật kí trộn nguyên liệu */}
-      {mixingGroups.map((group, index) => (
-        <div key={`mixing-${index}`} className="production-order-print-page">
-          <MixingReportPrintSheet reports={group} context={buildMixingReportPrintContext(group)} />
+      {acceptanceSlips.map((slip, index) => (
+        <div key={`acceptance-ordered-${index}`} className="production-order-print-page">
+          <AcceptanceReportPrintSheet slip={slip} />
         </div>
       ))}
 
@@ -596,16 +797,17 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
       ))}
 
       {/* 8. Báo cáo sản lượng */}
-      {acceptanceSlips.map((slip, index) => (
-        <div key={`acceptance-${index}`} className="production-order-print-page">
-          <AcceptanceReportPrintSheet slip={slip} />
-        </div>
-      ))}
 
       {/* Phiếu cân tự động — tái dùng đúng mẫu in của /can-tu-dong */}
       {data.canTuDong ? (
         <div className="production-order-print-page">
           <CanTuDongPrintSheet data={data.canTuDong} />
+        </div>
+      ) : null}
+
+      {data.warehouseInboundSlips.length > 0 ? (
+        <div className="production-order-print-page">
+          <WarehouseSlipPrintBatch slips={data.warehouseInboundSlips} />
         </div>
       ) : null}
 
@@ -616,13 +818,36 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
         </div>
       ))}
 
-      {/* 10. Phiếu báo dừng máy */}
-      {downtimeSlips.map((slip, index) => (
-        <div key={`downtime-${index}`} className="production-order-print-page">
-          <MachineDowntimePrintSheet slip={slip} />
-        </div>
-      ))}
+      {data.totalReport ? (
+        <ControlBoardBbMachineReportPrintBatch
+          orderGroups={data.totalReport.orderGroups}
+          exportGroups={data.totalReport.exportGroups}
+          dauCaGroups={data.totalReport.dauCaGroups}
+          cuoiCaGroups={data.totalReport.cuoiCaGroups}
+          damagedGroups={data.totalReport.damagedGroups}
+          mixingGroups={data.totalReport.mixingGroups}
+          danhGiaGroups={data.totalReport.danhGiaGroups}
+          inboundRows={data.totalReport.inboundRows}
+          acceptanceReports={data.acceptance}
+          products={data.productCatalog}
+          materials={data.materialCatalog}
+          phanTichMap={{}}
+          sanLuongSource="can-tu-dong"
+          sanLuongGroups={data.totalReport.sanLuongGroups}
+          machineReportLabel={data.totalReport.orderGroups[0]?.machine || 'máy BB'}
+          warehouseMovements={data.warehouseMovements}
+          warehouseMovementsByDate={data.warehouseMovements}
+          shiftSettings={data.shiftOptions}
+        />
+      ) : null}
 
+      {data.totalReportGiaiTrinh ? (
+        <div className="production-order-print-page">
+          <BbGiaiTrinhPrintSheet report={data.totalReportGiaiTrinh} />
+        </div>
+      ) : null}
+
+      {/* 10. Phiếu báo dừng máy */}
       {/* 12. Báo cáo hàng hỏng */}
       {damagedSlips.map((slip, index) => (
         <div key={`damaged-${index}`} className="production-order-print-page">

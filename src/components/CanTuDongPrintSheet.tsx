@@ -8,7 +8,7 @@ import {
   resolveCanSpKg,
   resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
-  resolveTrongLuongNhuaKg,
+  resolveCanTuDongNhuaThucTeKg,
   type CanTuDongWeightRow
 } from '../utils/canTuDongWeights';
 
@@ -22,6 +22,8 @@ export type CanTuDongPrintLine = {
   tongTrongLuongLoi: number;
   /** Tổng Trọng lượng bì. */
   tongTrongLuongBi: number;
+  /** Σ BOM màng / cuộn theo Mã SP. */
+  trongLuongMang: number;
   trongLuongNhua: number;
   /** Σ nhựa định mức từng lần cân (theo mã SP). */
   trongLuongNhuaDinhMuc: number;
@@ -37,6 +39,7 @@ export type CanTuDongPrintData = {
   totalTongTrongLuong: number;
   totalTongTrongLuongLoi: number;
   totalTongTrongLuongBi: number;
+  totalTrongLuongMang: number;
   totalTrongLuongNhua: number;
   totalTrongLuongNhuaDinhMuc: number;
   totalChenhLechNhua: number;
@@ -100,12 +103,14 @@ export function buildCanTuDongPrintData(
     productStandardWeightByCode?: Map<string, number>;
     productCoreWeightByCode?: Map<string, number>;
     productPlasticWeightByCode?: Map<string, number>;
+    productFilmWeightByCode?: Map<string, number>;
   } = {}
 ): CanTuDongPrintData {
   const productNameByCode = options.productNameByCode ?? new Map<string, string>();
   const productStandardWeightByCode = options.productStandardWeightByCode ?? new Map<string, number>();
   const productCoreWeightByCode = options.productCoreWeightByCode ?? new Map<string, number>();
   const productPlasticWeightByCode = options.productPlasticWeightByCode ?? new Map<string, number>();
+  const productFilmWeightByCode = options.productFilmWeightByCode ?? new Map<string, number>();
   const lineMap = new Map<string, CanTuDongPrintLine>();
 
   for (const row of records) {
@@ -117,18 +122,24 @@ export function buildCanTuDongPrintData(
     const canHang = resolveCanSpKg(row);
     const canLoi = resolveCanLoiKg(row);
     const trongLuongBi = resolveTrongLuongBiKg(row);
-    const nhua = resolveTrongLuongNhuaKg(row);
+    const nhua = resolveCanTuDongNhuaThucTeKg(row, productFilmWeightByCode);
     const nhuaDinhMuc = resolveNhuaDinhMucKg(
       productStandardWeightByCode.get(key),
       productCoreWeightByCode.get(key),
       productPlasticWeightByCode.get(key)
     );
+    const filmKgPerRoll = productFilmWeightByCode.get(key);
+    const filmKg =
+      filmKgPerRoll != null && Number.isFinite(filmKgPerRoll) && filmKgPerRoll > 0
+        ? filmKgPerRoll
+        : null;
     const existing = lineMap.get(key);
     if (existing) {
       existing.soLuong += 1;
       existing.tongTrongLuong = addFinite(existing.tongTrongLuong, canHang);
       existing.tongTrongLuongLoi = addFinite(existing.tongTrongLuongLoi, canLoi);
       existing.tongTrongLuongBi += trongLuongBi;
+      if (filmKg !== null) existing.trongLuongMang += filmKg;
       if (nhua !== null) existing.trongLuongNhua += nhua;
       if (nhuaDinhMuc !== null) existing.trongLuongNhuaDinhMuc += nhuaDinhMuc;
     } else {
@@ -139,6 +150,7 @@ export function buildCanTuDongPrintData(
         tongTrongLuong: canHang ?? 0,
         tongTrongLuongLoi: canLoi ?? 0,
         tongTrongLuongBi: trongLuongBi,
+        trongLuongMang: filmKg ?? 0,
         trongLuongNhua: nhua ?? 0,
         trongLuongNhuaDinhMuc: nhuaDinhMuc ?? 0
       });
@@ -148,6 +160,7 @@ export function buildCanTuDongPrintData(
   const lines = [...lineMap.values()].sort((a, b) =>
     a.maSp.localeCompare(b.maSp, 'vi', { numeric: true })
   );
+  const totalTrongLuongMang = lines.reduce((sum, line) => sum + line.trongLuongMang, 0);
   const totalTrongLuongNhua = lines.reduce((sum, line) => sum + line.trongLuongNhua, 0);
   const totalTrongLuongNhuaDinhMuc = lines.reduce((sum, line) => sum + line.trongLuongNhuaDinhMuc, 0);
 
@@ -161,6 +174,7 @@ export function buildCanTuDongPrintData(
     totalTongTrongLuong: lines.reduce((sum, line) => sum + line.tongTrongLuong, 0),
     totalTongTrongLuongLoi: lines.reduce((sum, line) => sum + line.tongTrongLuongLoi, 0),
     totalTongTrongLuongBi: lines.reduce((sum, line) => sum + line.tongTrongLuongBi, 0),
+    totalTrongLuongMang,
     totalTrongLuongNhua,
     totalTrongLuongNhuaDinhMuc,
     totalChenhLechNhua: chenhLechNhuaKg(totalTrongLuongNhua, totalTrongLuongNhuaDinhMuc)
@@ -200,15 +214,16 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               <th>Tên SP</th>
               <th>Số lượng</th>
               <th>Tổng trọng lượng</th>
+              <th>Trọng lượng màng</th>
+              <th>Trọng lượng nhựa</th>
               <th>Tổng trọng lượng lõi</th>
               <th>Tổng trọng lượng bì</th>
-              <th>Trọng lượng nhựa</th>
             </tr>
           </thead>
           <tbody>
             {data.lines.length === 0 ? (
               <tr>
-                <td colSpan={8} className="production-order-print-center">
+                <td colSpan={9} className="production-order-print-center">
                   Không có dữ liệu theo bộ lọc.
                 </td>
               </tr>
@@ -223,13 +238,16 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
                     {formatNumber(line.tongTrongLuong, 2)} kg
                   </td>
                   <td className="production-order-print-right">
+                    {line.trongLuongMang > 0 ? `${formatNumber(line.trongLuongMang, 2)} kg` : '—'}
+                  </td>
+                  <td className="production-order-print-right">
+                    {formatNumber(line.trongLuongNhua, 2)} kg
+                  </td>
+                  <td className="production-order-print-right">
                     {formatNumber(line.tongTrongLuongLoi, 2)} kg
                   </td>
                   <td className="production-order-print-right">
                     {formatNumber(line.tongTrongLuongBi, 2)} kg
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatNumber(line.trongLuongNhua, 2)} kg
                   </td>
                 </tr>
               ))
@@ -245,13 +263,18 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
                 {formatNumber(data.totalTongTrongLuong, 2)} kg
               </td>
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {data.totalTrongLuongMang > 0
+                  ? `${formatNumber(data.totalTrongLuongMang, 2)} kg`
+                  : '—'}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(data.totalTrongLuongNhua, 2)} kg
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalTongTrongLuongLoi, 2)} kg
               </td>
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalTongTrongLuongBi, 2)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(data.totalTrongLuongNhua, 2)} kg
               </td>
             </tr>
           </tbody>

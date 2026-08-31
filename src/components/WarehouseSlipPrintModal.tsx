@@ -112,6 +112,47 @@ function addNullablePrintQty(a: number | null | undefined, b: number | null | un
   return sum > 0 ? sum : null;
 }
 
+function warehousePrintLineMergeKey(line: Pick<WarehouseSlipPrintLine, 'code' | 'unit'>) {
+  return `${String(line.code || '')
+    .replace(/\s+/g, '')
+    .toUpperCase()}|${String(line.unit || '')
+    .replace(/\s+/g, '')
+    .toUpperCase()}`;
+}
+
+/** Gộp dòng trùng mã + ĐVT (cộng SL, quy đổi kg, thành tiền). */
+export function mergeWarehousePrintLines(lines: WarehouseSlipPrintLine[]): WarehouseSlipPrintLine[] {
+  const lineMap = new Map<string, WarehouseSlipPrintLine>();
+  const lineOrder: string[] = [];
+
+  for (const line of lines) {
+    const code = String(line.code || '').trim();
+    if (!code) continue;
+    const key = warehousePrintLineMergeKey(line);
+    const existing = lineMap.get(key);
+    if (existing) {
+      existing.quantity += Number.isFinite(line.quantity) ? line.quantity : 0;
+      existing.documentQuantity = addNullablePrintQty(existing.documentQuantity, line.documentQuantity);
+      existing.unitPrice = existing.unitPrice || line.unitPrice;
+      existing.lineAmount += Number.isFinite(line.lineAmount) ? line.lineAmount : 0;
+      existing.weightKg = addNullablePrintQty(existing.weightKg, line.weightKg);
+      existing.quotaQuantity = addNullablePrintQty(existing.quotaQuantity, line.quotaQuantity);
+      existing.suggestedQuantity = addNullablePrintQty(existing.suggestedQuantity, line.suggestedQuantity);
+      if (!existing.name && line.name) existing.name = line.name;
+      if (line.lineNote) {
+        existing.lineNote = existing.lineNote
+          ? [...new Set([existing.lineNote, line.lineNote].filter(Boolean))].join('; ')
+          : line.lineNote;
+      }
+    } else {
+      lineMap.set(key, { ...line });
+      lineOrder.push(key);
+    }
+  }
+
+  return lineOrder.map(key => lineMap.get(key)!);
+}
+
 /**
  * In gộp nhiều phiếu xuất/nhập: 1 bảng in, cộng SL khi trùng mã (+ ĐVT).
  */
@@ -119,39 +160,18 @@ export function mergeWarehousePrintSlips(slips: WarehouseSlipPrintData[]): Wareh
   if (slips.length === 0) {
     throw new Error('Không có phiếu để gộp in.');
   }
-  if (slips.length === 1) return slips[0];
-
-  const lineMap = new Map<string, WarehouseSlipPrintLine>();
-  const lineOrder: string[] = [];
-
-  for (const slip of slips) {
-    for (const line of slip.lines) {
-      const key = `${String(line.code || '')
-        .replace(/\s+/g, '')
-        .toUpperCase()}|${String(line.unit || '')
-        .replace(/\s+/g, '')
-        .toUpperCase()}`;
-      const existing = lineMap.get(key);
-      if (existing) {
-        existing.quantity += Number.isFinite(line.quantity) ? line.quantity : 0;
-        existing.documentQuantity = addNullablePrintQty(existing.documentQuantity, line.documentQuantity);
-        existing.unitPrice = existing.unitPrice || line.unitPrice;
-        existing.lineAmount += Number.isFinite(line.lineAmount) ? line.lineAmount : 0;
-        existing.weightKg = addNullablePrintQty(existing.weightKg, line.weightKg);
-        if (!existing.name && line.name) existing.name = line.name;
-        if (line.lineNote) {
-          existing.lineNote = existing.lineNote
-            ? [...new Set([existing.lineNote, line.lineNote].filter(Boolean))].join('; ')
-            : line.lineNote;
-        }
-      } else {
-        lineMap.set(key, { ...line });
-        lineOrder.push(key);
-      }
-    }
+  if (slips.length === 1) {
+    const slip = slips[0];
+    const lines = mergeWarehousePrintLines(slip.lines);
+    if (lines.length === slip.lines.length) return slip;
+    return {
+      ...slip,
+      totalAmount: lines.reduce((sum, line) => sum + (Number.isFinite(line.lineAmount) ? line.lineAmount : 0), 0),
+      lines
+    };
   }
 
-  const lines = lineOrder.map(key => lineMap.get(key)!);
+  const lines = mergeWarehousePrintLines(slips.flatMap(slip => slip.lines));
   const first = slips[0];
 
   return {
@@ -468,22 +488,13 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           <p>Thủ kho</p>
           <span>(Ký, họ tên)</span>
         </div>
-        <div>
-          <p className="warehouse-nhap-kho-signature-date">
-            <em>
-              Ngày {dateParts.day || '……'} tháng {dateParts.month || '……'} năm {dateParts.year || '……'}
-            </em>
-          </p>
-          <p>Kế toán trưởng</p>
-          <span className="warehouse-nhap-kho-signature-note">(Hoặc bộ phận có nhu cầu nhập)</span>
-        </div>
       </div>
     </>
   );
 }
 
 function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
-  const sortedLines = sortPrintLinesByUnit(data.lines);
+  const sortedLines = sortPrintLinesByUnit(mergeWarehousePrintLines(data.lines));
   const plasticLines = sortedLines.filter(isPlasticKgPrintLine);
   const otherMaterialLines = sortedLines.filter(line => !isPlasticKgPrintLine(line));
   const totalPlasticKg = sumPrintWeightKg(plasticLines) || sumPrintQty(plasticLines);

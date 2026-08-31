@@ -591,8 +591,6 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
       return;
     }
 
-    const printPayload = buildCurrentPrintSlip();
-
     setIsSaving(true);
     try {
       const res = await fetch('/api/nhat-ky-chay-may', {
@@ -622,7 +620,6 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
       setLines([emptyLine()]);
       setNote('');
       await loadLogs();
-      handlePrint({ ...printPayload, slipCode: slipCode || printPayload.slipCode });
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể lưu nhật ký.'));
     } finally {

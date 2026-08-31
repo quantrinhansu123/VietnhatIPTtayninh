@@ -36,7 +36,7 @@ import { MachineNvlPrintSheet, savedReportToMachineNvlPrintReport } from '../../
 import { MixingReportPrintSheet } from '../../components/MixingReportPrintSheet';
 import { WeighingSlipPrintSheet, type WeighingSlipPrintData } from '../../components/WeighingSlipPrintSheet';
 import { MachineDowntimePrintSheet, buildMachineDowntimePrintSlip } from '../../components/MachineDowntimePrintSheet';
-import { AcceptanceReportPrintSheet, buildAcceptancePrintSlips } from '../../components/AcceptanceReportPrintSheet';
+import { AcceptanceReportPrintSheet, buildAcceptancePrintSlips, buildAcceptanceFilmKgByProductCode } from '../../components/AcceptanceReportPrintSheet';
 import {
   buildCanTuDongPrintData,
   CanTuDongPrintSheet,
@@ -125,6 +125,7 @@ export type ProductionPlanRelatedReports = {
   downtime: MachineDowntimeSlip[];
   damaged: WeighingRecord[];
   acceptance: AcceptanceReport[];
+  acceptanceFilmKgByProductCode: Map<string, number>;
   shiftHandovers: ShiftHandoverSlip[];
   canTuDong: CanTuDongPrintData | null;
   warehouseSlips: WarehouseSlipPrintData[];
@@ -243,7 +244,11 @@ function normalizeProductKey(value: string) {
   return normalizeProductCodeKey(value || '');
 }
 
-function addAcceptanceProductNamesForPrint(reports: AcceptanceReport[], productCatalog: ProductRow[]) {
+function addAcceptanceProductNamesForPrint(
+  reports: AcceptanceReport[],
+  productCatalog: ProductRow[],
+  materialCatalog?: unknown
+) {
   const productNameByCode = new Map<string, string>();
   productCatalog.forEach(product => {
     const key = normalizeProductKey(product.code);
@@ -251,12 +256,35 @@ function addAcceptanceProductNamesForPrint(reports: AcceptanceReport[], productC
     if (!productNameByCode.has(key)) productNameByCode.set(key, product.name || '');
   });
 
+  const materialRows = Array.isArray(materialCatalog)
+    ? materialCatalog
+    : materialCatalog &&
+        typeof materialCatalog === 'object' &&
+        Array.isArray((materialCatalog as { materials?: unknown }).materials)
+      ? (materialCatalog as { materials: unknown[] }).materials
+      : [];
+  for (const item of materialRows) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const code = String(record.ma_npl ?? record.ma_sp ?? record.code ?? '').trim();
+    const name = String(record.ten_npl ?? record.ten_sp ?? record.name ?? '').trim();
+    const key = normalizeProductKey(code);
+    if (key && name && !productNameByCode.has(key)) productNameByCode.set(key, name);
+  }
+
   return reports.map(report => {
     const product = findProductByCode(productCatalog, report.mat_hang || '');
     const fallbackName = product?.name || '';
+    const matHang = String(report.mat_hang || '').trim();
+    const plusIdx = matHang.indexOf('+');
+    const codePrefix = (plusIdx > 0 ? matHang.slice(0, plusIdx) : matHang).trim();
     return {
       ...report,
-      ten_sp: report.ten_sp || productNameByCode.get(normalizeProductKey(report.mat_hang)) || fallbackName
+      ten_sp:
+        report.ten_sp ||
+        productNameByCode.get(normalizeProductKey(report.mat_hang)) ||
+        productNameByCode.get(normalizeProductKey(codePrefix)) ||
+        fallbackName
     };
   });
 }
@@ -347,7 +375,14 @@ export async function loadProductionPlanRelatedReports(
   if (!damagedRes.ok) errors.push('Báo cáo hàng hỏng');
 
   const acceptanceAllRaw = acceptanceRes.ok ? normalizeAcceptanceReports(acceptanceRes.data) : [];
-  const acceptanceAll = productCatalog.length > 0 ? addAcceptanceProductNamesForPrint(acceptanceAllRaw, productCatalog) : acceptanceAllRaw;
+  const acceptanceAll =
+    productCatalog.length > 0 || materialCatalogRes.ok
+      ? addAcceptanceProductNamesForPrint(
+          acceptanceAllRaw,
+          productCatalog,
+          materialCatalogRes.ok ? materialCatalogRes.data : undefined
+        )
+      : acceptanceAllRaw;
   const acceptance = acceptanceAll.filter(report =>
     shouldIncludeRelatedReport(report.ca, shifts, shiftOptions)
   );
@@ -414,6 +449,8 @@ export async function loadProductionPlanRelatedReports(
     : [];
   const warehouseSlips = buildWarehouseExportSlips(warehouseMovements, materialWeightCatalog);
 
+  const acceptanceFilmKgByProductCode = buildAcceptanceFilmKgByProductCode(productCatalog);
+
   const isEmpty =
     machineNvl.length === 0 &&
     mixing.length === 0 &&
@@ -437,7 +474,21 @@ export async function loadProductionPlanRelatedReports(
     { label: 'Phiếu xuất vật tư', matched: warehouseMovements.length, dayTotal: warehouseMovementsAll.length }
   ];
 
-  return { machineNvl, mixing, weighing, downtime, damaged, acceptance, shiftHandovers, canTuDong, warehouseSlips, isEmpty, errors, diagnostics };
+  return {
+    machineNvl,
+    mixing,
+    weighing,
+    downtime,
+    damaged,
+    acceptance,
+    acceptanceFilmKgByProductCode,
+    shiftHandovers,
+    canTuDong,
+    warehouseSlips,
+    isEmpty,
+    errors,
+    diagnostics
+  };
 }
 
 function buildWarehouseExportSlips(
@@ -598,7 +649,10 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
       {/* 8. Báo cáo sản lượng */}
       {acceptanceSlips.map((slip, index) => (
         <div key={`acceptance-${index}`} className="production-order-print-page">
-          <AcceptanceReportPrintSheet slip={slip} />
+          <AcceptanceReportPrintSheet
+            slip={slip}
+            filmKgByProductCode={data.acceptanceFilmKgByProductCode}
+          />
         </div>
       ))}
 

@@ -57,6 +57,8 @@ export type MachineNvlSavedLine = {
   soLuongTonDinhMuc: number | null;
   soLuongTon: number;
   ghiChu: string;
+  hinhAnh: string;
+  hinhAnhPublicId: string;
 };
 
 export type MachineNvlSavedReport = {
@@ -153,7 +155,9 @@ export function normalizeMachineNvlReports(data: unknown): MachineNvlSavedReport
             soLuongTonNgoai: Number.isFinite(outsideParsed) ? outsideParsed : null,
             soLuongTonDinhMuc: Number.isFinite(standardParsed) ? standardParsed : null,
             soLuongTon: Number.isFinite(amount) ? amount : 0,
-            ghiChu: String(detail.ghi_chu ?? detail.note ?? '').trim()
+            ghiChu: String(detail.ghi_chu ?? detail.note ?? '').trim(),
+            hinhAnh: String(detail.hinh_anh ?? detail.imageUrl ?? detail.anh_url ?? '').trim(),
+            hinhAnhPublicId: String(detail.hinh_anh_public_id ?? detail.imagePublicId ?? detail.anh_public_id ?? '').trim()
           };
         })
         .filter((line): line is MachineNvlSavedLine => Boolean(line));

@@ -132,12 +132,12 @@ export type BbMachineReportTabId =
 
 export const BB_MACHINE_REPORT_TABS: Array<{ id: BbMachineReportTabId; label: string }> = [
   { id: 'lenh_sx', label: 'Dữ liệu trong lệnh sản xuất' },
+  { id: 'phieu_xuat_kho', label: 'Dữ liệu xuất kho' },
   { id: 'ton_dau_ca', label: 'Báo cáo dữ liệu tồn đầu ca' },
   { id: 'bao_cao_san_luong', label: 'Dữ liệu cân thực tế' },
   { id: 'bao_cao_san_luong_phieu', label: 'Báo cáo sản lượng' },
   { id: 'bao_cao_loi_hong', label: 'Dữ liệu trong báo cáo hàng lỗi hỏng' },
   { id: 'kiem_ton_cuoi_ca', label: 'Dữ liệu trong báo cáo kiểm tồn cuối ca' },
-  { id: 'tong_vat_tu_thuc_dung', label: 'Tổng vật tư thực xuất dùng & tỉ lệ trộn' },
   { id: 'bao_cao_thanh_pham_nhap_kho', label: 'Báo cáo thành phẩm đạt nhập kho' },
   { id: 'bao_cao_tieu_hao_nvl', label: 'Báo cáo tiêu hao nguyên vật liệu' },
   { id: 'danh_gia_hao_hut', label: 'Đánh giá hiệu quả ca sản xuất' },

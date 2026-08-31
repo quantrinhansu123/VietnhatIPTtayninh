@@ -3891,6 +3891,8 @@ function parseMachineNvlReportLine(source: unknown, index: number) {
   const loai_vat_tu_raw = String(record.loai_vat_tu ?? record.materialType ?? '').trim().toLowerCase();
   const loai_vat_tu = ['nhua', 'mang', 'loi', 'bao_bi'].includes(loai_vat_tu_raw) ? loai_vat_tu_raw : null;
   const ghi_chu = String(record.ghi_chu ?? record.note ?? '').trim();
+  const hinh_anh = String(record.hinh_anh ?? record.imageUrl ?? record.anh_url ?? '').trim();
+  const hinh_anh_public_id = String(record.hinh_anh_public_id ?? record.imagePublicId ?? record.anh_public_id ?? '').trim();
 
   if (
     !ma_nvl &&
@@ -3928,6 +3930,7 @@ function parseMachineNvlReportLine(source: unknown, index: number) {
     ...(so_luong_ton_ca_truoc !== null ? { so_luong_ton_ca_truoc } : {}),
     ...(trong_luong_quy_doi_kg !== null && trong_luong_quy_doi_kg > 0 ? { trong_luong_quy_doi_kg } : {}),
     ...(loai_vat_tu ? { loai_vat_tu } : {}),
+    ...(hinh_anh ? { hinh_anh, hinh_anh_public_id: hinh_anh_public_id || null } : {}),
     ghi_chu
   };
 }
@@ -3951,6 +3954,25 @@ function parseMachineNvlReportBody(body: unknown): { error: string } | { record:
 
   if (chi_tiet.length === 0) {
     return { error: 'Vui lòng nhập ít nhất một dòng NVL tồn theo máy.' };
+  }
+
+  const missingImageLine = chi_tiet.find(line => {
+    const hasContent = Boolean(
+      line.ma_nvl ||
+        line.ten_nvl ||
+        (line.so_luong_ton ?? 0) > 0 ||
+        (line.so_luong_trong_may ?? 0) > 0 ||
+        (line.so_luong_trong_bon_tron ?? 0) > 0 ||
+        (line.so_luong_nl_chua_tron ?? 0) > 0 ||
+        (line.so_luong_ton_ngoai ?? 0) > 0 ||
+        (line.so_luong_ton_dinh_muc ?? 0) > 0 ||
+        (line.so_luong_ton_ca_truoc ?? 0) > 0
+    );
+    return hasContent && !String(line.hinh_anh ?? '').trim();
+  });
+  if (missingImageLine) {
+    const label = missingImageLine.ma_nvl || missingImageLine.ten_nvl || `STT ${missingImageLine.stt}`;
+    return { error: `Dòng ${label}: vui lòng chụp ảnh.` };
   }
 
   const tong_so_luong_ton =

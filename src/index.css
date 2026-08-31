@@ -3714,23 +3714,26 @@ input[type="number"] {
 }
 
 .acceptance-report-print-table { table-layout: fixed; width: 100%; }
-.acceptance-report-print-table th:nth-child(1) { width: 7%; }
-.acceptance-report-print-table th:nth-child(2) { width: 22%; }
-.acceptance-report-print-table th:nth-child(3) { width: 31%; }
-.acceptance-report-print-table th:nth-child(4) { width: 11%; }
-.acceptance-report-print-table th:nth-child(5) { width: 14%; }
-.acceptance-report-print-table th:nth-child(6) { width: 15%; }
+.acceptance-report-print-table th:nth-child(1) { width: 5%; }
+.acceptance-report-print-table th:nth-child(2) { width: 14%; }
+.acceptance-report-print-table th:nth-child(3) { width: 22%; }
+.acceptance-report-print-table th:nth-child(4) { width: 8%; }
+.acceptance-report-print-table th:nth-child(5) { width: 10%; }
+.acceptance-report-print-table th:nth-child(6) { width: 13%; }
+.acceptance-report-print-table th:nth-child(7) { width: 13%; }
+.acceptance-report-print-table th:nth-child(8) { width: 13%; }
 .acceptance-report-print-table th,
 .acceptance-report-print-table td { box-sizing: border-box; overflow-wrap: anywhere; }
 
-.can-tu-dong-print-table th:nth-child(1) { width: 5%; }
-.can-tu-dong-print-table th:nth-child(2) { width: 12%; }
-.can-tu-dong-print-table th:nth-child(3) { width: 20%; }
-.can-tu-dong-print-table th:nth-child(4) { width: 8%; }
-.can-tu-dong-print-table th:nth-child(5) { width: 14%; }
-.can-tu-dong-print-table th:nth-child(6) { width: 14%; }
-.can-tu-dong-print-table th:nth-child(7) { width: 13%; }
-.can-tu-dong-print-table th:nth-child(8) { width: 14%; }
+.can-tu-dong-print-table th:nth-child(1) { width: 4%; }
+.can-tu-dong-print-table th:nth-child(2) { width: 10%; }
+.can-tu-dong-print-table th:nth-child(3) { width: 16%; }
+.can-tu-dong-print-table th:nth-child(4) { width: 7%; }
+.can-tu-dong-print-table th:nth-child(5) { width: 11%; }
+.can-tu-dong-print-table th:nth-child(6) { width: 10%; }
+.can-tu-dong-print-table th:nth-child(7) { width: 11%; }
+.can-tu-dong-print-table th:nth-child(8) { width: 11%; }
+.can-tu-dong-print-table th:nth-child(9) { width: 10%; }
 
 .can-tu-dong-print-nhua-summary {
   margin-top: 2mm;
@@ -4628,15 +4631,15 @@ input[type="number"] {
     text-overflow: ellipsis;
   }
 
-  .bb-machine-report-print-evaluation-detail-table th:nth-child(n+3):nth-child(-n+6),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(n+3):nth-child(-n+6) {
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(n+3):nth-child(-n+5),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(n+3):nth-child(-n+5) {
     width: 8%;
   }
 
+  .bb-machine-report-print-evaluation-detail-table th:nth-child(6),
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(6),
   .bb-machine-report-print-evaluation-detail-table th:nth-child(7),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(7),
-  .bb-machine-report-print-evaluation-detail-table th:nth-child(8),
-  .bb-machine-report-print-evaluation-detail-table td:nth-child(8) {
+  .bb-machine-report-print-evaluation-detail-table td:nth-child(7) {
     width: 8%;
   }
 
@@ -5286,7 +5289,7 @@ input[type="number"] {
 
 .warehouse-nhap-kho-print-signatures {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 3mm;
   text-align: center;
   font-size: 10pt;

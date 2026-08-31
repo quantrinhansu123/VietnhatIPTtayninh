@@ -28,7 +28,9 @@ import { waitForPrintImagesReady } from '../../utils/printReady';
 import { downloadCanTuDongExcel } from '../../utils/canTuDongExcel';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { normalizeProductCodeKey } from '../san-pham/types';
+import { normalizeProducts } from '../san-pham/index';
 import {
+  buildCanTuDongFilmKgByProductCode,
   canTuDongShiftMatches,
   DEFAULT_CAN_TU_DONG_BI_KG,
   parseCanTuDongQrProductCode,
@@ -37,7 +39,7 @@ import {
   resolveCanTuDongMachine,
   resolveCanTuDongProductionOrder,
   resolveTrongLuongBiKg,
-  resolveTrongLuongNhuaKg,
+  resolveCanTuDongNhuaThucTeKg,
   resolveNhuaDinhMucKg,
   sumCanTuDongNhuaTieuChuanKg,
   sumCanTuDongNhuaDinhMucKg,
@@ -46,6 +48,7 @@ import {
   sumCanTuDongLoiTieuChuanKg,
   sumCanTuDongCanLoiKg,
   sumCanTuDongChenhLechLoiKg,
+  sumCanTuDongFilmKg,
   sumCanTuDongSanLuongTotals
 } from '../../utils/canTuDongWeights';
 import {
@@ -81,7 +84,7 @@ function disableCanTuDongPortraitPrintPage() {
  * - tare_weight      = Cân lõi
  * - weight           = Cân sản phẩm (còn lõi)
  * - Trọng lượng bì   = mặc định 0,16 kg
- * - Nhựa thực tế = SP − lõi − bì
+ * - Nhựa thực tế = SP − lõi − bì − màng (BOM / cuộn)
  * - Nhựa định mức = san_pham.trong_luong_nhua (hoặc TL − lõi − bì)
  * - core_image_*     = Ảnh cân lõi
  * - product_image_*  = Ảnh cân sản phẩm
@@ -300,6 +303,16 @@ function formatWeight(
   return `${formatNumber(num, fractionDigits)} ${unitLabel}`;
 }
 
+/** Hiển thị kg đúng giá trị BOM — không làm tròn. */
+function formatWeightExact(value?: number | string | null, unit?: string | null) {
+  if (value == null || value === '') return '—';
+  const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(num)) return String(value);
+  const unitLabel = String(unit ?? 'kg').trim() || 'kg';
+  const text = String(num).replace('.', ',');
+  return `${text} ${unitLabel}`;
+}
+
 function asWeightNumber(value?: number | string | null): number | null {
   if (value == null || value === '') return null;
   const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
@@ -323,14 +336,15 @@ function resolveRowStandardDiff(
   row: CanTuDongRecord,
   productStandardWeightByCode: Map<string, number>,
   productCoreWeightByCode: Map<string, number>,
-  productPlasticWeightByCode: Map<string, number>
+  productPlasticWeightByCode: Map<string, number>,
+  productFilmWeightByCode: Map<string, number>
 ) {
   const maSp = parseCanTuDongQrProductCode(row.qr_code);
   const maSpKey = normalizeProductCodeKey(maSp);
   const standardKg = maSpKey ? productStandardWeightByCode.get(maSpKey) : undefined;
   const coreKg = maSpKey ? productCoreWeightByCode.get(maSpKey) : undefined;
   const plasticKg = maSpKey ? productPlasticWeightByCode.get(maSpKey) : undefined;
-  const nhuaThucTe = resolveTrongLuongNhuaKg(row);
+  const nhuaThucTe = resolveCanTuDongNhuaThucTeKg(row, productFilmWeightByCode);
   const nhuaDinhMuc = resolveNhuaDinhMucKg(standardKg, coreKg, plasticKg);
   const { chenhLech, phanTram } = resolveNhuaChenhLechVaPhanTram(nhuaThucTe, nhuaDinhMuc);
   if (chenhLech === null || phanTram === null || chenhLech === 0) return null;
@@ -461,6 +475,9 @@ export function CanTuDongPanel({
   const [productPlasticWeightByCode, setProductPlasticWeightByCode] = useState<Map<string, number>>(
     () => new Map()
   );
+  const [productFilmWeightByCode, setProductFilmWeightByCode] = useState<Map<string, number>>(
+    () => new Map()
+  );
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
 
@@ -500,51 +517,31 @@ export function CanTuDongPanel({
         const res = await fetch('/api/san-pham?format=table');
         const data = await res.json().catch(() => ({}));
         if (!res.ok || cancelled) return;
-        const rows: Array<Record<string, unknown>> = Array.isArray(data?.products)
-          ? data.products
-          : Array.isArray(data)
-            ? data
-            : [];
+        const products = normalizeProducts(data);
         const nameMap = new Map<string, string>();
         const weightMap = new Map<string, number>();
         const coreMap = new Map<string, number>();
         const plasticMap = new Map<string, number>();
-        for (const row of rows) {
-          const code = String(row.ma_sp ?? row.code ?? '').trim();
-          const newCode = String(row.ma_sp_moi ?? row.newCode ?? '').trim();
-          const name = String(row.ten_sp ?? row.name ?? '').trim();
-          const weightRaw = row.tong_trong_luong ?? row.khoi_luong ?? row.totalWeight;
-          const weightNum =
-            typeof weightRaw === 'number'
-              ? weightRaw
-              : Number(String(weightRaw ?? '').trim().replace(',', '.'));
-          const hasWeight = Number.isFinite(weightNum) && weightNum > 0;
-          const coreRaw = row.trong_luong_loi ?? row.coreWeight;
-          const coreNum =
-            typeof coreRaw === 'number'
-              ? coreRaw
-              : Number(String(coreRaw ?? '').trim().replace(',', '.'));
-          const hasCore = Number.isFinite(coreNum) && coreNum > 0;
-          const plasticRaw = row.trong_luong_nhua ?? row.plasticWeight;
-          const plasticNum =
-            typeof plasticRaw === 'number'
-              ? plasticRaw
-              : Number(String(plasticRaw ?? '').trim().replace(',', '.'));
-          const hasPlastic = Number.isFinite(plasticNum) && plasticNum > 0;
-          for (const c of [code, newCode]) {
+        for (const product of products) {
+          const standard = Number(String(product.totalWeight ?? '').replace(',', '.'));
+          const core = Number(String(product.coreWeight ?? '').replace(',', '.'));
+          const plastic = Number(String(product.plasticWeight ?? '').replace(',', '.'));
+          for (const c of [product.code, product.newCode, product.amisCode]) {
             const key = normalizeProductCodeKey(c);
             if (!key) continue;
-            if (name) nameMap.set(key, name);
-            if (hasWeight) weightMap.set(key, weightNum);
-            if (hasCore) coreMap.set(key, coreNum);
-            if (hasPlastic) plasticMap.set(key, plasticNum);
+            if (product.name) nameMap.set(key, product.name);
+            if (Number.isFinite(standard) && standard > 0) weightMap.set(key, standard);
+            if (Number.isFinite(core) && core > 0) coreMap.set(key, core);
+            if (Number.isFinite(plastic) && plastic > 0) plasticMap.set(key, plastic);
           }
         }
+        const filmMap = buildCanTuDongFilmKgByProductCode(products);
         if (!cancelled) {
           setProductNameByCode(nameMap);
           setProductStandardWeightByCode(weightMap);
           setProductCoreWeightByCode(coreMap);
           setProductPlasticWeightByCode(plasticMap);
+          setProductFilmWeightByCode(filmMap);
         }
       } catch {
         if (!cancelled) {
@@ -552,6 +549,7 @@ export function CanTuDongPanel({
           setProductStandardWeightByCode(new Map());
           setProductCoreWeightByCode(new Map());
           setProductPlasticWeightByCode(new Map());
+          setProductFilmWeightByCode(new Map());
         }
       }
     })();
@@ -566,25 +564,46 @@ export function CanTuDongPanel({
     document.body.classList.add('can-tu-dong-print-active');
     enableCanTuDongPortraitPrintPage();
     const timer = window.setTimeout(() => {
-      void waitForPrintImagesReady().then(() => {
-        if (cancelled) return;
-        try {
+      void waitForPrintImagesReady()
+        .then(() => {
+          if (cancelled) return;
+          return new Promise<void>(resolve => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(() => resolve());
+            });
+          });
+        })
+        .then(() => {
+          if (cancelled) return;
           window.print();
-        } finally {
-          document.body.classList.remove('can-tu-dong-print-active');
-          disableCanTuDongPortraitPrintPage();
-          setPendingPrint(false);
-          setPrintData(null);
-        }
-      });
+        })
+        .catch(() => {
+          showAppToast('Không thể mở hộp thoại in.', 'error');
+        })
+        .finally(() => {
+          if (!cancelled) setPendingPrint(false);
+        });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+    };
+  }, [pendingPrint, printData]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove('can-tu-dong-print-active');
+      disableCanTuDongPortraitPrintPage();
+      setPrintData(null);
+      setPendingPrint(false);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
       document.body.classList.remove('can-tu-dong-print-active');
       disableCanTuDongPortraitPrintPage();
     };
-  }, [pendingPrint, printData]);
+  }, []);
 
   const recordsByDate = useMemo(() => {
     if (!fromDate && !toDate) return records;
@@ -689,7 +708,8 @@ export function CanTuDongPanel({
           row,
           productStandardWeightByCode,
           productCoreWeightByCode,
-          productPlasticWeightByCode
+          productPlasticWeightByCode,
+          productFilmWeightByCode
         );
         if (!diff) return false;
         if (diffFilter === 'gt-2pct') return diff.absPhanTram > PHAN_TICH_NGUONG_PCT;
@@ -708,6 +728,7 @@ export function CanTuDongPanel({
     productStandardWeightByCode,
     productCoreWeightByCode,
     productPlasticWeightByCode,
+    productFilmWeightByCode,
     diffFilter,
     onlyDuplicateQr,
     qrDuplicateInfo.duplicateKeys
@@ -719,8 +740,8 @@ export function CanTuDongPanel({
   );
 
   const trongLuongNhuaTotals = useMemo(
-    () => sumCanTuDongSanLuongTotals(visibleRecords),
-    [visibleRecords]
+    () => sumCanTuDongSanLuongTotals(visibleRecords, productFilmWeightByCode),
+    [visibleRecords, productFilmWeightByCode]
   );
   const nhuaTieuChuanTotals = useMemo(
     () => sumCanTuDongNhuaTieuChuanKg(visibleRecords, productStandardWeightByCode),
@@ -742,9 +763,16 @@ export function CanTuDongPanel({
         visibleRecords,
         productStandardWeightByCode,
         productCoreWeightByCode,
-        productPlasticWeightByCode
+        productPlasticWeightByCode,
+        productFilmWeightByCode
       ),
-    [visibleRecords, productStandardWeightByCode, productCoreWeightByCode, productPlasticWeightByCode]
+    [
+      visibleRecords,
+      productStandardWeightByCode,
+      productCoreWeightByCode,
+      productPlasticWeightByCode,
+      productFilmWeightByCode
+    ]
   );
   const trongLuongTtTotals = useMemo(
     () => sumCanTuDongCanSanPhamKg(visibleRecords),
@@ -761,6 +789,10 @@ export function CanTuDongPanel({
   const chenhLechLoiTotals = useMemo(
     () => sumCanTuDongChenhLechLoiKg(visibleRecords, productCoreWeightByCode),
     [visibleRecords, productCoreWeightByCode]
+  );
+  const trongLuongMangTotals = useMemo(
+    () => sumCanTuDongFilmKg(visibleRecords, productFilmWeightByCode),
+    [visibleRecords, productFilmWeightByCode]
   );
 
   const hasDateFilters = Boolean(fromDate || toDate);
@@ -780,7 +812,8 @@ export function CanTuDongPanel({
         row,
         productStandardWeightByCode,
         productCoreWeightByCode,
-        productPlasticWeightByCode
+        productPlasticWeightByCode,
+        productFilmWeightByCode
       );
       if (!diff) continue;
       comparedRows += 1;
@@ -795,7 +828,8 @@ export function CanTuDongPanel({
     recordsByMaSp,
     productStandardWeightByCode,
     productCoreWeightByCode,
-    productPlasticWeightByCode
+    productPlasticWeightByCode,
+    productFilmWeightByCode
   ]);
 
   const selectedCount = selectedIds.size;
@@ -1024,18 +1058,25 @@ export function CanTuDongPanel({
       showAppToast('Không có dữ liệu để in theo bộ lọc hiện tại.', 'error');
       return;
     }
-    setPrintData(
-      buildCanTuDongPrintData(visibleRecords, {
-        fromDate,
-        toDate,
-        ca: 'all',
-        productNameByCode,
-        productStandardWeightByCode,
-        productCoreWeightByCode,
-        productPlasticWeightByCode
-      })
-    );
-    setPendingPrint(true);
+    try {
+      setPrintData(
+        buildCanTuDongPrintData(visibleRecords, {
+          fromDate,
+          toDate,
+          ca: 'all',
+          productNameByCode,
+          productStandardWeightByCode,
+          productCoreWeightByCode,
+          productPlasticWeightByCode,
+          productFilmWeightByCode
+        })
+      );
+      setPendingPrint(true);
+    } catch (err: unknown) {
+      setPrintData(null);
+      setPendingPrint(false);
+      showAppToast(err instanceof Error ? err.message : 'Không thể tạo mẫu in.', 'error');
+    }
   };
 
   const handleDownloadExcel = () => {
@@ -1050,7 +1091,8 @@ export function CanTuDongPanel({
         productNameByCode,
         productStandardWeightByCode,
         productCoreWeightByCode,
-        productPlasticWeightByCode
+        productPlasticWeightByCode,
+        productFilmWeightByCode
       });
       showAppToast(`Đã tải Excel (${visibleRecords.length} dòng).`);
     } catch (err: unknown) {
@@ -1315,7 +1357,7 @@ export function CanTuDongPanel({
               </th>
               <th
                 className="whitespace-nowrap px-3 py-2.5"
-                title="Tổng cột «Nhựa thực tế» = SP − lõi − bì 0,16"
+                title="Tổng cột «Nhựa thực tế» = SP − lõi − bì − màng"
               >
                 Nhựa thực tế
               </th>
@@ -1360,6 +1402,12 @@ export function CanTuDongPanel({
                 title="Chênh lệch lõi = Tổng trọng lượng lõi − Tổng trọng lượng lõi lý thuyết (thực tế − LT)"
               >
                 Chênh lệch lõi
+              </th>
+              <th
+                className="whitespace-nowrap px-3 py-2.5 text-cyan-900"
+                title="Tổng cột «Trọng lượng màng» = Σ BOM màng Thành phần SP / cuộn (không ×2, không làm tròn)"
+              >
+                Trọng lượng màng
               </th>
             </tr>
           </thead>
@@ -1415,6 +1463,9 @@ export function CanTuDongPanel({
                 {loading
                   ? '…'
                   : `${chenhLechLoiTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechLoiTotals.weightKg, 2)} kg`}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-cyan-900">
+                {loading ? '…' : formatWeightExact(trongLuongMangTotals.weightKg)}
               </td>
             </tr>
           </tbody>
@@ -1700,7 +1751,7 @@ export function CanTuDongPanel({
           </TableHeadCell>
           <TableHeadCell
             className="whitespace-nowrap"
-            title="Nhựa thực tế = Cân SP − Cân lõi − Trọng lượng bì"
+            title="Nhựa thực tế = Cân SP − Cân lõi − Trọng lượng bì − Trọng lượng màng"
           >
             Nhựa thực tế
           </TableHeadCell>
@@ -1738,19 +1789,25 @@ export function CanTuDongPanel({
           <TableHeadCell title={`Mặc định ${DEFAULT_CAN_TU_DONG_BI_KG} kg`}>
             Trọng lượng bì
           </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="BOM màng Thành phần SP / cuộn (kg) — không ×2, không làm tròn"
+          >
+            Trọng lượng màng
+          </TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
           <TableHeadCell>Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={24}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={24}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -1779,7 +1836,6 @@ export function CanTuDongPanel({
               const canLoi = row.can_loi ?? row.tare_weight;
               const canSp = row.can_san_pham ?? row.weight;
               const trongLuongBi = resolveTrongLuongBiKg(row);
-              const trongLuongNhua = resolveTrongLuongNhuaKg(row);
               const ngay = resolveCanTuDongBusinessDate(row);
               const may =
                 String(row.may ?? row.machine ?? '').trim() || resolveCanTuDongMachine(row) || '';
@@ -1789,6 +1845,12 @@ export function CanTuDongPanel({
                 '';
               const maSp = parseCanTuDongQrProductCode(row.qr_code);
               const maSpKey = normalizeProductCodeKey(maSp);
+              const filmKgPerRoll = maSpKey ? productFilmWeightByCode.get(maSpKey) : undefined;
+              const trongLuongMang =
+                filmKgPerRoll != null && Number.isFinite(filmKgPerRoll) && filmKgPerRoll > 0
+                  ? filmKgPerRoll
+                  : null;
+              const trongLuongNhua = resolveCanTuDongNhuaThucTeKg(row, productFilmWeightByCode);
               const qrKey = normalizeQrKey(row.qr_code);
               const isDuplicateQr = Boolean(qrKey && qrDuplicateInfo.duplicateKeys.has(qrKey));
               const trongLuongTieuChuan =
@@ -1888,7 +1950,7 @@ export function CanTuDongPanel({
                   </td>
                   <td
                     className="whitespace-nowrap px-4 py-3 font-black text-emerald-800"
-                    title="Nhựa thực tế = Cân SP − Cân lõi − Bì"
+                    title="Nhựa thực tế = Cân SP − Cân lõi − Bì − Trọng lượng màng"
                   >
                     {trongLuongNhua !== null ? formatWeight(trongLuongNhua, row.unit, 2) : '—'}
                   </td>
@@ -1955,6 +2017,16 @@ export function CanTuDongPanel({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatWeight(trongLuongBi, row.unit, 2)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 font-semibold text-cyan-900"
+                    title={
+                      maSp && trongLuongMang != null
+                        ? `BOM màng · Mã SP: ${maSp}`
+                        : 'Chưa có BOM màng trên Thành phần SP'
+                    }
+                  >
+                    {trongLuongMang != null ? formatWeightExact(trongLuongMang, 'kg') : '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <span
@@ -2207,7 +2279,7 @@ export function CanTuDongPanel({
 
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
 
-      {pendingPrint && printData
+      {printData && typeof document !== 'undefined'
         ? createPortal(<CanTuDongPrintBatch data={printData} />, document.body)
         : null}
     </div>

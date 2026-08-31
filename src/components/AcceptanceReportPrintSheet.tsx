@@ -1,6 +1,8 @@
 import React from 'react';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
+import { normalizeProductCodeKey } from '../features/san-pham/types';
+import { buildCanTuDongFilmKgByProductCode } from '../utils/canTuDongWeights';
 
 export type AcceptanceReportSource = {
   id: string;
@@ -10,6 +12,7 @@ export type AcceptanceReportSource = {
   gio: string;
   ma_may: string;
   ten_may: string;
+  loai_vat_tu?: string;
   mat_hang: string;
   ten_sp?: string;
   don_vi: string;
@@ -34,8 +37,28 @@ export type AcceptancePrintSlip = {
   lan: string;
   gio: string;
   machineLabel: string;
-  lines: AcceptancePrintLine[];
+  thanhPhamLines: AcceptancePrintLine[];
+  hangLoiHongLines: AcceptancePrintLine[];
 };
+
+function normalizeLoaiVatTuKey(loaiVatTu: string | undefined) {
+  return String(loaiVatTu ?? 'Thành phẩm')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/g, 'd');
+}
+
+/** Thành phẩm + Gia công — bảng 1. Còn lại (SP lỗi, SP rác) — bảng Hàng lỗi hỏng nhập kho. */
+export function isAcceptanceThanhPhamLoai(loaiVatTu: string | undefined) {
+  const key = normalizeLoaiVatTuKey(loaiVatTu);
+  return key === 'thanh pham' || key === 'gia cong';
+}
+
+export function isAcceptanceHangLoiHongLoai(loaiVatTu: string | undefined) {
+  return !isAcceptanceThanhPhamLoai(loaiVatTu);
+}
 
 function formatPrintDate(iso: string) {
   if (!iso) return '-';
@@ -79,6 +102,95 @@ export function sumTrongLuongKg(lines: Array<{ trong_luong?: number | null }>) {
   }, 0);
 }
 
+/** Map BOM màng / cuộn theo mã SP — cùng nguồn `/can-tu-dong` (không ×2). */
+export function buildAcceptanceFilmKgByProductCode(
+  products: Array<{
+    code?: string | null;
+    newCode?: string | null;
+    amisCode?: string | null;
+    nplItems?: unknown;
+  }>
+) {
+  return buildCanTuDongFilmKgByProductCode(products);
+}
+
+function resolveAcceptanceProductCodeKey(matHang: string) {
+  const trimmed = String(matHang || '').trim();
+  if (!trimmed) return '';
+  const plusIdx = trimmed.indexOf('+');
+  const code = (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+  return normalizeProductCodeKey(code) || code;
+}
+
+export function resolveAcceptanceLineFilmKg(
+  matHang: string,
+  soLuong: number | null,
+  filmKgByProductCode?: Map<string, number>
+): number | null {
+  if (!filmKgByProductCode?.size) return null;
+  const key = resolveAcceptanceProductCodeKey(matHang);
+  const perUnit = key ? filmKgByProductCode.get(key) : undefined;
+  if (perUnit == null || !(perUnit > 0)) return null;
+  const qty = soLuong ?? 0;
+  if (!(qty > 0)) return null;
+  return perUnit * qty;
+}
+
+/** Trọng lượng nhựa = Trọng lượng − Trọng lượng màng. */
+export function resolveAcceptanceLineNhuaKg(
+  trongLuong: number | null | undefined,
+  filmKg: number | null
+): number | null {
+  const weight = Number(trongLuong);
+  if (!Number.isFinite(weight) || !(weight > 0)) return null;
+  return weight - (filmKg ?? 0);
+}
+
+function formatWeightKgCell(value: number | null, unit = 'Kg') {
+  if (value == null || !(value > 0)) return '-';
+  return `${formatNumber(value, 2)} ${unit}`;
+}
+
+type LineBucketAcc = {
+  lineMap: Map<string, AcceptancePrintLine>;
+  lineOrder: string[];
+};
+
+function createLineBucketAcc(): LineBucketAcc {
+  return { lineMap: new Map<string, AcceptancePrintLine>(), lineOrder: [] };
+}
+
+function mergeReportIntoLineBucket(acc: LineBucketAcc, report: AcceptanceReportSource) {
+  const lineKey = [report.mat_hang, report.don_vi].join('|');
+  const existing = acc.lineMap.get(lineKey);
+  const weightKg =
+    report.trong_luong !== null &&
+    report.trong_luong !== undefined &&
+    Number.isFinite(Number(report.trong_luong))
+      ? Number(report.trong_luong)
+      : 0;
+  if (existing) {
+    existing.so_luong = (existing.so_luong ?? 0) + (report.so_luong ?? 0);
+    existing.trong_luong = (existing.trong_luong ?? 0) + weightKg;
+    if (!existing.ten_sp && report.ten_sp) existing.ten_sp = report.ten_sp;
+    return;
+  }
+  const line: AcceptancePrintLine = {
+    mat_hang: report.mat_hang,
+    ten_sp: report.ten_sp,
+    don_vi: report.don_vi,
+    so_luong: report.so_luong,
+    trong_luong: weightKg > 0 ? weightKg : null,
+    don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
+  };
+  acc.lineMap.set(lineKey, line);
+  acc.lineOrder.push(lineKey);
+}
+
+function linesFromBucket(acc: LineBucketAcc) {
+  return acc.lineOrder.map(key => acc.lineMap.get(key)!);
+}
+
 export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): AcceptancePrintSlip[] {
   type AcceptanceSlipAcc = {
     id: string;
@@ -87,12 +199,12 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     gio: string;
     lanSet: Set<string>;
     machineSet: Set<string>;
-    lineMap: Map<string, AcceptancePrintLine>;
-    lineOrder: string[];
+    thanhPham: LineBucketAcc;
+    hangLoiHong: LineBucketAcc;
   };
   const grouped = new Map<string, AcceptanceSlipAcc>();
 
-  // Gộp các dòng cùng NGÀY + CA thành 1 phiếu in (một bảng), cộng dồn SL theo mặt hàng.
+  // Gộp các dòng cùng NGÀY + CA thành 1 phiếu in, tách 2 bảng Thành phẩm / Hàng lỗi hỏng.
   reports.forEach(report => {
     const key = [report.ngay, report.ca].join('|');
     let acc = grouped.get(key);
@@ -104,8 +216,8 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
         gio: report.gio || '-',
         lanSet: new Set<string>(),
         machineSet: new Set<string>(),
-        lineMap: new Map<string, AcceptancePrintLine>(),
-        lineOrder: []
+        thanhPham: createLineBucketAcc(),
+        hangLoiHong: createLineBucketAcc()
       };
       grouped.set(key, acc);
     }
@@ -114,29 +226,8 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     const machineLabel = machineLabelFromReport(report);
     if (machineLabel && machineLabel !== '-') acc.machineSet.add(machineLabel);
 
-    const lineKey = [report.mat_hang, report.ten_sp || '', report.don_vi].join('|');
-    const existing = acc.lineMap.get(lineKey);
-    const weightKg =
-      report.trong_luong !== null &&
-      report.trong_luong !== undefined &&
-      Number.isFinite(Number(report.trong_luong))
-        ? Number(report.trong_luong)
-        : 0;
-    if (existing) {
-      existing.so_luong = (existing.so_luong ?? 0) + (report.so_luong ?? 0);
-      existing.trong_luong = (existing.trong_luong ?? 0) + weightKg;
-    } else {
-      const line: AcceptancePrintLine = {
-        mat_hang: report.mat_hang,
-        ten_sp: report.ten_sp,
-        don_vi: report.don_vi,
-        so_luong: report.so_luong,
-        trong_luong: weightKg > 0 ? weightKg : null,
-        don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
-      };
-      acc.lineMap.set(lineKey, line);
-      acc.lineOrder.push(lineKey);
-    }
+    const bucket = isAcceptanceThanhPhamLoai(report.loai_vat_tu) ? acc.thanhPham : acc.hangLoiHong;
+    mergeReportIntoLineBucket(bucket, report);
 
     if (report.gio && (acc.gio === '-' || !acc.gio || report.gio < acc.gio)) {
       acc.gio = report.gio;
@@ -157,7 +248,8 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
         acc.machineSet.size > 0
           ? [...acc.machineSet].sort((a, b) => a.localeCompare(b, 'vi')).join(', ')
           : '-',
-      lines: acc.lineOrder.map(k => acc.lineMap.get(k)!)
+      thanhPhamLines: linesFromBucket(acc.thanhPham),
+      hangLoiHongLines: linesFromBucket(acc.hangLoiHong)
     }))
     .sort((a, b) => {
       const byDate = a.ngay.localeCompare(b.ngay, 'vi');
@@ -166,10 +258,105 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     });
 }
 
-export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip }) {
-  const totalsByUnit = sumByUnit(slip.lines);
-  const totalTrongLuongKg = sumTrongLuongKg(slip.lines);
+function AcceptancePrintLinesTable({
+  title,
+  lines,
+  filmKgByProductCode
+}: {
+  title: string;
+  lines: AcceptancePrintLine[];
+  filmKgByProductCode?: Map<string, number>;
+}) {
+  if (lines.length === 0) return null;
 
+  const totalsByUnit = sumByUnit(lines);
+  const totalTrongLuongKg = sumTrongLuongKg(lines);
+  const totalFilmKg = lines.reduce((sum, line) => {
+    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
+    return sum + (film ?? 0);
+  }, 0);
+  const totalNhuaKg = lines.reduce((sum, line) => {
+    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
+    const nhua = resolveAcceptanceLineNhuaKg(line.trong_luong, film);
+    return sum + (nhua ?? 0);
+  }, 0);
+
+  return (
+    <>
+      <h2 className="production-order-print-section-title">{title}</h2>
+      <table className="production-order-print-grid-table acceptance-report-print-table">
+        <thead>
+          <tr>
+            <th>STT</th>
+            <th>Mặt hàng</th>
+            <th>Tên SP</th>
+            <th>ĐVT</th>
+            <th>Số lượng</th>
+            <th>Trọng lượng</th>
+            <th>Trọng lượng màng</th>
+            <th>Trọng lượng nhựa</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line, index) => {
+            const filmKg = resolveAcceptanceLineFilmKg(
+              line.mat_hang,
+              line.so_luong,
+              filmKgByProductCode
+            );
+            const nhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
+            return (
+              <tr key={`${line.mat_hang}-${index}`}>
+                <td className="production-order-print-center">{index + 1}</td>
+                <td>{line.mat_hang || '-'}</td>
+                <td>{line.ten_sp || '-'}</td>
+                <td className="production-order-print-center">{line.don_vi || '-'}</td>
+                <td className="production-order-print-right">
+                  {line.so_luong === null ? '-' : formatNumber(line.so_luong, 2)}
+                </td>
+                <td className="production-order-print-right">
+                  {formatWeightKgCell(
+                    line.trong_luong != null && line.trong_luong > 0 ? line.trong_luong : null,
+                    line.don_vi_trong_luong || 'Kg'
+                  )}
+                </td>
+                <td className="production-order-print-right">{formatWeightKgCell(filmKg)}</td>
+                <td className="production-order-print-right">{formatWeightKgCell(nhuaKg)}</td>
+              </tr>
+            );
+          })}
+          {totalsByUnit.map(([unit, total]) => (
+            <tr key={unit}>
+              <td colSpan={4} className="production-order-print-right" style={{ fontWeight: 700 }}>
+                Tổng cộng ({unit})
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {formatNumber(total, 2)}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '-'}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {totalFilmKg > 0 ? `${formatNumber(totalFilmKg, 2)} Kg` : '-'}
+              </td>
+              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                {totalNhuaKg > 0 ? `${formatNumber(totalNhuaKg, 2)} Kg` : '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+export function AcceptanceReportPrintSheet({
+  slip,
+  filmKgByProductCode
+}: {
+  slip: AcceptancePrintSlip;
+  filmKgByProductCode?: Map<string, number>;
+}) {
   return (
     <div className="production-order-print-sheet">
       <div className="production-order-print-doc">
@@ -204,50 +391,16 @@ export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip
           </tbody>
         </table>
 
-        <h2 className="production-order-print-section-title">Danh sách sản phẩm sản lượng</h2>
-        <table className="production-order-print-grid-table acceptance-report-print-table">
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Mặt hàng</th>
-              <th>Tên SP</th>
-              <th>ĐVT</th>
-              <th>Số lượng</th>
-              <th>Trọng lượng</th>
-            </tr>
-          </thead>
-          <tbody>
-            {slip.lines.map((line, index) => (
-              <tr key={`${line.mat_hang}-${index}`}>
-                <td className="production-order-print-center">{index + 1}</td>
-                <td>{line.mat_hang || '-'}</td>
-                <td>{line.ten_sp || '-'}</td>
-                <td className="production-order-print-center">{line.don_vi || '-'}</td>
-                <td className="production-order-print-right">
-                  {line.so_luong === null ? '-' : formatNumber(line.so_luong, 2)}
-                </td>
-                <td className="production-order-print-right">
-                  {line.trong_luong == null || !(line.trong_luong > 0)
-                    ? '-'
-                    : `${formatNumber(line.trong_luong, 2)} ${line.don_vi_trong_luong || 'Kg'}`}
-                </td>
-              </tr>
-            ))}
-            {totalsByUnit.map(([unit, total]) => (
-              <tr key={unit}>
-                <td colSpan={4} className="production-order-print-right" style={{ fontWeight: 700 }}>
-                  Tổng cộng ({unit})
-                </td>
-                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                  {formatNumber(total, 2)}
-                </td>
-                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                  {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '-'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <AcceptancePrintLinesTable
+          title="Thành phẩm"
+          lines={slip.thanhPhamLines}
+          filmKgByProductCode={filmKgByProductCode}
+        />
+        <AcceptancePrintLinesTable
+          title="Hàng lỗi hỏng nhập kho"
+          lines={slip.hangLoiHongLines}
+          filmKgByProductCode={filmKgByProductCode}
+        />
 
         <div className="acceptance-report-print-signatures">
           <div>
@@ -268,14 +421,20 @@ export function AcceptanceReportPrintSheet({ slip }: { slip: AcceptancePrintSlip
   );
 }
 
-export function AcceptanceReportPrintBatch({ slips }: { slips: AcceptancePrintSlip[] }) {
+export function AcceptanceReportPrintBatch({
+  slips,
+  filmKgByProductCode
+}: {
+  slips: AcceptancePrintSlip[];
+  filmKgByProductCode?: Map<string, number>;
+}) {
   if (slips.length === 0) return null;
 
   return (
     <div className="production-order-print-batch">
       {slips.map(slip => (
         <div key={slip.id} className="production-order-print-page">
-          <AcceptanceReportPrintSheet slip={slip} />
+          <AcceptanceReportPrintSheet slip={slip} filmKgByProductCode={filmKgByProductCode} />
         </div>
       ))}
     </div>
@@ -331,14 +490,134 @@ export function buildAcceptanceScreenSlips(
   });
 }
 
+/** Bảng dòng trên màn hình — dùng chung cho 2 loại Thành phẩm / Hàng lỗi hỏng. */
+function AcceptanceScreenLinesTable({
+  title,
+  lines,
+  filmKgByProductCode,
+  renderLineActions
+}: {
+  title: string;
+  lines: Array<AcceptanceReportSource & { ten_sp?: string }>;
+  filmKgByProductCode?: Map<string, number>;
+  renderLineActions?: (line: AcceptanceReportSource & { ten_sp?: string }) => React.ReactNode;
+}) {
+  if (lines.length === 0) return null;
+
+  const totalsByUnit = sumByUnit(
+    lines.map(line => ({
+      mat_hang: line.mat_hang,
+      ten_sp: line.ten_sp,
+      don_vi: line.don_vi,
+      so_luong: line.so_luong
+    }))
+  );
+  const totalTrongLuongKg = sumTrongLuongKg(lines);
+  const totalFilmKg = lines.reduce((sum, line) => {
+    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
+    return sum + (film ?? 0);
+  }, 0);
+  const totalNhuaKg = lines.reduce((sum, line) => {
+    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
+    const nhua = resolveAcceptanceLineNhuaKg(line.trong_luong, film);
+    return sum + (nhua ?? 0);
+  }, 0);
+
+  return (
+    <div className="border-t border-zinc-200 first:border-t-0">
+      <div className="bg-zinc-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-700 sm:px-4">
+        {title}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-zinc-100 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+            <tr>
+              <th className="px-3 py-2 text-center">STT</th>
+              <th className="px-3 py-2">Mặt hàng</th>
+              <th className="px-3 py-2">Tên SP</th>
+              <th className="px-3 py-2 text-center">ĐVT</th>
+              <th className="px-3 py-2 text-right">Số lượng</th>
+              <th className="px-3 py-2 text-right">Trọng lượng</th>
+              <th className="px-3 py-2 text-right">Trọng lượng màng</th>
+              <th className="px-3 py-2 text-right">Trọng lượng nhựa</th>
+              {renderLineActions ? <th className="px-3 py-2 text-center">Thao tác</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, index) => {
+              const filmKg = resolveAcceptanceLineFilmKg(
+                line.mat_hang,
+                line.so_luong,
+                filmKgByProductCode
+              );
+              const nhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
+              return (
+                <tr key={line.id || `${title}-${index}`} className="border-t border-zinc-100">
+                  <td className="px-3 py-2 text-center font-mono font-bold text-zinc-500">{index + 1}</td>
+                  <td className="px-3 py-2 font-semibold text-zinc-800">{line.mat_hang || '—'}</td>
+                  <td className="px-3 py-2 text-zinc-600">{line.ten_sp || '—'}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-zinc-600">{line.don_vi || '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
+                    {line.so_luong === null ? '—' : formatNumber(line.so_luong, 2)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
+                    {line.trong_luong == null || !(Number(line.trong_luong) > 0)
+                      ? '—'
+                      : `${formatNumber(Number(line.trong_luong), 2)} ${line.don_vi_trong_luong || 'Kg'}`}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-cyan-800">
+                    {filmKg != null && filmKg > 0
+                      ? `${formatNumber(filmKg, 2)} Kg`
+                      : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-violet-800">
+                    {nhuaKg != null && nhuaKg > 0
+                      ? `${formatNumber(nhuaKg, 2)} Kg`
+                      : '—'}
+                  </td>
+                  {renderLineActions ? (
+                    <td className="px-3 py-2 text-center">{renderLineActions(line)}</td>
+                  ) : null}
+                </tr>
+              );
+            })}
+            {totalsByUnit.map(([unit, total]) => (
+              <tr key={unit} className="border-t border-zinc-200 bg-zinc-50">
+                <td colSpan={4} className="px-3 py-2 text-right text-xs font-black text-zinc-800">
+                  Tổng cộng ({unit})
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-black text-emerald-800">
+                  {formatNumber(total, 2)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-black text-amber-800">
+                  {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-black text-cyan-800">
+                  {totalFilmKg > 0 ? `${formatNumber(totalFilmKg, 2)} Kg` : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-black text-violet-800">
+                  {totalNhuaKg > 0 ? `${formatNumber(totalNhuaKg, 2)} Kg` : '—'}
+                </td>
+                {renderLineActions ? <td /> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /** Bảng phiếu trên màn hình — xếp chồng, vuốt xuống xem, không cần chọn. */
 export function AcceptanceReportSlipStack({
   slips,
   emptyText = 'Chưa có báo cáo.',
+  filmKgByProductCode,
   renderLineActions
 }: {
   slips: AcceptanceScreenSlip[];
   emptyText?: string;
+  filmKgByProductCode?: Map<string, number>;
   renderLineActions?: (line: AcceptanceReportSource & { ten_sp?: string }) => React.ReactNode;
 }) {
   if (slips.length === 0) {
@@ -352,15 +631,9 @@ export function AcceptanceReportSlipStack({
   return (
     <div className="space-y-4">
       {slips.map(slip => {
-        const totalsByUnit = sumByUnit(
-          slip.lines.map(line => ({
-            mat_hang: line.mat_hang,
-            ten_sp: line.ten_sp,
-            don_vi: line.don_vi,
-            so_luong: line.so_luong
-          }))
-        );
-        const totalTrongLuongKg = sumTrongLuongKg(slip.lines);
+        const thanhPhamLines = slip.lines.filter(line => isAcceptanceThanhPhamLoai(line.loai_vat_tu));
+        const hangLoiHongLines = slip.lines.filter(line => isAcceptanceHangLoiHongLoai(line.loai_vat_tu));
+        const lineCount = thanhPhamLines.length + hangLoiHongLines.length;
         return (
           <article
             key={slip.key}
@@ -383,69 +656,22 @@ export function AcceptanceReportSlipStack({
                 </p>
               </div>
               <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-800">
-                {slip.lines.length} dòng
+                {lineCount} dòng
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-100 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                  <tr>
-                    <th className="px-3 py-2 text-center">STT</th>
-                    <th className="px-3 py-2">Mặt hàng</th>
-                    <th className="px-3 py-2">Tên SP</th>
-                    <th className="px-3 py-2 text-center">ĐVT</th>
-                    <th className="px-3 py-2 text-right">Số lượng</th>
-                    <th className="px-3 py-2 text-right">Trọng lượng</th>
-                    {renderLineActions ? <th className="px-3 py-2 text-center">Thao tác</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {slip.lines.map((line, index) => (
-                    <tr key={line.id || `${slip.key}-${index}`} className="border-t border-zinc-100">
-                      <td className="px-3 py-2 text-center font-mono font-bold text-zinc-500">
-                        {index + 1}
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-zinc-800">{line.mat_hang || '—'}</td>
-                      <td className="px-3 py-2 text-zinc-600">{line.ten_sp || '—'}</td>
-                      <td className="px-3 py-2 text-center font-semibold text-zinc-600">
-                        {line.don_vi || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
-                        {line.so_luong === null ? '—' : formatNumber(line.so_luong, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
-                        {line.trong_luong == null || !(Number(line.trong_luong) > 0)
-                          ? '—'
-                          : `${formatNumber(Number(line.trong_luong), 2)} ${
-                              line.don_vi_trong_luong || 'Kg'
-                            }`}
-                      </td>
-                      {renderLineActions ? (
-                        <td className="px-3 py-2 text-center">{renderLineActions(line)}</td>
-                      ) : null}
-                    </tr>
-                  ))}
-                  {totalsByUnit.map(([unit, total]) => (
-                    <tr key={unit} className="border-t border-zinc-200 bg-zinc-50">
-                      <td
-                        colSpan={4}
-                        className="px-3 py-2 text-right text-xs font-black text-zinc-800"
-                      >
-                        Tổng cộng ({unit})
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-black text-emerald-800">
-                        {formatNumber(total, 2)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-black text-amber-800">
-                        {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '—'}
-                      </td>
-                      {renderLineActions ? <td /> : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AcceptanceScreenLinesTable
+              title="Thành phẩm"
+              lines={thanhPhamLines}
+              filmKgByProductCode={filmKgByProductCode}
+              renderLineActions={renderLineActions}
+            />
+            <AcceptanceScreenLinesTable
+              title="Hàng lỗi hỏng nhập kho"
+              lines={hangLoiHongLines}
+              filmKgByProductCode={filmKgByProductCode}
+              renderLineActions={renderLineActions}
+            />
           </article>
         );
       })}

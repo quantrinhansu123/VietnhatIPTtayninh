@@ -48,6 +48,7 @@ import {
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import WarehouseSlipPrintModal, {
+  mergeWarehousePrintLines,
   mergeWarehousePrintSlips,
   type WarehouseSlipPrintData
 } from '../../components/WarehouseSlipPrintModal';
@@ -666,6 +667,11 @@ export function buildWarehouseSlipPrintData(
     };
   });
 
+  const mergedLines =
+    options.slipType === 'xuat' && options.warehouseKind !== 'san_pham'
+      ? mergeWarehousePrintLines(printLines)
+      : printLines;
+
   return {
     slipCode: options.slipCode,
     slipType: options.slipType === 'xuat' ? 'xuat' : 'nhap',
@@ -681,8 +687,8 @@ export function buildWarehouseSlipPrintData(
     deliverer: options.deliverer,
     warehouseLocation: options.warehouseLocation,
     warehouseName: options.warehouseName,
-    totalAmount: printLines.reduce((sum, line) => sum + line.lineAmount, 0),
-    lines: printLines
+    totalAmount: mergedLines.reduce((sum, line) => sum + line.lineAmount, 0),
+    lines: mergedLines
   };
 }
 
@@ -693,6 +699,55 @@ export function formatWarehouseMoney(value: number) {
 /** So khớp mã bỏ qua khoảng trắng/hoa-thường — mã trong kho_nvl đôi khi bị nhập thiếu dấu cách so với mã gốc bên danh mục sản phẩm (VD "MT-MN043" vs "MT- MN043"). */
 function normalizeMaterialCodeKey(raw: string) {
   return String(raw ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+function warehouseExportLineDraftMergeKey(line: Pick<WarehouseSlipLineDraft, 'code' | 'unit'>) {
+  return `${normalizeMaterialCodeKey(line.code)}|${String(line.unit || '').trim().toLowerCase()}`;
+}
+
+function sumWarehouseLineQtyText(left: string, right: string) {
+  const total = (parsePercentInput(left) || 0) + (parsePercentInput(right) || 0);
+  if (total <= 0) return '';
+  const formatted = formatNumber(total, 3);
+  return formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+}
+
+/** Gộp dòng xuất NVL trùng mã + ĐVT trước khi lưu/in. */
+function mergeWarehouseExportLineDrafts(lines: WarehouseSlipLineDraft[]): WarehouseSlipLineDraft[] {
+  const map = new Map<string, WarehouseSlipLineDraft>();
+  const order: string[] = [];
+
+  for (const line of lines) {
+    const code = line.code.trim();
+    if (!code) {
+      const emptyKey = `__empty__${line.key}`;
+      map.set(emptyKey, line);
+      order.push(emptyKey);
+      continue;
+    }
+    const key = warehouseExportLineDraftMergeKey(line);
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantity = sumWarehouseLineQtyText(existing.quantity, line.quantity);
+      existing.documentQuantity = sumWarehouseLineQtyText(existing.documentQuantity, line.documentQuantity);
+      existing.quotaQuantity = sumWarehouseLineQtyText(existing.quotaQuantity || '', line.quotaQuantity || '');
+      existing.suggestedQuantity = sumWarehouseLineQtyText(
+        existing.suggestedQuantity || '',
+        line.suggestedQuantity || ''
+      );
+      if (!existing.name && line.name) existing.name = line.name;
+      if (line.lineNote) {
+        existing.lineNote = existing.lineNote
+          ? [...new Set([existing.lineNote, line.lineNote].filter(Boolean))].join('; ')
+          : line.lineNote;
+      }
+    } else {
+      map.set(key, { ...line });
+      order.push(key);
+    }
+  }
+
+  return order.map(key => map.get(key)!);
 }
 
 /** Tiền tố trước dấu "_" — dùng để tra tên/ĐVT trong danh mục khi mã quét có hậu tố lô/serial (VD "L30cm_3701190208G" → "L30cm"). */
@@ -2616,9 +2671,10 @@ export function WarehouseSlipPanel({
       return;
     }
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(lines) : lines;
-    if (slipType === 'xuat') setLines(orderedLines);
+    const mergedLines = isNvlExport ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
+    if (slipType === 'xuat') setLines(mergedLines);
     const linesForSave = isNvlExport
-      ? orderedLines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
+      ? mergedLines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
       : orderedLines;
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
       allowMissingUnitPrice: isNvlExport,
@@ -3964,6 +4020,21 @@ export function WarehouseHistoryPanel({
     if (!header) return null;
 
     const totalAmount = rows.reduce((sum, row) => sum + row.lineAmount, 0);
+    const rawLines = rows.map(row => ({
+      code: row.itemCode,
+      name: row.itemName,
+      unit: row.unit,
+      quantity: row.quantity,
+      documentQuantity: row.documentQuantity ?? null,
+      unitPrice: row.unitPrice,
+      lineAmount: row.lineAmount,
+      weightKg: resolveWarehouseRowWeightKg(row),
+      sourceInboundSlipCode: row.sourceInboundSlipCode
+    }));
+    const lines =
+      header.slipType === 'xuat' && header.warehouseKind !== 'san_pham'
+        ? mergeWarehousePrintLines(rawLines)
+        : rawLines;
     return {
       slipCode,
       slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',
@@ -3975,18 +4046,8 @@ export function WarehouseHistoryPanel({
       note: header.note,
       createdBy: header.createdBy,
       warehouseName: header.warehouseName,
-      totalAmount,
-      lines: rows.map(row => ({
-        code: row.itemCode,
-        name: row.itemName,
-        unit: row.unit,
-        quantity: row.quantity,
-        documentQuantity: row.documentQuantity ?? null,
-        unitPrice: row.unitPrice,
-        lineAmount: row.lineAmount,
-        weightKg: resolveWarehouseRowWeightKg(row),
-        sourceInboundSlipCode: row.sourceInboundSlipCode
-      }))
+      totalAmount: lines.reduce((sum, line) => sum + line.lineAmount, 0),
+      lines
     };
   };
 

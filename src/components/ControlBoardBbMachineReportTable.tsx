@@ -101,8 +101,8 @@ import {
   resolveBbThucDungChenhLechKg,
   resolveBbMaterialExportUnitPrice,
   mapAcceptanceNvlDinhMucRowsToNplItems,
-  buildAcceptanceNvlDinhMucPutItems,
   refreshAcceptanceNvlDinhMucFromProductBom,
+  overlayProductNplOnBbSanLuongGroups,
   isAcceptanceThanhPhamKhoReport,
   type BbMaterialNormFormula,
   type BbWarehouseExportLineRow,
@@ -1019,14 +1019,12 @@ export default function ControlBoardBbMachineReportTable({
         ...new Set(scopedAcceptanceReports.map(report => String(report.id || '').trim()).filter(Boolean))
       ];
 
-      let nvlTableReady = false;
       if (reportIds.length > 0) {
         const nvlRes = await fetch(
           `/api/bao-cao-san-luong-nvl-dinh-muc?ids=${encodeURIComponent(reportIds.join(','))}`
         );
         const nvlData = await nvlRes.json().catch(() => ({}));
         if (nvlRes.ok) {
-          nvlTableReady = true;
           const byId =
             nvlData.by_id && typeof nvlData.by_id === 'object'
               ? (nvlData.by_id as Record<string, unknown[]>)
@@ -1043,58 +1041,13 @@ export default function ControlBoardBbMachineReportTable({
         }
       }
 
-      // Luôn merge BOM SP mới nhất (kể cả phiếu đã có snapshot DB cũ thiếu dòng).
+      // Danh sách hiển thị luôn đủ theo npl_phan_tram; NVL không có trong
+      // snapshot/BOM phiếu chỉ được bổ sung với SL/TL = 0.
       acceptanceNvlDinhMucByReportId = refreshAcceptanceNvlDinhMucFromProductBom({
         reports: scopedAcceptanceReports,
         products: liveProducts,
         existingByReportId: acceptanceNvlDinhMucByReportId
       });
-
-      let syncedFromPhieu = 0;
-      let syncedNvlDb = 0;
-      for (const report of scopedAcceptanceReports) {
-        const id = String(report.id || '').trim();
-        if (!id) continue;
-
-        const matHang = String(report.mat_hang || '').trim();
-        const plusIdx = matHang.indexOf('+');
-        const productCodeRaw = (plusIdx > 0 ? matHang.slice(0, plusIdx) : matHang).trim();
-        const catalog =
-          findProductByCode(liveProducts, productCodeRaw) ||
-          liveProducts.find(
-            product =>
-              normalizeProductCodeKey(product.name) === normalizeProductCodeKey(productCodeRaw) ||
-              normalizeProductCodeKey(product.name).includes(normalizeProductCodeKey(productCodeRaw))
-          );
-        const nplItems = catalog?.nplItems || [];
-        const qtyRaw = Number(report.so_luong);
-        const productQty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
-        const putItems = buildAcceptanceNvlDinhMucPutItems(nplItems, productQty);
-        const merged = acceptanceNvlDinhMucByReportId.get(id) || [];
-        if (merged.length > 0 && putItems.length === 0) syncedFromPhieu += merged.length;
-        if (putItems.length === 0) continue;
-
-        if (nvlTableReady) {
-          const saveRes = await fetch('/api/bao-cao-san-luong-nvl-dinh-muc', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id_bao_cao: id,
-              ma_sp: catalog?.code || productCodeRaw,
-              ten_sp: catalog?.name || String(report.ten_sp || '').trim() || productCodeRaw,
-              so_luong_sp: productQty,
-              don_vi_sp: String(report.don_vi || catalog?.unit || '').trim(),
-              items: putItems
-            })
-          });
-          const saveData = await saveRes.json().catch(() => ({}));
-          if (saveRes.ok) {
-            syncedNvlDb += 1;
-          }
-        } else if (merged.length > 0) {
-          syncedFromPhieu += merged.length;
-        }
-      }
 
       const snapshotKey = buildBbBaoCaoTinhToanStableKey({
         dateFrom: scope.dateFrom,
@@ -1161,16 +1114,8 @@ export default function ControlBoardBbMachineReportTable({
       setSnapshotMessage(
         `Đã đồng bộ mọi tab · ${scope.dateFrom} · ${scope.shiftFilter} · ${scope.machineFilter}` +
           (nvlCount > 0
-            ? ` · ${nvlCount} NVL` +
-              (syncedNvlDb > 0
-                ? ` (đã cập nhật ${syncedNvlDb} phiếu từ Thành phần SP)`
-                : syncedFromPhieu > 0
-                  ? ' (từ Thành phần SP trên phiếu)'
-                  : ' (BOM + snapshot)')
-            : ' · phiếu chưa có Thành phần NVL') +
-          (nvlTableReady
-            ? ''
-            : ' · chưa tạo bảng bao_cao_san_luong_nvl_dinh_muc (NVL đã nằm trong bản tính)')
+            ? ` · ${nvlCount} NVL (danh sách npl_phan_tram · số liệu snapshot/BOM phiếu)`
+            : ' · sản phẩm chưa có npl_phan_tram')
       );
       onApplyCalcScope?.({
         dateFrom: scope.dateFrom,
@@ -1363,7 +1308,11 @@ export default function ControlBoardBbMachineReportTable({
   const cuoiCaGroups = activeSnapshot.cuoiCaGroups;
   const dauCaRows = activeSnapshot.dauCaRows;
   const dauCaGroups = activeSnapshot.dauCaGroups;
-  const sanLuongGroups = activeSnapshot.sanLuongGroups;
+  /** Snapshot cũ vẫn phủ đủ npl_phan_tram ngay sau khi bấm Áp dụng. */
+  const sanLuongGroups = useMemo(
+    () => overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials),
+    [activeSnapshot.sanLuongGroups, products, materials]
+  );
   /** Gộp mã SP trùng + gắn SL/TL thực tế + KL nhựa+phụ gia từ /kho-hang (cả snapshot cũ). */
   const orderGroupsMerged = useMemo(() => {
     const lines = orderGroups.flatMap(group => group.lines);

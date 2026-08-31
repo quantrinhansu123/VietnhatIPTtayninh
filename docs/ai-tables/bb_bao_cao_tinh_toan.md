@@ -6,7 +6,7 @@ Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao
 
 KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũng **chỉ** lấy từ `payload.summary` — không cộng live từ `can_tu_dong` / phiếu.
 
-Tab **Báo cáo sản lượng**: NVL chỉ từ snapshot `bao_cao_san_luong_nvl_dinh_muc` (Đồng bộ trên danh sách phiếu). Tính toán **không** tự ghi Thành phần SP.
+Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_phan_tram`; số `SL NVL` / `TL NVL` lấy từ snapshot `bao_cao_san_luong_nvl_dinh_muc`. Dòng không có trong snapshot/BOM phiếu hiện 0. Tính toán **không** tự ghi Thành phần SP.
 
 ## SQL
 

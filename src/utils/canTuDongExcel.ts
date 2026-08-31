@@ -9,7 +9,7 @@ import {
   resolveCanTuDongProductionOrder,
   resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
-  resolveTrongLuongNhuaKg,
+  resolveCanTuDongNhuaThucTeKg,
   type CanTuDongWeightRow
 } from './canTuDongWeights';
 
@@ -53,6 +53,7 @@ export type CanTuDongExcelExportOptions = {
   productStandardWeightByCode?: Map<string, number>;
   productCoreWeightByCode?: Map<string, number>;
   productPlasticWeightByCode?: Map<string, number>;
+  productFilmWeightByCode?: Map<string, number>;
 };
 
 /** Xuất các dòng đang lọc trên `/can-tu-dong` ra file Excel. */
@@ -66,6 +67,7 @@ export function downloadCanTuDongExcel(
   const productCoreWeightByCode = options.productCoreWeightByCode ?? new Map<string, number>();
   const productPlasticWeightByCode =
     options.productPlasticWeightByCode ?? new Map<string, number>();
+  const productFilmWeightByCode = options.productFilmWeightByCode ?? new Map<string, number>();
   const data = records.map((row, index) => {
     const qr = String(row.qr_code ?? '').trim();
     const maSp = parseCanTuDongQrProductCode(qr) || qr;
@@ -74,6 +76,7 @@ export function downloadCanTuDongExcel(
     const standardKg = nameKey ? productStandardWeightByCode.get(nameKey) : undefined;
     const coreKg = nameKey ? productCoreWeightByCode.get(nameKey) : undefined;
     const plasticFromProduct = nameKey ? productPlasticWeightByCode.get(nameKey) : undefined;
+    const filmKg = nameKey ? productFilmWeightByCode.get(nameKey) : undefined;
     const canSpKg = resolveCanSpKg(row);
     const standardOk = standardKg != null && Number.isFinite(standardKg);
     const nhuaDinhMuc = resolveNhuaDinhMucKg(
@@ -81,7 +84,7 @@ export function downloadCanTuDongExcel(
       coreKg ?? null,
       plasticFromProduct ?? null
     );
-    const nhuaThucTe = resolveTrongLuongNhuaKg(row);
+    const nhuaThucTe = resolveCanTuDongNhuaThucTeKg(row, productFilmWeightByCode);
     const nhuaChenhLech =
       nhuaThucTe !== null && nhuaDinhMuc != null ? nhuaThucTe - nhuaDinhMuc : null;
     const nhuaPhanTram =
@@ -107,6 +110,7 @@ export function downloadCanTuDongExcel(
         nhuaPhanTram !== null ? Math.round(nhuaPhanTram * 100) / 100 : '',
       'Cân lõi (kg)': roundKg(resolveCanLoiKg(row)),
       'Trọng lượng bì (kg)': roundKg(resolveTrongLuongBiKg(row)),
+      'Trọng lượng màng (kg)': filmKg != null && filmKg > 0 ? filmKg : '',
       'Đơn vị': unit,
       'Trạng thái': String(row.status ?? '').trim(),
       'Thiết bị': String(row.device_id ?? '').trim(),
@@ -132,6 +136,7 @@ export function downloadCanTuDongExcel(
     { wch: 22 },
     { wch: 12 },
     { wch: 14 },
+    { wch: 16 },
     { wch: 16 },
     { wch: 10 },
     { wch: 14 },

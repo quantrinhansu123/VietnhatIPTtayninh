@@ -480,8 +480,6 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
       return;
     }
 
-    const printPayload = buildCurrentPrintSlip();
-
     setIsSaving(true);
     try {
       const res = await fetch('/api/phieu-bao-dung-may', {
@@ -508,7 +506,6 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
       setLines([emptyLine()]);
       setNote('');
       await loadSlips();
-      handlePrint({ ...printPayload, slipCode: slipCode || printPayload.slipCode });
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể lưu phiếu.'));
     } finally {

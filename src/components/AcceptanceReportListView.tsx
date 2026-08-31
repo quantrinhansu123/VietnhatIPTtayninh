@@ -8,6 +8,7 @@ import {
   AcceptanceReportPrintBatch,
   buildAcceptancePrintSlips,
   buildAcceptanceScreenSlips,
+  buildAcceptanceFilmKgByProductCode,
   AcceptanceReportSlipStack
 } from './AcceptanceReportPrintSheet';
 import type { AcceptanceReport } from './AcceptanceReportForm';
@@ -230,6 +231,41 @@ function normalizeProductNames(data: unknown): ProductNameOption[] {
       return { code, name };
     })
     .filter((item): item is ProductNameOption => Boolean(item));
+}
+
+/** Tên mặt hàng SP lỗi / SP rác trong `kho_nvl` (vd. NC, RMN). */
+function normalizeMaterialNames(data: unknown): ProductNameOption[] {
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { materials?: unknown }).materials)
+      ? (data as { materials: unknown[] }).materials
+      : [];
+
+  const byCode = new Map<string, ProductNameOption>();
+  for (const item of rows) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const code = String(record.ma_npl ?? record.ma_sp ?? record.code ?? '').trim();
+    const name = String(record.ten_npl ?? record.ten_sp ?? record.name ?? '').trim();
+    if (!code || !name) continue;
+    const key = normalizeProductKey(code);
+    if (!key || byCode.has(key)) continue;
+    byCode.set(key, { code, name });
+  }
+  return [...byCode.values()];
+}
+
+function resolveReportProductName(report: AcceptanceReport, nameByCode: Map<string, string>) {
+  const candidates = [
+    report.ten_sp,
+    nameByCode.get(normalizeProductKey(report.mat_hang)),
+    nameByCode.get(normalizeProductKey(resolveReportProductCode(report.mat_hang)))
+  ];
+  for (const name of candidates) {
+    const trimmed = String(name || '').trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
 }
 
 function normalizeProductCatalog(data: unknown): Map<string, ProductCatalogEntry> {
@@ -473,7 +509,7 @@ export default function AcceptanceReportListView({
     () =>
       filteredReports.map(report => ({
         ...report,
-        ten_sp: productNameByCode.get(normalizeProductKey(report.mat_hang)) || ''
+        ten_sp: resolveReportProductName(report, productNameByCode)
       })),
     [filteredReports, productNameByCode]
   );
@@ -481,6 +517,17 @@ export default function AcceptanceReportListView({
   const screenSlips = useMemo(
     () => buildAcceptanceScreenSlips(reportsWithNames),
     [reportsWithNames]
+  );
+
+  const filmKgByProductCode = useMemo(
+    () =>
+      buildAcceptanceFilmKgByProductCode(
+        [...productCatalogByKey.values()].map(entry => ({
+          code: entry.code,
+          nplItems: entry.nplItems
+        }))
+      ),
+    [productCatalogByKey]
   );
 
   const printSlipCount = useMemo(
@@ -524,13 +571,17 @@ export default function AcceptanceReportListView({
     };
   }, []);
 
-  const applyProductCatalogData = (data: unknown) => {
+  const applyProductCatalogData = (productData: unknown, materialData?: unknown) => {
     const nextNames = new Map<string, string>();
-    normalizeProductNames(data).forEach(product => {
+    normalizeProductNames(productData).forEach(product => {
       const key = normalizeProductKey(product.code);
       if (key) nextNames.set(key, product.name);
     });
-    const nextCatalog = normalizeProductCatalog(data);
+    normalizeMaterialNames(materialData).forEach(material => {
+      const key = normalizeProductKey(material.code);
+      if (key && !nextNames.has(key)) nextNames.set(key, material.name);
+    });
+    const nextCatalog = normalizeProductCatalog(productData);
     setProductNameByCode(nextNames);
     setProductCatalogByKey(nextCatalog);
     return nextCatalog;
@@ -615,11 +666,11 @@ export default function AcceptanceReportListView({
     [nvlLineWeightsKg]
   );
 
-  const loadProductCatalog = async () => {
+  const loadProductCatalog = async (materialData?: unknown) => {
     const res = await fetch('/api/san-pham?format=table');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Không thể tải danh mục sản phẩm.');
-    return applyProductCatalogData(data);
+    return applyProductCatalogData(data, materialData);
   };
 
   useEffect(() => {
@@ -627,12 +678,14 @@ export default function AcceptanceReportListView({
     (async () => {
       try {
         const [catalog, materialRes] = await Promise.all([
-          loadProductCatalog(),
+          fetch('/api/san-pham?format=table'),
           fetch('/api/kho-nvl')
         ]);
         if (cancelled) return;
-        void catalog;
+        const productData = await catalog.json().catch(() => ({}));
         const materialData = await materialRes.json().catch(() => ({}));
+        if (!catalog.ok) throw new Error(productData.error || 'Không thể tải danh mục sản phẩm.');
+        applyProductCatalogData(productData, materialRes.ok ? materialData : undefined);
         if (materialRes.ok) {
           setMaterialWeightCatalog(
             normalizeMaterialsInventory(materialData).map(mapMaterialToWeightCatalogItem)
@@ -1131,6 +1184,7 @@ export default function AcceptanceReportListView({
             <AcceptanceReportSlipStack
               slips={screenSlips}
               emptyText="Chưa có báo cáo phù hợp với bộ lọc."
+              filmKgByProductCode={filmKgByProductCode}
               renderLineActions={renderLineActions}
             />
           )}
@@ -1324,7 +1378,13 @@ export default function AcceptanceReportListView({
 
       {pendingPrint &&
         activePrintSlips.length > 0 &&
-        createPortal(<AcceptanceReportPrintBatch slips={activePrintSlips} />, document.body)}
+        createPortal(
+          <AcceptanceReportPrintBatch
+            slips={activePrintSlips}
+            filmKgByProductCode={filmKgByProductCode}
+          />,
+          document.body
+        )}
     </div>
   );
 }

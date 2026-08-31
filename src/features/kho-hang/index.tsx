@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTabAccess } from '../../app/useTabAccess';
-import { FilterCombobox, TableDateFilter } from '../../components/shared/table';
+import { FilterCombobox } from '../../components/shared/table';
 import { MaterialsInventoryPanel } from '../kho-nvl';
 import { ProductsPanel } from '../san-pham';
 
@@ -78,7 +78,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
   const productsAccess = useTabAccess('products');
   const [warehouses, setWarehouses] = useState<string[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
-  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [asOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [balanceRows, setBalanceRows] = useState<InventoryBalanceRow[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState('');
@@ -207,7 +207,6 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
                 includeAll={false}
                 searchPlaceholder="Tìm kho..."
               />
-              <TableDateFilter label="Chọn ngày" value={asOfDate} onChange={setAsOfDate} />
               {isLoadingBalances ? (
                 <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
               ) : null}
@@ -232,7 +231,6 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
                 includeAll={false}
                 searchPlaceholder="Tìm kho..."
               />
-              <TableDateFilter label="Chọn ngày" value={asOfDate} onChange={setAsOfDate} />
               {isLoadingBalances ? (
                 <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
               ) : null}

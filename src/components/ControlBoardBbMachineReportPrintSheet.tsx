@@ -319,13 +319,6 @@ function resolveUsageQtyFromKg(
   return Math.round((kg / perUnit) * 10000) / 10000;
 }
 
-function printQtyWithUnit(qty: number | null | undefined, unit: string) {
-  if (qty === null || qty === undefined || !Number.isFinite(qty)) return '—';
-  const unitLabel = String(unit || '').trim();
-  if (!unitLabel || unitLabel === '-') return printNumber(qty, 2);
-  return `${printNumber(qty, 2)} ${unitLabel}`;
-}
-
 /** Cùng công thức tab «Báo cáo lỗi hỏng»: ưu tiên tỉ lệ trộn thực tế, không có thì định mức. */
 function resolveLoiHongMixingTiLePercent(line: {
   tiLeTronPercent: number | null;
@@ -1846,7 +1839,6 @@ function BbMachineOrderPrintSheet({
                 <th>Giá trị phân tích dữ liệu</th>
                 <th>Định mức Vật tư<br />của Số lượng nhập TP</th>
                 <th>Trọng lượng thực<br />xuất dùng (kg)</th>
-                <th>Số lượng thực<br />xuất dùng</th>
                 <th>Chênh lệch<br />(Thực xuất Trừ Đ mức)</th>
                 <th>Đơn giá</th>
                 <th>Thành tiền</th>
@@ -1855,7 +1847,7 @@ function BbMachineOrderPrintSheet({
             <tbody>
               {!hasEvalDetailRows ? (
                 <tr>
-                  <td colSpan={8} className="shift-summary-print-center bb-machine-report-print-eval-detail-empty">
+                  <td colSpan={7} className="shift-summary-print-center bb-machine-report-print-eval-detail-empty">
                     Không có dòng chi tiết.
                   </td>
                 </tr>
@@ -1867,7 +1859,6 @@ function BbMachineOrderPrintSheet({
                         <td className="shift-summary-print-center bb-machine-report-print-stt">&nbsp;</td>
                         <td className="bb-machine-report-print-eval-detail-group-label">Hao hụt nhựa</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalDinhMuc, 2)} kg</td>
-                        <td className="shift-summary-print-num">{printNumber(plasticLossTotalThucXuat, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalThucXuat, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(plasticLossTotalChenhLech, 2)} kg</td>
                         <td className="shift-summary-print-num">
@@ -1887,7 +1878,6 @@ function BbMachineOrderPrintSheet({
                           <td className="bb-machine-report-print-eval-detail-label">{row.label}</td>
                           <td className="shift-summary-print-num">{printNumber(row.dinhMucKg, 2)} kg</td>
                           <td className="shift-summary-print-num">{printNumber(row.thucXuatKg, 2)} kg</td>
-                          <td className="shift-summary-print-num">{printQtyWithUnit(row.thucXuatQty, row.unit)}</td>
                           <td className="shift-summary-print-num">{printNumber(row.chenhLechKg, 2)} kg</td>
                           <td className="shift-summary-print-num">
                             {row.unitPrice !== null && row.unitPrice > 0
@@ -1908,7 +1898,6 @@ function BbMachineOrderPrintSheet({
                         <td className="bb-machine-report-print-eval-detail-group-label">Vật tư khác</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalDinhMuc, 2)} kg</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalThucXuat, 2)} kg</td>
-                        <td className="shift-summary-print-num">—</td>
                         <td className="shift-summary-print-num">{printNumber(otherLossTotalChenhLech, 2)} kg</td>
                         <td className="shift-summary-print-num">
                           {otherLossTotalUnitPrice !== null && otherLossTotalUnitPrice > 0
@@ -1929,7 +1918,6 @@ function BbMachineOrderPrintSheet({
                           <td className="bb-machine-report-print-eval-detail-label">{row.label}</td>
                           <td className="shift-summary-print-num">{printNumber(row.dinhMucKg, 2)} kg</td>
                           <td className="shift-summary-print-num">{printNumber(row.thucXuatKg, 2)} kg</td>
-                          <td className="shift-summary-print-num">{printQtyWithUnit(row.thucXuatQty, row.unit)}</td>
                           <td className="shift-summary-print-num">{printNumber(row.chenhLechKg, 2)} kg</td>
                           <td className="shift-summary-print-num">
                             {row.unitPrice !== null && row.unitPrice > 0

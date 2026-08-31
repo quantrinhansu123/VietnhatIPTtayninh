@@ -79,6 +79,17 @@ export function resolveTrongLuongNhuaKgMinusFilm(
   return base - film;
 }
 
+/** Nhựa thực tế trên `/can-tu-dong` — trừ BOM màng theo Mã SP từ QR khi có. */
+export function resolveCanTuDongNhuaThucTeKg(
+  row: CanTuDongWeightRow,
+  filmKgByProductCode?: Map<string, number>
+) {
+  const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+  const filmKgPerRoll =
+    maSpKey && filmKgByProductCode ? filmKgByProductCode.get(maSpKey) : undefined;
+  return resolveTrongLuongNhuaKgMinusFilm(row, filmKgPerRoll);
+}
+
 /**
  * Nhựa định mức (kg) theo Mã SP:
  * ưu tiên `san_pham.trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì.
@@ -330,14 +341,33 @@ export function listInsulationFilmBomLines(product: InsulationProductAlias): Ins
   return lines;
 }
 
-/** TL màng 1 cuộn = trọng lượng màng trong BOM × 2. */
+/** TL màng 1 cuộn = trọng lượng màng trong BOM × 2 (dùng BB / báo cáo máy). */
 export function resolveInsulationFilmKgPerRoll(product: InsulationProductAlias): number | null {
   const bomWeight = resolveInsulationFilmBomWeightPerUnit(product);
   if (bomWeight === null) return null;
   return bomWeight * INSULATION_FILM_LAYERS;
 }
 
-function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
+/** TL màng /cuộn trên `/can-tu-dong` — BOM màng Thành phần SP, không ×2. */
+export function resolveCanTuDongFilmKgPerRoll(product: InsulationProductAlias): number | null {
+  return resolveInsulationFilmBomWeightPerUnit(product);
+}
+
+export function buildCanTuDongFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
+  const filmKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const filmKg = resolveCanTuDongFilmKgPerRoll(product);
+    if (filmKg === null) continue;
+    for (const productCode of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(productCode);
+      if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
+    }
+  }
+  return filmKgByProductCode;
+}
+
+/** @deprecated Dùng `buildCanTuDongFilmKgByProductCode` cho /can-tu-dong (không ×2). */
+export function buildInsulationFilmKgByProductCode(products: InsulationProductAlias[]): Map<string, number> {
   const filmKgByProductCode = new Map<string, number>();
   for (const product of products) {
     const filmKg = resolveInsulationFilmKgPerRoll(product);
@@ -601,11 +631,14 @@ export function filterCanTuDongRecordsForBoard<T extends CanTuDongWeightRow>(
   });
 }
 
-/** Tổng cột «Trọng lượng nhựa» + số lần cân (= số dòng đã lọc). */
-export function sumCanTuDongSanLuongTotals(records: CanTuDongWeightRow[]) {
+/** Tổng cột «Nhựa thực tế» = SP − lõi − bì − màng (khi có BOM màng). */
+export function sumCanTuDongSanLuongTotals(
+  records: CanTuDongWeightRow[],
+  filmKgByProductCode?: Map<string, number>
+) {
   let weightKg = 0;
   for (const row of records) {
-    const nhua = resolveTrongLuongNhuaKg(row);
+    const nhua = resolveCanTuDongNhuaThucTeKg(row, filmKgByProductCode);
     if (nhua !== null) weightKg += nhua;
   }
   return {
@@ -656,12 +689,13 @@ export function sumCanTuDongChenhLechNhuaKg(
   records: CanTuDongWeightRow[],
   standardKgByProductCode: Map<string, number>,
   coreKgByProductCode: Map<string, number>,
-  plasticKgByProductCode?: Map<string, number>
+  plasticKgByProductCode?: Map<string, number>,
+  filmKgByProductCode?: Map<string, number>
 ) {
   let weightKg = 0;
   let counted = 0;
   for (const row of records) {
-    const thucTe = resolveTrongLuongNhuaKg(row);
+    const thucTe = resolveCanTuDongNhuaThucTeKg(row, filmKgByProductCode);
     if (thucTe === null) continue;
     const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
     const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
@@ -771,6 +805,23 @@ export function sumCanTuDongChenhLechLoiKg(
     const lyThuyetKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
     if (lyThuyetKg == null || !(lyThuyetKg > 0) || !Number.isFinite(lyThuyetKg)) continue;
     weightKg += loi - lyThuyetKg;
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
+/** Tổng cột «Trọng lượng màng» = Σ BOM màng / cuộn theo Mã SP từ QR (không ×2). */
+export function sumCanTuDongFilmKg(
+  records: CanTuDongWeightRow[],
+  filmKgByProductCode: Map<string, number>
+) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const filmKg = maSpKey ? filmKgByProductCode.get(maSpKey) : undefined;
+    if (filmKg == null || !(filmKg > 0) || !Number.isFinite(filmKg)) continue;
+    weightKg += filmKg;
     counted += 1;
   }
   return { weightKg, counted };

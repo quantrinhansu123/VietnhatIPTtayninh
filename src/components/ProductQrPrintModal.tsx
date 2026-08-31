@@ -96,6 +96,7 @@ export default function ProductQrPrintModal({
   autoPrint = false,
   trackProductPrint = true,
   trackGoodsCatalogPrint = false,
+  trackMaterialPrint = false,
   showPayload = true,
   title = 'Mã QR sản phẩm nhập kho',
   description,
@@ -108,6 +109,7 @@ export default function ProductQrPrintModal({
   trackProductPrint?: boolean;
   /** QR cấp từ danh mục Kho hàng hóa có bảng lịch sử in riêng. */
   trackGoodsCatalogPrint?: boolean;
+  trackMaterialPrint?: boolean;
   /** Ẩn hậu tố trên tem/khung xem trước, không làm thay đổi dữ liệu được mã hóa trong QR. */
   showPayload?: boolean;
   title?: string;
@@ -154,7 +156,9 @@ export default function ProductQrPrintModal({
         ? '/api/ma-san-pham/danh-dau-in'
         : trackGoodsCatalogPrint
           ? '/api/ma-qr-hang-hoa/danh-dau-in'
-          : '';
+          : trackMaterialPrint
+            ? '/api/ma-qr-nvl/danh-dau-in'
+            : '';
       if (trackingEndpoint) {
         const response = await fetch(trackingEndpoint, {
           method: 'POST',
@@ -200,7 +204,7 @@ export default function ProductQrPrintModal({
               <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">File 2/2</p>
               <h3 className="text-lg font-black text-zinc-950">{title}</h3>
               <p className="mt-1 text-sm font-medium text-zinc-500">
-                {description || ((trackProductPrint || trackGoodsCatalogPrint)
+                {description || ((trackProductPrint || trackGoodsCatalogPrint || trackMaterialPrint)
                   ? `${labels.length} tem · mỗi tem là một serial đã lưu trong CSDL`
                   : `${labels.length} tem · mỗi mã NVL in một lần`)}
               </p>

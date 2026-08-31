@@ -2747,7 +2747,8 @@ export function WarehouseSlipPanel({
                 key: `${savedSlipCode}-${index}-${payload}`,
                 payload,
                 productCode,
-                productName: String(record.name ?? record.ten_sp ?? '').trim()
+                productName: String(record.name ?? record.ten_npl ?? record.ten_sp ?? '').trim(),
+                itemLabel: warehouseKind === 'nvl' ? 'Tên NVL' : undefined
               };
             })
             .filter((label: ProductQrPrintLabel) => Boolean(label.payload))
@@ -3423,10 +3424,10 @@ export function WarehouseSlipPanel({
                     setQrScannerOpen(true);
                   }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  title="Quét QR: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                  title="Quét ĐT: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
-                  Quét QR
+                  Quét ĐT
                 </button>
                 <button
                   type="button"
@@ -3681,10 +3682,15 @@ export function WarehouseSlipPanel({
         labels={pendingQrLabels}
         autoPrint={qrPrintAutoTrigger}
         trackProductPrint={warehouseKind === 'san_pham'}
+        trackMaterialPrint={warehouseKind === 'nvl'}
         showPayload={false}
-        title={warehouseKind === 'hang_hoa' ? 'Mã QR hàng hóa nhập kho' : undefined}
+        title={warehouseKind === 'nvl' ? 'Mã QR NVL nhập kho' : warehouseKind === 'hang_hoa' ? 'Mã QR hàng hóa nhập kho' : undefined}
         description={
-          warehouseKind === 'hang_hoa' ? `${pendingQrLabels.length} tem · mỗi tem là một đơn vị hàng hóa` : undefined
+          warehouseKind === 'nvl'
+            ? `${pendingQrLabels.length} tem · mỗi tem là một đơn vị NVL đã lưu trong CSDL`
+            : warehouseKind === 'hang_hoa'
+              ? `${pendingQrLabels.length} tem · mỗi tem là một đơn vị hàng hóa`
+              : undefined
         }
         onClose={() => {
           setQrPrintOpen(false);
@@ -3752,6 +3758,7 @@ export function WarehouseHistoryPanel({
   const [historyPrintAutoTrigger, setHistoryPrintAutoTrigger] = useState(false);
   const [historyQrLabels, setHistoryQrLabels] = useState<ProductQrPrintLabel[]>([]);
   const [historyQrPrintOpen, setHistoryQrPrintOpen] = useState(false);
+  const [historyQrTrackMaterial, setHistoryQrTrackMaterial] = useState(false);
   const [isLoadingHistoryQr, setIsLoadingHistoryQr] = useState(false);
   const [historyQrError, setHistoryQrError] = useState('');
   const [weightCatalogMaterials, setWeightCatalogMaterials] = useState<WarehouseWeightCatalogItem[]>([]);
@@ -4095,19 +4102,22 @@ export function WarehouseHistoryPanel({
       if (!response.ok) throw new Error(data.error || 'Không thể tải mã QR của phiếu nhập.');
       const records: Array<Record<string, unknown>> = Array.isArray(data.records) ? data.records : [];
       const labels = records.map((record, index) => {
-        const payload = String(record.ma_sp_day_du ?? '').trim();
-        const productCode = String(record.ma_sp_goc ?? '').trim();
+        const payload = String(record.ma_qr ?? record.ma_sp_day_du ?? '').trim();
+        const productCode = String(record.ma_npl_goc ?? record.ma_sp_goc ?? '').trim();
         const movement = viewingRows.find(row => row.itemCode === payload)
           || viewingRows.find(row => row.itemCode.startsWith(`${productCode}_`));
         return {
           key: `${viewingSlipCode}-${index}-${payload}`,
           payload,
           productCode,
-          productName: movement?.itemName || ''
+          productName: movement?.itemName || String(record.ten_npl ?? record.ten_sp ?? '').trim(),
+          itemLabel: viewingRows[0].warehouseKind === 'nvl' ? 'Tên NVL' : undefined,
+          unit: movement?.unit && movement.unit !== '-' ? movement.unit : undefined
         };
       }).filter(label => Boolean(label.payload));
       if (labels.length === 0) throw new Error('Phiếu nhập này chưa có mã QR chi tiết để in.');
       setHistoryQrLabels(labels);
+      setHistoryQrTrackMaterial(viewingRows[0].warehouseKind === 'nvl');
       setHistoryQrPrintOpen(true);
     } catch (reason: unknown) {
       setHistoryQrError(reason instanceof Error ? reason.message : 'Không thể tải mã QR của phiếu nhập.');
@@ -4681,7 +4691,7 @@ export function WarehouseHistoryPanel({
                   <Printer className="h-4 w-4" />
                   In phiếu
                 </button>
-                {viewingRows[0].warehouseKind === 'san_pham' && viewingRows[0].slipType === 'nhap' ? (
+                {(viewingRows[0].warehouseKind === 'san_pham' || viewingRows[0].warehouseKind === 'nvl') && viewingRows[0].slipType === 'nhap' ? (
                   <button
                     type="button"
                     onClick={() => void handlePrintViewingQrCodes()}
@@ -4712,9 +4722,13 @@ export function WarehouseHistoryPanel({
       <ProductQrPrintModal
         open={historyQrPrintOpen}
         labels={historyQrLabels}
+        trackProductPrint={!historyQrTrackMaterial}
+        trackMaterialPrint={historyQrTrackMaterial}
         showPayload={false}
+        title={historyQrTrackMaterial ? 'Mã QR NVL' : undefined}
         onClose={() => {
           setHistoryQrPrintOpen(false);
+          setHistoryQrTrackMaterial(false);
           setHistoryQrLabels([]);
         }}
       />

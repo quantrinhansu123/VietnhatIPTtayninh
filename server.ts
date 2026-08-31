@@ -67,6 +67,7 @@ const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham
 const SUPABASE_IMPORT_SP_TABLE = process.env.SUPABASE_IMPORT_SP_TABLE || 'import_sp';
 const SUPABASE_PRODUCT_CODES_TABLE = process.env.SUPABASE_PRODUCT_CODES_TABLE || 'ma_san_pham_chi_tiet';
 const SUPABASE_GOODS_QR_CODES_TABLE = process.env.SUPABASE_GOODS_QR_CODES_TABLE || 'ma_qr_hang_hoa';
+const SUPABASE_MATERIAL_QR_CODES_TABLE = process.env.SUPABASE_MATERIAL_QR_CODES_TABLE || 'ma_qr_nvl';
 /** Sửa typo env phổ biến: anh_sach_may → danh_sach_may */
 const SUPABASE_MACHINES_TABLE = (() => {
   const raw = String(process.env.SUPABASE_MACHINES_TABLE || '')
@@ -328,6 +329,7 @@ if (useSupabase) {
     damagedGoods: SUPABASE_DAMAGED_GOODS_TABLE,
       products: SUPABASE_PRODUCTS_TABLE,
       importSp: SUPABASE_IMPORT_SP_TABLE,
+      materialQrCodes: SUPABASE_MATERIAL_QR_CODES_TABLE,
       machines: SUPABASE_MACHINES_TABLE,
     materials: SUPABASE_MATERIALS_TABLE,
     staff: SUPABASE_STAFF_TABLE,
@@ -7494,6 +7496,81 @@ export function createApp() {
     return res.json({ success: true, updated: Number(data) || 0 });
   });
 
+  /** QR đã cấp cho nguyên vật liệu, sinh từ phiếu nhập kho NVL. */
+  app.get('/api/kho-nvl/ma-qr', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    try {
+      const maNpl = String(req.query.ma_npl ?? req.query.maNpl ?? '').trim();
+      const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim();
+      if (!maNpl) return res.status(400).json({ error: 'Thiếu mã NVL để tải danh sách QR.' });
+
+      let query = supabase
+        .from(SUPABASE_MATERIAL_QR_CODES_TABLE)
+        .select('id, ma_qr, ma_npl_goc, ten_npl, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, ma_phieu_nhap, created_at')
+        .eq('ma_npl_goc', maNpl)
+        .order('created_at', { ascending: false });
+      if (tenKho) query = query.eq('ten_kho', tenKho);
+
+      const { data, error } = await query;
+      if (error) {
+        return res.status(500).json({
+          error: isMissingTableError(error)
+            ? 'Chưa có bảng QR NVL. Hãy chạy file supabase-ma-qr-nvl.sql.'
+            : error.message || 'Không thể tải danh sách QR NVL đã cấp.'
+        });
+      }
+      return res.json({ records: data || [], total: data?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải danh sách QR NVL đã cấp.' });
+    }
+  });
+
+  app.patch('/api/ma-qr-nvl/:id/trang-thai', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const id = String(req.params.id || '').trim();
+    const trangThai = String(req.body?.trang_thai ?? req.body?.trangThai ?? '').trim().toLowerCase();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID mã QR NVL.' });
+    if (!['dang_dung', 'da_huy'].includes(trangThai)) {
+      return res.status(400).json({ error: 'Trạng thái QR chỉ có thể là Đang dùng hoặc Đã hủy.' });
+    }
+    const { data, error } = await supabase
+      .from(SUPABASE_MATERIAL_QR_CODES_TABLE)
+      .update({ trang_thai: trangThai, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id, trang_thai')
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật trạng thái QR NVL.' });
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy mã QR NVL cần cập nhật.' });
+    return res.json({ success: true, record: data });
+  });
+
+  app.post('/api/ma-qr-nvl/danh-dau-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const codes = Array.isArray(req.body?.codes)
+      ? req.body.codes.map((code: unknown) => String(code ?? '').trim()).filter(Boolean)
+      : [];
+    if (codes.length === 0) return res.status(400).json({ error: 'Không có mã QR NVL để đánh dấu in.' });
+
+    const { data, error } = await supabase.rpc('danh_dau_in_ma_qr_nvl', { p_codes: codes });
+    if (error) {
+      const message = String(error.message || '');
+      const missingFunction = error.code === 'PGRST202' || /danh_dau_in_ma_qr_nvl/i.test(message);
+      return res.status(500).json({
+        error: missingFunction
+          ? 'Chưa có chức năng lưu lịch sử in QR NVL. Hãy chạy file supabase-ma-qr-nvl.sql.'
+          : `Không thể lưu lịch sử in QR NVL: ${message}`
+      });
+    }
+    return res.json({ success: true, updated: Number(data) || 0 });
+  });
+
   app.delete('/api/san-pham', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -10061,6 +10138,31 @@ export function createApp() {
       const slipCode = String(req.params.slipCode || '').trim();
       if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu nhập.' });
 
+      const { data: slipRows, error: slipRowsError } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .select('loai_kho')
+        .eq('ma_phieu', slipCode)
+        .limit(1);
+      if (slipRowsError) {
+        return res.status(500).json({ error: slipRowsError.message || 'Không thể xác định kho của phiếu.' });
+      }
+
+      if (String(slipRows?.[0]?.loai_kho || '').trim() === 'nvl') {
+        const { data: materialQrData, error: materialQrError } = await supabase
+          .from(SUPABASE_MATERIAL_QR_CODES_TABLE)
+          .select('id, ma_qr, ma_npl_goc, ten_npl, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, ma_phieu_nhap, created_at')
+          .eq('ma_phieu_nhap', slipCode)
+          .order('created_at', { ascending: true });
+        if (materialQrError) {
+          return res.status(500).json({
+            error: isMissingTableError(materialQrError)
+              ? 'Chưa có bảng QR NVL. Hãy chạy file supabase-ma-qr-nvl.sql.'
+              : materialQrError.message || 'Không thể tải mã QR NVL của phiếu nhập.'
+          });
+        }
+        return res.json({ records: materialQrData || [], total: materialQrData?.length || 0 });
+      }
+
       const { data, error } = await supabase
         .from(SUPABASE_PRODUCT_CODES_TABLE)
         .select('id, ma_sp_goc, ma_sp_day_du, ten_kho, trang_thai, so_lan_in, ma_phieu_nhap, created_at')
@@ -10100,6 +10202,22 @@ export function createApp() {
       }
 
       const maPhieu = generateWarehouseSlipCode(parsed.loaiPhieu);
+
+      let materialQrCodes: {
+        codes: Array<{ code: string; baseCode: string; name: string }>;
+        quantity: number;
+      } | null = null;
+      if (parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'nvl') {
+        const totalQuantity = parsed.items.reduce((sum, item) => sum + item.quantity, 0);
+        const invalidItem = parsed.items.find(item => !Number.isInteger(item.quantity));
+        if (invalidItem) {
+          return res.status(400).json({ error: `Số lượng nhập của ${invalidItem.code} phải là số nguyên để sinh từng mã QR.` });
+        }
+        if (totalQuantity < 1 || totalQuantity > 999) {
+          return res.status(400).json({ error: 'Tổng số lượng sinh mã QR NVL trong một phiếu phải từ 1 đến 999.' });
+        }
+        materialQrCodes = { codes: [], quantity: totalQuantity };
+      }
 
       // Nhập kho thành phẩm không còn sinh mã QR/serial riêng cho từng đơn vị — ghi nhận theo
       // tổng số lượng như các kho khác (giống luồng NVL), đi qua nhánh insert chung bên dưới.
@@ -10163,6 +10281,37 @@ export function createApp() {
         return res.status(500).json({ error: warehouseSlipWriteErrorMessage(error) });
       }
 
+      if (materialQrCodes) {
+        const { data: issuedMaterialQrCodes, error: materialQrError } = await supabase.rpc('cap_ma_qr_nvl_tu_phieu', {
+          p_items: parsed.items.map(item => ({
+            ma_npl_goc: item.code,
+            ten_npl: item.name,
+            so_luong: item.quantity
+          })),
+          p_ten_kho: parsed.tenKho,
+          p_ma_phieu_nhap: maPhieu,
+          p_nguoi_tao: parsed.nguoiLap
+        });
+        if (materialQrError) {
+          const message = String(materialQrError.message || '');
+          const missingFunction = materialQrError.code === 'PGRST202' || /cap_ma_qr_nvl_tu_phieu/i.test(message);
+          return res.status(500).json({
+            error: missingFunction
+              ? 'Chưa có chức năng cấp QR NVL trong CSDL. Hãy chạy file supabase-ma-qr-nvl.sql.'
+              : `Không thể cấp mã QR NVL: ${message}`
+          });
+        }
+        const records = Array.isArray(issuedMaterialQrCodes) ? issuedMaterialQrCodes : [];
+        materialQrCodes.codes = records.map((record: Record<string, unknown>) => ({
+          code: String(record.ma_qr ?? '').trim(),
+          baseCode: String(record.ma_npl_goc ?? '').trim(),
+          name: String(record.ten_npl ?? '').trim()
+        })).filter(record => Boolean(record.code));
+        if (materialQrCodes.codes.length !== materialQrCodes.quantity) {
+          return res.status(500).json({ error: 'CSDL không trả đủ mã QR NVL cho phiếu nhập.' });
+        }
+      }
+
       if (parsed.loaiKho === 'nvl') {
         const nvlCodes = [...new Set(parsed.items.map(item => item.code.trim()).filter(Boolean))];
         await Promise.all(nvlCodes.map(code => syncMaterialInventoryFromMovements(code)));
@@ -10175,8 +10324,8 @@ export function createApp() {
         success: true,
         slipCode: maPhieu,
         movements: data || [],
-        qrCodes: goodsQrCodes?.codes || [],
-        qrQuantity: goodsQrCodes?.quantity || 0
+        qrCodes: materialQrCodes?.codes || goodsQrCodes?.codes || [],
+        qrQuantity: materialQrCodes?.quantity || goodsQrCodes?.quantity || 0
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo phiếu xuất nhập kho.' });

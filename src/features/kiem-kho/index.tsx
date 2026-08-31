@@ -74,6 +74,8 @@ type KiemKhoLine = {
   soLuong: string;
   trongLuong: string;
   rawQr: string;
+  /** Mã từ tem cũ không có hậu tố: mỗi lần quét vẫn là một đơn vị kiểm kho. */
+  allowDuplicateScan?: boolean;
 };
 
 type OpenBatch = {
@@ -319,7 +321,7 @@ export function KiemKhoPanel({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
-  const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('hardware');
+  const [scannerMode, setScannerMode] = useState<'hardware' | 'hardware-v2' | 'camera'>('hardware-v2');
   const [manualCode, setManualCode] = useState('');
   const [showManualModal, setShowManualModal] = useState(false);
   const manualInputRef = useRef<HTMLInputElement>(null);
@@ -651,7 +653,7 @@ export function KiemKhoPanel({
   }, []);
 
   const addLineFromCode = useCallback(
-    (raw: string, showFeedback = true): boolean | 'duplicate' => {
+    (raw: string, showFeedback = true, allowDuplicateScan = false): boolean | 'duplicate' => {
       if (showFeedback) setMessage('');
       const fullCode = String(raw ?? '').trim();
       if (!fullCode) {
@@ -669,7 +671,7 @@ export function KiemKhoPanel({
       const exists = linesRef.current.some(
         line => isSameFullCode(line.maSp, fullCode) || isSameFullCode(line.rawQr, fullCode)
       );
-      if (exists) {
+      if (exists && !allowDuplicateScan) {
         setError(`Mã "${fullCode}" đã có trên form — không thêm dòng trùng.`);
         return 'duplicate';
       }
@@ -687,7 +689,8 @@ export function KiemKhoPanel({
         // Mỗi mã QR đại diện đúng một đơn vị kiểm kho.
         soLuong: '1',
         trongLuong: matched?.totalWeight || '',
-        rawQr: fullCode
+        rawQr: fullCode,
+        allowDuplicateScan
       };
       const nextLines = [...linesRef.current, nextLine];
       linesRef.current = nextLines;
@@ -773,6 +776,11 @@ export function KiemKhoPanel({
     [manualCode, manualProductOptions, selectedKho]
   );
 
+  const handleQrScanV2 = useCallback(
+    (raw: string): boolean | 'duplicate' => addLineFromCode(raw, true, true),
+    [addLineFromCode]
+  );
+
   const handleManualProductSelected = useCallback(
     (item: unknown | null) => {
       if (!item) return;
@@ -848,7 +856,8 @@ export function KiemKhoPanel({
             ma_nvl: line.maNvl,
             ma_sp: line.maSp,
             ten_sp: line.tenSp,
-            loai_sp: line.loaiSp
+            loai_sp: line.loaiSp,
+            allow_duplicate_scan: line.allowDuplicateScan === true
           }))
         })
       });
@@ -1045,13 +1054,13 @@ export function KiemKhoPanel({
               </p>
             </div>
             <p className="text-[11px] font-semibold text-zinc-500">
-              1 mã = tiền tố+hậu tố; trùng cả mã thì bỏ qua, mã khác thì tự thêm
+              Quét máy V2 dùng cho tem cũ không có hậu tố; quét trùng mã vẫn tăng số lượng.
             </p>
           </div>
           <div className="grid w-full grid-cols-3 gap-1.5 sm:flex sm:w-auto sm:items-center">
             {canCreate ? (
               <>
-                <button
+                {false && <button
                   type="button"
                   onClick={() => {
                     setScannerMode('hardware');
@@ -1062,6 +1071,18 @@ export function KiemKhoPanel({
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét máy
+                </button>}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerMode('hardware-v2');
+                    setIsQrScannerOpen(true);
+                  }}
+                  className="flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-1 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] sm:h-9 sm:px-3"
+                  title="Quét máy V2: tem không có hậu tố được phép quét trùng mã"
+                >
+                  <ScanBarcode className="h-3.5 w-3.5" />
+                  Quét máy V2
                 </button>
                 <button
                   type="button"
@@ -1232,7 +1253,7 @@ export function KiemKhoPanel({
           })}
           {lines.length === 0 && !showManualModal ? (
             <p className="rounded-xl bg-zinc-50 px-3 py-6 text-center text-sm font-semibold text-zinc-500">
-              Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc <span className="text-[#ef1b2d]">Quét máy</span>.
+              Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc <span className="text-[#ef1b2d]">Quét máy V2</span>.
             </p>
           ) : null}
         </div>
@@ -1419,7 +1440,7 @@ export function KiemKhoPanel({
             {lines.length === 0 && !showManualModal && (
               <TableEmptyRow colSpan={hideMaQuet ? 8 : 9}>
                 Chưa có mã. Bấm <span className="text-[#ef1b2d]">Thêm</span> để nhập, hoặc{' '}
-                <span className="text-[#ef1b2d]">Quét máy</span>.
+                <span className="text-[#ef1b2d]">Quét máy V2</span>.
               </TableEmptyRow>
             )}
           </TableBody>
@@ -1767,8 +1788,9 @@ export function KiemKhoPanel({
       <ProductQrScanner
         open={isQrScannerOpen}
         onClose={() => setIsQrScannerOpen(false)}
-        onScan={handleQrScan}
-        hardwareOnly={scannerMode === 'hardware'}
+        onScan={scannerMode === 'hardware-v2' ? handleQrScanV2 : handleQrScan}
+        hardwareOnly={scannerMode !== 'camera'}
+        allowDuplicateScans={scannerMode === 'hardware-v2'}
         requireConfirm={false}
         scannedCount={scannedQrCount}
       />

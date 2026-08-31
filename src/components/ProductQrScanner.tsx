@@ -44,6 +44,8 @@ interface ProductQrScannerProps {
   onClose: () => void;
   onScan: (value: string) => boolean | 'duplicate' | void;
   hardwareOnly?: boolean;
+  /** Tem cũ không có hậu tố: cho phép mỗi lần quét cùng mã được tính là một đơn vị. */
+  allowDuplicateScans?: boolean;
   closeAfterScan?: boolean;
   requireConfirm?: boolean;
   getConfirmMessage?: (code: string) => string;
@@ -245,6 +247,7 @@ export default function ProductQrScanner({
   onClose,
   onScan,
   hardwareOnly = false,
+  allowDuplicateScans = false,
   closeAfterScan = false,
   requireConfirm = true,
   getConfirmMessage,
@@ -708,7 +711,11 @@ export default function ProductQrScanner({
           <div className="flex items-center gap-2">
             <ScanBarcode className="h-5 w-5 text-[#ef1b2d]" />
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-900">
-              {hardwareOnly ? 'Quét máy BT-A700' : 'Quét QR / mã vạch sản phẩm'}
+              {hardwareOnly
+                ? allowDuplicateScans
+                  ? 'Quét máy V2 BT-A700'
+                  : 'Quét máy BT-A700'
+                : 'Quét QR / mã vạch sản phẩm'}
             </h3>
           </div>
           <button
@@ -768,7 +775,9 @@ export default function ProductQrScanner({
               </p>
               {hardwareOnly && (
                 <p className="mt-1 text-[11px] font-medium text-zinc-400">
-                  Có thể quét liên tục. Mỗi Mã SP chỉ được nhận một lần; quét tem khác cùng Mã SP sẽ được báo trùng.
+                  {allowDuplicateScans
+                    ? 'Có thể quét liên tục. Tem cũ không có hậu tố được phép quét trùng mã; mỗi lần quét sẽ tăng số lượng.'
+                    : 'Có thể quét liên tục. Mỗi Mã SP chỉ được nhận một lần; quét tem khác cùng Mã SP sẽ được báo trùng.'}
                 </p>
               )}
             </div>

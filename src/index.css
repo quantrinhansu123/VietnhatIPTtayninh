@@ -926,7 +926,7 @@ input[type="number"] {
   }
 
   @page bb-giai-trinh-print-page {
-    size: A4 landscape;
+    size: 210mm 297mm;
     margin: 8mm;
   }
 
@@ -1766,12 +1766,12 @@ input[type="number"] {
   font-weight: 700;
 }
 
-.production-plan-print-table th:nth-child(1) { width: 4%; }
+.production-plan-print-table th:nth-child(1) { width: 5%; }
 .production-plan-print-table th:nth-child(2) { width: 13%; }
-.production-plan-print-table th:nth-child(3) { width: 10%; }
-.production-plan-print-table th:nth-child(4) { width: 24%; }
-.production-plan-print-table th:nth-child(5) { width: 13%; }
-.production-plan-print-table th:nth-child(6) { width: 36%; }
+.production-plan-print-table th:nth-child(3) { width: 12%; }
+.production-plan-print-table th:nth-child(4) { width: 20%; }
+.production-plan-print-table th:nth-child(5) { width: 15%; }
+.production-plan-print-table th:nth-child(6) { width: 35%; }
 
 .production-plan-print-product-column {
   display: none;
@@ -1792,11 +1792,12 @@ input[type="number"] {
 .production-plan-print-table th {
   background: #ffffff;
   color: #172033;
-  font-size: 8.5pt;
-  font-weight: 800;
+  font-size: 7.5pt;
+  font-weight: 700 !important;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .production-plan-print-center {
@@ -2385,6 +2386,49 @@ input[type="number"] {
 
   body.production-plan-related-print-active .can-tu-dong-print-sheet * {
     visibility: visible !important;
+  }
+
+  /* Bảng giải trình được tái dùng nguyên mẫu in gốc trong batch tổng hợp. */
+  body.production-plan-related-print-active .bb-giai-trinh-print-sheet,
+  body.production-plan-related-print-active .bb-giai-trinh-print-sheet * {
+    visibility: visible !important;
+  }
+
+  body.production-plan-related-print-active .bb-giai-trinh-print-sheet {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    page: bb-giai-trinh-print-page;
+  }
+
+  body.production-plan-related-print-active .bb-giai-trinh-print-doc {
+    width: 194mm !important;
+    max-width: 194mm !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+  }
+
+  body.production-plan-related-print-active .bb-giai-trinh-print-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  body.production-plan-related-print-active .bb-giai-trinh-print-table th,
+  body.production-plan-related-print-active .bb-giai-trinh-print-table td {
+    padding: 1mm 0.8mm !important;
+    font-size: 7pt !important;
+    line-height: 1.15 !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   body.production-order-print-active #root {
@@ -3187,7 +3231,7 @@ input[type="number"] {
 .production-order-print-grid-table th:nth-child(5) { width: 28%; }
 
 /* Phiếu giải trình BB — 9 cột, không dùng production-order-print-grid-table (chỉ có 5 cột). */
-.bb-giai-trinh-print-sheet {
+  .bb-giai-trinh-print-sheet {
   position: fixed;
   left: -10000px;
   top: 0;
@@ -3917,7 +3961,7 @@ input[type="number"] {
 }
 
 .bb-finished-goods-print-table th {
-  background: #e5e7eb !important;
+  background: #ffffff !important;
   font-weight: 700;
   text-align: center;
   vertical-align: middle;
@@ -4181,7 +4225,7 @@ input[type="number"] {
 
 /* 4.2 Chi tiết — dòng tổng nhóm (Hao hụt nhựa / Vật tư khác) */
 .bb-machine-report-print-eval-detail-group td {
-  background: #d4d4d8 !important;
+  background: #ffffff !important;
   font-weight: 800 !important;
   color: #18181b;
 }
@@ -4207,7 +4251,7 @@ input[type="number"] {
 
 .bb-machine-report-print-info th {
   width: 11%;
-  background: #f1f5f9;
+  background: #ffffff;
   white-space: nowrap;
 }
 
@@ -4248,6 +4292,9 @@ input[type="number"] {
   margin-top: 6mm;
   text-align: center;
   font-size: 9pt;
+  /* Chữ ký là một khối: không để nhãn ở cuối trang rồi dòng ký rơi sang trang sau. */
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .bb-machine-report-print-signatures p {
@@ -4355,12 +4402,12 @@ input[type="number"] {
   }
 
   .bb-machine-report-print-doc .shift-summary-print-table th {
-    background: #eef2f7 !important;
+    background: #ffffff !important;
     font-weight: 700 !important;
   }
 
   .bb-machine-report-print-doc .shift-summary-print-total-row td {
-    background: #eef2f7 !important;
+    background: #ffffff !important;
   }
 
   .bb-machine-report-print-doc .shift-summary-print-table tr {
@@ -4674,7 +4721,7 @@ input[type="number"] {
   }
 
   .bb-machine-report-print-eval-detail-group td {
-    background: #d4d4d8 !important;
+    background: #ffffff !important;
     font-weight: 800 !important;
     color: #18181b !important;
     -webkit-print-color-adjust: exact;
@@ -5970,9 +6017,15 @@ input[type="number"] {
     page: bb-giai-trinh-print-page;
   }
 
+  .bb-giai-trinh-print-sheet .production-order-print-letterhead {
+    width: 100%;
+  }
+
   body.bb-giai-trinh-print-active .bb-giai-trinh-print-doc {
-    width: 100% !important;
-    max-width: 100% !important;
+    width: 194mm !important;
+    max-width: 194mm !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -5997,7 +6050,9 @@ input[type="number"] {
   .bb-giai-trinh-print-table th,
   .bb-giai-trinh-print-table td {
     border: 1px solid #222 !important;
-    padding: 1.8mm 1.5mm !important;
+    padding: 1mm 0.8mm !important;
+    font-size: 7pt !important;
+    line-height: 1.15 !important;
     vertical-align: top !important;
     word-break: break-word !important;
     overflow-wrap: anywhere !important;

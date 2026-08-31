@@ -4,7 +4,7 @@
 |---|---|
 | **Bảng** | `phieu_xuat_nhap_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
-| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (căn cứ báo cáo: `supabase-phieu-xuat-nhap-kho-can-cu-bao-cao.sql`; QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`; treo: `supabase-phieu-xuat-nhap-kho-treo.sql`; ảnh thực tế: `supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql`) |
+| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (căn cứ báo cáo: `supabase-phieu-xuat-nhap-kho-can-cu-bao-cao.sql`; QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; QR NVL: `supabase-ma-qr-nvl.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`; treo: `supabase-phieu-xuat-nhap-kho-treo.sql`; ảnh thực tế: `supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql`) |
 
 ## API (`server.ts`)
 

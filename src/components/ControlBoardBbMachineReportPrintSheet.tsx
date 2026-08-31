@@ -926,7 +926,8 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
       shift: order.shift,
       machine: order.machine
     },
-    props.exportRows || []
+    props.exportRows || [],
+    props.materials
   );
   for (const entry of exportMaterialTotals) {
     const row = ensure(entry.itemCode, entry.itemName, entry.unit);

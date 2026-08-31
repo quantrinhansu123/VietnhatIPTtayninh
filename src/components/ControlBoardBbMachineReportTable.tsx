@@ -102,6 +102,7 @@ import {
   resolveBbMaterialExportUnitPrice,
   mapAcceptanceNvlDinhMucRowsToNplItems,
   buildAcceptanceNvlDinhMucPutItems,
+  refreshAcceptanceNvlDinhMucFromProductBom,
   isAcceptanceThanhPhamKhoReport,
   type BbMaterialNormFormula,
   type BbWarehouseExportLineRow,
@@ -591,7 +592,8 @@ export default function ControlBoardBbMachineReportTable({
   machineFilter = 'all',
   selectedMachine = null,
   onApplyCalcScope,
-  onReloadSourceData
+  onReloadSourceData,
+  onReloadWarehouseData
 }: {
   productionOrders: ProductionOrderRow[];
   products: ProductRow[];
@@ -624,7 +626,23 @@ export default function ControlBoardBbMachineReportTable({
     machineFilter: string;
   }) => void;
   /** Tải lại phiếu XK, lệnh SX, báo cáo máy… từ API (sau khi sửa phiếu trên /phieu-xuat-nhap-kho). */
-  onReloadSourceData?: () => Promise<void>;
+  onReloadSourceData?: () => Promise<Partial<{
+    products: ProductRow[];
+    materials: MaterialRow[];
+    acceptanceReports: AcceptanceReport[];
+    productionOrders: ProductionOrderRow[];
+    warehouseMovements: ShiftSummaryWarehouseMovement[];
+    warehouseMovementsByDate: ShiftSummaryWarehouseMovement[];
+    mixingReports: MixingReport[];
+    damagedRecords: WeighingRecord[];
+    machineNvlReports: MachineNvlSavedReport[];
+  }> | void>;
+  /** Tải lại kho NVL (Tổng kg), Thành phần SP + phiếu xuất — nhẹ, dùng trên màn xem trước in. */
+  onReloadWarehouseData?: () => Promise<Partial<{
+    products: ProductRow[];
+    materials: MaterialRow[];
+    warehouseMovements: ShiftSummaryWarehouseMovement[];
+  }> | void>;
 }) {
   const machineReportLabel = useMemo(() => {
     const name = String(selectedMachine?.name || '').trim();
@@ -669,6 +687,10 @@ export default function ControlBoardBbMachineReportTable({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [printPreviewSyncing, setPrintPreviewSyncing] = useState(false);
+  const [printPreviewSyncMessage, setPrintPreviewSyncMessage] = useState('');
+  const [printPreviewDataKey, setPrintPreviewDataKey] = useState(0);
+  const pendingPrintSyncBumpRef = useRef(false);
   const [printStaffByOrder, setPrintStaffByOrder] = useState<Record<string, BbPrintConfirmSelection>>({});
   const [printOrderGroups, setPrintOrderGroups] = useState<BbProductionOrderGroup[]>([]);
   const [printNoteByOrder, setPrintNoteByOrder] = useState<Record<string, string>>({});
@@ -690,13 +712,62 @@ export default function ControlBoardBbMachineReportTable({
   const [snapshotMessage, setSnapshotMessage] = useState('');
   const [calculatingReport, setCalculatingReport] = useState(false);
   const [awaitingSyncReload, setAwaitingSyncReload] = useState(false);
-  const pendingSyncScopeRef = useRef<{
-    dateFrom: string;
-    dateTo: string;
-    shiftFilter: string;
-    machineFilter: string;
-    selectedMachine: { code?: string; name?: string } | null;
-  } | null>(null);
+  /** Luôn trỏ dữ liệu mới nhất sau loadBoard — tránh tính lại báo cáo sản lượng với BOM cũ. */
+  const reportSourceRef = useRef({
+    products,
+    materials,
+    acceptanceReports,
+    productionOrders,
+    warehouseMovements,
+    warehouseMovementsByDate,
+    damagedRecords,
+    machineNvlReports,
+    mixingReports,
+    canTuDongRecords
+  });
+  reportSourceRef.current = {
+    products,
+    materials,
+    acceptanceReports,
+    productionOrders,
+    warehouseMovements,
+    warehouseMovementsByDate,
+    damagedRecords,
+    machineNvlReports,
+    mixingReports,
+    canTuDongRecords
+  };
+  const applyFreshToReportSource = (
+    fresh?: Partial<{
+      products: ProductRow[];
+      materials: MaterialRow[];
+      acceptanceReports: AcceptanceReport[];
+      productionOrders: ProductionOrderRow[];
+      warehouseMovements: ShiftSummaryWarehouseMovement[];
+      warehouseMovementsByDate: ShiftSummaryWarehouseMovement[];
+      mixingReports: MixingReport[];
+      damagedRecords: WeighingRecord[];
+      machineNvlReports: MachineNvlSavedReport[];
+    }> | null
+  ) => {
+    if (!fresh) return;
+    reportSourceRef.current = {
+      ...reportSourceRef.current,
+      ...(fresh.products ? { products: fresh.products } : {}),
+      ...(fresh.materials ? { materials: fresh.materials } : {}),
+      ...(fresh.acceptanceReports ? { acceptanceReports: fresh.acceptanceReports } : {}),
+      ...(fresh.productionOrders ? { productionOrders: fresh.productionOrders } : {}),
+      ...(fresh.warehouseMovements ? { warehouseMovements: fresh.warehouseMovements } : {}),
+      ...(fresh.warehouseMovementsByDate
+        ? { warehouseMovementsByDate: fresh.warehouseMovementsByDate }
+        : fresh.warehouseMovements
+          ? { warehouseMovementsByDate: fresh.warehouseMovements }
+          : {}),
+      ...(fresh.mixingReports ? { mixingReports: fresh.mixingReports } : {}),
+      ...(fresh.damagedRecords ? { damagedRecords: fresh.damagedRecords } : {}),
+      ...(fresh.machineNvlReports ? { machineNvlReports: fresh.machineNvlReports } : {})
+    };
+  };
   const [calcCanTuDongRecords, setCalcCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const [calcDialogOpen, setCalcDialogOpen] = useState(false);
   const [calcNgay, setCalcNgay] = useState('');
@@ -898,11 +969,21 @@ export default function ControlBoardBbMachineReportTable({
     machineFilter: string;
     selectedMachine: { code?: string; name?: string } | null;
   }) => {
-    if (calculatingReport || isLoading) return;
+    if (calculatingReport) return;
+    const source = reportSourceRef.current;
+    const liveProducts = source.products;
+    const liveMaterials = source.materials;
+    const liveAcceptanceReports = source.acceptanceReports;
+    const liveWarehouseMovements = source.warehouseMovements;
+    const liveWarehouseMovementsByDate = source.warehouseMovementsByDate ?? source.warehouseMovements;
+    const liveProductionOrders =
+      orderCodeFilter.length === 0
+        ? source.productionOrders
+        : source.productionOrders.filter(order => orderCodeFilter.includes(order.code));
     setCalculatingReport(true);
     setSnapshotMessage('');
     try {
-      let scopedCanTuDongRecords = canTuDongRecords;
+      let scopedCanTuDongRecords = source.canTuDongRecords;
       if (sanLuongSource === 'can-tu-dong') {
         scopedCanTuDongRecords = await fetchCanTuDongSlimRecords({
           from: scope.dateFrom,
@@ -916,13 +997,13 @@ export default function ControlBoardBbMachineReportTable({
         }).catch(() => undefined);
       }
 
-      const acceptanceNvlDinhMucByReportId = new Map<
+      let acceptanceNvlDinhMucByReportId = new Map<
         string,
         ReturnType<typeof mapAcceptanceNvlDinhMucRowsToNplItems>
       >();
 
-      const scopedAcceptanceReports = acceptanceReports.filter(report => {
-        if (!isAcceptanceThanhPhamKhoReport(report, products)) return false;
+      const scopedAcceptanceReports = liveAcceptanceReports.filter(report => {
+        if (!isAcceptanceThanhPhamKhoReport(report, liveProducts)) return false;
         const ngay = parseProductionOrderFilterDate(report.ngay) || String(report.ngay || '').trim();
         if (ngay < scope.dateFrom || ngay > scope.dateTo) return false;
         if (!shiftNamesMatch(report.ca, scope.shiftFilter)) return false;
@@ -962,19 +1043,25 @@ export default function ControlBoardBbMachineReportTable({
         }
       }
 
-      // Phiếu chưa có snapshot: lấy Thành phần SP trên phiếu → gắn vào bản tính;
-      // nếu bảng snapshot đã có thì ghi DB luôn.
+      // Luôn merge BOM SP mới nhất (kể cả phiếu đã có snapshot DB cũ thiếu dòng).
+      acceptanceNvlDinhMucByReportId = refreshAcceptanceNvlDinhMucFromProductBom({
+        reports: scopedAcceptanceReports,
+        products: liveProducts,
+        existingByReportId: acceptanceNvlDinhMucByReportId
+      });
+
       let syncedFromPhieu = 0;
+      let syncedNvlDb = 0;
       for (const report of scopedAcceptanceReports) {
         const id = String(report.id || '').trim();
-        if (!id || acceptanceNvlDinhMucByReportId.has(id)) continue;
+        if (!id) continue;
 
         const matHang = String(report.mat_hang || '').trim();
         const plusIdx = matHang.indexOf('+');
         const productCodeRaw = (plusIdx > 0 ? matHang.slice(0, plusIdx) : matHang).trim();
         const catalog =
-          findProductByCode(products, productCodeRaw) ||
-          products.find(
+          findProductByCode(liveProducts, productCodeRaw) ||
+          liveProducts.find(
             product =>
               normalizeProductCodeKey(product.name) === normalizeProductCodeKey(productCodeRaw) ||
               normalizeProductCodeKey(product.name).includes(normalizeProductCodeKey(productCodeRaw))
@@ -983,11 +1070,9 @@ export default function ControlBoardBbMachineReportTable({
         const qtyRaw = Number(report.so_luong);
         const productQty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
         const putItems = buildAcceptanceNvlDinhMucPutItems(nplItems, productQty);
+        const merged = acceptanceNvlDinhMucByReportId.get(id) || [];
+        if (merged.length > 0 && putItems.length === 0) syncedFromPhieu += merged.length;
         if (putItems.length === 0) continue;
-
-        const fromProduct = mapAcceptanceNvlDinhMucRowsToNplItems(putItems);
-        acceptanceNvlDinhMucByReportId.set(id, fromProduct);
-        syncedFromPhieu += fromProduct.length;
 
         if (nvlTableReady) {
           const saveRes = await fetch('/api/bao-cao-san-luong-nvl-dinh-muc', {
@@ -1004,11 +1089,10 @@ export default function ControlBoardBbMachineReportTable({
           });
           const saveData = await saveRes.json().catch(() => ({}));
           if (saveRes.ok) {
-            const saved = mapAcceptanceNvlDinhMucRowsToNplItems(
-              Array.isArray(saveData.items) ? saveData.items : []
-            );
-            if (saved.length > 0) acceptanceNvlDinhMucByReportId.set(id, saved);
+            syncedNvlDb += 1;
           }
+        } else if (merged.length > 0) {
+          syncedFromPhieu += merged.length;
         }
       }
 
@@ -1023,16 +1107,16 @@ export default function ControlBoardBbMachineReportTable({
       });
 
       const payload = buildBbMachineReportSnapshot({
-        productionOrders: scopedProductionOrders,
-        products,
-        materials,
+        productionOrders: liveProductionOrders,
+        products: liveProducts,
+        materials: liveMaterials,
         machines,
-        warehouseMovements,
-        warehouseMovementsByDate: warehouseMovementsByDate ?? warehouseMovements,
-        damagedRecords,
-        machineNvlReports,
-        mixingReports,
-        acceptanceReports,
+        warehouseMovements: liveWarehouseMovements,
+        warehouseMovementsByDate: liveWarehouseMovementsByDate,
+        damagedRecords: source.damagedRecords,
+        machineNvlReports: source.machineNvlReports,
+        mixingReports: source.mixingReports,
+        acceptanceReports: liveAcceptanceReports,
         acceptanceNvlDinhMucByReportId,
         canTuDongRecords: scopedCanTuDongRecords,
         shiftSettings,
@@ -1078,7 +1162,11 @@ export default function ControlBoardBbMachineReportTable({
         `Đã đồng bộ mọi tab · ${scope.dateFrom} · ${scope.shiftFilter} · ${scope.machineFilter}` +
           (nvlCount > 0
             ? ` · ${nvlCount} NVL` +
-              (syncedFromPhieu > 0 ? ' (từ Thành phần SP trên phiếu)' : ' (snapshot DB)')
+              (syncedNvlDb > 0
+                ? ` (đã cập nhật ${syncedNvlDb} phiếu từ Thành phần SP)`
+                : syncedFromPhieu > 0
+                  ? ' (từ Thành phần SP trên phiếu)'
+                  : ' (BOM + snapshot)')
             : ' · phiếu chưa có Thành phần NVL') +
           (nvlTableReady
             ? ''
@@ -1163,32 +1251,63 @@ export default function ControlBoardBbMachineReportTable({
       return;
     }
 
-    pendingSyncScopeRef.current = scope;
     setAwaitingSyncReload(true);
-    setSnapshotMessage('Đang tải phiếu xuất kho và dữ liệu mới nhất...');
+    setSnapshotMessage('Đang tải phiếu xuất kho, Thành phần SP, Tổng kg kho NVL...');
     try {
       if (onReloadSourceData) {
-        await onReloadSourceData();
-      } else {
-        setAwaitingSyncReload(false);
-        pendingSyncScopeRef.current = null;
-        await calculateAndSaveReport(scope);
+        const fresh = await onReloadSourceData();
+        applyFreshToReportSource(fresh);
       }
+      await calculateAndSaveReport(scope);
     } catch (error) {
-      setAwaitingSyncReload(false);
-      pendingSyncScopeRef.current = null;
       setSnapshotMessage(error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu.');
+    } finally {
+      setAwaitingSyncReload(false);
     }
   };
 
-  useEffect(() => {
-    if (!awaitingSyncReload || isLoading) return;
-    const scope = pendingSyncScopeRef.current;
-    pendingSyncScopeRef.current = null;
-    setAwaitingSyncReload(false);
-    if (!scope) return;
-    void calculateAndSaveReport(scope);
-  }, [awaitingSyncReload, isLoading, warehouseMovements]);
+  /** Xem trước in: tải lại phiếu XK + Tổng kg + tính lại tab Báo cáo sản lượng. */
+  const syncPrintPreviewData = async () => {
+    if (printPreviewSyncing || isLoading || calculatingReport) return;
+    setPrintPreviewSyncing(true);
+    setPrintPreviewSyncMessage('Đang tải phiếu xuất kho, Thành phần SP và Tổng kg mới nhất...');
+    try {
+      pendingPrintSyncBumpRef.current = true;
+      if (onReloadSourceData) {
+        const fresh = await onReloadSourceData();
+        applyFreshToReportSource(fresh);
+      } else if (onReloadWarehouseData) {
+        const fresh = await onReloadWarehouseData();
+        applyFreshToReportSource(fresh);
+      } else {
+        pendingPrintSyncBumpRef.current = false;
+      }
+      const scope = buildCurrentSyncScope();
+      if (
+        scope.dateFrom &&
+        scope.shiftFilter &&
+        scope.shiftFilter !== 'all' &&
+        scope.machineFilter &&
+        scope.machineFilter !== 'all'
+      ) {
+        await calculateAndSaveReport(scope);
+      }
+      if (!pendingPrintSyncBumpRef.current) {
+        setPrintPreviewDataKey(key => key + 1);
+      }
+      setPrintPreviewSyncMessage(
+        'Đã đồng bộ — xuất kho, Báo cáo sản lượng và mục 3.1/3.2 dùng dữ liệu mới nhất.'
+      );
+      window.setTimeout(() => setPrintPreviewSyncMessage(''), 5000);
+    } catch (error) {
+      pendingPrintSyncBumpRef.current = false;
+      setPrintPreviewSyncMessage(
+        error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu xuất kho.'
+      );
+    } finally {
+      setPrintPreviewSyncing(false);
+    }
+  };
 
   const emptySnapshot = useMemo(() => emptyBbBaoCaoTinhToanPayload(), []);
   const activeSnapshot = reportSnapshot || emptySnapshot;
@@ -1231,6 +1350,13 @@ export default function ControlBoardBbMachineReportTable({
     () => groupBbWarehouseExportLines(exportRows, productionOrders, products, materials, shiftSettings),
     [exportRows, productionOrders, products, materials, shiftSettings]
   );
+
+  useEffect(() => {
+    if (!pendingPrintSyncBumpRef.current) return;
+    pendingPrintSyncBumpRef.current = false;
+    setPrintPreviewDataKey(key => key + 1);
+  }, [exportRows, materials, warehouseMovements]);
+
   const damagedRows = activeSnapshot.damagedRows;
   const damagedGroups = activeSnapshot.damagedGroups;
   const cuoiCaRows = activeSnapshot.cuoiCaRows;
@@ -1468,8 +1594,8 @@ export default function ControlBoardBbMachineReportTable({
     [orderRows]
   );
   const exportMaterialTotals = useMemo(
-    () => aggregateBbWarehouseExportByMaterial(exportRows),
-    [exportRows]
+    () => aggregateBbWarehouseExportByMaterial(exportRows, materials),
+    [exportRows, materials]
   );
   const exportMaterialTotalKg = useMemo(
     () => exportMaterialTotals.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0),
@@ -2285,7 +2411,7 @@ export default function ControlBoardBbMachineReportTable({
               onClick={() => void syncLatestReport()}
               disabled={isLoading || calculatingReport || awaitingSyncReload || snapshotStatus === 'loading'}
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3.5 text-xs font-black text-sky-950 shadow-xs transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
-              title="Tải lại phiếu xuất kho / lệnh SX đã sửa, rồi tính lại báo cáo theo bộ lọc Ngày · Ca · Máy hiện tại"
+              title="Tải lại phiếu xuất kho, Thành phần SP, Tổng kg kho NVL — tính lại mọi tab (gồm Báo cáo sản lượng)"
             >
               {awaitingSyncReload || calculatingReport ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -7213,15 +7339,37 @@ export default function ControlBoardBbMachineReportTable({
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Xem trước khi in</p>
             <h4 className="text-sm font-black sm:text-base">Báo cáo kết quả theo từng lệnh sản xuất</h4>
             <p className="mt-0.5 text-xs font-semibold text-slate-300">
-              Gõ lý do từng dòng SP, ghi chú mục 5 → Lưu lý do DB → rồi In báo cáo.
+              Sau khi sửa phiếu xuất kho / Tổng kg kho NVL → bấm Đồng bộ. Gõ lý do SP, ghi chú mục 5 → Lưu lý do DB → In.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {printPreviewSyncMessage ? (
+              <span
+                className="max-w-[320px] truncate text-xs font-semibold text-amber-200"
+                title={printPreviewSyncMessage}
+              >
+                {printPreviewSyncMessage}
+              </span>
+            ) : null}
             {lyDoSaveMessage ? (
               <span className="max-w-[280px] truncate text-xs font-semibold text-sky-200" title={lyDoSaveMessage}>
                 {lyDoSaveMessage}
               </span>
             ) : null}
+            <button
+              type="button"
+              onClick={() => void syncPrintPreviewData()}
+              disabled={printPreviewSyncing || pendingPrint || isLoading}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-600/90 px-4 text-xs font-black hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Tải lại phiếu xuất kho, Thành phần SP, Tổng kg — cập nhật Báo cáo sản lượng và mục 3.1/3.2"
+            >
+              {printPreviewSyncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {printPreviewSyncing ? 'Đang đồng bộ...' : 'Đồng bộ'}
+            </button>
             <button
               type="button"
               onClick={() => void savePrintLyDoToDb()}
@@ -7245,6 +7393,7 @@ export default function ControlBoardBbMachineReportTable({
         <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-6">
           <div className="bb-machine-report-preview mx-auto w-fit bg-white shadow-2xl">
             <ControlBoardBbMachineReportPrintBatch
+              key={printPreviewDataKey}
               orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
               exportGroups={exportGroups}
               exportRows={exportRows}

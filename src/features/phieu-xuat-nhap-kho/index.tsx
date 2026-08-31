@@ -97,6 +97,7 @@ import {
   mapProductToWeightCatalogItem,
   type WarehouseWeightCatalogItem
 } from '../../utils/warehouseWeight';
+import { isCuonUnit } from '../../utils/controlBoardShiftSummary';
 
 export type WarehouseSlipType = 'nhap' | 'xuat';
 export type WarehouseKind =
@@ -439,6 +440,25 @@ export function toggleWarehouseProductionOrderSelection(current: string[], order
 
 export function warehouseSlipTypeLabel(type: WarehouseSlipType) {
   return type === 'nhap' ? 'Nhập kho' : 'Xuất kho';
+}
+
+function sumWarehouseRollQuantity(rows: Array<{ quantity: number; unit?: string }>): number {
+  let total = 0;
+  for (const row of rows) {
+    const unit = String(row.unit || '').trim();
+    if (!isCuonUnit(unit)) continue;
+    const qty = Number(row.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    total += qty;
+  }
+  return total;
+}
+
+function formatWarehouseRollTotal(total: number): string {
+  if (!(total > 0)) return '0 cuộn';
+  const rounded = Math.round(total * 100) / 100;
+  const digits = Number.isInteger(rounded) ? 0 : 2;
+  return `${formatNumber(rounded, digits)} cuộn`;
 }
 
 function normalizeWarehouseNameKey(value?: string | null) {
@@ -4257,6 +4277,11 @@ export function WarehouseHistoryPanel({
     return hasWeight ? total : 0;
   }, [viewingRows, weightCatalogMaterials, weightCatalogProducts]);
 
+  const viewingSlipTotalRolls = useMemo(
+    () => sumWarehouseRollQuantity(viewingRows),
+    [viewingRows]
+  );
+
   const buildHistoryPrintSlip = (slipCode: string): WarehouseSlipPrintData | null => {
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
     const header = rows[0];
@@ -4849,6 +4874,7 @@ export function WarehouseHistoryPanel({
                   ['Ca', viewingRows[0].shift || '-'],
                   ['Máy', viewingRows[0].machine || '-'],
                   ['Tổng tiền', `${formatWarehouseMoney(viewingSlipTotal)} đ`],
+                  ['Tổng cuộn', formatWarehouseRollTotal(viewingSlipTotalRolls)],
                   ['Tổng trọng lượng', formatWarehouseWeightKg(viewingSlipTotalWeightKg > 0 ? viewingSlipTotalWeightKg : null)],
                   ['Lý do', viewingRows[0].reason || '-'],
                   ['Ghi chú', viewingRows[0].note || '-'],
@@ -4947,6 +4973,9 @@ export function WarehouseHistoryPanel({
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#ef1b2d]/20 bg-red-50 px-4 py-3">
               <div>
                 <p className="text-sm font-black text-zinc-950">
+                  Tổng cuộn:{' '}
+                  <span className="text-[#ef1b2d]">{formatWarehouseRollTotal(viewingSlipTotalRolls)}</span>
+                  <span className="mx-2 font-normal text-zinc-400">·</span>
                   Tổng tiền: <span className="text-[#ef1b2d]">{formatWarehouseMoney(viewingSlipTotal)} đ</span>
                 </p>
                 {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}

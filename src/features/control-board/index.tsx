@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { formatNumber } from '../../utils';
 import type { AppTab } from '../../routes';
 import { useTabAccess } from '../../app/useTabAccess';
@@ -317,54 +317,42 @@ export function ControlBoardPanel({
       if (!materialRes.ok) throw new Error(materialData.error || 'Không thể tải kho NVL.');
       if (!productionRes.ok) throw new Error(productionData.error || 'Không thể tải lệnh sản xuất.');
 
+      const nextProducts = normalizeProducts(productData);
+      const nextMaterials = normalizeMaterialsInventory(materialData);
+      const nextProductionOrders = normalizeProductionOrders(productionData);
+      const nextAcceptanceReports = acceptanceRes.ok
+        ? normalizeAcceptanceReports(acceptanceData)
+        : [];
+      const nextShiftSummaryAcceptanceReports = shiftSummaryAcceptanceRes.ok
+        ? normalizeAcceptanceReports(shiftSummaryAcceptanceData)
+        : [];
+      const nextMixingReports = mixingRes.ok
+        ? (Array.isArray(mixingData.reports) ? mixingData.reports : []).map(
+            (item: Record<string, unknown>) => normalizeMixingReport(item)
+          )
+        : [];
+      const nextWeighingRecords = weighingRes.ok ? normalizeWeighingRecords(weighingData) : [];
+      const nextDamagedRecords = damagedRes.ok ? normalizeWeighingRecords(damagedData) : [];
+      const nextMachineNvlReports = machineNvlRes.ok
+        ? normalizeMachineNvlReports(machineNvlData)
+        : [];
+      const nextWarehouseMovements = warehouseMovementRes.ok
+        ? normalizeWarehouseMovements(warehouseMovementData)
+        : [];
+
       setOrders(normalizeOrders(orderData));
-      setProducts(normalizeProducts(productData));
+      setProducts(nextProducts);
       setMachines(normalizeMachines(machineData));
-      setMaterials(normalizeMaterialsInventory(materialData));
-      setProductionOrders(normalizeProductionOrders(productionData));
+      setMaterials(nextMaterials);
+      setProductionOrders(nextProductionOrders);
       setProductionOrderSettings(settingRes.ok ? mapProductionOrderSettings(settingData) : []);
-      if (acceptanceRes.ok) {
-        setAcceptanceReports(normalizeAcceptanceReports(acceptanceData));
-      } else {
-        setAcceptanceReports([]);
-      }
-
-      if (shiftSummaryAcceptanceRes.ok) {
-        setShiftSummaryAcceptanceReports(normalizeAcceptanceReports(shiftSummaryAcceptanceData));
-      } else {
-        setShiftSummaryAcceptanceReports([]);
-      }
-
-      if (mixingRes.ok) {
-        const mixingList = Array.isArray(mixingData.reports) ? mixingData.reports : [];
-        setMixingReports(mixingList.map((item: Record<string, unknown>) => normalizeMixingReport(item)));
-      } else {
-        setMixingReports([]);
-      }
-
-      if (weighingRes.ok) {
-        setWeighingRecords(normalizeWeighingRecords(weighingData));
-      } else {
-        setWeighingRecords([]);
-      }
-
-      if (damagedRes.ok) {
-        setDamagedRecords(normalizeWeighingRecords(damagedData));
-      } else {
-        setDamagedRecords([]);
-      }
-
-      if (machineNvlRes.ok) {
-        setMachineNvlReports(normalizeMachineNvlReports(machineNvlData));
-      } else {
-        setMachineNvlReports([]);
-      }
-
-      if (warehouseMovementRes.ok) {
-        setShiftSummaryWarehouseMovements(normalizeWarehouseMovements(warehouseMovementData));
-      } else {
-        setShiftSummaryWarehouseMovements([]);
-      }
+      setAcceptanceReports(nextAcceptanceReports);
+      setShiftSummaryAcceptanceReports(nextShiftSummaryAcceptanceReports);
+      setMixingReports(nextMixingReports);
+      setWeighingRecords(nextWeighingRecords);
+      setDamagedRecords(nextDamagedRecords);
+      setMachineNvlReports(nextMachineNvlReports);
+      setShiftSummaryWarehouseMovements(nextWarehouseMovements);
 
       const localPayloads = [machineData, orderData, materialData, productionData].filter(
         payload => payload && typeof payload === 'object' && (payload as { source?: string }).source === 'local'
@@ -380,6 +368,17 @@ export function ControlBoardPanel({
             : 'Chưa kết nối Supabase — dữ liệu đang rỗng. Trên Vercel: Project Settings → Environment Variables cần SUPABASE_URL và SUPABASE_SERVICE_KEY, rồi Redeploy. Local: kiểm tra .env rồi npm run dev.'
         );
       }
+
+      return {
+        products: nextProducts,
+        materials: nextMaterials,
+        productionOrders: nextProductionOrders,
+        acceptanceReports: nextShiftSummaryAcceptanceReports,
+        warehouseMovements: nextWarehouseMovements,
+        mixingReports: nextMixingReports,
+        damagedRecords: nextDamagedRecords,
+        machineNvlReports: nextMachineNvlReports
+      };
     } catch (error: any) {
       setOrders([]);
       setProducts([]);
@@ -399,6 +398,66 @@ export function ControlBoardPanel({
       setIsLoading(false);
     }
   };
+
+  /** Tải lại kho NVL (Tổng kg), Thành phần SP + phiếu xuất — không bật loading toàn trang. */
+  const reloadWarehouseSourceData = useCallback(async () => {
+    const summaryFrom = dateScopeAll ? '' : shiftSummaryDateFrom || defaultShiftSummaryRange.from;
+    const summaryTo = dateScopeAll ? '' : shiftSummaryDateTo || defaultShiftSummaryRange.to;
+    const withQuery = (base: string, params: Record<string, string>) => {
+      const search = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        if (value) search.set(key, value);
+      }
+      const qs = search.toString();
+      return qs ? `${base}${base.includes('?') ? '&' : '?'}${qs}` : base;
+    };
+    try {
+      const [materialRes, productRes, warehouseMovementRes] = await Promise.all([
+        fetch('/api/kho-nvl'),
+        fetch('/api/san-pham?format=table'),
+        fetch(withQuery('/api/phieu-xuat-nhap-kho', { from: summaryFrom, to: summaryTo }))
+      ]);
+      const materialData = await materialRes.json().catch(() => ({}));
+      const productData = await productRes.json().catch(() => ({}));
+      const warehouseMovementData = await warehouseMovementRes.json().catch(() => ({}));
+      if (materialRes.ok) {
+        setMaterials(normalizeMaterialsInventory(materialData));
+      }
+      if (productRes.ok) {
+        setProducts(normalizeProducts(productData));
+      }
+      if (warehouseMovementRes.ok) {
+        setShiftSummaryWarehouseMovements(normalizeWarehouseMovements(warehouseMovementData));
+      }
+      const nextProducts = productRes.ok ? normalizeProducts(productData) : null;
+      const nextMaterials = materialRes.ok ? normalizeMaterialsInventory(materialData) : null;
+      const nextWarehouseMovements = warehouseMovementRes.ok
+        ? normalizeWarehouseMovements(warehouseMovementData)
+        : null;
+      if (nextProducts || nextMaterials || nextWarehouseMovements) {
+        return {
+          products: nextProducts ?? undefined,
+          materials: nextMaterials ?? undefined,
+          warehouseMovements: nextWarehouseMovements ?? undefined
+        };
+      }
+    } catch {
+      /* giữ dữ liệu hiện tại */
+    }
+    return undefined;
+  }, [dateScopeAll, shiftSummaryDateFrom, shiftSummaryDateTo, defaultShiftSummaryRange.from, defaultShiftSummaryRange.to]);
+
+  const reloadWarehouseSourceDataRef = useRef(reloadWarehouseSourceData);
+  reloadWarehouseSourceDataRef.current = reloadWarehouseSourceData;
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void reloadWarehouseSourceDataRef.current();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   useEffect(() => {
     loadBoard();
@@ -1456,6 +1515,7 @@ export function ControlBoardPanel({
           }
         }}
         onReloadSourceData={loadBoard}
+        onReloadWarehouseData={reloadWarehouseSourceData}
       />
 
       {reportOnly ? (

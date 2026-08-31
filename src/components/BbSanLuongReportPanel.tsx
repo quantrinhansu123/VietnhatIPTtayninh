@@ -74,7 +74,9 @@ function resolveNvlQuantity(line: BbSanLuongNvlLine) {
     return formatPercent(line.tiLeDinhMucPercent, 0);
   }
   if (line.quantity != null && line.quantity > 0) {
-    return formatNumber(line.quantity, 0);
+    const unit = resolveBbSanLuongNvlDisplayUnit(line).toLowerCase();
+    const digits = unit === 'kg' || unit.startsWith('kg') ? 4 : 0;
+    return formatNumber(line.quantity, digits);
   }
   return '—';
 }

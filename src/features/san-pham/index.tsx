@@ -141,6 +141,34 @@ function productCodeCandidates(product: { code?: string; amisCode?: string; newC
   ];
 }
 
+function StockMetricLink({
+  value,
+  onClick,
+  disabled,
+  className,
+  title
+}: {
+  value: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  title: string;
+}) {
+  if (disabled || value === '—' || value === '…') {
+    return <span className={className}>{value}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`cursor-pointer underline decoration-dotted underline-offset-2 transition hover:opacity-80 ${className ?? ''}`}
+    >
+      {value}
+    </button>
+  );
+}
+
 export function ProductNplItemFormModal({
   mode,
   initialItem,
@@ -619,6 +647,7 @@ export function ProductViewModal({
   canEditQrCodes?: boolean;
 }) {
   const canEditComponents = canEditComponentsProp ?? Boolean(onEdit);
+  const { canDelete: canDeleteWarehouseSlip } = useTabAccess('warehouse-slip-thanh-pham');
   const [tab, setTab] = useState<ProductViewTab>(initialTab);
   const [items, setItems] = useState<ProductNplItem[]>(product.nplItems);
   const [detailItem, setDetailItem] = useState<ProductNplItem | null>(null);
@@ -646,6 +675,7 @@ export function ProductViewModal({
   const [warehouseSlipRows, setWarehouseSlipRows] = useState<ProductWarehouseSlipRow[]>([]);
   const [isLoadingWarehouseSlips, setIsLoadingWarehouseSlips] = useState(false);
   const [warehouseSlipError, setWarehouseSlipError] = useState('');
+  const [deletingWarehouseSlipId, setDeletingWarehouseSlipId] = useState('');
   const [stockFromKiem, setStockFromKiem] = useState<{
     opening: number | null;
     inbound: number | null;
@@ -1450,6 +1480,51 @@ export function ProductViewModal({
     return '—';
   };
 
+  const warehouseSlipTableColSpan = (tab === 'xuat-kho' ? 12 : 11) + (canDeleteWarehouseSlip ? 1 : 0);
+
+  const handleDeleteWarehouseSlipRow = async (row: ProductWarehouseSlipRow) => {
+    if (!canDeleteWarehouseSlip) {
+      setWarehouseSlipError('Bạn không có quyền xóa dòng phiếu xuất nhập kho.');
+      return;
+    }
+    if (!row.id) {
+      setWarehouseSlipError('Không xác định được ID dòng phiếu.');
+      return;
+    }
+    const slipLabel = row.ma_phieu || row.id;
+    const qtyLabel = formatNplDecimal(row.so_luong);
+    if (!window.confirm(`Xóa dòng phiếu ${slipLabel} (SL ${qtyLabel})?`)) return;
+
+    setDeletingWarehouseSlipId(row.id);
+    setWarehouseSlipError('');
+    try {
+      const res = await fetch(`/api/phieu-xuat-nhap-kho/${encodeURIComponent(row.id)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể xóa dòng phiếu.');
+
+      setWarehouseSlipRows(prev => prev.filter(item => item.id !== row.id));
+      setStockFromKiem(prev => {
+        const delta = Number.isFinite(row.so_luong) ? row.so_luong : 0;
+        const inbound =
+          tab === 'nhap-kho' && prev.inbound !== null ? Math.max(0, prev.inbound - delta) : prev.inbound;
+        const outbound =
+          tab === 'xuat-kho' && prev.outbound !== null ? Math.max(0, prev.outbound - delta) : prev.outbound;
+        const closing =
+          prev.opening !== null && inbound !== null && outbound !== null
+            ? prev.opening + inbound - outbound
+            : prev.closing;
+        return { ...prev, inbound, outbound, closing };
+      });
+      showAppToast('Đã xóa dòng phiếu.', 'success');
+    } catch (error: any) {
+      setWarehouseSlipError(error?.message || 'Không thể xóa dòng phiếu.');
+    } finally {
+      setDeletingWarehouseSlipId('');
+    }
+  };
+
   const stockPeriodNote = (() => {
     if (isLoadingStockFromKiem) return 'Đang tải tồn kho…';
     if (stockFromKiemError) return stockFromKiemError;
@@ -1472,6 +1547,7 @@ export function ProductViewModal({
       );
     }
     parts.push('Nhập/Xuất = tổng SL tab Nhập kho / Xuất kho');
+    parts.push('Bấm số Tồn đầu / Nhập / Xuất để xem chi tiết');
     return parts.join(' · ');
   })();
 
@@ -1639,13 +1715,31 @@ export function ProductViewModal({
                           {product.code || '—'}
                         </td>
                         <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-zinc-900">
-                          {isLoadingStockFromKiem ? '…' : formatStockCell(openingStockNum)}
+                          <StockMetricLink
+                            value={isLoadingStockFromKiem ? '…' : formatStockCell(openingStockNum)}
+                            disabled={isLoadingStockFromKiem}
+                            onClick={() => setTab('kiem-kho')}
+                            title="Xem chi tiết kiểm kho (tồn đầu kỳ)"
+                            className="font-bold text-zinc-900"
+                          />
                         </td>
                         <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-emerald-700">
-                          {isLoadingStockFromKiem ? '…' : formatStockCell(inboundNum)}
+                          <StockMetricLink
+                            value={isLoadingStockFromKiem ? '…' : formatStockCell(inboundNum)}
+                            disabled={isLoadingStockFromKiem}
+                            onClick={() => setTab('nhap-kho')}
+                            title="Xem chi tiết phiếu nhập kho"
+                            className="font-bold text-emerald-700"
+                          />
                         </td>
                         <td className="whitespace-nowrap border border-zinc-200 px-2 py-2 text-right font-bold text-rose-700">
-                          {isLoadingStockFromKiem ? '…' : formatStockCell(outboundNum)}
+                          <StockMetricLink
+                            value={isLoadingStockFromKiem ? '…' : formatStockCell(outboundNum)}
+                            disabled={isLoadingStockFromKiem}
+                            onClick={() => setTab('xuat-kho')}
+                            title="Xem chi tiết phiếu xuất kho"
+                            className="font-bold text-rose-700"
+                          />
                         </td>
                         <td className="whitespace-nowrap border border-zinc-200 bg-sky-50 px-2 py-2 text-right font-black text-sky-900">
                           {isLoadingStockFromKiem ? '…' : formatStockCell(closingStockNum)}
@@ -2051,6 +2145,90 @@ export function ProductViewModal({
                 </TableBody>
               </TableShell>
             </div>
+          ) : tab === 'kiem-kho' ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black text-zinc-950">Chi tiết kiểm kho — tồn đầu kỳ</p>
+                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                    Mã SP {product.code}
+                    {stockFromKiem.dot ? ` · đợt ${stockFromKiem.dot}` : ''}
+                    {stockFromKiem.confirmed ? ' · đã chốt' : stockFromKiem.opening !== null ? ' · chưa chốt' : ''}
+                    {stockFromKiem.chotAt
+                      ? ` · ${new Date(stockFromKiem.chotAt).toLocaleString('vi-VN')}`
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-900">
+                    Tồn đầu: {formatStockCell(openingStockNum)}
+                    {product.unit && product.unit !== '-' ? ` ${product.unit}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTab('info')}
+                    className="text-xs font-bold text-sky-700 underline decoration-dotted underline-offset-2 hover:text-sky-900"
+                  >
+                    ← Tồn kho
+                  </button>
+                </div>
+              </div>
+
+              {kiemKhoError ? (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {kiemKhoError}
+                </p>
+              ) : null}
+
+              <TableShell minWidthClassName="min-w-[980px]" maxHeightClassName="max-h-[58vh]">
+                <TableHead>
+                  <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Đợt KK</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Kho</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Mã SP quét</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Mã gốc</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Tên SP</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Loại</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Ngày giờ kiểm</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Người kiểm</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {kiemKhoRows.map((row, index) => (
+                    <TableRow key={row.id || `${row.ma_sp}-${index}`}>
+                      <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-600">{index + 1}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
+                        {row.dot_kiem_kho || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
+                        {row.ten_kho || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-zinc-900">
+                        {row.ma_sp || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-zinc-800">
+                        {row.ma_nvl || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.ten_sp || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-600">{row.loai_sp || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-zinc-600">
+                        {row.ngay_gio_kiem_kho
+                          ? new Date(row.ngay_gio_kiem_kho).toLocaleString('vi-VN')
+                          : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{row.nguoi_kiem_kho || '—'}</td>
+                    </TableRow>
+                  ))}
+                  {isLoadingKiemKho ? (
+                    <TableEmptyRow colSpan={9}>Đang tải dữ liệu kiểm kho…</TableEmptyRow>
+                  ) : null}
+                  {!isLoadingKiemKho && kiemKhoRows.length === 0 ? (
+                    <TableEmptyRow colSpan={9}>
+                      Chưa có dòng kiểm kho cho mã SP này. Tồn đầu lấy từ Bảng tổng hợp kiểm kho khi có đợt chốt.
+                    </TableEmptyRow>
+                  ) : null}
+                </TableBody>
+              </TableShell>
+            </div>
           ) : tab === 'nhap-kho' || tab === 'xuat-kho' ? (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2062,9 +2240,19 @@ export function ProductViewModal({
                     Theo mã SP {product.code} · bảng phieu_xuat_nhap_kho
                   </p>
                 </div>
-                <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-800">
-                  {warehouseSlipRows.length} dòng
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-800">
+                    {warehouseSlipRows.length} dòng · Tổng SL{' '}
+                    {formatStockCell(tab === 'nhap-kho' ? inboundNum : outboundNum)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTab('info')}
+                    className="text-xs font-bold text-sky-700 underline decoration-dotted underline-offset-2 hover:text-sky-900"
+                  >
+                    ← Tồn kho
+                  </button>
+                </div>
               </div>
 
               {warehouseSlipError ? (
@@ -2089,6 +2277,9 @@ export function ProductViewModal({
                   <TableHeadCell className="whitespace-nowrap">ĐVT</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">Người lập</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">Lý do / Ghi chú</TableHeadCell>
+                  {canDeleteWarehouseSlip ? (
+                    <TableHeadCell className="whitespace-nowrap text-center">Thao tác</TableHeadCell>
+                  ) : null}
                 </TableHead>
                 <TableBody>
                   {warehouseSlipRows.map((row, index) => (
@@ -2121,13 +2312,30 @@ export function ProductViewModal({
                       <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-zinc-600">
                         {[row.ly_do, row.ghi_chu].filter(Boolean).join(' · ') || '—'}
                       </td>
+                      {canDeleteWarehouseSlip ? (
+                        <td className="whitespace-nowrap px-2 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteWarehouseSlipRow(row)}
+                            disabled={Boolean(deletingWarehouseSlipId)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Xóa dòng phiếu"
+                          >
+                            {deletingWarehouseSlipId === row.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </td>
+                      ) : null}
                     </TableRow>
                   ))}
                   {isLoadingWarehouseSlips ? (
-                    <TableEmptyRow colSpan={tab === 'xuat-kho' ? 12 : 11}>Đang tải nhật ký…</TableEmptyRow>
+                    <TableEmptyRow colSpan={warehouseSlipTableColSpan}>Đang tải nhật ký…</TableEmptyRow>
                   ) : null}
                   {!isLoadingWarehouseSlips && warehouseSlipRows.length === 0 ? (
-                    <TableEmptyRow colSpan={tab === 'xuat-kho' ? 12 : 11}>
+                    <TableEmptyRow colSpan={warehouseSlipTableColSpan}>
                       {tab === 'xuat-kho'
                         ? 'Chưa có phiếu xuất kho cho sản phẩm này.'
                         : 'Chưa có phiếu nhập kho cho sản phẩm này.'}

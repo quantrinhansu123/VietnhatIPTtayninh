@@ -4,6 +4,7 @@ import { formatNumber } from '../utils';
 import {
   isKgUnit,
   machineNvlQtyToKg,
+  splitMachineNvlLinesByMaterialGroup,
   sumMachineNvlCuoiCaLineTotal,
   sumMachineNvlDauCaLineTotal,
   type MachineNvlMaterialType,
@@ -110,6 +111,107 @@ function sumMachineNvlPrintColumnKg(
   }, 0);
 }
 
+function MachineNvlPrintLinesTable({
+  title,
+  lines,
+  reportKind
+}: {
+  title: string;
+  lines: MachineNvlPrintLine[];
+  reportKind: MachineNvlPrintKind;
+}) {
+  if (lines.length === 0) return null;
+
+  const isDauCaReport = reportKind === 'dau_ca';
+  const totalInMachineKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTrongMay);
+  const totalInMixerKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTrongBonTron);
+  const totalUnblendedKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongNlChuaTron);
+  const totalOutsideKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTonNgoai);
+  const totalActualKg = lines.reduce(
+    (sum, line) => sum + resolveMachineNvlPrintLineKg(line, reportKind),
+    0
+  );
+
+  return (
+    <>
+      <h2 className="production-order-print-section-title machine-nvl-print-section-title">{title}</h2>
+      <table className="production-order-print-grid-table machine-nvl-print-table">
+        <thead>
+          <tr>
+            <th>STT</th>
+            <th>Mã vật tư</th>
+            <th>Tên vật tư</th>
+            <th>ĐVT</th>
+            <th>Tồn máy</th>
+            <th>Tồn bồn</th>
+            <th>Chưa trộn</th>
+            <th>Tồn ngoài</th>
+            <th>{isDauCaReport ? 'Tổng tồn đầu ca' : 'Tổng tồn cuối ca'}</th>
+            <th>Kg quy đổi</th>
+            <th>Ghi chú</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line, index) => {
+            const lineKg = resolveMachineNvlPrintLineKg(line, reportKind);
+            return (
+              <tr key={`${title}-${line.maNvl}-${line.stt}-${index}`}>
+                <td className="production-order-print-center">{index + 1}</td>
+                <td>{line.maNvl || '-'}</td>
+                <td>{line.tenNvl || '-'}</td>
+                <td className="production-order-print-center">{line.donVi || '-'}</td>
+                <td className="production-order-print-right">
+                  {formatMachineNvlPrintQty(line.soLuongTrongMay, line)}
+                </td>
+                <td className="production-order-print-right">
+                  {formatMachineNvlPrintQty(line.soLuongTrongBonTron, line)}
+                </td>
+                <td className="production-order-print-right">
+                  {formatMachineNvlPrintQty(line.soLuongNlChuaTron, line)}
+                </td>
+                <td className="production-order-print-right">
+                  {formatMachineNvlPrintQty(line.soLuongTonNgoai, line)}
+                </td>
+                <td className="production-order-print-right">
+                  {formatMachineNvlPrintQty(line.soLuongTon, line)}
+                </td>
+                <td className="production-order-print-right">
+                  {lineKg > 0 ? `${formatNumber(lineKg)} kg` : ''}
+                </td>
+                <td className="whitespace-pre-wrap">{line.ghiChu || ''}</td>
+              </tr>
+            );
+          })}
+          <tr>
+            <td colSpan={4} className="production-order-print-center" style={{ fontWeight: 700 }}>
+              TỔNG CỘNG
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalInMachineKg)} kg
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalInMixerKg)} kg
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalUnblendedKg)} kg
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalOutsideKg)} kg
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalActualKg)} kg
+            </td>
+            <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+              {formatNumber(totalActualKg)} kg
+            </td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 export function buildMachineNvlPrintReportFromForm(input: {
   reportKind: MachineNvlPrintKind;
   date: string;
@@ -170,15 +272,8 @@ export function MachineNvlPrintSheet({ report }: { report: MachineNvlPrintReport
     report.maMay && report.tenMay && report.maMay !== report.tenMay
       ? `${report.maMay} · ${report.tenMay}`
       : report.tenMay || report.maMay || '-';
-  const lines = [...report.lines];
-  const totalInMachineKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTrongMay);
-  const totalInMixerKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTrongBonTron);
-  const totalUnblendedKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongNlChuaTron);
-  const totalOutsideKg = sumMachineNvlPrintColumnKg(lines, line => line.soLuongTonNgoai);
-  const totalActualKg = lines.reduce(
-    (sum, line) => sum + resolveMachineNvlPrintLineKg(line, report.reportKind),
-    0
-  );
+  const { nvlTron, vatTuKhac } = splitMachineNvlLinesByMaterialGroup(report.lines);
+  const hasNonKgUnit = report.lines.some(line => !isKgUnit(line.donVi));
 
   return (
     <div className="production-order-print-sheet machine-nvl-print-sheet">
@@ -216,86 +311,13 @@ export function MachineNvlPrintSheet({ report }: { report: MachineNvlPrintReport
           </tbody>
         </table>
 
-        <h2 className="production-order-print-section-title">Chi tiết nguyên vật liệu tồn</h2>
-        <table className="production-order-print-grid-table machine-nvl-print-table">
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Mã vật tư</th>
-              <th>Tên vật tư</th>
-              <th>ĐVT</th>
-              <th>Tồn máy</th>
-              <th>Tồn bồn</th>
-              <th>Chưa trộn</th>
-              <th>Tồn ngoài</th>
-              <th>{isDauCaReport ? 'Tổng tồn đầu ca' : 'Tổng tồn cuối ca'}</th>
-              <th>Kg quy đổi</th>
-              <th>Ghi chú</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map(line => {
-              const lineKg = resolveMachineNvlPrintLineKg(line, report.reportKind);
-              return (
-                <tr key={line.stt}>
-                  <td className="production-order-print-center">{line.stt}</td>
-                  <td>{line.maNvl || '-'}</td>
-                  <td>{line.tenNvl || '-'}</td>
-                  <td className="production-order-print-center">{line.donVi || '-'}</td>
-                  <td className="production-order-print-right">
-                    {formatMachineNvlPrintQty(line.soLuongTrongMay, line)}
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatMachineNvlPrintQty(line.soLuongTrongBonTron, line)}
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatMachineNvlPrintQty(line.soLuongNlChuaTron, line)}
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatMachineNvlPrintQty(line.soLuongTonNgoai, line)}
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatMachineNvlPrintQty(line.soLuongTon, line)}
-                  </td>
-                  <td className="production-order-print-right">
-                    {lineKg > 0 ? `${formatNumber(lineKg)} kg` : ''}
-                  </td>
-                  <td className="whitespace-pre-wrap">{line.ghiChu || ''}</td>
-                </tr>
-              );
-            })}
-            <tr>
-              <td colSpan={4} className="production-order-print-center" style={{ fontWeight: 700 }}>
-                TỔNG CỘNG
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalInMachineKg)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalInMixerKg)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalUnblendedKg)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalOutsideKg)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalActualKg)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(totalActualKg)} kg
-              </td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
+        <MachineNvlPrintLinesTable title="NVL Trộn" lines={nvlTron} reportKind={report.reportKind} />
+        <MachineNvlPrintLinesTable title="Vật tư khác" lines={vatTuKhac} reportKind={report.reportKind} />
 
         <p className="machine-nvl-print-note">
           Ghi chú: Tổng tồn gồm nhựa tồn trong máy, trong bồn trộn và nguyên liệu chưa trộn.
-          {lines.some(line => !isKgUnit(line.donVi))
-            ? ' Với đơn vị khác kg, số lượng hiển thị kèm kg quy đổi trong ngoặc.'
-            : ''}
+          NVL Trộn = loại Nhựa; Vật tư khác = Màng, Lõi, Bao Bì.
+          {hasNonKgUnit ? ' Với đơn vị khác kg, số lượng hiển thị kèm kg quy đổi trong ngoặc.' : ''}
         </p>
 
         <div className="machine-nvl-print-signatures">

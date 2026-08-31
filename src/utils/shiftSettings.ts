@@ -109,11 +109,35 @@ export function getProductionShiftOptions(settings: ShiftSetting[]): ShiftOption
   return [];
 }
 
-export function shiftNamesMatch(left: string, right: string) {
-  const a = String(left ?? '').trim().toLowerCase();
-  const b = String(right ?? '').trim().toLowerCase();
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+export function shiftNamesMatch(left: string, right: string, shiftOptions?: ShiftOption[]) {
+  const rawLeft = String(left ?? '').trim();
+  const rawRight = String(right ?? '').trim();
+  if (!rawLeft || !rawRight) return false;
+
+  if (shiftOptions && shiftOptions.length > 0) {
+    const normalizedLeft = resolveShiftName(rawLeft, shiftOptions).toLowerCase();
+    const normalizedRight = resolveShiftName(rawRight, shiftOptions).toLowerCase();
+    if (normalizedLeft === normalizedRight) return true;
+  }
+
+  const a = rawLeft.toLowerCase();
+  const b = rawRight.toLowerCase();
+  if (a === b) return true;
+
+  const parsedLeft = parseProductionCShift(rawLeft);
+  const parsedRight = parseProductionCShift(rawRight);
+  if (parsedLeft && parsedRight) {
+    if (parsedLeft.num !== parsedRight.num) return false;
+    // C2 trên phiếu = 12C2 khi cùng số ca (một bên thiếu prefix 12).
+    if (!parsedLeft.family || !parsedRight.family) return true;
+    return parsedLeft.family === parsedRight.family;
+  }
+  // Một bên là 12C2, bên kia là C2 / HC… — không coi là cùng ca.
+  if (parsedLeft || parsedRight) return false;
+
+  const minLen = Math.min(a.length, b.length);
+  if (minLen < 3) return false;
+  return a.includes(b) || b.includes(a);
 }
 
 export function resolveShiftName(rawName: string, options: ShiftOption[]): string {

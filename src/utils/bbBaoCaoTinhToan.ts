@@ -13,6 +13,11 @@ import {
   computeInsulationPlasticNorm
 } from './canTuDongWeights';
 import {
+  computeCanTuDongTongHopBannerTotals,
+  explainCanTuDongTongHopRowFormulas,
+  sumCanTuDongTongHopDetailRows
+} from './canTuDongTongHop';
+import {
   buildBbCuoiCaLineRows,
   buildBbDamagedGoodsLineRows,
   buildBbDanhGiaHaoHutGroups,
@@ -114,6 +119,9 @@ export type BbBaoCaoTinhToanPayload = {
     displaySanLuongTotals: ReturnType<typeof sumBbSanLuongTotals>;
     insulationFilmWeightKg?: number;
     insulationPlasticNorm?: { weightKg: number; counted: number };
+    /** Tổng banner «Tổng hợp nhựa» — lưu khi Tính toán để xem snapshot không cần tải lại can_tu_dong. */
+    canTuDongTongHopTotals?: ReturnType<typeof sumCanTuDongTongHopDetailRows>;
+    canTuDongTongHopFormulas?: ReturnType<typeof explainCanTuDongTongHopRowFormulas>;
     inboundTotals: ReturnType<typeof sumBbInboundReportTotals>;
     thucDungTotalKg: number;
     tongNhapKhoTotalKg: number;
@@ -215,7 +223,8 @@ export function buildBbMachineReportSnapshot(input: {
     exportRows,
     input.productionOrders,
     input.products,
-    input.materials
+    input.materials,
+    input.shiftSettings
   );
 
   const dauCaRows = buildBbDauCaLineRows({
@@ -411,14 +420,28 @@ export function buildBbMachineReportSnapshot(input: {
   const canTuDongSanLuongTotals = sumCanTuDongSanLuongTotals(scopedCanTuDong);
   const displaySanLuongTotals = sanLuongSource === 'can-tu-dong' ? canTuDongSanLuongTotals : sanLuongTotals;
   const isInsulationMachine = isInsulationMachineText(input.selectedMachine?.name, input.selectedMachine?.code);
-  const insulationFilmWeightKg =
+  let insulationFilmWeightKg =
     isInsulationMachine && sanLuongSource === 'can-tu-dong'
       ? computeInsulationFilmWeightKg(input.products, scopedCanTuDong)
       : 0;
-  const insulationPlasticNorm =
+  let insulationPlasticNorm =
     isInsulationMachine && sanLuongSource === 'can-tu-dong'
       ? computeInsulationPlasticNorm(input.products, scopedCanTuDong)
       : { weightKg: 0, counted: 0 };
+  let canTuDongTongHopTotals: ReturnType<typeof sumCanTuDongTongHopDetailRows> | undefined;
+  let canTuDongTongHopFormulas: ReturnType<typeof explainCanTuDongTongHopRowFormulas> | undefined;
+  if (sanLuongSource === 'can-tu-dong' && scopedCanTuDong.length > 0 && input.products.length > 0) {
+    const banner = computeCanTuDongTongHopBannerTotals(scopedCanTuDong, input.products);
+    canTuDongTongHopTotals = banner.totals;
+    canTuDongTongHopFormulas = banner.formulas;
+    if (isInsulationMachine) {
+      insulationFilmWeightKg = banner.totals.khoi_luong_mang_kg;
+      insulationPlasticNorm = {
+        weightKg: banner.totals.nhua_dm_kg,
+        counted: banner.totals.so_cuon
+      };
+    }
+  }
   const damagedWeightByKind = sumBbDamagedGoodsWeightKgByKind(damagedRows, { isInsulationMachine });
 
   return {
@@ -458,6 +481,8 @@ export function buildBbMachineReportSnapshot(input: {
       displaySanLuongTotals,
       insulationFilmWeightKg,
       insulationPlasticNorm,
+      canTuDongTongHopTotals,
+      canTuDongTongHopFormulas,
       inboundTotals: sumBbInboundReportTotals(inboundRows),
       thucDungTotalKg: sumBbThucDungWeightKg(thucDungRows),
       tongNhapKhoTotalKg: sumBbTongTrongLuongNhapKho(tongGroups),

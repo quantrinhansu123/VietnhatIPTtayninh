@@ -4787,6 +4787,14 @@ input[type="number"] {
   font-style: italic;
 }
 
+.machine-nvl-print-section-title {
+  margin-top: 5mm;
+}
+
+.machine-nvl-print-section-title:first-of-type {
+  margin-top: 3mm;
+}
+
 .machine-nvl-print-signatures {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

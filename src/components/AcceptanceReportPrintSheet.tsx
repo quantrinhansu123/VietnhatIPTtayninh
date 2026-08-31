@@ -2,7 +2,10 @@ import React from 'react';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
-import { buildCanTuDongFilmKgByProductCode } from '../utils/canTuDongWeights';
+import {
+  resolveCanTuDongFilmKgPerRoll,
+  type InsulationProductAlias
+} from '../utils/canTuDongWeights';
 
 export type AcceptanceReportSource = {
   id: string;
@@ -104,14 +107,18 @@ export function sumTrongLuongKg(lines: Array<{ trong_luong?: number | null }>) {
 
 /** Map BOM màng / cuộn theo mã SP — cùng nguồn `/can-tu-dong` (không ×2). */
 export function buildAcceptanceFilmKgByProductCode(
-  products: Array<{
-    code?: string | null;
-    newCode?: string | null;
-    amisCode?: string | null;
-    nplItems?: unknown;
-  }>
+  products: InsulationProductAlias[]
 ) {
-  return buildCanTuDongFilmKgByProductCode(products);
+  const filmKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const filmKg = resolveCanTuDongFilmKgPerRoll(product);
+    if (filmKg === null) continue;
+    for (const productCode of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(productCode);
+      if (key && key !== '-') filmKgByProductCode.set(key, filmKg);
+    }
+  }
+  return filmKgByProductCode;
 }
 
 function resolveAcceptanceProductCodeKey(matHang: string) {

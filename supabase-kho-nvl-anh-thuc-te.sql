@@ -1,4 +1,5 @@
--- Ảnh chụp số cân thực tế / số bao thực tế (Cloudinary URL lưu trên kho_nvl)
+-- DEPRECATED: Ảnh số cân/bao thực tế thuộc bảng phieu_xuat_nhap_kho — dùng supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql
+-- Ảnh chụp số cân thực tế / số bao thực tế (Cloudinary URL lưu trên kho_nvl — không dùng nữa)
 -- Chạy trong Supabase SQL Editor
 
 alter table public.kho_nvl

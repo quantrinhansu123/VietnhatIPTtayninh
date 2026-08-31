@@ -6,7 +6,6 @@
 | **Tab** | `inventory-catalog` → `/kho-hang` (route cũ: `materials` → `/kho-nvl`) |
 | **SQL** | `supabase-kho-nvl.sql`, `supabase-kho-nvl-ten-kho.sql` |
 | **Fix precision** | `supabase-kho-nvl-precision.sql` (giữ số lẻ, không bị làm tròn) |
-| **Ảnh thực tế** | `supabase-kho-nvl-anh-thuc-te.sql` — link Cloudinary số cân / số bao thực tế |
 
 ## API (`server.ts`)
 
@@ -28,7 +27,7 @@
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
-UI danh sách có cột tick chọn + nút **Xóa đã chọn** (bulk `DELETE /api/kho-nvl` body `{ ids }`). Không hiển thị các cột Tồn đầu / Nhập / Xuất / Tồn cuối; thay bằng một cột **Tổng SL** lấy từ `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Form thêm và sửa không hiển thị Tồn đầu kỳ / Nhập trong kỳ / Xuất trong kỳ; các cột DB cũ vẫn được giữ để tương thích dữ liệu và nghiệp vụ tồn kho. Form có **Chụp ảnh số cân thực tế** và **Chụp ảnh số bao thực tế** — upload Cloudinary (`/api/cloudinary/upload`, folder `kho_nvl`), lưu URL vào `link_anh_can_thuc_te` / `link_anh_bao_thuc_te` trên Supabase. Xem ảnh qua `WeighingImagePreviewModal`.
+UI danh sách có cột tick chọn + nút **Xóa đã chọn** (bulk `DELETE /api/kho-nvl` body `{ ids }`). Không hiển thị các cột Tồn đầu / Nhập / Xuất / Tồn cuối; thay bằng một cột **Tổng SL** lấy từ `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Form thêm và sửa không hiển thị Tồn đầu kỳ / Nhập trong kỳ / Xuất trong kỳ; các cột DB cũ vẫn được giữ để tương thích dữ liệu và nghiệp vụ tồn kho. Ảnh số cân / số bao thực tế thuộc **phiếu xuất kho** (`phieu_xuat_nhap_kho`), không lưu trên `kho_nvl`.
 
 
 ## Liên kết

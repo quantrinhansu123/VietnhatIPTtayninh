@@ -1455,6 +1455,7 @@ export function ControlBoardPanel({
             setFilterReloadToken(token => token + 1);
           }
         }}
+        onReloadSourceData={loadBoard}
       />
 
       {reportOnly ? (

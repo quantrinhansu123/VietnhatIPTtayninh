@@ -1,5 +1,10 @@
 import { findProductByCode, resolveProductNplItemWeightKg, parseProductSpecNumber } from '../features/san-pham';
-import { normalizeProductCodeKey, type ProductRow, type ProductNplItem } from '../features/san-pham/types';
+import {
+  normalizeNvlMatchKey,
+  normalizeProductCodeKey,
+  type ProductRow,
+  type ProductNplItem
+} from '../features/san-pham/types';
 import { findMachineByRef, type MachineRow } from '../features/danh-sach-may';
 import type { MaterialRow } from '../features/kho-nvl';
 import {
@@ -31,6 +36,7 @@ import {
   matchesControlBoardDateRange,
   matchesShiftSummaryBucket,
   matchesWarehouseExportDate,
+  extractLinkedProductionOrderCodes,
   movementHasLinkedProductionOrderCodes,
   movementLinksProductionOrderCode,
   resolveMachineNvlLineMaterialType,
@@ -778,6 +784,19 @@ function movementMatchesOrderCode(movement: ShiftSummaryWarehouseMovement, order
   return movementLinksProductionOrderCode(movement, orderCode);
 }
 
+/** Khớp mã lệnh SX: ưu tiên mã parse từ lý do/ghi chú; không gán phiếu không gắn lệnh cho mọi LSX cùng ngày. */
+function movementMatchesBbOrderHeaderCode(
+  movement: ShiftSummaryWarehouseMovement,
+  orderCode: string
+): boolean {
+  const code = String(orderCode || '').trim();
+  if (!code) return false;
+  if (movementHasLinkedProductionOrderCodes(movement)) {
+    return movementMatchesOrderCode(movement, code);
+  }
+  return movementLinksProductionOrderCode(movement, code);
+}
+
 /** Phiếu XK khớp ngày header (bộ lọc ngày); máy nếu có; nếu phiếu có mã lệnh thì phải khớp mã. Không lọc ca. */
 function movementAppliesToBbOrderHeader(
   movement: ShiftSummaryWarehouseMovement,
@@ -802,21 +821,28 @@ function movementAppliesToBbOrderHeader(
     }
   }
 
-  if (!movementHasLinkedProductionOrderCodes(movement)) return true;
   const orderCode = String(header.orderCode || '').trim();
-  if (!orderCode) return false;
-  return movementMatchesOrderCode(movement, orderCode);
+  if (!orderCode) return !movementHasLinkedProductionOrderCodes(movement);
+  return movementMatchesBbOrderHeaderCode(movement, orderCode);
 }
 
-/** Phiếu XK khớp ngày (+ máy, mã lệnh nếu có) — dùng cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2, không lọc ca. */
+/** Phiếu XK khớp ngày (+ máy, mã lệnh nếu có) — cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2. */
 export function movementAppliesToBbOrderHeaderByDate(
   movement: ShiftSummaryWarehouseMovement,
-  header: { ngay: string; orderCode?: string; machine?: string },
+  header: { ngay: string; orderCode?: string; machine?: string; shift?: string },
   productionOrders: Array<{ code: string; machine?: string; position?: string }> = [],
-  resolveOrderMachineLabel?: (order: { code: string; machine?: string; position?: string }) => string
+  resolveOrderMachineLabel?: (order: { code: string; machine?: string; position?: string }) => string,
+  options?: { exportMatchScope?: 'shift' | 'day' }
 ): boolean {
   const movementNgay = parseProductionOrderFilterDate(movement.slipDate) || movement.slipDate;
   if (header.ngay && movementNgay !== header.ngay) return false;
+
+  const exportMatchScope = options?.exportMatchScope ?? (header.shift ? 'shift' : 'day');
+  const headerShift = String(header.shift || '').trim();
+  const movementShift = String(movement.shift || '').trim();
+  if (exportMatchScope === 'shift' && headerShift && movementShift) {
+    if (!shiftNamesMatch(movementShift, headerShift)) return false;
+  }
 
   const machineCandidates = resolveWarehouseMovementMachineCandidates(
     movement,
@@ -836,22 +862,33 @@ export function movementAppliesToBbOrderHeaderByDate(
     }
   }
 
-  if (!movementHasLinkedProductionOrderCodes(movement)) return true;
   const orderCode = String(header.orderCode || '').trim();
-  if (!orderCode) return false;
-  return movementMatchesOrderCode(movement, orderCode);
+  if (!orderCode) return !movementHasLinkedProductionOrderCodes(movement);
+  return movementMatchesBbOrderHeaderCode(movement, orderCode);
 }
 
-/** Gom SL xuất kho NVL theo mã — cùng ngày lệnh (mọi ca), mỗi dòng phiếu chỉ cộng một lần. */
-export function buildBbWarehouseExportQtyByMaterialForOrderDate(input: {
+export type BbWarehouseExportMaterialTotals = {
+  materialCode: string;
+  materialName: string;
+  unit: string;
+  quantity: number;
+  weightKg: number;
+};
+
+/** Gom SL + kg xuất kho NVL theo mã — khớp lệnh/ca; mỗi dòng phiếu chỉ cộng một lần. */
+export function buildBbWarehouseExportTotalsByMaterialForOrder(input: {
   warehouseMovements: ShiftSummaryWarehouseMovement[];
   productionOrders?: Array<{ code: string; machine?: string; position?: string }>;
   resolveOrderMachineLabel?: (order: { code: string; machine?: string; position?: string }) => string;
-  order: { ngay: string; orderCode: string; machine?: string };
-}): Map<string, { materialCode: string; materialName: string; unit: string; quantity: number }> {
-  const byKey = new Map<string, { materialCode: string; materialName: string; unit: string; quantity: number }>();
+  materials: MaterialRow[];
+  order: { ngay: string; orderCode: string; machine?: string; shift?: string };
+  exportMatchScope?: 'shift' | 'day';
+}): Map<string, BbWarehouseExportMaterialTotals> {
+  const byKey = new Map<string, BbWarehouseExportMaterialTotals>();
   const seenSlipLine = new Set<string>();
   const productionOrders = input.productionOrders || [];
+  const exportMatchScope =
+    input.exportMatchScope ?? (input.order.shift ? 'shift' : 'day');
 
   for (const movement of input.warehouseMovements) {
     if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
@@ -860,7 +897,8 @@ export function buildBbWarehouseExportQtyByMaterialForOrderDate(input: {
         movement,
         input.order,
         productionOrders,
-        input.resolveOrderMachineLabel
+        input.resolveOrderMachineLabel,
+        { exportMatchScope }
       )
     ) {
       continue;
@@ -874,22 +912,54 @@ export function buildBbWarehouseExportQtyByMaterialForOrderDate(input: {
     const name = String(movement.itemName || '').trim();
     const key = normalizeMaterialCodeKey(code) || normalizeProductCodeKey(name) || String(byKey.size);
     const qty = Number.isFinite(movement.quantity) ? movement.quantity : 0;
-    if (!(qty > 0)) continue;
+    const weightKg = resolveExportWeightKg(movement, input.materials) ?? 0;
+    if (!(qty > 0) && !(weightKg > 0)) continue;
 
     const existing = byKey.get(key);
     if (existing) {
-      existing.quantity += qty;
+      if (qty > 0) existing.quantity += qty;
+      if (weightKg > 0) existing.weightKg = roundQty(existing.weightKg + weightKg, 4);
     } else {
       byKey.set(key, {
         materialCode: code,
         materialName: name,
         unit: movement.unit || 'kg',
-        quantity: qty
+        quantity: qty > 0 ? qty : 0,
+        weightKg: weightKg > 0 ? roundQty(weightKg, 4) : 0
       });
     }
   }
 
   return byKey;
+}
+
+/** @deprecated Dùng buildBbWarehouseExportTotalsByMaterialForOrder — giữ SL cho chỗ gọi cũ. */
+export function buildBbWarehouseExportQtyByMaterialForOrderDate(input: {
+  warehouseMovements: ShiftSummaryWarehouseMovement[];
+  productionOrders?: Array<{ code: string; machine?: string; position?: string }>;
+  resolveOrderMachineLabel?: (order: { code: string; machine?: string; position?: string }) => string;
+  order: { ngay: string; orderCode: string; machine?: string; shift?: string };
+  materials?: MaterialRow[];
+  exportMatchScope?: 'shift' | 'day';
+}): Map<string, { materialCode: string; materialName: string; unit: string; quantity: number }> {
+  const totals = buildBbWarehouseExportTotalsByMaterialForOrder({
+    warehouseMovements: input.warehouseMovements,
+    productionOrders: input.productionOrders,
+    resolveOrderMachineLabel: input.resolveOrderMachineLabel,
+    materials: input.materials || [],
+    order: input.order,
+    exportMatchScope: input.exportMatchScope
+  });
+  const byQty = new Map<string, { materialCode: string; materialName: string; unit: string; quantity: number }>();
+  for (const [key, entry] of totals.entries()) {
+    byQty.set(key, {
+      materialCode: entry.materialCode,
+      materialName: entry.materialName,
+      unit: entry.unit,
+      quantity: entry.quantity
+    });
+  }
+  return byQty;
 }
 
 function orderIncludesProduct(order: ProductionOrderRow, productCode: string, productName: string) {
@@ -919,6 +989,12 @@ export function buildBbWarehouseExportLineRows(input: {
   exportMatchScope?: 'shift' | 'day';
 }): BbWarehouseExportLineRow[] {
   const lookupSettings = (input.shiftSettings || []) as ProductionOrderLookupSetting[];
+  const shiftOptions = getProductionShiftOptions(
+    (input.shiftSettings || []).filter(
+      (setting): setting is ShiftSetting =>
+        Boolean(setting && typeof setting === 'object' && 'loaiCaiDat' in setting)
+    )
+  );
   const exportMatchScope = input.exportMatchScope ?? 'shift';
   const activeShiftFilter =
     input.shiftFilter && input.shiftFilter !== 'all' ? String(input.shiftFilter).trim() : '';
@@ -948,7 +1024,7 @@ export function buildBbWarehouseExportLineRows(input: {
       continue;
     }
     if (input.shiftFilter && input.shiftFilter !== 'all') {
-      if (!shiftNamesMatch(order.shift, input.shiftFilter)) continue;
+      if (!shiftNamesMatch(order.shift, input.shiftFilter, shiftOptions)) continue;
     }
     const key = `${order.code}|${ngay}|${order.shift}`;
     if (seenOrderKeys.has(key)) continue;
@@ -961,10 +1037,19 @@ export function buildBbWarehouseExportLineRows(input: {
     });
   }
 
-  if (headers.length === 0) return [];
-
   const materialsCatalog = input.materials.map(mapMaterialToWeightCatalogItem);
   const rows: BbWarehouseExportLineRow[] = [];
+
+  const pushExportRow = (row: Omit<BbWarehouseExportLineRow, 'key' | 'slipLineKey'> & { slipLineKey?: string }) => {
+    const slipLineKey =
+      row.slipLineKey ||
+      `${row.slipCode}|${row.itemCode}|${row.ngay}`;
+    rows.push({
+      ...row,
+      key: slipLineKey,
+      slipLineKey
+    });
+  };
 
   for (const movement of input.warehouseMovements) {
     if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
@@ -974,8 +1059,26 @@ export function buildBbWarehouseExportLineRows(input: {
     // Tab / banner theo ca: phiếu có ca thì phải khớp ca đang lọc.
     if (exportMatchScope === 'shift' && activeShiftFilter) {
       if (movementShift) {
-        if (!shiftNamesMatch(movementShift, activeShiftFilter)) continue;
+        if (!shiftNamesMatch(movementShift, activeShiftFilter, shiftOptions)) continue;
       }
+    }
+
+    const movementMachineCandidates = resolveWarehouseMovementMachineCandidates(
+      movement,
+      input.productionOrders,
+      linked => resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines)
+    );
+    // Chỉ lọc máy khi phiếu ghi rõ cột Máy — không loại vì mã LSX sai trên lý do.
+    const explicitSlipMachine = String(movement.machine || '').trim();
+    if (
+      explicitSlipMachine &&
+      !machineValueMatchesFilter(
+        input.machineFilter || 'all',
+        input.selectedMachine ?? null,
+        explicitSlipMachine
+      )
+    ) {
+      continue;
     }
 
     const relatedOrders = headers.filter(order => {
@@ -983,56 +1086,89 @@ export function buildBbWarehouseExportLineRows(input: {
         return false;
       }
       if (exportMatchScope === 'shift') {
-        if (movementShift) {
-          if (!shiftNamesMatch(movementShift, order.shift)) return false;
-        } else if (activeShiftFilter) {
-          // Phiếu không ghi ca: chỉ nhận lệnh đúng ca đang lọc.
-          if (!shiftNamesMatch(order.shift, activeShiftFilter)) return false;
+        if (activeShiftFilter) {
+          if (!shiftNamesMatch(order.shift, activeShiftFilter, shiftOptions)) return false;
+        } else if (movementShift) {
+          if (!shiftNamesMatch(movementShift, order.shift, shiftOptions)) return false;
         }
       }
-      const machineCandidates = resolveWarehouseMovementMachineCandidates(
-        movement,
-        input.productionOrders,
-        linked => resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines)
-      );
-      if (machineCandidates.length === 0) return true;
-      return machineValueMatchesFilter(
-        order.machine || 'all',
-        { code: order.machine, name: order.machine },
-        ...machineCandidates
-      );
+      return true;
     });
-    if (relatedOrders.length === 0) continue;
+
+    if (relatedOrders.length === 0) {
+      // Phiếu xuất đúng ngày+ca lọc nhưng chưa có / không khớp lệnh SX — vẫn hiện trên tab xuất kho.
+      if (exportMatchScope === 'shift' && activeShiftFilter) {
+        if (movementShift && !shiftNamesMatch(movementShift, activeShiftFilter, shiftOptions)) continue;
+      }
+      const linkedCodes = extractLinkedProductionOrderCodes(movement.reason, movement.note);
+      const quantity = Number.isFinite(movement.quantity) ? movement.quantity : 0;
+      const weightKg = resolveExportWeightKg(movement, input.materials);
+      pushExportRow({
+        ngay: parseProductionOrderFilterDate(movement.slipDate) || movement.slipDate,
+        shift: movementShift || activeShiftFilter || '',
+        shiftLabel: formatProductionOrderShiftLabel(
+          movementShift || activeShiftFilter || '',
+          lookupSettings
+        ),
+        orderCode: linkedCodes.join(', '),
+        machine: explicitSlipMachine || movementMachineCandidates.join(', '),
+        slipCode: movement.slipCode,
+        itemCode: movement.itemCode,
+        itemName: movement.itemName,
+        unit: movement.unit,
+        quantity,
+        normQuantity: null,
+        normWeightKg: null,
+        materialNorm: null,
+        weightKg,
+        weightFormula: buildExportWeightFormula({
+          itemCode: movement.itemCode,
+          itemName: movement.itemName,
+          unit: movement.unit,
+          quantity,
+          weightKg,
+          materialsCatalog
+        }),
+        matchedByOrder: false,
+        balanceDetail: null
+      });
+      continue;
+    }
 
     const explicitMatches = relatedOrders.filter(order => movementMatchesOrderCode(movement, order.orderCode));
-    const hasLinkedCodes = movementHasLinkedProductionOrderCodes(movement);
-    // Có mã lệnh trên phiếu nhưng không khớp lệnh BB trong ngày → bỏ (không gán nhầm).
-    if (hasLinkedCodes && explicitMatches.length === 0) continue;
+    // Phiếu ghi mã LSX không khớp lệnh đang lọc → vẫn gán theo ngày+ca (không bỏ sót xuất thực tế).
     // Theo ca + phiếu chưa gắn mã lệnh: không gán chéo sang lệnh ca khác — chỉ giữ lệnh cùng ca phiếu.
     const matchedOrders =
       explicitMatches.length > 0
         ? explicitMatches
-        : exportMatchScope === 'shift' && movementShift
-          ? relatedOrders.filter(order => shiftNamesMatch(movementShift, order.shift))
-          : relatedOrders;
+        : exportMatchScope === 'shift' && activeShiftFilter
+          ? relatedOrders.filter(order => shiftNamesMatch(order.shift, activeShiftFilter, shiftOptions))
+          : exportMatchScope === 'shift' && movementShift
+            ? relatedOrders.filter(order => shiftNamesMatch(movementShift, order.shift, shiftOptions))
+            : relatedOrders;
     if (matchedOrders.length === 0) continue;
     const matchedByOrder = explicitMatches.length > 0;
-    const resolvedShift = movementShift || matchedOrders[0]?.shift || '';
+    const orderShift = matchedOrders.map(order => order.shift).find(Boolean) || '';
+    // Ca hiển thị = ca lệnh SX đang lọc, không lấy nhãn ca sai trên phiếu XK.
+    let resolvedShift = orderShift || movementShift || activeShiftFilter || '';
+    if (exportMatchScope === 'shift' && activeShiftFilter) {
+      if (shiftNamesMatch(activeShiftFilter, orderShift, shiftOptions)) {
+        resolvedShift = orderShift || activeShiftFilter;
+      } else if (shiftNamesMatch(activeShiftFilter, movementShift, shiftOptions)) {
+        resolvedShift = movementShift || activeShiftFilter;
+      } else if (!movementShift) {
+        resolvedShift = orderShift || activeShiftFilter;
+      }
+    }
     const orderCode = [...new Set(matchedOrders.map(order => order.orderCode).filter(Boolean))].join(', ');
     const machine =
       [...new Set(matchedOrders.map(order => order.machine).filter(Boolean))].join(', ') ||
-      resolveWarehouseMovementMachineCandidates(
-        movement,
-        input.productionOrders,
-        linked => resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines)
-      ).join(', ');
+      movementMachineCandidates.join(', ');
 
     const slipLineKey = `${movement.id || movement.slipCode}|${movement.itemCode}|${movement.slipDate}`;
     const quantity = Number.isFinite(movement.quantity) ? movement.quantity : 0;
     const weightKg = resolveExportWeightKg(movement, input.materials);
-    rows.push({
-      key: slipLineKey,
-      slipLineKey,
+    pushExportRow({
       ngay: parseProductionOrderFilterDate(movement.slipDate) || movement.slipDate,
       shift: resolvedShift,
       shiftLabel: formatProductionOrderShiftLabel(resolvedShift, lookupSettings),
@@ -1056,7 +1192,8 @@ export function buildBbWarehouseExportLineRows(input: {
         materialsCatalog
       }),
       matchedByOrder,
-      balanceDetail: null
+      balanceDetail: null,
+      slipLineKey
     });
   }
 
@@ -1645,6 +1782,108 @@ export function aggregateBbWarehouseExportByMaterial(
   });
 }
 
+function bbWarehouseExportGroupMatchesOrder(
+  group: BbWarehouseExportGroup,
+  order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string }
+) {
+  const orderNgay = order.ngay ? parseProductionOrderFilterDate(order.ngay) || order.ngay : '';
+  if (orderNgay && group.ngay && group.ngay !== orderNgay) return false;
+  if (order.shift && group.shift && !shiftNamesMatch(group.shift, order.shift)) return false;
+  if (order.machine && group.machine) {
+    const machineCandidates = String(group.machine)
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+    if (
+      machineCandidates.length > 0 &&
+      !machineCandidates.some(machine =>
+        machineValueMatchesFilter(
+          order.machine!,
+          { code: order.machine!, name: order.machine! },
+          machine
+        )
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Tab «Phiếu xuất kho» (lọc ca) — nhóm xuất khớp lệnh/ngày+ca.
+ * Cùng logic gắn phiếu như `buildBbWarehouseExportLineRows` + `groupBbWarehouseExportLines`.
+ */
+export function findBbWarehouseExportGroupsForOrder(
+  exportGroups: BbWarehouseExportGroup[],
+  order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string }
+): BbWarehouseExportGroup[] {
+  if (order.groupKey) {
+    const byKey = exportGroups.filter(
+      group => group.groupKey === order.groupKey && bbWarehouseExportGroupMatchesOrder(group, order)
+    );
+    if (byKey.length > 0) return byKey;
+  }
+  const byOrder = exportGroups.filter(
+    group =>
+      bbOrderCodesMatch(group.orderCode, order.orderCode) && bbWarehouseExportGroupMatchesOrder(group, order)
+  );
+  if (byOrder.length > 0) return byOrder;
+
+  if (order.ngay && order.shift) {
+    return exportGroups.filter(group => bbWarehouseExportGroupMatchesOrder(group, order));
+  }
+  return [];
+}
+
+/** Dòng tab xuất kho khớp một lệnh in (mã LSX + ngày + ca + máy). */
+export function filterBbWarehouseExportLinesForOrder(
+  exportRows: BbWarehouseExportLineRow[],
+  order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string }
+): BbWarehouseExportLineRow[] {
+  const orderNgay = order.ngay ? parseProductionOrderFilterDate(order.ngay) || order.ngay : '';
+  return exportRows.filter(line => {
+    const lineNgay = parseProductionOrderFilterDate(line.ngay) || line.ngay;
+    if (orderNgay && lineNgay && lineNgay !== orderNgay) return false;
+    if (order.shift && line.shift && !shiftNamesMatch(line.shift, order.shift)) return false;
+    if (order.machine && line.machine) {
+      const machineCandidates = String(line.machine)
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean);
+      if (
+        machineCandidates.length > 0 &&
+        !machineCandidates.some(machine =>
+          machineValueMatchesFilter(
+            order.machine!,
+            { code: order.machine!, name: order.machine! },
+            machine
+          )
+        )
+      ) {
+        return false;
+      }
+    }
+    if (!String(line.orderCode || '').trim()) {
+      return Boolean(orderNgay && order.shift);
+    }
+    return bbOrderCodesMatch(line.orderCode, order.orderCode);
+  });
+}
+
+/** Cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2 = Σ «Quy về kg» tab Phiếu xuất kho (lọc ca). */
+export function buildBbWarehouseExportMaterialTotalsForOrderFromExportTab(
+  exportGroups: BbWarehouseExportGroup[],
+  order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string },
+  exportRows: BbWarehouseExportLineRow[] = []
+): BbWarehouseExportMaterialTotal[] {
+  const lines =
+    exportRows.length > 0
+      ? filterBbWarehouseExportLinesForOrder(exportRows, order)
+      : findBbWarehouseExportGroupsForOrder(exportGroups, order).flatMap(group => group.lines || []);
+  return aggregateBbWarehouseExportByMaterial(lines);
+}
+
 export type BbProductionOrderGroup = {
   groupKey: string;
   orderCode: string;
@@ -1885,17 +2124,27 @@ export function acceptanceQuantityForBbProduct(input: {
   }, 0);
 }
 
-/** Gom dòng xuất kho theo số lệnh SX (nhiều lệnh ghép → tách theo chuỗi orderCode). */
+/** Khóa nhóm xuất kho: tách theo lệnh + ngày + ca (tránh gom 12C1/12C2 chung một lệnh). */
+function buildBbWarehouseExportGroupKey(row: Pick<BbWarehouseExportLineRow, 'orderCode' | 'ngay' | 'shift'>) {
+  const orderCode = String(row.orderCode || '').trim();
+  const ngay = String(row.ngay || '').trim();
+  const shift = String(row.shift || '').trim();
+  if (orderCode) return `${orderCode}|${ngay}|${shift}`;
+  return `unlinked|${ngay}|${shift}`;
+}
+
+/** Gom dòng xuất kho theo số lệnh SX + ngày + ca. */
 export function groupBbWarehouseExportLines(
   rows: BbWarehouseExportLineRow[],
   productionOrders: ProductionOrderRow[] = [],
   products: ProductRow[] = [],
-  materials: MaterialRow[] = []
+  materials: MaterialRow[] = [],
+  shiftSettings: (ShiftSetting | ProductionOrderLookupSetting)[] = []
 ): BbWarehouseExportGroup[] {
   const map = new Map<string, BbWarehouseExportGroup>();
 
   for (const row of rows) {
-    const groupKey = row.orderCode.trim() || `unlinked|${row.ngay}|${row.shift}`;
+    const groupKey = buildBbWarehouseExportGroupKey(row);
     const existing = map.get(groupKey);
     if (!existing) {
       map.set(groupKey, {
@@ -1924,7 +2173,13 @@ export function groupBbWarehouseExportLines(
 
   const groups = [...map.values()];
   groups.forEach(group => {
-    group.productGroups = buildBbWarehouseExportProductGroups(group, productionOrders, products, materials);
+    group.productGroups = buildBbWarehouseExportProductGroups(
+      group,
+      productionOrders,
+      products,
+      materials,
+      shiftSettings
+    );
     group.totalNormWeightKg = group.productGroups.reduce(
       (sum, productGroup) => sum + productGroup.normWeightKg,
       0
@@ -2390,19 +2645,30 @@ function buildBbWarehouseExportProductGroups(
   group: BbWarehouseExportGroup,
   productionOrders: ProductionOrderRow[],
   products: ProductRow[],
-  materials: MaterialRow[] = []
+  materials: MaterialRow[] = [],
+  shiftSettings: (ShiftSetting | ProductionOrderLookupSetting)[] = []
 ): BbWarehouseExportProductGroup[] {
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
+  const shiftOptions = getProductionShiftOptions(
+    shiftSettings.filter(
+      (setting): setting is ShiftSetting =>
+        Boolean(setting && typeof setting === 'object' && 'loaiCaiDat' in setting)
+    )
+  );
   const orderCodes = group.orderCode
     .split(',')
     .map(code => code.trim())
     .filter(Boolean);
   const codeSet = new Set(orderCodes.map(code => code.toUpperCase()));
   const relatedOrders = productionOrders.filter(order => {
-    if (codeSet.size > 0 && !codeSet.has(String(order.code || '').trim().toUpperCase())) return false;
+    const orderCode = String(order.code || '').trim().toUpperCase();
+    if (codeSet.size > 0 && !codeSet.has(orderCode)) return false;
     const ngay = parseProductionOrderFilterDate(order.startDate) || order.startDate;
     if (group.ngay && ngay && ngay !== group.ngay) return false;
-    return shiftNamesMatch(order.shift, group.shift);
+    // Đã gắn mã LSX trên tab → lấy BOM từ lệnh (ca chuẩn = ca lệnh SX, không phụ thuộc nhãn ca phiếu).
+    if (codeSet.size > 0) return true;
+    if (!group.shift) return true;
+    return shiftNamesMatch(order.shift, group.shift, shiftOptions);
   });
 
   type ProductDraft = WarehouseProductAllocation & {
@@ -5425,6 +5691,65 @@ export function mapAcceptanceNvlDinhMucRowsToNplItems(rows: unknown[]): BbAccept
     .filter((item): item is BbAcceptanceNvlDinhMucItem => Boolean(item && (item.code || item.name)));
 }
 
+/** Khóa mã NVL trên BOM SP (chuẩn hóa T1,08x2,2m ↔ T1.08*2.2m). */
+export function buildProductBomMaterialMatchKeys(nplItems: ProductNplItem[] = []): Set<string> {
+  const keys = new Set<string>();
+  for (const item of nplItems) {
+    const codeKey = normalizeNvlMatchKey(item.code || '');
+    const nameKey = normalizeNvlMatchKey(item.name || '');
+    if (codeKey) keys.add(codeKey);
+    if (nameKey) keys.add(nameKey);
+  }
+  return keys;
+}
+
+export function buildOrderBomMaterialMatchKeys(
+  order: { lines: Array<{ productCode?: string }> },
+  products: ProductRow[]
+): Set<string> {
+  const keys = new Set<string>();
+  for (const line of order.lines) {
+    const product = findProductByCode(products, String(line.productCode || '').trim());
+    for (const key of buildProductBomMaterialMatchKeys(product?.nplItems || [])) {
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
+export function isMaterialInProductBom(code: string, name: string, bomKeys: Set<string>): boolean {
+  if (bomKeys.size === 0) return false;
+  const codeKey = normalizeNvlMatchKey(code || '');
+  const nameKey = normalizeNvlMatchKey(name || '');
+  return Boolean((codeKey && bomKeys.has(codeKey)) || (nameKey && bomKeys.has(nameKey)));
+}
+
+/** Snapshot NVL định mức: chỉ giữ dòng còn trên BOM SP hiện tại. */
+export function filterAcceptanceNvlItemsToProductBom(
+  snapItems: BbAcceptanceNvlDinhMucItem[],
+  catalogNplItems: ProductNplItem[]
+): BbAcceptanceNvlDinhMucItem[] {
+  const bomKeys = buildProductBomMaterialMatchKeys(catalogNplItems);
+  if (bomKeys.size === 0) return [];
+  return snapItems.filter(item => isMaterialInProductBom(item.code, item.name, bomKeys));
+}
+
+function findProductNplItemInBom(
+  catalog: ProductRow,
+  item: Pick<BbAcceptanceNvlDinhMucItem, 'code' | 'name'>
+): ProductNplItem | undefined {
+  const codeKey = normalizeNvlMatchKey(item.code || '');
+  const nameKey = normalizeNvlMatchKey(item.name || '');
+  return (catalog.nplItems || []).find(npl => {
+    const nplCode = normalizeNvlMatchKey(npl.code || '');
+    const nplName = normalizeNvlMatchKey(npl.name || '');
+    return (
+      (codeKey && (nplCode === codeKey || nplName === codeKey)) ||
+      (nameKey && (nplCode === nameKey || nplName === nameKey))
+    );
+  });
+}
+
 /** Payload PUT `/api/bao-cao-san-luong-nvl-dinh-muc` từ Thành phần SP × SL phiếu. */
 export function buildAcceptanceNvlDinhMucPutItems(
   items: ProductNplItem[],
@@ -5628,28 +5953,38 @@ export function buildBbSanLuongGroups(input: {
         if (ten) product.productName = ten;
       }
 
-      const snapItems =
+      const snapItemsRaw =
         input.acceptanceNvlDinhMucByReportId?.get(String(report.id || '').trim()) || [];
       const catalogPutItems = buildAcceptanceNvlDinhMucPutItems(catalog.nplItems || [], inboundQty);
       const catalogItems = mapAcceptanceNvlDinhMucRowsToNplItems(catalogPutItems);
-      // Ưu tiên snapshot đã Đồng bộ; bổ sung NVL còn thiếu từ Thành phần SP để hiện đủ.
+      // Ưu tiên snapshot đã Đồng bộ (chỉ NVL còn trên BOM); bổ sung thiếu từ Thành phần SP.
+      const snapItems = filterAcceptanceNvlItemsToProductBom(snapItemsRaw, catalog.nplItems || []);
       const nvlItems: BbAcceptanceNvlDinhMucItem[] = [...snapItems];
       const seenNvl = new Set(
         snapItems.map(
-          item => normalizeProductCodeKey(item.code) || String(item.name || '').trim().toUpperCase()
+          item =>
+            normalizeNvlMatchKey(item.code) ||
+            normalizeNvlMatchKey(item.name) ||
+            String(item.name || '').trim().toUpperCase()
         )
       );
       for (const item of catalogItems) {
         const key =
-          normalizeProductCodeKey(item.code) || String(item.name || '').trim().toUpperCase();
+          normalizeNvlMatchKey(item.code) ||
+          normalizeNvlMatchKey(item.name) ||
+          String(item.name || '').trim().toUpperCase();
         if (!key || seenNvl.has(key)) continue;
         seenNvl.add(key);
         nvlItems.push(item);
       }
 
+      const materialsCatalog = input.materials.map(mapMaterialToWeightCatalogItem);
+
       for (const item of nvlItems) {
         const materialKey =
-          normalizeProductCodeKey(item.code) || String(item.name || '').trim().toUpperCase();
+          normalizeNvlMatchKey(item.code) ||
+          normalizeNvlMatchKey(item.name) ||
+          String(item.name || '').trim().toUpperCase();
         if (!materialKey) continue;
         const rate = item.rate > 0 ? item.rate : 0;
         if (!(rate > 0)) continue;
@@ -5662,12 +5997,37 @@ export function buildBbSanLuongGroups(input: {
               ? rate
               : roundQuantityByUnit(rate * inboundQty, item.unit || '');
 
-        // % × trọng lượng phiếu; Cái/khác = Theo SL.
-        const lineKg = isPercent
-          ? reportWeightKg > 0
-            ? roundQty(reportWeightKg * (rate / 100), 4)
-            : 0
-          : roundQty(lineQty, 4);
+        // % × trọng lượng phiếu; Cái/khác = kg/SP × SL hoặc quy đổi ĐVT.
+        let lineKg = 0;
+        if (isPercent) {
+          lineKg =
+            reportWeightKg > 0 ? roundQty(reportWeightKg * (rate / 100), 4) : 0;
+        } else {
+          const bomItem = findProductNplItemInBom(catalog, item);
+          const perUnitKg = bomItem
+            ? resolveProductNplItemWeightKg(catalog, bomItem, input.materials)
+            : null;
+          if (perUnitKg != null && Number.isFinite(perUnitKg) && perUnitKg > 0 && inboundQty > 0) {
+            lineKg = roundQty(perUnitKg * inboundQty, 4);
+          } else if (lineQty > 0) {
+            const unit = String(item.unit || '').trim();
+            if (isWarehouseKgUnit(unit)) {
+              lineKg = roundQty(lineQty, 4);
+            } else {
+              const converted = convertWarehouseQuantityToKg({
+                quantity: lineQty,
+                unit,
+                itemCode: item.code,
+                warehouseKind: 'nvl',
+                materials: materialsCatalog
+              });
+              lineKg =
+                converted != null && Number.isFinite(converted) && converted > 0
+                  ? roundQty(converted, 4)
+                  : 0;
+            }
+          }
+        }
 
         const existing = product.nvlAgg.get(materialKey);
         if (!existing) {

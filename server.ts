@@ -5208,13 +5208,7 @@ function parseMaterialBody(body: unknown): { error: string } | MaterialWritePayl
     ton_dau_ky: parseOptionalMaterialNumber(source.openingStock),
     nhap_trong_ky: parseOptionalMaterialNumber(source.inbound),
     xuat_trong_ky: parseOptionalMaterialNumber(source.outbound),
-    ten_kho: parseMaterialText(source.warehouse ?? source.ten_kho) || null,
-    link_anh_can_thuc_te: parseMaterialText(source.actualWeightImageUrl ?? source.link_anh_can_thuc_te) || null,
-    link_anh_can_thuc_te_public_id:
-      parseMaterialText(source.actualWeightImagePublicId ?? source.link_anh_can_thuc_te_public_id) || null,
-    link_anh_bao_thuc_te: parseMaterialText(source.actualBagImageUrl ?? source.link_anh_bao_thuc_te) || null,
-    link_anh_bao_thuc_te_public_id:
-      parseMaterialText(source.actualBagImagePublicId ?? source.link_anh_bao_thuc_te_public_id) || null
+    ten_kho: parseMaterialText(source.warehouse ?? source.ten_kho) || null
   };
 
   return { record };
@@ -5671,6 +5665,10 @@ function parseWarehouseSlipBody(body: unknown): {
   may: string | null;
   tenKho: string | null;
   treo: boolean;
+  actualWeightImageUrl: string | null;
+  actualWeightImagePublicId: string | null;
+  actualBagImageUrl: string | null;
+  actualBagImagePublicId: string | null;
   items: WarehouseSlipLineInput[];
 } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -5708,6 +5706,13 @@ function parseWarehouseSlipBody(body: unknown): {
     tenKho: String(source.tenKho ?? source.ten_kho ?? source.warehouse ?? '').trim() || null,
     // "Phiếu xuất kho treo" — chỉ áp dụng cho phiếu xuất, chờ thủ kho xác nhận mới tính vào tồn kho.
     treo: loaiPhieu === 'xuat' ? treo : false,
+    actualWeightImageUrl:
+      parseMaterialText(source.actualWeightImageUrl ?? source.link_anh_can_thuc_te) || null,
+    actualWeightImagePublicId:
+      parseMaterialText(source.actualWeightImagePublicId ?? source.link_anh_can_thuc_te_public_id) || null,
+    actualBagImageUrl: parseMaterialText(source.actualBagImageUrl ?? source.link_anh_bao_thuc_te) || null,
+    actualBagImagePublicId:
+      parseMaterialText(source.actualBagImagePublicId ?? source.link_anh_bao_thuc_te_public_id) || null,
     items: parsedItems.items
   };
 }
@@ -5724,6 +5729,10 @@ function buildWarehouseSlipInsertRecords(
     may: string | null;
     tenKho: string | null;
     treo?: boolean;
+    actualWeightImageUrl?: string | null;
+    actualWeightImagePublicId?: string | null;
+    actualBagImageUrl?: string | null;
+    actualBagImagePublicId?: string | null;
     items: WarehouseSlipLineInput[];
   },
   maPhieu: string
@@ -5759,7 +5768,11 @@ function buildWarehouseSlipInsertRecords(
       id_bao_cao_hang_hong:
         parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
           ? item.damagedReportRowId
-          : null
+          : null,
+      link_anh_can_thuc_te: parsed.actualWeightImageUrl || null,
+      link_anh_can_thuc_te_public_id: parsed.actualWeightImagePublicId || null,
+      link_anh_bao_thuc_te: parsed.actualBagImageUrl || null,
+      link_anh_bao_thuc_te_public_id: parsed.actualBagImagePublicId || null
     };
 
     if (parsed.loaiKho === 'san_pham') {

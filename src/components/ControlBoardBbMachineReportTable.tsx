@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Calculator, Loader2, Printer, Save, X, Info, Package, BarChart3 } from 'lucide-react';
+import { Check, ChevronDown, Calculator, Loader2, Printer, RefreshCw, Save, X, Info, Package, BarChart3 } from 'lucide-react';
 import { formatMoney, formatNumber } from '../utils';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 import { findProductByCode } from '../features/san-pham';
@@ -28,6 +28,7 @@ import {
 import type { CanTuDongRecord } from '../features/can-tu-dong';
 import {
   computeCanTuDongTongHopBannerTotals,
+  explainCanTuDongTongHopRowFormulas,
   fetchCanTuDongSlimRecords,
   syncCanTuDongTongHop
 } from '../utils/canTuDongTongHop';
@@ -56,7 +57,8 @@ import {
   BB_MACHINE_REPORT_TABS,
   buildBbInboundBalanceMetricDetail,
   buildBbOrderCodeOptions,
-  buildBbWarehouseExportLineRowsForShiftBanner,
+  buildBbWarehouseExportLineRows,
+  groupBbWarehouseExportLines,
   buildBbPlasticSummaryDetailView,
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
@@ -588,7 +590,8 @@ export default function ControlBoardBbMachineReportTable({
   shiftFilter = 'all',
   machineFilter = 'all',
   selectedMachine = null,
-  onApplyCalcScope
+  onApplyCalcScope,
+  onReloadSourceData
 }: {
   productionOrders: ProductionOrderRow[];
   products: ProductRow[];
@@ -620,6 +623,8 @@ export default function ControlBoardBbMachineReportTable({
     shiftFilter: string;
     machineFilter: string;
   }) => void;
+  /** Tải lại phiếu XK, lệnh SX, báo cáo máy… từ API (sau khi sửa phiếu trên /phieu-xuat-nhap-kho). */
+  onReloadSourceData?: () => Promise<void>;
 }) {
   const machineReportLabel = useMemo(() => {
     const name = String(selectedMachine?.name || '').trim();
@@ -684,6 +689,14 @@ export default function ControlBoardBbMachineReportTable({
   const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [snapshotMessage, setSnapshotMessage] = useState('');
   const [calculatingReport, setCalculatingReport] = useState(false);
+  const [awaitingSyncReload, setAwaitingSyncReload] = useState(false);
+  const pendingSyncScopeRef = useRef<{
+    dateFrom: string;
+    dateTo: string;
+    shiftFilter: string;
+    machineFilter: string;
+    selectedMachine: { code?: string; name?: string } | null;
+  } | null>(null);
   const [calcCanTuDongRecords, setCalcCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
   const [calcDialogOpen, setCalcDialogOpen] = useState(false);
   const [calcNgay, setCalcNgay] = useState('');
@@ -849,6 +862,21 @@ export default function ControlBoardBbMachineReportTable({
       cancelled = true;
     };
   }, [reportSnapshotKey]);
+
+  /** Tải phiếu cân khi xem snapshot cân tự động (banner live + tab cân thực tế). */
+  useEffect(() => {
+    if (sanLuongSource !== 'can-tu-dong') return;
+    if (!dateFrom && !dateTo) return;
+    let cancelled = false;
+    void fetchCanTuDongSlimRecords({ from: dateFrom, to: dateTo })
+      .then(records => {
+        if (!cancelled) setCalcCanTuDongRecords(records);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [sanLuongSource, dateFrom, dateTo, reportSnapshotKey]);
 
   const openCalcDialog = () => {
     if (calculatingReport || isLoading || snapshotStatus === 'loading') return;
@@ -1100,14 +1128,109 @@ export default function ControlBoardBbMachineReportTable({
     });
   };
 
+  const buildCurrentSyncScope = () => {
+    const ngay = String(dateFrom || dateTo || '').trim();
+    const denNgay = String(dateTo || dateFrom || ngay).trim();
+    const ca = String(shiftFilter || '').trim();
+    const may = String(machineFilter || '').trim();
+    const machineRow = machines.find(machine => machine.code === may) || null;
+    return {
+      dateFrom: ngay,
+      dateTo: denNgay,
+      shiftFilter: ca,
+      machineFilter: may,
+      selectedMachine: machineRow
+        ? { code: machineRow.code, name: machineRow.name }
+        : may && may !== 'all'
+          ? { code: may, name: may }
+          : selectedMachine
+    };
+  };
+
+  const syncLatestReport = async () => {
+    if (calculatingReport || isLoading || awaitingSyncReload) return;
+    const scope = buildCurrentSyncScope();
+    if (!scope.dateFrom) {
+      setSnapshotMessage('Chọn Ngày trên bộ lọc trước khi đồng bộ.');
+      return;
+    }
+    if (!scope.shiftFilter || scope.shiftFilter === 'all') {
+      setSnapshotMessage('Chọn Ca trên bộ lọc trước khi đồng bộ.');
+      return;
+    }
+    if (!scope.machineFilter || scope.machineFilter === 'all') {
+      setSnapshotMessage('Chọn Máy trên bộ lọc trước khi đồng bộ.');
+      return;
+    }
+
+    pendingSyncScopeRef.current = scope;
+    setAwaitingSyncReload(true);
+    setSnapshotMessage('Đang tải phiếu xuất kho và dữ liệu mới nhất...');
+    try {
+      if (onReloadSourceData) {
+        await onReloadSourceData();
+      } else {
+        setAwaitingSyncReload(false);
+        pendingSyncScopeRef.current = null;
+        await calculateAndSaveReport(scope);
+      }
+    } catch (error) {
+      setAwaitingSyncReload(false);
+      pendingSyncScopeRef.current = null;
+      setSnapshotMessage(error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu.');
+    }
+  };
+
+  useEffect(() => {
+    if (!awaitingSyncReload || isLoading) return;
+    const scope = pendingSyncScopeRef.current;
+    pendingSyncScopeRef.current = null;
+    setAwaitingSyncReload(false);
+    if (!scope) return;
+    void calculateAndSaveReport(scope);
+  }, [awaitingSyncReload, isLoading, warehouseMovements]);
+
   const emptySnapshot = useMemo(() => emptyBbBaoCaoTinhToanPayload(), []);
   const activeSnapshot = reportSnapshot || emptySnapshot;
 
   // Không tự tính khi vào trang — chỉ hiển thị bản đã lưu (hoặc rỗng).
   const orderRows = activeSnapshot.orderRows;
   const orderGroups = activeSnapshot.orderGroups;
-  const exportRows = activeSnapshot.exportRows;
-  const exportGroups = activeSnapshot.exportGroups;
+  /** Tab xuất kho: luôn đọc phiếu XK mới nhất từ API (không dùng snapshot cũ). */
+  const exportRows = useMemo(
+    () =>
+      buildBbWarehouseExportLineRows({
+        productionOrders,
+        warehouseMovements,
+        materials,
+        machines,
+        shiftSettings,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine,
+        includeAllMachines,
+        exportMatchScope: 'shift'
+      }),
+    [
+      productionOrders,
+      warehouseMovements,
+      materials,
+      machines,
+      shiftSettings,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
+    ]
+  );
+  const exportGroups = useMemo(
+    () => groupBbWarehouseExportLines(exportRows, productionOrders, products, materials, shiftSettings),
+    [exportRows, productionOrders, products, materials, shiftSettings]
+  );
   const damagedRows = activeSnapshot.damagedRows;
   const damagedGroups = activeSnapshot.damagedGroups;
   const cuoiCaRows = activeSnapshot.cuoiCaRows;
@@ -1333,36 +1456,8 @@ export default function ControlBoardBbMachineReportTable({
     () => sumBbWarehouseExportWeightKgByKind(exportRows),
     [exportRows]
   );
-  /** Banner «Tổng hợp nhựa»: nhựa xuất theo ca (tab xuất kho vẫn gom full ngày). */
-  const exportRowsForPlasticBanner = useMemo(
-    () =>
-      buildBbWarehouseExportLineRowsForShiftBanner({
-        productionOrders,
-        warehouseMovements,
-        materials,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine,
-        includeAllMachines
-      }),
-    [
-      productionOrders,
-      warehouseMovements,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
-    ]
-  );
+  /** Banner «Tổng hợp nhựa»: cùng dòng tab xuất kho (phiếu mới nhất). */
+  const exportRowsForPlasticBanner = exportRows;
   const exportWeightByKindForPlasticBanner = useMemo(
     () => sumBbWarehouseExportWeightKgByKind(exportRowsForPlasticBanner),
     [exportRowsForPlasticBanner]
@@ -1383,27 +1478,19 @@ export default function ControlBoardBbMachineReportTable({
   /** Tổng NVL đã xuất — khớp phiếu: nhựa = ĐVT kg (cột Quy về kg); khác = ĐVT ≠ kg. */
   const exportMaterialTotalsByUnit = useMemo(() => {
     let kgWeight = 0;
-    let kgLines = 0;
     let otherWeight = 0;
-    let otherLines = 0;
     for (const row of exportMaterialTotals) {
       const weight = row.weightKg > 0 ? row.weightKg : 0;
-      const lines = row.lineCount > 0 ? row.lineCount : 0;
       if (isWarehouseKgUnit(row.unit || '')) {
         kgWeight += weight;
-        kgLines += lines;
       } else if (weight > 0) {
         otherWeight += weight;
-        otherLines += lines;
       }
     }
     return {
       kgWeight,
-      kgLines,
       otherWeight,
-      otherLines,
-      totalWeight: kgWeight + otherWeight,
-      totalLines: kgLines + otherLines
+      totalWeight: kgWeight + otherWeight
     };
   }, [exportMaterialTotals]);
   const exportTotalNormKg = useMemo(
@@ -1478,10 +1565,29 @@ export default function ControlBoardBbMachineReportTable({
     machineFilter,
     selectedMachine
   ]);
-  const canTuDongTongHopBanner = useMemo(() => {
+  const canTuDongTongHopBannerLive = useMemo(() => {
     if (sanLuongSource !== 'can-tu-dong') return null;
     return computeCanTuDongTongHopBannerTotals(scopedCanTuDongRecords, products);
   }, [sanLuongSource, scopedCanTuDongRecords, products]);
+  const canTuDongTongHopBanner = useMemo(() => {
+    if (sanLuongSource !== 'can-tu-dong') return null;
+    if ((canTuDongTongHopBannerLive?.totals.so_cuon ?? 0) > 0) return canTuDongTongHopBannerLive;
+    const savedTotals = activeSnapshot.summary.canTuDongTongHopTotals;
+    if (savedTotals && savedTotals.so_cuon > 0) {
+      const savedFormulas = activeSnapshot.summary.canTuDongTongHopFormulas;
+      return {
+        detailRows: [],
+        totals: savedTotals,
+        formulas: savedFormulas ?? explainCanTuDongTongHopRowFormulas(savedTotals)
+      };
+    }
+    return canTuDongTongHopBannerLive;
+  }, [
+    sanLuongSource,
+    canTuDongTongHopBannerLive,
+    activeSnapshot.summary.canTuDongTongHopTotals,
+    activeSnapshot.summary.canTuDongTongHopFormulas
+  ]);
   /**
    * Tab «Dữ liệu cân thực tế» — banner «Tổng hợp nhựa» lấy cùng tổng cột bảng bên dưới (live).
    */
@@ -2176,6 +2282,20 @@ export default function ControlBoardBbMachineReportTable({
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => void syncLatestReport()}
+              disabled={isLoading || calculatingReport || awaitingSyncReload || snapshotStatus === 'loading'}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3.5 text-xs font-black text-sky-950 shadow-xs transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
+              title="Tải lại phiếu xuất kho / lệnh SX đã sửa, rồi tính lại báo cáo theo bộ lọc Ngày · Ca · Máy hiện tại"
+            >
+              {awaitingSyncReload || calculatingReport ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {awaitingSyncReload ? 'Đang tải...' : calculatingReport ? 'Đang tính...' : 'Đồng bộ'}
+            </button>
+            <button
+              type="button"
               onClick={openCalcDialog}
               disabled={isLoading || calculatingReport || snapshotStatus === 'loading'}
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-400 px-3.5 text-xs font-black text-zinc-950 shadow-xs transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[13px]"
@@ -2549,7 +2669,7 @@ export default function ControlBoardBbMachineReportTable({
                   display: isLoading
                     ? '…'
                     : sanLuongSource === 'can-tu-dong'
-                      ? (canTuDongTongHopBanner?.totals.so_cuon ?? 0) > 0
+                      ? displaySanLuongTotals.quantity > 0
                         ? `${formatKg(plasticSummaryRow.finishedKg, 2)} kg`
                         : '—'
                       : plasticSummaryRow.finishedKg > 0
@@ -2567,7 +2687,7 @@ export default function ControlBoardBbMachineReportTable({
                     isInsulationMachine && sanLuongSource === 'can-tu-dong'
                       ? isLoading
                         ? '…'
-                        : (canTuDongTongHopBanner?.totals.so_cuon ?? insulationPlasticNorm.counted) > 0
+                        : displaySanLuongTotals.quantity > 0
                           ? `${formatKg(insulationPlasticNorm.weightKg, 2)} kg`
                           : '—'
                       : '',
@@ -2582,8 +2702,7 @@ export default function ControlBoardBbMachineReportTable({
                     isInsulationMachine && sanLuongSource === 'can-tu-dong'
                       ? isLoading
                         ? '…'
-                        : (canTuDongTongHopBanner?.totals.so_cuon ?? 0) > 0 &&
-                            insulationPlasticNorm.counted > 0
+                        : displaySanLuongTotals.quantity > 0
                           ? `${formatSignedKg(insulationPlasticNormDifferenceKg, 2)} kg`
                           : '—'
                       : ''
@@ -3059,20 +3178,19 @@ export default function ControlBoardBbMachineReportTable({
                     <th className="px-4 py-2.5 text-right font-black">ĐVT</th>
                     <th className="px-4 py-2.5 text-right font-black">SL xuất</th>
                     <th className="px-4 py-2.5 text-right font-black">Tổng (kg)</th>
-                    <th className="px-4 py-2.5 text-right font-black">Số dòng phiếu</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emerald-50">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center font-bold text-zinc-400">
+                      <td colSpan={6} className="px-4 py-8 text-center font-bold text-zinc-400">
                         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                         Đang tải tổng NVL xuất kho...
                       </td>
                     </tr>
                   ) : exportMaterialTotals.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center font-bold text-zinc-400">
+                      <td colSpan={6} className="px-4 py-8 text-center font-bold text-zinc-400">
                         Chưa có NVL xuất kho trong khoảng lọc.
                       </td>
                     </tr>
@@ -3100,7 +3218,6 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-4 py-2 text-right font-mono font-black text-amber-800">
                           {row.weightKg > 0 ? formatKg(row.weightKg, 2) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono text-zinc-500">{row.lineCount}</td>
                       </tr>
                     ))
                   )}
@@ -3119,11 +3236,6 @@ export default function ControlBoardBbMachineReportTable({
                           ? formatKg(exportMaterialTotalsByUnit.kgWeight, 2)
                           : '—'}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-zinc-600">
-                        {exportMaterialTotalsByUnit.kgLines > 0
-                          ? exportMaterialTotalsByUnit.kgLines
-                          : '—'}
-                      </td>
                     </tr>
                     <tr>
                       <td colSpan={5} className="px-4 py-2.5 text-right uppercase tracking-wider">
@@ -3137,11 +3249,6 @@ export default function ControlBoardBbMachineReportTable({
                           ? formatKg(exportMaterialTotalsByUnit.otherWeight, 2)
                           : '—'}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-zinc-600">
-                        {exportMaterialTotalsByUnit.otherLines > 0
-                          ? exportMaterialTotalsByUnit.otherLines
-                          : '—'}
-                      </td>
                     </tr>
                     <tr className="border-t border-emerald-400/80 bg-emerald-100/80">
                       <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-wider">
@@ -3152,9 +3259,6 @@ export default function ControlBoardBbMachineReportTable({
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-amber-900">
                         {formatKg(exportMaterialTotalsByUnit.totalWeight || exportMaterialTotalKg, 2)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-zinc-700">
-                        {exportMaterialTotalsByUnit.totalLines}
                       </td>
                     </tr>
                   </tfoot>
@@ -7143,6 +7247,7 @@ export default function ControlBoardBbMachineReportTable({
             <ControlBoardBbMachineReportPrintBatch
               orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
               exportGroups={exportGroups}
+              exportRows={exportRows}
               dauCaGroups={dauCaGroups}
               cuoiCaGroups={cuoiCaGroups}
               damagedGroups={damagedGroups}
@@ -7181,6 +7286,7 @@ export default function ControlBoardBbMachineReportTable({
           <ControlBoardBbMachineReportPrintBatch
             orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
             exportGroups={exportGroups}
+            exportRows={exportRows}
             dauCaGroups={dauCaGroups}
             cuoiCaGroups={cuoiCaGroups}
             damagedGroups={damagedGroups}

@@ -4,6 +4,7 @@ import { Loader2, Printer, X } from 'lucide-react';
 import { PRINT_COMPANY_NAME, COMPANY_BRANCH_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatMoney, formatNumber } from '../utils';
 import { formatVietnameseMoneyWords } from '../utils/vietnameseMoneyWords';
+import { isWarehouseKgUnit } from '../utils/warehouseWeight';
 import { waitForPrintImagesReady } from '../utils/printReady';
 
 const WAREHOUSE_SLIP_PORTRAIT_STYLE_ID = 'warehouse-slip-print-page-portrait';
@@ -276,38 +277,30 @@ function sumPrintWeightKg(lines: WarehouseSlipPrintLine[]) {
   }, 0);
 }
 
-function normalizePrintUnit(value: string) {
-  return String(value || '')
-    .trim()
-    .toLocaleLowerCase('vi')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
 function isPlasticKgPrintLine(line: WarehouseSlipPrintLine) {
-  return ['kg', 'kgs', 'kilogram'].includes(normalizePrintUnit(line.unit));
+  return isWarehouseKgUnit(line.unit);
 }
 
+/** ĐVT kg lên đầu; trong mỗi nhóm xếp kg quy đổi giảm dần, rồi theo mã. */
 function sortPrintLinesByUnit(lines: WarehouseSlipPrintLine[]) {
-  const firstUnitIndex = new Map<string, number>();
-  lines.forEach((line, index) => {
-    const unit = normalizePrintUnit(line.unit);
-    if (!firstUnitIndex.has(unit)) firstUnitIndex.set(unit, index);
+  return [...lines].sort((a, b) => {
+    const aKg = isWarehouseKgUnit(a.unit);
+    const bKg = isWarehouseKgUnit(b.unit);
+    if (aKg !== bKg) return aKg ? -1 : 1;
+
+    const aWeight = a.weightKg;
+    const bWeight = b.weightKg;
+    const aVal = aWeight != null && Number.isFinite(aWeight) && aWeight > 0 ? aWeight : -1;
+    const bVal = bWeight != null && Number.isFinite(bWeight) && bWeight > 0 ? bWeight : -1;
+    if (aVal !== bVal) return bVal - aVal;
+
+    return String(a.code || '').localeCompare(String(b.code || ''), 'vi');
   });
-  return lines
-    .map((line, index) => ({ line, index }))
-    .sort((a, b) => {
-      const unitA = normalizePrintUnit(a.line.unit);
-      const unitB = normalizePrintUnit(b.line.unit);
-      const unitCompare = (firstUnitIndex.get(unitA) ?? 0) - (firstUnitIndex.get(unitB) ?? 0);
-      return unitCompare || a.index - b.index;
-    })
-    .map(item => item.line);
 }
 
 function formatPrintWeightKg(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '';
-  return formatNumber(value, 3);
+  return formatNumber(value, 1);
 }
 
 function formatNhapKhoDateParts(value: string) {
@@ -546,7 +539,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               <td>{line.code || ''}</td>
               <td className="warehouse-slip-print-name">{line.name || ''}</td>
               <td className="warehouse-slip-print-center">{line.unit || ''}</td>
-              <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity)}</td>
+              <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity, 1)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td>{line.lineNote || ''}</td>
             </tr>
@@ -558,7 +551,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG NHỰA (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalPlasticKg > 0 ? `${formatNumber(totalPlasticKg, 3)} kg` : '0 kg'}
+              {totalPlasticKg > 0 ? `${formatNumber(totalPlasticKg, 1)} kg` : '0 kg'}
             </td>
             <td />
           </tr> : null}
@@ -567,7 +560,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG VẬT TƯ KHÁC (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalOtherMaterialKg > 0 ? `${formatNumber(totalOtherMaterialKg, 3)} kg` : '0 kg'}
+              {totalOtherMaterialKg > 0 ? `${formatNumber(totalOtherMaterialKg, 1)} kg` : '0 kg'}
             </td>
             <td />
           </tr> : null}
@@ -576,7 +569,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG KG
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {grandTotalKg > 0 ? `${formatNumber(grandTotalKg, 3)} kg` : '0 kg'}
+              {grandTotalKg > 0 ? `${formatNumber(grandTotalKg, 1)} kg` : '0 kg'}
             </td>
             <td />
           </tr>
@@ -688,7 +681,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                 </tr>
               </thead>
               <tbody>
-                {printData.lines.map((line, index) => (
+                {sortPrintLinesByUnit(printData.lines).map((line, index) => (
                   <tr key={`${line.code}-${index}`}>
                     <td className="warehouse-slip-print-center">{index + 1}</td>
                     <td>{line.code || '-'}</td>

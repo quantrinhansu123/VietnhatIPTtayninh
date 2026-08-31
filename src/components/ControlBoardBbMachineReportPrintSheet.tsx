@@ -40,7 +40,9 @@ import {
   resolveBbDamagedPlasticLoiHongKg,
   resolveBbDamagedOtherLoiHongKg,
   resolveBbMaterialExportUnitPrice,
-  buildBbWarehouseExportQtyByMaterialForOrderDate,
+  buildBbWarehouseExportMaterialTotalsForOrderFromExportTab,
+  buildOrderBomMaterialMatchKeys,
+  isMaterialInProductBom,
   type BbCuoiCaGroup,
   type BbDamagedGoodsGroup,
   type BbDanhGiaHaoHutGroup,
@@ -51,7 +53,8 @@ import {
   type BbSanLuongGroup,
   type BbSanLuongProductGroup,
   type BbSanLuongNvlTotal,
-  type BbWarehouseExportGroup
+  type BbWarehouseExportGroup,
+  type BbWarehouseExportLineRow
 } from '../utils/controlBoardBbMachineReport';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
 import {
@@ -67,6 +70,8 @@ import { printLyDoLineKey } from '../utils/bbBaoCaoLyDo';
 type PrintProps = {
   orderGroups: BbProductionOrderGroup[];
   exportGroups: BbWarehouseExportGroup[];
+  /** Dòng tab «Phiếu xuất kho» (đã lọc ca khi Tính toán). */
+  exportRows?: BbWarehouseExportLineRow[];
   dauCaGroups: BbDauCaGroup[];
   cuoiCaGroups: BbCuoiCaGroup[];
   damagedGroups: BbDamagedGoodsGroup[];
@@ -851,7 +856,10 @@ function lookupBomDinhMucKg(
 
 function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   const rows = new Map<string, MaterialPrintRow>();
+  const orderBomKeys = buildOrderBomMaterialMatchKeys(order, props.products);
   const round4 = (value: number) => Math.round(value * 10000) / 10000;
+  const isInOrderBom = (code: string, name: string) =>
+    isMaterialInProductBom(code, name, orderBomKeys);
   const ensure = (code: string, name: string, unit = 'kg') => {
     const key = normalizeProductCodeKey(code || name) || `${rows.size}`;
     let row = rows.get(key);
@@ -909,55 +917,21 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
     }
   }
 
-  const exportQtyByMaterial = buildBbWarehouseExportQtyByMaterialForOrderDate({
-    warehouseMovements: props.warehouseMovementsByDate || props.warehouseMovements || [],
-    productionOrders: props.orderGroups.map(group => ({
-      code: group.orderCode,
-      machine: group.machine,
-      position: group.machine
-    })),
-    order: {
-      ngay: parseProductionOrderFilterDate(order.ngay) || order.ngay || '',
+  const exportMaterialTotals = buildBbWarehouseExportMaterialTotalsForOrderFromExportTab(
+    props.exportGroups || [],
+    {
       orderCode: order.orderCode,
+      groupKey: order.groupKey,
+      ngay: parseProductionOrderFilterDate(order.ngay) || order.ngay,
+      shift: order.shift,
       machine: order.machine
-    }
-  });
-  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
-  for (const entry of exportQtyByMaterial.values()) {
-    const row = ensure(entry.materialCode, entry.materialName, entry.unit);
-    row.exportQty += entry.quantity;
-  }
-  // Trọng lượng xuất kho = Số lượng xuất × Số Kg (Tổng kg) của NVL.
-  for (const row of rows.values()) {
-    if (!(row.exportQty > 0)) {
-      row.exportKg = 0;
-      continue;
-    }
-    const tongKg =
-      findMaterialTongKgPerUnit(row.code, materialsCatalog) ??
-      resolveMaterialTongKgPerUnit(
-        materialsCatalog.find(
-          item =>
-            normalizeWarehouseCodeKey(item.code) === normalizeWarehouseCodeKey(row.code) ||
-            normalizeWarehouseCodeKey(item.name || '') === normalizeWarehouseCodeKey(row.name)
-        )
-      );
-    if (tongKg != null && tongKg > 0) {
-      row.exportKg = round4(row.exportQty * tongKg);
-    } else if (isWarehouseKgUnit(row.unit)) {
-      // ĐVT kg mà chưa có Tổng kg → coi SL đã là kg.
-      row.exportKg = round4(row.exportQty);
-    } else {
-      const converted = convertWarehouseQuantityToKg({
-        quantity: row.exportQty,
-        unit: row.unit,
-        itemCode: row.code,
-        warehouseKind: 'nvl',
-        materials: materialsCatalog
-      });
-      row.exportKg =
-        converted !== null && Number.isFinite(converted) && converted > 0 ? round4(converted) : 0;
-    }
+    },
+    props.exportRows || []
+  );
+  for (const entry of exportMaterialTotals) {
+    const row = ensure(entry.itemCode, entry.itemName, entry.unit);
+    if (entry.quantity > 0) row.exportQty = round4(row.exportQty + entry.quantity);
+    if (entry.weightKg > 0) row.exportKg = round4(row.exportKg + entry.weightKg);
   }
   const openingGroups = findOrderGroups(props.dauCaGroups, order);
   const openingLines = openingGroups.flatMap(group => group.lines);
@@ -1076,6 +1050,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   const sanLuongNvls = collectSanLuongNvlTotalsForOrder(order, props.sanLuongGroups || []);
   if (sanLuongNvls.length > 0) {
     for (const nvl of sanLuongNvls) {
+      if (!isInOrderBom(nvl.itemCode, nvl.itemName)) continue;
       const unit = nvl.unit || (nvl.amountType === 'percent' ? 'kg' : 'Cái');
       const row = ensure(nvl.itemCode, nvl.itemName, unit);
       if (nvl.amountType === 'percent' && nvl.actualWeightKg > 0) {
@@ -1085,6 +1060,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   }
 
   // Tính lại Số lượng 3.2 sau khi gom đủ mã NVL (kể cả chỉ có trên snapshot/xuất).
+  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
   for (const row of rows.values()) {
     if (!isPlasticMaterialPrintRow(row)) row.actualQty = 0;
   }
@@ -1160,13 +1136,17 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
 
   const materialsCatalogForUnit = props.materials.map(mapMaterialToWeightCatalogItem);
   const result = [...rows.values()]
-    .filter(
-      row =>
-        !(
-          isNnsTronMaterial(row.code, row.name) &&
-          (nnsTronTonDauKg > 0 || nnsTronTonCuoiKg > 0 || closingMaterialLines.length > 0)
-        )
-    )
+    .filter(row => {
+      if (
+        isNnsTronMaterial(row.code, row.name) &&
+        (nnsTronTonDauKg > 0 || nnsTronTonCuoiKg > 0 || closingMaterialLines.length > 0)
+      ) {
+        return false;
+      }
+      if (isInOrderBom(row.code, row.name)) return true;
+      // Giữ tồn đầu/cuối ca thực tế (quét máy) và NVL đã xuất kho thực tế, bỏ mã đã gỡ khỏi BOM.
+      return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0;
+    })
     .map(row => ({
       ...row,
       unit: resolvePrintMaterialUnit(row.code, row.name, row.unit, materialsCatalogForUnit)
@@ -1629,7 +1609,7 @@ function BbMachineOrderPrintSheet({
               <th>Tỉ lệ trộn<br />Định mức</th>
               <th>Tỉ lệ trộn<br />Thực tế</th>
               <th>Trọng lượng<br />tồn đầu ca</th>
-              <th title="Tổng phiếu xuất NVL cùng ngày (mọi ca) × Tổng kg">
+              <th title="Tab «Phiếu xuất kho» · cột «Quy về kg» · lọc theo ca">
                 Trọng lượng<br />vật tư xuất kho
               </th>
               <th>Trọng lượng<br />vật tư nhập<br />thành phẩm</th>
@@ -1695,7 +1675,7 @@ function BbMachineOrderPrintSheet({
               <th>ĐVT</th>
               <th>Số lượng</th>
               <th>Trọng lượng<br />tồn đầu ca</th>
-              <th title="Tổng phiếu xuất NVL cùng ngày (mọi ca) × Tổng kg">
+              <th title="Tab «Phiếu xuất kho» · cột «Quy về kg» · lọc theo ca">
                 Trọng lượng<br />vật tư xuất kho
               </th>
               <th>Trọng lượng<br />vật tư nhập<br />thành phẩm</th>

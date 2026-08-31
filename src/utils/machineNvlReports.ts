@@ -39,6 +39,45 @@ export function guessMachineNvlMaterialType(code: string, name: string, unit: st
   return 'nhua';
 }
 
+/** NVL Trộn = Nhựa; còn lại (Màng, Lõi, Bao Bì) = Vật tư khác. */
+export function isMachineNvlTronMaterial(
+  loaiVatTu: MachineNvlMaterialType | null | undefined,
+  code = '',
+  name = '',
+  unit = ''
+) {
+  if (loaiVatTu === 'nhua') return true;
+  if (loaiVatTu === 'mang' || loaiVatTu === 'loi' || loaiVatTu === 'bao_bi') return false;
+  return guessMachineNvlMaterialType(code, name, unit) === 'nhua';
+}
+
+export function splitMachineNvlLinesByMaterialGroup<
+  T extends {
+    loaiVatTu?: MachineNvlMaterialType | null;
+    maNvl?: string;
+    tenNvl?: string;
+    donVi?: string;
+  }
+>(lines: T[]) {
+  const nvlTron: T[] = [];
+  const vatTuKhac: T[] = [];
+  for (const line of lines) {
+    if (
+      isMachineNvlTronMaterial(
+        line.loaiVatTu,
+        String(line.maNvl ?? ''),
+        String(line.tenNvl ?? ''),
+        String(line.donVi ?? '')
+      )
+    ) {
+      nvlTron.push(line);
+    } else {
+      vatTuKhac.push(line);
+    }
+  }
+  return { nvlTron, vatTuKhac };
+}
+
 export type MachineNvlSavedLine = {
   stt: number;
   maNvl: string;

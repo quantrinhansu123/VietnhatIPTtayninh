@@ -12,6 +12,7 @@ import {
   Eye,
   Factory,
   History,
+  ImagePlus,
   Loader2,
   Package,
   Pencil,
@@ -19,6 +20,7 @@ import {
   Printer,
   QrCode,
   Recycle,
+  RefreshCw,
   Save,
   ScanBarcode,
   Search,
@@ -46,7 +48,12 @@ import {
   TableEmptyRow,
   RowActionsMenu
 } from '../../components/shared/table';
-import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
+import { pickText, fileToDataUrl, fileToOptimizedImageDataUrl, uploadImage } from '../_shared/recordHelpers';
+import { CAMERA_IMAGE_INPUT_PROPS } from '../../utils/cameraCapture';
+import WeighingImagePreviewModal, {
+  WeighingImageThumbnail,
+  type WeighingPreviewImage
+} from '../../components/WeighingImagePreviewModal';
 import WarehouseSlipPrintModal, {
   mergeWarehousePrintLines,
   mergeWarehousePrintSlips,
@@ -139,8 +146,9 @@ export interface WarehouseMovementRow {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
-  /** true = phiếu xuất kho treo, chờ thủ kho xác nhận; chưa tính vào tồn kho. */
   treo?: boolean;
+  actualWeightImageUrl?: string;
+  actualBagImageUrl?: string;
 }
 
 export interface WarehouseSlipLineDraft {
@@ -219,6 +227,10 @@ export type WarehouseSlipPrefillDraft = {
   deliverer?: string;
   warehouseLocation?: string;
   editSlipCode?: string;
+  actualWeightImageUrl?: string;
+  actualWeightImagePublicId?: string;
+  actualBagImageUrl?: string;
+  actualBagImagePublicId?: string;
   /** Thời điểm tạo draft (Date.now()) — dùng để bỏ qua draft cũ còn sót lại trong localStorage. */
   createdAt?: number;
   lines: Array<
@@ -317,6 +329,10 @@ export function buildWarehouseSlipDraftFromHistoryRows(
     machine: header.machine || '',
     shift: header.shift || '',
     editSlipCode: slipCode,
+    actualWeightImageUrl: header.actualWeightImageUrl || '',
+    actualWeightImagePublicId: '',
+    actualBagImageUrl: header.actualBagImageUrl || '',
+    actualBagImagePublicId: '',
     lines: rows.map(row => ({
       code: row.itemCode,
       name: row.itemName,
@@ -701,6 +717,44 @@ function normalizeMaterialCodeKey(raw: string) {
   return String(raw ?? '').replace(/\s+/g, '').toUpperCase();
 }
 
+function materialWarehouseNameKey(material: { warehouse?: string }) {
+  return normalizeWarehouseNameKey(material.warehouse === '-' ? '' : material.warehouse);
+}
+
+function materialHasCatalogTotalWeight(material: { totalWeight?: string }) {
+  const value = String(material.totalWeight || '').trim();
+  return Boolean(value && value !== '-');
+}
+
+/** Gộp mã NVL trùng — ưu tiên bản ghi đúng kho phiếu và có cột Tổng kg (quy đổi kg). */
+export function dedupeWarehouseSlipMaterials<T extends { code: string; warehouse?: string; totalWeight?: string }>(
+  materials: T[],
+  selectedWarehouseName: string
+): T[] {
+  const selectedWarehouseKey = normalizeWarehouseNameKey(selectedWarehouseName);
+  const byCode = new Map<string, T>();
+
+  const score = (item: T) => {
+    const warehouseKey = materialWarehouseNameKey(item);
+    let value = 0;
+    if (selectedWarehouseKey && warehouseKey === selectedWarehouseKey) value += 4;
+    if (materialHasCatalogTotalWeight(item)) value += 2;
+    if (warehouseKey) value += 1;
+    return value;
+  };
+
+  for (const material of materials) {
+    const codeKey = normalizeMaterialCodeKey(material.code);
+    if (!codeKey) continue;
+    const existing = byCode.get(codeKey);
+    if (!existing || score(material) > score(existing)) {
+      byCode.set(codeKey, material);
+    }
+  }
+
+  return [...byCode.values()];
+}
+
 function warehouseExportLineDraftMergeKey(line: Pick<WarehouseSlipLineDraft, 'code' | 'unit'>) {
   return `${normalizeMaterialCodeKey(line.code)}|${String(line.unit || '').trim().toLowerCase()}`;
 }
@@ -908,7 +962,9 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
           String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined,
         damagedReportRowId:
           String(record.id_bao_cao_hang_hong ?? record.damagedReportRowId ?? '').trim() || undefined,
-        treo: record.treo === true
+        treo: record.treo === true,
+        actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined,
+        actualBagImageUrl: String(record.link_anh_bao_thuc_te ?? record.actualBagImageUrl ?? '').trim() || undefined
       };
     })
     .filter((row): row is WarehouseMovementRow => Boolean(row.id || row.slipCode));
@@ -1156,6 +1212,14 @@ export function WarehouseSlipPanel({
   const [qrPrintOpen, setQrPrintOpen] = useState(false);
   const [qrPrintAutoTrigger, setQrPrintAutoTrigger] = useState(false);
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
+  const [actualWeightImageUrl, setActualWeightImageUrl] = useState('');
+  const [actualWeightImagePublicId, setActualWeightImagePublicId] = useState('');
+  const [actualBagImageUrl, setActualBagImageUrl] = useState('');
+  const [actualBagImagePublicId, setActualBagImagePublicId] = useState('');
+  const [isUploadingSlipImage, setIsUploadingSlipImage] = useState(false);
+  const [viewingSlipImage, setViewingSlipImage] = useState<WeighingPreviewImage | null>(null);
+  const actualWeightCameraInputRef = useRef<HTMLInputElement>(null);
+  const actualBagCameraInputRef = useRef<HTMLInputElement>(null);
   const [scanningDrafts, setScanningDrafts] = useState<WarehouseScanningDraft[]>(readWarehouseScanningDrafts);
   const [activeScanningDraftId, setActiveScanningDraftId] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<number | null>(null);
@@ -1430,6 +1494,10 @@ export function WarehouseSlipPanel({
       setRecipient(draft.recipient || '');
       setDeliverer(draft.deliverer || draft.recipient || '');
       setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
+      setActualWeightImageUrl(draft.actualWeightImageUrl || '');
+      setActualWeightImagePublicId(draft.actualWeightImagePublicId || '');
+      setActualBagImageUrl(draft.actualBagImageUrl || '');
+      setActualBagImagePublicId(draft.actualBagImagePublicId || '');
       const draftLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
       setLines(draft.slipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
       // Catalog Tổng kg có thể chưa kịp load — xếp lại theo khối lượng khi weightCatalog sẵn sàng.
@@ -1447,6 +1515,8 @@ export function WarehouseSlipPanel({
       localStorage.removeItem(STORAGE_WAREHOUSE_SLIP_DRAFT_KEY);
     }
   }, []);
+
+  const reloadWarehouseCatalogRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const loadItems = async () => {
@@ -1502,7 +1572,7 @@ export function WarehouseSlipPanel({
           const selectedWarehouseKey = normalizeWarehouseNameKey(warehouseName);
           // Các kho vật tư gợi ý theo tên kho đã chọn trong Quản lý kho; NVL chưa được gán kho
           // (phần lớn danh mục hiện nay) vẫn hiển thị để không chặn việc chọn mã.
-          const selectableMaterials = selectedWarehouseKey
+          const filteredMaterials = selectedWarehouseKey
             ? materials.filter(material => {
                 const materialWarehouseKey = normalizeWarehouseNameKey(
                   material.warehouse === '-' ? '' : material.warehouse
@@ -1510,6 +1580,7 @@ export function WarehouseSlipPanel({
                 return !materialWarehouseKey || materialWarehouseKey === selectedWarehouseKey;
               })
             : materials;
+          const selectableMaterials = dedupeWarehouseSlipMaterials(filteredMaterials, warehouseName);
           setItemOptions(
             selectableMaterials.map(material => ({
               code: canonicalCodeByKey.get(normalizeMaterialCodeKey(material.code)) || material.code,
@@ -1527,8 +1598,23 @@ export function WarehouseSlipPanel({
       }
     };
 
-    loadItems();
+    reloadWarehouseCatalogRef.current = loadItems;
+    void loadItems();
   }, [warehouseKind, warehouseName]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void reloadWarehouseCatalogRef.current?.();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  const handleRefreshWeightCatalog = () => {
+    void reloadWarehouseCatalogRef.current?.();
+    showAppToast('Đã tải lại Tổng kg từ kho NVL — cột Quy đổi kg cập nhật theo dữ liệu mới.');
+  };
 
   const handleWarehouseNameChange = (name: string) => {
     const nextName = name.trim();
@@ -2641,6 +2727,48 @@ export function WarehouseSlipPanel({
     setPrintModalOpen(true);
   };
 
+  const handleActualWeightImageUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    setIsUploadingSlipImage(true);
+    setFormError('');
+
+    try {
+      const dataUrl = await fileToOptimizedImageDataUrl(file);
+      const uploaded = await uploadImage(dataUrl, 'phieu_xuat_nhap_kho');
+      setActualWeightImageUrl(uploaded.imageUrl);
+      setActualWeightImagePublicId(uploaded.imagePublicId);
+      showAppToast('Đã upload ảnh số cân thực tế.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số cân thực tế.';
+      setFormError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsUploadingSlipImage(false);
+    }
+  };
+
+  const handleActualBagImageUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    setIsUploadingSlipImage(true);
+    setFormError('');
+
+    try {
+      const dataUrl = await fileToOptimizedImageDataUrl(file);
+      const uploaded = await uploadImage(dataUrl, 'phieu_xuat_nhap_kho');
+      setActualBagImageUrl(uploaded.imageUrl);
+      setActualBagImagePublicId(uploaded.imagePublicId);
+      showAppToast('Đã upload ảnh số bao thực tế.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số bao thực tế.';
+      setFormError(message);
+      showAppToast(message, 'error');
+    } finally {
+      setIsUploadingSlipImage(false);
+    }
+  };
+
   const handleSave = async (autoPrint = false) => {
     if (!(editSlipCode ? canEdit : canCreate)) {
       setFormError(
@@ -2710,6 +2838,10 @@ export function WarehouseSlipPanel({
       may: showNvlShiftAndMachine ? machine.trim() || null : null,
       // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
       treo: false,
+      actualWeightImageUrl: slipType === 'xuat' ? actualWeightImageUrl.trim() || null : null,
+      actualWeightImagePublicId: slipType === 'xuat' ? actualWeightImagePublicId.trim() || null : null,
+      actualBagImageUrl: slipType === 'xuat' ? actualBagImageUrl.trim() || null : null,
+      actualBagImagePublicId: slipType === 'xuat' ? actualBagImagePublicId.trim() || null : null,
       items: payloadItems
     };
 
@@ -2811,6 +2943,10 @@ export function WarehouseSlipPanel({
       setReason('');
       setNote('');
       setDeliverer('');
+      setActualWeightImageUrl('');
+      setActualWeightImagePublicId('');
+      setActualBagImageUrl('');
+      setActualBagImagePublicId('');
       setCreatedBy(loginName);
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
@@ -3251,6 +3387,87 @@ export function WarehouseSlipPanel({
             </label>
           )}
 
+          {slipType === 'xuat' ? (
+            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
+                  <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
+                  Ảnh số cân thực tế
+                </span>
+                <input
+                  ref={actualWeightCameraInputRef}
+                  {...CAMERA_IMAGE_INPUT_PROPS}
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] || null;
+                    e.target.value = '';
+                    if (file) void handleActualWeightImageUpload(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => actualWeightCameraInputRef.current?.click()}
+                  disabled={isUploadingSlipImage || isSaving}
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isUploadingSlipImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {actualWeightImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
+                </button>
+                {actualWeightImageUrl ? (
+                  <WeighingImageThumbnail
+                    url={actualWeightImageUrl}
+                    alt="Ảnh số cân thực tế"
+                    title="Ảnh số cân thực tế"
+                    onView={() =>
+                      setViewingSlipImage({ url: actualWeightImageUrl, title: 'Ảnh số cân thực tế' })
+                    }
+                    className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                  />
+                ) : (
+                  <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — lưu cùng phiếu xuất kho</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
+                  <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
+                  Ảnh số bao thực tế
+                </span>
+                <input
+                  ref={actualBagCameraInputRef}
+                  {...CAMERA_IMAGE_INPUT_PROPS}
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] || null;
+                    e.target.value = '';
+                    if (file) void handleActualBagImageUpload(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => actualBagCameraInputRef.current?.click()}
+                  disabled={isUploadingSlipImage || isSaving}
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isUploadingSlipImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {actualBagImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
+                </button>
+                {actualBagImageUrl ? (
+                  <WeighingImageThumbnail
+                    url={actualBagImageUrl}
+                    alt="Ảnh số bao thực tế"
+                    title="Ảnh số bao thực tế"
+                    onView={() =>
+                      setViewingSlipImage({ url: actualBagImageUrl, title: 'Ảnh số bao thực tế' })
+                    }
+                    className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                  />
+                ) : (
+                  <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — lưu cùng phiếu xuất kho</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           {showOrderFields ? (
             <div className="relative col-span-2 block min-w-0 space-y-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3436,6 +3653,22 @@ export function WarehouseSlipPanel({
                   <Plus className="h-3.5 w-3.5" />
                   Thêm dòng
                 </button>
+                {slipType === 'xuat' && warehouseKind !== 'san_pham' ? (
+                  <button
+                    type="button"
+                    onClick={handleRefreshWeightCatalog}
+                    disabled={isLoadingItems}
+                    className="flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Tải lại cột Tổng kg từ kho NVL sau khi sửa định lượng"
+                  >
+                    {isLoadingItems ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Làm mới Tổng kg
+                  </button>
+                ) : null}
                 {canDelete ? (
                   <button
                     type="button"
@@ -3702,6 +3935,8 @@ export function WarehouseSlipPanel({
         requireConfirm={false}
         scannedCount={scannedItemCount}
       />
+
+      <WeighingImagePreviewModal image={viewingSlipImage} onClose={() => setViewingSlipImage(null)} />
     </div>
   );
 }
@@ -3754,6 +3989,7 @@ export function WarehouseHistoryPanel({
   const [historyQrPrintOpen, setHistoryQrPrintOpen] = useState(false);
   const [isLoadingHistoryQr, setIsLoadingHistoryQr] = useState(false);
   const [historyQrError, setHistoryQrError] = useState('');
+  const [viewingHistoryImage, setViewingHistoryImage] = useState<WeighingPreviewImage | null>(null);
   const [weightCatalogMaterials, setWeightCatalogMaterials] = useState<WarehouseWeightCatalogItem[]>([]);
   const [weightCatalogProducts, setWeightCatalogProducts] = useState<WarehouseWeightCatalogItem[]>([]);
 
@@ -4614,6 +4850,49 @@ export function WarehouseHistoryPanel({
                   </div>
                 ))}
               </div>
+              {viewingRows[0].slipType === 'xuat' &&
+              (viewingRows[0].actualWeightImageUrl || viewingRows[0].actualBagImageUrl) ? (
+                <div className="grid grid-cols-2 gap-3 px-4 pb-4">
+                  {viewingRows[0].actualWeightImageUrl ? (
+                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số cân thực tế</p>
+                      <div className="mt-2">
+                        <WeighingImageThumbnail
+                          url={viewingRows[0].actualWeightImageUrl}
+                          alt="Ảnh số cân thực tế"
+                          title="Ảnh số cân thực tế"
+                          onView={() =>
+                            setViewingHistoryImage({
+                              url: viewingRows[0].actualWeightImageUrl!,
+                              title: 'Ảnh số cân thực tế'
+                            })
+                          }
+                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {viewingRows[0].actualBagImageUrl ? (
+                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số bao thực tế</p>
+                      <div className="mt-2">
+                        <WeighingImageThumbnail
+                          url={viewingRows[0].actualBagImageUrl}
+                          alt="Ảnh số bao thực tế"
+                          title="Ảnh số bao thực tế"
+                          onView={() =>
+                            setViewingHistoryImage({
+                              url: viewingRows[0].actualBagImageUrl!,
+                              title: 'Ảnh số bao thực tế'
+                            })
+                          }
+                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="border-t border-zinc-200 px-4 py-3">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
@@ -4718,6 +4997,8 @@ export function WarehouseHistoryPanel({
           setHistoryQrLabels([]);
         }}
       />
+
+      <WeighingImagePreviewModal image={viewingHistoryImage} onClose={() => setViewingHistoryImage(null)} />
     </div>
   );
 }

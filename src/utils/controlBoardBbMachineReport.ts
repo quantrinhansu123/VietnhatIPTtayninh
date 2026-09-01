@@ -5428,7 +5428,7 @@ export type BbSanLuongNvlLine = {
   dinhMucRate: number | null;
   dinhMucUnit: string;
   amountType: 'percent' | 'quantity' | null;
-  /** SL theo ĐVT NVL = định mức/SP × SL sản lượng (chỉ amountType quantity). */
+  /** SL NVL: % = tỉ lệ; NVL phụ (Cái/m²/…) = SL SP. */
   quantity: number | null;
   normWeightKg: number;
   materialNorm: BbMaterialNormFormula | null;
@@ -5458,6 +5458,122 @@ export function isBbSanLuongNvlKgLine(
   line: Pick<BbSanLuongNvlLine, 'unit' | 'amountType'>
 ): boolean {
   return isBbMixingRatioKgUnit(line.unit, line.amountType);
+}
+
+/** NVL phụ: Thành phần kiểu số lượng (Cái/m²/… / dòng chỉ có khoi_luong_kg). */
+function isBbSanLuongNvlPhu(amountType: 'percent' | 'quantity' | null | undefined): boolean {
+  return amountType === 'quantity';
+}
+
+/** ĐVT NVL phụ: không hiện kg — SL là số lượng SP, TL mới là kg. */
+function resolveBbSanLuongNvlPhuUnit(unit: string | null | undefined): string {
+  const trimmed = String(unit || '').trim();
+  if (!trimmed || trimmed === '-' || trimmed === '%' || isWarehouseKgUnit(trimmed)) return 'Cái';
+  return trimmed;
+}
+
+/** SL NVL phụ = SL SP. */
+function resolveBbSanLuongNvlPhuQuantity(slSp: number): number {
+  return slSp > 0 ? slSp : 0;
+}
+
+/**
+ * kg/1 NVL phụ: khoi_luong_kg trên Thành phần;
+ * không có (không trong BOM) → tong_trong_luong kho NVL.
+ */
+function resolveBbSanLuongNvlPhuKgPerUnit(
+  khoiLuongKg: number | null | undefined,
+  itemCode: string,
+  materialsCatalog: WarehouseWeightCatalogItem[]
+): number | null {
+  if (khoiLuongKg != null && Number.isFinite(khoiLuongKg) && khoiLuongKg > 0) {
+    return khoiLuongKg;
+  }
+  const trongLuongKg = findMaterialTongKgPerUnit(itemCode, materialsCatalog);
+  return trongLuongKg != null && trongLuongKg > 0 ? trongLuongKg : null;
+}
+
+/** TL NVL phụ = SL NVL phụ × (khoi_luong_kg hoặc tong_trong_luong). */
+function resolveBbSanLuongNvlPhuWeightKg(
+  slNvlPhu: number,
+  kgPerUnit: number | null | undefined
+): number {
+  if (!(slNvlPhu > 0)) return 0;
+  const kg = Number(kgPerUnit);
+  if (!Number.isFinite(kg) || kg < 0) return 0;
+  return roundQty(slNvlPhu * kg, 4);
+}
+
+function applyBbSanLuongNvlPhuToLine(
+  line: BbSanLuongNvlLine,
+  slSp: number,
+  bomItem: ProductNplItem | undefined,
+  materialsCatalog: WarehouseWeightCatalogItem[]
+): BbSanLuongNvlLine {
+  const isPhu = bomItem
+    ? isBbSanLuongNvlPhu(bomItem.amountType)
+    : isBbSanLuongNvlPhu(line.amountType);
+  if (!isPhu) return line;
+  const quantity = resolveBbSanLuongNvlPhuQuantity(slSp);
+  const kgPerUnit = resolveBbSanLuongNvlPhuKgPerUnit(
+    bomItem?.weightKg,
+    bomItem?.code || line.itemCode,
+    materialsCatalog
+  );
+  const weightKg = resolveBbSanLuongNvlPhuWeightKg(quantity, kgPerUnit);
+  const unit = resolveBbSanLuongNvlPhuUnit(bomItem?.unit || line.unit);
+  return {
+    ...line,
+    unit,
+    dinhMucUnit: unit,
+    amountType: 'quantity',
+    quantity,
+    normWeightKg: weightKg,
+    actualWeightKg: weightKg,
+    baseActualWeightKg: weightKg
+  };
+}
+
+function rebuildBbSanLuongNvlTotals(
+  groupKey: string,
+  productGroups: BbSanLuongProductGroup[]
+): BbSanLuongNvlTotal[] {
+  const nvlAggMap = new Map<string, BbSanLuongNvlTotal>();
+  for (const productGroup of productGroups) {
+    for (const line of productGroup.lines) {
+      const materialKey =
+        normalizeProductCodeKey(line.itemCode) ||
+        String(line.itemName || '').trim().toUpperCase();
+      if (!materialKey) continue;
+      const existing = nvlAggMap.get(materialKey);
+      if (!existing) {
+        nvlAggMap.set(materialKey, {
+          key: `${groupKey}|nvl:${materialKey}`,
+          itemCode: line.itemCode,
+          itemName: line.itemName,
+          unit: line.unit,
+          amountType: line.amountType,
+          rate: line.dinhMucRate,
+          quantity: line.quantity,
+          normWeightKg: line.normWeightKg,
+          actualWeightKg: line.actualWeightKg,
+          baseActualWeightKg: line.baseActualWeightKg,
+          balanceDetail: null
+        });
+        continue;
+      }
+      existing.normWeightKg = roundQty(existing.normWeightKg + line.normWeightKg, 4);
+      existing.actualWeightKg = roundQty(existing.actualWeightKg + line.actualWeightKg, 4);
+      existing.baseActualWeightKg = existing.actualWeightKg;
+      if (line.amountType === 'percent' && line.dinhMucRate != null) {
+        existing.quantity = line.dinhMucRate;
+        existing.rate = line.dinhMucRate;
+      } else if (line.quantity != null && line.quantity > 0) {
+        existing.quantity = roundQty((existing.quantity || 0) + line.quantity, 4);
+      }
+    }
+  }
+  return [...nvlAggMap.values()].sort(compareBbSanLuongNvlLines);
 }
 
 /** Sắp xếp NVL: khối ĐVT kg lên đầu (cạnh nhau), rồi NVL khác theo ĐVT + tên. */
@@ -5528,7 +5644,7 @@ export type BbSanLuongNvlTotal = {
   rate: number | null;
   /**
    * Cột SL:
-   * - quantity: định mức/SP × tổng SL sản lượng phiếu
+   * - NVL phụ: SL SP
    * - percent: tỉ lệ trộn thực tế (%) — fallback định mức %
    */
   quantity: number | null;
@@ -5678,7 +5794,9 @@ export function enrichBbProductionOrderRowsFromSanLuong(
 /**
  * Tab Báo cáo sản lượng (sau Tính toán):
  * - Header / SL / trọng lượng SP: `bao_cao_nghiem_thu` — Thành phẩm thuộc **Kho thành phẩm**
- * - Dòng NVL: snapshot `bao_cao_san_luong_nvl_dinh_muc`; thiếu thì bổ sung từ Thành phần SP (`san_pham.nplItems`)
+ * - Dòng NVL: hiện đủ `san_pham.npl_phan_tram`; SL/TL lấy từ snapshot
+ *   `bao_cao_san_luong_nvl_dinh_muc`, dòng không có trong snapshot hiện 0
+ * - NVL phụ (Cái/m²/…): SL NVL = SL SP; TL NVL = SL NVL × khoi_luong_kg
  */
 export type BbAcceptanceNvlDinhMucItem = {
   code: string;
@@ -5687,8 +5805,10 @@ export type BbAcceptanceNvlDinhMucItem = {
   amountType: 'percent' | 'quantity';
   /** ĐM / 1 SP (% hoặc số lượng). */
   rate: number;
-  /** Theo SL đã lưu trên snapshot (quantity = ĐM×SL; percent = %). */
+  /** Theo SL: % = định mức %; NVL phụ = SL SP. */
   quantityBySl: number | null;
+  /** `false` = chỉ bổ sung từ `san_pham.npl_phan_tram`, không có dòng trong snapshot/BOM phiếu. */
+  hasSnapshot?: boolean;
 };
 
 /** Map dòng snapshot `bao_cao_san_luong_nvl_dinh_muc`. */
@@ -5712,7 +5832,8 @@ export function mapAcceptanceNvlDinhMucRowsToNplItems(rows: unknown[]): BbAccept
         amountType,
         rate,
         quantityBySl: Number.isFinite(theoSl) && theoSl > 0 ? theoSl : null,
-        unit: String(row.don_vi ?? row.unit ?? (amountType === 'percent' ? '%' : '')).trim()
+        unit: String(row.don_vi ?? row.unit ?? (amountType === 'percent' ? '%' : '')).trim(),
+        hasSnapshot: true
       };
     })
     .filter((item): item is BbAcceptanceNvlDinhMucItem => Boolean(item && (item.code || item.name)));
@@ -5778,39 +5899,20 @@ function findProductNplItemInBom(
   });
 }
 
-/** Định mức/SP từ Thành phần — gồm dòng chỉ có kg/SP (vd BDT 0,0085) không có SL Cái. */
+/** Định mức/SP: % hoặc SL Cái. Dòng chỉ có khoi_luong_kg (vd BDT) → 1 NVL phụ / 1 SP. */
 function resolveProductNplSanLuongRate(item: ProductNplItem): number | null {
   if (item.amountType === 'percent') {
     return item.percent != null && Number.isFinite(item.percent) && item.percent > 0
       ? item.percent
       : null;
   }
-  const hasQty =
-    item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0;
-  const hasKg = item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0;
-  // Cái/m² + kg/SP nhỏ hơn SL (vd BDT 0,0085 kg, Túi 0,1333 kg) → lấy kg/SP.
-  if (
-    hasKg &&
-    hasQty &&
-    item.weightKg! < item.quantity! &&
-    !isWarehouseKgUnit(String(item.unit || '').trim())
-  ) {
-    return item.weightKg!;
+  if (item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0) {
+    return item.quantity;
   }
-  if (hasQty) {
-    return item.quantity!;
-  }
-  if (hasKg) {
-    return item.weightKg!;
+  if (item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg >= 0) {
+    return 1;
   }
   return null;
-}
-
-function isProductNplKgOnlySanLuongLine(item: ProductNplItem, rate: number): boolean {
-  if (item.amountType === 'percent') return false;
-  const hasQty = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0;
-  const hasKg = item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg > 0;
-  return !hasQty && hasKg && rate === item.weightKg;
 }
 
 function nvlDinhMucItemMatchKey(item: Pick<BbAcceptanceNvlDinhMucItem, 'code' | 'name'>): string {
@@ -5843,13 +5945,10 @@ function mapOneProductNplItemToAcceptanceNvlDinhMuc(
   const isPercent = item.amountType === 'percent';
   const rate = resolveProductNplSanLuongRate(item);
   if (rate == null || !(rate > 0)) return null;
-  const kgOnly = isProductNplKgOnlySanLuongLine(item, rate);
-  const unit = isPercent ? '%' : kgOnly ? 'kg' : String(item.unit || '').trim() || 'Cái';
+  const unit = isPercent ? '%' : resolveBbSanLuongNvlPhuUnit(item.unit);
   const quantityBySl = isPercent
     ? rate
-    : productQty > 0
-      ? roundQuantityByUnit(rate * productQty, unit)
-      : null;
+    : resolveBbSanLuongNvlPhuQuantity(productQty) || null;
   return {
     code: item.code || '',
     name: item.name || item.code || '',
@@ -5861,8 +5960,9 @@ function mapOneProductNplItemToAcceptanceNvlDinhMuc(
 }
 
 /**
- * BOM Thành phần SP là nguồn chính; snapshot phiếu chỉ ghi đè rate/SL sau Đồng bộ.
- * Tránh snapshot cũ (vd. chỉ 4 NVL) che mất NVL mới trên BOM.
+ * `san_pham.npl_phan_tram` quyết định danh sách NVL hiển thị.
+ * NVL phụ: SL luôn = SL SP (kể cả không có snapshot).
+ * NVL % không có snapshot → 0.
  */
 function mergeSanLuongNvlFromBomAndSnapshot(
   bomNplItems: ProductNplItem[],
@@ -5882,27 +5982,35 @@ function mergeSanLuongNvlFromBomAndSnapshot(
     const mapped = mapOneProductNplItemToAcceptanceNvlDinhMuc(bomItem, productQty);
     if (!mapped) continue;
     const snap = snapByKey.get(nvlDinhMucItemMatchKey(mapped));
-    if (!snap) {
-      result.push(mapped);
+    const isNvlPhu = isBbSanLuongNvlPhu(mapped.amountType);
+    if (!snap || snap.hasSnapshot === false) {
+      result.push({
+        ...mapped,
+        rate: isNvlPhu ? mapped.rate : 0,
+        quantityBySl: isNvlPhu ? resolveBbSanLuongNvlPhuQuantity(productQty) : 0,
+        hasSnapshot: false
+      });
       continue;
     }
     result.push({
       ...mapped,
       rate: snap.rate > 0 ? snap.rate : mapped.rate,
-      quantityBySl:
-        snap.quantityBySl != null && snap.quantityBySl > 0
+      quantityBySl: isNvlPhu
+        ? resolveBbSanLuongNvlPhuQuantity(productQty)
+        : snap.quantityBySl != null && snap.quantityBySl > 0
           ? snap.quantityBySl
           : mapped.quantityBySl,
-      unit: snap.unit || mapped.unit,
-      amountType: mapped.amountType
+      unit: mapped.unit || snap.unit,
+      amountType: mapped.amountType,
+      hasSnapshot: true
     });
   }
   return result;
 }
 
 /**
- * Luôn lấy đủ NVL từ BOM SP hiện tại; snapshot phiếu chỉ ghi đè rate/SL.
- * Gọi trước buildBbSanLuongGroups để không bị snapshot DB cũ thiếu dòng.
+ * Luôn lấy đủ NVL từ `san_pham.npl_phan_tram`.
+ * NVL phụ: SL = SL SP; không snapshot vẫn tính TL từ khoi_luong_kg / tong_trong_luong.
  */
 export function refreshAcceptanceNvlDinhMucFromProductBom(input: {
   reports: AcceptanceReport[];
@@ -5929,6 +6037,123 @@ export function refreshAcceptanceNvlDinhMucFromProductBom(input: {
     if (merged.length > 0) result.set(id, merged);
   }
   return result;
+}
+
+/**
+ * Phủ `san_pham.npl_phan_tram` lên snapshot đã lưu khi bấm «Áp dụng».
+ * NVL phụ: SL = SL SP; TL = SL × khoi_luong_kg, không có thì × tong_trong_luong.
+ */
+export function overlayProductNplOnBbSanLuongGroups(
+  groups: BbSanLuongGroup[],
+  products: ProductRow[],
+  materials: MaterialRow[] = []
+): BbSanLuongGroup[] {
+  if (!Array.isArray(groups) || groups.length === 0 || products.length === 0) return groups || [];
+  const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
+
+  return groups.map(group => {
+    const sourceProductGroups = Array.isArray(group.productGroups) ? group.productGroups : [];
+    const productGroups = sourceProductGroups.map(productGroup => {
+      const catalog = findProductByCode(products, productGroup.productCode);
+      const sourceLines = Array.isArray(productGroup.lines) ? productGroup.lines : [];
+      if (!catalog?.nplItems?.length && sourceLines.length === 0) return productGroup;
+
+      const existingKeys = new Set<string>();
+      const recalculatedLines = sourceLines.map(line => {
+        const codeKey = normalizeNvlMatchKey(line.itemCode || '');
+        const nameKey = normalizeNvlMatchKey(line.itemName || '');
+        if (codeKey) existingKeys.add(codeKey);
+        if (nameKey) existingKeys.add(nameKey);
+        const bomItem = catalog
+          ? findProductNplItemInBom(catalog, { code: line.itemCode, name: line.itemName })
+          : undefined;
+        return applyBbSanLuongNvlPhuToLine(
+          line,
+          productGroup.quantity,
+          bomItem,
+          materialsCatalog
+        );
+      });
+
+      const missingLines: BbSanLuongNvlLine[] = [];
+      if (catalog?.nplItems?.length) {
+        for (const item of dedupeProductNplItemsForSanLuong(catalog.nplItems)) {
+          const codeKey = normalizeNvlMatchKey(item.code || '');
+          const nameKey = normalizeNvlMatchKey(item.name || '');
+          if ((codeKey && existingKeys.has(codeKey)) || (nameKey && existingKeys.has(nameKey))) {
+            continue;
+          }
+
+          const amountType: BbSanLuongNvlLine['amountType'] =
+            item.amountType === 'percent' ? 'percent' : 'quantity';
+          const unit =
+            amountType === 'percent' ? '%' : resolveBbSanLuongNvlPhuUnit(item.unit);
+          const materialKey = codeKey || nameKey;
+          if (!materialKey) continue;
+
+          const isNvlPhu = isBbSanLuongNvlPhu(amountType);
+          const quantity = isNvlPhu ? resolveBbSanLuongNvlPhuQuantity(productGroup.quantity) : 0;
+          const weightKg = isNvlPhu
+            ? resolveBbSanLuongNvlPhuWeightKg(
+                quantity,
+                resolveBbSanLuongNvlPhuKgPerUnit(item.weightKg, item.code, materialsCatalog)
+              )
+            : 0;
+
+          missingLines.push({
+            key: `${productGroup.key}|catalog-nvl|${materialKey}`,
+            itemCode: item.code || '',
+            itemName: item.name || item.code || '',
+            unit,
+            tiLeDinhMucPercent: amountType === 'percent' ? 0 : null,
+            dinhMucRate: isNvlPhu ? resolveProductNplSanLuongRate(item) ?? 0 : 0,
+            dinhMucUnit: amountType === 'percent' ? '%' : unit,
+            amountType,
+            quantity,
+            normWeightKg: weightKg,
+            materialNorm: null,
+            baseActualWeightKg: weightKg,
+            productSharePercent: productGroup.productSharePercent,
+            actualWeightKg: weightKg,
+            balanceDetail: null
+          });
+          if (codeKey) existingKeys.add(codeKey);
+          if (nameKey) existingKeys.add(nameKey);
+        }
+      }
+
+      const lines = orderBbSanLuongNvlLinesByKg([...recalculatedLines, ...missingLines]);
+      return {
+        ...productGroup,
+        lines,
+        lineCount: lines.length,
+        totalNormWeightKg: roundQty(
+          lines.reduce((sum, line) => sum + line.normWeightKg, 0),
+          3
+        ),
+        totalActualWeightKg: roundQty(
+          lines.reduce((sum, line) => sum + (line.actualWeightKg || 0), 0),
+          2
+        )
+      };
+    });
+
+    const nvlTotals = rebuildBbSanLuongNvlTotals(group.groupKey, productGroups);
+    return {
+      ...group,
+      productGroups,
+      lineCount: productGroups.reduce((sum, productGroup) => sum + productGroup.lineCount, 0),
+      totalNormWeightKg: roundQty(
+        productGroups.reduce((sum, pg) => sum + pg.totalNormWeightKg, 0),
+        3
+      ),
+      totalActualWeightKg: roundQty(
+        productGroups.reduce((sum, pg) => sum + (pg.totalActualWeightKg || 0), 0),
+        2
+      ),
+      nvlTotals
+    };
+  });
 }
 
 /** Map toàn bộ Thành phần SP → NVL báo cáo sản lượng (kể cả BDT chỉ có kg/SP). */
@@ -5968,7 +6193,7 @@ export function buildAcceptanceNvlDinhMucPutItems(
 /**
  * TL NVL (kg) trên tab Báo cáo sản lượng.
  * - % / kg: định mức kg/SP (Thành phần) × SL SP
- * - ĐVT ≠ kg: SL NVL × Tổng kg NVL (định mức trên kho / Thành phần), không coi SL = kg
+ * - NVL phụ: SL NVL phụ × khoi_luong_kg
  */
 function resolveBbSanLuongNvlLineWeightKg(input: {
   item: BbAcceptanceNvlDinhMucItem;
@@ -6007,6 +6232,13 @@ function resolveBbSanLuongNvlLineWeightKg(input: {
       return roundQty(perUnitKgFromBom * inboundQty, 4);
     }
     return reportWeightKg > 0 ? roundQty(reportWeightKg * (rate / 100), 4) : 0;
+  }
+
+  if (isBbSanLuongNvlPhu(item.amountType)) {
+    return resolveBbSanLuongNvlPhuWeightKg(
+      lineQty,
+      resolveBbSanLuongNvlPhuKgPerUnit(bomItem?.weightKg, item.code, materialsCatalog)
+    );
   }
 
   if (isWarehouseKgUnit(unit)) {
@@ -6057,7 +6289,7 @@ export function buildBbSanLuongGroups(input: {
   mixingReports?: MixingReport[];
   /**
    * Snapshot NVL định mức theo id phiếu `bao_cao_nghiem_thu`.
-   * Thiếu dòng thì bổ sung từ Thành phần SP trên Kho sản phẩm.
+   * NVL phụ luôn SL = SL SP; không snapshot thì TL = SL × tong_trong_luong.
    */
   acceptanceNvlDinhMucByReportId?: Map<string, BbAcceptanceNvlDinhMucItem[]>;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
@@ -6219,50 +6451,62 @@ export function buildBbSanLuongGroups(input: {
         const materialKey = nvlDinhMucItemMatchKey(item);
         if (!materialKey) continue;
 
+        const hasSnapshot = item.hasSnapshot !== false;
         const bomItem = findProductNplItemInBom(catalog, item);
         const rateFromBom = bomItem ? resolveProductNplSanLuongRate(bomItem) : null;
-        const rate =
-          item.rate > 0
+        const rate = !hasSnapshot
+          ? 0
+          : item.rate > 0
             ? item.rate
             : rateFromBom != null && rateFromBom > 0
               ? rateFromBom
               : 0;
-        if (!(rate > 0)) continue;
 
         const isPercent = item.amountType === 'percent';
-        const lineQty =
-          item.quantityBySl != null && item.quantityBySl > 0
-            ? item.quantityBySl
-            : isPercent
-              ? rate
-              : roundQuantityByUnit(rate * inboundQty, item.unit || '');
+        const isNvlPhu = isBbSanLuongNvlPhu(item.amountType);
+        const lineQty = isNvlPhu
+          ? resolveBbSanLuongNvlPhuQuantity(inboundQty)
+          : !hasSnapshot
+            ? 0
+            : item.quantityBySl != null && item.quantityBySl > 0
+              ? item.quantityBySl
+              : isPercent
+                ? rate
+                : roundQuantityByUnit(rate * inboundQty, item.unit || '');
 
-        const lineKg = resolveBbSanLuongNvlLineWeightKg({
-          item,
-          bomItem,
-          catalog,
-          inboundQty,
-          reportWeightKg,
-          lineQty,
-          rate,
-          materialsCatalog,
-          materials: input.materials
-        });
+        const lineKg = isNvlPhu
+          ? resolveBbSanLuongNvlPhuWeightKg(
+              lineQty,
+              resolveBbSanLuongNvlPhuKgPerUnit(bomItem?.weightKg, item.code, materialsCatalog)
+            )
+          : !hasSnapshot
+            ? 0
+            : resolveBbSanLuongNvlLineWeightKg({
+                item,
+                bomItem,
+                catalog,
+                inboundQty,
+                reportWeightKg,
+                lineQty,
+                rate,
+                materialsCatalog,
+                materials: input.materials
+              });
 
         const existing = product.nvlAgg.get(materialKey);
         if (!existing) {
           product.nvlAgg.set(materialKey, {
             itemCode: item.code || '',
             itemName: item.name || item.code || '',
-            unit: isPercent ? '%' : String(item.unit || '').trim() || 'Cái',
+            unit: isPercent ? '%' : resolveBbSanLuongNvlPhuUnit(item.unit),
             amountType: item.amountType,
             rate,
-            quantity: lineQty > 0 ? lineQty : null,
+            quantity: lineQty >= 0 ? lineQty : null,
             normWeightKg: lineKg,
             actualWeightKg: lineKg
           });
         } else {
-          if (isPercent) {
+          if (isPercent && rate > 0) {
             // Giữ % ĐM; kg cộng dồn theo từng phiếu.
             existing.quantity = rate;
             existing.rate = rate;
@@ -6294,8 +6538,8 @@ export function buildBbSanLuongGroups(input: {
             itemName: nvl.itemName,
             unit: nvl.unit,
             tiLeDinhMucPercent:
-              nvl.amountType === 'percent' && nvl.rate > 0 ? roundQty(nvl.rate, 4) : null,
-            dinhMucRate: nvl.rate > 0 ? roundQty(nvl.rate, 4) : null,
+              nvl.amountType === 'percent' ? roundQty(nvl.rate, 4) : null,
+            dinhMucRate: roundQty(nvl.rate, 4),
             dinhMucUnit: nvl.amountType === 'percent' ? '%' : nvl.unit || 'đơn vị',
             amountType: nvl.amountType,
             quantity: nvl.quantity,
@@ -6331,43 +6575,7 @@ export function buildBbSanLuongGroups(input: {
       .sort((a, b) => a.productName.localeCompare(b.productName, 'vi'));
 
     /** Tổng NVL để footer — không ghi đè dòng từng SP (không gộp rồi chia lại). */
-    const nvlAggMap = new Map<string, BbSanLuongNvlTotal>();
-    for (const productGroup of productGroups) {
-      for (const line of productGroup.lines) {
-        const materialKey =
-          normalizeProductCodeKey(line.itemCode) ||
-          String(line.itemName || '').trim().toUpperCase();
-        if (!materialKey) continue;
-        const existing = nvlAggMap.get(materialKey);
-        if (!existing) {
-          nvlAggMap.set(materialKey, {
-            key: `${groupKey}|nvl:${materialKey}`,
-            itemCode: line.itemCode,
-            itemName: line.itemName,
-            unit: line.unit,
-            amountType: line.amountType,
-            rate: line.dinhMucRate,
-            quantity: line.quantity,
-            normWeightKg: line.normWeightKg,
-            actualWeightKg: line.actualWeightKg,
-            baseActualWeightKg: line.baseActualWeightKg,
-            balanceDetail: null
-          });
-        } else {
-          existing.normWeightKg = roundQty(existing.normWeightKg + line.normWeightKg, 4);
-          existing.actualWeightKg = roundQty(existing.actualWeightKg + line.actualWeightKg, 4);
-          existing.baseActualWeightKg = existing.actualWeightKg;
-          if (line.amountType === 'percent' && line.dinhMucRate != null) {
-            existing.quantity = line.dinhMucRate;
-            existing.rate = line.dinhMucRate;
-          } else if (line.quantity != null && line.quantity > 0) {
-            existing.quantity = roundQty((existing.quantity || 0) + line.quantity, 4);
-          }
-        }
-      }
-    }
-
-    const nvlTotals = [...nvlAggMap.values()].sort(compareBbSanLuongNvlLines);
+    const nvlTotals = rebuildBbSanLuongNvlTotals(groupKey, productGroups);
     const totalNormWeightKg = roundQty(
       productGroups.reduce((sum, pg) => sum + pg.totalNormWeightKg, 0),
       3

@@ -10,9 +10,14 @@ Modal **NVL theo định mức**: cột **Trọng lượng**
 - ĐVT `%` = trọng lượng cuộn (**Cân sản phẩm**) × %; không cân thì SL × kg/cuộn định mức
 - ĐVT `Cái` = định lượng Thành phần × SL sản lượng, quy kg (Tổng kg kho NVL / `khoi_luong_kg` / kg trong tên)
 
-Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** **chỉ đọc** snapshot này theo id phiếu; **không** tự tính/ghi từ Thành phần SP, máy hay trộn. Chưa Đồng bộ trên danh sách phiếu → tab không có dòng NVL.
+Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** / **Áp dụng**:
 
-Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** **chỉ đọc** snapshot này theo id phiếu; **không** tự tính/ghi từ Thành phần SP, máy hay trộn. Chưa Đồng bộ trên danh sách phiếu → tab không có dòng NVL.
+- Danh sách dòng luôn lấy đủ từ `san_pham.npl_phan_tram` của từng mã SP.
+- Khi chọn Ngày/Ca và bấm **Áp dụng**, UI phủ danh sách này lên cả snapshot bản tính cũ; không cần bấm **Tính toán** lại chỉ để thấy NVL mới.
+- NVL phụ (Cái/m²/…): `SL NVL = SL SP` (kể cả không có snapshot/BOM phiếu).
+- `TL NVL = SL NVL × khoi_luong_kg`; không có `khoi_luong_kg` → `SL NVL × tong_trong_luong` kho NVL.
+- NVL `%` / kg: `SL NVL` / `TL NVL` lấy từ snapshot theo id phiếu; không snapshot thì 0.
+- **Tính toán không tự ghi** lại snapshot từ Thành phần SP; chỉ nút **Đồng bộ** trên danh sách phiếu mới ghi bảng này.
 
 ```bash
 node scripts/run-sql-file.mjs supabase-bao-cao-san-luong-nvl-dinh-muc.sql

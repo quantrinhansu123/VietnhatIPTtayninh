@@ -73,7 +73,7 @@ function resolveNvlQuantity(line: BbSanLuongNvlLine) {
   if (line.amountType === 'percent' && line.tiLeDinhMucPercent != null) {
     return formatPercent(line.tiLeDinhMucPercent, 0);
   }
-  if (line.quantity != null && line.quantity > 0) {
+  if (line.quantity != null && line.quantity >= 0) {
     const unit = resolveBbSanLuongNvlDisplayUnit(line).toLowerCase();
     const digits = unit === 'kg' || unit.startsWith('kg') ? 4 : 0;
     return formatNumber(line.quantity, digits);
@@ -84,7 +84,7 @@ function resolveNvlQuantity(line: BbSanLuongNvlLine) {
 function resolveNvlWeight(line: BbSanLuongNvlLine) {
   if (line.actualWeightKg > 0) return `${formatKg(line.actualWeightKg, 1)} kg`;
   if (line.normWeightKg > 0) return `${formatKg(line.normWeightKg, 1)} kg`;
-  return '—';
+  return `${formatKg(0, 1)} kg`;
 }
 
 function SanLuongShiftSection({

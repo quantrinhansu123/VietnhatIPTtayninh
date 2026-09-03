@@ -2944,8 +2944,10 @@ export function WarehouseSlipPanel({
             ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
             : `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho. Bấm “In phiếu” để mở bản in.`
           : savedMessage;
-      setActionMessage(okMsg);
-      showAppToast(okMsg);
+      const storageWarning = String(data.warning || '').trim();
+      const completedMessage = storageWarning ? `${okMsg} ${storageWarning}` : okMsg;
+      setActionMessage(completedMessage);
+      showAppToast(completedMessage);
       if (reviewingDamagedReportKey) {
         setPendingDamagedReports(current => current.filter(report => report.key !== reviewingDamagedReportKey));
         setReviewingDamagedReportKey('');

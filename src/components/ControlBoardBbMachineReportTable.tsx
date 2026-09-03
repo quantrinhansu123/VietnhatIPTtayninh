@@ -2099,7 +2099,7 @@ export default function ControlBoardBbMachineReportTable({
   };
 
   const confirmPrint = () => {
-    const nextGroups = orderGroups.map(group => {
+    const nextGroups = orderGroupsMerged.map(group => {
       const selected = printStaffByOrder[group.groupKey];
       if (!selected) return group;
       return {
@@ -2111,7 +2111,7 @@ export default function ControlBoardBbMachineReportTable({
     });
     const nextNotes: Record<string, string> = {};
     const nextLyDo: Record<string, string> = {};
-    orderGroups.forEach(group => {
+    orderGroupsMerged.forEach(group => {
       const selected = printStaffByOrder[group.groupKey];
       const note = selected?.ghiChu?.trim() || '';
       const dbNote =
@@ -7343,7 +7343,7 @@ export default function ControlBoardBbMachineReportTable({
           <div className="bb-machine-report-preview mx-auto w-fit bg-white shadow-2xl">
             <ControlBoardBbMachineReportPrintBatch
               key={printPreviewDataKey}
-              orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
+              orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroupsMerged}
               exportGroups={exportGroups}
               exportRows={exportRows}
               dauCaGroups={dauCaGroups}
@@ -7382,7 +7382,7 @@ export default function ControlBoardBbMachineReportTable({
     {showPrintSheet
       ? createPortal(
           <ControlBoardBbMachineReportPrintBatch
-            orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroups}
+            orderGroups={printOrderGroups.length > 0 ? printOrderGroups : orderGroupsMerged}
             exportGroups={exportGroups}
             exportRows={exportRows}
             dauCaGroups={dauCaGroups}

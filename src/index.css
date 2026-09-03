@@ -4205,22 +4205,28 @@ input[type="number"] {
 
 .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(2) {
-  width: 38%;
+  width: 26%;
 }
 
 .bb-machine-report-print-evaluation-summary-table th:nth-child(3),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(3),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(4),
-.bb-machine-report-print-evaluation-summary-table td:nth-child(4) {
-  width: 12%;
-  white-space: nowrap;
-}
-
+.bb-machine-report-print-evaluation-summary-table td:nth-child(4),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(5),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(5),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(6),
-.bb-machine-report-print-evaluation-summary-table td:nth-child(6) {
-  width: 16%;
+.bb-machine-report-print-evaluation-summary-table td:nth-child(6),
+.bb-machine-report-print-evaluation-summary-table th:nth-child(7),
+.bb-machine-report-print-evaluation-summary-table td:nth-child(7) {
+  width: 9%;
+  white-space: nowrap;
+}
+
+.bb-machine-report-print-evaluation-summary-table th:nth-child(8),
+.bb-machine-report-print-evaluation-summary-table td:nth-child(8),
+.bb-machine-report-print-evaluation-summary-table th:nth-child(9),
+.bb-machine-report-print-evaluation-summary-table td:nth-child(9) {
+  width: 11%;
 }
 
 /* 4.2 Chi tiết — dòng tổng nhóm (Hao hụt nhựa / Vật tư khác) */
@@ -4631,22 +4637,28 @@ input[type="number"] {
 
   .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(2) {
-    width: 38%;
+    width: 26%;
   }
 
   .bb-machine-report-print-evaluation-summary-table th:nth-child(3),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(3),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(4),
-  .bb-machine-report-print-evaluation-summary-table td:nth-child(4) {
-    width: 12%;
-    white-space: nowrap !important;
-  }
-
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(4),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(5),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(5),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(6),
-  .bb-machine-report-print-evaluation-summary-table td:nth-child(6) {
-    width: 16%;
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(6),
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(7),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(7) {
+    width: 9%;
+    white-space: nowrap !important;
+  }
+
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(8),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(8),
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(9),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(9) {
+    width: 11%;
   }
 
   .bb-machine-report-print-evaluation-detail-table th:first-child,

@@ -87,6 +87,12 @@ function resolveNvlWeight(line: BbSanLuongNvlLine) {
   return `${formatKg(0, 1)} kg`;
 }
 
+function lineWeightKg(line: BbSanLuongNvlLine) {
+  if (line.actualWeightKg > 0) return line.actualWeightKg;
+  if (line.normWeightKg > 0) return line.normWeightKg;
+  return 0;
+}
+
 function SanLuongShiftSection({
   group,
   shiftSettings
@@ -112,7 +118,6 @@ function SanLuongShiftSection({
   ].filter(Boolean);
 
   const productRows = productGroups.map(product => {
-    const weightKg = product.weightKg > 0 ? product.weightKg : product.totalActualWeightKg;
     const unitLabel = formatUnitLabel(product.unit);
     const lines = (
       product.lines.length > 0
@@ -131,13 +136,24 @@ function SanLuongShiftSection({
             }
           ]
     ) as BbSanLuongNvlLine[];
+    const tronLines = lines.filter(line => isBbSanLuongNvlKgLine(line));
+    const conLaiLines = lines.filter(line => !isBbSanLuongNvlKgLine(line));
+    // Ô «Tổng vật tư trộn» = Tổng nhựa thành phẩm (weightKg đã overlay từ trong_luong_nhua × SL).
+    const tongVatTuTronKg =
+      product.weightKg > 0
+        ? product.weightKg
+        : tronLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
+    const tongVatTuConLaiKg = conLaiLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
     return {
       key: product.key,
       productCode: product.productCode,
       productName: product.productName,
       productQty: `${formatNumber(product.quantity, 0)} ${unitLabel}`,
-      productWeight: formatKg(weightKg, 1),
       rowSpan: lines.length,
+      tronRowSpan: tronLines.length,
+      conLaiRowSpan: conLaiLines.length,
+      tongVatTuTronKg,
+      tongVatTuConLaiKg,
       lines
     };
   });
@@ -173,10 +189,15 @@ function SanLuongShiftSection({
           </thead>
           <tbody>
             {productRows.flatMap(product => {
-              const kgLineCount = product.lines.filter(line => isBbSanLuongNvlKgLine(line)).length;
+              const kgLineCount = product.tronRowSpan;
               return product.lines.map((line, lineIndex) => {
                 const isKgLine = isBbSanLuongNvlKgLine(line);
                 const isFirstOtherLine = !isKgLine && lineIndex === kgLineCount && kgLineCount > 0;
+                const showTronCell = kgLineCount > 0 && lineIndex === 0;
+                const showConLaiCell =
+                  product.conLaiRowSpan > 0 &&
+                  ((kgLineCount > 0 && lineIndex === kgLineCount) ||
+                    (kgLineCount === 0 && lineIndex === 0));
                 return (
                 <tr
                   key={line.key}
@@ -197,10 +218,31 @@ function SanLuongShiftSection({
                       <td rowSpan={product.rowSpan} className="bb-sheet-num align-middle font-bold text-zinc-900">
                         {product.productQty}
                       </td>
-                      <td rowSpan={product.rowSpan} className="bb-sheet-num align-middle font-bold text-emerald-800">
-                        {product.productWeight}
-                      </td>
                     </>
+                  ) : null}
+                  {showTronCell ? (
+                    <td
+                      rowSpan={product.tronRowSpan}
+                      className="bb-sheet-num align-middle font-bold text-emerald-800"
+                      title="Tổng nhựa thành phẩm = trong_luong_nhua × SL (cơ sở nhân % vật tư trộn)"
+                    >
+                      <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
+                        Tổng vật tư trộn
+                      </div>
+                      <div className="mt-0.5">{formatKg(product.tongVatTuTronKg, 1)}</div>
+                    </td>
+                  ) : null}
+                  {showConLaiCell ? (
+                    <td
+                      rowSpan={product.conLaiRowSpan}
+                      className="bb-sheet-num align-middle font-bold text-emerald-800"
+                      title="Tổng TL NVL vật tư còn lại"
+                    >
+                      <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
+                        Tổng vật tư còn lại
+                      </div>
+                      <div className="mt-0.5">{formatKg(product.tongVatTuConLaiKg, 1)}</div>
+                    </td>
                   ) : null}
                   <td className="font-mono font-bold text-zinc-900">{line.itemCode || '—'}</td>
                   <td

@@ -29,10 +29,10 @@ import {
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
   buildBbSanLuongGroups,
-  buildBbThucDungLineRows,
   buildBbTongGroups,
   buildBbTongHopVatTuThucXuatDungGroups,
   buildBbWarehouseExportLineRows,
+  enrichBbDanhGiaGroupsWithPrintSummary,
   enrichBbProductionOrderRowsFromSanLuong,
   groupBbCuoiCaLines,
   groupBbDamagedGoodsLines,
@@ -76,6 +76,7 @@ import {
   type BbWarehouseExportGroup,
   type BbWarehouseExportLineRow
 } from './controlBoardBbMachineReport';
+import { buildBbTieuHaoNvlThucDungRows } from './bbTieuHaoNvlPrintRows';
 import type { ShiftSummaryWarehouseMovement } from './controlBoardShiftSummary';
 import type { MachineNvlSavedReport } from './machineNvlReports';
 import { shiftIsoDateByDays, type ShiftSetting } from './shiftSettings';
@@ -305,11 +306,16 @@ export function buildBbMachineReportSnapshot(input: {
     warehouseMovements: input.warehouseMovements,
     damagedRecords: input.damagedRecords,
     mixingReports: input.mixingReports,
+    canTuDongRecords: input.canTuDongRecords,
     shiftSettings: input.shiftSettings,
     ...filter
   });
 
-  const orderRows = enrichBbProductionOrderRowsFromSanLuong(orderRowsBase, sanLuongGroups);
+  const orderRows = enrichBbProductionOrderRowsFromSanLuong(
+    orderRowsBase,
+    sanLuongGroups,
+    input.products
+  );
   const orderGroups = groupBbProductionOrderLines(orderRows);
 
   const inboundRows = buildBbInboundReportRows({
@@ -325,23 +331,28 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
 
-  const thucDungRows = buildBbThucDungLineRows({
+  const mixingGroups = buildBbMixingRatioGroups({
     productionOrders: input.productionOrders,
     mixingReports: input.mixingReports,
-    warehouseMovements: input.warehouseMovements,
-    warehouseMovementsByDate: input.warehouseMovementsByDate,
-    machineNvlReports: input.machineNvlReports,
-    materials: input.materials,
     machines: input.machines,
-    dauCaGroups,
-    cuoiCaGroups,
-    sanLuongGroups,
-    damagedGroups,
-    sanLuongSource,
-    canTuDongRecords: input.canTuDongRecords,
-    products: input.products,
     shiftSettings: input.shiftSettings,
     ...filter
+  });
+
+  /** Tiêu hao NVL = công thức phiếu in (nhập TP + lỗi + chênh lệch) — tab + in cùng số. */
+  const thucDungRows = buildBbTieuHaoNvlThucDungRows({
+    orderGroups,
+    products: input.products,
+    materials: input.materials,
+    exportGroups,
+    exportRows,
+    dauCaGroups,
+    cuoiCaGroups,
+    damagedGroups,
+    mixingGroups,
+    sanLuongGroups,
+    shiftSettings: input.shiftSettings,
+    selectedMachine: input.selectedMachine
   });
   const thucDungGroups = groupBbThucDungLines(thucDungRows);
 
@@ -382,24 +393,22 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
 
-  const mixingGroups = buildBbMixingRatioGroups({
-    productionOrders: input.productionOrders,
-    mixingReports: input.mixingReports,
-    machines: input.machines,
-    shiftSettings: input.shiftSettings,
-    ...filter
-  });
-
-  const danhGiaGroups = buildBbDanhGiaHaoHutGroups({
-    productionOrders: input.productionOrders,
-    products: input.products,
-    warehouseMovements: input.warehouseMovements,
-    machineNvlReports: input.machineNvlReports,
-    acceptanceReports: input.acceptanceReports,
-    materials: input.materials,
-    machines: input.machines,
-    shiftSettings: input.shiftSettings,
-    ...filter
+  const danhGiaGroups = enrichBbDanhGiaGroupsWithPrintSummary({
+    danhGiaGroups: buildBbDanhGiaHaoHutGroups({
+      productionOrders: input.productionOrders,
+      products: input.products,
+      warehouseMovements: input.warehouseMovements,
+      machineNvlReports: input.machineNvlReports,
+      acceptanceReports: input.acceptanceReports,
+      materials: input.materials,
+      machines: input.machines,
+      shiftSettings: input.shiftSettings,
+      ...filter
+    }),
+    thucDungGroups,
+    damagedGroups,
+    orderGroups,
+    selectedMachine: input.selectedMachine
   });
 
   const canTuDongDateTo =

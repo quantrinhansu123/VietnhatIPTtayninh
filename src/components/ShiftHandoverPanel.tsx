@@ -6,7 +6,6 @@ import {
   slipToPrintSlip,
   type ShiftHandoverPrintSlip
 } from './ShiftHandoverPrintSheetV2';
-import ShiftHandoverMixingTable from './ShiftHandoverMixingTable';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { SearchableSelect } from './shared/SearchableSelect';
 import {
@@ -21,8 +20,6 @@ import {
 } from '../utils/shiftSettings';
 import {
   buildClosingStockLinesFromMachineNvl,
-  buildMixingMaterialLinesFromPhoiTron,
-  parseMachineMixingRatios,
   pickHandoverMachineAndOperators
 } from '../utils/shiftHandoverAutofill';
 import { formatNumber } from '../utils';
@@ -31,17 +28,12 @@ import {
   SHIFT_HANDOVER_FORM_EFFECTIVE,
   SHIFT_HANDOVER_FORM_ISSUE,
   buildChiTietPayload,
-  defaultMixingMaterialLines,
+  closingStockLinesToForm,
   emptyClosingStockLine,
-  emptyMixingMaterialLine,
-  mixingLineHasData,
   normalizeShiftHandoverSlips,
   parseQty,
   sumClosingStockTotals,
   type ClosingStockLine,
-  type HandoverFormTab,
-  type MaterialCatalogOption,
-  type MixingMaterialLine,
   type ShiftHandoverSlip
 } from '../lib/shiftHandoverModel';
 import { normalizeProductionOrders, type ProductionOrderRow } from '../features/ke-hoach-san-xuat';
@@ -57,7 +49,7 @@ const cellClass =
 
 const cellCenterClass = `${cellClass} text-center`;
 
-type MachineOption = { id: string; code: string; name: string; mixingRatios: unknown };
+type MachineOption = { id: string; code: string; name: string };
 type StaffOption = { id: string; name: string; shift: string };
 
 function todayIso() {
@@ -85,8 +77,7 @@ function normalizeMachines(data: unknown): MachineOption[] {
       return {
         id: String(row.id ?? code),
         code,
-        name,
-        mixingRatios: row.ty_le_tron ?? row.mixingRatios ?? []
+        name
       };
     })
     .filter((item): item is MachineOption => Boolean(item));
@@ -137,33 +128,12 @@ function normalizeProductionStaff(data: unknown): StaffOption[] {
   return members.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }
 
-function normalizeCatalogMaterials(data: unknown): MaterialCatalogOption[] {
-  const rows = Array.isArray(data)
-    ? data
-    : data && typeof data === 'object' && Array.isArray((data as { materials?: unknown }).materials)
-      ? (data as { materials: unknown[] }).materials
-      : [];
-  const mapped = rows
-    .map((item): MaterialCatalogOption | null => {
-      if (!item || typeof item !== 'object') return null;
-      const record = item as Record<string, unknown>;
-      const code = String(record.ma_npl ?? record.ma_nvl ?? record.code ?? '').trim();
-      const name = String(record.ten_npl ?? record.ten_nvl ?? record.name ?? '').trim();
-      if (!code && !name) return null;
-      return { code, name, unit: String(record.don_vi ?? record.unit ?? 'kg').trim() || 'kg' };
-    })
-    .filter((item): item is MaterialCatalogOption => Boolean(item));
-  return mapped.sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code, 'vi'));
-}
-
 export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
-  const [materials, setMaterials] = useState<MaterialCatalogOption[]>([]);
   const [slips, setSlips] = useState<ShiftHandoverSlip[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
-  const [formTab, setFormTab] = useState<HandoverFormTab>('bao_cao');
   const [date, setDate] = useState(todayIso());
   const [shift, setShift] = useState('');
   const [timeFrom, setTimeFrom] = useState('');
@@ -171,7 +141,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   const [machineRef, setMachineRef] = useState('');
   const [operators, setOperators] = useState('');
   const [closingStockLines, setClosingStockLines] = useState<ClosingStockLine[]>([emptyClosingStockLine()]);
-  const [materialLines, setMaterialLines] = useState<MixingMaterialLine[]>(defaultMixingMaterialLines());
   const [note, setNote] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -181,6 +150,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   const [printSlip, setPrintSlip] = useState<ShiftHandoverPrintSlip | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const lastDateShiftKey = useRef('');
+  const skipAutoPickRef = useRef(false);
 
   useEffect(() => {
     if (!message) return;
@@ -237,19 +207,17 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [machineRes, settingRes, staffRes, materialRes, slipRes, orderRes] = await Promise.all([
+        const [machineRes, settingRes, staffRes, slipRes, orderRes] = await Promise.all([
           fetch('/api/danh-sach-may'),
           fetch('/api/cai-dat'),
           fetch('/api/nhan-su?format=groups'),
-          fetch('/api/kho-nvl'),
           fetch('/api/phieu-giao-ca?limit=50'),
           fetch('/api/lenh-sx')
         ]);
-        const [machineData, settingData, staffData, materialData, slipData, orderData] = await Promise.all([
+        const [machineData, settingData, staffData, slipData, orderData] = await Promise.all([
           machineRes.json().catch(() => ({})),
           settingRes.json().catch(() => ({})),
           staffRes.json().catch(() => ({})),
-          materialRes.json().catch(() => ({})),
           slipRes.json().catch(() => ({})),
           orderRes.json().catch(() => ({}))
         ]);
@@ -258,7 +226,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
         if (machineRes.ok) setMachines(normalizeMachines(machineData));
         if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
         if (staffRes.ok) setStaffOptions(normalizeProductionStaff(staffData));
-        if (materialRes.ok) setMaterials(normalizeCatalogMaterials(materialData));
         if (slipRes.ok) setSlips(normalizeShiftHandoverSlips(slipData));
         if (orderRes.ok) setProductionOrders(normalizeProductionOrders(orderData));
       } finally {
@@ -298,6 +265,10 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (!date || !shift || productionOrders.length === 0 || machines.length === 0) return;
+    if (skipAutoPickRef.current) {
+      skipAutoPickRef.current = false;
+      return;
+    }
     const key = `${date}|${shift}`;
     const dateShiftChanged = lastDateShiftKey.current !== key;
     lastDateShiftKey.current = key;
@@ -342,17 +313,14 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     setClosingStockLines(prev => prev.map(line => (line.key === key ? { ...line, ...patch } : line)));
   };
 
-  const formHasDetailData = () => {
-    const hasClosing = closingStockLines.some(
+  const formHasDetailData = () =>
+    closingStockLines.some(
       line =>
         line.itemCode.trim() ||
         line.itemName.trim() ||
         parseQty(line.quantity) !== null ||
         parseQty(line.weightKg) !== null
     );
-    const hasMixing = materialLines.some(mixingLineHasData);
-    return hasClosing || hasMixing;
-  };
 
   const handleAutofill = async () => {
     setError('');
@@ -363,45 +331,27 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     }
     const machineCode = selectedMachine?.code || machineRef.trim();
     const machineName = selectedMachine?.name || '';
-    if (!machineCode && !machineName) {
-      setError('Chọn Máy trước khi tự động điền bảng trộn vật tư.');
-      return;
-    }
     if (
       formHasDetailData() &&
-      !window.confirm('Đã có dữ liệu trên form. Tự động điền sẽ ghi đè Tồn cuối ca và Bảng trộn vật tư. Tiếp tục?')
+      !window.confirm('Đã có dữ liệu trên form. Tự động điền sẽ ghi đè Tồn cuối ca. Tiếp tục?')
     ) {
       return;
     }
 
     setIsAutofilling(true);
     try {
+      // Lấy theo Ngày (không lọc ma_may trên API) để vẫn hiện NVL cùng Ca khi máy đã chọn chưa có phiếu.
       const nvlParams = new URLSearchParams({
         limit: '200',
         loai_bao_cao: 'cuoi_ca',
         ngay: date
       });
-      if (machineCode) nvlParams.set('ma_may', machineCode);
-      const mixingParams = new URLSearchParams({
-        tu_ngay: date,
-        den_ngay: date
-      });
-      if (machineCode) mixingParams.set('ma_may', machineCode);
 
-      const [nvlRes, mixingRes] = await Promise.all([
-        fetch(`/api/bao-cao-may-nvl-ton?${nvlParams.toString()}`),
-        fetch(`/api/bao-cao-phoi-tron?${mixingParams.toString()}`)
-      ]);
-      const [nvlData, mixingData] = await Promise.all([
-        nvlRes.json().catch(() => ({})),
-        mixingRes.json().catch(() => ({}))
-      ]);
+      const nvlRes = await fetch(`/api/bao-cao-may-nvl-ton?${nvlParams.toString()}`);
+      const nvlData = await nvlRes.json().catch(() => ({}));
 
       if (!nvlRes.ok) {
         throw new Error(readApiErrorMessage(nvlRes, nvlData, 'Không tải được tồn cuối ca.'));
-      }
-      if (!mixingRes.ok) {
-        throw new Error(readApiErrorMessage(mixingRes, mixingData, 'Không tải được phiếu trộn.'));
       }
 
       const nextClosing = buildClosingStockLinesFromMachineNvl({
@@ -411,28 +361,22 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
         machineCode,
         machineName
       });
-      const nextMixing = buildMixingMaterialLinesFromPhoiTron({
-        reports: mixingData,
-        date,
-        shift,
-        machineCode,
-        machineName,
-        mixingRatios: selectedMachine?.mixingRatios
-      });
 
       setClosingStockLines(nextClosing);
-      setMaterialLines(nextMixing);
 
       const filledClosing = nextClosing.filter(
         line => line.itemCode.trim() || line.itemName.trim() || parseQty(line.quantity) !== null
       ).length;
-      const filledMixing = nextMixing.filter(mixingLineHasData).length;
       const okMsg =
-        filledMixing > 0
-          ? `Đã điền: ${filledClosing} dòng tồn cuối ca · ${filledMixing} NVL từ phiếu trộn.`
-          : `Đã điền: ${filledClosing} dòng tồn cuối ca. Không có phiếu trộn cho Ngày + Ca + Máy này.`;
-      setMessage(okMsg);
-      showAppToast(okMsg);
+        filledClosing > 0
+          ? `Đã điền: ${filledClosing} dòng NVL tồn cuối ca (${date} · ${shift}).`
+          : `Không có phiếu tồn cuối ca cho Ngày + Ca này (${date} · ${shift}).`;
+      if (filledClosing > 0) {
+        setMessage(okMsg);
+        showAppToast(okMsg);
+      } else {
+        setError(okMsg);
+      }
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể tự động điền.'));
     } finally {
@@ -448,7 +392,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
 
   const resetForm = () => {
     setClosingStockLines([emptyClosingStockLine()]);
-    setMaterialLines(defaultMixingMaterialLines());
     setNote('');
   };
 
@@ -467,7 +410,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       products: [],
       scraps: [],
       closingStockLines,
-      materials: materialLines,
+      materials: [],
       kpis: []
     });
     setIsSaving(true);
@@ -521,6 +464,30 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     setSlips(prev => prev.filter(slip => slip.id !== id));
     setError('');
     setMessage('Đã xóa phiếu.');
+  };
+
+  const fillFormFromSlip = (slip: ShiftHandoverSlip) => {
+    skipAutoPickRef.current = true;
+    setError('');
+    setDate(slip.date || todayIso());
+    setShift(slip.shift || '');
+    setTimeFrom(slip.timeFrom || '');
+    setTimeTo(slip.timeTo || '');
+    setMachineRef(slip.machineCode || slip.machineName || '');
+    setOperators(slip.operators || '');
+    const nextClosing = closingStockLinesToForm(slip.closingStockLines || []);
+    setClosingStockLines(nextClosing.length > 0 ? nextClosing : [emptyClosingStockLine()]);
+    setNote(slip.note || '');
+    lastDateShiftKey.current = `${slip.date || ''}|${slip.shift || ''}`;
+    const nvlCount = (slip.closingStockLines || []).filter(
+      line => line.itemCode || line.itemName || line.quantity !== null || line.weightKg !== null
+    ).length;
+    const okMsg =
+      nvlCount > 0
+        ? `Đã nạp phiếu ${slip.slipCode || ''} · ${nvlCount} dòng NVL.`
+        : `Đã nạp phiếu ${slip.slipCode || ''} (chưa có dòng NVL tồn cuối ca).`;
+    setMessage(okMsg.trim());
+    showAppToast(okMsg.trim());
   };
 
   return (
@@ -680,37 +647,14 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   onClick={() => void handleAutofill()}
                   disabled={isAutofilling || isLoading || isSaving}
                   className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
-                  title="Điền Tồn cuối ca và Bảng trộn vật tư theo Ngày + Ca + Máy"
+                  title="Điền NVL tồn cuối ca theo Ngày + Ca (ưu tiên Máy đã chọn)"
                 >
                   {isAutofilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4 text-[#ef1b2d]" />}
                   {isAutofilling ? 'Đang điền...' : 'Tự động điền'}
                 </button>
               </div>
 
-              <div className="mt-4 flex gap-1 border-b border-zinc-200">
-                {(
-                  [
-                    { id: 'bao_cao' as const, label: 'Tồn cuối ca' },
-                    { id: 'vat_tu' as const, label: 'Bảng trộn vật tư' }
-                  ]
-                ).map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setFormTab(tab.id)}
-                    className={`-mb-px rounded-t-lg border px-4 py-2 text-xs font-black uppercase tracking-wider transition ${
-                      formTab === tab.id
-                        ? 'border-zinc-200 border-b-white bg-white text-[#ef1b2d]'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-800'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {formTab === 'bao_cao' ? (
-                <div className="mt-5">
+              <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-xs font-black uppercase tracking-wider text-zinc-800">
                     Số lượng tồn cuối ca
@@ -811,21 +755,6 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   </table>
                 </div>
               </div>
-              ) : (
-                <div className="mt-5">
-                  <ShiftHandoverMixingTable
-                    lines={materialLines}
-                    materials={materials}
-                    mixingRatios={parseMachineMixingRatios(selectedMachine?.mixingRatios)}
-                    isLoading={isLoading}
-                    onChange={(key, patch) =>
-                      setMaterialLines(prev => prev.map(line => (line.key === key ? { ...line, ...patch } : line)))
-                    }
-                    onAdd={() => setMaterialLines(prev => [...prev, emptyMixingMaterialLine()])}
-                    onRemove={key => setMaterialLines(prev => prev.filter(line => line.key !== key))}
-                  />
-                </div>
-              )}
 
               <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
@@ -870,10 +799,21 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   Chưa có phiếu nào.
                 </p>
               )}
-              {slips.map(slip => (
+              {slips.map(slip => {
+                const nvlLines = slip.closingStockLines || [];
+                const nvlTotals = sumClosingStockTotals(nvlLines);
+                const nvlCount = nvlLines.filter(
+                  line => line.itemCode || line.itemName || line.quantity !== null || line.weightKg !== null
+                ).length;
+                return (
                 <div key={slip.id} className="rounded-xl border border-zinc-200 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => fillFormFromSlip(slip)}
+                      className="min-w-0 flex-1 rounded-lg text-left transition hover:bg-zinc-50"
+                      title="Nạp phiếu vào form"
+                    >
                       <p className="font-black text-zinc-900">{slip.slipCode || slip.shift || 'Phiếu giao ca'}</p>
                       <p className="text-xs font-semibold text-zinc-500">
                         {slip.date} · {slip.shift}
@@ -881,10 +821,14 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                         {slip.machineName || slip.machineCode || 'Chung'}
                       </p>
                       <p className="mt-1 text-xs font-bold text-zinc-600">
-                        {slip.operators || '—'} · {slip.products.length} mã hàng ·{' '}
-                        {displayNum(slip.products.reduce((sum, line) => sum + (line.quantity ?? 0), 0))} cuộn
+                        {slip.operators || '—'}
                       </p>
-                    </div>
+                      <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                        {nvlCount > 0
+                          ? `${nvlCount} NVL · SL ${displayNum(nvlTotals.quantity)} · TL ${displayNum(nvlTotals.weightKg)} kg`
+                          : 'Chưa có dòng NVL tồn cuối ca'}
+                      </p>
+                    </button>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
@@ -905,7 +849,8 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         </div>

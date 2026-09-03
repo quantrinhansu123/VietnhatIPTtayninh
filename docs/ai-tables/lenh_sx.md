@@ -28,6 +28,8 @@
 
 `ke_hoach_san_xuat`, `don_hang`, `san_pham`
 
+> Tab báo cáo BB «Dữ liệu trong lệnh SX» lưu riêng bảng **`bc_lsx`** — không dùng bảng con của `lenh_sx`. Xem [bc_lsx.md](./bc_lsx.md).
+
 ### Nhân sự theo vai trò
 
 Các cột `truong_ca`, `nhan_su_chinh`, `tho_phu`, `hoc_viec` được nhập trong form thêm/sửa lệnh.

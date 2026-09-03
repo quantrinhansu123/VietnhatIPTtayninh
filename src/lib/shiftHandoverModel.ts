@@ -3,7 +3,7 @@ export const SHIFT_HANDOVER_FORM_ISSUE = '03';
 export const SHIFT_HANDOVER_FORM_EFFECTIVE = '03/08/2022';
 export const SHIFT_HANDOVER_MIXING_FORM_EFFECTIVE = '01/04/2023';
 
-export type HandoverFormTab = 'bao_cao' | 'vat_tu';
+export type HandoverFormTab = 'bao_cao';
 
 export type MaterialCatalogOption = {
   code: string;

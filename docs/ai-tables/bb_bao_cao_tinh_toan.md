@@ -6,7 +6,9 @@ Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao
 
 KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũng **chỉ** lấy từ `payload.summary` — không cộng live từ `can_tu_dong` / phiếu.
 
-Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_phan_tram`; số `SL NVL` / `TL NVL` lấy từ snapshot `bao_cao_san_luong_nvl_dinh_muc`. Dòng không có trong snapshot/BOM phiếu hiện 0. Tính toán **không** tự ghi Thành phần SP.
+Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_phan_tram`; số `SL NVL` lấy từ snapshot `bao_cao_san_luong_nvl_dinh_muc`. **TL NVL %** = Σ **Nhựa thực tế** (Thành phẩm) trên `can_tu_dong` (ngày·ca·máy·mã SP) × tỉ lệ %; không có lần cân thì fallback `trong_luong_nhua × SL`. Tính toán **không** tự ghi Thành phần SP.
+
+**Phiếu in = mirror tab:** mục 3.1/3.2 lấy `thucDungGroups` (builder `buildBbTieuHaoNvlThucDungRows`); mục 4.1 lấy `danhGiaGroups.summaryRows`. Không tính độc lập trên `ControlBoardBbMachineReportPrintSheet`. Snapshot cũ thiếu field → bấm **Tính toán** lại.
 
 ## SQL
 
@@ -27,14 +29,17 @@ node scripts/run-sql-file.mjs supabase-bb-bao-cao-tinh-toan.sql
 
 Khóa ổn định: `ngay_tu|ngay_den|ca|may|nguon_san_luong|include_all|ma_lenh(*)`.
 
-`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính.
+`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` (cột nhập TP, lỗi, TP+lỗi, chênh lệch in) và `danhGiaGroups[].summaryRows` (bảng 4.1).
+
+Tab **Dữ liệu trong lệnh sản xuất** còn ghi bảng riêng **`bc_lsx`** (cùng `khoa_on_dinh`) — xem [bc_lsx.md](./bc_lsx.md).
 
 ## UI / utils
 
 | File | Vai trò |
 |------|---------|
-| `ControlBoardBbMachineReportTable.tsx` | Nút **Tính toán** + load snapshot |
+| `ControlBoardBbMachineReportTable.tsx` | Nút **Tính toán** + load snapshot; tab tiêu hao / đánh giá / thành phẩm |
 | `src/utils/bbBaoCaoTinhToan.ts` | Key + `buildBbMachineReportSnapshot` |
+| `src/utils/bbTieuHaoNvlPrintRows.ts` | Builder tiêu hao khớp phiếu in (nguồn tab + in) |
 
 ## Liên quan
 

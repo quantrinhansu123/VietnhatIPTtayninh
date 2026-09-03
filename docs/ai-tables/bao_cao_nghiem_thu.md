@@ -24,6 +24,7 @@ Trên `/phan-tich-tu-dong`:
 - Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm · Kho thành phẩm)
   - Sau **Tính toán**: SL/`trong_luong` trên phiếu + snapshot NVL `bao_cao_san_luong_nvl_dinh_muc`
   - NVL phụ (Cái/m²/…): `SL NVL = SL SP`; `TL NVL = SL × khoi_luong_kg`, không có thì `SL × tong_trong_luong`
+  - NVL % (nhựa trộn): `TL NVL = Σ Nhựa thực tế Cân AI` (ngày·ca·máy·mã SP) × `%`; không có cân thì `trong_luong_nhua × SL × %`
   - Danh sách hiện đủ NVL từ `san_pham.npl_phan_tram`; NVL % không có snapshot hiện `0`
   - Sau khi chọn Ngày/Ca và bấm **Áp dụng**, quy tắc trên áp dụng ngay cho cả bản tính cũ
   - Hiện **từng sản phẩm** (mã SP + NVL của SP đó); **không** gộp NVL mọi SP thành một danh sách

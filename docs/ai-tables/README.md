@@ -39,6 +39,15 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `khach_hang` | `/khach-hang` | [khach_hang.md](./khach_hang.md) |
 | `lenh_xuat_hang` | `/lenh-xuat-hang` | [lenh_xuat_hang.md](./lenh_xuat_hang.md) |
 | `lenh_sx` | `/lenh-san-xuat` | [lenh_sx.md](./lenh_sx.md) |
+| `bc_lsx` | `/phan-tich-tu-dong` · tab Lệnh SX | [bc_lsx.md](./bc_lsx.md) |
+| `du_lieu_xuat_kho` | `/phan-tich-tu-dong` · tab Dữ liệu xuất kho | [du_lieu_xuat_kho.md](./du_lieu_xuat_kho.md) |
+| `bao_cao_du_lieu_ton_dau_ca` | `/phan-tich-tu-dong` · tab Tồn đầu ca | [bao_cao_du_lieu_ton_dau_ca.md](./bao_cao_du_lieu_ton_dau_ca.md) |
+| `bao_cao_san_luong` | `/phan-tich-tu-dong` · tab Báo cáo sản lượng | [bao_cao_san_luong.md](./bao_cao_san_luong.md) |
+| `du_lieu_trong_bao_cao_hang_loi_hong` | `/phan-tich-tu-dong` · tab Hàng lỗi hỏng | [du_lieu_trong_bao_cao_hang_loi_hong.md](./du_lieu_trong_bao_cao_hang_loi_hong.md) |
+| `du_lieu_trong_bao_cao_kiem_ton_cuoi_ca` | `/phan-tich-tu-dong` · tab Kiểm tồn cuối ca | [du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.md](./du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.md) |
+| `bao_cao_thanh_pham_dat_nhap_kho` | `/phan-tich-tu-dong` · tab Thành phẩm nhập kho | [bao_cao_thanh_pham_dat_nhap_kho.md](./bao_cao_thanh_pham_dat_nhap_kho.md) |
+| `bao_cao_tieu_hao_nguyen_vat_lieu` | `/phan-tich-tu-dong` · tab Tiêu hao NVL | [bao_cao_tieu_hao_nguyen_vat_lieu.md](./bao_cao_tieu_hao_nguyen_vat_lieu.md) |
+| `bao_cao_tong_hop` | `/phan-tich-tu-dong` · KPI tổng hợp + Tổng hợp nhựa | [bao_cao_tong_hop.md](./bao_cao_tong_hop.md) |
 | `ke_hoach_san_xuat` | `/ke-hoach-san-xuat` | [ke_hoach_san_xuat.md](./ke_hoach_san_xuat.md) |
 | `nhan_su` | `/nhan-su` | [nhan_su.md](./nhan_su.md) |
 | `danh_sach_xe` | `/danh-sach-xe` | [danh_sach_xe.md](./danh_sach_xe.md) |
@@ -61,7 +70,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `bb_phan_tich_danh_gia` | *(phân tích đánh giá BB)* | [bb_phan_tich_danh_gia.md](./bb_phan_tich_danh_gia.md) |
 | `bb_giai_trinh` | *(giải trình /phan-tich-tu-dong)* | [bb_giai_trinh.md](./bb_giai_trinh.md) |
 | `bb_bao_cao_tinh_toan` | *(snapshot tính toán BB)* | [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) |
-| `phan_cong_cv` | *(bảng phân công công việc)* | [phan_cong_cv.md](./phan_cong_cv.md) |
+| `phan_cong_cv` | `/ke-hoach-san-xuat` · Loại **Kế hoạch CV** | [phan_cong_cv.md](./phan_cong_cv.md) |
 
 ## File dùng chung (chỉ khi cần)
 

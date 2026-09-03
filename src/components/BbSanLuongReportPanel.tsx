@@ -16,7 +16,7 @@ import {
   type BbSanLuongNvlLine
 } from '../utils/controlBoardBbMachineReport';
 
-function formatKg(value: number | null | undefined, digits = 2) {
+function formatKg(value: number | null | undefined, digits = 4) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return formatNumber(value, digits);
 }
@@ -82,9 +82,9 @@ function resolveNvlQuantity(line: BbSanLuongNvlLine) {
 }
 
 function resolveNvlWeight(line: BbSanLuongNvlLine) {
-  if (line.actualWeightKg > 0) return `${formatKg(line.actualWeightKg, 1)} kg`;
-  if (line.normWeightKg > 0) return `${formatKg(line.normWeightKg, 1)} kg`;
-  return `${formatKg(0, 1)} kg`;
+  if (line.actualWeightKg > 0) return `${formatKg(line.actualWeightKg)} kg`;
+  if (line.normWeightKg > 0) return `${formatKg(line.normWeightKg)} kg`;
+  return `${formatKg(0)} kg`;
 }
 
 function lineWeightKg(line: BbSanLuongNvlLine) {
@@ -138,11 +138,14 @@ function SanLuongShiftSection({
     ) as BbSanLuongNvlLine[];
     const tronLines = lines.filter(line => isBbSanLuongNvlKgLine(line));
     const conLaiLines = lines.filter(line => !isBbSanLuongNvlKgLine(line));
-    // Ô «Tổng vật tư trộn» = Tổng nhựa thành phẩm (weightKg đã overlay từ trong_luong_nhua × SL).
+    // «Tổng vật tư trộn» = Σ TL NVL nhựa trộn (không ưu tiên weightKg đã làm tròn).
+    const tongVatTuTronFromLines = tronLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
     const tongVatTuTronKg =
-      product.weightKg > 0
-        ? product.weightKg
-        : tronLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
+      tongVatTuTronFromLines > 0
+        ? tongVatTuTronFromLines
+        : product.weightKg > 0
+          ? product.weightKg
+          : 0;
     const tongVatTuConLaiKg = conLaiLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
     return {
       key: product.key,
@@ -229,7 +232,7 @@ function SanLuongShiftSection({
                       <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
                         Tổng vật tư trộn
                       </div>
-                      <div className="mt-0.5">{formatKg(product.tongVatTuTronKg, 1)}</div>
+                      <div className="mt-0.5">{formatKg(product.tongVatTuTronKg)}</div>
                     </td>
                   ) : null}
                   {showConLaiCell ? (
@@ -241,7 +244,7 @@ function SanLuongShiftSection({
                       <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
                         Tổng vật tư còn lại
                       </div>
-                      <div className="mt-0.5">{formatKg(product.tongVatTuConLaiKg, 1)}</div>
+                      <div className="mt-0.5">{formatKg(product.tongVatTuConLaiKg)}</div>
                     </td>
                   ) : null}
                   <td className="font-mono font-bold text-zinc-900">{line.itemCode || '—'}</td>
@@ -304,8 +307,8 @@ export default function BbSanLuongReportPanel({
         ))}
       </div>
       <div className="mt-6 flex justify-end gap-6 border-t border-zinc-200 pt-3 text-xs font-bold text-zinc-800">
-        <span>Tổng định mức NVL: {formatKg(totalNorm, 1)} kg</span>
-        <span>Tổng thực tế: {formatKg(totalActual, 1)} kg</span>
+        <span>Tổng định mức NVL: {formatKg(totalNorm)} kg</span>
+        <span>Tổng thực tế: {formatKg(totalActual)} kg</span>
       </div>
     </div>
   );

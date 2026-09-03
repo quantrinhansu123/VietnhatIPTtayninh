@@ -866,6 +866,7 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
           damagedGroups={data.totalReport.damagedGroups}
           mixingGroups={data.totalReport.mixingGroups}
           danhGiaGroups={data.totalReport.danhGiaGroups}
+          thucDungGroups={data.totalReport.thucDungGroups}
           inboundRows={data.totalReport.inboundRows}
           acceptanceReports={data.acceptance}
           products={data.productCatalog}

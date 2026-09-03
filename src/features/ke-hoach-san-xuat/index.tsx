@@ -21,6 +21,7 @@ import {
   resolveCustomerOrdersForPrint,
   type ProductionPlanRelatedReports
 } from './relatedReportsPrint';
+import PhanCongCvPanel from './PhanCongCvPanel';
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftOption } from '../../utils/shiftSettings';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
@@ -1874,6 +1875,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [editingPlan, setEditingPlan] = useState<ProductionPlanHistorySummary | null>(null);
   const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
   const [deletingPlanId, setDeletingPlanId] = useState('');
+  const [pageKind, setPageKind] = useState<'ke_hoach' | 'bao_cao_cv'>('ke_hoach');
+  const [phanCongAddTick, setPhanCongAddTick] = useState(0);
+
+  const pageKindOptions = [
+    { value: 'ke_hoach', label: 'Kế hoạch sản xuất' },
+    { value: 'bao_cao_cv', label: 'Kế hoạch CV' }
+  ] as const;
 
   const loadPlans = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
     setIsLoading(true);
@@ -1972,11 +1980,8 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     [selectedLines, selectedPrintLineIds]
   );
 
-  const printSelectedLines = async () => {
-    if (!selectedPlan) return;
-    const chosen = selectedLines.filter(line => selectedPrintLineIds.includes(line.id));
-    if (chosen.length === 0) return;
-    const printable: ProductionPlanLine[] = chosen.map(line => ({
+  const buildPrintablePlanLines = (lines: ProductionPlanHistoryLine[]): ProductionPlanLine[] =>
+    lines.map(line => ({
       id: line.productionOrderId || line.id,
       code: line.orderCode,
       name: line.orderCode,
@@ -1997,13 +2002,49 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       priority: line.priority,
       note: line.note
     }));
+
+  const printSelectedLines = async () => {
+    if (!selectedPlan) return;
+    const chosen =
+      selectedPrintLineIds.length > 0
+        ? selectedLines.filter(line => selectedPrintLineIds.includes(line.id))
+        : selectedLines;
+    if (chosen.length === 0) return;
     setIsPrintingSelected(true);
     setLoadError('');
     try {
       setHistoryPrintMaterials({});
-      setHistoryPrintLines(printable);
+      setHistoryPrintLines(buildPrintablePlanLines(chosen));
     } catch (error: any) {
       setLoadError(error.message || 'Không thể chuẩn bị dữ liệu in các lệnh đã chọn.');
+    } finally {
+      setIsPrintingSelected(false);
+    }
+  };
+
+  const printPlanFromList = async (planId: string) => {
+    setIsPrintingSelected(true);
+    setLoadError('');
+    try {
+      let lines = selectedPlanId === planId ? selectedLines : [];
+      if (selectedPlanId !== planId || lines.length === 0) {
+        const res = await fetch(`/api/ke-hoach-sx?id=${encodeURIComponent(planId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Không thể tải chi tiết kế hoạch để in.');
+        }
+        lines = normalizeProductionPlanHistoryLines(data);
+        setSelectedPlanId(planId);
+        setSelectedLines(lines);
+        setSelectedPrintLineIds(lines.map(line => line.id));
+      }
+      if (lines.length === 0) {
+        throw new Error('Kế hoạch không có lệnh để in.');
+      }
+      setHistoryPrintMaterials({});
+      setHistoryPrintLines(buildPrintablePlanLines(lines));
+    } catch (error: any) {
+      setLoadError(error.message || 'Không thể in kế hoạch.');
     } finally {
       setIsPrintingSelected(false);
     }
@@ -2155,15 +2196,37 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           {canCreate ? (
             <button
               type="button"
-              onClick={() => void openCreatePlan()}
+              onClick={() => {
+                if (pageKind === 'bao_cao_cv') {
+                  setPhanCongAddTick(tick => tick + 1);
+                  return;
+                }
+                void openCreatePlan();
+              }}
               disabled={isLoadingCreate}
-              className="mr-auto inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
             >
               {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Thêm mới
             </button>
           ) : null}
           <label className="space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>
+            <select
+              value={pageKind}
+              onChange={e => setPageKind(e.target.value === 'bao_cao_cv' ? 'bao_cao_cv' : 'ke_hoach')}
+              className="h-10 min-w-[13rem] rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+            >
+              {pageKindOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {pageKind === 'ke_hoach' ? (
+            <>
+          <label className="ml-auto space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
             <DateInput
               value={filterDate}
@@ -2214,6 +2277,8 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           >
             Hôm nay
           </button>
+            </>
+          ) : null}
         </div>
       </section>
 
@@ -2223,6 +2288,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         </section>
       )}
 
+      {pageKind === 'ke_hoach' ? (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
         <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
@@ -2276,6 +2342,19 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                         </button>
                         <div className="mt-2 flex flex-wrap gap-1.5 border-t border-zinc-200/70 pt-2">
                           <button type="button" onClick={() => void loadPlanDetail(plan.id)} className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 text-[11px] font-bold text-sky-700"><Eye className="h-3.5 w-3.5" />Xem</button>
+                          <button
+                            type="button"
+                            onClick={() => void printPlanFromList(plan.id)}
+                            disabled={isPrintingSelected || (selectedPlanId === plan.id && selectedLines.length === 0 && isLoadingDetail)}
+                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-[11px] font-bold text-red-700 disabled:opacity-50"
+                          >
+                            {isPrintingSelected && selectedPlanId === plan.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Printer className="h-3.5 w-3.5" />
+                            )}
+                            In
+                          </button>
                           {canEdit ? <button type="button" onClick={() => void openEditPlan(plan)} disabled={isLoadingCreate} className="inline-flex h-7 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button> : null}
                           {canDelete ? <button type="button" onClick={() => void deletePlan(plan)} disabled={deletingPlanId === plan.id} className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 disabled:opacity-50">{deletingPlanId === plan.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Xóa</button> : null}
                         </div>
@@ -2315,11 +2394,18 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                 <button
                   type="button"
                   onClick={() => void printSelectedLines()}
-                  disabled={selectedPrintLineIds.length === 0 || isPrintingSelected}
+                  disabled={selectedLines.length === 0 || isPrintingSelected}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    selectedPrintLineIds.length > 0
+                      ? `In ${selectedPrintLineIds.length} lệnh đã chọn`
+                      : 'In toàn bộ lệnh của kế hoạch'
+                  }
                 >
                   {isPrintingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                  In {selectedPrintLineIds.length} lệnh đã chọn
+                  {selectedPrintLineIds.length > 0
+                    ? `In ${selectedPrintLineIds.length} lệnh`
+                    : 'In'}
                 </button>
               </div>
             ) : null}
@@ -2394,6 +2480,14 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           )}
         </section>
       </div>
+      ) : (
+      <PhanCongCvPanel
+        defaultDate={filterDate || selectedPlan?.planDate || todayDateInputValue()}
+        canEdit={canCreate || canEdit}
+        addRowTick={phanCongAddTick}
+      />
+      )}
+
       {historyPrintLines.length > 0 ? createPortal(
         <div className="production-plan-history-print-root">
           <ProductionPlanPrintSheet

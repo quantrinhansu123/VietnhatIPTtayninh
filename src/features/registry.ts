@@ -22,6 +22,15 @@ export type TableId =
   | 'khach_hang'
   | 'lenh_xuat_hang'
   | 'lenh_sx'
+  | 'bc_lsx'
+  | 'du_lieu_xuat_kho'
+  | 'bao_cao_du_lieu_ton_dau_ca'
+  | 'bao_cao_san_luong'
+  | 'du_lieu_trong_bao_cao_hang_loi_hong'
+  | 'du_lieu_trong_bao_cao_kiem_ton_cuoi_ca'
+  | 'bao_cao_thanh_pham_dat_nhap_kho'
+  | 'bao_cao_tieu_hao_nguyen_vat_lieu'
+  | 'bao_cao_tong_hop'
   | 'ke_hoach_san_xuat'
   | 'nhan_su'
   | 'danh_sach_xe'
@@ -43,7 +52,8 @@ export type TableId =
   | 'bb_bao_cao_ly_do'
   | 'bb_phan_tich_danh_gia'
   | 'bb_giai_trinh'
-  | 'bb_bao_cao_tinh_toan';
+  | 'bb_bao_cao_tinh_toan'
+  | 'phan_cong_cv';
 
 export interface TableRegistryEntry {
   table: TableId;
@@ -275,6 +285,105 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/features/lenh-sx/index.tsx',
     components: ['src/components/MixingProductionOrderAutofillModal.tsx'],
     utils: []
+  },
+  bc_lsx: {
+    table: 'bc_lsx',
+    label: 'bc_Lsx — tab Lệnh SX (/phan-tich-tu-dong)',
+    sql: ['supabase-bc-lsx.sql'],
+    apiPrefix: '/api/bc-lsx',
+    serverLines: 'GET/PUT /api/bc-lsx',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/bcLsx.ts', 'src/utils/bbBaoCaoTinhToan.ts']
+  },
+  du_lieu_xuat_kho: {
+    table: 'du_lieu_xuat_kho',
+    label: 'Dữ liệu xuất kho — tab Xuất kho (/phan-tich-tu-dong)',
+    sql: ['supabase-du-lieu-xuat-kho.sql'],
+    apiPrefix: '/api/du-lieu-xuat-kho',
+    serverLines: 'GET/PUT /api/du-lieu-xuat-kho',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/duLieuXuatKho.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_du_lieu_ton_dau_ca: {
+    table: 'bao_cao_du_lieu_ton_dau_ca',
+    label: 'Báo cáo dữ liệu tồn đầu ca — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-bao-cao-du-lieu-ton-dau-ca.sql'],
+    apiPrefix: '/api/bao-cao-du-lieu-ton-dau-ca',
+    serverLines: 'GET/PUT /api/bao-cao-du-lieu-ton-dau-ca',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/baoCaoDuLieuTonDauCa.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_san_luong: {
+    table: 'bao_cao_san_luong',
+    label: 'Báo cáo sản lượng — snapshot tab (/phan-tich-tu-dong)',
+    sql: ['supabase-bao-cao-san-luong.sql'],
+    apiPrefix: '/api/bao-cao-san-luong',
+    serverLines: 'GET/PUT /api/bao-cao-san-luong',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx', 'src/components/BbSanLuongReportPanel.tsx'],
+    utils: ['src/utils/baoCaoSanLuong.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  du_lieu_trong_bao_cao_hang_loi_hong: {
+    table: 'du_lieu_trong_bao_cao_hang_loi_hong',
+    label: 'Dữ liệu trong báo cáo hàng lỗi hỏng — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-du-lieu-trong-bao-cao-hang-loi-hong.sql'],
+    apiPrefix: '/api/du-lieu-trong-bao-cao-hang-loi-hong',
+    serverLines: 'GET/PUT /api/du-lieu-trong-bao-cao-hang-loi-hong',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/duLieuTrongBaoCaoHangLoiHong.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  du_lieu_trong_bao_cao_kiem_ton_cuoi_ca: {
+    table: 'du_lieu_trong_bao_cao_kiem_ton_cuoi_ca',
+    label: 'Kiểm tồn cuối ca — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-du-lieu-trong-bao-cao-kiem-ton-cuoi-ca.sql'],
+    apiPrefix: '/api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca',
+    serverLines: 'GET/PUT /api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/duLieuTrongBaoCaoKiemTonCuoiCa.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_thanh_pham_dat_nhap_kho: {
+    table: 'bao_cao_thanh_pham_dat_nhap_kho',
+    label: 'Thành phẩm đạt nhập kho — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-bao-cao-thanh-pham-dat-nhap-kho.sql'],
+    apiPrefix: '/api/bao-cao-thanh-pham-dat-nhap-kho',
+    serverLines: 'GET/PUT /api/bao-cao-thanh-pham-dat-nhap-kho',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/baoCaoThanhPhamDatNhapKho.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_tieu_hao_nguyen_vat_lieu: {
+    table: 'bao_cao_tieu_hao_nguyen_vat_lieu',
+    label: 'Tiêu hao nguyên vật liệu — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-bao-cao-tieu-hao-nguyen-vat-lieu.sql'],
+    apiPrefix: '/api/bao-cao-tieu-hao-nguyen-vat-lieu',
+    serverLines: 'GET/PUT /api/bao-cao-tieu-hao-nguyen-vat-lieu',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/baoCaoTieuHaoNguyenVatLieu.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_tong_hop: {
+    table: 'bao_cao_tong_hop',
+    label: 'Báo cáo tổng hợp KPI + Tổng hợp nhựa — snapshot (/phan-tich-tu-dong)',
+    sql: ['supabase-bao-cao-tong-hop.sql'],
+    apiPrefix: '/api/bao-cao-tong-hop',
+    serverLines: 'GET/PUT /api/bao-cao-tong-hop',
+    appTab: 'dashboard-auto | dashboard | control-board',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
+    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    utils: ['src/utils/baoCaoTongHop.ts', 'src/utils/bbBaoCaoTinhToan.ts']
   },
   ke_hoach_san_xuat: {
     table: 'ke_hoach_san_xuat',
@@ -559,6 +668,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
     components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
     utils: ['src/utils/bbBaoCaoTinhToan.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  phan_cong_cv: {
+    table: 'phan_cong_cv',
+    label: 'Kế hoạch CV (phan_cong_cv)',
+    sql: ['supabase-phan-cong-cv.sql'],
+    apiPrefix: '/api/phan-cong-cv',
+    serverLines: 'GET/PUT/DELETE /api/phan-cong-cv (sau /api/phieu-giao-ca)',
+    appTab: 'production-plan-history',
+    appLines: 'src/features/ke-hoach-san-xuat/PhanCongCvPanel.tsx',
+    components: ['src/features/ke-hoach-san-xuat/PhanCongCvPanel.tsx'],
+    utils: []
   }
 };
 

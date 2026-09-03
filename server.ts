@@ -101,6 +101,8 @@ const SUPABASE_CUSTOMERS_TABLE = process.env.SUPABASE_CUSTOMERS_TABLE || 'khach_
 const SUPABASE_SHIPPING_ORDERS_TABLE = process.env.SUPABASE_SHIPPING_ORDERS_TABLE || 'lenh_xuat_hang';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'cai_dat_thoi_gian';
 const SUPABASE_PRODUCTION_ORDERS_TABLE = process.env.SUPABASE_PRODUCTION_ORDERS_TABLE || 'lenh_sx';
+const SUPABASE_PRODUCTION_ORDER_LINES_TABLE =
+  process.env.SUPABASE_PRODUCTION_ORDER_LINES_TABLE || 'lenh_sx_dong';
 const SUPABASE_PRODUCTION_PLANS_TABLE = process.env.SUPABASE_PRODUCTION_PLANS_TABLE || 'ke_hoach_san_xuat';
 const SUPABASE_PRODUCTION_PLAN_LINES_TABLE =
   process.env.SUPABASE_PRODUCTION_PLAN_LINES_TABLE || 'ke_hoach_san_xuat_dong';
@@ -119,6 +121,7 @@ const SUPABASE_MACHINE_DOWNTIME_TABLE =
   process.env.SUPABASE_MACHINE_DOWNTIME_TABLE || 'phieu_bao_dung_may';
 const SUPABASE_SHIFT_HANDOVER_TABLE =
   process.env.SUPABASE_SHIFT_HANDOVER_TABLE || 'phieu_giao_ca';
+const SUPABASE_PHAN_CONG_CV_TABLE = process.env.SUPABASE_PHAN_CONG_CV_TABLE || 'phan_cong_cv';
 const SUPABASE_BB_BAO_CAO_LY_DO_TABLE =
   process.env.SUPABASE_BB_BAO_CAO_LY_DO_TABLE || 'bb_bao_cao_ly_do';
 const SUPABASE_BB_PHAN_TICH_DANH_GIA_TABLE =
@@ -127,6 +130,34 @@ const SUPABASE_BB_GIAI_TRINH_TABLE =
   process.env.SUPABASE_BB_GIAI_TRINH_TABLE || 'bb_giai_trinh';
 const SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE =
   process.env.SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE || 'bb_bao_cao_tinh_toan';
+/** Snapshot tab «Dữ liệu trong lệnh SX» (/phan-tich-tu-dong) — UI: bc_Lsx */
+const SUPABASE_BC_LSX_TABLE = process.env.SUPABASE_BC_LSX_TABLE || 'bc_lsx';
+/** Snapshot tab «Dữ liệu xuất kho» (/phan-tich-tu-dong) */
+const SUPABASE_DU_LIEU_XUAT_KHO_TABLE =
+  process.env.SUPABASE_DU_LIEU_XUAT_KHO_TABLE || 'du_lieu_xuat_kho';
+/** Snapshot tab «Báo cáo dữ liệu tồn đầu ca» — KHÔNG trùng bao_cao_may_nvl_ton */
+const SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE =
+  process.env.SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE || 'bao_cao_du_lieu_ton_dau_ca';
+/** Snapshot tab «Báo cáo sản lượng» — ≠ bao_cao_nghiem_thu / bao_cao_san_luong_nvl_dinh_muc */
+const SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE =
+  process.env.SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE || 'bao_cao_san_luong';
+/** Snapshot tab «Dữ liệu trong báo cáo hàng lỗi hỏng» — ≠ bao_cao_hang_hong */
+const SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE =
+  process.env.SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE ||
+  'du_lieu_trong_bao_cao_hang_loi_hong';
+/** Snapshot tab «Kiểm tồn cuối ca» — ≠ bao_cao_may_nvl_ton */
+const SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE =
+  process.env.SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE ||
+  'du_lieu_trong_bao_cao_kiem_ton_cuoi_ca';
+/** Snapshot tab «Thành phẩm đạt nhập kho» */
+const SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE =
+  process.env.SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE || 'bao_cao_thanh_pham_dat_nhap_kho';
+/** Snapshot tab «Tiêu hao nguyên vật liệu» */
+const SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE =
+  process.env.SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE || 'bao_cao_tieu_hao_nguyen_vat_lieu';
+/** Snapshot khối KPI «Báo cáo tổng hợp» + «Tổng hợp nhựa» — 1 dòng / khoa_on_dinh */
+const SUPABASE_BAO_CAO_TONG_HOP_TABLE =
+  process.env.SUPABASE_BAO_CAO_TONG_HOP_TABLE || 'bao_cao_tong_hop';
 const SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE =
   process.env.SUPABASE_CAN_TU_DONG_TONG_HOP_TABLE || 'can_tu_dong_tong_hop';
 const CAN_TU_DONG_BI_KG = 0.16;
@@ -338,6 +369,16 @@ if (useSupabase) {
     shippingOrders: SUPABASE_SHIPPING_ORDERS_TABLE,
     settings: SUPABASE_SETTINGS_TABLE,
     productionOrders: SUPABASE_PRODUCTION_ORDERS_TABLE,
+    productionOrderLines: SUPABASE_PRODUCTION_ORDER_LINES_TABLE,
+    bcLsx: SUPABASE_BC_LSX_TABLE,
+    duLieuXuatKho: SUPABASE_DU_LIEU_XUAT_KHO_TABLE,
+    baoCaoDuLieuTonDauCa: SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE,
+    baoCaoSanLuong: SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE,
+    duLieuTrongBaoCaoHangLoiHong: SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE,
+    duLieuTrongBaoCaoKiemTonCuoiCa: SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE,
+    baoCaoThanhPhamDatNhapKho: SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE,
+    baoCaoTieuHaoNguyenVatLieu: SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE,
+    baoCaoTongHop: SUPABASE_BAO_CAO_TONG_HOP_TABLE,
     productionPlans: SUPABASE_PRODUCTION_PLANS_TABLE,
     productionPlanLines: SUPABASE_PRODUCTION_PLAN_LINES_TABLE,
     warehouseMovements: SUPABASE_WAREHOUSE_MOVEMENTS_TABLE,
@@ -4336,6 +4377,69 @@ function parseShiftHandoverKpiLine(source: unknown, index: number) {
   };
 }
 
+function parseShiftHandoverClosingStockLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ma_nvl = String(record.ma_nvl ?? record.itemCode ?? record.ma ?? '').trim();
+  const ten_nvl = String(record.ten_nvl ?? record.itemName ?? record.ten ?? '').trim();
+  const dvt = String(record.dvt ?? record.don_vi ?? record.unit ?? '').trim();
+  const so_luong = parseShiftHandoverNumber(record.so_luong ?? record.quantity);
+  const trong_luong_kg = parseShiftHandoverNumber(
+    record.trong_luong_kg ?? record.trong_luong ?? record.weightKg
+  );
+  if (!ma_nvl && !ten_nvl && so_luong === null && trong_luong_kg === null) return null;
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    ma_nvl,
+    ten_nvl,
+    dvt,
+    so_luong,
+    trong_luong_kg
+  };
+}
+
+function parseShiftHandoverMixingMaterialLine(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ma_nvl = String(record.ma_nvl ?? record.materialCode ?? '').trim();
+  const ten_nvl = String(record.ten_nvl ?? record.materialName ?? record.ten ?? '').trim();
+  const don_vi = String(record.don_vi ?? record.dvt ?? record.unit ?? '').trim() || 'kg';
+  const dinh_muc_kg = parseShiftHandoverNumber(record.dinh_muc_kg ?? record.normKg);
+  const ti_le = parseShiftHandoverNumber(record.ti_le ?? record.percent);
+  const ton_dau = parseShiftHandoverNumber(record.ton_dau ?? record.opening);
+  const lay_kho = parseShiftHandoverNumber(record.lay_kho ?? record.takenFromWh);
+  const lan1 = parseShiftHandoverNumber(record.lan1 ?? record.use1);
+  const lan2 = parseShiftHandoverNumber(record.lan2 ?? record.use2);
+  const lan3 = parseShiftHandoverNumber(record.lan3 ?? record.use3);
+  const lan4 = parseShiftHandoverNumber(record.lan4 ?? record.use4);
+  const lan5 = parseShiftHandoverNumber(record.lan5 ?? record.use5);
+  const tong_nhua_tron = parseShiftHandoverNumber(record.tong_nhua_tron ?? record.mixedTotal);
+  const ton_cuoi = parseShiftHandoverNumber(record.ton_cuoi ?? record.closing);
+  const thuc_te_sd = parseShiftHandoverNumber(record.thuc_te_sd ?? record.actualUsage);
+  const hasQty = [dinh_muc_kg, ti_le, ton_dau, lay_kho, lan1, lan2, lan3, lan4, lan5, tong_nhua_tron, ton_cuoi, thuc_te_sd].some(
+    value => value !== null
+  );
+  if (!ma_nvl && !ten_nvl && !hasQty) return null;
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    ma_nvl,
+    ten_nvl,
+    don_vi,
+    dinh_muc_kg,
+    ti_le,
+    ton_dau,
+    lay_kho,
+    lan1,
+    lan2,
+    lan3,
+    lan4,
+    lan5,
+    tong_nhua_tron,
+    ton_cuoi,
+    thuc_te_sd
+  };
+}
+
 function parseShiftHandoverNkSxDetail(source: Record<string, unknown>) {
   const nested =
     source.chi_tiet && typeof source.chi_tiet === 'object' && !Array.isArray(source.chi_tiet)
@@ -4350,6 +4454,16 @@ function parseShiftHandoverNkSxDetail(source: Record<string, unknown>) {
     ? source.hang_loi
     : Array.isArray(nested.hang_loi)
       ? nested.hang_loi
+      : [];
+  const closingStockSource = Array.isArray(source.ton_cuoi_ca)
+    ? source.ton_cuoi_ca
+    : Array.isArray(nested.ton_cuoi_ca)
+      ? nested.ton_cuoi_ca
+      : [];
+  const materialSource = Array.isArray(source.vat_tu)
+    ? source.vat_tu
+    : Array.isArray(nested.vat_tu)
+      ? nested.vat_tu
       : [];
   const kpiSource = Array.isArray(source.bao_cao_cuoi_ca)
     ? source.bao_cao_cuoi_ca
@@ -4366,6 +4480,12 @@ function parseShiftHandoverNkSxDetail(source: Record<string, unknown>) {
       .filter((line): line is NonNullable<typeof line> => Boolean(line)),
     hang_loi: scrapSource
       .map((line, index) => parseShiftHandoverScrapLine(line, index))
+      .filter((line): line is NonNullable<typeof line> => Boolean(line)),
+    ton_cuoi_ca: closingStockSource
+      .map((line, index) => parseShiftHandoverClosingStockLine(line, index))
+      .filter((line): line is NonNullable<typeof line> => Boolean(line)),
+    vat_tu: materialSource
+      .map((line, index) => parseShiftHandoverMixingMaterialLine(line, index))
       .filter((line): line is NonNullable<typeof line> => Boolean(line)),
     bao_cao_cuoi_ca: kpiSource
       .map((line, index) => parseShiftHandoverKpiLine(line, index))
@@ -4398,8 +4518,12 @@ function parseShiftHandoverBody(body: unknown): { error: string } | { record: Re
     nestedDetail?.loai === 'nk_sx' ||
     Array.isArray(source.thanh_pham) ||
     Array.isArray(source.hang_loi) ||
+    Array.isArray(source.ton_cuoi_ca) ||
+    Array.isArray(source.vat_tu) ||
     Array.isArray(source.bao_cao_cuoi_ca) ||
-    Array.isArray(nestedDetail?.thanh_pham);
+    Array.isArray(nestedDetail?.thanh_pham) ||
+    Array.isArray(nestedDetail?.ton_cuoi_ca) ||
+    Array.isArray(nestedDetail?.vat_tu);
 
   const rawLegacyLines = source.chi_tiet ?? source.lines ?? source.items;
   const chi_tiet = isNkSx
@@ -4440,6 +4564,51 @@ function shiftHandoverWriteError(error: { code?: string; message?: string }) {
     return `Bảng ${SUPABASE_SHIFT_HANDOVER_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-phieu-giao-ca.sql.`;
   }
   return `Không thể lưu phiếu giao ca. ${error.message || ''}`.trim();
+}
+
+function phanCongCvWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_PHAN_CONG_CV_TABLE} chưa tồn tại. Hãy chạy supabase-phan-cong-cv.sql.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_PHAN_CONG_CV_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-phan-cong-cv.sql.`;
+  }
+  return `Không thể lưu phân công công việc. ${error.message || ''}`.trim();
+}
+
+function parsePhanCongCvRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ngayRaw = String(record.ngay ?? record.date ?? '').trim();
+  const ngay = ngayRaw ? parseWarehouseSlipDate(ngayRaw) || ngayRaw.slice(0, 10) : null;
+  const ca = String(record.ca ?? record.shift ?? '').trim() || null;
+  const cong_viec = String(record.cong_viec ?? record.congViec ?? record.job ?? '').trim() || null;
+  const nhan_su_phu_trach =
+    String(record.nhan_su_phu_trach ?? record.nhanSuPhuTrach ?? record.assignee ?? '').trim() || null;
+  const ghi_chu = String(record.ghi_chu ?? record.note ?? '').trim() || null;
+  const thanh_pham = String(record.thanh_pham ?? record.product ?? '').trim() || null;
+  const dm_thanh_pham_TT =
+    String(
+      record.dm_thanh_pham_TT ??
+        record.dm_thanh_pham_tt ??
+        record.dmThanhPhamTT ??
+        record.dm_thanh_pham ??
+        ''
+    ).trim() || null;
+
+  if (!ngay && !ca && !cong_viec && !nhan_su_phu_trach && !ghi_chu && !thanh_pham && !dm_thanh_pham_TT) {
+    return null;
+  }
+
+  return {
+    ngay,
+    ca,
+    cong_viec,
+    nhan_su_phu_trach,
+    ghi_chu,
+    thanh_pham,
+    dm_thanh_pham_TT
+  };
 }
 
 function normalizeBbLyDoToken(value: unknown) {
@@ -4679,6 +4848,496 @@ function bbBaoCaoTinhToanWriteError(error: { code?: string; message?: string }) 
     return `Bảng ${SUPABASE_BB_BAO_CAO_TINH_TOAN_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bb-bao-cao-tinh-toan.sql.`;
   }
   return `Không thể lưu bản tính toán báo cáo BB. ${error.message || ''}`.trim();
+}
+
+function bcLsxWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BC_LSX_TABLE} chưa tồn tại. Hãy chạy supabase-bc-lsx.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BC_LSX_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bc-lsx.sql.`;
+  }
+  return `Không thể lưu bc_lsx. ${error.message || ''}`.trim();
+}
+
+function duLieuXuatKhoWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_XUAT_KHO_TABLE} chưa tồn tại. Hãy chạy supabase-du-lieu-xuat-kho.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_XUAT_KHO_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-du-lieu-xuat-kho.sql.`;
+  }
+  return `Không thể lưu du_lieu_xuat_kho. ${error.message || ''}`.trim();
+}
+
+function baoCaoDuLieuTonDauCaWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-du-lieu-ton-dau-ca.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-du-lieu-ton-dau-ca.sql.`;
+  }
+  return `Không thể lưu bao_cao_du_lieu_ton_dau_ca. ${error.message || ''}`.trim();
+}
+
+function baoCaoSanLuongWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-san-luong.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-san-luong.sql.`;
+  }
+  return `Không thể lưu bao_cao_san_luong. ${error.message || ''}`.trim();
+}
+
+function duLieuTrongBaoCaoHangLoiHongWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE} chưa tồn tại. Hãy chạy supabase-du-lieu-trong-bao-cao-hang-loi-hong.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-du-lieu-trong-bao-cao-hang-loi-hong.sql.`;
+  }
+  return `Không thể lưu du_lieu_trong_bao_cao_hang_loi_hong. ${error.message || ''}`.trim();
+}
+
+function duLieuTrongBaoCaoKiemTonCuoiCaWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE} chưa tồn tại. Hãy chạy supabase-du-lieu-trong-bao-cao-kiem-ton-cuoi-ca.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-du-lieu-trong-bao-cao-kiem-ton-cuoi-ca.sql.`;
+  }
+  return `Không thể lưu du_lieu_trong_bao_cao_kiem_ton_cuoi_ca. ${error.message || ''}`.trim();
+}
+
+function baoCaoThanhPhamDatNhapKhoWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-thanh-pham-dat-nhap-kho.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-thanh-pham-dat-nhap-kho.sql.`;
+  }
+  return `Không thể lưu bao_cao_thanh_pham_dat_nhap_kho. ${error.message || ''}`.trim();
+}
+
+function baoCaoTieuHaoNguyenVatLieuWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-tieu-hao-nguyen-vat-lieu.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-tieu-hao-nguyen-vat-lieu.sql.`;
+  }
+  return `Không thể lưu bao_cao_tieu_hao_nguyen_vat_lieu. ${error.message || ''}`.trim();
+}
+
+function baoCaoTongHopWriteError(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_TONG_HOP_TABLE} chưa tồn tại. Hãy chạy supabase-bao-cao-tong-hop.sql trên Supabase.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_BAO_CAO_TONG_HOP_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-bao-cao-tong-hop.sql.`;
+  }
+  return `Không thể lưu bao_cao_tong_hop. ${error.message || ''}`.trim();
+}
+
+function parseBaoCaoSanLuongRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    ma_sp: String(row.ma_sp ?? row.maSp ?? '').trim() || null,
+    ten_sp: String(row.ten_sp ?? row.tenSp ?? '').trim() || null,
+    don_vi_sp: String(row.don_vi_sp ?? row.donViSp ?? '').trim() || null,
+    sl_sp: numOrNull(row.sl_sp ?? row.slSp),
+    tl_sp_kg: numOrNull(row.tl_sp_kg ?? row.tlSpKg),
+    ti_le_sp_percent: numOrNull(row.ti_le_sp_percent ?? row.tiLeSpPercent),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    loai_dinh_muc: String(row.loai_dinh_muc ?? row.loaiDinhMuc ?? '').trim() || null,
+    dinh_muc_rate: numOrNull(row.dinh_muc_rate ?? row.dinhMucRate),
+    dinh_muc_unit: String(row.dinh_muc_unit ?? row.dinhMucUnit ?? '').trim() || null,
+    ti_le_dinh_muc_percent: numOrNull(row.ti_le_dinh_muc_percent ?? row.tiLeDinhMucPercent),
+    sl_nvl: numOrNull(row.sl_nvl ?? row.slNvl),
+    tl_nvl_dinh_muc_kg: numOrNull(row.tl_nvl_dinh_muc_kg ?? row.tlNvlDinhMucKg),
+    tl_nvl_thuc_te_kg: numOrNull(row.tl_nvl_thuc_te_kg ?? row.tlNvlThucTeKg),
+    so_dong_nvl_sp: numOrNull(row.so_dong_nvl_sp ?? row.soDongNvlSp),
+    so_sp_lenh: numOrNull(row.so_sp_lenh ?? row.soSpLenh),
+    tong_tl_dinh_muc_lenh_kg: numOrNull(row.tong_tl_dinh_muc_lenh_kg ?? row.tongTlDinhMucLenhKg),
+    tong_tl_thuc_te_lenh_kg: numOrNull(row.tong_tl_thuc_te_lenh_kg ?? row.tongTlThucTeLenhKg)
+  };
+}
+
+function parseDuLieuTrongBaoCaoHangLoiHongRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  const nhomRaw = String(row.nhom ?? '').trim().toLowerCase();
+  const nhom = nhomRaw === 'tron' || nhomRaw === 'con_lai' ? nhomRaw : null;
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    nhom,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    ti_le_tron_percent: numOrNull(row.ti_le_tron_percent ?? row.tiLeTronPercent),
+    ti_le_dinh_muc_percent: numOrNull(row.ti_le_dinh_muc_percent ?? row.tiLeDinhMucPercent),
+    trong_luong_loi_kg: numOrNull(row.trong_luong_loi_kg ?? row.trongLuongLoiKg),
+    so_dong_nvl: numOrNull(row.so_dong_nvl ?? row.soDongNvl),
+    tong_nhua_loi_kg: numOrNull(row.tong_nhua_loi_kg ?? row.tongNhuaLoiKg),
+    tong_loi_hong_kg: numOrNull(row.tong_loi_hong_kg ?? row.tongLoiHongKg),
+    rac_mang_xi_kg: numOrNull(row.rac_mang_xi_kg ?? row.racMangXiKg)
+  };
+}
+
+function parseDuLieuTrongBaoCaoKiemTonCuoiCaRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const boolOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || value === 'true' || value === 'TRUE') return true;
+    if (value === 0 || value === '0' || value === 'false' || value === 'FALSE') return false;
+    return null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    loai_dinh_muc: String(row.loai_dinh_muc ?? row.loaiDinhMuc ?? '').trim() || null,
+    dinh_muc_rate: numOrNull(row.dinh_muc_rate ?? row.dinhMucRate),
+    dinh_muc_unit: String(row.dinh_muc_unit ?? row.dinhMucUnit ?? '').trim() || null,
+    ti_le_dinh_muc_percent: numOrNull(row.ti_le_dinh_muc_percent ?? row.tiLeDinhMucPercent),
+    ti_le_thuc_te_tb_percent: numOrNull(row.ti_le_thuc_te_tb_percent ?? row.tiLeThucTeTbPercent),
+    ton_cuoi_sl: numOrNull(row.ton_cuoi_sl ?? row.tonCuoiSl),
+    ton_cuoi_kg: numOrNull(row.ton_cuoi_kg ?? row.tonCuoiKg),
+    tu_nns_tron: boolOrNull(row.tu_nns_tron ?? row.tuNnsTron),
+    nns_tron_ton_cuoi_kg: numOrNull(row.nns_tron_ton_cuoi_kg ?? row.nnsTronTonCuoiKg),
+    ton_cuoi_truc_tiep_kg: numOrNull(row.ton_cuoi_truc_tiep_kg ?? row.tonCuoiTrucTiepKg),
+    so_dong_nvl: numOrNull(row.so_dong_nvl ?? row.soDongNvl),
+    so_sp: numOrNull(row.so_sp ?? row.soSp),
+    tong_ton_cuoi_lenh_kg: numOrNull(row.tong_ton_cuoi_lenh_kg ?? row.tongTonCuoiLenhKg)
+  };
+}
+
+function parseBaoCaoThanhPhamDatNhapKhoRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_sp: String(row.ma_sp ?? row.maSp ?? '').trim() || null,
+    ten_sp: String(row.ten_sp ?? row.tenSp ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    sl_yeu_cau: numOrNull(row.sl_yeu_cau ?? row.slYeuCau),
+    tl_yeu_cau_kg: numOrNull(row.tl_yeu_cau_kg ?? row.tlYeuCauKg),
+    sl_thuc_te: numOrNull(row.sl_thuc_te ?? row.slThucTe),
+    tl_thuc_te_kg: numOrNull(row.tl_thuc_te_kg ?? row.tlThucTeKg),
+    tl_nhua_kg: numOrNull(row.tl_nhua_kg ?? row.tlNhuaKg),
+    tl_mang_kg: numOrNull(row.tl_mang_kg ?? row.tlMangKg),
+    ti_le_sl_dat_percent: numOrNull(row.ti_le_sl_dat_percent ?? row.tiLeSlDatPercent),
+    ti_le_kl_nhua_percent: numOrNull(row.ti_le_kl_nhua_percent ?? row.tiLeKlNhuaPercent),
+    so_dong_sp: numOrNull(row.so_dong_sp ?? row.soDongSp),
+    tong_sl_yeu_cau: numOrNull(row.tong_sl_yeu_cau ?? row.tongSlYeuCau),
+    tong_tl_yeu_cau_kg: numOrNull(row.tong_tl_yeu_cau_kg ?? row.tongTlYeuCauKg),
+    tong_sl_thuc_te: numOrNull(row.tong_sl_thuc_te ?? row.tongSlThucTe),
+    tong_tl_thuc_te_kg: numOrNull(row.tong_tl_thuc_te_kg ?? row.tongTlThucTeKg)
+  };
+}
+
+function parseBaoCaoTieuHaoNguyenVatLieuRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  const nhomRaw = String(row.nhom ?? '').trim().toLowerCase();
+  const nhom = nhomRaw === 'nhua' || nhomRaw === 'khac' ? nhomRaw : null;
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    nhom,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    ti_le_dinh_muc_percent: numOrNull(row.ti_le_dinh_muc_percent ?? row.tiLeDinhMucPercent),
+    ti_le_thuc_te_tb_percent: numOrNull(row.ti_le_thuc_te_tb_percent ?? row.tiLeThucTeTbPercent),
+    thuc_tron_kg: numOrNull(row.thuc_tron_kg ?? row.thucTronKg),
+    xuat_kho_kg: numOrNull(row.xuat_kho_kg ?? row.xuatKhoKg),
+    ton_dau_kg: numOrNull(row.ton_dau_kg ?? row.tonDauKg),
+    nhap_thanh_pham_kg: numOrNull(row.nhap_thanh_pham_kg ?? row.nhapThanhPhamKg),
+    loi_hong_kg: numOrNull(row.loi_hong_kg ?? row.loiHongKg),
+    ton_cuoi_kg: numOrNull(row.ton_cuoi_kg ?? row.tonCuoiKg),
+    xuat_thuc_te_kg: numOrNull(row.xuat_thuc_te_kg ?? row.xuatThucTeKg),
+    chenh_lech_kg: numOrNull(row.chenh_lech_kg ?? row.chenhLechKg),
+    so_dong_nvl: numOrNull(row.so_dong_nvl ?? row.soDongNvl),
+    tong_thuc_tron_lenh_kg: numOrNull(row.tong_thuc_tron_lenh_kg ?? row.tongThucTronLenhKg),
+    tong_xuat_lenh_kg: numOrNull(row.tong_xuat_lenh_kg ?? row.tongXuatLenhKg),
+    tong_ton_dau_lenh_kg: numOrNull(row.tong_ton_dau_lenh_kg ?? row.tongTonDauLenhKg),
+    tong_ton_cuoi_lenh_kg: numOrNull(row.tong_ton_cuoi_lenh_kg ?? row.tongTonCuoiLenhKg)
+  };
+}
+
+function parseBaoCaoTongHopRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    khoa_on_dinh,
+    ngay_tu: String(row.ngay_tu ?? row.ngayTu ?? '').trim(),
+    ngay_den: String(row.ngay_den ?? row.ngayDen ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    may: String(row.may ?? '').trim(),
+    nguon_san_luong: String(row.nguon_san_luong ?? row.nguonSanLuong ?? '').trim(),
+    sl_yeu_cau: numOrNull(row.sl_yeu_cau ?? row.slYeuCau),
+    tl_nhua_yeu_cau_kg: numOrNull(row.tl_nhua_yeu_cau_kg ?? row.tlNhuaYeuCauKg),
+    tl_xuat_tong_kg: numOrNull(row.tl_xuat_tong_kg ?? row.tlXuatTongKg),
+    tl_xuat_nhua_kg: numOrNull(row.tl_xuat_nhua_kg ?? row.tlXuatNhuaKg),
+    tl_xuat_khac_kg: numOrNull(row.tl_xuat_khac_kg ?? row.tlXuatKhacKg),
+    ton_dau_tong_kg: numOrNull(row.ton_dau_tong_kg ?? row.tonDauTongKg),
+    ton_dau_nhua_kg: numOrNull(row.ton_dau_nhua_kg ?? row.tonDauNhuaKg),
+    ton_dau_khac_kg: numOrNull(row.ton_dau_khac_kg ?? row.tonDauKhacKg),
+    ton_cuoi_tong_kg: numOrNull(row.ton_cuoi_tong_kg ?? row.tonCuoiTongKg),
+    ton_cuoi_nhua_kg: numOrNull(row.ton_cuoi_nhua_kg ?? row.tonCuoiNhuaKg),
+    ton_cuoi_khac_kg: numOrNull(row.ton_cuoi_khac_kg ?? row.tonCuoiKhacKg),
+    sl_san_luong: numOrNull(row.sl_san_luong ?? row.slSanLuong),
+    tl_san_luong_kg: numOrNull(row.tl_san_luong_kg ?? row.tlSanLuongKg),
+    tl_mang_kg: numOrNull(row.tl_mang_kg ?? row.tlMangKg),
+    tl_nhua_thanh_pham_kg: numOrNull(row.tl_nhua_thanh_pham_kg ?? row.tlNhuaThanhPhamKg),
+    tl_nhua_dinh_muc_kg: numOrNull(row.tl_nhua_dinh_muc_kg ?? row.tlNhuaDinhMucKg),
+    loi_hong_tong_kg: numOrNull(row.loi_hong_tong_kg ?? row.loiHongTongKg),
+    loi_hong_nhua_kg: numOrNull(row.loi_hong_nhua_kg ?? row.loiHongNhuaKg),
+    loi_hong_khac_kg: numOrNull(row.loi_hong_khac_kg ?? row.loiHongKhacKg),
+    xuat_thuc_dung_kg: numOrNull(row.xuat_thuc_dung_kg ?? row.xuatThucDungKg),
+    chenh_lech_nhua_kg: numOrNull(row.chenh_lech_nhua_kg ?? row.chenhLechNhuaKg),
+    chenh_lech_dinh_muc_kg: numOrNull(row.chenh_lech_dinh_muc_kg ?? row.chenhLechDinhMucKg)
+  };
+}
+
+function parseBaoCaoDuLieuTonDauCaRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const boolOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || value === 'true' || value === 'TRUE') return true;
+    if (value === 0 || value === '0' || value === 'false' || value === 'FALSE') return false;
+    return null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    loai_dinh_muc: String(row.loai_dinh_muc ?? row.loaiDinhMuc ?? '').trim() || null,
+    dinh_muc_rate: numOrNull(row.dinh_muc_rate ?? row.dinhMucRate),
+    dinh_muc_unit: String(row.dinh_muc_unit ?? row.dinhMucUnit ?? '').trim() || null,
+    ti_le_dinh_muc_percent: numOrNull(row.ti_le_dinh_muc_percent ?? row.tiLeDinhMucPercent),
+    ti_le_thuc_te_tb_percent: numOrNull(row.ti_le_thuc_te_tb_percent ?? row.tiLeThucTeTbPercent),
+    ton_dau_sl: numOrNull(row.ton_dau_sl ?? row.tonDauSl),
+    ton_dau_kg: numOrNull(row.ton_dau_kg ?? row.tonDauKg),
+    tu_nns_tron: boolOrNull(row.tu_nns_tron ?? row.tuNnsTron),
+    nns_tron_ton_dau_kg: numOrNull(row.nns_tron_ton_dau_kg ?? row.nnsTronTonDauKg),
+    ton_dau_truc_tiep_kg: numOrNull(row.ton_dau_truc_tiep_kg ?? row.tonDauTrucTiepKg),
+    so_dong_nvl: numOrNull(row.so_dong_nvl ?? row.soDongNvl),
+    so_sp: numOrNull(row.so_sp ?? row.soSp),
+    tong_ton_dau_lenh_kg: numOrNull(row.tong_ton_dau_lenh_kg ?? row.tongTonDauLenhKg)
+  };
+}
+
+function parseDuLieuXuatKhoRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const boolOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || value === 'true' || value === 'TRUE') return true;
+    if (value === 0 || value === '0' || value === 'false' || value === 'FALSE') return false;
+    return null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    ma_sp: String(row.ma_sp ?? row.maSp ?? '').trim() || null,
+    ten_sp: String(row.ten_sp ?? row.tenSp ?? '').trim() || null,
+    don_vi_sp: String(row.don_vi_sp ?? row.donViSp ?? '').trim() || null,
+    sl_sp: numOrNull(row.sl_sp ?? row.slSp),
+    dinh_muc_sp_kg: numOrNull(row.dinh_muc_sp_kg ?? row.dinhMucSpKg),
+    tong_dinh_muc_sp_kg: numOrNull(row.tong_dinh_muc_sp_kg ?? row.tongDinhMucSpKg),
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_phieu: String(row.ma_phieu ?? row.maPhieu ?? '').trim() || null,
+    slip_line_key: String(row.slip_line_key ?? row.slipLineKey ?? '').trim() || null,
+    ma_nvl: String(row.ma_nvl ?? row.maNvl ?? '').trim() || null,
+    ten_nvl: String(row.ten_nvl ?? row.tenNvl ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    sl_dinh_muc: numOrNull(row.sl_dinh_muc ?? row.slDinhMuc),
+    trong_luong_dinh_muc_kg: numOrNull(row.trong_luong_dinh_muc_kg ?? row.trongLuongDinhMucKg),
+    sl_xuat: numOrNull(row.sl_xuat ?? row.slXuat),
+    trong_luong_xuat_kg: numOrNull(row.trong_luong_xuat_kg ?? row.trongLuongXuatKg),
+    ti_le_percent: numOrNull(row.ti_le_percent ?? row.tiLePercent),
+    khop_lenh: boolOrNull(row.khop_lenh ?? row.khopLenh),
+    so_dong_nvl_lenh: numOrNull(row.so_dong_nvl_lenh ?? row.soDongNvlLenh),
+    tong_tl_dinh_muc_lenh_kg: numOrNull(row.tong_tl_dinh_muc_lenh_kg ?? row.tongTlDinhMucLenhKg),
+    tong_tl_xuat_lenh_kg: numOrNull(row.tong_tl_xuat_lenh_kg ?? row.tongTlXuatLenhKg)
+  };
+}
+
+function parseBcLsxRow(source: unknown): Record<string, unknown> | null {
+  if (!source || typeof source !== 'object') return null;
+  const row = source as Record<string, unknown>;
+  const khoa_on_dinh = String(row.khoa_on_dinh ?? row.khoaOnDinh ?? '').trim();
+  if (!khoa_on_dinh) return null;
+  const numOrNull = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sttRaw = Number(row.stt ?? 1);
+  return {
+    khoa_on_dinh,
+    ngay: String(row.ngay ?? '').trim(),
+    ca: String(row.ca ?? '').trim(),
+    may: String(row.may ?? '').trim(),
+    ma_lenh: String(row.ma_lenh ?? row.maLenh ?? '').trim(),
+    group_key: String(row.group_key ?? row.groupKey ?? row.ma_lenh ?? '').trim(),
+    ca_label: String(row.ca_label ?? row.caLabel ?? '').trim() || null,
+    tho_chinh: String(row.tho_chinh ?? row.thoChinh ?? '').trim() || null,
+    phu_may: String(row.phu_may ?? row.phuMay ?? '').trim() || null,
+    ho_tro: String(row.ho_tro ?? row.hoTro ?? '').trim() || null,
+    stt: Number.isFinite(sttRaw) && sttRaw > 0 ? Math.floor(sttRaw) : 1,
+    ma_sp: String(row.ma_sp ?? row.maSp ?? '').trim() || null,
+    ten_sp: String(row.ten_sp ?? row.tenSp ?? '').trim() || null,
+    don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
+    dinh_muc_kg: numOrNull(row.dinh_muc_kg ?? row.dinhMucKg),
+    trong_luong_nhua_kg: numOrNull(row.trong_luong_nhua_kg ?? row.trongLuongNhuaKg),
+    so_luong: numOrNull(row.so_luong ?? row.soLuong),
+    tong_kg: numOrNull(row.tong_kg ?? row.tongKg),
+    ti_le_kl_nhua_percent: numOrNull(row.ti_le_kl_nhua_percent ?? row.tiLeKlNhuaPercent),
+    dm_nvl: (() => {
+      const raw = row.dm_nvl ?? row.dmNvl;
+      if (raw === null || raw === undefined || raw === '') return null;
+      if (typeof raw === 'object') return raw;
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    })(),
+    so_dong_lenh: numOrNull(row.so_dong_lenh ?? row.soDongLenh),
+    tong_sl_lenh: numOrNull(row.tong_sl_lenh ?? row.tongSlLenh),
+    tong_tl_lenh_kg: numOrNull(row.tong_tl_lenh_kg ?? row.tongTlLenhKg),
+    ti_le_kl_nhua_lenh_percent: numOrNull(
+      row.ti_le_kl_nhua_lenh_percent ?? row.tiLeKlNhuaLenhPercent
+    )
+  };
 }
 
 function generateMachineRunLogCode() {
@@ -6494,6 +7153,189 @@ function productionOrderWriteErrorMessage(error: { code?: string; message?: stri
     return `Bảng ${SUPABASE_PRODUCTION_ORDERS_TABLE} đang thiếu cột. Hãy chạy file supabase-lenh-sx.sql.`;
   }
   return `Không thể lưu lệnh sản xuất vào ${SUPABASE_PRODUCTION_ORDERS_TABLE}. ${error.message}`;
+}
+
+function productionOrderLineWriteErrorMessage(error: { code?: string; message?: string }) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${SUPABASE_PRODUCTION_ORDER_LINES_TABLE} chưa tồn tại. Hãy chạy file supabase-lenh-sx-dong.sql.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${SUPABASE_PRODUCTION_ORDER_LINES_TABLE} đang thiếu cột. Hãy chạy file supabase-lenh-sx-dong.sql.`;
+  }
+  return `Không thể lưu dòng SP lệnh SX vào ${SUPABASE_PRODUCTION_ORDER_LINES_TABLE}. ${error.message}`;
+}
+
+type LenhSxDongRecord = {
+  lenh_sx_id: string;
+  ma_lenh_sx: string | null;
+  stt: number;
+  ma_sp: string | null;
+  ten_sp: string | null;
+  don_vi: string | null;
+  so_luong: number | null;
+  ma_don_hang: string | null;
+  dinh_muc_kg: number | null;
+  trong_luong_nhua_kg: number | null;
+  tong_kg: number | null;
+};
+
+async function lookupSanPhamNormByCodes(codes: string[]) {
+  const map = new Map<string, { dinh_muc_kg: number | null; trong_luong_nhua_kg: number | null }>();
+  if (!supabase || codes.length === 0) return map;
+  const unique = [...new Set(codes.map(code => code.trim()).filter(Boolean))];
+  if (unique.length === 0) return map;
+  const { data, error } = await supabase
+    .from(SUPABASE_PRODUCTS_TABLE)
+    .select('ma_sp, tong_trong_luong, trong_luong_nhua')
+    .in('ma_sp', unique);
+  if (error) {
+    console.error('Supabase san_pham norm lookup error:', error);
+    return map;
+  }
+  for (const row of data || []) {
+    const code = String((row as Record<string, unknown>).ma_sp ?? '').trim();
+    if (!code) continue;
+    const dinh =
+      Number((row as Record<string, unknown>).tong_trong_luong);
+    const nhua =
+      Number((row as Record<string, unknown>).trong_luong_nhua);
+    map.set(code, {
+      dinh_muc_kg: Number.isFinite(dinh) && dinh > 0 ? dinh : null,
+      trong_luong_nhua_kg: Number.isFinite(nhua) && nhua > 0 ? nhua : null
+    });
+  }
+  return map;
+}
+
+async function buildLenhSxDongRows(input: {
+  lenhSxId: number | string;
+  maLenhSx?: string | null;
+  products: OrderProductRecord[];
+}): Promise<LenhSxDongRecord[]> {
+  const lenhSxId = String(input.lenhSxId ?? '').trim();
+  if (!lenhSxId) return [];
+  const normMap = await lookupSanPhamNormByCodes(input.products.map(p => p.ma_sp));
+  return input.products.map((product, index) => {
+    const qty = Number(product.so_luong);
+    const so_luong = Number.isFinite(qty) && qty > 0 ? qty : null;
+    const norm = normMap.get(String(product.ma_sp || '').trim());
+    const dinh_muc_kg = norm?.dinh_muc_kg ?? null;
+    const trong_luong_nhua_kg = norm?.trong_luong_nhua_kg ?? null;
+    const tong_kg =
+      dinh_muc_kg != null && so_luong != null
+        ? Math.round(dinh_muc_kg * so_luong * 10000) / 10000
+        : null;
+    return {
+      lenh_sx_id: lenhSxId,
+      ma_lenh_sx: String(input.maLenhSx || '').trim() || null,
+      stt: index + 1,
+      ma_sp: String(product.ma_sp || '').trim() || null,
+      ten_sp: String(product.ten_sp || '').trim() || null,
+      don_vi: String(product.don_vi || '').trim() || null,
+      so_luong,
+      ma_don_hang: String(product.ma_don_hang || '').trim() || null,
+      dinh_muc_kg,
+      trong_luong_nhua_kg,
+      tong_kg
+    };
+  });
+}
+
+/** Thay toàn bộ dòng SP của 1 lệnh trong lenh_sx_dong. */
+async function replaceLenhSxDongLines(input: {
+  lenhSxId: number | string;
+  maLenhSx?: string | null;
+  products: OrderProductRecord[];
+}): Promise<{ error: { code?: string; message?: string } | null }> {
+  if (!supabase) return { error: { message: 'Supabase chưa được cấu hình.' } };
+  const lenhSxId = String(input.lenhSxId ?? '').trim();
+  if (!lenhSxId) {
+    return { error: { message: 'Thiếu lenh_sx_id khi ghi lenh_sx_dong.' } };
+  }
+
+  const { error: deleteError } = await supabase
+    .from(SUPABASE_PRODUCTION_ORDER_LINES_TABLE)
+    .delete()
+    .eq('lenh_sx_id', lenhSxId);
+  if (deleteError) {
+    if (isMissingTableError(deleteError)) {
+      console.warn(
+        `[lenh_sx_dong] Bảng chưa có — bỏ qua sync. Chạy supabase-lenh-sx-dong.sql. ${deleteError.message}`
+      );
+      return { error: null };
+    }
+    return { error: deleteError };
+  }
+
+  const rows = await buildLenhSxDongRows(input);
+  if (rows.length === 0) return { error: null };
+
+  const { error: insertError } = await supabase.from(SUPABASE_PRODUCTION_ORDER_LINES_TABLE).insert(rows);
+  if (insertError) {
+    if (isMissingTableError(insertError) || isMissingColumnError(insertError)) {
+      console.warn(
+        `[lenh_sx_dong] Thiếu bảng/cột — bỏ qua sync. Chạy supabase-lenh-sx-dong.sql. ${insertError.message}`
+      );
+      return { error: null };
+    }
+    return { error: insertError };
+  }
+  return { error: null };
+}
+
+function mapLenhSxDongToProductRecord(row: Record<string, unknown>): OrderProductRecord {
+  return {
+    ma_don_hang: String(row.ma_don_hang ?? '').trim(),
+    ma_sp: String(row.ma_sp ?? '').trim(),
+    ten_sp: String(row.ten_sp ?? '').trim(),
+    don_vi: String(row.don_vi ?? '').trim(),
+    so_luong: Number(row.so_luong) || 0
+  };
+}
+
+/** Ưu tiên dòng từ lenh_sx_dong gắn vào san_pham khi GET list. */
+async function enrichProductionOrdersWithDong(
+  orders: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!supabase || orders.length === 0) return orders;
+  const ids = orders
+    .map(order => String(order.id ?? '').trim())
+    .filter(Boolean);
+  if (ids.length === 0) return orders;
+
+  const { data, error } = await supabase
+    .from(SUPABASE_PRODUCTION_ORDER_LINES_TABLE)
+    .select('*')
+    .in('lenh_sx_id', ids)
+    .order('stt', { ascending: true });
+  if (error) {
+    if (!isMissingTableError(error)) {
+      console.error('Supabase lenh_sx_dong enrich error:', error);
+    }
+    return orders;
+  }
+  if (!Array.isArray(data) || data.length === 0) return orders;
+
+  const byLenh = new Map<string, Record<string, unknown>[]>();
+  for (const row of data) {
+    const record = row as Record<string, unknown>;
+    const lenhId = String(record.lenh_sx_id ?? '').trim();
+    if (!lenhId) continue;
+    const list = byLenh.get(lenhId) || [];
+    list.push(record);
+    byLenh.set(lenhId, list);
+  }
+
+  return orders.map(order => {
+    const lenhId = String(order.id ?? '').trim();
+    const lines = byLenh.get(lenhId);
+    if (!lines || lines.length === 0) return order;
+    return {
+      ...order,
+      san_pham: lines.map(mapLenhSxDongToProductRecord),
+      lenh_sx_dong: lines
+    };
+  });
 }
 
 /** Ghi lệnh SX; chịu thiếu/cột generated `ngay` và cột san_pham kiểu text. */
@@ -8667,9 +9509,12 @@ export function createApp() {
         });
       }
 
+      const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const productionOrders = await enrichProductionOrdersWithDong(rows);
+
       return res.json({
-        productionOrders: data || [],
-        total: data?.length || 0,
+        productionOrders,
+        total: productionOrders.length,
         source: 'supabase'
       });
     } catch (err: any) {
@@ -8740,6 +9585,19 @@ export function createApp() {
       if (insertError) {
         console.error('Supabase lenh_sx insert error:', insertError);
         return res.status(500).json({ error: productionOrderWriteErrorMessage(insertError) });
+      }
+
+      const createdRow = created && typeof created === 'object' ? (created as Record<string, unknown>) : null;
+      if (createdRow?.id != null) {
+        const productsForDong = parseOrderProductsFromRow(record as Record<string, unknown>);
+        const { error: dongError } = await replaceLenhSxDongLines({
+          lenhSxId: createdRow.id as number | string,
+          maLenhSx: code,
+          products: productsForDong.length > 0 ? productsForDong : [firstProduct]
+        });
+        if (dongError) {
+          console.error('Supabase lenh_sx_dong sync error:', dongError);
+        }
       }
 
       const { error: updateError } = await supabase
@@ -8815,9 +9673,26 @@ export function createApp() {
         return res.status(500).json({ error: productionOrderWriteErrorMessage(insertError) });
       }
 
+      const createdRow = created && typeof created === 'object' ? (created as Record<string, unknown>) : null;
+      if (createdRow?.id != null) {
+        const { error: dongError } = await replaceLenhSxDongLines({
+          lenhSxId: createdRow.id as number | string,
+          maLenhSx: String(record.ma_lenh_sx || createdRow.ma_lenh_sx || ''),
+          products: orderProducts
+        });
+        if (dongError) {
+          console.error('Supabase lenh_sx_dong sync error:', dongError);
+          return res.status(500).json({ error: productionOrderLineWriteErrorMessage(dongError) });
+        }
+      }
+
+      const [enriched] = await enrichProductionOrdersWithDong(
+        createdRow ? [createdRow] : []
+      );
+
       return res.status(201).json({
         success: true,
-        productionOrder: created,
+        productionOrder: enriched || created,
         code: record.ma_lenh_sx
       });
     } catch (err: any) {
@@ -9131,9 +10006,23 @@ export function createApp() {
         return res.status(404).json({ error: 'Production order not found.' });
       }
 
+      const updatedRow = updated as Record<string, unknown>;
+      const products = parseOrderProductsFromRow(parsed.record as Record<string, unknown>);
+      const { error: dongError } = await replaceLenhSxDongLines({
+        lenhSxId: id,
+        maLenhSx: String(parsed.record.ma_lenh_sx || updatedRow.ma_lenh_sx || ''),
+        products
+      });
+      if (dongError) {
+        console.error('Supabase lenh_sx_dong sync error:', dongError);
+        return res.status(500).json({ error: productionOrderLineWriteErrorMessage(dongError) });
+      }
+
+      const [enriched] = await enrichProductionOrdersWithDong([updatedRow]);
+
       return res.json({
         success: true,
-        productionOrder: updated
+        productionOrder: enriched || updated
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Error updating production order.' });
@@ -15291,6 +16180,110 @@ export function createApp() {
     }
   });
 
+  app.get('/api/phan-cong-cv', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.', rows: [], total: 0 });
+    }
+    try {
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const ca = typeof req.query.ca === 'string' ? req.query.ca.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 500;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 2000) : 500;
+
+      let query = supabase
+        .from(SUPABASE_PHAN_CONG_CV_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false, nullsFirst: false })
+        .order('ca', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: true })
+        .limit(limit);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (ca) query = query.eq('ca', ca);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase phan_cong_cv query error:', error);
+        return res.status(500).json({ error: phanCongCvWriteError(error), rows: [], total: 0 });
+      }
+      return res.json({ rows: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phân công công việc.' });
+    }
+  });
+
+  /** Lưu theo Ngày + Ca: xóa dòng cũ cùng khóa rồi insert lại toàn bộ. */
+  app.put('/api/phan-cong-cv', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const ngayRaw = String(body.ngay ?? body.date ?? '').trim();
+      const ngay = ngayRaw ? parseWarehouseSlipDate(ngayRaw) || ngayRaw.slice(0, 10) : '';
+      const ca = String(body.ca ?? body.shift ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : [];
+
+      if (!ngay) return res.status(400).json({ error: 'Vui lòng chọn ngày.' });
+      if (!ca) return res.status(400).json({ error: 'Vui lòng chọn ca.' });
+
+      const items = rawItems
+        .map(item => {
+          const parsed = parsePhanCongCvRow(item);
+          if (!parsed) return null;
+          return { ...parsed, ngay, ca };
+        })
+        .filter((row): row is Record<string, unknown> => Boolean(row));
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_PHAN_CONG_CV_TABLE)
+        .delete()
+        .eq('ngay', ngay)
+        .eq('ca', ca);
+      if (deleteError) {
+        console.error('Supabase phan_cong_cv delete error:', deleteError);
+        return res.status(500).json({ error: phanCongCvWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, rows: [], total: 0, ngay, ca });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_PHAN_CONG_CV_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase phan_cong_cv insert error:', error);
+        return res.status(500).json({ error: phanCongCvWriteError(error) });
+      }
+      return res.json({ success: true, rows: data || [], total: (data || []).length, ngay, ca });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu phân công công việc.' });
+    }
+  });
+
+  app.delete('/api/phan-cong-cv/:id', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'Thiếu ID dòng.' });
+      const { error } = await supabase.from(SUPABASE_PHAN_CONG_CV_TABLE).delete().eq('id', id);
+      if (error) {
+        console.error('Supabase phan_cong_cv delete-one error:', error);
+        return res.status(500).json({ error: phanCongCvWriteError(error) });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa dòng phân công.' });
+    }
+  });
+
   app.get('/api/bb-bao-cao-ly-do', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -15636,6 +16629,888 @@ export function createApp() {
       return res.json({ success: true, item: data || null });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi lưu bản tính toán báo cáo BB.' });
+    }
+  });
+
+  /** Snapshot tab «Dữ liệu trong lệnh SX» — bảng bc_lsx (UI: bc_Lsx). */
+  app.get('/api/bc-lsx', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_BC_LSX_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bc_lsx query error:', error);
+        return res.status(500).json({ error: bcLsxWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải bc_lsx.' });
+    }
+  });
+
+  app.put('/api/bc-lsx', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res.status(400).json({ error: 'Thiếu khoa_on_dinh khi lưu bc_lsx.' });
+      }
+
+      const items = rawItems.map(parseBcLsxRow).filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) {
+        item.khoa_on_dinh = khoa_on_dinh;
+      }
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BC_LSX_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bc_lsx delete error:', deleteError);
+        return res.status(500).json({ error: bcLsxWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase.from(SUPABASE_BC_LSX_TABLE).insert(items).select('*');
+      if (error) {
+        console.error('Supabase bc_lsx insert error:', error);
+        return res.status(500).json({ error: bcLsxWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu bc_lsx.' });
+    }
+  });
+
+  /** Snapshot tab «Dữ liệu xuất kho» — bảng du_lieu_xuat_kho. */
+  app.get('/api/du-lieu-xuat-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_DU_LIEU_XUAT_KHO_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase du_lieu_xuat_kho query error:', error);
+        return res.status(500).json({ error: duLieuXuatKhoWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải du_lieu_xuat_kho.' });
+    }
+  });
+
+  app.put('/api/du-lieu-xuat-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res.status(400).json({ error: 'Thiếu khoa_on_dinh khi lưu du_lieu_xuat_kho.' });
+      }
+
+      const items = rawItems
+        .map(parseDuLieuXuatKhoRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) {
+        item.khoa_on_dinh = khoa_on_dinh;
+      }
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_DU_LIEU_XUAT_KHO_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase du_lieu_xuat_kho delete error:', deleteError);
+        return res.status(500).json({ error: duLieuXuatKhoWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_DU_LIEU_XUAT_KHO_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase du_lieu_xuat_kho insert error:', error);
+        return res.status(500).json({ error: duLieuXuatKhoWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu du_lieu_xuat_kho.' });
+    }
+  });
+
+  /** Snapshot tab «Báo cáo dữ liệu tồn đầu ca» — bảng bao_cao_du_lieu_ton_dau_ca (≠ bao_cao_may_nvl_ton). */
+  app.get('/api/bao-cao-du-lieu-ton-dau-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bao_cao_du_lieu_ton_dau_ca query error:', error);
+        return res
+          .status(500)
+          .json({ error: baoCaoDuLieuTonDauCaWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải bao_cao_du_lieu_ton_dau_ca.' });
+    }
+  });
+
+  app.put('/api/bao-cao-du-lieu-ton-dau-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res.status(400).json({ error: 'Thiếu khoa_on_dinh khi lưu bao_cao_du_lieu_ton_dau_ca.' });
+      }
+
+      const items = rawItems
+        .map(parseBaoCaoDuLieuTonDauCaRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) {
+        item.khoa_on_dinh = khoa_on_dinh;
+      }
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bao_cao_du_lieu_ton_dau_ca delete error:', deleteError);
+        return res.status(500).json({ error: baoCaoDuLieuTonDauCaWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BAO_CAO_DU_LIEU_TON_DAU_CA_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_du_lieu_ton_dau_ca insert error:', error);
+        return res.status(500).json({ error: baoCaoDuLieuTonDauCaWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu bao_cao_du_lieu_ton_dau_ca.' });
+    }
+  });
+
+  /** Snapshot tab «Báo cáo sản lượng» — bảng bao_cao_san_luong (≠ bao_cao_nghiem_thu). */
+  app.get('/api/bao-cao-san-luong', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bao_cao_san_luong query error:', error);
+        return res.status(500).json({ error: baoCaoSanLuongWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải bao_cao_san_luong.' });
+    }
+  });
+
+  app.put('/api/bao-cao-san-luong', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res.status(400).json({ error: 'Thiếu khoa_on_dinh khi lưu bao_cao_san_luong.' });
+      }
+
+      const items = rawItems.map(parseBaoCaoSanLuongRow).filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bao_cao_san_luong delete error:', deleteError);
+        return res.status(500).json({ error: baoCaoSanLuongWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BAO_CAO_SAN_LUONG_SNAPSHOT_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_san_luong insert error:', error);
+        return res.status(500).json({ error: baoCaoSanLuongWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu bao_cao_san_luong.' });
+    }
+  });
+
+  /** Snapshot tab «Dữ liệu trong báo cáo hàng lỗi hỏng». */
+  app.get('/api/du-lieu-trong-bao-cao-hang-loi-hong', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase du_lieu_trong_bao_cao_hang_loi_hong query error:', error);
+        return res
+          .status(500)
+          .json({ error: duLieuTrongBaoCaoHangLoiHongWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi tải du_lieu_trong_bao_cao_hang_loi_hong.' });
+    }
+  });
+
+  app.put('/api/du-lieu-trong-bao-cao-hang-loi-hong', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res
+          .status(400)
+          .json({ error: 'Thiếu khoa_on_dinh khi lưu du_lieu_trong_bao_cao_hang_loi_hong.' });
+      }
+
+      const items = rawItems
+        .map(parseDuLieuTrongBaoCaoHangLoiHongRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase du_lieu_trong_bao_cao_hang_loi_hong delete error:', deleteError);
+        return res.status(500).json({ error: duLieuTrongBaoCaoHangLoiHongWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_HANG_LOI_HONG_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase du_lieu_trong_bao_cao_hang_loi_hong insert error:', error);
+        return res.status(500).json({ error: duLieuTrongBaoCaoHangLoiHongWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi lưu du_lieu_trong_bao_cao_hang_loi_hong.' });
+    }
+  });
+
+  /** Snapshot tab «Kiểm tồn cuối ca» — ≠ bao_cao_may_nvl_ton. */
+  app.get('/api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase du_lieu_trong_bao_cao_kiem_ton_cuoi_ca query error:', error);
+        return res
+          .status(500)
+          .json({ error: duLieuTrongBaoCaoKiemTonCuoiCaWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi tải du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.' });
+    }
+  });
+
+  app.put('/api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res
+          .status(400)
+          .json({ error: 'Thiếu khoa_on_dinh khi lưu du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.' });
+      }
+
+      const items = rawItems
+        .map(parseDuLieuTrongBaoCaoKiemTonCuoiCaRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase du_lieu_trong_bao_cao_kiem_ton_cuoi_ca delete error:', deleteError);
+        return res.status(500).json({ error: duLieuTrongBaoCaoKiemTonCuoiCaWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_DU_LIEU_TRONG_BAO_CAO_KIEM_TON_CUOI_CA_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase du_lieu_trong_bao_cao_kiem_ton_cuoi_ca insert error:', error);
+        return res.status(500).json({ error: duLieuTrongBaoCaoKiemTonCuoiCaWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi lưu du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.' });
+    }
+  });
+
+  /** Snapshot tab «Thành phẩm đạt nhập kho». */
+  app.get('/api/bao-cao-thanh-pham-dat-nhap-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bao_cao_thanh_pham_dat_nhap_kho query error:', error);
+        return res
+          .status(500)
+          .json({ error: baoCaoThanhPhamDatNhapKhoWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi tải bao_cao_thanh_pham_dat_nhap_kho.' });
+    }
+  });
+
+  app.put('/api/bao-cao-thanh-pham-dat-nhap-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res
+          .status(400)
+          .json({ error: 'Thiếu khoa_on_dinh khi lưu bao_cao_thanh_pham_dat_nhap_kho.' });
+      }
+
+      const items = rawItems
+        .map(parseBaoCaoThanhPhamDatNhapKhoRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bao_cao_thanh_pham_dat_nhap_kho delete error:', deleteError);
+        return res.status(500).json({ error: baoCaoThanhPhamDatNhapKhoWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BAO_CAO_THANH_PHAM_DAT_NHAP_KHO_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_thanh_pham_dat_nhap_kho insert error:', error);
+        return res.status(500).json({ error: baoCaoThanhPhamDatNhapKhoWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi lưu bao_cao_thanh_pham_dat_nhap_kho.' });
+    }
+  });
+
+  /** Snapshot tab «Tiêu hao nguyên vật liệu». */
+  app.get('/api/bao-cao-tieu-hao-nguyen-vat-lieu', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const maLenh = typeof req.query.ma_lenh === 'string' ? req.query.ma_lenh.trim() : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 5000;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 10000) : 5000;
+
+      let query = supabase
+        .from(SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('ma_lenh', { ascending: true })
+        .order('stt', { ascending: true })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngay) query = query.eq('ngay', ngay);
+      if (maLenh) query = query.eq('ma_lenh', maLenh);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bao_cao_tieu_hao_nguyen_vat_lieu query error:', error);
+        return res
+          .status(500)
+          .json({ error: baoCaoTieuHaoNguyenVatLieuWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi tải bao_cao_tieu_hao_nguyen_vat_lieu.' });
+    }
+  });
+
+  app.put('/api/bao-cao-tieu-hao-nguyen-vat-lieu', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : Array.isArray(req.body)
+            ? req.body
+            : [];
+      if (!khoa_on_dinh) {
+        return res
+          .status(400)
+          .json({ error: 'Thiếu khoa_on_dinh khi lưu bao_cao_tieu_hao_nguyen_vat_lieu.' });
+      }
+
+      const items = rawItems
+        .map(parseBaoCaoTieuHaoNguyenVatLieuRow)
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bao_cao_tieu_hao_nguyen_vat_lieu delete error:', deleteError);
+        return res.status(500).json({ error: baoCaoTieuHaoNguyenVatLieuWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BAO_CAO_TIEU_HAO_NGUYEN_VAT_LIEU_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_tieu_hao_nguyen_vat_lieu insert error:', error);
+        return res.status(500).json({ error: baoCaoTieuHaoNguyenVatLieuWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ error: err.message || 'Lỗi khi lưu bao_cao_tieu_hao_nguyen_vat_lieu.' });
+    }
+  });
+
+  /** Snapshot khối KPI «Báo cáo tổng hợp» + «Tổng hợp nhựa» — 1 dòng / khoa. */
+  app.get('/api/bao-cao-tong-hop', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const khoa =
+        typeof req.query.khoa_on_dinh === 'string'
+          ? req.query.khoa_on_dinh.trim()
+          : typeof req.query.khoa === 'string'
+            ? req.query.khoa.trim()
+            : '';
+      const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 200;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 1000) : 200;
+
+      let query = supabase
+        .from(SUPABASE_BAO_CAO_TONG_HOP_TABLE)
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+      if (khoa) query = query.eq('khoa_on_dinh', khoa);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Supabase bao_cao_tong_hop query error:', error);
+        return res.status(500).json({ error: baoCaoTongHopWriteError(error), items: [], total: 0 });
+      }
+      return res.json({ items: data || [], total: (data || []).length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải bao_cao_tong_hop.' });
+    }
+  });
+
+  app.put('/api/bao-cao-tong-hop', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const khoa_on_dinh = String(body.khoa_on_dinh ?? body.khoaOnDinh ?? '').trim();
+      const rawItems = Array.isArray(body.items)
+        ? body.items
+        : Array.isArray(body.rows)
+          ? body.rows
+          : body.item
+            ? [body.item]
+            : Array.isArray(req.body)
+              ? req.body
+              : [];
+      if (!khoa_on_dinh) {
+        return res.status(400).json({ error: 'Thiếu khoa_on_dinh khi lưu bao_cao_tong_hop.' });
+      }
+
+      const items = rawItems.map(parseBaoCaoTongHopRow).filter(Boolean) as Array<Record<string, unknown>>;
+      for (const item of items) item.khoa_on_dinh = khoa_on_dinh;
+
+      const { error: deleteError } = await supabase
+        .from(SUPABASE_BAO_CAO_TONG_HOP_TABLE)
+        .delete()
+        .eq('khoa_on_dinh', khoa_on_dinh);
+      if (deleteError) {
+        console.error('Supabase bao_cao_tong_hop delete error:', deleteError);
+        return res.status(500).json({ error: baoCaoTongHopWriteError(deleteError) });
+      }
+
+      if (items.length === 0) {
+        return res.json({ success: true, items: [], total: 0, khoa_on_dinh });
+      }
+
+      const { data, error } = await supabase
+        .from(SUPABASE_BAO_CAO_TONG_HOP_TABLE)
+        .insert(items)
+        .select('*');
+      if (error) {
+        console.error('Supabase bao_cao_tong_hop insert error:', error);
+        return res.status(500).json({ error: baoCaoTongHopWriteError(error) });
+      }
+
+      return res.json({
+        success: true,
+        items: data || [],
+        total: (data || []).length,
+        khoa_on_dinh
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu bao_cao_tong_hop.' });
     }
   });
 

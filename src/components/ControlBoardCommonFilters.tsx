@@ -220,35 +220,29 @@ export function ControlBoardCommonFilters({
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3">
       <div className="flex flex-col gap-2.5 xl:flex-row xl:items-end">
-        <div className="flex min-w-0 items-center justify-between gap-3 xl:w-44 xl:shrink-0 xl:items-end">
-          <div className="min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-400">Phạm vi dữ liệu</p>
-            <p className="truncate text-sm font-black text-zinc-950">Bộ lọc chung</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {deferApply ? (
-              <button
-                type="button"
-                onClick={onApply}
-                disabled={isLoading || !hasPendingChanges}
-                className={`h-8 rounded-lg px-2.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                  hasPendingChanges
-                    ? 'border border-red-300 bg-red-600 text-white shadow-sm hover:bg-red-700'
-                    : 'border border-zinc-200 bg-zinc-50 text-zinc-500'
-                }`}
-              >
-                Áp dụng
-              </button>
-            ) : null}
+        <div className="flex shrink-0 items-center gap-1.5 xl:items-end">
+          {deferApply ? (
             <button
               type="button"
-              onClick={onClear}
-              disabled={isLoading}
-              className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-black text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onApply}
+              disabled={isLoading || !hasPendingChanges}
+              className={`h-8 rounded-lg px-2.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                hasPendingChanges
+                  ? 'border border-red-300 bg-red-600 text-white shadow-sm hover:bg-red-700'
+                  : 'border border-zinc-200 bg-zinc-50 text-zinc-500'
+              }`}
             >
-              Xóa lọc
+              Áp dụng
             </button>
-          </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={isLoading}
+            className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-black text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Xóa lọc
+          </button>
         </div>
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(170px,0.9fr)_minmax(180px,0.9fr)_minmax(230px,1.35fr)]">

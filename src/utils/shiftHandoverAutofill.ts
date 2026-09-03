@@ -375,7 +375,17 @@ function closingStockQty(line: MachineNvlSavedReport['lines'][number]) {
   );
 }
 
-/** Tồn cuối ca từ báo cáo máy NVL. */
+function reportMachineMatches(
+  report: { maMay?: string; tenMay?: string },
+  machineCode?: string,
+  machineName?: string
+) {
+  if (!machineCode && !machineName) return true;
+  const hay = `${report.maMay || ''} ${report.tenMay || ''}`;
+  return machineTextMatches(hay, machineCode, machineName);
+}
+
+/** Tồn cuối ca từ báo cáo máy NVL — ưu tiên Máy đã chọn, không có thì lấy mọi máy cùng Ngày + Ca. */
 export function buildClosingStockLinesFromMachineNvl(input: {
   reports: unknown;
   date: string;
@@ -383,18 +393,18 @@ export function buildClosingStockLinesFromMachineNvl(input: {
   machineCode?: string;
   machineName?: string;
 }): ClosingStockLine[] {
-  const reports = normalizeMachineNvlReports(input.reports).filter(report => {
+  const forDateShift = normalizeMachineNvlReports(input.reports).filter(report => {
     if (report.reportKind !== 'cuoi_ca') return false;
     const ngay = String(report.ngay || '').slice(0, 10);
     if (input.date && ngay && ngay !== input.date) return false;
     if (input.shift && report.ca && !shiftNamesMatch(report.ca, input.shift)) return false;
-    if (input.machineCode || input.machineName) {
-      const needle = `${input.machineCode || ''} ${input.machineName || ''}`.trim().toLowerCase();
-      const may = `${report.maMay || ''} ${report.tenMay || ''}`.trim().toLowerCase();
-      if (may && needle && !may.includes(needle) && !needle.includes(may)) return false;
-    }
     return true;
   });
+
+  const forMachine = forDateShift.filter(report =>
+    reportMachineMatches(report, input.machineCode, input.machineName)
+  );
+  const reports = forMachine.length > 0 ? forMachine : forDateShift;
 
   const byKey = new Map<
     string,
@@ -405,11 +415,11 @@ export function buildClosingStockLinesFromMachineNvl(input: {
     for (const line of report.lines) {
       const itemCode = String(line.maNvl || '').trim();
       const itemName = String(line.tenNvl || '').trim();
-      const unit = String(line.donVi || '').trim();
-      const qty = closingStockQty(line);
+      const unit = String(line.donVi || '').trim() || 'kg';
+      const fromParts = closingStockQty(line);
+      const qty = fromParts > 0 ? fromParts : Number(line.soLuongTon) > 0 ? Number(line.soLuongTon) : 0;
       const weightKg = sumMachineNvlCuoiCaLineTotal(line);
       if (!itemCode && !itemName) continue;
-      if (!(qty > 0) && !(weightKg > 0)) continue;
       const key = normalizeProductCodeKey(itemCode) || `name:${itemName.toLowerCase()}`;
       const existing = byKey.get(key);
       if (!existing) {

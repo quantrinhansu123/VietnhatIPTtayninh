@@ -166,6 +166,10 @@ export interface WarehouseSlipLineDraft {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  actualWeightImageUrl?: string;
+  actualWeightImagePublicId?: string;
+  actualBagImageUrl?: string;
+  actualBagImagePublicId?: string;
 }
 
 type PendingDamagedReportItem = {
@@ -249,6 +253,10 @@ export type WarehouseSlipPrefillDraft = {
       | 'sourceInboundLineId'
       | 'sourceInboundSlipCode'
       | 'damagedReportRowId'
+      | 'actualWeightImageUrl'
+      | 'actualWeightImagePublicId'
+      | 'actualBagImageUrl'
+      | 'actualBagImagePublicId'
     >
   >;
 };
@@ -330,10 +338,6 @@ export function buildWarehouseSlipDraftFromHistoryRows(
     machine: header.machine || '',
     shift: header.shift || '',
     editSlipCode: slipCode,
-    actualWeightImageUrl: header.actualWeightImageUrl || '',
-    actualWeightImagePublicId: '',
-    actualBagImageUrl: header.actualBagImageUrl || '',
-    actualBagImagePublicId: '',
     lines: rows.map(row => ({
       code: row.itemCode,
       name: row.itemName,
@@ -346,7 +350,11 @@ export function buildWarehouseSlipDraftFromHistoryRows(
       unitPrice: row.unitPrice > 0 ? String(row.unitPrice) : '',
       sourceInboundLineId: row.sourceInboundLineId || '',
       sourceInboundSlipCode: row.sourceInboundSlipCode || '',
-      damagedReportRowId: row.damagedReportRowId || ''
+      damagedReportRowId: row.damagedReportRowId || '',
+      actualWeightImageUrl: row.actualWeightImageUrl || '',
+      actualWeightImagePublicId: '',
+      actualBagImageUrl: row.actualBagImageUrl || '',
+      actualBagImagePublicId: ''
     }))
   };
 }
@@ -589,18 +597,28 @@ export type WarehouseSlipPayloadItem = {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  actualWeightImageUrl?: string;
+  actualWeightImagePublicId?: string;
+  actualBagImageUrl?: string;
+  actualBagImagePublicId?: string;
 };
 
 export function parseWarehouseSlipPayloadItems(
   lines: WarehouseSlipLineDraft[],
   warehouseKind: WarehouseKind,
-  options?: { allowMissingUnitPrice?: boolean; requireInboundLot?: boolean; includeDocumentQuantity?: boolean }
+  options?: {
+    allowMissingUnitPrice?: boolean;
+    requireInboundLot?: boolean;
+    includeDocumentQuantity?: boolean;
+    requireActualImages?: boolean;
+  }
 ): { error: string } | { items: WarehouseSlipPayloadItem[] } {
   const itemLabel = warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL';
   const codeLabel = warehouseItemCodeLabel(warehouseKind);
   const allowMissingUnitPrice = options?.allowMissingUnitPrice ?? false;
   const requireInboundLot = options?.requireInboundLot ?? false;
   const includeDocumentQuantity = options?.includeDocumentQuantity ?? false;
+  const requireActualImages = options?.requireActualImages ?? false;
 
   const payloadItems = lines
     .map(line => {
@@ -612,6 +630,10 @@ export function parseWarehouseSlipPayloadItems(
       const sourceInboundLineId = String(line.sourceInboundLineId || '').trim();
       const sourceInboundSlipCode = String(line.sourceInboundSlipCode || '').trim();
       const damagedReportRowId = String(line.damagedReportRowId || '').trim();
+      const actualWeightImageUrl = String(line.actualWeightImageUrl || '').trim();
+      const actualWeightImagePublicId = String(line.actualWeightImagePublicId || '').trim();
+      const actualBagImageUrl = String(line.actualBagImageUrl || '').trim();
+      const actualBagImagePublicId = String(line.actualBagImagePublicId || '').trim();
       return {
         code: line.code.trim(),
         name: line.name.trim(),
@@ -628,7 +650,11 @@ export function parseWarehouseSlipPayloadItems(
         lineNote: line.lineNote?.trim() || undefined,
         sourceInboundLineId: sourceInboundLineId || undefined,
         sourceInboundSlipCode: sourceInboundSlipCode || undefined,
-        damagedReportRowId: damagedReportRowId || undefined
+        damagedReportRowId: damagedReportRowId || undefined,
+        actualWeightImageUrl: actualWeightImageUrl || undefined,
+        actualWeightImagePublicId: actualWeightImagePublicId || undefined,
+        actualBagImageUrl: actualBagImageUrl || undefined,
+        actualBagImagePublicId: actualBagImagePublicId || undefined
       };
     })
     .filter(line => line.code || line.quantity);
@@ -649,6 +675,12 @@ export function parseWarehouseSlipPayloadItems(
     }
     if (requireInboundLot && !item.sourceInboundLineId) {
       return { error: `Dòng ${item.code} cần chọn lô nhập (giá) khi xuất NVL.` };
+    }
+    if (requireActualImages && !item.actualWeightImageUrl) {
+      return { error: `Dòng ${item.code} cần chụp ảnh số cân thực tế.` };
+    }
+    if (requireActualImages && !item.actualBagImageUrl) {
+      return { error: `Dòng ${item.code} cần chụp ảnh số bao thực tế.` };
     }
   }
 
@@ -850,7 +882,11 @@ export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
     unitPrice: '',
     sourceInboundLineId: '',
     sourceInboundSlipCode: '',
-    damagedReportRowId: ''
+    damagedReportRowId: '',
+    actualWeightImageUrl: '',
+    actualWeightImagePublicId: '',
+    actualBagImageUrl: '',
+    actualBagImagePublicId: ''
   };
 }
 
@@ -869,6 +905,10 @@ export function createWarehouseLineDraftFromPrefill(
     | 'sourceInboundLineId'
     | 'sourceInboundSlipCode'
     | 'damagedReportRowId'
+    | 'actualWeightImageUrl'
+    | 'actualWeightImagePublicId'
+    | 'actualBagImageUrl'
+    | 'actualBagImagePublicId'
   >
 ): WarehouseSlipLineDraft {
   return {
@@ -884,7 +924,11 @@ export function createWarehouseLineDraftFromPrefill(
     lineNote: line.lineNote || '',
     sourceInboundLineId: line.sourceInboundLineId || '',
     sourceInboundSlipCode: line.sourceInboundSlipCode || '',
-    damagedReportRowId: line.damagedReportRowId || ''
+    damagedReportRowId: line.damagedReportRowId || '',
+    actualWeightImageUrl: line.actualWeightImageUrl || '',
+    actualWeightImagePublicId: line.actualWeightImagePublicId || '',
+    actualBagImageUrl: line.actualBagImageUrl || '',
+    actualBagImagePublicId: line.actualBagImagePublicId || ''
   };
 }
 
@@ -1232,14 +1276,8 @@ export function WarehouseSlipPanel({
   const [qrPrintOpen, setQrPrintOpen] = useState(false);
   const [qrPrintAutoTrigger, setQrPrintAutoTrigger] = useState(false);
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
-  const [actualWeightImageUrl, setActualWeightImageUrl] = useState('');
-  const [actualWeightImagePublicId, setActualWeightImagePublicId] = useState('');
-  const [actualBagImageUrl, setActualBagImageUrl] = useState('');
-  const [actualBagImagePublicId, setActualBagImagePublicId] = useState('');
-  const [isUploadingSlipImage, setIsUploadingSlipImage] = useState(false);
+  const [uploadingLineImageKey, setUploadingLineImageKey] = useState<string | null>(null);
   const [viewingSlipImage, setViewingSlipImage] = useState<WeighingPreviewImage | null>(null);
-  const actualWeightCameraInputRef = useRef<HTMLInputElement>(null);
-  const actualBagCameraInputRef = useRef<HTMLInputElement>(null);
   const [scanningDrafts, setScanningDrafts] = useState<WarehouseScanningDraft[]>(readWarehouseScanningDrafts);
   const [activeScanningDraftId, setActiveScanningDraftId] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<number | null>(null);
@@ -1514,10 +1552,6 @@ export function WarehouseSlipPanel({
       setRecipient(draft.recipient || '');
       setDeliverer(draft.deliverer || draft.recipient || '');
       setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
-      setActualWeightImageUrl(draft.actualWeightImageUrl || '');
-      setActualWeightImagePublicId(draft.actualWeightImagePublicId || '');
-      setActualBagImageUrl(draft.actualBagImageUrl || '');
-      setActualBagImagePublicId(draft.actualBagImagePublicId || '');
       const draftLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
       setLines(draft.slipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
       // Catalog Tổng kg có thể chưa kịp load — xếp lại theo khối lượng khi weightCatalog sẵn sàng.
@@ -2747,45 +2781,36 @@ export function WarehouseSlipPanel({
     setPrintModalOpen(true);
   };
 
-  const handleActualWeightImageUpload = async (file?: File | null) => {
+  const handleLineActualImageUpload = async (
+    lineKey: string,
+    imageType: 'weight' | 'bag',
+    file?: File | null
+  ) => {
     if (!file) return;
 
-    setIsUploadingSlipImage(true);
+    setUploadingLineImageKey(`${lineKey}-${imageType}`);
     setFormError('');
 
     try {
       const dataUrl = await fileToOptimizedImageDataUrl(file);
       const uploaded = await uploadImage(dataUrl, 'phieu_xuat_nhap_kho');
-      setActualWeightImageUrl(uploaded.imageUrl);
-      setActualWeightImagePublicId(uploaded.imagePublicId);
-      showAppToast('Đã upload ảnh số cân thực tế.');
+      updateLine(
+        lineKey,
+        imageType === 'weight'
+          ? { actualWeightImageUrl: uploaded.imageUrl, actualWeightImagePublicId: uploaded.imagePublicId }
+          : { actualBagImageUrl: uploaded.imageUrl, actualBagImagePublicId: uploaded.imagePublicId }
+      );
+      showAppToast(imageType === 'weight' ? 'Đã upload ảnh số cân thực tế.' : 'Đã upload ảnh số bao thực tế.');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số cân thực tế.';
+      const message = error instanceof Error
+        ? error.message
+        : imageType === 'weight'
+          ? 'Không thể upload ảnh số cân thực tế.'
+          : 'Không thể upload ảnh số bao thực tế.';
       setFormError(message);
       showAppToast(message, 'error');
     } finally {
-      setIsUploadingSlipImage(false);
-    }
-  };
-
-  const handleActualBagImageUpload = async (file?: File | null) => {
-    if (!file) return;
-
-    setIsUploadingSlipImage(true);
-    setFormError('');
-
-    try {
-      const dataUrl = await fileToOptimizedImageDataUrl(file);
-      const uploaded = await uploadImage(dataUrl, 'phieu_xuat_nhap_kho');
-      setActualBagImageUrl(uploaded.imageUrl);
-      setActualBagImagePublicId(uploaded.imagePublicId);
-      showAppToast('Đã upload ảnh số bao thực tế.');
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Không thể upload ảnh số bao thực tế.';
-      setFormError(message);
-      showAppToast(message, 'error');
-    } finally {
-      setIsUploadingSlipImage(false);
+      setUploadingLineImageKey(null);
     }
   };
 
@@ -2827,7 +2852,8 @@ export function WarehouseSlipPanel({
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
       allowMissingUnitPrice: isNvlExport,
       requireInboundLot: false,
-      includeDocumentQuantity: slipType === 'xuat'
+      includeDocumentQuantity: slipType === 'xuat',
+      requireActualImages: isNvlExport
     });
     if ('error' in parsed) {
       setFormError(showSaveFailure(parsed.error));
@@ -2858,10 +2884,6 @@ export function WarehouseSlipPanel({
       may: showNvlShiftAndMachine ? machine.trim() || null : null,
       // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
       treo: false,
-      actualWeightImageUrl: slipType === 'xuat' ? actualWeightImageUrl.trim() || null : null,
-      actualWeightImagePublicId: slipType === 'xuat' ? actualWeightImagePublicId.trim() || null : null,
-      actualBagImageUrl: slipType === 'xuat' ? actualBagImageUrl.trim() || null : null,
-      actualBagImagePublicId: slipType === 'xuat' ? actualBagImagePublicId.trim() || null : null,
       items: payloadItems
     };
 
@@ -2944,10 +2966,8 @@ export function WarehouseSlipPanel({
             ? `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho.`
             : `Đã lưu phiếu xuất ${savedSlipCode} từ báo cáo hàng hỏng và cập nhật tồn kho. Bấm “In phiếu” để mở bản in.`
           : savedMessage;
-      const storageWarning = String(data.warning || '').trim();
-      const completedMessage = storageWarning ? `${okMsg} ${storageWarning}` : okMsg;
-      setActionMessage(completedMessage);
-      showAppToast(completedMessage);
+      setActionMessage(okMsg);
+      showAppToast(okMsg);
       if (reviewingDamagedReportKey) {
         setPendingDamagedReports(current => current.filter(report => report.key !== reviewingDamagedReportKey));
         setReviewingDamagedReportKey('');
@@ -2966,10 +2986,6 @@ export function WarehouseSlipPanel({
       setReason('');
       setNote('');
       setDeliverer('');
-      setActualWeightImageUrl('');
-      setActualWeightImagePublicId('');
-      setActualBagImageUrl('');
-      setActualBagImagePublicId('');
       setCreatedBy(loginName);
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
@@ -3410,87 +3426,6 @@ export function WarehouseSlipPanel({
             </label>
           )}
 
-          {slipType === 'xuat' ? (
-            <div className="col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
-                  <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
-                  Ảnh số cân thực tế
-                </span>
-                <input
-                  ref={actualWeightCameraInputRef}
-                  {...CAMERA_IMAGE_INPUT_PROPS}
-                  className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0] || null;
-                    e.target.value = '';
-                    if (file) void handleActualWeightImageUpload(file);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => actualWeightCameraInputRef.current?.click()}
-                  disabled={isUploadingSlipImage || isSaving}
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isUploadingSlipImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                  {actualWeightImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
-                </button>
-                {actualWeightImageUrl ? (
-                  <WeighingImageThumbnail
-                    url={actualWeightImageUrl}
-                    alt="Ảnh số cân thực tế"
-                    title="Ảnh số cân thực tế"
-                    onView={() =>
-                      setViewingSlipImage({ url: actualWeightImageUrl, title: 'Ảnh số cân thực tế' })
-                    }
-                    className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
-                  />
-                ) : (
-                  <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — lưu cùng phiếu xuất kho</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-zinc-500">
-                  <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
-                  Ảnh số bao thực tế
-                </span>
-                <input
-                  ref={actualBagCameraInputRef}
-                  {...CAMERA_IMAGE_INPUT_PROPS}
-                  className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0] || null;
-                    e.target.value = '';
-                    if (file) void handleActualBagImageUpload(file);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => actualBagCameraInputRef.current?.click()}
-                  disabled={isUploadingSlipImage || isSaving}
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isUploadingSlipImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                  {actualBagImageUrl ? 'Chụp lại' : 'Chụp ảnh'}
-                </button>
-                {actualBagImageUrl ? (
-                  <WeighingImageThumbnail
-                    url={actualBagImageUrl}
-                    alt="Ảnh số bao thực tế"
-                    title="Ảnh số bao thực tế"
-                    onView={() =>
-                      setViewingSlipImage({ url: actualBagImageUrl, title: 'Ảnh số bao thực tế' })
-                    }
-                    className="block h-16 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
-                  />
-                ) : (
-                  <p className="text-[10px] font-semibold text-zinc-400">Chưa có ảnh — lưu cùng phiếu xuất kho</p>
-                )}
-              </div>
-            </div>
-          ) : null}
-
           {showOrderFields ? (
             <div className="relative col-span-2 block min-w-0 space-y-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3746,10 +3681,8 @@ export function WarehouseSlipPanel({
 
             <div>
               {lines.map((line, index) => (
-                <div
-                  key={line.key}
-                  className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}
-                >
+                <React.Fragment key={line.key}>
+                  <div className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}>
                   <div className={`hidden min-w-0 items-center justify-center text-xs font-bold text-zinc-500 md:flex`}>
                     {index + 1}
                   </div>
@@ -3873,7 +3806,77 @@ export function WarehouseSlipPanel({
                   ) : (
                     <span className={warehouseLineMobileHiddenClass} />
                   )}
-                </div>
+                  </div>
+                  {isNvlExport && line.code.trim() ? (
+                    <div className="mb-2 grid grid-cols-1 gap-2 rounded-lg border border-red-100 bg-red-50/40 p-2 sm:grid-cols-2">
+                      {([
+                        {
+                          type: 'weight' as const,
+                          label: 'Ảnh số cân thực tế',
+                          url: line.actualWeightImageUrl,
+                          title: 'Ảnh số cân thực tế'
+                        },
+                        {
+                          type: 'bag' as const,
+                          label: 'Ảnh số bao thực tế',
+                          url: line.actualBagImageUrl,
+                          title: 'Ảnh số bao thực tế'
+                        }
+                      ]).map(image => {
+                        const inputId = `warehouse-${image.type}-image-${line.key}`;
+                        const isUploading = uploadingLineImageKey === `${line.key}-${image.type}`;
+                        return (
+                          <div key={image.type} className="min-w-0 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-zinc-600">
+                                <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
+                                {image.label} <span className="text-[#ef1b2d]">*</span>
+                              </span>
+                              {image.url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingSlipImage({ url: image.url!, title: `${image.title} · ${line.code}` })}
+                                  className="text-[10px] font-bold text-[#ef1b2d] underline"
+                                >
+                                  Xem ảnh
+                                </button>
+                              ) : null}
+                            </div>
+                            <input
+                              id={inputId}
+                              {...CAMERA_IMAGE_INPUT_PROPS}
+                              disabled={isUploading || isSaving}
+                              className="hidden"
+                              onChange={event => {
+                                const file = event.target.files?.[0] || null;
+                                event.target.value = '';
+                                if (file) void handleLineActualImageUpload(line.key, image.type, file);
+                              }}
+                            />
+                            <label
+                              htmlFor={inputId}
+                              className="flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:border-[#ef1b2d] hover:bg-red-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+                            >
+                              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                              {isUploading ? 'Đang tải ảnh...' : image.url ? 'Chụp lại' : 'Chụp ảnh'}
+                            </label>
+                            {image.url ? (
+                              <WeighingImageThumbnail
+                                url={image.url}
+                                alt={`${image.title} của ${line.code}`}
+                                title={`${image.title} · ${line.code}`}
+                                onView={() => setViewingSlipImage({ url: image.url!, title: `${image.title} · ${line.code}` })}
+                                className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
+                              />
+                            ) : (
+                              <p className="text-[10px] font-semibold text-zinc-500">Bắt buộc chụp trước khi lưu phiếu.</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </React.Fragment>
               ))}
             </div>
           </div>
@@ -4888,49 +4891,6 @@ export function WarehouseHistoryPanel({
                   </div>
                 ))}
               </div>
-              {viewingRows[0].slipType === 'xuat' &&
-              (viewingRows[0].actualWeightImageUrl || viewingRows[0].actualBagImageUrl) ? (
-                <div className="grid grid-cols-2 gap-3 px-4 pb-4">
-                  {viewingRows[0].actualWeightImageUrl ? (
-                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số cân thực tế</p>
-                      <div className="mt-2">
-                        <WeighingImageThumbnail
-                          url={viewingRows[0].actualWeightImageUrl}
-                          alt="Ảnh số cân thực tế"
-                          title="Ảnh số cân thực tế"
-                          onView={() =>
-                            setViewingHistoryImage({
-                              url: viewingRows[0].actualWeightImageUrl!,
-                              title: 'Ảnh số cân thực tế'
-                            })
-                          }
-                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                  {viewingRows[0].actualBagImageUrl ? (
-                    <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ảnh số bao thực tế</p>
-                      <div className="mt-2">
-                        <WeighingImageThumbnail
-                          url={viewingRows[0].actualBagImageUrl}
-                          alt="Ảnh số bao thực tế"
-                          title="Ảnh số bao thực tế"
-                          onView={() =>
-                            setViewingHistoryImage({
-                              url: viewingRows[0].actualBagImageUrl!,
-                              title: 'Ảnh số bao thực tế'
-                            })
-                          }
-                          className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               <div className="border-t border-zinc-200 px-4 py-3">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
@@ -4943,6 +4903,9 @@ export function WarehouseHistoryPanel({
                     <th className="py-2 pr-3 text-right font-black">Trọng lượng</th>
                     {viewingRows[0].slipType === 'xuat' && viewingRows[0].warehouseKind === 'nvl' ? (
                       <th className="py-2 pr-3 font-black">PN nhập</th>
+                    ) : null}
+                    {viewingRows[0].slipType === 'xuat' && viewingRows[0].warehouseKind === 'nvl' ? (
+                      <th className="py-2 pr-3 font-black">Ảnh thực tế</th>
                     ) : null}
                     <th className="py-2 pr-3 font-black">Giá</th>
                     <th className="py-2 font-black">Thành tiền</th>
@@ -4962,6 +4925,31 @@ export function WarehouseHistoryPanel({
                       {viewingRows[0].slipType === 'xuat' && viewingRows[0].warehouseKind === 'nvl' ? (
                         <td className="py-2 pr-3 font-mono text-xs font-bold text-indigo-700">
                           {row.sourceInboundSlipCode || '—'}
+                        </td>
+                      ) : null}
+                      {viewingRows[0].slipType === 'xuat' && viewingRows[0].warehouseKind === 'nvl' ? (
+                        <td className="py-2 pr-3">
+                          <div className="flex flex-wrap gap-1">
+                            {row.actualWeightImageUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewingHistoryImage({ url: row.actualWeightImageUrl!, title: `Ảnh số cân · ${row.itemCode}` })}
+                                className="rounded border border-red-200 bg-red-50 px-1.5 py-1 text-[10px] font-bold text-[#ef1b2d] hover:bg-red-100"
+                              >
+                                Cân
+                              </button>
+                            ) : null}
+                            {row.actualBagImageUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewingHistoryImage({ url: row.actualBagImageUrl!, title: `Ảnh số bao · ${row.itemCode}` })}
+                                className="rounded border border-red-200 bg-red-50 px-1.5 py-1 text-[10px] font-bold text-[#ef1b2d] hover:bg-red-100"
+                              >
+                                Bao
+                              </button>
+                            ) : null}
+                            {!row.actualWeightImageUrl && !row.actualBagImageUrl ? <span className="text-zinc-400">—</span> : null}
+                          </div>
                         </td>
                       ) : null}
                       <td className="py-2 pr-3 font-mono font-bold text-zinc-800">{formatWarehouseMoney(row.unitPrice)} đ</td>

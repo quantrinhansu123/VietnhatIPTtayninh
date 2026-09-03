@@ -5237,6 +5237,10 @@ type WarehouseSlipLineInput = {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  actualWeightImageUrl?: string;
+  actualWeightImagePublicId?: string;
+  actualBagImageUrl?: string;
+  actualBagImagePublicId?: string;
 };
 
 type NvlInboundLot = {
@@ -5619,6 +5623,16 @@ function parseWarehouseSlipLines(
     const damagedReportRowId = String(
       record.damagedReportRowId ?? record.id_bao_cao_hang_hong ?? record.damagedGoodsReportId ?? ''
     ).trim();
+    const actualWeightImageUrl = parseMaterialText(
+      record.actualWeightImageUrl ?? record.link_anh_can_thuc_te
+    );
+    const actualWeightImagePublicId = parseMaterialText(
+      record.actualWeightImagePublicId ?? record.link_anh_can_thuc_te_public_id
+    );
+    const actualBagImageUrl = parseMaterialText(record.actualBagImageUrl ?? record.link_anh_bao_thuc_te);
+    const actualBagImagePublicId = parseMaterialText(
+      record.actualBagImagePublicId ?? record.link_anh_bao_thuc_te_public_id
+    );
 
     if (!code) {
       return { error: loaiKho === 'san_pham' ? 'Mỗi dòng cần có mã sản phẩm.' : 'Mỗi dòng cần có mã NPL.' };
@@ -5628,6 +5642,12 @@ function parseWarehouseSlipLines(
     }
     if (unitPrice < 0) {
       return { error: `Giá của ${code} không hợp lệ.` };
+    }
+    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !actualWeightImageUrl) {
+      return { error: `Dòng ${code} cần chụp ảnh số cân thực tế.` };
+    }
+    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !actualBagImageUrl) {
+      return { error: `Dòng ${code} cần chụp ảnh số bao thực tế.` };
     }
 
     items.push({
@@ -5643,7 +5663,11 @@ function parseWarehouseSlipLines(
       lineAmount: roundWarehouseMoney(quantity * unitPrice),
       ...(sourceInboundLineId ? { sourceInboundLineId } : {}),
       ...(sourceInboundSlipCode ? { sourceInboundSlipCode } : {}),
-      ...(damagedReportRowId ? { damagedReportRowId } : {})
+      ...(damagedReportRowId ? { damagedReportRowId } : {}),
+      ...(actualWeightImageUrl ? { actualWeightImageUrl } : {}),
+      ...(actualWeightImagePublicId ? { actualWeightImagePublicId } : {}),
+      ...(actualBagImageUrl ? { actualBagImageUrl } : {}),
+      ...(actualBagImagePublicId ? { actualBagImagePublicId } : {})
     });
   }
 
@@ -5771,10 +5795,14 @@ function buildWarehouseSlipInsertRecords(
         parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
           ? item.damagedReportRowId
           : null,
-      link_anh_can_thuc_te: parsed.actualWeightImageUrl || null,
-      link_anh_can_thuc_te_public_id: parsed.actualWeightImagePublicId || null,
-      link_anh_bao_thuc_te: parsed.actualBagImageUrl || null,
-      link_anh_bao_thuc_te_public_id: parsed.actualBagImagePublicId || null
+      link_anh_can_thuc_te:
+        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImageUrl || null : null,
+      link_anh_can_thuc_te_public_id:
+        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImagePublicId || null : null,
+      link_anh_bao_thuc_te:
+        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualBagImageUrl || null : null,
+      link_anh_bao_thuc_te_public_id:
+        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualBagImagePublicId || null : null
     };
 
     if (parsed.loaiKho === 'san_pham') {
@@ -5952,37 +5980,6 @@ function warehouseSlipWriteErrorMessage(error: { code?: string; message?: string
     return 'Không thể lưu phiếu xuất nhập kho: cột số lượng trên Supabase đang là kiểu integer (chỉ nhận số nguyên). Hãy chạy file supabase-phieu-xuat-nhap-kho-so-luong-numeric.sql trong Supabase SQL Editor, hoặc đặt SUPABASE_DB_PASSWORD trong .env rồi chạy npm run migrate:warehouse-numeric.';
   }
   return `Không thể lưu phiếu xuất nhập kho. ${error.message}${error.details ? ` (${error.details})` : ''}`;
-}
-
-const WAREHOUSE_SLIP_ACTUAL_IMAGE_COLUMNS = [
-  'link_anh_can_thuc_te',
-  'link_anh_can_thuc_te_public_id',
-  'link_anh_bao_thuc_te',
-  'link_anh_bao_thuc_te_public_id'
-] as const;
-
-function isMissingWarehouseSlipActualImageColumn(error: { code?: string; message?: string } | null) {
-  return isMissingColumnError(error) && /link_anh_(can|bao)_thuc_te/i.test(String(error?.message || ''));
-}
-
-/** Keeps legacy databases usable while their actual-image migration is pending. */
-async function insertWarehouseSlipRecords(records: Record<string, unknown>[]) {
-  if (!supabase) throw new Error('Supabase chưa được cấu hình.');
-  const initial = await supabase.from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE).insert(records).select('*');
-  if (!isMissingWarehouseSlipActualImageColumn(initial.error)) {
-    return { ...initial, imageColumnsUnsupported: false };
-  }
-
-  console.warn('Warehouse actual-image columns are missing; saving slip without image metadata.', initial.error.message);
-  const retry = await supabase
-    .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-    .insert(records.map(record => {
-      const copy = { ...record };
-      WAREHOUSE_SLIP_ACTUAL_IMAGE_COLUMNS.forEach(column => delete copy[column]);
-      return copy;
-    }))
-    .select('*');
-  return { ...retry, imageColumnsUnsupported: !retry.error };
 }
 
 async function ensureWarehouseSlipNumericColumns() {
@@ -10318,7 +10315,10 @@ export function createApp() {
 
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
-      const { data, error, imageColumnsUnsupported } = await insertWarehouseSlipRecords(records);
+      const { data, error } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .insert(records)
+        .select('*');
 
       if (error) {
         console.error('Supabase phieu_xuat_nhap_kho insert error:', error);
@@ -10369,10 +10369,7 @@ export function createApp() {
         slipCode: maPhieu,
         movements: data || [],
         qrCodes: materialQrCodes?.codes || goodsQrCodes?.codes || [],
-        qrQuantity: materialQrCodes?.quantity || goodsQrCodes?.quantity || 0,
-        warning: imageColumnsUnsupported
-          ? 'Phiếu đã được lưu, nhưng ảnh số cân/số bao chưa được lưu vì CSDL chưa chạy migration ảnh thực tế.'
-          : undefined
+        qrQuantity: materialQrCodes?.quantity || goodsQrCodes?.quantity || 0
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo phiếu xuất nhập kho.' });
@@ -10595,7 +10592,10 @@ export function createApp() {
 
       const records = buildWarehouseSlipInsertRecords(parsed, slipCode);
 
-      const { data, error, imageColumnsUnsupported } = await insertWarehouseSlipRecords(records);
+      const { data, error } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .insert(records)
+        .select('*');
 
       if (error) {
         console.error('Supabase phieu_xuat_nhap_kho update insert error:', error);
@@ -10612,10 +10612,7 @@ export function createApp() {
       return res.json({
         success: true,
         slipCode,
-        movements: data || [],
-        warning: imageColumnsUnsupported
-          ? 'Phiếu đã được cập nhật, nhưng ảnh số cân/số bao chưa được lưu vì CSDL chưa chạy migration ảnh thực tế.'
-          : undefined
+        movements: data || []
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật phiếu xuất nhập kho.' });

@@ -2382,6 +2382,11 @@ export function buildBbInboundMaterialNormGroups(input: {
     for (const report of matchedReports) {
       const productCode = resolveAcceptanceProductCode(report.mat_hang);
       if (!productCode) continue;
+      // Báo cáo lỗi/rác có thể được nhận diện từ `loai_vat_tu` ngay cả khi
+      // mã chưa có trong kho NVL. Các trường bên dưới cần bản ghi NVL để lấy
+      // tên, đơn vị và định mức, nên không được dùng biến `material` chưa có.
+      const material = findBbMaterialRowByAcceptanceCode(input.materials, productCode);
+      if (!material) continue;
       const qty = Number(report.so_luong);
       const inboundQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
       if (inboundQty <= 0) continue;

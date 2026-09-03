@@ -1063,7 +1063,7 @@ export function CanTuDongPanel({
         buildCanTuDongPrintData(visibleRecords, {
           fromDate,
           toDate,
-          ca: 'all',
+          ca: caFilter,
           productNameByCode,
           productStandardWeightByCode,
           productCoreWeightByCode,

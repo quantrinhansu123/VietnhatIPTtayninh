@@ -53,7 +53,7 @@ import {
   splitBbDanhGiaSummaryRowsBySection,
   splitBbDanhGiaSummaryRowsRatioVsDetail,
 } from '../utils/controlBoardBbMachineReport';
-import { isBbTieuHaoPlasticRow } from '../utils/bbTieuHaoNvlPrintRows';
+import { isBbTieuHaoPlasticRow, resolveBbTieuHaoChenhLechKg } from '../utils/bbTieuHaoNvlPrintRows';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
 import {
   collectCanTuDongProductMatchKeys,
@@ -1028,7 +1028,8 @@ function BbMachineOrderPrintSheet({
     closingKg: line.tonCuoiKg,
     actualUsedKg: line.weightKg,
     finishedAndDamagedKg: line.klThucTePlusLoiKg,
-    varianceKg: line.chenhLechKg,
+    /** Luôn = xuất thực dùng − nhập TP − lỗi (khớp 2 cột bên trái). */
+    varianceKg: resolveBbTieuHaoChenhLechKg(line),
     isPlastic: isBbTieuHaoPlasticRow(line)
   }));
   const sortByUnitThenName = (
@@ -1408,7 +1409,7 @@ function BbMachineOrderPrintSheet({
               <th title="Tab «Dữ liệu xuất kho» · cột Tổng (kg) / trọng lượng xuất — lấy thẳng, không tính lại">
                 Trọng lượng<br />vật tư xuất kho
               </th>
-              <th title="Tab «Báo cáo sản lượng» · TL thực tế NVL — lấy thẳng, không tính lại từ BOM">
+              <th title="Tab «Báo cáo sản lượng» · TL thực tế (thiếu thì TL định mức); NVL khác thiếu TL thì dùng Số lượng thành phẩm">
                 Trọng lượng<br />vật tư nhập<br />thành phẩm
               </th>
               <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
@@ -1470,7 +1471,7 @@ function BbMachineOrderPrintSheet({
               <th title="Tab «Dữ liệu xuất kho» · cột Tổng (kg) / trọng lượng xuất — lấy thẳng, không tính lại">
                 Trọng lượng<br />vật tư xuất kho
               </th>
-              <th title="Tab «Báo cáo sản lượng» · TL thực tế NVL — lấy thẳng, không tính lại từ BOM">
+              <th title="Tab «Báo cáo sản lượng» · TL thực tế (thiếu thì TL định mức); NVL khác thiếu TL thì dùng Số lượng thành phẩm">
                 Trọng lượng<br />vật tư nhập<br />thành phẩm
               </th>
               <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
@@ -1553,22 +1554,32 @@ function BbMachineOrderPrintSheet({
                     <thead>
                       <tr>
                         <th>Chỉ số</th>
-                        <th className="shift-summary-print-num">
-                          Tỉ lệ hao hụt
-                          <br />
-                          Định mức
+                        <th
+                          className="shift-summary-print-num"
+                          title="Tử số tỉ lệ: trọng lượng hàng lỗi (hoặc màng lỗi)"
+                        >
+                          Trọng lượng lỗi
                         </th>
-                        <th className="shift-summary-print-num">
-                          Tỉ lệ hao hụt
-                          <br />
-                          thực tế
+                        <th
+                          className="shift-summary-print-num"
+                          title="Mẫu số thành phẩm: nhựa TP + màng TP (dòng màng: chỉ màng)"
+                        >
+                          Trọng lượng thành phẩm
                         </th>
+                        <th className="shift-summary-print-num">Tỉ lệ hao hụt Định mức</th>
+                        <th className="shift-summary-print-num">Tỉ lệ hao hụt thực tế</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sectionRows.map((row, index) => (
                         <tr key={`ratio|${row.id}|${index}`}>
                           <td>{row.label}</td>
+                          <td className="shift-summary-print-num">
+                            {printNumber(row.trongLuongLoiKg, 2)}
+                          </td>
+                          <td className="shift-summary-print-num">
+                            {printNumber(row.trongLuongThanhPhamKg, 2)}
+                          </td>
                           <td className="shift-summary-print-num">
                             {printPercent(row.tiLeHaoHutDinhMucPercent)}
                           </td>
@@ -1675,11 +1686,50 @@ function BbMachineOrderPrintSheet({
                 </table>
               );
             }
+            const sumThanhTien = (sectionRows: typeof mixingRows) => {
+              const tongRow = sectionRows.find(r => r.id === 'tong');
+              if (tongRow?.thanhTien != null && Number.isFinite(tongRow.thanhTien)) {
+                return tongRow.thanhTien;
+              }
+              return sectionRows
+                .filter(r => r.id === 'nvl')
+                .reduce(
+                  (acc, r) =>
+                    acc + (r.thanhTien != null && Number.isFinite(r.thanhTien) ? r.thanhTien : 0),
+                  0
+                );
+            };
+            const tienTron = sumThanhTien(mixingDetailRows);
+            const tienConLai = sumThanhTien(otherRows);
+            const tienTong = tienTron + tienConLai;
             return (
               <>
                 {renderRatioSection(ratioRows)}
                 {renderSummarySection('Vật tư trộn', mixingDetailRows)}
                 {renderSummarySection('Các vật tư còn lại', otherRows)}
+                <h4 className="production-order-print-section-subtitle">Tổng tiền</h4>
+                <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
+                  <thead>
+                    <tr>
+                      <th>Khoản mục</th>
+                      <th className="shift-summary-print-num">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Vật tư trộn</td>
+                      <td className="shift-summary-print-num">{fmtMoneyCell(tienTron)}</td>
+                    </tr>
+                    <tr>
+                      <td>Các vật tư còn lại</td>
+                      <td className="shift-summary-print-num">{fmtMoneyCell(tienConLai)}</td>
+                    </tr>
+                    <tr className="bb-machine-report-print-eval-total-line">
+                      <td>Tổng cộng</td>
+                      <td className="shift-summary-print-num">{fmtMoneyCell(tienTong)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </>
             );
           })()}

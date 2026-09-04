@@ -25,6 +25,7 @@ import {
   buildBbInboundMaterialNormGroups,
   buildBbInboundReportRows,
   buildBbLoiHongMaterialLinesForShift,
+  ensureBbDamagedGroupsForOrderHeaders,
   resolveBbLoiHongFilmScrapMaterialForShift,
   resolveBbLoiHongNnkmNcTotalKg,
   isInsulationMachineText,
@@ -55,8 +56,7 @@ import {
   sumBbThucDungWeightKg,
   sumBbTongChenhLech,
   sumBbTongTrongLuongNhapKho,
-  sumBbWarehouseHistoryExportWeightKgByKind,
-  sumBbWarehouseHistoryExportWeightKgByKind,
+  sumBbWarehouseExportWeightKgByKind,
   type BbCuoiCaGroup,
   type BbCuoiCaLineRow,
   type BbDamagedGoodsGroup,
@@ -108,7 +108,7 @@ export type BbBaoCaoTinhToanPayload = {
     orderTotals: ReturnType<typeof sumBbProductionOrderTotals>;
     plasticRequiredWeightKg: number;
     exportTotalKg: number;
-    exportWeightByKind: ReturnType<typeof sumBbWarehouseHistoryExportWeightKgByKind>;
+    exportWeightByKind: ReturnType<typeof sumBbWarehouseExportWeightKgByKind>;
     dauCaTotalKg: number;
     dauCaWeightByKind: ReturnType<typeof sumBbDauCaWeightKgByKind>;
     cuoiCaTotalKg: number;
@@ -268,7 +268,11 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     ...filter
   });
-  const damagedGroups = groupBbDamagedGoodsLines(damagedRows).map(group => {
+  /** Bao bì giống Cách nhiệt: luôn có nhóm theo lệnh SX để gắn NNKM/NC + rác màng. */
+  const damagedGroups = ensureBbDamagedGroupsForOrderHeaders({
+    damagedGroups: groupBbDamagedGoodsLines(damagedRows),
+    orderGroups: groupBbProductionOrderLines(orderRowsBase)
+  }).map(group => {
     const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
       damagedRecords: input.damagedRecords,
       damagedLines: group.lines || [],
@@ -480,14 +484,7 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     isInsulationMachine
   });
-  const exportWeightByKind = sumBbWarehouseHistoryExportWeightKgByKind({
-    warehouseMovements: input.warehouseMovements,
-    materials: input.materials,
-    productionOrders: input.productionOrders,
-    machines: input.machines,
-    shiftSettings: input.shiftSettings,
-    ...filter
-  });
+  const exportWeightByKind = sumBbWarehouseExportWeightKgByKind(exportRows);
 
   return {
     version: 1,

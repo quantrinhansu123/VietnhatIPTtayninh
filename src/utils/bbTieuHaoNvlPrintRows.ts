@@ -395,7 +395,7 @@ function buildMaterialRowsForOrder(input: {
     }
   }
 
-  // Nhập thành phẩm = cột TL thực tế NVL trên tab «Báo cáo sản lượng» — không tính lại từ BOM.
+  // Nhập thành phẩm: ưu tiên TL thực tế trên tab «Báo cáo sản lượng»; thiếu thì TL định mức cùng tab.
   for (const row of rows.values()) row.finishedKg = 0;
   const seenSanLuongProductKeys = new Set<string>();
   for (const productLine of order.lines) {
@@ -414,7 +414,12 @@ function buildMaterialRowsForOrder(input: {
     if (spKey) seenSanLuongProductKeys.add(spKey);
     for (const line of productGroup.lines || []) {
       if (!isInOrderBom(line.itemCode, line.itemName)) continue;
-      const weight = line.actualWeightKg > 0 ? line.actualWeightKg : 0;
+      const weight =
+        line.actualWeightKg > 0
+          ? line.actualWeightKg
+          : line.normWeightKg > 0
+            ? line.normWeightKg
+            : 0;
       if (!(weight > 0)) continue;
       const unit = line.amountType === 'percent' ? 'kg' : String(line.unit || '').trim() || 'Cái';
       const row = ensure(line.itemCode, line.itemName, unit);
@@ -448,6 +453,15 @@ function buildMaterialRowsForOrder(input: {
         row.actualQty = round4(row.actualQty + qtyPerSp * sl);
       }
     }
+  }
+
+  // NVL khác (ĐVT Cái/m2…): nếu tab sản lượng không có TL → dùng Số lượng thành phẩm
+  // để Chênh lệch (Xuất − Nhập) khớp cột SL (vd. lõi 18 − 18 = 0, không còn phình 18).
+  for (const row of rows.values()) {
+    if (isPlasticNvl(row)) continue;
+    if (row.finishedKg > 0) continue;
+    if (!(row.actualQty > 0)) continue;
+    row.finishedKg = round4(row.actualQty);
   }
 
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
@@ -593,9 +607,8 @@ export function resolveBbTieuHaoStoredKg(line: BbThucDungLineRow): {
   return { klThucTeKg, loiHongKg, klThucTePlusLoiKg };
 }
 
-/** Chênh lệch phiếu in = thực dùng − nhập TP − lỗi. */
+/** Chênh lệch phiếu in = xuất thực dùng − nhập TP − lỗi (luôn tính lại từ 3 cột). */
 export function resolveBbTieuHaoChenhLechKg(line: BbThucDungLineRow): number {
-  if (Number.isFinite(line.chenhLechKg)) return line.chenhLechKg;
   const { klThucTeKg, loiHongKg } = resolveBbTieuHaoStoredKg(line);
   const weightKg = Number.isFinite(line.weightKg) ? line.weightKg : 0;
   return round4(weightKg - klThucTeKg - loiHongKg);

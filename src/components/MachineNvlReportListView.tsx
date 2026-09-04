@@ -9,6 +9,7 @@ import {
   computeMachineNvlDauCaDiscrepancy,
   MACHINE_NVL_MATERIAL_TYPE_OPTIONS,
   normalizeMachineNvlReports,
+  splitMachineNvlLinesByMaterialGroup,
   sumMachineNvlCuoiCaLineTotal,
   sumMachineNvlCuoiCaReportTotal,
   sumMachineNvlDauCaLineTotal,
@@ -83,6 +84,97 @@ function formatMachineNvlDiscrepancyTooltip(discrepancy: MachineNvlDiscrepancy) 
   return [header, ...lines].join('\n');
 }
 
+function sumLinesKg(lines: MachineNvlSavedLine[], isDauCa: boolean) {
+  return lines.reduce((sum, line) => sum + lineQtyTotal(line, isDauCa), 0);
+}
+
+function MachineNvlDetailLinesTable({
+  title,
+  accentClass,
+  headerClass,
+  lines,
+  isDauCa,
+  emptyLabel
+}: {
+  title: string;
+  accentClass: string;
+  headerClass: string;
+  lines: MachineNvlSavedLine[];
+  isDauCa: boolean;
+  emptyLabel: string;
+}) {
+  const totalKg = sumLinesKg(lines, isDauCa);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200">
+      <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${accentClass}`}>
+        <p className="text-[10px] font-black uppercase tracking-wider">{title}</p>
+        <p className="font-mono text-[11px] font-black">
+          {lines.length} dòng · {formatNumber(totalKg, 3)} kg
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-left text-[11px] sm:text-xs">
+          <thead className={`sticky top-0 text-[9px] uppercase tracking-wider text-white sm:text-[10px] ${headerClass}`}>
+            <tr>
+              <th className="px-2.5 py-2.5 font-black">STT</th>
+              <th className="px-2.5 py-2.5 font-black">Mã NVL</th>
+              <th className="px-2.5 py-2.5 font-black">Tên NVL</th>
+              <th className="px-2.5 py-2.5 font-black">ĐVT</th>
+              <th className="px-2.5 py-2.5 font-black">Loại</th>
+              <th className="px-2.5 py-2.5 text-right font-black">Tồn máy</th>
+              <th className="px-2.5 py-2.5 text-right font-black">Tồn bồn</th>
+              <th className="px-2.5 py-2.5 text-right font-black">Chưa trộn</th>
+              <th className="px-2.5 py-2.5 text-right font-black">Tồn ngoài</th>
+              <th className="px-2.5 py-2.5 text-right font-black">SL tồn</th>
+              <th className="px-2.5 py-2.5 text-right font-black">KL (kg)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 bg-white">
+            {lines.length === 0 ? (
+              <tr>
+                <td colSpan={11} className="px-3 py-6 text-center font-semibold text-zinc-400">
+                  {emptyLabel}
+                </td>
+              </tr>
+            ) : (
+              lines.map((line, index) => (
+                <tr key={`${title}-${line.stt}-${line.maNvl}-${index}`} className="hover:bg-zinc-50/80">
+                  <td className="px-2.5 py-2 font-mono font-bold text-[#ef1b2d]">{line.stt || index + 1}</td>
+                  <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{line.maNvl || '—'}</td>
+                  <td className="px-2.5 py-2 font-semibold text-zinc-700">{line.tenNvl || '—'}</td>
+                  <td className="px-2.5 py-2 text-zinc-600">{line.donVi || '—'}</td>
+                  <td className="px-2.5 py-2 text-zinc-600">{materialTypeLabel(line.loaiVatTu)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTrongMay)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTrongBonTron)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongNlChuaTron)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTonNgoai)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono font-bold text-zinc-800">{formatQty(line.soLuongTon)}</td>
+                  <td className="px-2.5 py-2 text-right font-mono font-black text-emerald-800">
+                    {formatNumber(lineQtyTotal(line, isDauCa), 3)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {lines.length > 0 ? (
+            <tfoot className="border-t border-zinc-200 bg-zinc-50">
+              <tr>
+                <td colSpan={10} className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Tổng {title.toLowerCase()}
+                </td>
+                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
+                  {formatNumber(totalKg, 3)} kg
+                </td>
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function MachineNvlReportDetailModal({
   report,
   onClose,
@@ -100,6 +192,10 @@ function MachineNvlReportDetailModal({
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const totalKg = reportTotal(report);
+  const { nvlTron, vatTuKhac } = useMemo(
+    () => splitMachineNvlLinesByMaterialGroup(report.lines),
+    [report.lines]
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -177,64 +273,37 @@ function MachineNvlReportDetailModal({
               </ul>
             </div>
           ) : null}
-          <div className="overflow-x-auto rounded-xl border border-zinc-200">
-            <table className="w-full min-w-[760px] border-collapse text-left text-[11px] sm:text-xs">
-              <thead className="sticky top-0 bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
-                <tr>
-                  <th className="px-2.5 py-2.5 font-black">STT</th>
-                  <th className="px-2.5 py-2.5 font-black">Mã NVL</th>
-                  <th className="px-2.5 py-2.5 font-black">Tên NVL</th>
-                  <th className="px-2.5 py-2.5 font-black">ĐVT</th>
-                  <th className="px-2.5 py-2.5 font-black">Loại</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">Tồn máy</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">Tồn bồn</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">Chưa trộn</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">Tồn ngoài</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">SL tồn</th>
-                  <th className="px-2.5 py-2.5 text-right font-black">KL (kg)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 bg-white">
-                {report.lines.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="px-3 py-8 text-center font-semibold text-zinc-400">
-                      Không có dòng NVL.
-                    </td>
-                  </tr>
-                ) : (
-                  report.lines.map((line, index) => (
-                    <tr key={`${line.stt}-${line.maNvl}-${index}`} className="hover:bg-zinc-50/80">
-                      <td className="px-2.5 py-2 font-mono font-bold text-[#ef1b2d]">{line.stt || index + 1}</td>
-                      <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{line.maNvl || '—'}</td>
-                      <td className="px-2.5 py-2 font-semibold text-zinc-700">{line.tenNvl || '—'}</td>
-                      <td className="px-2.5 py-2 text-zinc-600">{line.donVi || '—'}</td>
-                      <td className="px-2.5 py-2 text-zinc-600">{materialTypeLabel(line.loaiVatTu)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTrongMay)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTrongBonTron)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongNlChuaTron)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTonNgoai)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono font-bold text-zinc-800">{formatQty(line.soLuongTon)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono font-black text-emerald-800">
-                        {formatNumber(lineQtyTotal(line, isDauCa), 3)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {report.lines.length > 0 ? (
-                <tfoot className="border-t border-zinc-200 bg-zinc-50">
-                  <tr>
-                    <td colSpan={10} className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                      Tổng khối lượng
-                    </td>
-                    <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
-                      {formatNumber(totalKg, 3)} kg
-                    </td>
-                  </tr>
-                </tfoot>
-              ) : null}
-            </table>
+
+          <div className="space-y-3">
+            <MachineNvlDetailLinesTable
+              title="Vật tư trộn"
+              accentClass="border-violet-200 bg-violet-50 text-violet-900"
+              headerClass="bg-violet-700"
+              lines={nvlTron}
+              isDauCa={isDauCa}
+              emptyLabel="Không có vật tư trộn (nhựa)."
+            />
+            <MachineNvlDetailLinesTable
+              title="Vật tư còn lại"
+              accentClass="border-slate-200 bg-slate-50 text-slate-800"
+              headerClass="bg-slate-700"
+              lines={vatTuKhac}
+              isDauCa={isDauCa}
+              emptyLabel="Không có vật tư còn lại (màng / lõi / bao bì)."
+            />
           </div>
+
+          {report.lines.length > 0 ? (
+            <p className="mt-3 text-right text-[11px] font-semibold text-zinc-500">
+              Tổng cộng:{' '}
+              <span className="font-mono font-black text-emerald-800">{formatNumber(totalKg, 3)} kg</span>
+              <span className="ml-2 text-zinc-400">
+                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa), 3)} + còn lại{' '}
+                {formatNumber(sumLinesKg(vatTuKhac, isDauCa), 3)})
+              </span>
+            </p>
+          ) : null}
+
           {report.note ? (
             <p className="mt-3 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-600">
               <span className="font-black uppercase tracking-wider text-zinc-400">Ghi chú: </span>

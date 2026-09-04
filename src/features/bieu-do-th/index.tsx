@@ -10,6 +10,7 @@ import {
   TableToolbar,
   TableDateFilter
 } from '../../components/shared/table';
+import BieuDoThCharts, { compareShiftCa } from './BieuDoThCharts';
 
 export type BaoCaoTongHopListRow = {
   id: string;
@@ -143,7 +144,9 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
     const sorted = [...rows].sort((a, b) => {
       const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
       if (d !== 0) return d;
-      return String(a.ca).localeCompare(String(b.ca)) || String(a.may).localeCompare(String(b.may));
+      const caCmp = compareShiftCa(a.ca, b.ca);
+      if (caCmp !== 0) return caCmp;
+      return String(a.may).localeCompare(String(b.may), 'vi');
     });
     for (const row of sorted) {
       const key = row.ngay_tu || row.ngay_den || '—';
@@ -278,6 +281,8 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           )}
         </TableBody>
       </TableShell>
+
+      <BieuDoThCharts rows={rows} isLoading={isLoading} />
     </div>
   );
 }

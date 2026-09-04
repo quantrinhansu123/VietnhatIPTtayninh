@@ -16,7 +16,7 @@ Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh`).
 
 1 dòng = 1 NVL trong `mixingLines` (nhóm `tron` / `con_lai`).
 
-**Ánh xạ đặc biệt (máy cách nhiệt):**
+**Ánh xạ đặc biệt (máy cách nhiệt · Bao bì — cùng công thức):**
 - `MX1.54*3000m19m` (NVL màng xi trên BOM) ↔ mã SP rác `RAC MANG` · `MT-HANG RAC` — dòng «Rác màng xi»; không lặp lại ở NVL còn lại.
 - **Cột Lỗi hỏng (kg)** = tổng KL mã `NNKM` + `NC` + `RMN` (từ nghiệm thu / phiếu hàng hỏng; SP lỗi hoặc SP rác).
 - **Cột Tổng rác màng** = Σ trọng lượng phiếu `/danh-sach-bao-cao-san-luong` (`bao_cao_nghiem_thu`) mã **RAC MANG** + **MT-HANG RAC**, khớp bộ lọc ngày · ca · máy.
@@ -24,6 +24,7 @@ Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh`).
 - Các mã `NNKM` / `NC` / `RMN` **không** liệt kê dòng trong «NVL trộn» — chỉ cộng cột tổng.
 - **Chia %** chỉ cho mã NVL chính trên BOM (vd `NNS 1L`, `NTC`): `(NNKM+NC+RMN) × tỉ lệ %`.
 - **Tổng nhựa lỗi hỏng** = NNKM + NC + RMN.
+- Tab luôn tạo nhóm theo **lệnh SX** (kể cả khi chưa có phiếu Hàng hỏng) để gắn NNKM từ phiếu cân.
 
 ## Cột chính
 

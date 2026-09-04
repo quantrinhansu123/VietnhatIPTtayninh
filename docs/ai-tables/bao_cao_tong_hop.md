@@ -17,6 +17,7 @@ Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**.
 ## Feature
 
 - `src/features/bieu-do-th/index.tsx` — menu **Quản trị → Biểu đồ TH** (bảng theo ngày)
+- `src/features/bieu-do-th/BieuDoThCharts.tsx` — biểu đồ biến thiên theo Ngày · Ca (12C1 trước 12C2)
 
 ```bash
 node scripts/run-sql-file.mjs supabase-bao-cao-tong-hop.sql

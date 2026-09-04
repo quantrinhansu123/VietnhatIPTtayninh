@@ -106,7 +106,7 @@ import {
   sumBbTongChenhLech,
   sumBbTongTrongLuongNhapKho,
   sumBbWarehouseExportSlipQuantity,
-  sumBbWarehouseHistoryExportWeightKgByKind,
+  sumBbWarehouseExportWeightKgByKind,
   allocateBbNhuaHaoHutByRatioPercent,
   allocateBbKgByWeightShare,
   resolveBbThucDungKlNhuaTtLoiKg,
@@ -1979,44 +1979,16 @@ export default function ControlBoardBbMachineReportTable({
     if (reportSnapshot?.summary?.orderTotals) return reportSnapshot.summary.orderTotals;
     return sumBbProductionOrderTotals(orderRows);
   }, [reportSnapshot, orderRows]);
-  const liveExportWeightByKind = useMemo(
-    () =>
-      sumBbWarehouseHistoryExportWeightKgByKind({
-        warehouseMovements,
-        materials,
-        productionOrders,
-        machines,
-        shiftSettings,
-        dateFrom,
-        dateTo,
-        shiftFilter,
-        machineFilter,
-        selectedMachine
-      }),
-    [
-      warehouseMovements,
-      materials,
-      productionOrders,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine
-    ]
-  );
-  const exportTotalKg = useMemo(() => {
-    if (reportSnapshot?.summary && Number.isFinite(reportSnapshot.summary.exportTotalKg)) {
-      return reportSnapshot.summary.exportTotalKg;
-    }
-    return liveExportWeightByKind.totalKg;
-  }, [reportSnapshot, liveExportWeightByKind]);
+  /** TL xuất / Tổng nhựa xuất = cùng nguồn tab «Dữ liệu xuất kho» (exportRows), không lọc lại lịch sử XK. */
   const exportWeightByKind = useMemo(() => {
-    if (reportSnapshot?.summary?.exportWeightByKind) return reportSnapshot.summary.exportWeightByKind;
-    return liveExportWeightByKind;
-  }, [reportSnapshot, liveExportWeightByKind]);
-  /** Banner «Tổng hợp nhựa»: ưu tiên số đã lưu trong snapshot (không cộng live phiếu XK). */
+    const fromRows = sumBbWarehouseExportWeightKgByKind(exportRows);
+    if (fromRows.totalKg > 0) return fromRows;
+    const fromSnapshot = reportSnapshot?.summary?.exportWeightByKind;
+    if (fromSnapshot && fromSnapshot.totalKg > 0) return fromSnapshot;
+    return fromRows;
+  }, [exportRows, reportSnapshot]);
+  const exportTotalKg = exportWeightByKind.totalKg;
+  /** Banner «Tổng hợp nhựa»: cùng số với TL xuất / tab xuất kho. */
   const exportRowsForPlasticBanner = exportRows;
   const exportWeightByKindForPlasticBanner = exportWeightByKind;
   /** Lấy toàn bộ KG: tổng tất cả dòng cột «Tổng (kg)» trong Lệnh sản xuất theo bộ lọc. */
@@ -2975,7 +2947,7 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[102px] flex-col rounded-xl border border-red-200/80 bg-white p-2.5 shadow-xs transition hover:border-red-300 hover:bg-red-50/20"
-            title="Lấy từ lịch sử xuất NVL (ngày/ca/máy): TL nhựa = hạt nhựa kg (không gồm túi/lõi/bao bì); vật tư khác = còn lại"
+            title="Lấy từ tab «Dữ liệu xuất kho»: TL nhựa = hạt nhựa kg; vật tư khác = còn lại (cùng bảng Tổng NVL đã xuất)"
           >
             <p className="whitespace-nowrap text-[11px] font-black uppercase tracking-tight text-red-700">TL xuất</p>
             <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
@@ -3248,7 +3220,7 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Tổng nhựa xuất',
-                  title: 'Tổng nhựa phiếu xuất trên lịch sử XK (ngày/ca/máy) = Σ Quy về kg dòng hạt nhựa',
+                  title: 'Σ trọng lượng hạt nhựa trên tab «Dữ liệu xuất kho» (cùng Tổng NVL đã xuất)',
                   metric: 'export' as const,
                   display: isLoading
                     ? '…'
@@ -4462,31 +4434,28 @@ export default function ControlBoardBbMachineReportTable({
               ) : damagedGroupsWithMixing.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
-                    Chưa có phiếu Báo cáo sản lượng loại Hàng hỏng / Hàng rác gắn ca/ngày lệnh máy BB.
+                    Chưa có lệnh SX trong bộ lọc để gắn hàng lỗi hỏng (NNKM/NC/RMN · rác màng).
                   </td>
                 </tr>
               ) : (
                 damagedGroupsWithMixing.map(group => {
                   const expanded = isGroupExpanded('bao_cao_loi_hong', group.groupKey);
-                  const groupIsInsulation = isInsulationMachine || isInsulationMachineText(group.machine);
-                  const filmScrapFromAcceptance = groupIsInsulation
-                    ? sumAcceptanceFilmScrapRacMangKg({
-                        acceptanceReports,
-                        materials,
-                        ngay: group.ngay,
-                        shift: group.shift,
-                        machine: group.machine,
-                        shiftSettings
-                      })
-                    : 0;
-                  const filmScrapKg = groupIsInsulation
-                    ? acceptanceReports.length > 0
+                  /** Bao bì tính rác màng giống Cách nhiệt (RAC MANG + MT-HANG RAC). */
+                  const filmScrapFromAcceptance = sumAcceptanceFilmScrapRacMangKg({
+                    acceptanceReports,
+                    materials,
+                    ngay: group.ngay,
+                    shift: group.shift,
+                    machine: group.machine,
+                    shiftSettings
+                  });
+                  const filmScrapKg =
+                    acceptanceReports.length > 0
                       ? filmScrapFromAcceptance
-                      : sumBbDamagedFilmScrapKg(group.lines)
-                    : 0;
+                      : sumBbDamagedFilmScrapKg(group.lines);
                   const filmScrapMaterial =
                     group.filmScrapMaterial ||
-                    (groupIsInsulation && filmScrapKg > 0
+                    (filmScrapKg > 0
                       ? resolveBbLoiHongFilmScrapMaterialForShift({
                           productionOrders: scopedProductionOrders,
                           products,
@@ -4577,11 +4546,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2 text-right font-black">Tỉ lệ trộn (%)</th>
                                           <th
                                             className="px-3 py-2 text-right font-black"
-                                            title={
-                                              groupIsInsulation
-                                                ? 'Tổng nhựa lỗi hỏng (đã trừ rác màng xi) × Tỉ lệ BOM (%)'
-                                                : 'Tổng lỗi hỏng × Tỉ lệ trộn (%)'
-                                            }
+                                            title="Tổng nhựa lỗi hỏng (NNKM+NC+RMN) × Tỉ lệ BOM (%) — Bao bì giống Cách nhiệt"
                                           >
                                             Trọng lượng lỗi
                                           </th>
@@ -4644,9 +4609,8 @@ export default function ControlBoardBbMachineReportTable({
                                   <div className="bb-table-scroll bb-report-sheet-scroll xl:col-span-4">
                                     <div className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-700">
                                       NVL còn lại
-                                      {otherMaterialLines.length > 0 ||
-                                      (groupIsInsulation && filmScrapKg > 0)
-                                        ? ` (${otherMaterialLines.length + (groupIsInsulation && filmScrapKg > 0 ? 1 : 0)})`
+                                      {otherMaterialLines.length > 0 || filmScrapKg > 0
+                                        ? ` (${otherMaterialLines.length + (filmScrapKg > 0 ? 1 : 0)})`
                                         : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
@@ -4660,8 +4624,7 @@ export default function ControlBoardBbMachineReportTable({
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-slate-100">
-                                        {otherMaterialLines.length === 0 &&
-                                        !(groupIsInsulation && filmScrapKg > 0) ? (
+                                        {otherMaterialLines.length === 0 && !(filmScrapKg > 0) ? (
                                           <tr>
                                             <td colSpan={5} className="px-3 py-3 text-sm font-semibold text-zinc-400">
                                               Không có NVL khác trên BOM lệnh SX.
@@ -4684,7 +4647,7 @@ export default function ControlBoardBbMachineReportTable({
                                                 </td>
                                               </tr>
                                             ))}
-                                            {groupIsInsulation && filmScrapKg > 0 ? (
+                                            {filmScrapKg > 0 ? (
                                               <tr className="bg-orange-50/50 font-semibold">
                                                 <td className="px-3 py-2 font-mono font-bold text-zinc-800">
                                                   {filmScrapMaterial?.materialCode || '—'}
@@ -4704,7 +4667,7 @@ export default function ControlBoardBbMachineReportTable({
                                           </>
                                         )}
                                       </tbody>
-                                      {groupIsInsulation && filmScrapKg > 0 ? (
+                                      {filmScrapKg > 0 ? (
                                         <tfoot className="border-t border-slate-200 bg-slate-50 text-xs font-black text-slate-800">
                                           <tr>
                                             <td colSpan={4} className="px-3 py-2 text-right uppercase tracking-wider">
@@ -5997,25 +5960,35 @@ export default function ControlBoardBbMachineReportTable({
                   splitBbDanhGiaSummaryRowsRatioVsDetail(mixingRows);
                 const renderRatioTable = (sectionRows: typeof rows) => {
                   if (sectionRows.length === 0) return null;
+                  const fmtWeight = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) ? formatKg(value, 2) : '—';
                   return (
                     <div className="overflow-hidden rounded-lg border border-rose-200">
                       <div className="border-b border-rose-200 bg-rose-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-900">
                         Tỉ lệ hàng lỗi hỏng
                       </div>
                       <div className="bb-table-scroll overflow-x-auto">
-                        <table className="min-w-[640px] w-full text-left text-sm font-semibold">
+                        <table className="min-w-[960px] w-full text-left text-sm font-semibold">
                           <thead className="bg-rose-50 text-[11px] uppercase tracking-wider text-rose-900">
                             <tr>
-                              <th className="px-3 py-2.5 font-black">Chỉ số</th>
-                              <th className="px-2 py-2.5 text-right font-black">
-                                Tỉ lệ hao hụt
-                                <br />
-                                Định mức
+                              <th className="whitespace-nowrap px-3 py-2.5 font-black">Chỉ số</th>
+                              <th
+                                className="whitespace-nowrap px-2 py-2.5 text-right font-black"
+                                title="Hàng lỗi: tổng lỗi. Dòng màng: chỉ màng lỗi."
+                              >
+                                Trọng lượng lỗi
                               </th>
-                              <th className="px-2 py-2.5 text-right font-black">
-                                Tỉ lệ hao hụt
-                                <br />
-                                thực tế
+                              <th
+                                className="whitespace-nowrap px-2 py-2.5 text-right font-black"
+                                title="Hàng lỗi: nhựa TP + màng TP. Dòng màng: chỉ màng TP."
+                              >
+                                Trọng lượng thành phẩm
+                              </th>
+                              <th className="whitespace-nowrap px-2 py-2.5 text-right font-black">
+                                Tỉ lệ hao hụt Định mức
+                              </th>
+                              <th className="whitespace-nowrap px-2 py-2.5 text-right font-black">
+                                Tỉ lệ hao hụt thực tế
                               </th>
                             </tr>
                           </thead>
@@ -6026,6 +5999,12 @@ export default function ControlBoardBbMachineReportTable({
                                 className="bg-slate-50/80 hover:bg-rose-50/30"
                               >
                                 <td className="px-3 py-2">{row.label}</td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {fmtWeight(row.trongLuongLoiKg)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {fmtWeight(row.trongLuongThanhPhamKg)}
+                                </td>
                                 <td className="px-2 py-2 text-right font-mono">
                                   {formatPercent(row.tiLeHaoHutDinhMucPercent, 0)}
                                 </td>
@@ -6199,6 +6178,68 @@ export default function ControlBoardBbMachineReportTable({
                         {renderRatioTable(ratioRows)}
                         {renderSummaryTable('Vật tư trộn', mixingDetailRows, 'violet')}
                         {renderSummaryTable('Các vật tư còn lại', otherRows, 'slate')}
+                        {(() => {
+                          const sumThanhTien = (sectionRows: typeof rows) => {
+                            const tongRow = sectionRows.find(r => r.id === 'tong');
+                            if (tongRow?.thanhTien != null && Number.isFinite(tongRow.thanhTien)) {
+                              return tongRow.thanhTien;
+                            }
+                            return sectionRows
+                              .filter(r => r.id === 'nvl')
+                              .reduce(
+                                (acc, r) =>
+                                  acc +
+                                  (r.thanhTien != null && Number.isFinite(r.thanhTien) ? r.thanhTien : 0),
+                                0
+                              );
+                          };
+                          const tienTron = sumThanhTien(mixingDetailRows);
+                          const tienConLai = sumThanhTien(otherRows);
+                          const tienTong = tienTron + tienConLai;
+                          const fmtMoney = (value: number) =>
+                            value !== 0 ? formatMoney(value, 0) : '—';
+                          return (
+                            <div className="overflow-hidden rounded-lg border border-amber-200">
+                              <div className="border-b border-amber-200 bg-amber-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-amber-950">
+                                Tổng tiền
+                              </div>
+                              <div className="bb-table-scroll overflow-x-auto">
+                                <table className="min-w-[480px] w-full text-left text-sm font-semibold">
+                                  <thead className="bg-amber-50 text-[11px] uppercase tracking-wider text-amber-950">
+                                    <tr>
+                                      <th className="whitespace-nowrap px-3 py-2.5 font-black">
+                                        Khoản mục
+                                      </th>
+                                      <th className="whitespace-nowrap px-3 py-2.5 text-right font-black">
+                                        Thành tiền
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-amber-50">
+                                    <tr className="hover:bg-amber-50/40">
+                                      <td className="px-3 py-2">Vật tư trộn</td>
+                                      <td className="px-3 py-2 text-right font-mono">
+                                        {fmtMoney(tienTron)}
+                                      </td>
+                                    </tr>
+                                    <tr className="hover:bg-amber-50/40">
+                                      <td className="px-3 py-2">Các vật tư còn lại</td>
+                                      <td className="px-3 py-2 text-right font-mono">
+                                        {fmtMoney(tienConLai)}
+                                      </td>
+                                    </tr>
+                                    <tr className="bg-amber-50/80 font-black">
+                                      <td className="px-3 py-2">Tổng cộng</td>
+                                      <td className="px-3 py-2 text-right font-mono">
+                                        {fmtMoney(tienTong)}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

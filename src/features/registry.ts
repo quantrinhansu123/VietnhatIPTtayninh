@@ -384,7 +384,8 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/components/ControlBoardBbMachineReportTable.tsx · src/features/bieu-do-th/index.tsx',
     components: [
       'src/components/ControlBoardBbMachineReportTable.tsx',
-      'src/features/bieu-do-th/index.tsx'
+      'src/features/bieu-do-th/index.tsx',
+      'src/features/bieu-do-th/BieuDoThCharts.tsx'
     ],
     utils: ['src/utils/baoCaoTongHop.ts', 'src/utils/bbBaoCaoTinhToan.ts']
   },

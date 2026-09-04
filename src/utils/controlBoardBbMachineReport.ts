@@ -4074,9 +4074,9 @@ export function sumBbDamagedGoodsWeightKgByKind(
 }
 
 /**
- * Banner + footer «Báo cáo lỗi hỏng» đồng bộ cột bảng:
+ * Banner + footer «Báo cáo lỗi hỏng» — cùng công thức Cách nhiệt / Bao bì:
  * - TL nhựa / Lỗi hỏng (kg) = NNKM + NC + RMN
- * - Vật tư khác / Tổng rác màng = RAC MANG + MT-HANG RAC (máy cách nhiệt)
+ * - Vật tư khác / Tổng rác màng = RAC MANG + MT-HANG RAC
  * - Tổng hàng lỗi hỏng = hai cột trên
  */
 export function resolveBbLoiHongCardWeightByKind(input: {
@@ -4117,38 +4117,34 @@ export function resolveBbLoiHongCardWeightByKind(input: {
       });
     }
 
-    const groupInsulation =
-      Boolean(input.isInsulationMachine) || isInsulationMachineText(group.machine);
     if (!otherSeen.has(bucketKey)) {
       otherSeen.add(bucketKey);
-      if (groupInsulation) {
-        if ((input.acceptanceReports || []).length > 0) {
-          otherKg += sumAcceptanceFilmScrapRacMangKg({
-            acceptanceReports: input.acceptanceReports || [],
-            materials: input.materials,
-            ngay: group.ngay,
-            shift: group.shift,
-            machine: group.machine,
-            shiftSettings: input.shiftSettings
-          });
-        } else {
-          otherKg += sumBbDamagedFilmScrapKg(group.lines || []);
-        }
+      // Bao bì tính như Cách nhiệt: VT khác = RAC MANG + MT-HANG RAC.
+      if ((input.acceptanceReports || []).length > 0) {
+        otherKg += sumAcceptanceFilmScrapRacMangKg({
+          acceptanceReports: input.acceptanceReports || [],
+          materials: input.materials,
+          ngay: group.ngay,
+          shift: group.shift,
+          machine: group.machine,
+          shiftSettings: input.shiftSettings
+        });
       } else {
-        otherKg += sumBbDamagedGoodsWeightKgByKind(group.lines || [], {
-          isInsulationMachine: false
-        }).otherKg;
+        otherKg += sumBbDamagedFilmScrapKg(group.lines || []);
       }
     }
   }
 
-  // Không có nhóm lệnh — fallback toàn bộ dòng.
+  // Không có nhóm lệnh — fallback: NNKM từ dòng + rác màng trên damagedRows.
   if (groups.length === 0) {
-    const fallback = sumBbDamagedGoodsWeightKgByKind(input.damagedRows || [], {
-      isInsulationMachine: input.isInsulationMachine
+    plasticKg = resolveBbLoiHongNnkmNcTotalKg({
+      damagedRecords: input.damagedRecords,
+      damagedLines: input.damagedRows || [],
+      ngay: '',
+      shift: '',
+      shiftSettings: input.shiftSettings
     });
-    plasticKg = fallback.plasticKg;
-    otherKg = fallback.otherKg;
+    otherKg = sumBbDamagedFilmScrapKg(input.damagedRows || []);
   }
 
   return {
@@ -4536,6 +4532,50 @@ export function groupBbDamagedGoodsLines(rows: BbDamagedGoodsLineRow[]): BbDamag
     existing.lines.push(row);
   }
 
+  return [...map.values()].sort((a, b) => {
+    const dateCmp = b.ngay.localeCompare(a.ngay);
+    if (dateCmp !== 0) return dateCmp;
+    return a.orderCode.localeCompare(b.orderCode, 'vi');
+  });
+}
+
+/**
+ * Bảo đảm mỗi lệnh SX có nhóm tab lỗi hỏng (giống Cách nhiệt):
+ * kể cả khi chưa có phiếu Hàng hỏng/Hàng rác — vẫn gắn NNKM/NC từ phiếu cân
+ * và rác màng từ nghiệm thu theo ngày·ca·máy.
+ */
+export function ensureBbDamagedGroupsForOrderHeaders(input: {
+  damagedGroups: BbDamagedGoodsGroup[];
+  orderGroups: Array<{
+    orderCode: string;
+    ngay: string;
+    shift: string;
+    shiftLabel?: string;
+    machine: string;
+  }>;
+}): BbDamagedGoodsGroup[] {
+  const map = new Map<string, BbDamagedGoodsGroup>();
+  for (const group of input.damagedGroups || []) {
+    const key = String(group.orderCode || '').trim() || group.groupKey;
+    if (!key) continue;
+    map.set(key, group);
+  }
+  for (const order of input.orderGroups || []) {
+    const orderCode = String(order.orderCode || '').trim();
+    if (!orderCode) continue;
+    if (map.has(orderCode)) continue;
+    map.set(orderCode, {
+      groupKey: orderCode,
+      orderCode,
+      ngay: order.ngay,
+      shift: order.shift,
+      shiftLabel: order.shiftLabel || order.shift,
+      machine: order.machine,
+      lineCount: 0,
+      totalWeightKg: 0,
+      lines: []
+    });
+  }
   return [...map.values()].sort((a, b) => {
     const dateCmp = b.ngay.localeCompare(a.ngay);
     if (dateCmp !== 0) return dateCmp;
@@ -8653,12 +8693,11 @@ export function resolveBbThucDungKlNhuaTtLoiKg(
   return { klThucTeKg, loiHongKg, klThucTePlusLoiKg };
 }
 
-/** Chênh lệch = xuất thực dùng − nhập thành phẩm − lỗi hỏng (cùng phiếu in). */
+/** Chênh lệch = xuất thực dùng − nhập thành phẩm − lỗi hỏng (luôn tính lại từ 3 cột). */
 export function resolveBbThucDungChenhLechKg(
   line: Pick<BbThucDungLineRow, 'klThucTeKg' | 'loiHongKg' | 'klThucTePlusLoiKg' | 'weightKg' | 'chenhLechKg'>,
   _plasticBanner?: { tongNhuaThanhPhamKg: number; tongNhuaLoiKg: number }
 ): number {
-  if (Number.isFinite(line.chenhLechKg)) return line.chenhLechKg as number;
   const { klThucTeKg, loiHongKg } = resolveBbThucDungKlNhuaTtLoiKg(line);
   const thucDungKg = Number.isFinite(line.weightKg) ? line.weightKg : 0;
   return roundQty(thucDungKg - klThucTeKg - loiHongKg, 4);
@@ -8692,7 +8731,8 @@ function applyBbThucDungNhuaTtLoiToHeaderRows(input: {
     row.klThucTeKg = computeBbNhuaKgByTbThucTePercent(tongNhuaThanhPhamKg, tiLeTb);
     row.loiHongKg = computeBbNhuaKgByTbThucTePercent(tongNhuaLoiKg, tiLeTb);
     row.klThucTePlusLoiKg = roundQty(row.klThucTeKg + row.loiHongKg, 4);
-    row.chenhLechKg = roundQty(row.klThucTePlusLoiKg - row.weightKg, 4);
+    // Cùng phiếu in: Chênh lệch = xuất thực dùng − nhập TP − lỗi.
+    row.chenhLechKg = roundQty(row.weightKg - row.klThucTeKg - row.loiHongKg, 4);
   });
 }
 
@@ -10842,20 +10882,11 @@ export function sumBbDamagedRowsLoiHongKgForHeaderByProductCodes(input: {
     scopedRows.push(row);
   }
 
-  if (input.isInsulationMachine) {
-    if (input.kind === 'sp_loi') {
-      return resolveBbDamagedPlasticLoiHongKg(scopedRows, { isInsulationMachine: true });
-    }
-    return sumBbDamagedFilmScrapKg(scopedRows);
+  // Bao bì tính như Cách nhiệt: SP lỗi → nhựa; SP rác → rác màng.
+  if (input.kind === 'sp_loi') {
+    return resolveBbDamagedPlasticLoiHongKg(scopedRows, { isInsulationMachine: true });
   }
-
-  let total = 0;
-  for (const row of scopedRows) {
-    if (!isDamagedRowKind(row, input.kind)) continue;
-    if (input.kind === 'sp_rac' && isBbDamagedFilmScrapRow(row)) continue;
-    if (row.weightKg > 0) total += row.weightKg;
-  }
-  return roundQty(total, 4);
+  return sumBbDamagedFilmScrapKg(scopedRows);
 }
 
 export type BbMixingRatioLineRow = {
@@ -11012,6 +11043,10 @@ export type BbDanhGiaSummaryRow = {
   label: string;
   tiLeHaoHutDinhMucPercent: number | null;
   tiLeHaoHutThucTe: number | null;
+  /** Tử số tỉ lệ lỗi (kg) — hàng lỗi tổng hoặc màng lỗi. */
+  trongLuongLoiKg?: number | null;
+  /** Mẫu số thành phẩm (kg) — nhựa TP + màng TP. */
+  trongLuongThanhPhamKg?: number | null;
   /** Định mức Vật tư của Số lượng nhập TP (kg). Vật tư trộn = Tổng nhựa định mức × %. */
   dinhMucVatTuKg: number | null;
   /** Số lượng thực xuất dùng (kg). Vật tư trộn = Xuất thực dùng × %. */
@@ -11400,6 +11435,8 @@ function emptyBbDanhGiaSummaryMetricFields(): Pick<
   BbDanhGiaSummaryRow,
   | 'tiLeHaoHutDinhMucPercent'
   | 'tiLeHaoHutThucTe'
+  | 'trongLuongLoiKg'
+  | 'trongLuongThanhPhamKg'
   | 'dinhMucVatTuKg'
   | 'thucXuatKg'
   | 'loiKg'
@@ -11411,6 +11448,8 @@ function emptyBbDanhGiaSummaryMetricFields(): Pick<
   return {
     tiLeHaoHutDinhMucPercent: null,
     tiLeHaoHutThucTe: null,
+    trongLuongLoiKg: null,
+    trongLuongThanhPhamKg: null,
     dinhMucVatTuKg: null,
     thucXuatKg: null,
     loiKg: null,
@@ -11691,6 +11730,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         section: 'tron',
         label: 'Tỉ lệ hàng lỗi hỏng/ Thành phẩm',
         ...emptyBbDanhGiaSummaryMetricFields(),
+        trongLuongLoiKg: roundQty(hangLoiTongKg, 4),
+        trongLuongThanhPhamKg: roundQty(thanhPhamTongKg, 4),
         tiLeHaoHutDinhMucPercent: 2,
         tiLeHaoHutThucTe: computePercentRatio(hangLoiTongKg, thanhPhamTongKg)
       },
@@ -11699,6 +11740,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         section: 'tron',
         label: 'Tỉ lệ hàng lỗi hỏng/ Thành phẩm + Hàng lỗi',
         ...emptyBbDanhGiaSummaryMetricFields(),
+        trongLuongLoiKg: roundQty(hangLoiTongKg, 4),
+        trongLuongThanhPhamKg: roundQty(thanhPhamTongKg, 4),
         tiLeHaoHutDinhMucPercent: 2,
         tiLeHaoHutThucTe: computePercentRatio(hangLoiTongKg, thanhPhamTongKg + hangLoiTongKg)
       },
@@ -11707,16 +11750,22 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         section: 'tron',
         label: 'Tỉ lệ màng lỗi hỏng/ Thành phẩm',
         ...emptyBbDanhGiaSummaryMetricFields(),
+        /** Chỉ trọng lượng màng — không cộng nhựa TP. */
+        trongLuongLoiKg: roundQty(hangLoiMangKg, 4),
+        trongLuongThanhPhamKg: roundQty(tongMangThanhPham, 4),
         tiLeHaoHutDinhMucPercent: 2,
-        tiLeHaoHutThucTe: computePercentRatio(hangLoiMangKg, thanhPhamTongKg)
+        tiLeHaoHutThucTe: computePercentRatio(hangLoiMangKg, tongMangThanhPham)
       },
       {
         id: 'mang_loi_tren_tp_va_loi',
         section: 'tron',
         label: 'Tỉ lệ màng lỗi hỏng/ Thành phẩm + Hàng lỗi',
         ...emptyBbDanhGiaSummaryMetricFields(),
+        /** Chỉ trọng lượng màng — không cộng nhựa TP / lỗi nhựa. */
+        trongLuongLoiKg: roundQty(hangLoiMangKg, 4),
+        trongLuongThanhPhamKg: roundQty(tongMangThanhPham, 4),
         tiLeHaoHutDinhMucPercent: 2,
-        tiLeHaoHutThucTe: computePercentRatio(hangLoiMangKg, thanhPhamTongKg + hangLoiTongKg)
+        tiLeHaoHutThucTe: computePercentRatio(hangLoiMangKg, tongMangThanhPham + hangLoiMangKg)
       },
       ...plasticNvlRows,
       buildBbDanhGiaSummaryTongRow(plasticNvlRows, 'tron'),

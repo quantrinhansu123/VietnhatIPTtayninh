@@ -15,8 +15,12 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'acceptance-report': 'acceptance-report-list',
   'machine-run-log': 'machine-run-log-list',
   'damaged-goods-warehouse': 'warehouse-history',
+  /** Trang chi tiết phiếu (mở tab mới) dùng chung quyền với lịch sử xuất nhập kho. */
+  'warehouse-history-detail': 'warehouse-history',
   /** Cùng quyền «Báo cáo mới» /phan-tich-tu-dong (alias cũ dashboard). */
-  'dashboard-auto': 'dashboard'
+  'dashboard-auto': 'dashboard',
+  /** Trang chi tiết lệnh SX (mở tab mới) dùng chung quyền với danh sách lệnh SX. */
+  'production-order-detail': 'production-orders'
 };
 
 /**

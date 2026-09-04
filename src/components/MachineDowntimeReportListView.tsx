@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ClipboardList, Eye, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ClipboardList, Loader2, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
@@ -94,9 +94,9 @@ function MachineDowntimeDetailModal({
   }, [onClose]);
 
   const modal = (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/45 p-4">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Đóng" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-gradient-to-r from-zinc-50 to-white px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">Chi tiết phiếu dừng máy</p>
@@ -136,7 +136,7 @@ function MachineDowntimeDetailModal({
           </div>
 
           <div className="mt-4">
-            <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[360px]">
+            <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[360px]">
               <TableHead>
                 <TableHeadCell>STT</TableHeadCell>
                 <TableHeadCell>Bắt đầu</TableHeadCell>
@@ -188,13 +188,6 @@ function MachineDowntimeDetailModal({
           >
             <Printer className="h-4 w-4" />
             In phiếu
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
-          >
-            Đóng
           </button>
         </div>
       </div>
@@ -512,7 +505,7 @@ export default function MachineDowntimeReportListView({
                       {group.slips.length} phiếu · {formatNumber(groupMinutes, 0)} phút
                     </span>
                   </div>
-                  <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[520px]">
+                  <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-[520px]" className="!rounded-none !border-0 !shadow-none">
                     <TableHead>
                       <TableHeadCell>Số phiếu</TableHeadCell>
                       <TableHeadCell>Ca</TableHeadCell>
@@ -528,7 +521,15 @@ export default function MachineDowntimeReportListView({
                       {group.slips.map(slip => (
                         <React.Fragment key={slip.id}>
                           <TableRow>
-                            <td className="px-3 py-2 font-black text-zinc-900">{slip.slipCode || '—'}</td>
+                            <td className="px-3 py-2 font-black">
+                              <button
+                                type="button"
+                                onClick={() => setViewingSlip(slip)}
+                                className="text-left text-zinc-900 transition-colors duration-150 hover:text-[#ef1b2d]"
+                              >
+                                {slip.slipCode || '—'}
+                              </button>
+                            </td>
                             <td className="px-3 py-2 font-semibold text-zinc-800">{slip.shift || '—'}</td>
                             <td className="px-3 py-2 text-zinc-700">{machineLabel(slip)}</td>
                             <td className="px-3 py-2 text-zinc-700">{slip.preparedBy || '—'}</td>
@@ -545,17 +546,6 @@ export default function MachineDowntimeReportListView({
                             <td className="px-3 py-2">
                               <RowActionsMenu label={`Thao tác phiếu ${slip.slipCode}`}>
                               <div className="flex items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setViewingSlip(slip)}
-                                  className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700 transition hover:bg-sky-100"
-                                  title="Xem chi tiết"
-                                >
-                                  <span className="inline-flex items-center gap-1">
-                                    <Eye className="h-3.5 w-3.5" />
-                                    Xem
-                                  </span>
-                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handlePrintSlip(slip)}

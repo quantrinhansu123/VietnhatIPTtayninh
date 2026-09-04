@@ -54,7 +54,7 @@ Nút **Thêm đơn mới** trong form thêm lệnh SX cũng mở `OrderFormModal
 
 ### Danh sách lệnh SX
 
-Mỗi dòng lệnh: cột **Mã hàng / Tên hàng / Số lượng** trình bày bảng con (mỗi SP một dòng), không ghép bằng `|`.
+Danh sách chỉ hiển thị thông tin tổng quan của lệnh (mã lệnh, ca, trạng thái, khách hàng, đơn hàng, nhân sự phụ trách, máy). **Mã hàng / Tên hàng / Số lượng** được xem trong modal **Xem chi tiết** của từng lệnh.
 
 Cột **tickbox** đầu dòng + tick chọn cả nhóm theo **cột `ngay`** (không dùng `ngay_bat_dau` / ngày tạo); nút **In lệnh** in các lệnh đã chọn (batch). Menu thao tác vẫn in từng lệnh.
 

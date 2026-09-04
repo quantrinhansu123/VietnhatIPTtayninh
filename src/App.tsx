@@ -71,7 +71,7 @@ import { WarehouseSlipPanel, WarehouseHistoryPanel } from './features/phieu-xuat
 import { CustomersPanel } from './features/khach-hang';
 import { ShippingOrdersPanel } from './features/lenh-xuat-hang';
 import { OrdersPanel } from './features/don-hang';
-import { ProductionOrdersPanel } from './features/lenh-sx';
+import { ProductionOrdersPanel, ProductionOrderDetailPage } from './features/lenh-sx';
 import { ProductionPlanHistoryPanel } from './features/ke-hoach-san-xuat';
 import { SettingsPanel } from './features/cai-dat-thoi-gian';
 import { DashboardWindow } from './features/dashboard';
@@ -770,7 +770,7 @@ export default function App() {
               ? 'overflow-hidden p-0'
               : activeTab === 'kiem-kho'
                 ? 'p-2 md:p-3 pb-4'
-              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
+              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'warehouse-history-detail' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
                 ? 'p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'
                   ? 'p-2 md:p-4 pb-4'
@@ -1461,6 +1461,26 @@ export default function App() {
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
                 />
               </motion.div>
+            ) : activeTab === 'warehouse-history-detail' ? (
+              <motion.div
+                key="warehouse-history-detail"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <WarehouseHistoryPanel
+                  onBack={() => goBack('warehouse-history')}
+                  onOpenSlip={() => navigateToTab('warehouse-slip')}
+                  standaloneSlipCode={(() => {
+                    try {
+                      return new URLSearchParams(window.location.search).get('ma_phieu') || undefined;
+                    } catch {
+                      return undefined;
+                    }
+                  })()}
+                />
+              </motion.div>
             ) : activeTab === 'damaged-goods-warehouse' ? (
               <motion.div
                 key="damaged-goods-warehouse"
@@ -1530,6 +1550,16 @@ export default function App() {
                   canEdit={menuFullAccess || editableMenuTabs.has('production-orders')}
                   canDelete={menuFullAccess || deletableMenuTabs.has('production-orders')}
                 />
+              </motion.div>
+            ) : activeTab === 'production-order-detail' ? (
+              <motion.div
+                key="production-order-detail"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <ProductionOrderDetailPage />
               </motion.div>
             ) : activeTab === 'production-plan-history' ? (
               <motion.div
@@ -1682,8 +1712,8 @@ export default function App() {
           </footer>
         )}
 
-        <nav className="z-40 shrink-0 px-2 pb-2 pb-safe sm:hidden">
-          <div className="mx-auto flex max-w-sm items-stretch rounded-2xl border border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-elevated px-1.5 py-1">
+        <nav className="z-40 shrink-0 pb-safe sm:hidden">
+          <div className="flex w-full items-stretch border-t border-slate-200 bg-white px-1.5 py-1">
             {BACK_TAB_MAP[activeTab] && (
           <MobileBackNavButton
                 onClick={() => goBack(BACK_TAB_MAP[activeTab] as AppTab)}

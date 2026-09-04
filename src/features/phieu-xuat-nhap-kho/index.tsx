@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
-  Eye,
   Factory,
   History,
   ImagePlus,
@@ -27,7 +26,8 @@ import {
   Scale,
   TriangleAlert,
   Trash2,
-  Wrench
+  Wrench,
+  X
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { useTabAccess } from '../../app/useTabAccess';
@@ -3978,7 +3978,8 @@ export function WarehouseHistoryPanel({
   onBack,
   onOpenSlip,
   initialFilters,
-  initialWarehouseTab = 'nvl'
+  initialWarehouseTab = 'nvl',
+  standaloneSlipCode
 }: {
   onBack: () => void;
   onOpenSlip: () => void;
@@ -3988,7 +3989,10 @@ export function WarehouseHistoryPanel({
     shift?: string;
   };
   initialWarehouseTab?: WarehouseKind;
+  /** Khi có: chỉ hiển thị chi tiết đúng 1 phiếu (trang mở ở tab mới), ẩn bộ lọc & danh sách. */
+  standaloneSlipCode?: string;
 }) {
+  const isStandalone = Boolean(standaloneSlipCode);
   const warehouseAccess = useWarehouseSlipAccess();
   const accessibleWarehouseTabs = WAREHOUSE_HISTORY_TABS.filter(([kind]) =>
     pickWarehouseSlipAccess(warehouseAccess, kind).canView
@@ -4083,10 +4087,15 @@ export function WarehouseHistoryPanel({
 
     try {
       const params = new URLSearchParams();
-      params.set('loai_kho', warehouseTab);
-      params.set('loai', selectedType);
-      if (fromDate) params.set('from', fromDate);
-      if (toDate) params.set('to', toDate);
+      if (standaloneSlipCode) {
+        params.set('ma_phieu', standaloneSlipCode);
+        params.set('treo', 'all');
+      } else {
+        params.set('loai_kho', warehouseTab);
+        params.set('loai', selectedType);
+        if (fromDate) params.set('from', fromDate);
+        if (toDate) params.set('to', toDate);
+      }
 
       const [res, orderRes] = await Promise.all([
         fetch(`/api/phieu-xuat-nhap-kho?${params.toString()}`),
@@ -4106,7 +4115,7 @@ export function WarehouseHistoryPanel({
           .map(order => [order.orderCode.trim().toUpperCase(), order.machine] as const)
       );
       const rows = normalizeWarehouseMovements(data)
-        .filter(row => row.warehouseKind === warehouseTab)
+        .filter(row => (standaloneSlipCode ? row.slipCode === standaloneSlipCode : row.warehouseKind === warehouseTab))
         .map(row => {
           if (row.machine) return row;
           const linkedCodes = extractLinkedProductionOrderCodes(row.reason, row.note);
@@ -4116,6 +4125,11 @@ export function WarehouseHistoryPanel({
           return machines.length > 0 ? { ...row, machine: machines.join(', ') } : row;
         });
       setMovements(rows);
+      if (standaloneSlipCode && rows[0]) {
+        setViewingSlipCode(standaloneSlipCode);
+        if (rows[0].warehouseKind !== warehouseTab) setWarehouseTab(rows[0].warehouseKind);
+        if (rows[0].slipType !== selectedType) setSelectedType(rows[0].slipType);
+      }
     } catch (loadError: any) {
       setMovements([]);
       setError(loadError.message || 'Không thể tải lịch sử xuất nhập kho.');
@@ -4412,6 +4426,24 @@ export function WarehouseHistoryPanel({
     }
   };
 
+  const openSlipDetail = (slipCode: string) => {
+    if (!slipCode) return;
+    // Điện thoại: mở popup như cũ. Máy tính: mở trang chi tiết ở tab mới.
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(max-width: 767px)').matches;
+    if (isMobile) {
+      setViewingSlipCode(slipCode);
+      return;
+    }
+    window.open(
+      `/lich-su-xuat-nhap-kho/phieu?ma_phieu=${encodeURIComponent(slipCode)}`,
+      '_blank',
+      'noopener'
+    );
+  };
+
   const handleEditSlip = (slipCode: string) => {
     if (!canEdit) {
       setError('Bạn không có quyền sửa phiếu thuộc kho này.');
@@ -4488,6 +4520,8 @@ export function WarehouseHistoryPanel({
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
+      {!isStandalone && (
+      <>
       <nav
         aria-label="Loại phiếu xuất nhập kho"
         className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2"
@@ -4673,6 +4707,61 @@ export function WarehouseHistoryPanel({
                   </p>
                 </div>
               </div>
+              <div className="space-y-2 p-2 md:hidden">
+                {dateGroup.groups.map(group => {
+                  const header = group.header;
+                  const lineCount = group.rows.length;
+                  const isSelected = selectedSlipCodes.has(group.slipCode);
+                  const isDeleting = deletingSlipCode === group.slipCode;
+                  return (
+                    <article
+                      key={group.slipCode}
+                      className={`rounded-xl border border-zinc-200 bg-white p-3 shadow-sm ${isSelected ? 'bg-red-50/40' : ''}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={!group.slipCode || isBulkDeleting || isDeleting}
+                          onChange={() => toggleSlipSelection(group.slipCode)}
+                          className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:opacity-40"
+                          title="Chọn phiếu"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => openSlipDetail(group.slipCode)}
+                            disabled={!group.slipCode}
+                            className="break-words text-left text-sm font-black text-[#ef1b2d] transition hover:text-[#b30d1c] disabled:text-zinc-950"
+                          >
+                            {group.slipCode || '-'}
+                          </button>
+                          <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                            Ca: {header.shift || '-'} · {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
+                          </p>
+                          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                            <div><dt className="font-bold text-zinc-400">Máy</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.machine || '-'}</dd></div>
+                            <div><dt className="font-bold text-zinc-400">Người lập</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.createdBy || '-'}</dd></div>
+                          </dl>
+                          <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+                            {canEdit ? (
+                              <button type="button" onClick={() => handleEditSlip(group.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
+                            ) : null}
+                            <button type="button" onClick={() => handlePrintSlipByCode(group.slipCode, true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-[#ef1b2d]"><Printer className="h-3.5 w-3.5" />In</button>
+                            {canDelete ? (
+                              <button type="button" onClick={() => void handleDeleteSlip(group.slipCode, lineCount)} disabled={isDeleting || isBulkDeleting} className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-2 text-xs font-bold text-rose-700 disabled:opacity-50">
+                                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Xóa
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden md:block">
               <TableShell minWidthClassName="min-w-[820px]">
                 <TableHead>
                   <TableHeadCell className="w-10" align="center">
@@ -4712,7 +4801,14 @@ export function WarehouseHistoryPanel({
                             />
                           </td>
                           <td className="px-4 py-3 font-black text-zinc-950">
-                            <div>{group.slipCode || '-'}</div>
+                            <button
+                              type="button"
+                              onClick={() => openSlipDetail(group.slipCode)}
+                              disabled={!group.slipCode}
+                              className="text-left text-[#ef1b2d] transition hover:text-[#b30d1c] disabled:text-zinc-950"
+                            >
+                              {group.slipCode || '-'}
+                            </button>
                             <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
                               {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
                             </p>
@@ -4723,14 +4819,6 @@ export function WarehouseHistoryPanel({
                           <td className="px-4 py-3">
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
                             <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setViewingSlipCode(group.slipCode)}
-                                title="Xem chi tiết"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
                               {canEdit ? (
                                 <button
                                   type="button"
@@ -4773,12 +4861,13 @@ export function WarehouseHistoryPanel({
                   })}
                 </TableBody>
               </TableShell>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="hidden space-y-2 md:block">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết từng dòng</h3>
@@ -4843,8 +4932,8 @@ export function WarehouseHistoryPanel({
                     <td className="px-3 py-2.5">
                       <button
                         type="button"
-                        onClick={() => setViewingSlipCode(row.slipCode)}
-                        className="font-black text-[#ef1b2d] underline-offset-2 hover:underline"
+                        onClick={() => openSlipDetail(row.slipCode)}
+                        className="font-black text-[#ef1b2d] transition hover:text-[#b30d1c]"
                         title="Xem phiếu"
                       >
                         {row.slipCode || '—'}
@@ -4876,10 +4965,29 @@ export function WarehouseHistoryPanel({
           </TableBody>
         </TableShell>
       </div>
+      </>
+      )}
+
+      {isStandalone && !(viewingSlipCode && viewingRows[0]) && (
+        <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm font-bold text-zinc-500">
+          {isLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Đang tải phiếu…
+            </span>
+          ) : error ? (
+            <span className="text-rose-700">{error}</span>
+          ) : (
+            <span>Không tìm thấy phiếu {standaloneSlipCode}.</span>
+          )}
+        </div>
+      )}
 
       {viewingSlipCode && viewingRows[0] && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:max-h-[88vh] sm:rounded-2xl">
+        <div className={isStandalone ? 'w-full' : 'fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm'}>
+          <div className={isStandalone
+            ? 'flex w-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-card'
+            : 'flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl'}>
             <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết phiếu</h3>
@@ -4888,10 +4996,51 @@ export function WarehouseHistoryPanel({
                   {warehouseTab === 'san_pham' ? 'SP' : warehouseTab === 'hang_hong' ? 'hàng hỏng' : warehouseTab === 'tai_che' ? 'NVL tái chế' : 'NVL'}
                 </p>
               </div>
-              <BackButton onClick={() => setViewingSlipCode(null)} />
+              {isStandalone ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => handleEditSlip(viewingSlipCode!)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Sửa phiếu
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handlePrintViewingSlip(true)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                  >
+                    <Printer className="h-4 w-4" />
+                    In phiếu
+                  </button>
+                  {(viewingRows[0].warehouseKind === 'san_pham' || viewingRows[0].warehouseKind === 'nvl') && viewingRows[0].slipType === 'nhap' ? (
+                    <button
+                      type="button"
+                      onClick={() => void handlePrintViewingQrCodes()}
+                      disabled={isLoadingHistoryQr}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-white px-3 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:opacity-60"
+                    >
+                      {isLoadingHistoryQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                      {isLoadingHistoryQr ? 'Đang tải QR...' : 'In mã QR'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setViewingSlipCode(null)}
+                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                >
+                  <X className="h-4 w-4" />
+                  Đóng
+                </button>
+              )}
             </div>
-            <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
+            <div className={isStandalone ? '' : 'flex min-h-0 flex-1 flex-col overflow-hidden'}>
+              <div className="grid shrink-0 grid-cols-2 gap-2 p-4 sm:grid-cols-3">
                 {[
                   ['Kho', warehouseKindLabel(viewingRows[0].warehouseKind)],
                   ['Loại', warehouseSlipTypeLabel(viewingRows[0].slipType)],
@@ -4911,8 +5060,8 @@ export function WarehouseHistoryPanel({
                   </div>
                 ))}
               </div>
-              <div className="border-t border-zinc-200 px-4 py-3">
-              <table className="min-w-full text-left text-sm">
+              <div className={`border-t border-zinc-200 px-4 py-3 ${isStandalone ? 'overflow-x-auto' : 'min-h-0 flex-1 overflow-auto'}`}>
+              <table className={`text-left text-sm ${isStandalone ? 'w-full' : 'min-w-[640px]'}`}>
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>
                     <th className="py-2 pr-3 text-center font-black">STT</th>
@@ -4990,7 +5139,7 @@ export function WarehouseHistoryPanel({
                 </p>
                 {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className={`flex-wrap items-center gap-2 ${isStandalone ? 'hidden' : 'flex'}`}>
                 {canEdit ? (
                   <button
                     type="button"

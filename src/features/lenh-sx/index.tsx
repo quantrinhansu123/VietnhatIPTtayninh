@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
-import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { parseDateToIso } from '../../utils/dateFormat';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
@@ -25,13 +25,14 @@ import {
 import {
   AddProductionOrderModal,
   EditProductionOrderModal,
-  getProductionOrderProductLines,
+  formatProductionOrderProductsSummary,
   loadProductionOrderPrintMaterials,
   loadProductionOrderProductCatalog,
   normalizeProductionOrders,
   PRODUCTION_ORDER_STATUS_OPTIONS,
   ProductionOrderBatchPrintSheets,
   ProductionOrderPrintSheet,
+  ProductionOrderDetailBody,
   ProductionOrderViewModal,
   resolveProductionOrderMachineLabel,
   useProductionOrderPrint,
@@ -48,7 +49,6 @@ import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
-  Eye,
   Loader2,
   Pencil,
   Plus,
@@ -110,6 +110,204 @@ function productionOrderStaffNames(row: ProductionOrderRow) {
   )];
 }
 
+/** Tải danh sách lệnh SX + bù cột Khách hàng từ đơn hàng (dùng chung cho panel & trang chi tiết). */
+export async function fetchProductionOrderRows(): Promise<{ rows: ProductionOrderRow[]; orders: OrderRow[] }> {
+  const [res, orderRes] = await Promise.all([fetch('/api/lenh-sx'), fetch('/api/don-hang')]);
+  const [data, orderData] = await Promise.all([
+    res.json().catch(() => ({})),
+    orderRes.json().catch(() => ({}))
+  ]);
+  if (!res.ok) {
+    throw new Error((data as any)?.error || 'Không thể tải lệnh sản xuất từ Supabase.');
+  }
+  const orderRows = orderRes.ok ? normalizeOrders(orderData) : [];
+  const customerByOrderCode = new Map(
+    orderRows
+      .filter(order => order.orderCode && order.orderCode !== '-')
+      .map(order => [order.orderCode.trim().toLowerCase(), order.customer] as const)
+  );
+  const rows = normalizeProductionOrders(data).map(row => {
+    if (row.customer && row.customer !== '-') return row;
+    const customers = String(row.orderRef || '')
+      .split(/[,;|]+/)
+      .map(code => customerByOrderCode.get(code.trim().toLowerCase()))
+      .filter((customer): customer is string => Boolean(customer && customer !== '-'));
+    return { ...row, customer: [...new Set(customers)].join(', ') || '-' };
+  });
+  return { rows, orders: orderRows };
+}
+
+/** Trang chi tiết lệnh SX mở ở tab mới (URL: /lenh-san-xuat/chi-tiet?id=...). */
+export function ProductionOrderDetailPage() {
+  const orderId = useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('id') || '';
+    } catch {
+      return '';
+    }
+  }, []);
+  const tabAccess = useTabAccess('production-orders');
+  const canEdit = tabAccess.canEdit;
+  const [rows, setRows] = useState<ProductionOrderRow[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [catalogProducts, setCatalogProducts] = useState<ProductRow[]>([]);
+  const [machines, setMachines] = useState<MachineRow[]>([]);
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
+  const [editingRow, setEditingRow] = useState<ProductionOrderRow | null>(null);
+  const [actionMessage, setActionMessage] = useState('');
+  const {
+    printingOrder,
+    printingMaterials,
+    printingProduct,
+    printingProductCatalog,
+    printingMachineLabel,
+    shiftSettings,
+    isLoadingPrint,
+    printProductionOrder
+  } = useProductionOrderPrint();
+
+  const row = useMemo(() => rows.find(item => item.id === orderId) || null, [rows, orderId]);
+
+  const reload = () => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError('');
+    fetchProductionOrderRows()
+      .then(({ rows: nextRows, orders: nextOrders }) => {
+        if (cancelled) return;
+        setRows(nextRows);
+        setOrders(nextOrders);
+        if (!nextRows.some(item => item.id === orderId)) setError('Không tìm thấy lệnh sản xuất.');
+      })
+      .catch((err: any) => {
+        if (!cancelled) setError(err?.message || 'Không thể tải lệnh sản xuất.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  };
+
+  useEffect(reload, [orderId]);
+
+  useEffect(() => {
+    if (row) document.title = `Chi tiết lệnh SX · ${row.code || row.name}`;
+  }, [row]);
+
+  const openEditModal = async () => {
+    if (!row || !canEdit) return;
+    setIsLoadingEdit(true);
+    setActionMessage('');
+    try {
+      const [orderRes, productRes, machineRes] = await Promise.all([
+        fetch('/api/don-hang'),
+        fetch('/api/san-pham?format=table'),
+        fetch('/api/danh-sach-may')
+      ]);
+      const [orderData, productData, machineData] = await Promise.all([
+        orderRes.json().catch(() => ({})),
+        productRes.json().catch(() => ({})),
+        machineRes.json().catch(() => ({}))
+      ]);
+      if (!orderRes.ok || !productRes.ok || !machineRes.ok) {
+        throw new Error('Không thể tải dữ liệu để sửa lệnh sản xuất.');
+      }
+      setOrders(normalizeOrders(orderData));
+      setCatalogProducts(normalizeProducts(productData));
+      setMachines(normalizeMachines(machineData));
+      setEditingRow(row);
+    } catch (err: any) {
+      setActionMessage(err?.message || 'Không thể mở form sửa lệnh sản xuất.');
+    } finally {
+      setIsLoadingEdit(false);
+    }
+  };
+
+  return (
+    <div className="w-full space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 sm:px-6">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết lệnh SX</h3>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+              {row ? row.code || row.name : isLoading ? 'Đang tải…' : '-'}
+            </p>
+          </div>
+          {row ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => printProductionOrder(row)}
+                disabled={isLoadingPrint}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {isLoadingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                In lệnh sản xuất
+              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={openEditModal}
+                  disabled={isLoadingEdit}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {isLoadingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+                  Sửa lệnh sản xuất
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        {actionMessage ? (
+          <p className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800 sm:px-6">
+            {actionMessage}
+          </p>
+        ) : null}
+        {isLoading ? (
+          <div className="flex items-center gap-2 p-6 text-sm font-bold text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Đang tải lệnh sản xuất…
+          </div>
+        ) : error ? (
+          <p className="p-6 text-sm font-bold text-red-600">{error}</p>
+        ) : row ? (
+          <div className="sm:px-2 sm:py-1">
+            <ProductionOrderDetailBody row={row} gridClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" />
+          </div>
+        ) : null}
+      </div>
+
+      <EditProductionOrderModal
+        open={Boolean(editingRow)}
+        row={editingRow}
+        orders={orders}
+        productionOrders={rows}
+        catalogProducts={catalogProducts}
+        machines={machines}
+        onClose={() => setEditingRow(null)}
+        onSaved={() => {
+          reload();
+        }}
+      />
+
+      {printingOrder && (
+        <ProductionOrderPrintSheet
+          order={printingOrder}
+          materials={printingMaterials}
+          machineLabel={printingMachineLabel}
+          product={printingProduct}
+          productCatalog={printingProductCatalog}
+          shiftSettings={shiftSettings}
+        />
+      )}
+    </div>
+  );
+}
+
 export function ProductionOrdersPanel({
   onBack,
   currentUser,
@@ -155,38 +353,25 @@ export function ProductionOrdersPanel({
   const [isBatchPrinting, setIsBatchPrinting] = useState(false);
   const { printingOrder, printingMaterials, printingProduct, printingProductCatalog, printingMachineLabel, shiftSettings, isLoadingPrint, printProductionOrder } = useProductionOrderPrint();
 
+  const openOrderDetail = (row: ProductionOrderRow) => {
+    // Điện thoại: mở popup như cũ. Máy tính: mở trang chi tiết ở tab mới.
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(max-width: 767px)').matches;
+    if (isMobile) {
+      setViewingRow(row);
+      return;
+    }
+    window.open(`/lenh-san-xuat/chi-tiet?id=${encodeURIComponent(row.id)}`, '_blank', 'noopener');
+  };
+
   const loadProductionOrders = async () => {
     setIsLoading(true);
     setLoadError('');
 
     try {
-      const [res, orderRes] = await Promise.all([
-        fetch('/api/lenh-sx'),
-        fetch('/api/don-hang')
-      ]);
-      const [data, orderData] = await Promise.all([
-        res.json().catch(() => ({})),
-        orderRes.json().catch(() => ({}))
-      ]);
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Không thể tải lệnh sản xuất từ Supabase.');
-      }
-
-      const orderRows = orderRes.ok ? normalizeOrders(orderData) : [];
-      const customerByOrderCode = new Map(
-        orderRows
-          .filter(order => order.orderCode && order.orderCode !== '-')
-          .map(order => [order.orderCode.trim().toLowerCase(), order.customer] as const)
-      );
-      const productionRows = normalizeProductionOrders(data).map(row => {
-        if (row.customer && row.customer !== '-') return row;
-        const customers = String(row.orderRef || '')
-          .split(/[,;|]+/)
-          .map(code => customerByOrderCode.get(code.trim().toLowerCase()))
-          .filter((customer): customer is string => Boolean(customer && customer !== '-'));
-        return { ...row, customer: [...new Set(customers)].join(', ') || '-' };
-      });
+      const { rows: productionRows, orders: orderRows } = await fetchProductionOrderRows();
       setOrders(orderRows);
       setRows(productionRows);
     } catch (error: any) {
@@ -370,11 +555,6 @@ export function ProductionOrdersPanel({
   ]);
 
   const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
-  const totalQuantity = filteredRows.reduce((sum, row) => {
-    const value = Number(row.quantity);
-    return Number.isFinite(value) ? sum + value : sum;
-  }, 0);
-
   const dateGroups = useMemo(() => {
     const map = new Map<string, ProductionOrderRow[]>();
     filteredRows.forEach(row => {
@@ -385,11 +565,7 @@ export function ProductionOrdersPanel({
     });
     return [...map.entries()].map(([date, groupRows]) => ({
       date,
-      rows: groupRows,
-      totalQuantity: groupRows.reduce((sum, row) => {
-        const value = Number(row.quantity);
-        return Number.isFinite(value) ? sum + value : sum;
-      }, 0)
+      rows: groupRows
     }));
   }, [filteredRows]);
 
@@ -530,11 +706,10 @@ export function ProductionOrdersPanel({
             </p>
           ) : null}
 
-          <div className="mt-5 grid grid-cols-3 gap-2 text-xs">
+          <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
             {[
               ['Lệnh SX', restrictToOwnAssignments ? filteredRows.length : rows.length],
-              ['Đang / chờ SX', activeCount],
-              ['Tổng SL', formatNumber(totalQuantity)]
+              ['Đang / chờ SX', activeCount]
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <span className="block font-bold text-zinc-500">{label}</span>
@@ -671,7 +846,7 @@ export function ProductionOrdersPanel({
       {!isLoading && dateGroups.length === 0 ? (
         <TableShell minWidthClassName="min-w-0">
           <TableBody>
-            <TableEmptyRow colSpan={12}>
+            <TableEmptyRow colSpan={9}>
               Bảng lenh_sx chưa có dữ liệu hoặc không có lệnh phù hợp bộ lọc.
             </TableEmptyRow>
           </TableBody>
@@ -683,8 +858,8 @@ export function ProductionOrdersPanel({
             const selectedInGroup = groupIds.filter(id => selectedIds.includes(id));
             const allGroupSelected = groupIds.length > 0 && selectedInGroup.length === groupIds.length;
             return (
-            <div key={group.date} className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
-              <div className="flex items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
+              <div key={group.date} className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
                 <div className="flex items-baseline gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>
                   <span className="font-mono text-sm font-black text-zinc-900">{group.date}</span>
@@ -697,14 +872,9 @@ export function ProductionOrdersPanel({
                     </span>
                   ) : null}
                 </div>
-                <div className="text-right">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng SL ngày</p>
-                  <p className="font-mono text-sm font-black text-emerald-800">{formatNumber(group.totalQuantity)}</p>
-                </div>
               </div>
               <div className="space-y-2 p-2 md:hidden">
                 {group.rows.map(row => {
-                  const productLines = getProductionOrderProductLines(row);
                   const staffNames = productionOrderStaffNames(row);
                   return (
                     <article key={row.id} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -719,24 +889,16 @@ export function ProductionOrdersPanel({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="break-words text-sm font-black text-zinc-950">{row.code || '-'}</p>
+                              <button
+                                type="button"
+                                onClick={() => openOrderDetail(row)}
+                                className="break-words text-left text-sm font-black text-[#ef1b2d] transition hover:text-[#b30d1c]"
+                              >
+                                {row.code || '-'}
+                              </button>
                               <p className="mt-0.5 text-xs font-semibold text-zinc-500">Ca: {row.shift || '-'}</p>
                             </div>
                             <StatusBadge label={row.status} color="amber" />
-                          </div>
-
-                          <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200">
-                            {productLines.length > 0 ? productLines.map((product, index) => (
-                              <div key={`${row.id}-${product.productCode}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-zinc-100 px-2.5 py-2 last:border-b-0">
-                                <div className="min-w-0">
-                                  <p className="break-words text-xs font-black text-zinc-950">{product.productCode || '-'}</p>
-                                  <p className="mt-0.5 break-words text-xs font-semibold leading-4 text-zinc-600">{product.productName || '-'}</p>
-                                </div>
-                                <p className="whitespace-nowrap self-start text-right font-mono text-xs font-black text-zinc-900">
-                                  {product.quantity || '-'}{product.unit && product.unit !== '-' ? ` ${product.unit}` : ''}
-                                </p>
-                              </div>
-                            )) : <p className="px-2.5 py-2 text-xs text-zinc-400">Chưa có sản phẩm.</p>}
                           </div>
 
                           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -746,7 +908,6 @@ export function ProductionOrdersPanel({
                           </dl>
 
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                            <button type="button" onClick={() => setViewingRow(row)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-700"><Eye className="h-3.5 w-3.5" />Xem</button>
                             <button type="button" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-700 disabled:opacity-50"><Printer className="h-3.5 w-3.5" />In</button>
                             {canEdit && <button type="button" onClick={() => openEditModal(row)} disabled={isLoadingEdit} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button>}
                             {canDelete && <button type="button" onClick={() => deleteProductionOrder(row)} disabled={deletingId === row.id} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 px-2 text-xs font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Xóa</button>}
@@ -759,9 +920,9 @@ export function ProductionOrdersPanel({
               </div>
 
               <div className="hover-scrollbar hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[1594px] table-fixed border-collapse text-left text-[11px]">
+                <table className="w-full min-w-[1134px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
-                    <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} /><col style={{ width: 460 }} />
+                    <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 120 }} />
                     <col style={{ width: 220 }} /><col style={{ width: 160 }} /><col style={{ width: 100 }} />
                   </colgroup>
@@ -782,13 +943,6 @@ export function ProductionOrdersPanel({
                     </TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Mã lệnh</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Ca</TableHeadCell>
-                    <TableHeadCell className="min-w-[320px] px-2 py-2 text-[10px]">
-                      <div className="grid grid-cols-[120px_minmax(0,1fr)_86px] gap-0">
-                        <span>Mã hàng</span>
-                        <span>Tên hàng</span>
-                        <span className="text-right">Số lượng</span>
-                      </div>
-                    </TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
                     <TableHeadCell className="min-w-[160px] max-w-[240px] px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
@@ -798,7 +952,6 @@ export function ProductionOrdersPanel({
                   </TableHead>
                   <TableBody>
                     {group.rows.map(row => {
-                      const productLines = getProductionOrderProductLines(row);
                       const staffNames = productionOrderStaffNames(row);
                       return (
                       <React.Fragment key={row.id}>
@@ -812,43 +965,16 @@ export function ProductionOrdersPanel({
                             className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
                           />
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top font-black text-zinc-950">{row.code || '-'}</td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
-                        <td className="px-2 py-2 align-top">
-                          {productLines.length > 0 ? (
-                            <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
-                              <table className="w-full table-fixed border-collapse text-left text-[10px]">
-                                <colgroup>
-                                  <col style={{ width: 120 }} />
-                                  <col />
-                                  <col style={{ width: 86 }} />
-                                </colgroup>
-                                <tbody className="divide-y divide-zinc-100">
-                                  {productLines.map((product, index) => (
-                                    <tr key={`${row.id}-${product.productCode}-${index}`}>
-                                      <td className="whitespace-nowrap px-2 py-1.5 align-top font-black text-zinc-950">
-                                        {product.productCode || '-'}
-                                      </td>
-                                      <td className="break-words px-2 py-1.5 align-top font-semibold leading-4 text-zinc-700">
-                                        {product.productName || '-'}
-                                      </td>
-                                      <td className="whitespace-nowrap px-2.5 py-1.5 text-right align-top font-mono font-bold text-zinc-900">
-                                        {product.quantity || '-'}
-                                        {product.unit && product.unit !== '-' ? (
-                                          <span className="ml-1 font-sans text-[10px] font-semibold text-zinc-500">
-                                            {product.unit}
-                                          </span>
-                                        ) : null}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <span className="text-zinc-400">-</span>
-                          )}
+                        <td className="whitespace-nowrap px-2 py-2 align-top font-black">
+                          <button
+                            type="button"
+                            onClick={() => openOrderDetail(row)}
+                            className="text-[#ef1b2d] transition hover:text-[#b30d1c]"
+                          >
+                            {row.code || '-'}
+                          </button>
                         </td>
+                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top">
                           <StatusBadge label={row.status} color="amber" />
                         </td>
@@ -866,9 +992,6 @@ export function ProductionOrdersPanel({
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
                           <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`} colorful>
-                            <button type="button" title="Xem chi tiết" onClick={() => setViewingRow(row)}>
-                              <Eye className="h-4 w-4" />
-                            </button>
                             <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint}>
                               <Printer className="h-4 w-4" />
                             </button>

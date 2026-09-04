@@ -110,9 +110,9 @@ function MachineNvlReportDetailModal({
   }, [onClose]);
 
   const modal = (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/45 p-4">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Đóng" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-gradient-to-r from-zinc-50 to-white px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">
@@ -177,9 +177,9 @@ function MachineNvlReportDetailModal({
               </ul>
             </div>
           ) : null}
-          <div className="overflow-hidden rounded-xl border border-zinc-200">
+          <div className="overflow-x-auto rounded-xl border border-zinc-200">
             <table className="w-full min-w-[760px] border-collapse text-left text-[11px] sm:text-xs">
-              <thead className="sticky top-0 bg-zinc-900 text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
+              <thead className="sticky top-0 bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
                 <tr>
                   <th className="px-2.5 py-2.5 font-black">STT</th>
                   <th className="px-2.5 py-2.5 font-black">Mã NVL</th>
@@ -265,13 +265,6 @@ function MachineNvlReportDetailModal({
               Sửa
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className={`${actionBtnClass} border-zinc-300 bg-zinc-900 text-white hover:bg-zinc-800`}
-          >
-            Đóng
-          </button>
         </div>
       </div>
     </div>

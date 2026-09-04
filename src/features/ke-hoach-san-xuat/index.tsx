@@ -2192,92 +2192,97 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-end gap-2">
-          {canCreate ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (pageKind === 'bao_cao_cv') {
-                  setPhanCongAddTick(tick => tick + 1);
-                  return;
-                }
-                void openCreatePlan();
-              }}
-              disabled={isLoadingCreate}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-            >
-              {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Thêm mới
-            </button>
-          ) : null}
-          <label className="space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>
-            <select
-              value={pageKind}
-              onChange={e => setPageKind(e.target.value === 'bao_cao_cv' ? 'bao_cao_cv' : 'ke_hoach')}
-              className="h-10 min-w-[13rem] rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-            >
-              {pageKindOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            {canCreate ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (pageKind === 'bao_cao_cv') {
+                    setPhanCongAddTick(tick => tick + 1);
+                    return;
+                  }
+                  void openCreatePlan();
+                }}
+                disabled={isLoadingCreate}
+                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+              >
+                {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Thêm mới
+              </button>
+            ) : null}
+            <label className="min-w-0 flex-1 space-y-1 sm:max-w-[16rem]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>
+              <select
+                value={pageKind}
+                onChange={e => setPageKind(e.target.value === 'bao_cao_cv' ? 'bao_cao_cv' : 'ke_hoach')}
+                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              >
+                {pageKindOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           {pageKind === 'ke_hoach' ? (
-            <>
-          <label className="ml-auto space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
-            <DateInput
-              value={filterDate}
-              onChange={next => {
-                setFilterDate(next);
-                setFromDate('');
-                setToDate('');
-              }}
-              className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
-            <DateInput
-              value={fromDate}
-              onChange={next => {
-                setFromDate(next);
-                setFilterDate('');
-              }}
-              className="h-10 w-full min-w-[9rem] rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
-            <DateInput
-              value={toDate}
-              onChange={next => {
-                setToDate(next);
-                setFilterDate('');
-              }}
-              className="h-10 w-full min-w-[9rem] rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={applyFilters}
-            disabled={isLoading}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-          >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            Lọc
-          </button>
-          <button
-            type="button"
-            onClick={resetToToday}
-            disabled={isLoading}
-            className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
-          >
-            Hôm nay
-          </button>
-            </>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:items-end">
+              <label className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
+                <DateInput
+                  value={filterDate}
+                  onChange={next => {
+                    setFilterDate(next);
+                    setFromDate('');
+                    setToDate('');
+                  }}
+                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
+                <DateInput
+                  value={fromDate}
+                  onChange={next => {
+                    setFromDate(next);
+                    setFilterDate('');
+                  }}
+                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
+                <DateInput
+                  value={toDate}
+                  onChange={next => {
+                    setToDate(next);
+                    setFilterDate('');
+                  }}
+                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+                />
+              </label>
+              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
+                <button
+                  type="button"
+                  onClick={applyFilters}
+                  disabled={isLoading}
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 lg:flex-none"
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  Lọc
+                </button>
+                <button
+                  type="button"
+                  onClick={resetToToday}
+                  disabled={isLoading}
+                  className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 lg:flex-none"
+                >
+                  Hôm nay
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
       </section>
@@ -6391,30 +6396,18 @@ export function AddProductionOrderModal({
   );
 }
 
-export function ProductionOrderViewModal({
+export function ProductionOrderDetailBody({
   row,
-  onClose
+  gridClassName = 'grid-cols-2'
 }: {
-  row: ProductionOrderRow | null;
-  onClose: () => void;
+  row: ProductionOrderRow;
+  gridClassName?: string;
 }) {
-  if (!row) return null;
-
   const productLines = getProductionOrderProductLines(row);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết lệnh SX</h3>
-            <p className="mt-0.5 text-xs font-semibold text-zinc-500">{row.code || row.name}</p>
-          </div>
-          <button type="button" onClick={onClose} className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50">
-            Đóng
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 p-4 text-sm">
+    <>
+        <div className={`grid ${gridClassName} gap-3 p-4 text-sm`}>
           {[
             ['Mã lệnh', row.code],
             ['Tên lệnh', row.name],
@@ -6471,6 +6464,32 @@ export function ProductionOrderViewModal({
             </table>
           </div>
         </div>
+    </>
+  );
+}
+
+export function ProductionOrderViewModal({
+  row,
+  onClose
+}: {
+  row: ProductionOrderRow | null;
+  onClose: () => void;
+}) {
+  if (!row) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm">
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết lệnh SX</h3>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-500">{row.code || row.name}</p>
+          </div>
+          <button type="button" onClick={onClose} className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50">
+            Đóng
+          </button>
+        </div>
+        <ProductionOrderDetailBody row={row} />
       </div>
     </div>
   );

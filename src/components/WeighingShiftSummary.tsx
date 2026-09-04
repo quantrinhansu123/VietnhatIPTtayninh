@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   CalendarDays,
-  Eye,
   Loader2,
   Pencil,
   Plus,
@@ -432,8 +431,14 @@ function ShiftSlipCard({
                         {group.entries.map((entry, index) => (
                           <tr key={entry.row.id ?? `${group.roundKey}-${entry.slip.key}-${index}`}>
                             {!hideProductFields && (
-                            <td className="px-3 py-2 font-semibold text-zinc-800">
-                              <p>{formatWeighingProductLabel(entry.row, entry.slip)}</p>
+                            <td className="px-3 py-2 font-semibold">
+                              <button
+                                type="button"
+                                onClick={() => onViewRow(entry.row)}
+                                className="cursor-pointer text-left font-semibold text-zinc-800 transition-colors duration-150 hover:text-[#ef1b2d]"
+                              >
+                                {formatWeighingProductLabel(entry.row, entry.slip)}
+                              </button>
                               {shift.slips.length > 1 ? (
                                 <p className="mt-0.5 text-[10px] font-semibold text-zinc-400">
                                   Phiếu {entry.slip.documentNo || '—'}
@@ -544,14 +549,6 @@ function ShiftSlipCard({
                             <td className="px-3 py-2">
                               <RowActionsMenu label="Thao tác dòng cân">
                               <div className="flex items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => onViewRow(entry.row)}
-                                  title="Xem"
-                                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </button>
                                 {canEdit ? (
                                   <button
                                     type="button"
@@ -1138,8 +1135,8 @@ export default function WeighingShiftSummary({
 
       <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
 
-      {viewingRow && (        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="w-full max-w-lg rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      {viewingRow && (        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết dòng cân</h3>
@@ -1147,13 +1144,28 @@ export default function WeighingShiftSummary({
                   Lần {viewingRow.weighNo || '—'} · {viewingRow.weighTime || '—'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setViewingRow(null)}
-                className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50"
-              >
-                Đóng
-              </button>
+              <div className="flex items-center gap-2">
+                {viewingRowSlip && canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewingRow(null);
+                      handleEditRow(viewingRowSlip, viewingRow);
+                    }}
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-[#ef1b2d] transition hover:bg-red-50"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Sửa
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setViewingRow(null)}
+                  className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 p-4 text-xs">
               {splitDamagedPlasticDefectWeights ? (
@@ -1276,28 +1288,6 @@ export default function WeighingShiftSummary({
                   <p className="mt-1 font-semibold text-zinc-400">Chưa có</p>
                 )}
               </div>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-3">
-              {viewingRowSlip && canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewingRow(null);
-                    handleEditRow(viewingRowSlip, viewingRow);
-                  }}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-[#ef1b2d] transition hover:bg-red-50"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Sửa
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setViewingRow(null)}
-                className="h-9 rounded-lg bg-zinc-900 px-3 text-xs font-bold text-white transition hover:bg-zinc-700"
-              >
-                Đóng
-              </button>
             </div>
           </div>
         </div>

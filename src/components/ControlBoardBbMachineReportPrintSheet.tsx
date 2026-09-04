@@ -55,6 +55,8 @@ import {
   type BbThucDungGroup,
   type BbWarehouseExportGroup,
   type BbWarehouseExportLineRow,
+  splitBbDanhGiaSummaryRowsBySection,
+  splitBbDanhGiaSummaryRowsRatioVsDetail,
 } from '../utils/controlBoardBbMachineReport';
 import { isBbTieuHaoPlasticRow } from '../utils/bbTieuHaoNvlPrintRows';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
@@ -694,7 +696,8 @@ function resolveOrderSanLuongFilmKg(order: BbProductionOrderGroup, props: PrintP
 
 /**
  * Định mức NVL (kg) theo lệnh = Σ (SL thực tế SP × định mức BOM / 1 SP).
- * Dùng cột «Định mức Vật tư của Số lượng nhập TP» mục 4.2.
+ * Dùng cột «Định mức Vật tư của Số lượng nhập TP» cho vật tư còn lại (không phải % trộn).
+ * Vật tư trộn: Tổng nhựa thành phẩm × tỉ lệ %.
  */
 function buildBomDinhMucKgByMaterial(order: BbProductionOrderGroup, props: PrintProps): Map<string, number> {
   const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
@@ -1343,7 +1346,7 @@ function BbMachineOrderPrintSheet({
   const plasticLossTotalKg = evaluation?.giaTriHaoHutNhuaKg ?? 0;
   const plasticThucXuatKg = evaluation?.tongNhuaThucXuat ?? 0;
   const danhGiaText = String(props.phanTichMap?.[order.groupKey] || '').trim();
-  /** 4.2 Định mức = SL thực tế × định mức BOM. */
+  /** 4.2 Vật tư trộn: ĐM nhập TP = BOM thành phần × SL nhập TP. */
   const bomDinhMucByMaterial = buildBomDinhMucKgByMaterial(order, props);
   const mixingPlasticLines = (mixingGroup?.lines || []).filter(line => {
     const hasName = Boolean(String(line.materialCode || '').trim() || String(line.materialName || '').trim());
@@ -1351,7 +1354,6 @@ function BbMachineOrderPrintSheet({
     return !isNnsTronMaterial(line.materialCode, line.materialName);
   });
   const plasticLossKgByLine = allocateBbNhuaHaoHutByRatioPercent(plasticLossTotalKg, mixingPlasticLines);
-  const plasticThucXuatByLine = allocateBbNhuaHaoHutByRatioPercent(plasticThucXuatKg, mixingPlasticLines);
   const shiftSettingsTyped = (props.shiftSettings || []) as ShiftSetting[];
   const warehouseMovements = props.warehouseMovements || [];
   const plasticLossDetailRows = mixingPlasticLines.map((line, index) => {
@@ -1364,15 +1366,31 @@ function BbMachineOrderPrintSheet({
       line.tiLeThucTeTbPercent !== null && Number.isFinite(line.tiLeThucTeTbPercent)
         ? line.tiLeThucTeTbPercent
         : null;
+    const tiLePercent =
+      tiLeDm != null && tiLeDm > 0
+        ? tiLeDm
+        : tiLeTt != null && tiLeTt > 0
+          ? tiLeTt
+          : null;
     const bomDinhMucKg = lookupBomDinhMucKg(bomDinhMucByMaterial, line.materialCode, line.materialName);
     const dinhMucKg = bomDinhMucKg > 0 ? bomDinhMucKg : null;
-    const thucXuatKg = plasticThucXuatByLine[index];
+    // Thực xuất dùng = Xuất thực dùng (tổng nhựa) × tỉ lệ % — giữ 2 số thập phân.
+    const thucXuatKg =
+      tiLePercent != null && plasticThucXuatKg > 0
+        ? Math.round(plasticThucXuatKg * (tiLePercent / 100) * 100) / 100
+        : null;
+    const plasticLoiHongKg = evaluation?.soLuongNhuaLoiHong ?? 0;
+    const loiKg =
+      tiLePercent != null && plasticLoiHongKg > 0
+        ? Math.round(plasticLoiHongKg * (tiLePercent / 100) * 100) / 100
+        : 0;
+    // Chênh lệch = ĐM − Thực xuất + Lỗi.
     const chenhLechKg =
       dinhMucKg !== null &&
       thucXuatKg !== null &&
       Number.isFinite(dinhMucKg) &&
       Number.isFinite(thucXuatKg)
-        ? thucXuatKg - dinhMucKg
+        ? dinhMucKg - thucXuatKg + loiKg
         : null;
     /** Đơn giá từ phiếu xuất NVL cùng ngày lệnh (mọi ca). */
     const exportUnitPrice = resolveBbMaterialExportUnitPrice(
@@ -1412,7 +1430,7 @@ function BbMachineOrderPrintSheet({
     const thucXuatKg = row.actualUsedKg;
     const bomDinhMucKg = lookupBomDinhMucKg(bomDinhMucByMaterial, row.code, row.name);
     const dinhMucKg = bomDinhMucKg > 0 ? bomDinhMucKg : row.finishedKg;
-    const chenhLechKg = thucXuatKg - dinhMucKg;
+    const chenhLechKg = dinhMucKg - thucXuatKg;
     const unit = row.unit || '-';
     const thucXuatQty =
       resolveUsageQtyFromKg(thucXuatKg, unit, row.code, row.name, materialsCatalog) ??
@@ -1769,73 +1787,156 @@ function BbMachineOrderPrintSheet({
         <section className="shift-summary-print-section">
           <h2 className="production-order-print-section-title">4. ĐÁNH GIÁ HIỆU QUẢ CA SẢN XUẤT</h2>
 
-          <h3 className="production-order-print-section-subtitle">4.1. Tổng hợp</h3>
-          <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Giá trị phân tích dữ liệu</th>
-                <th className="shift-summary-print-num">Hàng lỗi</th>
-                <th className="shift-summary-print-num">Thành phẩm</th>
-                <th
-                  className="shift-summary-print-num"
-                  title="Hao hụt nhựa: Dữ liệu định mức = Tổng nhựa thành phẩm"
-                >
-                  Dữ liệu
-                  <br />
-                  định mức
-                </th>
-                <th className="shift-summary-print-num" title="Cùng cột Chênh lệch (Xuất − Nhập) mục 3.1">
-                  Chênh lệch
-                  <br />
-                  (Xuất − Nhập)
-                </th>
-                <th className="shift-summary-print-num" title="Chênh lệch ÷ Dữ liệu định mức">
-                  Tỉ lệ
-                  <br />
-                  Chênh lệch
-                </th>
-                <th>Tỉ lệ hao hụt<br />Định mức</th>
-                <th>Tỉ lệ hao hụt<br />thực tế</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(evaluation?.summaryRows || []).length > 0 ? (
-                (evaluation?.summaryRows || []).map((row, index) => (
-                  <tr
-                    key={row.id}
-                    className={row.id === 'hao_hut_nhua' ? 'bb-machine-report-print-eval-total-line' : undefined}
-                  >
-                    <td className="shift-summary-print-center">{index + 1}</td>
-                    <td>{row.label}</td>
-                    <td className="shift-summary-print-num">
-                      {row.hangLoiKg > 0 ? printNumber(row.hangLoiKg, 3) : '—'}
-                    </td>
-                    <td className="shift-summary-print-num">
-                      {row.thanhPhamKg > 0 ? printNumber(row.thanhPhamKg, 3) : '—'}
-                    </td>
-                    <td className="shift-summary-print-num">
-                      {row.dinhMucKg !== 0 ? printNumber(row.dinhMucKg, 3) : '—'}
-                    </td>
-                    <td className="shift-summary-print-num">
-                      {row.chenhLechKg !== 0 ? printNumber(row.chenhLechKg, 3) : '—'}
-                    </td>
-                    <td className="shift-summary-print-num">{printPercent(row.tiLeChenhLech)}</td>
-                    <td className="shift-summary-print-num">
-                      {printPercent(row.tiLeHaoHutDinhMucPercent)}
-                    </td>
-                    <td className="shift-summary-print-num">{printPercent(row.tiLeHaoHutThucTe)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={9} className="shift-summary-print-center">
-                    Chưa có bảng 4.1 — bấm Tính toán trên tab Đánh giá.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <h3 className="production-order-print-section-subtitle">Báo cáo tổng hợp</h3>
+          {(() => {
+            const { mixingRows, otherRows } = splitBbDanhGiaSummaryRowsBySection(
+              evaluation?.summaryRows
+            );
+            const { ratioRows, detailRows: mixingDetailRows } =
+              splitBbDanhGiaSummaryRowsRatioVsDetail(mixingRows);
+            const fmtQty = (value: number | null | undefined) =>
+              value != null && Number.isFinite(value) ? printNumber(value, 1) : '—';
+            const fmtThucXuatKg = (value: number | null | undefined) =>
+              value != null && Number.isFinite(value) ? printNumber(value, 2) : '—';
+            const fmtMoneyCell = (value: number | null | undefined) =>
+              value != null && Number.isFinite(value) && value !== 0
+                ? formatMoney(value, 0)
+                : '—';
+            const fmtDonGia = (value: number | null | undefined) =>
+              value != null && Number.isFinite(value) && value > 0 ? formatMoney(value, 0) : '—';
+            const renderRatioSection = (sectionRows: typeof ratioRows) => {
+              if (sectionRows.length === 0) return null;
+              return (
+                <React.Fragment key="ti-le-loi-hong">
+                  <h4 className="production-order-print-section-subtitle">Tỉ lệ hàng lỗi hỏng</h4>
+                  <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
+                    <thead>
+                      <tr>
+                        <th>Chỉ số</th>
+                        <th className="shift-summary-print-num">
+                          Tỉ lệ hao hụt
+                          <br />
+                          Định mức
+                        </th>
+                        <th className="shift-summary-print-num">
+                          Tỉ lệ hao hụt
+                          <br />
+                          thực tế
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sectionRows.map((row, index) => (
+                        <tr key={`ratio|${row.id}|${index}`}>
+                          <td>{row.label}</td>
+                          <td className="shift-summary-print-num">
+                            {printPercent(row.tiLeHaoHutDinhMucPercent)}
+                          </td>
+                          <td className="shift-summary-print-num">
+                            {printPercent(row.tiLeHaoHutThucTe)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </React.Fragment>
+              );
+            };
+            const renderSummarySection = (
+              title: string,
+              sectionRows: typeof mixingRows
+            ) => (
+              <React.Fragment key={title}>
+                <h4 className="production-order-print-section-subtitle">{title}</h4>
+                <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
+                  <thead>
+                    <tr>
+                      <th>STT</th>
+                      <th>Giá trị phân tích dữ liệu</th>
+                      <th
+                        className="shift-summary-print-num"
+                        title="Định mức theo BOM thành phần × SL nhập TP"
+                      >
+                        Định mức Vật tư
+                        <br />
+                        của Số lượng nhập TP
+                        <br />
+                        (kg)
+                      </th>
+                      <th className="shift-summary-print-num">
+                        Số lượng thực
+                        <br />
+                        xuất dùng (kg)
+                      </th>
+                      <th className="shift-summary-print-num">Lỗi</th>
+                      <th
+                        className="shift-summary-print-num"
+                        title="Chênh lệch = Định mức Vật tư của Số lượng nhập TP − Số lượng thực xuất dùng (kg) + Lỗi"
+                      >
+                        Chênh lệch
+                        <br />
+                        (ĐM − Thực xuất + Lỗi)
+                      </th>
+                      <th className="shift-summary-print-num">Đơn giá</th>
+                      <th className="shift-summary-print-num">Thành tiền</th>
+                      <th>Đánh giá</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sectionRows.length > 0 ? (
+                      sectionRows.map((row, index) => {
+                        const isTong = row.id === 'tong';
+                        return (
+                          <tr
+                            key={`${row.section || 'tron'}|${row.id}|${row.sttCode || row.materialCode || ''}|${index}`}
+                            className={isTong ? 'bb-machine-report-print-eval-total-line' : undefined}
+                          >
+                            <td className="shift-summary-print-center">
+                              {row.sttCode || (isTong ? '' : '—')}
+                            </td>
+                            <td>{row.label}</td>
+                            <td className="shift-summary-print-num">{fmtQty(row.dinhMucVatTuKg)}</td>
+                            <td className="shift-summary-print-num">{fmtThucXuatKg(row.thucXuatKg)}</td>
+                            <td className="shift-summary-print-num">{fmtThucXuatKg(row.loiKg)}</td>
+                            <td className="shift-summary-print-num">{fmtQty(row.chenhLechKg)}</td>
+                            <td className="shift-summary-print-num">{fmtDonGia(row.donGia)}</td>
+                            <td className="shift-summary-print-num">{fmtMoneyCell(row.thanhTien)}</td>
+                            <td>{row.danhGia || ''}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={9} className="shift-summary-print-center">
+                          Chưa có dòng {title.toLowerCase()}.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </React.Fragment>
+            );
+            if ((evaluation?.summaryRows || []).length === 0) {
+              return (
+                <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
+                  <tbody>
+                    <tr>
+                      <td colSpan={9} className="shift-summary-print-center">
+                        Chưa có bảng báo cáo tổng hợp — bấm Tính toán trên báo cáo.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            }
+            return (
+              <>
+                {renderRatioSection(ratioRows)}
+                {renderSummarySection('Vật tư trộn', mixingDetailRows)}
+                {renderSummarySection('Các vật tư còn lại', otherRows)}
+              </>
+            );
+          })()}
 
           <h3 className="production-order-print-section-subtitle">4.2. Chi tiết</h3>
           <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-detail-table">
@@ -1843,9 +1944,13 @@ function BbMachineOrderPrintSheet({
               <tr>
                 <th className="bb-machine-report-print-stt">STT</th>
                 <th>Giá trị phân tích dữ liệu</th>
-                <th>Định mức Vật tư<br />của Số lượng nhập TP</th>
+                <th title="Định mức theo BOM thành phần × SL nhập TP">
+                  Định mức Vật tư<br />của Số lượng nhập TP (kg)
+                </th>
                 <th>Trọng lượng thực<br />xuất dùng (kg)</th>
-                <th>Chênh lệch<br />(Thực xuất Trừ Đ mức)</th>
+                <th title="Chênh lệch = Định mức − Thực xuất + Lỗi">
+                  Chênh lệch<br />(ĐM − Thực xuất + Lỗi)
+                </th>
                 <th>Đơn giá</th>
                 <th>Thành tiền</th>
               </tr>

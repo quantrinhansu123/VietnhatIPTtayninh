@@ -29,7 +29,7 @@ node scripts/run-sql-file.mjs supabase-bb-bao-cao-tinh-toan.sql
 
 Khóa ổn định: `ngay_tu|ngay_den|ca|may|nguon_san_luong|include_all|ma_lenh(*)`.
 
-`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` (cột nhập TP, lỗi, TP+lỗi, chênh lệch in) và `danhGiaGroups[].summaryRows` (bảng 4.1).
+`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` và `danhGiaGroups[].summaryRows` (mẫu Excel Báo cáo tổng hợp: STT=mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · đánh giá; tách **Vật tư trộn** / **Các vật tư còn lại** + dòng **Tổng**).
 
 Tab **Dữ liệu trong lệnh sản xuất** còn ghi bảng riêng **`bc_lsx`** (cùng `khoa_on_dinh`) — xem [bc_lsx.md](./bc_lsx.md).
 

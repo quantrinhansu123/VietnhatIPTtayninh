@@ -12,7 +12,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 | `src/components/ControlBoardCommonFilters.tsx` | Bộ lọc chung: **Ngày** (Tất cả / Theo khoảng) · Ca · Máy · Lệnh SX |
 | `src/features/dashboard/index.tsx` | Re-export; routing `/phan-tich` qua `App.tsx` |
 | `ControlBoardShiftSummaryTable.tsx` | Bảng tổng hợp ca |
-| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB (lệnh SX, xuất kho, tồn đầu ca, **tab lỗi hỏng từ Báo cáo sản lượng · Hàng hỏng + Hàng rác**, tồn cuối ca, phiếu nhập kho, thực dùng, tổng, tỉ lệ trộn, **tab 4.1. Tổng hợp** (`summaryRows`), đánh giá hao hụt). `/phan-tich-tu-dong`: tab **Dữ liệu cân thực tế** = bảng `can_tu_dong_tong_hop` (Số cuộn + Tổng TL, không load từng phiếu `can_tu_dong`); tab **Báo cáo sản lượng** = phiếu `bao_cao_nghiem_thu` (`sanLuongGroups`) |
+| `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB … **tab Báo cáo tổng hợp** — 2 bảng `Vật tư trộn` / `Các vật tư còn lại` theo mẫu Excel (mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · Tổng). |
 | `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`, bên dưới = list view tương ứng |
 | `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in BB — **chỉ mirror** tab thành phẩm / tiêu hao NVL / đánh giá (`thucDungGroups`, `summaryRows`); không tính lại mục 3–4.1 |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |

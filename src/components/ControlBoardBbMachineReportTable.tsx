@@ -78,6 +78,8 @@ import {
   groupBbThucDungLines,
   splitBbDauCaMaterialLinesByMixing,
   splitBbLoiHongMaterialLinesByMixing,
+  splitBbDanhGiaSummaryRowsBySection,
+  splitBbDanhGiaSummaryRowsRatioVsDetail,
   buildBbLoiHongMaterialLinesForShift,
   isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
@@ -674,10 +676,11 @@ export default function ControlBoardBbMachineReportTable({
   useEffect(() => {
     if (
       activeTab === 'tong_vat_tu_thuc_dung' ||
+      activeTab === 'danh_gia_hao_hut' ||
       String(activeTab) === 'tong_dinh_muc_nvl_nhap_kho' ||
       String(activeTab) === 'bieu_do_so_sanh'
     ) {
-      setActiveTab('lenh_sx');
+      setActiveTab(activeTab === 'danh_gia_hao_hut' ? 'danh_gia_tong_hop' : 'lenh_sx');
     }
   }, [activeTab]);
   /** Đánh dấu tab đã rà soát xong (chỉ tạm trong phiên làm việc, không lưu lại). */
@@ -3447,7 +3450,6 @@ export default function ControlBoardBbMachineReportTable({
       {activeGroupKeys.length > 0 ||
       activeTab === 'ton_dau_ca' ||
       activeTab === 'danh_gia_tong_hop' ||
-      activeTab === 'danh_gia_hao_hut' ||
       activeTab === 'giai_trinh' ? (
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           {activeTab === 'ton_dau_ca' ? (
@@ -3462,22 +3464,10 @@ export default function ControlBoardBbMachineReportTable({
           ) : activeTab === 'danh_gia_tong_hop' ? (
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-wider text-rose-700">
-                4.1. Tổng hợp
+                Báo cáo tổng hợp
               </p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
                 Cùng bảng trên phiếu in — bấm «Tính toán» để cập nhật từ tiêu hao NVL + lỗi + lệnh.
-              </p>
-            </div>
-          ) : activeTab === 'danh_gia_hao_hut' ? (
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-rose-700">
-                Phân tích đánh giá
-              </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Gõ nội dung từng lệnh → Lưu DB (Supabase) để dùng chung giữa các máy.
-                {phanTichSaveMessage ? (
-                  <span className="ml-1 font-bold text-rose-700">{phanTichSaveMessage}</span>
-                ) : null}
               </p>
             </div>
           ) : activeTab === 'giai_trinh' ? (
@@ -3500,17 +3490,6 @@ export default function ControlBoardBbMachineReportTable({
             <div />
           )}
           <div className="flex shrink-0 flex-wrap gap-2">
-            {activeTab === 'danh_gia_hao_hut' ? (
-              <button
-                type="button"
-                onClick={() => void savePhanTichToDb()}
-                disabled={savingPhanTich || danhGiaGroups.length === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-black text-[#ef1b2d] shadow-xs transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingPhanTich ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                {savingPhanTich ? 'Đang lưu...' : 'Lưu phân tích DB'}
-              </button>
-            ) : null}
             {activeTab === 'giai_trinh' ? (
               <>
                 <button
@@ -6008,11 +5987,182 @@ export default function ControlBoardBbMachineReportTable({
               </p>
             ) : danhGiaGroups.length === 0 ? (
               <p className="px-3 py-10 text-center font-bold text-zinc-400">
-                Chưa có dữ liệu 4.1 — bấm «Tính toán» để tạo bảng tổng hợp.
+                Chưa có dữ liệu báo cáo tổng hợp — bấm «Tính toán» để tạo bảng.
               </p>
             ) : (
               danhGiaGroups.map(group => {
                 const rows = group.summaryRows || [];
+                const { mixingRows, otherRows } = splitBbDanhGiaSummaryRowsBySection(rows);
+                const { ratioRows, detailRows: mixingDetailRows } =
+                  splitBbDanhGiaSummaryRowsRatioVsDetail(mixingRows);
+                const renderRatioTable = (sectionRows: typeof rows) => {
+                  if (sectionRows.length === 0) return null;
+                  return (
+                    <div className="overflow-hidden rounded-lg border border-rose-200">
+                      <div className="border-b border-rose-200 bg-rose-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-900">
+                        Tỉ lệ hàng lỗi hỏng
+                      </div>
+                      <div className="bb-table-scroll overflow-x-auto">
+                        <table className="min-w-[640px] w-full text-left text-sm font-semibold">
+                          <thead className="bg-rose-50 text-[11px] uppercase tracking-wider text-rose-900">
+                            <tr>
+                              <th className="px-3 py-2.5 font-black">Chỉ số</th>
+                              <th className="px-2 py-2.5 text-right font-black">
+                                Tỉ lệ hao hụt
+                                <br />
+                                Định mức
+                              </th>
+                              <th className="px-2 py-2.5 text-right font-black">
+                                Tỉ lệ hao hụt
+                                <br />
+                                thực tế
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-rose-50">
+                            {sectionRows.map((row, index) => (
+                              <tr
+                                key={`ratio|${row.id}|${index}`}
+                                className="bg-slate-50/80 hover:bg-rose-50/30"
+                              >
+                                <td className="px-3 py-2">{row.label}</td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {formatPercent(row.tiLeHaoHutDinhMucPercent, 0)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {formatPercent(row.tiLeHaoHutThucTe, 2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                };
+                const renderSummaryTable = (
+                  title: string,
+                  sectionRows: typeof rows,
+                  accent: 'violet' | 'slate'
+                ) => {
+                  const headBg = accent === 'violet' ? 'bg-violet-100 text-violet-900' : 'bg-slate-100 text-slate-700';
+                  const border = accent === 'violet' ? 'border-violet-200' : 'border-slate-200';
+                  const fmtQty = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) ? formatKg(value, 1) : '—';
+                  const fmtThucXuatKg = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) ? formatKg(value, 2) : '—';
+                  const fmtSignedQty = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) && value !== 0
+                      ? formatSignedKg(value, 1)
+                      : value != null && Number.isFinite(value)
+                        ? formatKg(value, 1)
+                        : '—';
+                  const fmtMoneyCell = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) && value !== 0
+                      ? `${formatMoney(value, 0)}`
+                      : '—';
+                  const fmtDonGia = (value: number | null | undefined) =>
+                    value != null && Number.isFinite(value) && value > 0
+                      ? formatMoney(value, 0)
+                      : '—';
+                  return (
+                    <div className={`overflow-hidden rounded-lg border ${border}`}>
+                      <div className={`border-b ${border} ${headBg} px-3 py-2 text-xs font-black uppercase tracking-wider`}>
+                        {title}
+                        {sectionRows.filter(r => r.id === 'nvl').length > 0
+                          ? ` (${sectionRows.filter(r => r.id === 'nvl').length} NVL)`
+                          : ''}
+                      </div>
+                      {sectionRows.length === 0 ? (
+                        <p className="px-3 py-6 text-center text-sm font-semibold text-zinc-400">
+                          Chưa có dòng {title.toLowerCase()}.
+                        </p>
+                      ) : (
+                        <div className="bb-table-scroll overflow-x-auto">
+                          <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
+                            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-700">
+                              <tr>
+                                <th className="px-2 py-2.5 text-center font-black">STT</th>
+                                <th className="px-3 py-2.5 font-black">Giá trị phân tích dữ liệu</th>
+                                <th
+                                  className="px-2 py-2.5 text-right font-black"
+                                  title="Định mức theo BOM thành phần × SL nhập TP"
+                                >
+                                  Định mức Vật tư
+                                  <br />
+                                  của Số lượng nhập TP
+                                  <br />
+                                  (kg)
+                                </th>
+                                <th className="px-2 py-2.5 text-right font-black">
+                                  Số lượng thực
+                                  <br />
+                                  xuất dùng (kg)
+                                </th>
+                                <th
+                                  className="px-2 py-2.5 text-right font-black"
+                                  title="Tổng nhựa lỗi hỏng × tỉ lệ %"
+                                >
+                                  Lỗi
+                                </th>
+                                <th
+                                  className="px-2 py-2.5 text-right font-black"
+                                  title="Chênh lệch = Định mức Vật tư của Số lượng nhập TP − Số lượng thực xuất dùng (kg) + Lỗi"
+                                >
+                                  Chênh lệch
+                                  <br />
+                                  (ĐM − Thực xuất + Lỗi)
+                                </th>
+                                <th className="px-2 py-2.5 text-right font-black">Đơn giá</th>
+                                <th className="px-2 py-2.5 text-right font-black">Thành tiền</th>
+                                <th className="px-2 py-2.5 font-black">Đánh giá</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-100">
+                              {sectionRows.map((row, index) => {
+                                const isTong = row.id === 'tong';
+                                return (
+                                  <tr
+                                    key={`${row.section || 'tron'}|${row.id}|${row.sttCode || row.materialCode || ''}|${index}`}
+                                    className={
+                                      isTong ? 'bg-amber-50/80 font-black' : 'hover:bg-rose-50/20'
+                                    }
+                                  >
+                                    <td className="px-2 py-2 text-center font-mono text-xs">
+                                      {row.sttCode || (isTong ? '' : '—')}
+                                    </td>
+                                    <td className="px-3 py-2">{row.label}</td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtQty(row.dinhMucVatTuKg)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtThucXuatKg(row.thucXuatKg)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
+                                      {fmtThucXuatKg(row.loiKg)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtSignedQty(row.chenhLechKg)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtDonGia(row.donGia)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtMoneyCell(row.thanhTien)}
+                                    </td>
+                                    <td className="px-2 py-2 text-zinc-500">
+                                      {row.danhGia || ''}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
                 return (
                   <div
                     key={group.groupKey}
@@ -6020,7 +6170,7 @@ export default function ControlBoardBbMachineReportTable({
                   >
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-rose-200 bg-rose-50 px-3 py-2.5">
                       <p className="text-xs font-black uppercase tracking-wider text-rose-900">
-                        4.1. Tổng hợp
+                        Báo cáo tổng hợp
                       </p>
                       <p className="font-mono text-sm font-bold text-zinc-800">{group.ngay || '—'}</p>
                       <p className="text-sm font-semibold text-zinc-700">
@@ -6036,82 +6186,10 @@ export default function ControlBoardBbMachineReportTable({
                         Chưa có dòng tổng hợp cho lệnh này. Bấm «Tính toán» lại.
                       </p>
                     ) : (
-                      <div className="bb-table-scroll overflow-x-auto">
-                        <table className="min-w-[1100px] w-full text-left text-sm font-semibold">
-                          <thead className="bg-slate-100 text-xs uppercase tracking-wider text-slate-700">
-                            <tr>
-                              <th className="px-3 py-2.5 text-center font-black">STT</th>
-                              <th className="px-3 py-2.5 font-black">Giá trị phân tích dữ liệu</th>
-                              <th className="px-3 py-2.5 text-right font-black">Hàng lỗi</th>
-                              <th className="px-3 py-2.5 text-right font-black">Thành phẩm</th>
-                              <th
-                                className="px-3 py-2.5 text-right font-black"
-                                title="Hao hụt nhựa: Dữ liệu định mức = Tổng nhựa thành phẩm"
-                              >
-                                Dữ liệu định mức
-                              </th>
-                              <th
-                                className="px-3 py-2.5 text-right font-black"
-                                title="Cùng cột Chênh lệch (Xuất − Nhập) mục tiêu hao NVL"
-                              >
-                                Chênh lệch
-                                <br />
-                                (Xuất − Nhập)
-                              </th>
-                              <th className="px-3 py-2.5 text-right font-black">
-                                Tỉ lệ
-                                <br />
-                                Chênh lệch
-                              </th>
-                              <th className="px-3 py-2.5 text-right font-black">
-                                Tỉ lệ hao hụt
-                                <br />
-                                Định mức
-                              </th>
-                              <th className="px-3 py-2.5 text-right font-black">
-                                Tỉ lệ hao hụt
-                                <br />
-                                thực tế
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-zinc-100">
-                            {rows.map((row, index) => (
-                              <tr
-                                key={row.id}
-                                className={
-                                  row.id === 'hao_hut_nhua'
-                                    ? 'bg-rose-50/50 font-bold'
-                                    : 'hover:bg-rose-50/20'
-                                }
-                              >
-                                <td className="px-3 py-2 text-center">{index + 1}</td>
-                                <td className="px-3 py-2">{row.label}</td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {row.hangLoiKg > 0 ? formatKg(row.hangLoiKg, 3) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {row.thanhPhamKg > 0 ? formatKg(row.thanhPhamKg, 3) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {row.dinhMucKg !== 0 ? formatKg(row.dinhMucKg, 3) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {row.chenhLechKg !== 0 ? formatSignedKg(row.chenhLechKg, 3) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {formatPercent(row.tiLeChenhLech, 2)}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {formatPercent(row.tiLeHaoHutDinhMucPercent, 0)}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono">
-                                  {formatPercent(row.tiLeHaoHutThucTe, 2)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="space-y-3 p-3">
+                        {renderRatioTable(ratioRows)}
+                        {renderSummaryTable('Vật tư trộn', mixingDetailRows, 'violet')}
+                        {renderSummaryTable('Các vật tư còn lại', otherRows, 'slate')}
                       </div>
                     )}
                   </div>
@@ -6119,7 +6197,7 @@ export default function ControlBoardBbMachineReportTable({
               })
             )}
           </div>
-        ) : activeTab === 'danh_gia_hao_hut' ? (
+        ) : false ? (
           <div className="bb-table-scroll bb-report-sheet-scroll">
             <table className="min-w-[2300px] w-full text-left text-sm font-semibold">
               <thead className="bg-slate-200 text-xs uppercase tracking-wider text-slate-700">
@@ -6350,7 +6428,7 @@ export default function ControlBoardBbMachineReportTable({
                               {!thucDungGroup || thucDungGroup.lines.length === 0 ? (
                                 <p className="px-2 py-4 text-center text-sm font-semibold text-zinc-400">
                                   Chưa có chi tiết vật tư tỉ lệ trộn cho lệnh này. Bấm «Tính toán» ở tab thực dùng /
-                                  tỉ lệ trộn nếu cần. Bảng 4.1 xem tại tab «4.1. Tổng hợp».
+                                  tỉ lệ trộn nếu cần. Bảng tổng hợp xem tại tab «Báo cáo tổng hợp».
                                 </p>
                               ) : (
                                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">

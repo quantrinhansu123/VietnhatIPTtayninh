@@ -106,7 +106,6 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'production-order-detail': 'production-orders',
   'production-plan-history': 'factory-quan-doc',
   'control-board': 'factory-quan-doc',
-  'weighing-summary': 'report-forms',
   'weighing-summary-list': 'factory-qc',
   'can-tu-dong': 'report-lists',
   'can-tu-dong-pilot': 'report-lists',

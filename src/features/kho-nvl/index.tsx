@@ -13,7 +13,8 @@ import {
   QrCode,
   Save,
   Trash2,
-  Upload
+  Upload,
+  X
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -1057,6 +1058,11 @@ export function MaterialsInventoryPanel({
   const [viewingMaterialImage, setViewingMaterialImage] = useState<WeighingPreviewImage | null>(null);
   const [materialQrPrintLabels, setMaterialQrPrintLabels] = useState<WarehouseProductQrPrintLabel[]>([]);
   const [materialQrPrintOpen, setMaterialQrPrintOpen] = useState(false);
+  const [showPrintQtyModal, setShowPrintQtyModal] = useState(false);
+  const [printQtyById, setPrintQtyById] = useState<Record<string, string>>({});
+  const [bulkPrintQty, setBulkPrintQty] = useState('1');
+  const [printQtyError, setPrintQtyError] = useState('');
+  const [isGeneratingPrintQr, setIsGeneratingPrintQr] = useState(false);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -1220,6 +1226,87 @@ export function MaterialsInventoryPanel({
       }
       return next;
     });
+  };
+
+  const selectedPrintMaterials = useMemo(
+    () => selectedMaterials.filter(material => String(material.code || '').trim() && !material.inventoryBalanceOnly),
+    [selectedMaterials]
+  );
+  const parsePrintCopyCount = (value: string) => {
+    const num = Math.floor(Number(String(value).trim()));
+    return Number.isFinite(num) && num > 0 ? Math.min(num, 999) : 0;
+  };
+  const totalPrintCopies = useMemo(
+    () => selectedPrintMaterials.reduce((sum, material) => sum + parsePrintCopyCount(printQtyById[material.id] ?? '0'), 0),
+    [printQtyById, selectedPrintMaterials]
+  );
+
+  const handlePrintSelectedMaterialQr = () => {
+    const next: Record<string, string> = {};
+    selectedPrintMaterials.forEach(material => {
+      next[material.id] = printQtyById[material.id] ?? '1';
+    });
+    setActionMessage('');
+    setPrintQtyById(next);
+    setBulkPrintQty('1');
+    setPrintQtyError('');
+    setShowPrintQtyModal(true);
+  };
+
+  const handleApplyBulkPrintQty = () => {
+    const qty = String(Math.max(1, parsePrintCopyCount(bulkPrintQty) || 1));
+    setBulkPrintQty(qty);
+    setPrintQtyById(prev => {
+      const nextState = { ...prev };
+      selectedPrintMaterials.forEach(material => {
+        nextState[material.id] = qty;
+      });
+      return nextState;
+    });
+  };
+
+  const handleConfirmPrintQrLabels = async () => {
+    setPrintQtyError('');
+    const items = selectedPrintMaterials
+      .map(material => ({
+        maNpl: material.code,
+        tenNpl: material.name,
+        tenKho: material.warehouse && material.warehouse !== '-' ? material.warehouse : '',
+        soLuongTem: parsePrintCopyCount(printQtyById[material.id] ?? '0')
+      }))
+      .filter(item => item.maNpl && item.soLuongTem > 0);
+    if (items.length === 0) {
+      setPrintQtyError('Nhập số lượng (> 0) cho ít nhất một mã NVL.');
+      return;
+    }
+    setIsGeneratingPrintQr(true);
+    try {
+      const response = await fetch('/api/ma-qr-nvl/cap-moi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể cấp mã QR mới.');
+      const records: Array<Record<string, unknown>> = Array.isArray(data.records) ? data.records : [];
+      const labels: WarehouseProductQrPrintLabel[] = records.map(record => ({
+        key: String(record.id ?? record.ma_qr ?? ''),
+        payload: String(record.ma_qr ?? '').trim(),
+        productCode: String(record.ma_npl_goc ?? '').trim(),
+        productName: String(record.ten_npl ?? '').trim() || '-',
+        itemLabel: 'Tên NVL'
+      })).filter(label => Boolean(label.key && label.payload && label.productCode));
+      if (labels.length !== totalPrintCopies) {
+        throw new Error('CSDL trả về thiếu mã QR. Chưa thể mở tem để in.');
+      }
+      setMaterialQrPrintLabels(labels);
+      setShowPrintQtyModal(false);
+      setMaterialQrPrintOpen(true);
+    } catch (reason: unknown) {
+      setPrintQtyError(reason instanceof Error ? reason.message : 'Không thể cấp mã QR mới.');
+    } finally {
+      setIsGeneratingPrintQr(false);
+    }
   };
 
   const hasActiveFilters = Boolean(searchText);
@@ -1501,6 +1588,16 @@ export function MaterialsInventoryPanel({
 
           <button
             type="button"
+            onClick={handlePrintSelectedMaterialQr}
+            disabled={selectedPrintMaterials.length === 0 || isLoadingMaterials}
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Nhập số tem QR cần in cho các NVL đã chọn; mỗi tem là một mã QR duy nhất lưu trong CSDL"
+          >
+            <QrCode className="h-4 w-4" />
+            In mã QR
+          </button>
+          <button
+            type="button"
             onClick={handleDownloadCatalogTemplate}
             disabled={isImportingCatalog || isLoadingMaterials}
             className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1715,6 +1812,124 @@ export function MaterialsInventoryPanel({
           isDeleting={deletingMaterialId === viewingMaterial.id}
         />
       )}
+
+      {showPrintQtyModal
+        ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-end justify-center bg-zinc-950/45 p-0 sm:items-center sm:p-4">
+              <button
+                type="button"
+                className="absolute inset-0 cursor-default"
+                aria-label="Đóng"
+                onClick={() => setShowPrintQtyModal(false)}
+              />
+              <div className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-zinc-200 bg-gradient-to-r from-zinc-50 to-white px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#ef1b2d]">In tem QR</p>
+                    <h3 className="mt-0.5 text-base font-black text-zinc-900">Số bản theo mã NVL</h3>
+                    <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                      Mỗi tem là một mã QR duy nhất được lưu trong CSDL
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintQtyModal(false)}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-500 transition hover:bg-zinc-50"
+                    title="Đóng"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 overflow-y-auto px-4 py-4">
+                  <div className="flex flex-wrap items-end gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                    <label className="min-w-[120px] flex-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Áp dụng tất cả
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={bulkPrintQty}
+                        onChange={e => setBulkPrintQty(e.target.value)}
+                        className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleApplyBulkPrintQty}
+                      className="h-10 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950"
+                    >
+                      Áp dụng
+                    </button>
+                  </div>
+
+                  <TableShell minWidthClassName="min-w-full" maxHeightClassName="max-h-72">
+                    <TableHead>
+                      <TableHeadCell>Mã NVL</TableHeadCell>
+                      <TableHeadCell align="center" className="w-28">Số bản</TableHeadCell>
+                    </TableHead>
+                    <TableBody>
+                      {selectedPrintMaterials.map(material => (
+                        <React.Fragment key={material.id}>
+                          <TableRow>
+                            <td className="px-3 py-2.5">
+                              <p className="font-black text-zinc-900">{material.code}</p>
+                              <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-zinc-500">
+                                {material.name || '—'}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={999}
+                                value={printQtyById[material.id] ?? '1'}
+                                onChange={e =>
+                                  setPrintQtyById(prev => ({ ...prev, [material.id]: e.target.value }))
+                                }
+                                className="mx-auto h-10 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-black text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                              />
+                            </td>
+                          </TableRow>
+                        </React.Fragment>
+                      ))}
+                    </TableBody>
+                  </TableShell>
+
+                  {printQtyError ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                      {printQtyError}
+                    </div>
+                  ) : null}
+
+                  <p className="text-xs font-semibold text-zinc-500">
+                    Tổng sẽ in: <span className="font-black text-[#ef1b2d]">{totalPrintCopies}</span> tem
+                  </p>
+                </div>
+
+                <div className="flex gap-2 border-t border-zinc-200 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowPrintQtyModal(false)}
+                    className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmPrintQrLabels()}
+                    disabled={totalPrintCopies <= 0 || isGeneratingPrintQr}
+                    className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    {isGeneratingPrintQr ? 'Đang cấp QR...' : `Xem trước ${totalPrintCopies > 0 ? `${totalPrintCopies} tem` : 'QR'}`}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       <ProductQrPrintModal
         open={materialQrPrintOpen}

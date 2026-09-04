@@ -166,13 +166,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'mixing-report'
   },
   {
-    title: 'Phiếu cân',
-    desc: 'Lập phiếu cân, ghi nhận khối lượng và xem tổng hợp theo ca.',
-    icon: Scale,
-    icon3d: scale3d,
-    tab: 'weighing-summary'
-  },
-  {
     title: 'Danh sách cân AI',
     desc: 'Xem danh sách dữ liệu cân AI đã ghi nhận và ảnh cân ngay trong ứng dụng.',
     icon: ClipboardList,
@@ -214,13 +207,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: ClipboardCheck,
     icon3d: chartIncreasing3d,
     tab: 'acceptance-report'
-  },
-  {
-    title: 'Báo cáo kiểm kho',
-    desc: 'Quét mã SP bằng máy BT-A700 / camera và lưu vào bảng kiểm kho.',
-    icon: ClipboardList,
-    icon3d: reportList3d,
-    tab: 'kiem-kho'
   },
   {
     title: 'Phiếu giao ca',
@@ -1045,7 +1031,6 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'form': { group: 'Sản xuất', sub: 'Nhập báo cáo ca' },
   'report-lists': { group: 'Sản xuất', sub: 'Lịch sử công việc' },
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
-  'weighing-summary': { group: 'Sản xuất', sub: 'Phiếu cân' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
   'can-tu-dong': { group: 'Sản xuất', sub: 'Cân AI cũ' },
   'can-tu-dong-pilot': { group: 'Sản xuất', sub: 'Trạm cân QR' },

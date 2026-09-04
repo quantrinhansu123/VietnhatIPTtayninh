@@ -5896,10 +5896,10 @@ type WarehouseSlipLineInput = {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  acceptanceReportRowId?: string;
   actualWeightImageUrl?: string;
   actualWeightImagePublicId?: string;
-  actualBagImageUrl?: string;
-  actualBagImagePublicId?: string;
+  isScanned?: boolean;
 };
 
 type NvlInboundLot = {
@@ -6282,16 +6282,16 @@ function parseWarehouseSlipLines(
     const damagedReportRowId = String(
       record.damagedReportRowId ?? record.id_bao_cao_hang_hong ?? record.damagedGoodsReportId ?? ''
     ).trim();
+    const acceptanceReportRowId = String(
+      record.acceptanceReportRowId ?? record.id_bao_cao_nghiem_thu ?? ''
+    ).trim();
     const actualWeightImageUrl = parseMaterialText(
       record.actualWeightImageUrl ?? record.link_anh_can_thuc_te
     );
     const actualWeightImagePublicId = parseMaterialText(
       record.actualWeightImagePublicId ?? record.link_anh_can_thuc_te_public_id
     );
-    const actualBagImageUrl = parseMaterialText(record.actualBagImageUrl ?? record.link_anh_bao_thuc_te);
-    const actualBagImagePublicId = parseMaterialText(
-      record.actualBagImagePublicId ?? record.link_anh_bao_thuc_te_public_id
-    );
+    const isScanned = record.isScanned === true || record.is_scanned === true;
 
     if (!code) {
       return { error: loaiKho === 'san_pham' ? 'Mỗi dòng cần có mã sản phẩm.' : 'Mỗi dòng cần có mã NPL.' };
@@ -6302,11 +6302,8 @@ function parseWarehouseSlipLines(
     if (unitPrice < 0) {
       return { error: `Giá của ${code} không hợp lệ.` };
     }
-    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !actualWeightImageUrl) {
+    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !isScanned && !actualWeightImageUrl) {
       return { error: `Dòng ${code} cần chụp ảnh số cân thực tế.` };
-    }
-    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !actualBagImageUrl) {
-      return { error: `Dòng ${code} cần chụp ảnh số bao thực tế.` };
     }
 
     items.push({
@@ -6323,10 +6320,10 @@ function parseWarehouseSlipLines(
       ...(sourceInboundLineId ? { sourceInboundLineId } : {}),
       ...(sourceInboundSlipCode ? { sourceInboundSlipCode } : {}),
       ...(damagedReportRowId ? { damagedReportRowId } : {}),
+      ...(acceptanceReportRowId ? { acceptanceReportRowId } : {}),
       ...(actualWeightImageUrl ? { actualWeightImageUrl } : {}),
       ...(actualWeightImagePublicId ? { actualWeightImagePublicId } : {}),
-      ...(actualBagImageUrl ? { actualBagImageUrl } : {}),
-      ...(actualBagImagePublicId ? { actualBagImagePublicId } : {})
+      ...(isScanned ? { isScanned: true } : {}),
     });
   }
 
@@ -6352,8 +6349,6 @@ function parseWarehouseSlipBody(body: unknown): {
   treo: boolean;
   actualWeightImageUrl: string | null;
   actualWeightImagePublicId: string | null;
-  actualBagImageUrl: string | null;
-  actualBagImagePublicId: string | null;
   items: WarehouseSlipLineInput[];
 } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -6395,9 +6390,6 @@ function parseWarehouseSlipBody(body: unknown): {
       parseMaterialText(source.actualWeightImageUrl ?? source.link_anh_can_thuc_te) || null,
     actualWeightImagePublicId:
       parseMaterialText(source.actualWeightImagePublicId ?? source.link_anh_can_thuc_te_public_id) || null,
-    actualBagImageUrl: parseMaterialText(source.actualBagImageUrl ?? source.link_anh_bao_thuc_te) || null,
-    actualBagImagePublicId:
-      parseMaterialText(source.actualBagImagePublicId ?? source.link_anh_bao_thuc_te_public_id) || null,
     items: parsedItems.items
   };
 }
@@ -6416,8 +6408,6 @@ function buildWarehouseSlipInsertRecords(
     treo?: boolean;
     actualWeightImageUrl?: string | null;
     actualWeightImagePublicId?: string | null;
-    actualBagImageUrl?: string | null;
-    actualBagImagePublicId?: string | null;
     items: WarehouseSlipLineInput[];
   },
   maPhieu: string
@@ -6454,14 +6444,14 @@ function buildWarehouseSlipInsertRecords(
         parsed.loaiKho === 'hang_hong' && item.damagedReportRowId
           ? item.damagedReportRowId
           : null,
+      id_bao_cao_nghiem_thu:
+        parsed.loaiPhieu === 'nhap' && item.acceptanceReportRowId
+          ? item.acceptanceReportRowId
+          : null,
       link_anh_can_thuc_te:
         parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImageUrl || null : null,
       link_anh_can_thuc_te_public_id:
-        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImagePublicId || null : null,
-      link_anh_bao_thuc_te:
-        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualBagImageUrl || null : null,
-      link_anh_bao_thuc_te_public_id:
-        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualBagImagePublicId || null : null
+        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImagePublicId || null : null
     };
 
     if (parsed.loaiKho === 'san_pham') {
@@ -6627,8 +6617,8 @@ function warehouseSlipWriteErrorMessage(error: { code?: string; message?: string
   }
   if (isMissingColumnError(error)) {
     const msg = String(error.message || '');
-    if (/link_anh_(can|bao)_thuc_te/i.test(msg)) {
-      return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} đang thiếu cột ảnh số cân/số bao thực tế. Hãy chạy supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql trong Supabase SQL Editor.`;
+    if (/link_anh_can_thuc_te/i.test(msg)) {
+      return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} đang thiếu cột ảnh số cân thực tế. Hãy chạy supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql trong Supabase SQL Editor.`;
     }
     if (/may/i.test(msg)) {
       return `Bảng ${SUPABASE_WAREHOUSE_MOVEMENTS_TABLE} đang thiếu cột may. Hãy chạy supabase-phieu-xuat-nhap-kho-may.sql trong Supabase SQL Editor.`;
@@ -8354,6 +8344,50 @@ export function createApp() {
         error: missingFunction
           ? 'Chưa có chức năng cấp QR trong CSDL. Hãy chạy file supabase-ma-qr-hang-hoa.sql.'
           : `Không thể cấp mã QR: ${message}`
+      });
+    }
+
+    return res.status(201).json({ success: true, records: data || [], total: data?.length || 0 });
+  });
+
+  /** Cấp QR từ Danh mục Kho NVL. Mã được DB giữ trước khi giao diện cho in. */
+  app.post('/api/ma-qr-nvl/cap-moi', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    const items = Array.isArray(req.body?.items)
+      ? req.body.items.map((item: unknown) => {
+          const raw = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+          return {
+            ma_npl_goc: String(raw.maNpl ?? raw.ma_npl ?? raw.ma_npl_goc ?? '').trim(),
+            ten_npl: String(raw.tenNpl ?? raw.ten_npl ?? '').trim(),
+            ten_kho: String(raw.tenKho ?? raw.ten_kho ?? '').trim(),
+            so_luong: Math.floor(Number(raw.soLuongTem ?? raw.so_luong ?? 0))
+          };
+        })
+      : [];
+    const invalidItem = items.find(item => !item.ma_npl_goc || !Number.isInteger(item.so_luong) || item.so_luong < 1 || item.so_luong > 999);
+    const total = items.reduce((sum, item) => sum + item.so_luong, 0);
+    if (items.length === 0 || invalidItem) {
+      return res.status(400).json({ error: 'Mỗi NVL cần có mã và số tem nguyên từ 1 đến 999.' });
+    }
+    if (total > 999) {
+      return res.status(400).json({ error: 'Tổng số tem cấp trong một lần không được vượt quá 999.' });
+    }
+
+    const nguoiTao = String(req.body?.nguoiTao ?? req.body?.nguoi_tao ?? '').trim() || null;
+    const { data, error } = await supabase.rpc('cap_ma_qr_nvl', {
+      p_items: items,
+      p_nguoi_tao: nguoiTao
+    });
+    if (error) {
+      const message = String(error.message || '');
+      const missingFunction = error.code === 'PGRST202' || /cap_ma_qr_nvl/i.test(message);
+      return res.status(500).json({
+        error: missingFunction
+          ? 'Chưa có chức năng cấp QR NVL trong CSDL. Hãy chạy file supabase-ma-qr-nvl.sql.'
+          : `Không thể cấp mã QR NVL: ${message}`
       });
     }
 
@@ -11080,20 +11114,10 @@ export function createApp() {
         return res.status(500).json({ error: slipRowsError.message || 'Không thể xác định kho của phiếu.' });
       }
 
+      // Kho NVL không quản lý mã QR theo phiếu nhập nữa — tem QR NVL được cấp và
+      // quản lý tại Danh mục Kho NVL (/kho-hang).
       if (String(slipRows?.[0]?.loai_kho || '').trim() === 'nvl') {
-        const { data: materialQrData, error: materialQrError } = await supabase
-          .from(SUPABASE_MATERIAL_QR_CODES_TABLE)
-          .select('id, ma_qr, ma_npl_goc, ten_npl, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, ma_phieu_nhap, created_at')
-          .eq('ma_phieu_nhap', slipCode)
-          .order('created_at', { ascending: true });
-        if (materialQrError) {
-          return res.status(500).json({
-            error: isMissingTableError(materialQrError)
-              ? 'Chưa có bảng QR NVL. Hãy chạy file supabase-ma-qr-nvl.sql.'
-              : materialQrError.message || 'Không thể tải mã QR NVL của phiếu nhập.'
-          });
-        }
-        return res.json({ records: materialQrData || [], total: materialQrData?.length || 0 });
+        return res.json({ records: [], total: 0 });
       }
 
       const { data, error } = await supabase
@@ -11136,21 +11160,8 @@ export function createApp() {
 
       const maPhieu = generateWarehouseSlipCode(parsed.loaiPhieu);
 
-      let materialQrCodes: {
-        codes: Array<{ code: string; baseCode: string; name: string }>;
-        quantity: number;
-      } | null = null;
-      if (parsed.loaiPhieu === 'nhap' && parsed.loaiKho === 'nvl') {
-        const totalQuantity = parsed.items.reduce((sum, item) => sum + item.quantity, 0);
-        const invalidItem = parsed.items.find(item => !Number.isInteger(item.quantity));
-        if (invalidItem) {
-          return res.status(400).json({ error: `Số lượng nhập của ${invalidItem.code} phải là số nguyên để sinh từng mã QR.` });
-        }
-        if (totalQuantity < 1 || totalQuantity > 999) {
-          return res.status(400).json({ error: 'Tổng số lượng sinh mã QR NVL trong một phiếu phải từ 1 đến 999.' });
-        }
-        materialQrCodes = { codes: [], quantity: totalQuantity };
-      }
+      // Nhập kho NVL không còn sinh mã QR/serial theo từng đơn vị — tem QR NVL được
+      // cấp và in trực tiếp tại Danh mục Kho NVL (/kho-hang), không phải ở phiếu nhập.
 
       // Nhập kho thành phẩm không còn sinh mã QR/serial riêng cho từng đơn vị — ghi nhận theo
       // tổng số lượng như các kho khác (giống luồng NVL), đi qua nhánh insert chung bên dưới.
@@ -11202,6 +11213,29 @@ export function createApp() {
         }
       }
 
+      const acceptanceReportRowIds = parsed.items
+        .map(item => String(item.acceptanceReportRowId ?? '').trim())
+        .filter(Boolean);
+      if (acceptanceReportRowIds.length > 0) {
+        const { data: alreadyImported, error: linkCheckError } = await supabase
+          .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+          .select('id_bao_cao_nghiem_thu')
+          .in('id_bao_cao_nghiem_thu', acceptanceReportRowIds)
+          .limit(1);
+        if (linkCheckError) {
+          return res.status(500).json({
+            error: isMissingColumnError(linkCheckError)
+              ? 'Thiếu cột id_bao_cao_nghiem_thu. Hãy chạy supabase-bao-cao-san-luong-cho-nhap-kho.sql.'
+              : warehouseSlipWriteErrorMessage(linkCheckError)
+          });
+        }
+        if (alreadyImported && alreadyImported.length > 0) {
+          return res.status(409).json({
+            error: 'Báo cáo sản lượng này đã được nhập kho. Hãy tải lại danh sách chờ kiểm tra.'
+          });
+        }
+      }
+
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
       const { data, error } = await supabase
@@ -11212,37 +11246,6 @@ export function createApp() {
       if (error) {
         console.error('Supabase phieu_xuat_nhap_kho insert error:', error);
         return res.status(500).json({ error: warehouseSlipWriteErrorMessage(error) });
-      }
-
-      if (materialQrCodes) {
-        const { data: issuedMaterialQrCodes, error: materialQrError } = await supabase.rpc('cap_ma_qr_nvl_tu_phieu', {
-          p_items: parsed.items.map(item => ({
-            ma_npl_goc: item.code,
-            ten_npl: item.name,
-            so_luong: item.quantity
-          })),
-          p_ten_kho: parsed.tenKho,
-          p_ma_phieu_nhap: maPhieu,
-          p_nguoi_tao: parsed.nguoiLap
-        });
-        if (materialQrError) {
-          const message = String(materialQrError.message || '');
-          const missingFunction = materialQrError.code === 'PGRST202' || /cap_ma_qr_nvl_tu_phieu/i.test(message);
-          return res.status(500).json({
-            error: missingFunction
-              ? 'Chưa có chức năng cấp QR NVL trong CSDL. Hãy chạy file supabase-ma-qr-nvl.sql.'
-              : `Không thể cấp mã QR NVL: ${message}`
-          });
-        }
-        const records = Array.isArray(issuedMaterialQrCodes) ? issuedMaterialQrCodes : [];
-        materialQrCodes.codes = records.map((record: Record<string, unknown>) => ({
-          code: String(record.ma_qr ?? '').trim(),
-          baseCode: String(record.ma_npl_goc ?? '').trim(),
-          name: String(record.ten_npl ?? '').trim()
-        })).filter(record => Boolean(record.code));
-        if (materialQrCodes.codes.length !== materialQrCodes.quantity) {
-          return res.status(500).json({ error: 'CSDL không trả đủ mã QR NVL cho phiếu nhập.' });
-        }
       }
 
       if (parsed.loaiKho === 'nvl') {
@@ -11257,8 +11260,8 @@ export function createApp() {
         success: true,
         slipCode: maPhieu,
         movements: data || [],
-        qrCodes: materialQrCodes?.codes || goodsQrCodes?.codes || [],
-        qrQuantity: materialQrCodes?.quantity || goodsQrCodes?.quantity || 0
+        qrCodes: goodsQrCodes?.codes || [],
+        qrQuantity: goodsQrCodes?.quantity || 0
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tạo phiếu xuất nhập kho.' });
@@ -15305,6 +15308,129 @@ export function createApp() {
       return res.json({ records, total: records.length, source: 'supabase' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải báo cáo hàng hỏng chờ nhập kho.' });
+    }
+  });
+
+  /**
+   * Gợi ý nhập kho từ Báo cáo sản lượng (bao_cao_nghiem_thu).
+   * loai: thanh_pham | gia_cong | sp_loi | sp_rac. ngay: ngày phiếu đang lập (YYYY-MM-DD).
+   * Ẩn dòng đã gắn vào một phiếu nhập (id_bao_cao_nghiem_thu).
+   */
+  app.get('/api/bao-cao-san-luong/cho-nhap-kho', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+
+    const LOAI_MAP: Record<string, string> = {
+      thanh_pham: 'Thành phẩm',
+      gia_cong: 'Gia công',
+      sp_loi: 'SP lỗi',
+      sp_rac: 'SP rác'
+    };
+    const loaiKey = String(req.query.loai ?? '').trim();
+    const loaiVatTu = LOAI_MAP[loaiKey];
+    const ngay = String(req.query.ngay ?? '').trim();
+    if (!loaiVatTu) {
+      return res.status(400).json({ error: 'Thiếu loại vật tư báo cáo sản lượng (thanh_pham/gia_cong/sp_loi/sp_rac).' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ngay)) {
+      return res.status(400).json({ error: 'Thiếu ngày để lọc báo cáo sản lượng.' });
+    }
+
+    try {
+      const stripSpecSuffix = (value: string) => {
+        const trimmed = String(value || '').trim();
+        const plusIdx = trimmed.indexOf('+');
+        return (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+      };
+      const normCode = (value: string) => stripSpecSuffix(value).replace(/\s+/g, '').toUpperCase();
+      const isMaterialLoai = loaiKey === 'sp_loi' || loaiKey === 'sp_rac';
+
+      const [{ data: reportRows, error: reportError }, { data: linkedRows, error: linkedError }, catalogResult] =
+        await Promise.all([
+          supabase
+            .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+            .select('id,created_at,ngay,ca,lan,gio,ma_may,ten_may,loai_vat_tu,mat_hang,don_vi,so_luong,trong_luong')
+            .eq('loai_vat_tu', loaiVatTu)
+            .eq('ngay', ngay)
+            .order('created_at', { ascending: true })
+            .limit(2000),
+          supabase
+            .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+            .select('id_bao_cao_nghiem_thu')
+            .not('id_bao_cao_nghiem_thu', 'is', null),
+          isMaterialLoai
+            ? supabase.from(SUPABASE_MATERIALS_TABLE).select('ma_npl,ten_npl,don_vi')
+            : supabase.from(SUPABASE_PRODUCTS_TABLE).select('ma_sp,ten_sp,don_vi')
+        ]);
+
+      if (reportError) {
+        return res.status(500).json({ error: reportError.message || 'Không thể tải báo cáo sản lượng chờ nhập kho.' });
+      }
+      if (linkedError) {
+        return res.status(500).json({
+          error: isMissingColumnError(linkedError)
+            ? 'Thiếu cột id_bao_cao_nghiem_thu. Hãy chạy supabase-bao-cao-san-luong-cho-nhap-kho.sql.'
+            : linkedError.message || 'Không thể kiểm tra báo cáo sản lượng đã nhập kho.'
+        });
+      }
+
+      const linkedIds = new Set(
+        (linkedRows || []).map(row => String(row.id_bao_cao_nghiem_thu ?? '').trim()).filter(Boolean)
+      );
+      const catalog = new Map<string, { name: string; unit: string }>();
+      for (const row of catalogResult?.data || []) {
+        const code = String((row as any).ma_sp ?? (row as any).ma_npl ?? '').trim();
+        if (!code) continue;
+        catalog.set(normCode(code), {
+          name: String((row as any).ten_sp ?? (row as any).ten_npl ?? '').trim(),
+          unit: String((row as any).don_vi ?? '').trim()
+        });
+      }
+
+      const groups = new Map<string, Record<string, any>>();
+      for (const row of reportRows || []) {
+        const reportRowId = String(row.id ?? '').trim();
+        if (!reportRowId || linkedIds.has(reportRowId)) continue;
+        const quantity = Number(String(row.so_luong ?? '').trim().replace(',', '.'));
+        if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+        const code = stripSpecSuffix(String(row.mat_hang ?? '')) || String(row.mat_hang ?? '').trim();
+        if (!code) continue;
+        const catalogHit = catalog.get(normCode(code));
+        const name = catalogHit?.name || code;
+        const unit = String(row.don_vi ?? '').trim() || catalogHit?.unit || (isMaterialLoai ? 'kg' : '');
+
+        const groupKey = [row.ngay, row.ca, row.ma_may || row.ten_may, row.lan].map(v => String(v ?? '').trim()).join('|');
+        const documentNo = `BCSL-${String(row.ngay ?? '').trim()}-${String(row.ca ?? '').trim()}${
+          String(row.lan ?? '').trim() ? `-L${String(row.lan ?? '').trim()}` : ''
+        }`;
+        const item = { reportRowId, materialType: loaiVatTu, code, name, unit, quantity };
+        const existing = groups.get(groupKey);
+        if (existing) {
+          existing.items.push(item);
+        } else {
+          groups.set(groupKey, {
+            key: groupKey,
+            documentNo,
+            reportDate: String(row.ngay ?? '').trim(),
+            productionDate: String(row.ngay ?? '').trim(),
+            shift: String(row.ca ?? '').trim(),
+            weigher: '',
+            machine: String(row.ten_may ?? row.ma_may ?? '').trim(),
+            note: String(row.lan ?? '').trim() ? `Lần ${String(row.lan ?? '').trim()}` : '',
+            createdAt: String(row.created_at ?? '').trim(),
+            items: [item]
+          });
+        }
+      }
+
+      const records = [...groups.values()].sort((left, right) =>
+        String(left.createdAt).localeCompare(String(right.createdAt))
+      );
+      return res.json({ records, total: records.length, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải báo cáo sản lượng chờ nhập kho.' });
     }
   });
 

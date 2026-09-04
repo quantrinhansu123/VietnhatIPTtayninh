@@ -6,7 +6,6 @@ import { STAFF_MENU_VIEW_TREE } from '../features/nhan-su/menuViews';
  * Tránh lọt quyền vì tab form không có trong STAFF_MENU_VIEW_TREE.
  */
 export const TAB_ACCESS_ALIASES: Record<string, string> = {
-  'weighing-summary': 'weighing-summary-list',
   'damaged-goods-report': 'damaged-goods-report-list',
   'mixing-report': 'mixing-report-list',
   'machine-nvl-report': 'machine-nvl-report-list',
@@ -31,7 +30,6 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
   'report-forms': [
     'machine-nvl-report',
     'mixing-report',
-    'weighing-summary',
     'can-tu-dong',
     'can-kiem-kho',
     'machine-downtime-report',

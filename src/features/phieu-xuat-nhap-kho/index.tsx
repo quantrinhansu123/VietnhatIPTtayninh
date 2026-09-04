@@ -147,9 +147,9 @@ export interface WarehouseMovementRow {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  acceptanceReportRowId?: string;
   treo?: boolean;
   actualWeightImageUrl?: string;
-  actualBagImageUrl?: string;
 }
 
 export interface WarehouseSlipLineDraft {
@@ -166,10 +166,12 @@ export interface WarehouseSlipLineDraft {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  /** ID dòng bao_cao_nghiem_thu nguồn (gợi ý nhập kho từ Báo cáo sản lượng). */
+  acceptanceReportRowId?: string;
   actualWeightImageUrl?: string;
   actualWeightImagePublicId?: string;
-  actualBagImageUrl?: string;
-  actualBagImagePublicId?: string;
+  /** Dòng được tạo/cập nhật bằng quét mã, không cần chụp ảnh số cân. */
+  isScanned?: boolean;
 }
 
 type PendingDamagedReportItem = {
@@ -234,8 +236,6 @@ export type WarehouseSlipPrefillDraft = {
   editSlipCode?: string;
   actualWeightImageUrl?: string;
   actualWeightImagePublicId?: string;
-  actualBagImageUrl?: string;
-  actualBagImagePublicId?: string;
   /** Thời điểm tạo draft (Date.now()) — dùng để bỏ qua draft cũ còn sót lại trong localStorage. */
   createdAt?: number;
   lines: Array<
@@ -253,10 +253,10 @@ export type WarehouseSlipPrefillDraft = {
       | 'sourceInboundLineId'
       | 'sourceInboundSlipCode'
       | 'damagedReportRowId'
+      | 'acceptanceReportRowId'
       | 'actualWeightImageUrl'
       | 'actualWeightImagePublicId'
-      | 'actualBagImageUrl'
-      | 'actualBagImagePublicId'
+      | 'isScanned'
     >
   >;
 };
@@ -351,10 +351,9 @@ export function buildWarehouseSlipDraftFromHistoryRows(
       sourceInboundLineId: row.sourceInboundLineId || '',
       sourceInboundSlipCode: row.sourceInboundSlipCode || '',
       damagedReportRowId: row.damagedReportRowId || '',
+      acceptanceReportRowId: row.acceptanceReportRowId || '',
       actualWeightImageUrl: row.actualWeightImageUrl || '',
       actualWeightImagePublicId: '',
-      actualBagImageUrl: row.actualBagImageUrl || '',
-      actualBagImagePublicId: ''
     }))
   };
 }
@@ -486,6 +485,13 @@ export function isRecycleWarehouseName(value?: string | null) {
   return key.includes('tai che') || key.includes('recycle') || key.includes('tai_che') || key.includes('tai-che');
 }
 
+/** Kho rác (chứa SP rác từ Báo cáo sản lượng). "trac" (trách) không tính. */
+export function isTrashWarehouseName(value?: string | null) {
+  const key = normalizeWarehouseNameKey(value);
+  if (!key) return false;
+  return key.includes('trash') || (key.includes('rac') && !key.includes('trac'));
+}
+
 export function isDamagedGoodsWarehouseName(value?: string | null) {
   const key = normalizeWarehouseNameKey(value);
   if (!key) return false;
@@ -599,10 +605,10 @@ export type WarehouseSlipPayloadItem = {
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
+  acceptanceReportRowId?: string;
   actualWeightImageUrl?: string;
   actualWeightImagePublicId?: string;
-  actualBagImageUrl?: string;
-  actualBagImagePublicId?: string;
+  isScanned?: boolean;
 };
 
 export function parseWarehouseSlipPayloadItems(
@@ -632,10 +638,9 @@ export function parseWarehouseSlipPayloadItems(
       const sourceInboundLineId = String(line.sourceInboundLineId || '').trim();
       const sourceInboundSlipCode = String(line.sourceInboundSlipCode || '').trim();
       const damagedReportRowId = String(line.damagedReportRowId || '').trim();
+      const acceptanceReportRowId = String(line.acceptanceReportRowId || '').trim();
       const actualWeightImageUrl = String(line.actualWeightImageUrl || '').trim();
       const actualWeightImagePublicId = String(line.actualWeightImagePublicId || '').trim();
-      const actualBagImageUrl = String(line.actualBagImageUrl || '').trim();
-      const actualBagImagePublicId = String(line.actualBagImagePublicId || '').trim();
       return {
         code: line.code.trim(),
         name: line.name.trim(),
@@ -653,10 +658,10 @@ export function parseWarehouseSlipPayloadItems(
         sourceInboundLineId: sourceInboundLineId || undefined,
         sourceInboundSlipCode: sourceInboundSlipCode || undefined,
         damagedReportRowId: damagedReportRowId || undefined,
+        acceptanceReportRowId: acceptanceReportRowId || undefined,
         actualWeightImageUrl: actualWeightImageUrl || undefined,
         actualWeightImagePublicId: actualWeightImagePublicId || undefined,
-        actualBagImageUrl: actualBagImageUrl || undefined,
-        actualBagImagePublicId: actualBagImagePublicId || undefined
+        isScanned: line.isScanned === true,
       };
     })
     .filter(line => line.code || line.quantity);
@@ -678,11 +683,8 @@ export function parseWarehouseSlipPayloadItems(
     if (requireInboundLot && !item.sourceInboundLineId) {
       return { error: `Dòng ${item.code} cần chọn lô nhập (giá) khi xuất NVL.` };
     }
-    if (requireActualImages && !item.actualWeightImageUrl) {
+    if (requireActualImages && !item.isScanned && !item.actualWeightImageUrl) {
       return { error: `Dòng ${item.code} cần chụp ảnh số cân thực tế.` };
-    }
-    if (requireActualImages && !item.actualBagImageUrl) {
-      return { error: `Dòng ${item.code} cần chụp ảnh số bao thực tế.` };
     }
   }
 
@@ -885,10 +887,10 @@ export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
     sourceInboundLineId: '',
     sourceInboundSlipCode: '',
     damagedReportRowId: '',
+    acceptanceReportRowId: '',
     actualWeightImageUrl: '',
     actualWeightImagePublicId: '',
-    actualBagImageUrl: '',
-    actualBagImagePublicId: ''
+    isScanned: false
   };
 }
 
@@ -907,10 +909,10 @@ export function createWarehouseLineDraftFromPrefill(
     | 'sourceInboundLineId'
     | 'sourceInboundSlipCode'
     | 'damagedReportRowId'
+    | 'acceptanceReportRowId'
     | 'actualWeightImageUrl'
     | 'actualWeightImagePublicId'
-    | 'actualBagImageUrl'
-    | 'actualBagImagePublicId'
+    | 'isScanned'
   >
 ): WarehouseSlipLineDraft {
   return {
@@ -927,10 +929,10 @@ export function createWarehouseLineDraftFromPrefill(
     sourceInboundLineId: line.sourceInboundLineId || '',
     sourceInboundSlipCode: line.sourceInboundSlipCode || '',
     damagedReportRowId: line.damagedReportRowId || '',
+    acceptanceReportRowId: line.acceptanceReportRowId || '',
     actualWeightImageUrl: line.actualWeightImageUrl || '',
     actualWeightImagePublicId: line.actualWeightImagePublicId || '',
-    actualBagImageUrl: line.actualBagImageUrl || '',
-    actualBagImagePublicId: line.actualBagImagePublicId || ''
+    isScanned: line.isScanned === true
   };
 }
 
@@ -1028,9 +1030,10 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
           String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined,
         damagedReportRowId:
           String(record.id_bao_cao_hang_hong ?? record.damagedReportRowId ?? '').trim() || undefined,
+        acceptanceReportRowId:
+          String(record.id_bao_cao_nghiem_thu ?? record.acceptanceReportRowId ?? '').trim() || undefined,
         treo: record.treo === true,
-        actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined,
-        actualBagImageUrl: String(record.link_anh_bao_thuc_te ?? record.actualBagImageUrl ?? '').trim() || undefined
+        actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined
       };
     })
     .filter((row): row is WarehouseMovementRow => Boolean(row.id || row.slipCode));
@@ -1329,10 +1332,29 @@ export function WarehouseSlipPanel({
   );
   const selectedWarehouseName = warehouseName.trim();
   const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl';
-  const selectedWarehouseHasDamagedReports =
-    Boolean(selectedWarehouseName) &&
-    warehouseKind === 'hang_hong' &&
-    isDamagedGoodsWarehouseName(warehouseName);
+  const productionReportLoai: 'thanh_pham' | 'gia_cong' | 'sp_loi' | 'sp_rac' | null = !selectedWarehouseName
+    ? null
+    : isFinishedGoodsWarehouseName(warehouseName)
+      ? 'thanh_pham'
+      : isProcessingWarehouseName(warehouseName)
+        ? 'gia_cong'
+        : isDamagedGoodsWarehouseName(warehouseName)
+          ? 'sp_loi'
+          : isTrashWarehouseName(warehouseName)
+            ? 'sp_rac'
+            : null;
+  const productionReportLoaiLabel =
+    productionReportLoai === 'thanh_pham'
+      ? 'Thành phẩm'
+      : productionReportLoai === 'gia_cong'
+        ? 'Gia công'
+        : productionReportLoai === 'sp_loi'
+          ? 'SP lỗi'
+          : productionReportLoai === 'sp_rac'
+            ? 'SP rác'
+            : '';
+  const showPendingProductionReports =
+    Boolean(productionReportLoai) && slipType === 'nhap' && !isXuatTreoMode && !editSlipCode;
 
   useEffect(() => {
     if (editSlipCode) return;
@@ -1342,20 +1364,27 @@ export function WarehouseSlipPanel({
 
   const loadPendingDamagedReports = async () => {
     const requestSeq = ++damagedReportsRequestSeqRef.current;
+    if (!productionReportLoai || !slipDate) {
+      setPendingDamagedReports([]);
+      setDamagedReportsError('');
+      setIsLoadingDamagedReports(false);
+      return;
+    }
     setIsLoadingDamagedReports(true);
     setDamagedReportsError('');
     try {
-      const res = await fetch('/api/bao-cao-hang-hong/cho-nhap-kho');
+      const params = new URLSearchParams({ loai: productionReportLoai, ngay: slipDate });
+      const res = await fetch(`/api/bao-cao-san-luong/cho-nhap-kho?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-          throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo hàng hỏng chờ nhập kho.'));
+          throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo sản lượng chờ nhập kho.'));
       }
       if (requestSeq !== damagedReportsRequestSeqRef.current) return;
       setPendingDamagedReports(Array.isArray(data?.records) ? data.records : []);
     } catch (error: any) {
       if (requestSeq !== damagedReportsRequestSeqRef.current) return;
       setPendingDamagedReports([]);
-      setDamagedReportsError(error?.message || 'Không thể tải báo cáo hàng hỏng chờ nhập kho.');
+      setDamagedReportsError(error?.message || 'Không thể tải báo cáo sản lượng chờ nhập kho.');
     } finally {
       if (requestSeq === damagedReportsRequestSeqRef.current) {
         setIsLoadingDamagedReports(false);
@@ -1363,46 +1392,34 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const handleReviewDamagedReport = (report: PendingDamagedReport, mode: 'nhap' | 'xuat_treo' = 'nhap') => {
-    const damagedWarehouseName =
-      (isDamagedGoodsWarehouseName(warehouseName) ? warehouseName : '') ||
-      warehouseOptions.find(option => isDamagedGoodsWarehouseName(option)) ||
-      'Kho hàng hỏng';
-    const isXuatTreo = mode === 'xuat_treo';
+  const handleReviewDamagedReport = (report: PendingDamagedReport) => {
     clearSavedPrint();
-    setSlipType(isXuatTreo ? 'xuat' : 'nhap');
-    setIsXuatTreoMode(isXuatTreo);
-    setWarehouseKind('hang_hong');
-    setWarehouseName(damagedWarehouseName);
-    setSlipDate(report.productionDate || report.reportDate || new Date().toISOString().slice(0, 10));
+    setSlipType('nhap');
+    setIsXuatTreoMode(false);
+    // Giữ nguyên kho thủ kho đang chọn; chỉ suy lại loại kho cho chắc.
+    setWarehouseKind(inferWarehouseKindFromName(warehouseName));
+    setSlipDate(report.productionDate || report.reportDate || slipDate || new Date().toISOString().slice(0, 10));
     setSelectedShifts(report.shift ? [report.shift] : []);
-    setReason(
-      isXuatTreo
-        ? `Xuất kho treo từ báo cáo hàng hỏng ${report.documentNo}`
-        : `Nhập kho từ báo cáo hàng hỏng ${report.documentNo}`
-    );
+    setReason(`Nhập kho từ báo cáo sản lượng ${report.documentNo}`);
     setNote([report.machine, report.note].filter(Boolean).join(' · '));
     setMachine(report.machine || '');
-    if (!isXuatTreo) setDeliverer(report.weigher || '');
+    setDeliverer(report.weigher || '');
     setLines(
       report.items.map(item => ({
         ...createWarehouseLineDraft(),
         code: item.code,
         name: item.name,
-        unit: item.unit || 'kg',
+        unit: item.unit || (productionReportLoai === 'sp_loi' || productionReportLoai === 'sp_rac' ? 'kg' : ''),
         quantity: String(item.quantity),
-        documentQuantity: isXuatTreo ? String(item.quantity) : undefined,
         unitPrice: '',
-        damagedReportRowId: item.reportRowId
+        acceptanceReportRowId: item.reportRowId
       }))
     );
     setReviewingDamagedReportKey(report.key);
     setEditSlipCode(null);
     setFormError('');
     setActionMessage(
-      isXuatTreo
-        ? `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu xuất kho treo để tạo phiếu xuất chính thức.`
-        : `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu nhập kho.`
+      `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu nhập kho.`
     );
     window.setTimeout(() => {
       document.querySelector('[data-warehouse-slip-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1410,7 +1427,7 @@ export function WarehouseSlipPanel({
   };
 
   useEffect(() => {
-    if (!selectedWarehouseHasDamagedReports) {
+    if (!showPendingProductionReports || !slipDate) {
       damagedReportsRequestSeqRef.current += 1;
       setPendingDamagedReports([]);
       setDamagedReportsError('');
@@ -1418,7 +1435,8 @@ export function WarehouseSlipPanel({
       return;
     }
     void loadPendingDamagedReports();
-  }, [selectedWarehouseHasDamagedReports]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPendingProductionReports, productionReportLoai, slipDate]);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -2070,7 +2088,7 @@ export function WarehouseSlipPanel({
         if (idx !== prefixIndex) return line;
         const parsed = parsePercentInput(line.quantity);
         const nextQty = (Number.isFinite(parsed) && parsed > 0 ? parsed : 0) + 1;
-        return { ...line, quantity: formatNumber(nextQty, 3) };
+        return { ...line, quantity: formatNumber(nextQty, 3), isScanned: true };
       });
       linesRef.current = nextLines;
       setLines(nextLines);
@@ -2088,7 +2106,7 @@ export function WarehouseSlipPanel({
 
     scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
 
-    const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1' };
+    const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
     const canonicalCode = patch.code;
     const emptyIndex = current.findIndex(line => !line.code.trim());
     let targetKey: string;
@@ -2119,7 +2137,7 @@ export function WarehouseSlipPanel({
   const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
   // Phiếu xuất kho NVL dùng lệnh SX để tự lập các dòng theo định mức BOM.
   // Các loại phiếu xuất khác không có luồng này.
-  const showOrderFields = isMaterialWarehouse && (slipType === 'nhap' || slipType === 'xuat');
+  const showOrderFields = isNvlExport;
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -2785,12 +2803,11 @@ export function WarehouseSlipPanel({
 
   const handleLineActualImageUpload = async (
     lineKey: string,
-    imageType: 'weight' | 'bag',
     file?: File | null
   ) => {
     if (!file) return;
 
-    setUploadingLineImageKey(`${lineKey}-${imageType}`);
+    setUploadingLineImageKey(`${lineKey}-weight`);
     setFormError('');
 
     try {
@@ -2798,17 +2815,13 @@ export function WarehouseSlipPanel({
       const uploaded = await uploadImage(dataUrl, 'phieu_xuat_nhap_kho');
       updateLine(
         lineKey,
-        imageType === 'weight'
-          ? { actualWeightImageUrl: uploaded.imageUrl, actualWeightImagePublicId: uploaded.imagePublicId }
-          : { actualBagImageUrl: uploaded.imageUrl, actualBagImagePublicId: uploaded.imagePublicId }
+        { actualWeightImageUrl: uploaded.imageUrl, actualWeightImagePublicId: uploaded.imagePublicId }
       );
-      showAppToast(imageType === 'weight' ? 'Đã upload ảnh số cân thực tế.' : 'Đã upload ảnh số bao thực tế.');
+      showAppToast('Đã upload ảnh số cân thực tế.');
     } catch (error: unknown) {
       const message = error instanceof Error
         ? error.message
-        : imageType === 'weight'
-          ? 'Không thể upload ảnh số cân thực tế.'
-          : 'Không thể upload ảnh số bao thực tế.';
+        : 'Không thể upload ảnh số cân thực tế.';
       setFormError(message);
       showAppToast(message, 'error');
     } finally {
@@ -2829,12 +2842,9 @@ export function WarehouseSlipPanel({
       return;
     }
     if (reviewingDamagedReportKey) {
-      const validNhapReview = !isXuatTreoMode && slipType === 'nhap';
-      const validXuatTreoReview = isXuatTreoMode && slipType === 'xuat';
-      const validWarehouse = warehouseKind === 'hang_hong' && isDamagedGoodsWarehouseName(warehouseName);
-      if (!validWarehouse || (!validNhapReview && !validXuatTreoReview)) {
+      if (isXuatTreoMode || slipType !== 'nhap' || !productionReportLoai) {
         setFormError(
-          showSaveFailure('Báo cáo hàng hỏng chỉ được lưu bằng phiếu Nhập kho hoặc Xuất kho treo vào Kho hàng hỏng.')
+          showSaveFailure('Báo cáo sản lượng chỉ được nạp bằng phiếu Nhập kho vào đúng kho tương ứng.')
         );
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
@@ -3001,31 +3011,14 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const pendingReportsCardConfig =
-    selectedWarehouseName && slipType === 'nhap'
-      ? {
-          mode: 'nhap' as const,
-          title: selectedWarehouseHasDamagedReports
-            ? 'Báo cáo hàng hỏng chờ nhập kho'
-            : `Báo cáo ${selectedWarehouseName} chờ nhập kho`,
-          subtitle: 'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu. Chưa lưu thì tồn kho chưa thay đổi.',
-          emptyText: selectedWarehouseHasDamagedReports
-            ? 'Không có báo cáo hàng hỏng nào đang chờ nhập kho.'
-            : `Không có báo cáo nào của ${selectedWarehouseName} đang chờ nhập kho.`
-        }
-      : selectedWarehouseName && slipType === 'xuat' && isXuatTreoMode
-        ? {
-            mode: 'xuat_treo' as const,
-            title: selectedWarehouseHasDamagedReports
-              ? 'Báo cáo hàng hỏng chờ xuất kho'
-              : `Báo cáo ${selectedWarehouseName} chờ xuất kho`,
-            subtitle:
-              'Thủ kho bấm Kiểm tra để nạp báo cáo xuống phiếu xuất kho treo. Bấm Lưu để tạo ngay phiếu xuất chính thức.',
-            emptyText: selectedWarehouseHasDamagedReports
-              ? 'Không có báo cáo hàng hỏng nào đang chờ xuất kho.'
-              : `Không có báo cáo nào của ${selectedWarehouseName} đang chờ xuất kho.`
-          }
-        : null;
+  const pendingReportsCardConfig = showPendingProductionReports
+    ? {
+        title: `Báo cáo sản lượng (${productionReportLoaiLabel}) chờ nhập ${selectedWarehouseName}`,
+        subtitle:
+          'Chọn đúng kho và Ngày phiếu để xem báo cáo sản lượng của ngày đó. Bấm Kiểm tra để nạp xuống phiếu; lưu phiếu nhập rồi thì báo cáo không hiện lại nữa.',
+        emptyText: `Không có phiếu ${productionReportLoaiLabel} nào của ngày ${slipDate || '—'} đang chờ nhập kho.`
+      }
+    : null;
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
@@ -3048,14 +3041,7 @@ export function WarehouseSlipPanel({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (selectedWarehouseHasDamagedReports) {
-                      void loadPendingDamagedReports();
-                    } else {
-                      setPendingDamagedReports([]);
-                      setDamagedReportsError('');
-                    }
-                  }}
+                  onClick={() => void loadPendingDamagedReports()}
                   disabled={isLoadingDamagedReports}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
                 >
@@ -3107,7 +3093,7 @@ export function WarehouseSlipPanel({
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleReviewDamagedReport(report, pendingReportsCardConfig.mode)}
+                            onClick={() => handleReviewDamagedReport(report)}
                             className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
                               isReviewing
                                 ? 'bg-emerald-600 text-white'
@@ -3800,7 +3786,7 @@ export function WarehouseSlipPanel({
                     <button
                       type="button"
                       onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                      className={`hidden h-9 w-9 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 md:flex`}
+                      className={`hidden h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 md:flex`}
                       title="Xóa dòng"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -3809,26 +3795,20 @@ export function WarehouseSlipPanel({
                     <span className={warehouseLineMobileHiddenClass} />
                   )}
                   </div>
-                  {isNvlExport && line.code.trim() ? (
-                    <div className="mb-2 grid grid-cols-1 gap-2 rounded-lg border border-red-100 bg-red-50/40 p-2 sm:grid-cols-2">
+                  {isNvlExport && !line.isScanned ? (
+                    <div className="mb-2 grid grid-cols-1 justify-items-center gap-2 rounded-lg border border-red-100 bg-red-50/40 p-2 md:justify-items-start">
                       {([
                         {
                           type: 'weight' as const,
                           label: 'Ảnh số cân thực tế',
                           url: line.actualWeightImageUrl,
                           title: 'Ảnh số cân thực tế'
-                        },
-                        {
-                          type: 'bag' as const,
-                          label: 'Ảnh số bao thực tế',
-                          url: line.actualBagImageUrl,
-                          title: 'Ảnh số bao thực tế'
                         }
                       ]).map(image => {
                         const inputId = `warehouse-${image.type}-image-${line.key}`;
                         const isUploading = uploadingLineImageKey === `${line.key}-${image.type}`;
                         return (
-                          <div key={image.type} className="min-w-0 space-y-1.5">
+                          <div key={image.type} className="w-full max-w-2xl min-w-0 space-y-1.5 md:max-w-none">
                             <div className="flex items-center justify-between gap-2">
                               <span className="flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-zinc-600">
                                 <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
@@ -3852,7 +3832,7 @@ export function WarehouseSlipPanel({
                               onChange={event => {
                                 const file = event.target.files?.[0] || null;
                                 event.target.value = '';
-                                if (file) void handleLineActualImageUpload(line.key, image.type, file);
+                                if (file) void handleLineActualImageUpload(line.key, file);
                               }}
                             />
                             <label
@@ -5016,7 +4996,7 @@ export function WarehouseHistoryPanel({
                     <Printer className="h-4 w-4" />
                     In phiếu
                   </button>
-                  {(viewingRows[0].warehouseKind === 'san_pham' || viewingRows[0].warehouseKind === 'nvl') && viewingRows[0].slipType === 'nhap' ? (
+                  {viewingRows[0].warehouseKind === 'san_pham' && viewingRows[0].slipType === 'nhap' ? (
                     <button
                       type="button"
                       onClick={() => void handlePrintViewingQrCodes()}
@@ -5108,16 +5088,7 @@ export function WarehouseHistoryPanel({
                                 Cân
                               </button>
                             ) : null}
-                            {row.actualBagImageUrl ? (
-                              <button
-                                type="button"
-                                onClick={() => setViewingHistoryImage({ url: row.actualBagImageUrl!, title: `Ảnh số bao · ${row.itemCode}` })}
-                                className="rounded border border-red-200 bg-red-50 px-1.5 py-1 text-[10px] font-bold text-[#ef1b2d] hover:bg-red-100"
-                              >
-                                Bao
-                              </button>
-                            ) : null}
-                            {!row.actualWeightImageUrl && !row.actualBagImageUrl ? <span className="text-zinc-400">—</span> : null}
+                            {!row.actualWeightImageUrl ? <span className="text-zinc-400">—</span> : null}
                           </div>
                         </td>
                       ) : null}

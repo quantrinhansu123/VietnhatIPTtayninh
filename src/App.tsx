@@ -9,11 +9,6 @@ import ProductEntryForm from './components/ProductEntryForm';
 import MaterialsForm from './components/MaterialsForm';
 import WasteForm from './components/WasteForm';
 import WeighingShiftSummary from './components/WeighingShiftSummary';
-import {
-  buildWeighingEditPending,
-  normalizeWeighingRecords,
-  type WeighingPendingAdd
-} from './utils/weighingRecords';
 import WeighingReportForm from './components/WeighingReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from './lib/weighingSlipConfig';
 import MixingReportForm from './components/MixingReportForm';
@@ -37,10 +32,10 @@ import ShiftHandoverPanel from './components/ShiftHandoverPanel';
 import ShiftHandoverListView from './components/ShiftHandoverListView';
 import MachineRunLogPanel from './components/MachineRunLogPanel';
 import AppToastHost from './components/AppToastHost';
-import { AppTab, pathFromTab, tabFromPath, isWeighingFormPath, isWeighingListPath } from './routes';
+import { AppTab, pathFromTab, tabFromPath, isWeighingListPath } from './routes';
 import {
   FilePlus2, BarChart3, CheckCircle, Sparkles, Loader2, Menu, Search, Save, ChevronRight, ChevronLeft,
-  Layers, Package, Cpu, Boxes, ClipboardList, X, LogOut
+  Package, Cpu, Boxes, ClipboardList, X, LogOut
 } from 'lucide-react';
 
 import { readCachedReports, STORAGE_DRAFT_KEY, STORAGE_OFFLINE_KEY, STORAGE_REPORTS_CACHE_KEY, STORAGE_AUTH_KEY } from './features/_shared/storage';
@@ -222,7 +217,6 @@ export default function App() {
     name: string;
   } | null>(null);
   const [machineNvlEditReport, setMachineNvlEditReport] = useState<MachineNvlSavedReport | null>(null);
-  const [weighingPendingAdd, setWeighingPendingAdd] = useState<WeighingPendingAdd | null>(null);
   const navigateToTab = (tab: AppTab, options?: { replace?: boolean }) => {
     // /phan-tich đã bỏ — mọi điều hướng dashboard cũ → Báo cáo mới.
     let nextTab: AppTab = tab === 'dashboard' ? 'dashboard-auto' : tab;
@@ -795,10 +789,6 @@ export default function App() {
               >
                 <ControlBoardPanel
                   onNavigate={navigateToTab}
-                  onEditWeighing={pending => {
-                    setWeighingPendingAdd(pending);
-                    navigateToTab('weighing-summary');
-                  }}
                   onMachineReport={(machine, type) => {
                     if (type === 'mixing') {
                       setMixingReportMachinePrefill({
@@ -1153,22 +1143,6 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <QuanLyKhoPanel onBack={() => goBack('factory-kho')} />
-              </motion.div>
-            ) : resolvedTab === 'weighing-summary' ? (
-              <motion.div
-                key="weighing-summary"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.15 }}
-              >
-                <WeighingReportForm
-                  autoOpenNewSlip={!weighingPendingAdd}
-                  pendingAdd={weighingPendingAdd}
-                  onPendingAddHandled={() => setWeighingPendingAdd(null)}
-                  onBack={() => goBack('report-forms')}
-                  onOpenList={() => navigateToTab('weighing-summary-list')}
-                />
               </motion.div>
             ) : resolvedTab === 'damaged-goods-report-list' ? (
               <motion.div
@@ -1602,10 +1576,6 @@ export default function App() {
                 <ControlBoardPanel
                   mode="report-only-auto"
                   onNavigate={navigateToTab}
-                  onEditWeighing={pending => {
-                    setWeighingPendingAdd(pending);
-                    navigateToTab('weighing-summary');
-                  }}
                   onEditMachineNvlReport={report => {
                     setMachineNvlEditReport(report);
                     navigateToTab('machine-nvl-report');
@@ -1760,21 +1730,6 @@ export default function App() {
           >
             <FilePlus2 className="h-4 w-4" />
             Nhập Báo Cáo
-          </a>
-
-          <a
-            href={pathFromTab('weighing-summary')}
-            id="tab-btn-weighing-summary"
-            onClick={event => handleNavClick(event, 'weighing-summary')}
-            className={`flex items-center justify-center gap-1.5 py-3 text-[11px] font-bold uppercase tracking-wider transition sm:text-xs ${
-              activeTab === 'weighing-summary'
-                ? 'border-t-2 border-[#ef1b2d] bg-red-50/70 text-[#ef1b2d]'
-                : 'text-zinc-500 hover:text-zinc-900'
-            }`}
-            style={{ minHeight: '52px' }}
-          >
-            <Layers className="h-4 w-4" />
-            Phiếu Cân Ca
           </a>
 
           <a

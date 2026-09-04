@@ -1864,7 +1864,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [historyPrintLines, setHistoryPrintLines] = useState<ProductionPlanLine[]>([]);
   const [historyPrintMaterials, setHistoryPrintMaterials] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
   const [isPrintingSelected, setIsPrintingSelected] = useState(false);
-  const [showHistoryQrPrintModal, setShowHistoryQrPrintModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -1952,33 +1951,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       ? current.filter(id => id !== lineId)
       : [...current, lineId]);
   };
-
-  const selectedQrPrintLines = useMemo<ProductionPlanLine[]>(() =>
-    selectedLines
-      .filter(line => selectedPrintLineIds.includes(line.id))
-      .map(line => ({
-        id: line.productionOrderId || line.id,
-        code: line.orderCode,
-        name: line.orderCode,
-        productCode: line.products[0]?.productCode || '',
-        productName: line.products[0]?.productName || '',
-        quantity: line.products[0]?.quantity || '',
-        unit: line.products[0]?.unit || '',
-        products: line.products,
-        status: '',
-        orderRef: line.orderRef,
-        position: line.machine !== '-' ? line.machine : line.position,
-        staff: line.staff,
-        shiftLead: line.shiftLead,
-        mainStaff: line.mainStaff,
-        assistantStaff: line.assistantStaff,
-        traineeStaff: line.traineeStaff,
-        shift: line.shift,
-        priority: line.priority,
-        note: line.note
-      })),
-    [selectedLines, selectedPrintLineIds]
-  );
 
   const buildPrintablePlanLines = (lines: ProductionPlanHistoryLine[]): ProductionPlanLine[] =>
     lines.map(line => ({
@@ -2389,15 +2361,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowHistoryQrPrintModal(true)}
-                  disabled={selectedQrPrintLines.length === 0}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <QrCode className="h-4 w-4" />
-                  In QR
-                </button>
-                <button
-                  type="button"
                   onClick={() => void printSelectedLines()}
                   disabled={selectedLines.length === 0 || isPrintingSelected}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
@@ -2519,12 +2482,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         initialPlanDate={editingPlan?.planDate}
         initialNote={editingPlan?.note}
       />
-      <ProductionPlanQrPrintModal
-        open={showHistoryQrPrintModal}
-        onClose={() => setShowHistoryQrPrintModal(false)}
-        lines={selectedQrPrintLines}
-        planDate={selectedPlan?.planDate || ''}
-      />
     </div>
   );
 }
@@ -2575,7 +2532,6 @@ export function ProductionPlanModal({
   const [materialAccountingError, setMaterialAccountingError] = useState('');
   const [accountingMaterialsByLine, setAccountingMaterialsByLine] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
   const [accountingInventoryMaterials, setAccountingInventoryMaterials] = useState<MaterialRow[]>([]);
-  const [showQrPrintModal, setShowQrPrintModal] = useState(false);
   const [planDate, setPlanDate] = useState(todayDateInputValue());
   const [planHeaderNote, setPlanHeaderNote] = useState('');
   const [pendingStaffAssignmentPrint, setPendingStaffAssignmentPrint] = useState(false);
@@ -2705,7 +2661,6 @@ export function ProductionPlanModal({
     setMaterialAccountingError('');
     setAccountingMaterialsByLine({});
     setAccountingInventoryMaterials([]);
-    setShowQrPrintModal(false);
     setPlanHeaderNote(initialNote || '');
     setPendingStaffAssignmentPrint(false);
     setIsLoadingRelatedPrint(false);
@@ -3741,15 +3696,6 @@ export function ProductionPlanModal({
             </button>
             <button
               type="button"
-              onClick={() => setShowQrPrintModal(true)}
-              disabled={displayLines.length === 0}
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <QrCode className="h-4 w-4" />
-              In QR
-            </button>
-            <button
-              type="button"
               onClick={handlePrintNvl}
               disabled={displayLines.length === 0 || isLoadingNvlPrint}
               className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-4 text-sm font-extrabold text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -3881,13 +3827,6 @@ export function ProductionPlanModal({
         error={materialAccountingError}
         onReload={loadMaterialAccounting}
         onExportWarehouseSlip={handleExportWarehouseSlip}
-      />
-
-      <ProductionPlanQrPrintModal
-        open={showQrPrintModal}
-        onClose={() => setShowQrPrintModal(false)}
-        lines={displayLines}
-        planDate={planDate}
       />
 
       <EditProductionOrderModal

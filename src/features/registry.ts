@@ -85,9 +85,9 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-phieu-can-dinh-ki.sql'],
     apiPrefix: '/api/phieu-can-dinh-ki',
     serverLines: 'registerWeighingSlipRoutes — client supabase (he-thong)',
-    appTab: 'weighing-summary',
-    appLines: 'src/components/WeighingShiftSummary.tsx',
-    components: ['src/components/WeighingShiftSummary.tsx', 'src/components/WeighingReportForm.tsx', 'src/components/WeighingSlipPrintSheet.tsx', 'src/components/WeighingImagePreviewModal.tsx', 'src/lib/weighingSlipConfig.ts'],
+    appTab: 'weighing-summary-list',
+    appLines: 'src/App.tsx → src/components/WeighingShiftSummary.tsx',
+    components: ['src/components/WeighingShiftSummary.tsx', 'src/components/WeighingSlipPrintSheet.tsx', 'src/components/WeighingImagePreviewModal.tsx', 'src/lib/weighingSlipConfig.ts'],
     utils: []
   },
   can_tu_dong: {

@@ -214,6 +214,14 @@ function parseQrProductCode(raw: string) {
   return trimmed;
 }
 
+// Gom mã theo tiền tố: bỏ phần serial ngẫu nhiên sau dấu «_» (vd MT- MN010_4UOOH7T98S1 → MT- MN010).
+function autoReportGroupCode(code: string) {
+  const trimmed = String(code ?? '').trim();
+  const underscoreIdx = trimmed.indexOf('_');
+  const base = underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx) : trimmed;
+  return base.trim();
+}
+
 function productCodeFromOrder(order: ProductionOrderOption) {
   return order.productCode.trim() || order.productName.trim();
 }
@@ -1209,7 +1217,8 @@ export default function AcceptanceReportForm({
           return;
         }
         const product = findProductOption(qrProductCode, productOptionsByType['Thành phẩm']);
-        const code = product?.code || qrProductCode;
+        // Gom mã theo tiền tố rồi cộng dồn SL + trọng lượng cho từng nhóm.
+        const code = autoReportGroupCode(product?.code || qrProductCode);
         const key = normalizeKey(code);
         const current = quantities.get(key);
         const rollKg = resolveCanSpKg(record);
@@ -1236,7 +1245,7 @@ export default function AcceptanceReportForm({
       updateSection('Thành phẩm', section => ({ ...section, lines }));
       setIsAutoReportOpen(false);
       setMessage(
-        `Đã tự động điền ${lines.length} mã SP từ ${matched.length} phiếu cân AI (SL = số lần cân, TL = tổng Cân sản phẩm / trọng lượng cuộn)${
+        `Đã tự động điền ${lines.length} mã SP (gom theo tiền tố) từ ${matched.length} phiếu cân AI (SL = tổng số lần cân, TL = tổng Cân sản phẩm / trọng lượng cuộn)${
           skipped ? `; bỏ qua ${skipped} bản ghi không có QR hợp lệ` : ''
         }.`
       );

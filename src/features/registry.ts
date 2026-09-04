@@ -380,9 +380,12 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-bao-cao-tong-hop.sql'],
     apiPrefix: '/api/bao-cao-tong-hop',
     serverLines: 'GET/PUT /api/bao-cao-tong-hop',
-    appTab: 'dashboard-auto | dashboard | control-board',
-    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
-    components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
+    appTab: 'dashboard-auto | bieu-do-th | quan-tri',
+    appLines: 'src/components/ControlBoardBbMachineReportTable.tsx · src/features/bieu-do-th/index.tsx',
+    components: [
+      'src/components/ControlBoardBbMachineReportTable.tsx',
+      'src/features/bieu-do-th/index.tsx'
+    ],
     utils: ['src/utils/baoCaoTongHop.ts', 'src/utils/bbBaoCaoTinhToan.ts']
   },
   ke_hoach_san_xuat: {

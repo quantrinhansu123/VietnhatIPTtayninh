@@ -1,0 +1,285 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart3, Loader2, RefreshCw } from 'lucide-react';
+import {
+  TableShell,
+  TableHead,
+  TableHeadCell,
+  TableBody,
+  TableRow,
+  TableEmptyRow,
+  TableToolbar,
+  TableDateFilter
+} from '../../components/shared/table';
+
+export type BaoCaoTongHopListRow = {
+  id: string;
+  khoa_on_dinh: string;
+  ngay_tu: string;
+  ngay_den: string;
+  ca: string;
+  may: string;
+  nguon_san_luong: string;
+  sl_yeu_cau: number | null;
+  tl_nhua_yeu_cau_kg: number | null;
+  tl_xuat_tong_kg: number | null;
+  tl_xuat_nhua_kg: number | null;
+  ton_dau_tong_kg: number | null;
+  ton_cuoi_tong_kg: number | null;
+  sl_san_luong: number | null;
+  tl_mang_kg: number | null;
+  tl_nhua_thanh_pham_kg: number | null;
+  tl_nhua_dinh_muc_kg: number | null;
+  loi_hong_tong_kg: number | null;
+  xuat_thuc_dung_kg: number | null;
+  chenh_lech_nhua_kg: number | null;
+  updated_at: string;
+};
+
+function numOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeRows(data: unknown): BaoCaoTongHopListRow[] {
+  const items =
+    data && typeof data === 'object' && Array.isArray((data as { items?: unknown }).items)
+      ? (data as { items: unknown[] }).items
+      : Array.isArray(data)
+        ? data
+        : [];
+
+  return items
+    .map((item): BaoCaoTongHopListRow | null => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      const khoa = String(row.khoa_on_dinh ?? '').trim();
+      if (!khoa) return null;
+      return {
+        id: String(row.id ?? khoa),
+        khoa_on_dinh: khoa,
+        ngay_tu: String(row.ngay_tu ?? '').trim(),
+        ngay_den: String(row.ngay_den ?? '').trim(),
+        ca: String(row.ca ?? '').trim() || 'all',
+        may: String(row.may ?? '').trim() || 'all',
+        nguon_san_luong: String(row.nguon_san_luong ?? '').trim(),
+        sl_yeu_cau: numOrNull(row.sl_yeu_cau),
+        tl_nhua_yeu_cau_kg: numOrNull(row.tl_nhua_yeu_cau_kg),
+        tl_xuat_tong_kg: numOrNull(row.tl_xuat_tong_kg),
+        tl_xuat_nhua_kg: numOrNull(row.tl_xuat_nhua_kg),
+        ton_dau_tong_kg: numOrNull(row.ton_dau_tong_kg),
+        ton_cuoi_tong_kg: numOrNull(row.ton_cuoi_tong_kg),
+        sl_san_luong: numOrNull(row.sl_san_luong),
+        tl_mang_kg: numOrNull(row.tl_mang_kg),
+        tl_nhua_thanh_pham_kg: numOrNull(row.tl_nhua_thanh_pham_kg),
+        tl_nhua_dinh_muc_kg: numOrNull(row.tl_nhua_dinh_muc_kg),
+        loi_hong_tong_kg: numOrNull(row.loi_hong_tong_kg),
+        xuat_thuc_dung_kg: numOrNull(row.xuat_thuc_dung_kg),
+        chenh_lech_nhua_kg: numOrNull(row.chenh_lech_nhua_kg),
+        updated_at: String(row.updated_at ?? '')
+      };
+    })
+    .filter((row): row is BaoCaoTongHopListRow => Boolean(row));
+}
+
+function formatKg(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '—';
+  return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+}
+
+function formatNum(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '—';
+  return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+}
+
+function formatDateLabel(iso: string) {
+  const raw = String(iso || '').trim();
+  if (!raw) return 'Chưa có ngày';
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return raw;
+}
+
+function signedClass(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value === 0) return 'text-zinc-900';
+  return value > 0 ? 'text-emerald-700' : 'text-rose-700';
+}
+
+export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
+  const [rows, setRows] = useState<BaoCaoTongHopListRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const loadRows = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', '1000');
+      if (dateFrom) params.set('ngay_tu', dateFrom);
+      if (dateTo) params.set('ngay_den', dateTo);
+      const res = await fetch(`/api/bao-cao-tong-hop?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || 'Không tải được bao_cao_tong_hop.'));
+      }
+      setRows(normalizeRows(data));
+    } catch (err) {
+      setRows([]);
+      setError(err instanceof Error ? err.message : 'Lỗi tải Biểu đồ TH.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows]);
+
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, BaoCaoTongHopListRow[]>();
+    const sorted = [...rows].sort((a, b) => {
+      const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
+      if (d !== 0) return d;
+      return String(a.ca).localeCompare(String(b.ca)) || String(a.may).localeCompare(String(b.may));
+    });
+    for (const row of sorted) {
+      const key = row.ngay_tu || row.ngay_den || '—';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(row);
+    }
+    return [...map.entries()];
+  }, [rows]);
+
+  const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo);
+
+  return (
+    <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-red-600">Quản trị</p>
+          <h2 className="mt-1 flex items-center gap-2 text-xl font-black text-zinc-950">
+            <BarChart3 className="h-5 w-5 text-red-600" />
+            Biểu đồ TH
+          </h2>
+          <p className="mt-1 text-sm font-semibold text-zinc-600">
+            Bảng theo ngày từ snapshot <span className="font-mono text-xs">bao_cao_tong_hop</span>.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex h-9 items-center rounded-lg border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 hover:bg-zinc-50"
+            >
+              Quay lại
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={isLoading}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Tải lại
+          </button>
+        </div>
+      </div>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+        <TableToolbar
+          isLoading={isLoading}
+          hasActiveFilters={hasActiveFilters}
+          onResetFilters={() => {
+            setDateFrom('');
+            setDateTo('');
+          }}
+          loadError={error}
+        >
+          <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
+          <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
+        </TableToolbar>
+      </section>
+
+      <TableShell minWidthClassName="min-w-[1280px]">
+        <TableHead>
+          <TableHeadCell>Ngày</TableHeadCell>
+          <TableHeadCell>Ca</TableHeadCell>
+          <TableHeadCell>Máy</TableHeadCell>
+          <TableHeadCell className="text-right">SL YC</TableHeadCell>
+          <TableHeadCell className="text-right">TL nhựa YC</TableHeadCell>
+          <TableHeadCell className="text-right">TL xuất</TableHeadCell>
+          <TableHeadCell className="text-right">Tồn đầu</TableHeadCell>
+          <TableHeadCell className="text-right">Tồn cuối</TableHeadCell>
+          <TableHeadCell className="text-right">SL SP</TableHeadCell>
+          <TableHeadCell className="text-right">TL màng</TableHeadCell>
+          <TableHeadCell className="text-right">TL nhựa TP</TableHeadCell>
+          <TableHeadCell className="text-right">TL nhựa ĐM</TableHeadCell>
+          <TableHeadCell className="text-right">Lỗi</TableHeadCell>
+          <TableHeadCell className="text-right">Xuất TD</TableHeadCell>
+          <TableHeadCell className="text-right">Chênh lệch</TableHeadCell>
+        </TableHead>
+        <TableBody>
+          {isLoading ? (
+            <TableEmptyRow colSpan={15}>
+              <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+              Đang tải…
+            </TableEmptyRow>
+          ) : groupedByDate.length === 0 ? (
+            <TableEmptyRow colSpan={15}>
+              Chưa có dữ liệu. Vào Phân tích tự động → Tính toán để ghi bao_cao_tong_hop.
+            </TableEmptyRow>
+          ) : (
+            groupedByDate.map(([dateKey, dayRows]) => (
+              <React.Fragment key={dateKey}>
+                <tr className="bg-red-700 text-white">
+                  <td colSpan={15} className="px-4 py-2 text-xs font-black uppercase tracking-wider">
+                    {formatDateLabel(dateKey)}
+                    {dayRows[0]?.ngay_den && dayRows[0].ngay_den !== dateKey
+                      ? ` → ${formatDateLabel(dayRows[0].ngay_den)}`
+                      : ''}
+                    <span className="ml-2 font-semibold opacity-80">· {dayRows.length} bản ghi</span>
+                  </td>
+                </tr>
+                {dayRows.map(row => (
+                  <TableRow key={row.id || row.khoa_on_dinh}>
+                    <td className="whitespace-nowrap px-4 py-2 font-mono text-xs font-semibold text-zinc-700">
+                      {formatDateLabel(row.ngay_tu)}
+                      {row.ngay_den && row.ngay_den !== row.ngay_tu
+                        ? ` → ${formatDateLabel(row.ngay_den)}`
+                        : ''}
+                    </td>
+                    <td className="px-4 py-2 font-semibold text-zinc-800">{row.ca}</td>
+                    <td className="px-4 py-2 font-semibold text-zinc-800">{row.may}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatNum(row.sl_yeu_cau)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_yeu_cau_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_xuat_tong_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.ton_dau_tong_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.ton_cuoi_tong_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatNum(row.sl_san_luong)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_mang_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_thanh_pham_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_dinh_muc_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.loi_hong_tong_kg)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.xuat_thuc_dung_kg)}</td>
+                    <td
+                      className={`px-4 py-2 text-right font-mono font-black tabular-nums ${signedClass(row.chenh_lech_nhua_kg)}`}
+                    >
+                      {formatKg(row.chenh_lech_nhua_kg)}
+                    </td>
+                  </TableRow>
+                ))}
+              </React.Fragment>
+            ))
+          )}
+        </TableBody>
+      </TableShell>
+    </div>
+  );
+}
+
+export default BieuDoThPanel;

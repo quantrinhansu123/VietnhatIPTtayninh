@@ -3,16 +3,20 @@
 | | |
 |---|---|
 | **Bảng** | `bao_cao_tong_hop` |
-| **UI** | `/phan-tich-tu-dong` · khối KPI **Báo cáo tổng hợp** + **Tổng hợp nhựa** |
+| **UI** | `/phan-tich-tu-dong` · KPI tổng hợp · **`/bieu-do-th`** (Biểu đồ TH) |
 | **SQL** | `supabase-bao-cao-tong-hop.sql` |
 
-Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**. Không trùng `bb_bao_cao_tinh_toan` (JSON tổng).
+Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**.
 
 ## API
 
-| Method | Path |
-|--------|------|
-| GET/PUT | `/api/bao-cao-tong-hop` |
+| Method | Path | Query |
+|--------|------|-------|
+| GET/PUT | `/api/bao-cao-tong-hop` | `khoa_on_dinh`, `ngay_tu`, `ngay_den`, `limit` |
+
+## Feature
+
+- `src/features/bieu-do-th/index.tsx` — menu **Quản trị → Biểu đồ TH** (bảng theo ngày)
 
 ```bash
 node scripts/run-sql-file.mjs supabase-bao-cao-tong-hop.sql

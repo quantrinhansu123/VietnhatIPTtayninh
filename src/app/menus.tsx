@@ -401,6 +401,13 @@ export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'dashboard-auto'
   },
   {
+    title: 'Biểu đồ TH',
+    desc: 'Bảng theo ngày từ bao_cao_tong_hop (KPI tổng hợp sau Tính toán).',
+    icon: BarChart3,
+    icon3d: chartIncreasing3d,
+    tab: 'bieu-do-th'
+  },
+  {
     title: 'Người dùng và phân quyền',
     desc: 'Tài khoản, vị trí, vai trò và thiết lập quyền xem menu theo phòng ban.',
     icon: UsersRound,
@@ -934,6 +941,7 @@ export const PRIMARY_NAV_GROUPS: {
     tab: 'quan-tri',
     children: [
       { label: 'Báo cáo mới', tab: 'dashboard-auto' },
+      { label: 'Biểu đồ TH', tab: 'bieu-do-th' },
       { label: 'Người dùng và phân quyền', tab: 'settings' },
       { label: 'Cấu hình hệ thống', tab: 'settings' },
       { label: 'Danh mục dùng chung', tab: 'quan-tri', disabled: true }
@@ -1081,7 +1089,8 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'factory-cong-nhan': { group: 'Trang chủ', sub: 'Sản xuất' },
   'factory-kho': { group: 'Trang chủ', sub: 'Kho' },
   'dashboard': { group: 'Quản trị', sub: 'Báo cáo mới' },
-  'dashboard-auto': { group: 'Quản trị', sub: 'Báo cáo mới' }
+  'dashboard-auto': { group: 'Quản trị', sub: 'Báo cáo mới' },
+  'bieu-do-th': { group: 'Quản trị', sub: 'Biểu đồ TH' }
 };
 
 export function getActivePageMeta(tab: AppTab): { group: string; sub: string } {

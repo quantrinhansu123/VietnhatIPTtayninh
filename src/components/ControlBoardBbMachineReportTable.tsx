@@ -5,6 +5,7 @@ import { formatMoney, formatNumber } from '../utils';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 import { findProductByCode, resolveProductMaterialBaseKg } from '../features/san-pham';
 import type { MachineRow } from '../features/danh-sach-may';
+import { pickHandoverMachineAndOperators } from '../utils/shiftHandoverAutofill';
 import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderRow, ProductionOrderLookupSetting } from '../features/ke-hoach-san-xuat';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
@@ -32,7 +33,6 @@ import {
   syncCanTuDongTongHop
 } from '../utils/canTuDongTongHop';
 import { filterCanTuDongRecordsForBoard } from '../utils/canTuDongWeights';
-import { shiftIsoDateByDays } from '../utils/shiftSettings';
 import {
   buildBbLyDoStableKey,
   printLyDoLineKey,
@@ -78,17 +78,20 @@ import {
   groupBbThucDungLines,
   splitBbDauCaMaterialLinesByMixing,
   splitBbLoiHongMaterialLinesByMixing,
+  buildBbLoiHongMaterialLinesForShift,
+  isLoiHongMixingKgExtraCode,
+  resolveBbLoiHongMixingLineWeightKg,
+  resolveBbLoiHongNnkmNcTotalKg,
   sumBbDauCaMaterialLinesTonKg,
   syncBbThucDungRowsXuatTrongNgayFromExportTab,
   syncBbThucDungRowsTonCuoiFromCuoiCaTab,
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
-  sumBbDamagedGoodsWeightKg,
-  sumBbDamagedGoodsWeightKgByKind,
   sumBbDamagedFilmScrapKg,
+  sumAcceptanceFilmScrapRacMangKg,
+  resolveBbLoiHongCardWeightByKind,
   sumBbDamagedRowsLoiHongKgForHeaderByProductCodes,
   isInsulationMachineText,
-  resolveBbDamagedPlasticLoiHongKg,
   resolveBbLoiHongFilmScrapMaterialForShift,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
@@ -101,8 +104,7 @@ import {
   sumBbTongChenhLech,
   sumBbTongTrongLuongNhapKho,
   sumBbWarehouseExportSlipQuantity,
-  sumBbWarehouseExportWeightKg,
-  sumBbWarehouseExportWeightKgByKind,
+  sumBbWarehouseHistoryExportWeightKgByKind,
   allocateBbNhuaHaoHutByRatioPercent,
   allocateBbKgByWeightShare,
   resolveBbThucDungKlNhuaTtLoiKg,
@@ -785,6 +787,7 @@ export default function ControlBoardBbMachineReportTable({
   const [calcNgay, setCalcNgay] = useState('');
   const [calcCa, setCalcCa] = useState('');
   const [calcMay, setCalcMay] = useState('');
+  const lastCalcMachineKeyRef = useRef('');
   const [calcDialogError, setCalcDialogError] = useState('');
   const [hrStaffNames, setHrStaffNames] = useState<string[]>([]);
   const [selectedMaterialNorm, setSelectedMaterialNorm] = useState<BbMaterialNormFormula | null>(null);
@@ -973,12 +976,53 @@ export default function ControlBoardBbMachineReportTable({
     const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
       today.getDate()
     ).padStart(2, '0')}`;
-    setCalcNgay(String(dateFrom || dateTo || todayIso).trim());
-    setCalcCa(shiftFilter && shiftFilter !== 'all' ? String(shiftFilter).trim() : '');
-    setCalcMay(machineFilter && machineFilter !== 'all' ? String(machineFilter).trim() : '');
+    const nextNgay = String(dateFrom || dateTo || todayIso).trim();
+    const nextCa = shiftFilter && shiftFilter !== 'all' ? String(shiftFilter).trim() : '';
+    let nextMay = machineFilter && machineFilter !== 'all' ? String(machineFilter).trim() : '';
+    if ((!nextMay || nextMay === 'all') && nextNgay && nextCa) {
+      nextMay =
+        pickHandoverMachineAndOperators({
+          orders: productionOrders,
+          date: nextNgay,
+          shift: nextCa,
+          machines: machines.map(machine => ({ code: machine.code, name: machine.name }))
+        }).machineCode || '';
+    }
+    lastCalcMachineKeyRef.current = nextNgay && nextCa ? `${nextNgay}|${nextCa}` : '';
+    setCalcNgay(nextNgay);
+    setCalcCa(nextCa);
+    setCalcMay(nextMay);
     setCalcDialogError('');
     setCalcDialogOpen(true);
   };
+
+  // Dialog Tính toán: đổi Ngày/Ca → tự điền Máy theo lệnh SX.
+  useEffect(() => {
+    if (!calcDialogOpen) {
+      lastCalcMachineKeyRef.current = '';
+      return;
+    }
+    const ngay = String(calcNgay || '').trim();
+    const ca = String(calcCa || '').trim();
+    if (!ngay || !ca || machines.length === 0) return;
+
+    const key = `${ngay}|${ca}`;
+    const keyChanged = lastCalcMachineKeyRef.current !== key;
+    lastCalcMachineKeyRef.current = key;
+
+    const currentValid = Boolean(calcMay && machines.some(machine => machine.code === calcMay));
+    if (!keyChanged && currentValid) return;
+
+    const picked = pickHandoverMachineAndOperators({
+      orders: productionOrders,
+      date: ngay,
+      shift: ca,
+      machines: machines.map(machine => ({ code: machine.code, name: machine.name }))
+    });
+    if (picked.machineCode && picked.machineCode !== calcMay) {
+      setCalcMay(picked.machineCode);
+    }
+  }, [calcDialogOpen, calcNgay, calcCa, calcMay, productionOrders, machines]);
 
   const calculateAndSaveReport = async (scope: {
     dateFrom: string;
@@ -1837,16 +1881,71 @@ export default function ControlBoardBbMachineReportTable({
     }
     return { matchedLines, fallbackLines, totalLines: exportRows.length };
   }, [exportRows]);
+  const isInsulationMachine = isInsulationMachineText(
+    selectedMachine?.name,
+    selectedMachine?.code,
+    machineFilter !== 'all' ? machineFilter : undefined
+  );
   const damagedGroupsWithMixing = useMemo(() => {
     return damagedGroups.map(group => {
-      const mixingLines = group.mixingLines || [];
+      const groupIsInsulation =
+        isInsulationMachine || isInsulationMachineText(group.machine);
+      // Cột Lỗi hỏng (kg) + cơ sở chia % mã chính = NNKM + NC + RMN.
+      const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+        damagedRecords,
+        damagedLines: group.lines || [],
+        ngay: group.ngay,
+        shift: group.shift,
+        machine: group.machine,
+        shiftSettings
+      });
+      // Luôn dựng lại NVL từ BOM (NNKM/NC/RMN không liệt kê dòng — chỉ cộng cột tổng).
+      const mixingLines = buildBbLoiHongMaterialLinesForShift({
+        productionOrders,
+        products,
+        materials,
+        mixingReports,
+        damagedRecords,
+        damagedLines: group.lines || [],
+        plasticLoiHongKg,
+        ngay: group.ngay,
+        shift: group.shift,
+        orderCode: group.orderCode,
+        machine: group.machine,
+        shiftSettings
+      });
+      const filmScrapMaterial =
+        group.filmScrapMaterial ||
+        resolveBbLoiHongFilmScrapMaterialForShift({
+          productionOrders,
+          products,
+          materials,
+          warehouseMovements,
+          shiftSettings,
+          ngay: group.ngay,
+          shift: group.shift,
+          orderCode: group.orderCode,
+          damagedLines: group.lines
+        }) ||
+        undefined;
       return {
         ...group,
         mixingLines,
-        mixingLineCount: group.mixingLineCount ?? mixingLines.length
+        mixingLineCount: mixingLines.length,
+        filmScrapMaterial
       };
     });
-  }, [damagedGroups]);
+  }, [
+    damagedGroups,
+    productionOrders,
+    products,
+    materials,
+    mixingReports,
+    damagedRecords,
+    warehouseMovements,
+    shiftSettings,
+    isInsulationMachine
+  ]);
   // Tab thực xuất dùng: dòng NVL lấy từ báo cáo trộn (đã gộp tỉ lệ).
   const warehouseMovementsForXuatDetail = warehouseMovements;
 
@@ -1877,16 +1976,43 @@ export default function ControlBoardBbMachineReportTable({
     if (reportSnapshot?.summary?.orderTotals) return reportSnapshot.summary.orderTotals;
     return sumBbProductionOrderTotals(orderRows);
   }, [reportSnapshot, orderRows]);
+  const liveExportWeightByKind = useMemo(
+    () =>
+      sumBbWarehouseHistoryExportWeightKgByKind({
+        warehouseMovements,
+        materials,
+        productionOrders,
+        machines,
+        shiftSettings,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine
+      }),
+    [
+      warehouseMovements,
+      materials,
+      productionOrders,
+      machines,
+      shiftSettings,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine
+    ]
+  );
   const exportTotalKg = useMemo(() => {
     if (reportSnapshot?.summary && Number.isFinite(reportSnapshot.summary.exportTotalKg)) {
       return reportSnapshot.summary.exportTotalKg;
     }
-    return sumBbWarehouseExportWeightKg(exportRows);
-  }, [reportSnapshot, exportRows]);
+    return liveExportWeightByKind.totalKg;
+  }, [reportSnapshot, liveExportWeightByKind]);
   const exportWeightByKind = useMemo(() => {
     if (reportSnapshot?.summary?.exportWeightByKind) return reportSnapshot.summary.exportWeightByKind;
-    return sumBbWarehouseExportWeightKgByKind(exportRows);
-  }, [reportSnapshot, exportRows]);
+    return liveExportWeightByKind;
+  }, [reportSnapshot, liveExportWeightByKind]);
   /** Banner «Tổng hợp nhựa»: ưu tiên số đã lưu trong snapshot (không cộng live phiếu XK). */
   const exportRowsForPlasticBanner = exportRows;
   const exportWeightByKindForPlasticBanner = exportWeightByKind;
@@ -1958,19 +2084,26 @@ export default function ControlBoardBbMachineReportTable({
       }),
     [exportGroups]
   );
-  const damagedTotalKg = useMemo(() => sumBbDamagedGoodsWeightKg(damagedRows), [damagedRows]);
-  const isInsulationMachine = isInsulationMachineText(
-    selectedMachine?.name,
-    selectedMachine?.code,
-    machineFilter !== 'all' ? machineFilter : undefined
-  );
-  /** Ô «Báo cáo lỗi hỏng»: TL nhựa = SP lỗi trừ rác màng (ưu tiên snapshot.summary). */
   const damagedWeightByKind = useMemo(() => {
-    if (reportSnapshot?.summary?.damagedWeightByKind) {
-      return reportSnapshot.summary.damagedWeightByKind;
-    }
-    return sumBbDamagedGoodsWeightKgByKind(damagedRows, { isInsulationMachine });
-  }, [reportSnapshot, damagedRows, isInsulationMachine]);
+    return resolveBbLoiHongCardWeightByKind({
+      damagedGroups,
+      damagedRows,
+      damagedRecords,
+      acceptanceReports,
+      materials,
+      shiftSettings,
+      isInsulationMachine
+    });
+  }, [
+    damagedGroups,
+    damagedRows,
+    damagedRecords,
+    acceptanceReports,
+    materials,
+    shiftSettings,
+    isInsulationMachine
+  ]);
+  const damagedTotalKg = damagedWeightByKind.totalKg;
   const cuoiCaTotalKg = useMemo(() => {
     if (reportSnapshot?.summary && Number.isFinite(reportSnapshot.summary.cuoiCaTotalKg)) {
       return reportSnapshot.summary.cuoiCaTotalKg;
@@ -1995,11 +2128,10 @@ export default function ControlBoardBbMachineReportTable({
   const scopedCanTuDongRecords = useMemo(() => {
     if (sanLuongSource !== 'can-tu-dong') return [];
     const sourceRecords = calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords;
-    const canTuDongDateTo = dateTo ? shiftIsoDateByDays(dateTo, 1) || dateTo : dateTo;
     return filterCanTuDongRecordsForBoard(sourceRecords, {
       shiftFilter,
       dateFrom,
-      dateTo: canTuDongDateTo,
+      dateTo,
       machineFilter,
       selectedMachine
     });
@@ -2038,20 +2170,10 @@ export default function ControlBoardBbMachineReportTable({
   ]);
   /**
    * Tổng sản lượng trên banner KPI.
-   * Chỉ dùng summary đã lưu khi có `reportSnapshot` thật (không dùng emptySnapshot {0,0}
-   * vì object rỗng vẫn truthy và chặn số live từ cân tự động).
+   * Nguồn cân tự động: ưu tiên số live (khớp `/can-tu-dong` cùng ngày/ca),
+   * không lấy snapshot cũ (tránh SỐ SP lệch như 125 vs 45).
    */
   const displaySanLuongTotals = useMemo(() => {
-    if (reportSnapshot?.summary) {
-      const saved =
-        reportSnapshot.summary.displaySanLuongTotals ??
-        (sanLuongSource === 'can-tu-dong'
-          ? reportSnapshot.summary.canTuDongSanLuongTotals
-          : undefined);
-      if (saved && ((saved.quantity ?? 0) > 0 || (saved.weightKg ?? 0) > 0)) {
-        return saved;
-      }
-    }
     if (
       sanLuongSource === 'can-tu-dong' &&
       canTuDongTongHopBanner &&
@@ -2063,6 +2185,16 @@ export default function ControlBoardBbMachineReportTable({
           (canTuDongTongHopBanner.totals.nhua_tt_kg || 0) +
           (canTuDongTongHopBanner.totals.khoi_luong_mang_kg || 0)
       };
+    }
+    if (reportSnapshot?.summary) {
+      const saved =
+        reportSnapshot.summary.displaySanLuongTotals ??
+        (sanLuongSource === 'can-tu-dong'
+          ? reportSnapshot.summary.canTuDongSanLuongTotals
+          : undefined);
+      if (saved && ((saved.quantity ?? 0) > 0 || (saved.weightKg ?? 0) > 0)) {
+        return saved;
+      }
     }
     return sanLuongTotals;
   }, [reportSnapshot, sanLuongSource, canTuDongTongHopBanner, sanLuongTotals]);
@@ -2840,7 +2972,7 @@ export default function ControlBoardBbMachineReportTable({
 
           <div
             className="flex h-full min-h-[102px] flex-col rounded-xl border border-red-200/80 bg-white p-2.5 shadow-xs transition hover:border-red-300 hover:bg-red-50/20"
-            title="Khớp phiếu xuất kho: Tổng nhựa = Σ Quy về kg dòng ĐVT kg; vật tư khác = Σ Quy về kg dòng ĐVT ≠ kg"
+            title="Lấy từ lịch sử xuất NVL (ngày/ca/máy): TL nhựa = hạt nhựa kg (không gồm túi/lõi/bao bì); vật tư khác = còn lại"
           >
             <p className="whitespace-nowrap text-[11px] font-black uppercase tracking-tight text-red-700">TL xuất</p>
             <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
@@ -3028,7 +3160,7 @@ export default function ControlBoardBbMachineReportTable({
             className="flex h-full min-h-[102px] flex-col rounded-xl border border-red-200/80 bg-white p-2.5 shadow-xs transition hover:border-red-300 hover:bg-red-50/20"
                 title={
                   isInsulationMachine
-                    ? 'TL nhựa = Σ SP lỗi (Hàng hỏng), không gồm rác màng; Vật tư khác = rác màng'
+                    ? 'Tổng = Lỗi hỏng (NNKM+NC+RMN) + Tổng rác màng (RAC MANG + MT-HANG RAC)'
                     : 'Lấy từ Báo cáo sản lượng: SP lỗi (hàng lỗi hỏng) + SP rác trừ rác màng'
                 }
           >
@@ -3047,7 +3179,7 @@ export default function ControlBoardBbMachineReportTable({
                 className="min-w-0"
                 title={
                   isInsulationMachine
-                    ? 'Σ SP lỗi (Hàng hỏng), không gồm rác màng'
+                    ? 'Σ NNKM + NC + RMN (= cột Lỗi hỏng (kg))'
                     : 'Σ trọng lượng phiếu Báo cáo sản lượng · loại SP lỗi (Hàng hỏng)'
                 }
               >
@@ -3064,7 +3196,7 @@ export default function ControlBoardBbMachineReportTable({
                 className="min-w-0"
                 title={
                   isInsulationMachine
-                    ? 'Σ trọng lượng rác màng xi (SP rác) trên Báo cáo sản lượng'
+                    ? 'Σ RAC MANG + MT-HANG RAC từ /danh-sach-bao-cao-san-luong (= cột Tổng rác màng)'
                     : 'Σ trọng lượng phiếu Báo cáo sản lượng · loại SP rác (Kho rác), trừ rác màng'
                 }
               >
@@ -3113,7 +3245,7 @@ export default function ControlBoardBbMachineReportTable({
                 },
                 {
                   label: 'Tổng nhựa xuất',
-                  title: 'Tổng nhựa phiếu xuất ca đang chọn = Σ Quy về kg dòng ĐVT kg',
+                  title: 'Tổng nhựa phiếu xuất trên lịch sử XK (ngày/ca/máy) = Σ Quy về kg dòng hạt nhựa',
                   metric: 'export' as const,
                   display: isLoading
                     ? '…'
@@ -4326,20 +4458,31 @@ export default function ControlBoardBbMachineReportTable({
                 <th className="px-4 py-3.5 font-black">Lệnh SX</th>
                 <th className="px-4 py-3.5 font-black">Máy</th>
                 <th className="px-4 py-3.5 text-right font-black">Dòng NVL</th>
-                <th className="px-4 py-3.5 text-right font-black">Lỗi hỏng (kg)</th>
+                <th
+                  className="px-4 py-3.5 text-right font-black text-rose-800"
+                  title="Tổng NNKM + NC + RMN"
+                >
+                  Lỗi hỏng (kg)
+                </th>
+                <th
+                  className="px-4 py-3.5 text-right font-black text-orange-800"
+                  title="Σ trọng lượng phiếu /danh-sach-bao-cao-san-luong · mã RAC MANG + MT-HANG RAC (ngày · ca · máy)"
+                >
+                  Tổng rác màng
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                     Đang tải dữ liệu lỗi hỏng từ Báo cáo sản lượng...
                   </td>
                 </tr>
               ) : damagedGroupsWithMixing.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center font-bold text-zinc-400">
+                  <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
                     Chưa có phiếu Báo cáo sản lượng loại Hàng hỏng / Hàng rác gắn ca/ngày lệnh máy BB.
                   </td>
                 </tr>
@@ -4347,7 +4490,21 @@ export default function ControlBoardBbMachineReportTable({
                 damagedGroupsWithMixing.map(group => {
                   const expanded = isGroupExpanded('bao_cao_loi_hong', group.groupKey);
                   const groupIsInsulation = isInsulationMachine || isInsulationMachineText(group.machine);
-                  const filmScrapKg = groupIsInsulation ? sumBbDamagedFilmScrapKg(group.lines) : 0;
+                  const filmScrapFromAcceptance = groupIsInsulation
+                    ? sumAcceptanceFilmScrapRacMangKg({
+                        acceptanceReports,
+                        materials,
+                        ngay: group.ngay,
+                        shift: group.shift,
+                        machine: group.machine,
+                        shiftSettings
+                      })
+                    : 0;
+                  const filmScrapKg = groupIsInsulation
+                    ? acceptanceReports.length > 0
+                      ? filmScrapFromAcceptance
+                      : sumBbDamagedFilmScrapKg(group.lines)
+                    : 0;
                   const filmScrapMaterial =
                     group.filmScrapMaterial ||
                     (groupIsInsulation && filmScrapKg > 0
@@ -4363,8 +4520,13 @@ export default function ControlBoardBbMachineReportTable({
                           damagedLines: group.lines
                         })
                       : null);
-                  const plasticLoiHongKg = resolveBbDamagedPlasticLoiHongKg(group.lines, {
-                    isInsulationMachine: groupIsInsulation
+                  const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+                    damagedRecords,
+                    damagedLines: group.lines || [],
+                    ngay: group.ngay,
+                    shift: group.shift,
+                    machine: group.machine,
+                    shiftSettings
                   });
                   return (
                     <React.Fragment key={group.groupKey}>
@@ -4391,42 +4553,35 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                         <td
                           className="px-4 py-3 text-right font-mono font-bold text-rose-800"
-                          title={
-                            groupIsInsulation && filmScrapKg > 0
-                              ? `Nhựa ${formatKg(plasticLoiHongKg, 2)} kg · Rác màng xi ${formatKg(filmScrapKg, 2)} kg`
-                              : undefined
-                          }
+                          title="Tổng NNKM + NC + RMN"
                         >
                           {formatKg(plasticLoiHongKg, 2)}
-                          {groupIsInsulation && filmScrapKg > 0 ? (
-                            <span className="mt-0.5 block text-[10px] font-semibold text-orange-700">
-                              + VT khác {formatKg(filmScrapKg, 2)} kg
-                            </span>
-                          ) : null}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right font-mono font-bold text-orange-800"
+                          title="Σ RAC MANG + MT-HANG RAC từ /danh-sach-bao-cao-san-luong · khớp ngày · ca · máy"
+                        >
+                          {filmScrapKg > 0 ? formatKg(filmScrapKg, 2) : '—'}
                         </td>
                       </tr>
                       {expanded ? (
                         <tr className="bg-rose-50/20">
-                          <td colSpan={7} className="px-2 py-3">
+                          <td colSpan={8} className="px-2 py-3">
                             {(() => {
                               const { mixingKgLines, otherMaterialLines } = splitBbLoiHongMaterialLinesByMixing(
                                 group.mixingLines
                               );
-                              const resolveLoiHongTiLe = (row: (typeof mixingKgLines)[number]) =>
-                                row.tiLeTronPercent != null && row.tiLeTronPercent > 0
+                              const resolveLoiHongTiLe = (row: (typeof mixingKgLines)[number]) => {
+                                // NNKM / NC / RMN chỉ cộng tổng — không chia % với mã NVL chính.
+                                if (isLoiHongMixingKgExtraCode(row.materialCode)) return null;
+                                return row.tiLeTronPercent != null && row.tiLeTronPercent > 0
                                   ? row.tiLeTronPercent
                                   : row.tiLeDinhMucPercent;
-                              const resolveLoiHongWeightKg = (tiLe: number | null) =>
-                                tiLe !== null &&
-                                Number.isFinite(tiLe) &&
-                                tiLe > 0 &&
-                                Number.isFinite(plasticLoiHongKg)
-                                  ? Math.round(((plasticLoiHongKg * tiLe) / 100) * 100) / 100
-                                  : null;
-                              const mixingLoiHongTotalKg = mixingKgLines.reduce((sum, row) => {
-                                const weight = resolveLoiHongWeightKg(resolveLoiHongTiLe(row));
-                                return sum + (weight != null && weight > 0 ? weight : 0);
-                              }, 0);
+                              };
+                              const resolveLoiHongWeightKg = (row: (typeof mixingKgLines)[number]) =>
+                                resolveBbLoiHongMixingLineWeightKg(row, plasticLoiHongKg);
+                              // Tổng nhựa lỗi hỏng = NNKM + NC + RMN (cột Lỗi hỏng).
+                              const mixingLoiHongTotalKg = plasticLoiHongKg;
                               return (
                                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
                                   <div className="bb-table-scroll bb-report-sheet-scroll xl:col-span-6">
@@ -4463,7 +4618,8 @@ export default function ControlBoardBbMachineReportTable({
                                         ) : (
                                           mixingKgLines.map(row => {
                                             const tiLe = resolveLoiHongTiLe(row);
-                                            const trongLuongLoiKg = resolveLoiHongWeightKg(tiLe);
+                                            const trongLuongLoiKg = resolveLoiHongWeightKg(row);
+                                            const isExtra = isLoiHongMixingKgExtraCode(row.materialCode);
                                             return (
                                               <tr key={row.key} className="hover:bg-rose-50/40">
                                                 <td className="px-3 py-2 font-mono font-bold text-zinc-800">
@@ -4471,8 +4627,17 @@ export default function ControlBoardBbMachineReportTable({
                                                 </td>
                                                 <td className="px-3 py-2 text-zinc-700">{row.materialName || '—'}</td>
                                                 <td className="px-3 py-2 text-zinc-600">{row.unit || 'kg'}</td>
-                                                <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
-                                                  {formatPercent(tiLe, 2)}
+                                                <td
+                                                  className={`px-3 py-2 text-right font-mono font-bold ${
+                                                    isExtra ? 'text-zinc-400' : 'text-orange-800'
+                                                  }`}
+                                                  title={
+                                                    isExtra
+                                                      ? 'NNKM/NC/RMN lấy KL tuyệt đối từ nghiệm thu / phiếu hàng hỏng — không chia % với mã NVL chính'
+                                                      : undefined
+                                                  }
+                                                >
+                                                  {isExtra ? '—' : formatPercent(tiLe, 2)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono font-bold text-rose-700">
                                                   {trongLuongLoiKg === null ? '—' : formatKg(trongLuongLoiKg, 2)}
@@ -4590,8 +4755,16 @@ export default function ControlBoardBbMachineReportTable({
                 <tr>
                   <td colSpan={6} className="px-4 py-3.5 text-right uppercase tracking-wider">
                     Tổng hàng lỗi hỏng
+                    <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500">
+                      (= Lỗi hỏng + Tổng rác màng · {formatKg(damagedTotalKg, 2)} kg)
+                    </span>
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-rose-800">{formatKg(damagedTotalKg, 2)}</td>
+                  <td className="px-4 py-3.5 text-right font-mono text-rose-800">
+                    {formatKg(damagedWeightByKind.plasticKg, 2)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono text-orange-800">
+                    {formatKg(damagedWeightByKind.otherKg, 2)}
+                  </td>
                 </tr>
               </tfoot>
             ) : null}
@@ -5956,10 +6129,30 @@ export default function ControlBoardBbMachineReportTable({
                   <th className="px-3 py-2.5 font-black">Ca</th>
                   <th className="px-3 py-2.5 font-black">Số lệnh SX</th>
                   <th className="px-3 py-2.5 font-black">Máy</th>
-                  <th className="px-3 py-2.5 text-right font-black">Tổng nhựa thực xuất / Tổng ĐM</th>
-                  <th className="px-3 py-2.5 text-right font-black">Giá trị hao hụt nhựa</th>
-                  <th className="px-3 py-2.5 text-right font-black">Tổng màng thực xuất / Tổng màng ĐM</th>
-                  <th className="px-3 py-2.5 text-right font-black">Giá trị hao hụt màng</th>
+                  <th
+                    className="px-3 py-2.5 text-right font-black"
+                    title="Tổng nhựa thành phẩm ÷ Tổng nhựa định mức"
+                  >
+                    Tổng nhựa thực xuất / Tổng ĐM
+                  </th>
+                  <th
+                    className="px-3 py-2.5 text-right font-black"
+                    title="Giá trị = (Tổng nhựa thành phẩm − Tổng nhựa định mức) × đơn giá"
+                  >
+                    Giá trị hao hụt nhựa
+                  </th>
+                  <th
+                    className="px-3 py-2.5 text-right font-black"
+                    title="Tổng màng thành phẩm ÷ Tổng màng định mức"
+                  >
+                    Tổng màng thực xuất / Tổng màng ĐM
+                  </th>
+                  <th
+                    className="px-3 py-2.5 text-right font-black"
+                    title="Giá trị = (Tổng màng thành phẩm − Tổng màng ĐM) × đơn giá"
+                  >
+                    Giá trị hao hụt màng
+                  </th>
                   <th className="px-3 py-2.5 text-right font-black">Tỉ lệ lỗi hỏng</th>
                   <th className="px-3 py-2.5 text-right font-black">Tỉ lệ lỗi hỏng định mức</th>
                   <th className="px-3 py-2.5 text-right font-black">Lệch lỗi hỏng so với ĐM</th>
@@ -6081,7 +6274,7 @@ export default function ControlBoardBbMachineReportTable({
                           <td className="px-3 py-2 font-semibold text-zinc-700">{group.machine || '—'}</td>
                           <td
                             className="px-3 py-2 text-right font-mono font-bold text-amber-800"
-                            title={`${formatKg(group.tongNhuaThucXuat, 2)} / ${formatKg(group.tongNhuaDinhMuc, 2)} kg`}
+                            title={`Tổng nhựa TP ${formatKg(group.tongNhuaThanhPham ?? 0, 2)} / Tổng nhựa ĐM ${formatKg(group.tongNhuaDinhMuc, 2)} kg`}
                           >
                             {formatPercent(group.tiLeNhuaThucXuatVsDinhMuc, 2)}
                           </td>
@@ -6089,13 +6282,13 @@ export default function ControlBoardBbMachineReportTable({
                             className={`px-3 py-2 text-right font-mono font-bold ${
                               group.giaTriHaoHutNhua < 0 ? 'text-emerald-700' : 'text-rose-700'
                             }`}
-                            title={`${formatKg(group.giaTriHaoHutNhuaKg, 2)} kg`}
+                            title={`Hao hụt = TP − ĐM = ${formatKg(group.giaTriHaoHutNhuaKg, 2)} kg`}
                           >
                             {formatVnd(group.giaTriHaoHutNhua)}
                           </td>
                           <td
                             className="px-3 py-2 text-right font-mono font-bold text-fuchsia-800"
-                            title={`${formatKg(group.tongMangThucXuat, 2)} / ${formatKg(group.tongMangDinhMuc, 2)} kg`}
+                            title={`Tổng màng TP ${formatKg(group.tongMangThanhPham ?? 0, 2)} / Tổng màng ĐM ${formatKg(group.tongMangDinhMuc, 2)} kg`}
                           >
                             {formatPercent(group.tiLeMangThucXuatVsDinhMuc, 2)}
                           </td>
@@ -6103,7 +6296,7 @@ export default function ControlBoardBbMachineReportTable({
                             className={`px-3 py-2 text-right font-mono font-bold ${
                               group.giaTriHaoHutMang < 0 ? 'text-emerald-700' : 'text-rose-700'
                             }`}
-                            title={`${formatKg(group.giaTriHaoHutMangKg, 2)} kg`}
+                            title={`Hao hụt = TP − ĐM = ${formatKg(group.giaTriHaoHutMangKg, 2)} kg`}
                           >
                             {formatVnd(group.giaTriHaoHutMang)}
                           </td>

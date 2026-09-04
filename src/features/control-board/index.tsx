@@ -45,7 +45,7 @@ import {
   type MachineNvlSavedReport
 } from '../../utils/machineNvlReports';
 import { DashboardWindow } from '../dashboard';
-import { normalizeMachines, type MachineRow } from '../danh-sach-may';
+import { findMachineByRef, normalizeMachines, type MachineRow } from '../danh-sach-may';
 import { normalizeOrders, type OrderRow } from '../don-hang';
 import { normalizeProducts } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
@@ -133,6 +133,54 @@ function buildPanelProductionOrderOptionLabel(
   if (shiftLabel && shiftLabel !== '-') parts.push(shiftLabel);
   if (machineLabel && machineLabel !== '-') parts.push(machineLabel);
   return { code, label: parts.join(' · '), ngay: ngay || '' };
+}
+
+/** Mã máy từ lệnh SX (khớp danh sách máy). */
+function resolveMachineCodeFromProductionOrder(
+  order: ProductionOrderRow,
+  machines: MachineRow[]
+): string {
+  const candidates = [
+    resolveProductionOrderMachine(order, machines),
+    order.machine,
+    order.position
+  ];
+  for (const candidate of candidates) {
+    const text = String(candidate || '').trim();
+    if (!text || text === '-') continue;
+    const found = findMachineByRef(machines, text);
+    if (found?.code) return found.code;
+  }
+  return '';
+}
+
+/** Máy ưu tiên từ lệnh SX mới nhất trong Ngày + Ca (chỉ trong danh sách máy được phép). */
+function pickPreferredMachineCodeFromOrders(input: {
+  orders: ProductionOrderRow[];
+  machines: MachineRow[];
+  dateFrom: string;
+  dateTo: string;
+  shift: string;
+  allowed: MachineRow[];
+}): string {
+  if (input.allowed.length === 0) return '';
+  const allowedCodes = new Set(input.allowed.map(machine => machine.code));
+  const matching = input.orders
+    .filter(order => {
+      const orderDate = parseProductionOrderFilterDate(order.startDate) || order.startDate;
+      if (!matchesControlBoardDateRange(orderDate || undefined, input.dateFrom, input.dateTo)) {
+        return false;
+      }
+      if (!shiftNamesMatch(order.shift, input.shift)) return false;
+      return true;
+    })
+    .sort(compareProductionOrderByRecentDate);
+
+  for (const order of matching) {
+    const code = resolveMachineCodeFromProductionOrder(order, input.machines);
+    if (code && allowedCodes.has(code)) return code;
+  }
+  return input.allowed[0]?.code || '';
 }
 
 export function ControlBoardPanel({
@@ -533,14 +581,56 @@ export function ControlBoardPanel({
     return filterMachinesByReportKind(shiftScopedMachines, uiBoardMachineKind);
   }, [isAutoReport, shiftScopedMachines, uiBoardMachineKind]);
 
-  // Ca/ngày chỉ có một máy được phân công thì chọn sẵn máy đó (trên bộ lọc đang chỉnh).
+  // `/phan-tich-tu-dong`: tự điền Máy theo lệnh SX của Ngày + Ca (+ loại Bao bì/Cách nhiệt).
+  // Trang thường: chỉ auto khi ca/ngày có đúng 1 máy.
+  const lastMachineAutoKeyRef = useRef('');
   useEffect(() => {
-    if (uiBoardFilterShift === 'all' || panelMachines.length !== 1) return;
-    if (uiBoardFilterMachine !== panelMachines[0].code) {
-      if (isAutoReport) setDraftBoardFilterMachine(panelMachines[0].code);
-      else setBoardFilterMachine(panelMachines[0].code);
+    if (!isAutoReport) {
+      if (uiBoardFilterShift === 'all' || panelMachines.length !== 1) return;
+      if (uiBoardFilterMachine !== panelMachines[0].code) {
+        setBoardFilterMachine(panelMachines[0].code);
+      }
+      return;
     }
-  }, [uiBoardFilterShift, uiBoardFilterMachine, panelMachines, isAutoReport]);
+
+    if (uiDateScopeAll || !uiBoardFilterShift || uiBoardFilterShift === 'all') {
+      lastMachineAutoKeyRef.current = '';
+      return;
+    }
+    if (panelMachines.length === 0) return;
+
+    const preferred = pickPreferredMachineCodeFromOrders({
+      orders: productionOrders,
+      machines,
+      dateFrom: uiEffectiveDateFrom,
+      dateTo: uiEffectiveDateTo,
+      shift: uiBoardFilterShift,
+      allowed: panelMachines
+    });
+    if (!preferred) return;
+
+    const key = `${uiEffectiveDateFrom}|${uiEffectiveDateTo}|${uiBoardFilterShift}|${uiBoardMachineKind}`;
+    const keyChanged = lastMachineAutoKeyRef.current !== key;
+    lastMachineAutoKeyRef.current = key;
+
+    const currentValid = panelMachines.some(machine => machine.code === uiBoardFilterMachine);
+    if (keyChanged || uiBoardFilterMachine === 'all' || !currentValid) {
+      if (uiBoardFilterMachine !== preferred) {
+        setDraftBoardFilterMachine(preferred);
+      }
+    }
+  }, [
+    isAutoReport,
+    uiDateScopeAll,
+    uiBoardFilterShift,
+    uiBoardFilterMachine,
+    uiBoardMachineKind,
+    uiEffectiveDateFrom,
+    uiEffectiveDateTo,
+    panelMachines,
+    productionOrders,
+    machines
+  ]);
 
   const syncMachineFilterToPanelMachines = (
     machineList: MachineRow[],

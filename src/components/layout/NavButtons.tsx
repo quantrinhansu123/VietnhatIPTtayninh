@@ -95,6 +95,9 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'hr': 'hcns',
   'vehicles': 'menu',
   'settings': 'quan-tri',
+  'dashboard': 'quan-tri',
+  'dashboard-auto': 'quan-tri',
+  'bieu-do-th': 'quan-tri',
   'orders': 'business',
   'customers': 'business',
   'shipping-orders': 'business',
@@ -120,7 +123,8 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'machine-run-log-list': 'report-lists',
   'acceptance-report': 'report-forms',
   'dashboard': 'quan-tri',
-  'dashboard-auto': 'quan-tri'
+  'dashboard-auto': 'quan-tri',
+  'bieu-do-th': 'quan-tri'
 };
 
 export function MobileBackNavButton({

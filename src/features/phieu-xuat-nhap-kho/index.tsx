@@ -402,7 +402,7 @@ export function isWarehouseKgUnit(unit?: string | null) {
 }
 
 /** Xuất kho: ĐVT kg lên đầu, trong mỗi nhóm xếp khối lượng quy đổi giảm dần, rồi theo mã. */
-export function sortWarehouseLinesKgFirst<T extends { unit?: string; code?: string }>(
+export function sortWarehouseLinesKgFirst<T extends { unit?: string; code?: string; itemCode?: string }>(
   lines: T[],
   options?: { getWeightKg?: (line: T) => number | null }
 ): T[] {
@@ -419,7 +419,9 @@ export function sortWarehouseLinesKgFirst<T extends { unit?: string; code?: stri
       if (aVal !== bVal) return bVal - aVal;
     }
 
-    return String(a.code || '').localeCompare(String(b.code || ''), 'vi');
+    const aCode = String(a.code || a.itemCode || '');
+    const bCode = String(b.code || b.itemCode || '');
+    return aCode.localeCompare(bCode, 'vi');
   });
 }
 
@@ -4220,13 +4222,23 @@ export function WarehouseHistoryPanel({
   const sortedMovementLines = useMemo(
     () =>
       [...filteredMovements].sort((a, b) => {
+        const aKg = isWarehouseKgUnit(a.unit);
+        const bKg = isWarehouseKgUnit(b.unit);
+        if (aKg !== bKg) return aKg ? -1 : 1;
+
+        const aWeight = resolveWarehouseRowWeightKg(a);
+        const bWeight = resolveWarehouseRowWeightKg(b);
+        const aVal = aWeight !== null && Number.isFinite(aWeight) && aWeight > 0 ? aWeight : -1;
+        const bVal = bWeight !== null && Number.isFinite(bWeight) && bWeight > 0 ? bWeight : -1;
+        if (aVal !== bVal) return bVal - aVal;
+
         const byCreated = b.createdAt.localeCompare(a.createdAt);
         if (byCreated !== 0) return byCreated;
         const bySlip = (b.slipCode || '').localeCompare(a.slipCode || '', 'vi');
         if (bySlip !== 0) return bySlip;
         return (a.itemCode || '').localeCompare(b.itemCode || '', 'vi');
       }),
-    [filteredMovements]
+    [filteredMovements, weightCatalogMaterials, weightCatalogProducts]
   );
 
   const selectableSlips = useMemo(
@@ -4252,9 +4264,13 @@ export function WarehouseHistoryPanel({
     );
   };
 
-  const viewingRows = viewingSlipCode
-    ? filteredMovements.filter(row => row.slipCode === viewingSlipCode)
-    : [];
+  const viewingRows = useMemo(() => {
+    if (!viewingSlipCode) return [];
+    return sortWarehouseLinesKgFirst(
+      filteredMovements.filter(row => row.slipCode === viewingSlipCode),
+      { getWeightKg: resolveWarehouseRowWeightKg }
+    );
+  }, [viewingSlipCode, filteredMovements, weightCatalogMaterials, weightCatalogProducts]);
 
   const viewingSlipTotal = useMemo(
     () => viewingRows.reduce((sum, row) => sum + row.lineAmount, 0),
@@ -4306,8 +4322,12 @@ export function WarehouseHistoryPanel({
     }));
     const lines =
       header.slipType === 'xuat' && header.warehouseKind !== 'san_pham'
-        ? mergeWarehousePrintLines(rawLines)
-        : rawLines;
+        ? sortWarehouseLinesKgFirst(mergeWarehousePrintLines(rawLines), {
+            getWeightKg: line => line.weightKg ?? null
+          })
+        : sortWarehouseLinesKgFirst(rawLines, {
+            getWeightKg: line => line.weightKg ?? null
+          });
     return {
       slipCode,
       slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',

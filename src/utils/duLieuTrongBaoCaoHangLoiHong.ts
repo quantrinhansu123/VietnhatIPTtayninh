@@ -4,7 +4,9 @@
  */
 import {
   isInsulationMachineText,
-  resolveBbDamagedPlasticLoiHongKg,
+  isLoiHongMixingKgExtraCode,
+  resolveBbLoiHongNnkmNcTotalKg,
+  resolveBbLoiHongMixingLineWeightKg,
   splitBbLoiHongMaterialLinesByMixing,
   sumBbDamagedFilmScrapKg,
   type BbDamagedGoodsGroup,
@@ -43,14 +45,14 @@ function numOrNull(value: number | null | undefined): number | null {
 }
 
 function resolveLoiHongTiLe(row: BbDamagedMixingChildRow): number | null {
+  if (isLoiHongMixingKgExtraCode(row.materialCode)) return null;
   if (row.tiLeTronPercent != null && row.tiLeTronPercent > 0) return row.tiLeTronPercent;
   if (row.tiLeDinhMucPercent != null && row.tiLeDinhMucPercent > 0) return row.tiLeDinhMucPercent;
   return null;
 }
 
-function resolveLoiHongWeightKg(tiLe: number | null, plasticLoiHongKg: number): number | null {
-  if (tiLe === null || !(tiLe > 0) || !(plasticLoiHongKg > 0)) return null;
-  return Math.round(((plasticLoiHongKg * tiLe) / 100) * 100) / 100;
+function resolveLoiHongWeightKg(row: BbDamagedMixingChildRow, plasticLoiHongKg: number): number | null {
+  return resolveBbLoiHongMixingLineWeightKg(row, plasticLoiHongKg);
 }
 
 function pushNvlRows(input: {
@@ -69,7 +71,7 @@ function pushNvlRows(input: {
   for (const line of input.lines) {
     const tiLe = resolveLoiHongTiLe(line);
     const trongLuongLoi =
-      input.nhom === 'tron' ? resolveLoiHongWeightKg(tiLe, input.plasticLoiHongKg) : null;
+      input.nhom === 'tron' ? resolveLoiHongWeightKg(line, input.plasticLoiHongKg) : null;
     input.rows.push({
       khoa_on_dinh: input.khoa,
       ngay: input.group.ngay || '',
@@ -83,8 +85,10 @@ function pushNvlRows(input: {
       ma_nvl: line.materialCode || null,
       ten_nvl: line.materialName || null,
       don_vi: line.unit || null,
-      ti_le_tron_percent: numOrNull(line.tiLeTronPercent),
-      ti_le_dinh_muc_percent: numOrNull(line.tiLeDinhMucPercent),
+      ti_le_tron_percent: isLoiHongMixingKgExtraCode(line.materialCode) ? null : numOrNull(line.tiLeTronPercent),
+      ti_le_dinh_muc_percent: isLoiHongMixingKgExtraCode(line.materialCode)
+        ? null
+        : numOrNull(line.tiLeDinhMucPercent),
       trong_luong_loi_kg: trongLuongLoi,
       so_dong_nvl: input.soDongNvl,
       tong_nhua_loi_kg: input.plasticLoiHongKg > 0 ? round4(input.plasticLoiHongKg) : null,
@@ -108,14 +112,14 @@ export function buildDuLieuTrongBaoCaoHangLoiHongRowsFromGroups(input: {
   for (const group of input.damagedGroups || []) {
     const groupIsInsulation =
       Boolean(input.isInsulationMachine) || isInsulationMachineText(group.machine);
-    const plasticLoiHongKg = resolveBbDamagedPlasticLoiHongKg(group.lines || [], {
-      isInsulationMachine: groupIsInsulation
+    const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+      damagedLines: group.lines || [],
+      ngay: group.ngay,
+      shift: group.shift,
+      machine: group.machine
     });
     const racMangXiKg = groupIsInsulation ? sumBbDamagedFilmScrapKg(group.lines || []) : 0;
-    const tongLoiHongKg =
-      group.totalWeightKg > 0
-        ? group.totalWeightKg
-        : plasticLoiHongKg + (racMangXiKg > 0 ? racMangXiKg : 0);
+    const tongLoiHongKg = plasticLoiHongKg + (racMangXiKg > 0 ? racMangXiKg : 0);
     const mixingLines = group.mixingLines || [];
     const { mixingKgLines, otherMaterialLines } = splitBbLoiHongMaterialLinesByMixing(mixingLines);
     const soDongNvl = group.mixingLineCount ?? mixingLines.length;

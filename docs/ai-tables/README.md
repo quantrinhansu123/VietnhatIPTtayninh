@@ -47,7 +47,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `du_lieu_trong_bao_cao_kiem_ton_cuoi_ca` | `/phan-tich-tu-dong` · tab Kiểm tồn cuối ca | [du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.md](./du_lieu_trong_bao_cao_kiem_ton_cuoi_ca.md) |
 | `bao_cao_thanh_pham_dat_nhap_kho` | `/phan-tich-tu-dong` · tab Thành phẩm nhập kho | [bao_cao_thanh_pham_dat_nhap_kho.md](./bao_cao_thanh_pham_dat_nhap_kho.md) |
 | `bao_cao_tieu_hao_nguyen_vat_lieu` | `/phan-tich-tu-dong` · tab Tiêu hao NVL | [bao_cao_tieu_hao_nguyen_vat_lieu.md](./bao_cao_tieu_hao_nguyen_vat_lieu.md) |
-| `bao_cao_tong_hop` | `/phan-tich-tu-dong` · KPI tổng hợp + Tổng hợp nhựa | [bao_cao_tong_hop.md](./bao_cao_tong_hop.md) |
+| `bao_cao_tong_hop` | `/phan-tich-tu-dong` · KPI · **`/bieu-do-th`** | [bao_cao_tong_hop.md](./bao_cao_tong_hop.md) |
 | `ke_hoach_san_xuat` | `/ke-hoach-san-xuat` | [ke_hoach_san_xuat.md](./ke_hoach_san_xuat.md) |
 | `nhan_su` | `/nhan-su` | [nhan_su.md](./nhan_su.md) |
 | `danh_sach_xe` | `/danh-sach-xe` | [danh_sach_xe.md](./danh_sach_xe.md) |

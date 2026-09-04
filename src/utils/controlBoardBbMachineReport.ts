@@ -64,7 +64,6 @@ import type { ShiftSetting } from './shiftSettings';
 import {
   getProductionShiftOptions,
   resolvePreviousProductionShift,
-  shiftIsoDateByDays,
   shiftNamesMatch
 } from './shiftSettings';
 import {
@@ -75,8 +74,10 @@ import {
   type WarehouseWeightCatalogItem
 } from './warehouseWeight';
 import {
+  damagedGoodsMaterialTypeLabel,
   getWeighingDataRows,
   isDamagedOtherMaterial,
+  resolveDamagedGoodsEnteredQuantity,
   resolveDamagedOtherMaterialKg,
   splitDamagedGoodsDefectWeights,
   type WeighingRecord
@@ -768,7 +769,7 @@ function allocateExportWeightFormula(
   };
 }
 
-/** Quy về kg từ SL xuất × Tổng kg kho NVL — dùng catalog mới nhất, không snapshot cũ. */
+/** Quy về kg từ SL xuất — ĐVT kg giữ nguyên SL; ĐVT khác = SL × Tổng kg kho NVL. */
 export function resolveBbWarehouseExportLineWeightKg(
   line: Pick<BbWarehouseExportLineRow, 'itemCode' | 'unit' | 'quantity'>,
   materials: MaterialRow[]
@@ -776,8 +777,12 @@ export function resolveBbWarehouseExportLineWeightKg(
   const qty = Number(line.quantity);
   if (!Number.isFinite(qty) || qty <= 0) return null;
 
+  // ĐVT đã là kg → KL = SL (không nhân cột Tổng kg — tránh DN 8kg → 200kg).
+  if (isWarehouseKgUnit(line.unit || '')) {
+    return roundQty(qty, 4);
+  }
+
   const catalog = materials.map(mapMaterialToWeightCatalogItem);
-  /** Ưu tiên: Số lượng xuất × Số Kg (Tổng kg) của NVL trên kho. */
   const tongKg = findMaterialTongKgPerUnit(line.itemCode, catalog);
   if (tongKg !== null && tongKg > 0) {
     return roundQty(qty * tongKg, 4);
@@ -1258,11 +1263,23 @@ export function sumBbWarehouseExportWeightKg(rows: BbWarehouseExportLineRow[]) {
   return rows.reduce((sum, row) => sum + (row.weightKg && row.weightKg > 0 ? row.weightKg : 0), 0);
 }
 
+function isBbExportPlasticKgLine(input: {
+  itemCode?: string;
+  itemName?: string;
+  unit?: string;
+}) {
+  return isWarehousePlasticNvlLine({
+    warehouseKind: 'nvl',
+    itemCode: input.itemCode || '',
+    itemName: input.itemName || '',
+    unit: input.unit || ''
+  });
+}
+
 /**
- * Tổng trọng lượng xuất — khớp footer phiếu xuất kho NVL:
- * - Trọng lượng nhựa = Σ «Quy về kg» mọi dòng ĐVT = kg (kể cả túi/bột/dầu)
- * - Vật tư khác = Σ «Quy về kg» dòng ĐVT ≠ kg (lõi cái…)
- * - Dòng không quy được kg (vd. cuộn băng dính) không cộng
+ * Tổng trọng lượng xuất (từ dòng đã build) — cùng quy tắc tồn đầu/cuối:
+ * - Nhựa = hạt nhựa ĐVT kg (không gồm lõi / túi / bao bì / băng)
+ * - Vật tư khác = còn lại có Quy về kg
  */
 export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRow[]) {
   const seen = new Set<string>();
@@ -1275,13 +1292,89 @@ export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRo
     const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
 
-    if (isWarehouseKgUnit(row.unit || '')) plasticKg += kg;
+    if (isBbExportPlasticKgLine(row)) plasticKg += kg;
     else otherKg += kg;
   }
   return {
     plasticKg,
     otherKg,
     totalKg: plasticKg + otherKg
+  };
+}
+
+/**
+ * «Tổng nhựa xuất» / «TL nhựa» banner — cộng trực tiếp phiếu xuất NVL trên
+ * `/lich-su-xuat-nhap-kho` theo Ngày · Ca · Máy (không khớp / phân bổ LSX).
+ * Chỉ lấy trọng lượng nhựa (không cộng túi/bao bì dù ĐVT = kg).
+ */
+export function sumBbWarehouseHistoryExportWeightKgByKind(input: {
+  warehouseMovements: ShiftSummaryWarehouseMovement[];
+  materials: MaterialRow[];
+  productionOrders?: ProductionOrderRow[];
+  machines?: MachineRow[];
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+  dateFrom: string;
+  dateTo: string;
+  shiftFilter?: string;
+  machineFilter?: string;
+  selectedMachine?: { code?: string; name?: string } | null;
+}): { plasticKg: number; otherKg: number; totalKg: number } {
+  const shiftOptions = getProductionShiftOptions(
+    (input.shiftSettings || []).filter(
+      (setting): setting is ShiftSetting =>
+        Boolean(setting && typeof setting === 'object' && 'loaiCaiDat' in setting)
+    )
+  );
+  const activeShiftFilter =
+    input.shiftFilter && input.shiftFilter !== 'all' ? String(input.shiftFilter).trim() : '';
+  const seen = new Set<string>();
+  let plasticKg = 0;
+  let otherKg = 0;
+
+  for (const movement of input.warehouseMovements || []) {
+    if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
+    if (!matchesControlBoardDateRange(movement.slipDate, input.dateFrom, input.dateTo)) continue;
+
+    const movementShift = String(movement.shift || '').trim();
+    if (activeShiftFilter) {
+      if (movementShift && !shiftNamesMatch(movementShift, activeShiftFilter, shiftOptions)) continue;
+    }
+
+    const explicitSlipMachine = String(movement.machine || '').trim();
+    const machineCandidates = resolveWarehouseMovementMachineCandidates(
+      movement,
+      input.productionOrders || [],
+      linked =>
+        resolveProductionOrderMachine(linked as ProductionOrderRow, input.machines || [])
+    );
+    if (
+      !machineValueMatchesFilter(
+        input.machineFilter || 'all',
+        input.selectedMachine ?? null,
+        explicitSlipMachine || undefined,
+        ...machineCandidates
+      )
+    ) {
+      continue;
+    }
+
+    const dedupeKey =
+      String(movement.id || '').trim() ||
+      `${movement.slipCode}|${movement.itemCode}|${movement.slipDate}|${movement.quantity}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const kg = resolveExportWeightKg(movement, input.materials);
+    if (!(kg != null && kg > 0)) continue;
+
+    if (isBbExportPlasticKgLine(movement)) plasticKg += kg;
+    else otherKg += kg;
+  }
+
+  return {
+    plasticKg: roundQty(plasticKg, 4),
+    otherKg: roundQty(otherKg, 4),
+    totalKg: roundQty(plasticKg + otherKg, 4)
   };
 }
 
@@ -3493,8 +3586,239 @@ function isDamagedRowKind(row: BbDamagedGoodsLineRow, kind: 'sp_loi' | 'sp_rac')
   return name.startsWith('Hàng rác');
 }
 
+/** SP / mã rác màng trên báo cáo hàng hỏng ↔ NVL màng xi trên BOM. */
+const LOI_HONG_FILM_SCRAP_ALIAS_CODES = new Set([
+  'RACMANG',
+  'MTHANGRAC',
+  'RACMANGXI',
+  'MTHANGRACMANG'
+]);
+/** Mã nhựa lỗi hỏng cộng vào cột «Lỗi hỏng (kg)» + NVL trộn (không chia %). */
+const LOI_HONG_MIXING_KG_EXTRA_CODES = new Set(['NNKM', 'NC', 'RMN']);
+
+function compactLoiHongMaterialCode(code: string) {
+  return String(code || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+}
+
+/** RAC MANG / MT-HANG RAC (và biến thể) — mã SP rác màng trên Báo cáo sản lượng. */
+export function isLoiHongFilmScrapAliasCode(code: string, name = '') {
+  const codeKey = compactLoiHongMaterialCode(code);
+  // compact bỏ dấu/khoảng trắng/gạch: "RAC MANG"→RACMANG, "MT-HANG RAC"→MTHANGRAC
+  if (codeKey && LOI_HONG_FILM_SCRAP_ALIAS_CODES.has(codeKey)) return true;
+  const text = `${code} ${name}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (text.includes('rac mang') || text.includes('racmang')) return true;
+  if (text.includes('mt-hang rac') || text.includes('mt hang rac') || text.includes('mthangrac')) {
+    return true;
+  }
+  return false;
+}
+
+/** Phiếu Báo cáo sản lượng · mã SP rác màng (RAC MANG / MT-HANG RAC). */
+export function isAcceptanceFilmScrapRacMangReport(report: AcceptanceReport): boolean {
+  const productCode = resolveAcceptanceReportProductCode(report.mat_hang);
+  const productName = String(report.ten_sp || '').trim();
+  return isLoiHongFilmScrapAliasCode(productCode, productName);
+}
+
+/** Mã NVL màng xi BOM (vd MX1.54*3000m19m) tương ứng RAC MANG / MT-HANG RAC. */
+export function isLoiHongFilmScrapBomMaterialCode(code: string, name = '', unit = '') {
+  const codeKey = compactLoiHongMaterialCode(code);
+  if (codeKey.startsWith('MX') && (codeKey.includes('154') || codeKey.includes('3000'))) return true;
+  if (isWarehouseFilmItem(code, name, unit) && (codeKey.startsWith('MX') || codeKey.includes('MANGXI'))) {
+    return true;
+  }
+  return false;
+}
+
+/** NNKM · NC · RMN — luôn đưa vào «NVL trộn · ĐVT kg» trên tab lỗi hỏng. */
+export function isLoiHongMixingKgExtraCode(code: string) {
+  const key = compactLoiHongMaterialCode(code);
+  return Boolean(key && LOI_HONG_MIXING_KG_EXTRA_CODES.has(key));
+}
+
+/**
+ * KL tuyệt đối NNKM / NC / RMN:
+ * - Báo cáo sản lượng / nghiệm thu: `mat_hang` = NNKM · NC · RMN (SP lỗi hoặc SP rác)
+ * - Phiếu cân hàng hỏng: nhựa không màng → NNKM; nhựa chết · đầu nòng → NC
+ */
+export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
+  damagedRecords?: WeighingRecord[];
+  damagedLines?: BbDamagedGoodsLineRow[];
+  ngay: string;
+  shift: string;
+  machine?: string;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+}): { nnkmKg: number; ncKg: number; rmnKg: number } {
+  const shiftOptions = getProductionShiftOptions((input.shiftSettings || []) as ShiftSetting[]);
+  let nnkmKg = 0;
+  let ncKg = 0;
+  let rmnKg = 0;
+
+  for (const row of input.damagedLines || []) {
+    if (input.ngay && row.ngay && row.ngay !== input.ngay) continue;
+    if (input.shift && row.shift && !shiftNamesMatch(row.shift, input.shift)) continue;
+    if (
+      input.machine &&
+      !machineValueMatchesFilter(input.machine, null, row.machine) &&
+      !(isBbMachineText(input.machine) && isBbMachineText(row.machine))
+    ) {
+      continue;
+    }
+    // NNKM/NC/RMN có thể là SP lỗi hoặc SP rác — không lấy RAC MANG / MT-HANG RAC.
+    if (isLoiHongFilmScrapAliasCode(row.productCode || '', row.productName || row.materialName || '')) {
+      continue;
+    }
+    const codeKey = compactLoiHongMaterialCode(row.productCode || row.materialCode || '');
+    if (!codeKey || !LOI_HONG_MIXING_KG_EXTRA_CODES.has(codeKey)) continue;
+    const kg = row.weightKg > 0 ? row.weightKg : 0;
+    if (!(kg > 0)) continue;
+    if (codeKey === 'NNKM') nnkmKg += kg;
+    else if (codeKey === 'NC') ncKg += kg;
+    else if (codeKey === 'RMN') rmnKg += kg;
+  }
+
+  for (const record of getWeighingDataRows(input.damagedRecords || [])) {
+    const ngay = parseProductionOrderFilterDate(record.productionDate || record.reportDate);
+    if (
+      !matchesShiftSummaryBucket(
+        input.ngay,
+        input.shift,
+        ngay || record.productionDate,
+        record.shiftName,
+        shiftOptions
+      )
+    ) {
+      continue;
+    }
+    if (
+      input.machine &&
+      !machineValueMatchesFilter(input.machine, null, record.machineName) &&
+      !(isBbMachineText(input.machine) && isBbMachineText(record.machineName))
+    ) {
+      continue;
+    }
+
+    const split = splitDamagedGoodsDefectWeights(record);
+    nnkmKg += split.nhuaKhongMang > 0 ? split.nhuaKhongMang : 0;
+    ncKg += split.nhuaCucDauNong > 0 ? split.nhuaCucDauNong : 0;
+
+    const typeKey = compactLoiHongMaterialCode(
+      `${record.materialType || ''} ${damagedGoodsMaterialTypeLabel(record.materialType)} ${record.productCode || ''} ${record.productName || ''}`
+    );
+    if (typeKey.includes('NHUACHET') || typeKey === 'NC') {
+      const qty =
+        parseFloat(String(resolveDamagedGoodsEnteredQuantity(record) || '').replace(',', '.')) || 0;
+      if (qty > 0 && split.nhuaCucDauNong <= 0) ncKg += qty;
+    }
+    if (typeKey.includes('NHUAKHONGMANG') || typeKey === 'NNKM') {
+      const qty =
+        parseFloat(String(resolveDamagedGoodsEnteredQuantity(record) || '').replace(',', '.')) || 0;
+      if (qty > 0 && split.nhuaKhongMang <= 0) nnkmKg += qty;
+    }
+    if (typeKey === 'RMN') {
+      const qty =
+        parseFloat(String(resolveDamagedGoodsEnteredQuantity(record) || '').replace(',', '.')) || 0;
+      if (qty > 0) rmnKg += qty;
+    }
+  }
+  return {
+    nnkmKg: roundQty(nnkmKg, 4),
+    ncKg: roundQty(ncKg, 4),
+    rmnKg: roundQty(rmnKg, 4)
+  };
+}
+
+/** Cột «Lỗi hỏng (kg)» tab lỗi hỏng = NNKM + NC + RMN. */
+export function resolveBbLoiHongNnkmNcTotalKg(input: {
+  damagedRecords?: WeighingRecord[];
+  damagedLines?: BbDamagedGoodsLineRow[];
+  ngay: string;
+  shift: string;
+  machine?: string;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+}): number {
+  const { nnkmKg, ncKg, rmnKg } = sumLoiHongNnkmNcKgFromDamagedRecords(input);
+  return roundQty(nnkmKg + ncKg + rmnKg, 4);
+}
+
+/** Gán KL tuyệt đối cho NNKM / NC / RMN (không chia % với mã NVL chính). */
+export function enrichLoiHongMixingExtraWeights(input: {
+  lines: BbDamagedMixingChildRow[];
+  damagedRecords?: WeighingRecord[];
+  damagedLines?: BbDamagedGoodsLineRow[];
+  ngay: string;
+  shift: string;
+  machine?: string;
+  plasticLoiHongKg?: number;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+}): BbDamagedMixingChildRow[] {
+  const { nnkmKg, ncKg, rmnKg } = sumLoiHongNnkmNcKgFromDamagedRecords({
+    damagedRecords: input.damagedRecords,
+    damagedLines: input.damagedLines,
+    ngay: input.ngay,
+    shift: input.shift,
+    machine: input.machine,
+    shiftSettings: input.shiftSettings
+  });
+
+  return input.lines.map(row => {
+    const codeKey = compactLoiHongMaterialCode(row.materialCode);
+    let absKg: number | null = null;
+    if (codeKey === 'NNKM') absKg = nnkmKg > 0 ? nnkmKg : null;
+    else if (codeKey === 'NC') absKg = ncKg > 0 ? ncKg : null;
+    else if (codeKey === 'RMN') absKg = rmnKg > 0 ? rmnKg : null;
+    else return row;
+
+    return {
+      ...row,
+      // Không gán tiLe — % chỉ dành cho mã NVL chính (NNS 1L, NTC…).
+      tiLeTronPercent: null,
+      tiLeDinhMucPercent: null,
+      trongLuongLoiKg: absKg != null && absKg > 0 ? absKg : null,
+      unit: row.unit || 'kg'
+    };
+  });
+}
+
+/** KL lỗi trên dòng NVL trộn: NNKM/NC = KL tuyệt đối; mã chính = nhựa lỗi × %. */
+export function resolveBbLoiHongMixingLineWeightKg(
+  row: BbDamagedMixingChildRow,
+  plasticLoiHongKg: number
+): number | null {
+  if (isLoiHongMixingKgExtraCode(row.materialCode)) {
+    if (row.trongLuongLoiKg != null && Number.isFinite(row.trongLuongLoiKg) && row.trongLuongLoiKg > 0) {
+      return Math.round(row.trongLuongLoiKg * 100) / 100;
+    }
+    return null;
+  }
+  const tiLe =
+    row.tiLeTronPercent != null && row.tiLeTronPercent > 0
+      ? row.tiLeTronPercent
+      : row.tiLeDinhMucPercent;
+  if (tiLe == null || !(tiLe > 0) || !(plasticLoiHongKg > 0)) return null;
+  return Math.round(((plasticLoiHongKg * tiLe) / 100) * 100) / 100;
+}
+
 /** SP rác / dòng lỗi hỏng — rác màng (màng / film) không tính vào TL nhựa. */
 export function isBbDamagedFilmScrapRow(row: BbDamagedGoodsLineRow): boolean {
+  // NNKM / NC / RMN là nhựa lỗi hỏng — không xếp vào rác màng xi.
+  if (
+    isLoiHongMixingKgExtraCode(row.productCode) ||
+    isLoiHongMixingKgExtraCode(row.materialCode)
+  ) {
+    return false;
+  }
+  if (isLoiHongFilmScrapAliasCode(row.productCode, row.productName)) return true;
+  if (isLoiHongFilmScrapAliasCode(row.materialCode, row.materialName)) return true;
+  if (isLoiHongFilmScrapBomMaterialCode(row.materialCode, row.materialName, row.unit)) return true;
   const text = `${row.productCode} ${row.productName} ${row.materialName}`
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -3507,12 +3831,51 @@ export function isBbDamagedFilmScrapRow(row: BbDamagedGoodsLineRow): boolean {
   return false;
 }
 
-/** Σ kg rác màng xi trên snapshot lỗi hỏng. */
+/** Σ kg «Tổng rác màng» = RAC MANG + MT-HANG RAC (Báo cáo sản lượng / snapshot lỗi hỏng). */
 export function sumBbDamagedFilmScrapKg(rows: BbDamagedGoodsLineRow[]): number {
   let total = 0;
   for (const row of rows) {
-    if (!isBbDamagedFilmScrapRow(row)) continue;
+    if (
+      !isLoiHongFilmScrapAliasCode(row.productCode, row.productName) &&
+      !isLoiHongFilmScrapAliasCode(row.materialCode, row.materialName)
+    ) {
+      continue;
+    }
     const kg = row.weightKg > 0 ? row.weightKg : 0;
+    if (kg > 0) total += kg;
+  }
+  return roundQty(total, 4);
+}
+
+/**
+ * Tổng rác màng từ phiếu `bao_cao_nghiem_thu` (danh sách báo cáo sản lượng):
+ * chỉ cộng mã RAC MANG + MT-HANG RAC theo ngày · ca · máy.
+ */
+export function sumAcceptanceFilmScrapRacMangKg(input: {
+  acceptanceReports: AcceptanceReport[];
+  materials?: MaterialRow[];
+  ngay: string;
+  shift: string;
+  machine?: string;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+}): number {
+  const shiftOptions = getProductionShiftOptions((input.shiftSettings || []) as ShiftSetting[]);
+  let total = 0;
+  for (const report of input.acceptanceReports || []) {
+    if (!isAcceptanceFilmScrapRacMangReport(report)) continue;
+    const ngay = parseProductionOrderFilterDate(report.ngay) || report.ngay;
+    if (
+      !matchesShiftSummaryBucket(input.ngay, input.shift, ngay, report.ca, shiftOptions)
+    ) {
+      continue;
+    }
+    if (input.machine) {
+      const machineOk =
+        machineValueMatchesFilter(input.machine, null, report.ma_may, report.ten_may) ||
+        (isBbMachineText(input.machine) && isBbMachineText(report.ma_may, report.ten_may));
+      if (!machineOk) continue;
+    }
+    const kg = resolveAcceptanceReportWeightKg(report, input.materials);
     if (kg > 0) total += kg;
   }
   return roundQty(total, 4);
@@ -3536,14 +3899,18 @@ function upsertBbLoiHongFilmScrapCandidate(
   const materialCode = String(input.materialCode || '').trim();
   const materialName = String(input.materialName || materialCode || '').trim();
   const unit = String(input.unit || '').trim() || 'kg';
-  if (!isWarehouseFilmItem(materialCode, materialName, unit)) return;
+  const isAlias = isLoiHongFilmScrapAliasCode(materialCode, materialName);
+  const isBomMx = isLoiHongFilmScrapBomMaterialCode(materialCode, materialName, unit);
+  if (!isAlias && !isBomMx && !isWarehouseFilmItem(materialCode, materialName, unit)) return;
   if (!materialCode && !materialName) return;
+  // Alias RAC MANG / MT-HANG RAC → ưu tiên gắn sang mã MX trên BOM (điểm thấp hơn MX thật).
+  const score = isBomMx ? input.score + 20 : isAlias ? Math.max(1, input.score - 5) : input.score;
   const key = materialIdentityKey(materialCode, materialName) || materialName.toUpperCase();
   const row: BbLoiHongFilmScrapMaterial & { score: number } = {
     materialCode,
     materialName: materialName || materialCode,
     unit,
-    score: input.score
+    score
   };
   const existing = bucket.get(key);
   if (
@@ -3632,6 +3999,9 @@ export function resolveBbLoiHongFilmScrapMaterialForShift(input: {
   }
 
   const candidates = [...bucket.values()].sort((a, b) => {
+    const aBom = isLoiHongFilmScrapBomMaterialCode(a.materialCode, a.materialName, a.unit) ? 1 : 0;
+    const bBom = isLoiHongFilmScrapBomMaterialCode(b.materialCode, b.materialName, b.unit) ? 1 : 0;
+    if (bBom !== aBom) return bBom - aBom;
     if (b.score !== a.score) return b.score - a.score;
     if (a.materialCode && !b.materialCode) return -1;
     if (!a.materialCode && b.materialCode) return 1;
@@ -3639,6 +4009,26 @@ export function resolveBbLoiHongFilmScrapMaterialForShift(input: {
   });
   const best = candidates[0];
   if (!best) return null;
+  // Nếu chỉ có alias RAC MANG / MT-HANG RAC — tìm MX trong danh mục NVL.
+  if (
+    isLoiHongFilmScrapAliasCode(best.materialCode, best.materialName) &&
+    !isLoiHongFilmScrapBomMaterialCode(best.materialCode, best.materialName, best.unit)
+  ) {
+    const mxFromCatalog = (input.materials || []).find(material =>
+      isLoiHongFilmScrapBomMaterialCode(
+        String(material.code || ''),
+        String(material.name || ''),
+        String(material.unit || '')
+      )
+    );
+    if (mxFromCatalog) {
+      return {
+        materialCode: String(mxFromCatalog.code || '').trim(),
+        materialName: String(mxFromCatalog.name || mxFromCatalog.code || '').trim(),
+        unit: String(mxFromCatalog.unit || '').trim() || 'kg'
+      };
+    }
+  }
   return {
     materialCode: best.materialCode,
     materialName: best.materialName,
@@ -3649,7 +4039,7 @@ export function resolveBbLoiHongFilmScrapMaterialForShift(input: {
 /**
  * Phân loại lỗi hỏng theo nhựa / vật tư khác.
  * - TL nhựa = SP lỗi (Hàng hỏng), không gồm rác màng.
- * - Máy cách nhiệt: Vật tư khác = rác màng; máy khác: Vật tư khác = SP rác trừ rác màng.
+ * - Máy cách nhiệt: Vật tư khác = RAC MANG + MT-HANG RAC; máy khác: Vật tư khác = SP rác trừ rác màng.
  */
 export function sumBbDamagedGoodsWeightKgByKind(
   rows: BbDamagedGoodsLineRow[],
@@ -3664,7 +4054,11 @@ export function sumBbDamagedGoodsWeightKgByKind(
     const kg = row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
 
-    if (isBbDamagedFilmScrapRow(row)) {
+    const isRacMangAlias =
+      isLoiHongFilmScrapAliasCode(row.productCode, row.productName) ||
+      isLoiHongFilmScrapAliasCode(row.materialCode, row.materialName);
+
+    if (isRacMangAlias) {
       otherKg += kg;
       continue;
     }
@@ -3679,6 +4073,91 @@ export function sumBbDamagedGoodsWeightKgByKind(
     }
   }
   return { plasticKg: roundQty(plasticKg, 4), otherKg: roundQty(otherKg, 4) };
+}
+
+/**
+ * Banner + footer «Báo cáo lỗi hỏng» đồng bộ cột bảng:
+ * - TL nhựa / Lỗi hỏng (kg) = NNKM + NC + RMN
+ * - Vật tư khác / Tổng rác màng = RAC MANG + MT-HANG RAC (máy cách nhiệt)
+ * - Tổng hàng lỗi hỏng = hai cột trên
+ */
+export function resolveBbLoiHongCardWeightByKind(input: {
+  damagedGroups: Array<{
+    ngay: string;
+    shift: string;
+    machine: string;
+    lines?: BbDamagedGoodsLineRow[];
+  }>;
+  damagedRows?: BbDamagedGoodsLineRow[];
+  damagedRecords?: WeighingRecord[];
+  acceptanceReports?: AcceptanceReport[];
+  materials?: MaterialRow[];
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+  isInsulationMachine?: boolean;
+}): { plasticKg: number; otherKg: number; totalKg: number } {
+  const groups =
+    input.damagedGroups.length > 0
+      ? input.damagedGroups
+      : groupBbDamagedGoodsLines(input.damagedRows || []);
+
+  let plasticKg = 0;
+  let otherKg = 0;
+  const plasticSeen = new Set<string>();
+  const otherSeen = new Set<string>();
+
+  for (const group of groups) {
+    const bucketKey = `${group.ngay}|${group.shift}|${group.machine}`;
+    if (!plasticSeen.has(bucketKey)) {
+      plasticSeen.add(bucketKey);
+      plasticKg += resolveBbLoiHongNnkmNcTotalKg({
+        damagedRecords: input.damagedRecords,
+        damagedLines: group.lines || input.damagedRows || [],
+        ngay: group.ngay,
+        shift: group.shift,
+        machine: group.machine,
+        shiftSettings: input.shiftSettings
+      });
+    }
+
+    const groupInsulation =
+      Boolean(input.isInsulationMachine) || isInsulationMachineText(group.machine);
+    if (!otherSeen.has(bucketKey)) {
+      otherSeen.add(bucketKey);
+      if (groupInsulation) {
+        if ((input.acceptanceReports || []).length > 0) {
+          otherKg += sumAcceptanceFilmScrapRacMangKg({
+            acceptanceReports: input.acceptanceReports || [],
+            materials: input.materials,
+            ngay: group.ngay,
+            shift: group.shift,
+            machine: group.machine,
+            shiftSettings: input.shiftSettings
+          });
+        } else {
+          otherKg += sumBbDamagedFilmScrapKg(group.lines || []);
+        }
+      } else {
+        otherKg += sumBbDamagedGoodsWeightKgByKind(group.lines || [], {
+          isInsulationMachine: false
+        }).otherKg;
+      }
+    }
+  }
+
+  // Không có nhóm lệnh — fallback toàn bộ dòng.
+  if (groups.length === 0) {
+    const fallback = sumBbDamagedGoodsWeightKgByKind(input.damagedRows || [], {
+      isInsulationMachine: input.isInsulationMachine
+    });
+    plasticKg = fallback.plasticKg;
+    otherKg = fallback.otherKg;
+  }
+
+  return {
+    plasticKg: roundQty(plasticKg, 4),
+    otherKg: roundQty(otherKg, 4),
+    totalKg: roundQty(plasticKg + otherKg, 4)
+  };
 }
 
 /** Trọng lượng nhựa lỗi hỏng dùng phân bổ NVL nhựa (tab lỗi hỏng / in BB). */
@@ -3753,14 +4232,16 @@ export function isAcceptanceHangHongSanLuongReport(
 
 /**
  * Hàng rác trên Báo cáo sản lượng:
- * 1) Mã trong `kho_nvl` thuộc kho rác,
- * 2) Hoặc `loai_vat_tu` = SP rác khi không khớp danh mục NVL.
+ * 1) Mã RAC MANG / MT-HANG RAC (luôn tính — nguồn «Tổng rác màng»),
+ * 2) Mã trong `kho_nvl` thuộc kho rác,
+ * 3) Hoặc `loai_vat_tu` = SP rác khi không khớp danh mục NVL.
  */
 export function isAcceptanceHangRacSanLuongReport(
   report: AcceptanceReport,
   materials: MaterialRow[]
 ): boolean {
   if (isAcceptanceSpLoiLoai(report.loai_vat_tu)) return false;
+  if (isAcceptanceFilmScrapRacMangReport(report)) return true;
   const productCode = resolveAcceptanceReportProductCode(report.mat_hang);
   if (!productCode) return false;
   const material = findBbMaterialRowByAcceptanceCode(materials, productCode);
@@ -3783,11 +4264,15 @@ export function splitAcceptanceLoiHongWeightKg(
 ): AcceptanceLoiHongWeightSplit | null {
   const kg = resolveAcceptanceReportWeightKg(report, materials);
   if (!(kg > 0)) return null;
+  // Tổng rác màng = RAC MANG + MT-HANG RAC (không gom mọi SP rác).
+  if (isAcceptanceFilmScrapRacMangReport(report)) {
+    return { nhuaKg: 0, mangKg: kg, tongKg: kg };
+  }
   if (isAcceptanceHangHongSanLuongReport(report, materials)) {
     return { nhuaKg: kg, mangKg: 0, tongKg: kg };
   }
   if (isAcceptanceHangRacSanLuongReport(report, materials)) {
-    return { nhuaKg: 0, mangKg: kg, tongKg: kg };
+    return { nhuaKg: 0, mangKg: 0, tongKg: kg };
   }
   return null;
 }
@@ -4072,6 +4557,11 @@ export type BbDamagedMixingChildRow = {
   tiLeDinhMucPercent: number | null;
   totalKlThucTe: number;
   batchCount: number;
+  /**
+   * KL lỗi hỏng tuyệt đối (kg) — NNKM/NC lấy từ phiếu hàng hỏng
+   * (nhựa không màng / nhựa chết·đầu nòng), không chia theo % BOM.
+   */
+  trongLuongLoiKg?: number | null;
 };
 
 export function buildBbMixingMaterialLinesForShift(input: {
@@ -4108,15 +4598,24 @@ export function buildBbMixingMaterialLinesForShift(input: {
 }
 
 /**
- * Dòng NVL tab lỗi hỏng: chỉ từ BOM lệnh SX → thành phần NVL trên Kho sản phẩm (`san_pham.nplItems`).
+ * Dòng NVL tab lỗi hỏng: BOM lệnh SX → thành phần NVL trên Kho sản phẩm (`san_pham.nplItems`).
+ * Bổ sung tỉ lệ từ BOM lệnh SX. NNKM / NC / RMN không liệt kê dòng — chỉ cộng cột «Lỗi hỏng (kg)».
  * Tỉ lệ trộn (%) lấy từ thành phần % trên BOM; NVL theo SL không có % phân bổ trọng lượng lỗi.
  */
 export function buildBbLoiHongMaterialLinesForShift(input: {
   productionOrders?: ProductionOrderRow[];
   products?: ProductRow[];
+  materials?: MaterialRow[];
+  mixingReports?: MixingReport[];
+  damagedRecords?: WeighingRecord[];
+  /** Dòng SP lỗi/rác (nghiệm thu) — giữ để tương thích gọi cũ (cột tổng tính riêng). */
+  damagedLines?: BbDamagedGoodsLineRow[];
+  plasticLoiHongKg?: number;
   ngay: string;
   shift: string;
   orderCode?: string;
+  machine?: string;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): BbDamagedMixingChildRow[] {
   const byKey = new Map<string, BbDamagedMixingChildRow>();
   const upsert = (row: BbDamagedMixingChildRow) => {
@@ -4139,6 +4638,10 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     }
     if (existing.tiLeDinhMucPercent == null && row.tiLeDinhMucPercent != null) {
       existing.tiLeDinhMucPercent = row.tiLeDinhMucPercent;
+    }
+    if (!(existing.totalKlThucTe > 0) && row.totalKlThucTe > 0) {
+      existing.totalKlThucTe = row.totalKlThucTe;
+      existing.batchCount = row.batchCount;
     }
   };
 
@@ -4165,6 +4668,8 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
         const name = String(item.name || item.code || '').trim();
         if (!code && !name) continue;
         if (isNnsTronMaterial(code, name)) continue;
+        // NNKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không liệt kê dòng NVL.
+        if (isLoiHongMixingKgExtraCode(code)) continue;
         const rate =
           item.amountType === 'quantity'
             ? Math.max(0, item.quantity ?? 0)
@@ -5343,6 +5848,15 @@ export function splitBbLoiHongMaterialLinesByMixing(lines: BbDamagedMixingChildR
   const otherMaterialLines: BbDamagedMixingChildRow[] = [];
   for (const row of lines) {
     if (isNnsTronMaterial(row.materialCode, row.materialName)) continue;
+    // NNKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không hiện dòng.
+    if (isLoiHongMixingKgExtraCode(row.materialCode)) continue;
+    // MX / RAC MANG / MT-HANG RAC hiện ở dòng «Rác màng xi», không liệt kê lại ở NVL còn lại.
+    if (
+      isLoiHongFilmScrapAliasCode(row.materialCode, row.materialName) ||
+      isLoiHongFilmScrapBomMaterialCode(row.materialCode, row.materialName, row.unit)
+    ) {
+      continue;
+    }
     const tiLe =
       row.tiLeTronPercent != null && row.tiLeTronPercent > 0
         ? row.tiLeTronPercent
@@ -8061,13 +8575,10 @@ export function resolveBbPlasticBannerTotals(input: {
   let tongNhuaThanhPhamKg = 0;
 
   if (sanLuongSource === 'can-tu-dong' && (input.canTuDongRecords?.length ?? 0) > 0) {
-    const canTuDongDateTo = input.dateTo
-      ? shiftIsoDateByDays(input.dateTo, 1) || input.dateTo
-      : input.dateTo;
     const scoped = filterCanTuDongRecordsForBoard(input.canTuDongRecords || [], {
       shiftFilter: input.shiftFilter,
       dateFrom: input.dateFrom,
-      dateTo: canTuDongDateTo,
+      dateTo: input.dateTo,
       machineFilter: input.machineFilter,
       selectedMachine: input.selectedMachine
     });
@@ -10434,16 +10945,25 @@ export type BbDanhGiaHaoHutGroup = {
   shift: string;
   shiftLabel: string;
   machine: string;
+  /** Xuất thực dùng nhựa (tồn đầu + xuất − tồn cuối) — dùng phân bổ chi tiết. */
   tongNhuaThucXuat: number;
+  /** Tổng nhựa thành phẩm (banner) — tử số cột «TP / ĐM». */
+  tongNhuaThanhPham: number;
   tongNhuaDinhMuc: number;
   tiLeNhuaThucXuatVsDinhMuc: number;
   giaTriHaoHutNhuaKg: number;
   giaTriHaoHutNhua: number;
+  /** Xuất thực dùng màng. */
   tongMangThucXuat: number;
+  /** Tổng màng thành phẩm — tử số cột «TP / ĐM». */
+  tongMangThanhPham: number;
   tongMangDinhMuc: number;
   tiLeMangThucXuatVsDinhMuc: number;
   giaTriHaoHutMangKg: number;
   giaTriHaoHutMang: number;
+  /** Đơn giá nhựa / màng (đ/kg) — tính lại giá trị hao hụt sau khi gắn thành phẩm. */
+  giaNhua: number;
+  giaMang: number;
   tiLeLoiHong: number;
   tiLeLoiHongDinhMuc: number;
   lechLoiHongVsDinhMuc: number;
@@ -10610,11 +11130,6 @@ export function buildBbDanhGiaHaoHutGroups(input: {
       hangHongMang
     });
 
-    const giaTriHaoHutNhuaKg = sanLuong.giaTriLoLaiNhua;
-    const giaTriHaoHutMangKg = sanLuong.giaTriLoLaiMang;
-    const tiLeNhuaThucXuatVsDinhMuc = computePercentRatio(tongNhuaThucXuat, tongNhuaDinhMuc);
-    const tiLeMangThucXuatVsDinhMuc = computePercentRatio(tongMangThucXuat, tongMangDinhMuc);
-
     const giaNhua = resolveShiftSummaryGiaNhuaFromWarehouse(
       header.ngay,
       header.shift,
@@ -10636,6 +11151,14 @@ export function buildBbDanhGiaHaoHutGroups(input: {
       m => isWarehouseCoreExportItem(m.itemCode || '', m.itemName || '')
     );
 
+    /** Tạm = thực xuất; enrich gắn banner «Tổng nhựa/màng thành phẩm» rồi tính lại TP/ĐM + hao hụt. */
+    const tongNhuaThanhPham = roundQty(tlNhuaTpNhapKho, 4);
+    const tongMangThanhPham = roundQty(tlMangTpNhapKho, 4);
+    const giaTriHaoHutNhuaKg = roundQty(tongNhuaThanhPham - tongNhuaDinhMuc, 4);
+    const giaTriHaoHutMangKg = roundQty(tongMangThanhPham - tongMangDinhMuc, 4);
+    const tiLeNhuaThucXuatVsDinhMuc = computePercentRatio(tongNhuaThanhPham, tongNhuaDinhMuc);
+    const tiLeMangThucXuatVsDinhMuc = computePercentRatio(tongMangThanhPham, tongMangDinhMuc);
+
     const giaTriHaoHutNhua = computeSoTienLoLaiNhua(giaTriHaoHutNhuaKg, giaNhua);
     const giaTriHaoHutMang = computeSoTienLoLaiNhua(giaTriHaoHutMangKg, giaMang);
     const soLuongNhuaLoiHong = roundQty(hangHongNhua, 4);
@@ -10653,8 +11176,10 @@ export function buildBbDanhGiaHaoHutGroups(input: {
 
     const hasAny =
       tongNhuaThucXuat !== 0 ||
+      tongNhuaThanhPham !== 0 ||
       tongNhuaDinhMuc !== 0 ||
       tongMangThucXuat !== 0 ||
+      tongMangThanhPham !== 0 ||
       tongMangDinhMuc !== 0 ||
       tongTrongLuongLoiHong !== 0 ||
       tongGiaTriHaoHutLoiHong !== 0;
@@ -10669,15 +11194,19 @@ export function buildBbDanhGiaHaoHutGroups(input: {
       shiftLabel,
       machine: header.machine,
       tongNhuaThucXuat: roundQty(tongNhuaThucXuat, 4),
+      tongNhuaThanhPham,
       tongNhuaDinhMuc: roundQty(tongNhuaDinhMuc, 4),
       tiLeNhuaThucXuatVsDinhMuc,
       giaTriHaoHutNhuaKg,
       giaTriHaoHutNhua,
       tongMangThucXuat: roundQty(tongMangThucXuat, 4),
+      tongMangThanhPham,
       tongMangDinhMuc: roundQty(tongMangDinhMuc, 4),
       tiLeMangThucXuatVsDinhMuc,
       giaTriHaoHutMangKg,
       giaTriHaoHutMang,
+      giaNhua: Number.isFinite(giaNhua) ? giaNhua : 0,
+      giaMang: Number.isFinite(giaMang) ? giaMang : 0,
       tiLeLoiHong: sanLuong.tiLeLoiHong,
       tiLeLoiHongDinhMuc: sanLuong.tiLeLoiHongDinhMuc ?? TI_LE_LOI_HONG_DINH_MUC_PERCENT,
       lechLoiHongVsDinhMuc: sanLuong.lechLoiHongVsDinhMuc,
@@ -10766,9 +11295,41 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
       order && order.totalNormKg > 0
         ? order.totalNormKg
         : (order?.lines || []).reduce((sum, line) => sum + (line.totalNormKg || 0), 0);
-    /** Hao hụt nhựa · Dữ liệu định mức = «Tổng nhựa thành phẩm» (không lấy Trọng lượng nhựa + phụ gia × SL). */
-    const dinhMucNhua = plasticFinished > 0 ? plasticFinished : group.tongNhuaDinhMuc;
-    const dinhMucMang = filmFinished > 0 ? filmFinished : group.tongMangDinhMuc;
+    /**
+     * Cột đánh giá: Tổng ĐM = định mức lệnh / group (không gán = thành phẩm).
+     * Ưu tiên Tổng (kg) lệnh SX; fallback công thức ĐM trên group.
+     */
+    const tongNhuaDinhMucEval = dinhMucTong > 0 ? dinhMucTong : group.tongNhuaDinhMuc;
+    const tongMangDinhMucEval = group.tongMangDinhMuc;
+    /** 4.1 in: «Dữ liệu định mức» hao hụt nhựa/màng vẫn = thành phẩm (giữ hành vi cũ). */
+    const dinhMucNhuaPrint = plasticFinished > 0 ? plasticFinished : tongNhuaDinhMucEval;
+    const dinhMucMangPrint = filmFinished > 0 ? filmFinished : tongMangDinhMucEval;
+
+    /** Cột bảng: TP / ĐM và hao hụt = TP − ĐM (kg → × đơn giá). */
+    const tongNhuaThanhPham = roundQty(
+      plasticFinished > 0 ? plasticFinished : group.tongNhuaThanhPham || 0,
+      4
+    );
+    const tongMangThanhPham = roundQty(
+      filmFinished > 0 ? filmFinished : group.tongMangThanhPham || 0,
+      4
+    );
+    const tongNhuaDinhMuc = roundQty(tongNhuaDinhMucEval, 4);
+    const tongMangDinhMuc = roundQty(tongMangDinhMucEval, 4);
+    const giaTriHaoHutNhuaKg = roundQty(tongNhuaThanhPham - tongNhuaDinhMuc, 4);
+    const giaTriHaoHutMangKg = roundQty(tongMangThanhPham - tongMangDinhMuc, 4);
+    const tiLeNhuaThucXuatVsDinhMuc = computePercentRatio(tongNhuaThanhPham, tongNhuaDinhMuc);
+    const tiLeMangThucXuatVsDinhMuc = computePercentRatio(tongMangThanhPham, tongMangDinhMuc);
+    const giaNhua = Number.isFinite(group.giaNhua) ? group.giaNhua : 0;
+    const giaMang = Number.isFinite(group.giaMang) ? group.giaMang : 0;
+    const giaTriHaoHutNhua = computeSoTienLoLaiNhua(giaTriHaoHutNhuaKg, giaNhua);
+    const giaTriHaoHutMang = computeSoTienLoLaiNhua(giaTriHaoHutMangKg, giaMang);
+    const tongGiaTriHaoHutLoiHong =
+      giaTriHaoHutNhua +
+      giaTriHaoHutMang +
+      group.giaTriNhuaLoiHong +
+      group.giaTriMangLoiHong +
+      group.giaTriLoiLoiHong;
 
     const summaryRows: BbDanhGiaSummaryRow[] = [
       {
@@ -10798,9 +11359,9 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         label: 'Hao hụt nhựa',
         hangLoiKg: roundQty(hangLoiNhua > 0 ? hangLoiNhua : 0, 4),
         thanhPhamKg: roundQty(plasticFinished, 4),
-        dinhMucKg: roundQty(dinhMucNhua, 4),
+        dinhMucKg: roundQty(dinhMucNhuaPrint, 4),
         chenhLechKg: roundQty(plasticVariance, 4),
-        tiLeChenhLech: computePercentRatio(plasticVariance, dinhMucNhua),
+        tiLeChenhLech: computePercentRatio(plasticVariance, dinhMucNhuaPrint),
         tiLeHaoHutDinhMucPercent: 100,
         tiLeHaoHutThucTe: computePercentRatio(
           hangLoiNhua > 0 ? hangLoiNhua : 0,
@@ -10812,15 +11373,29 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         label: 'Hao hụt màng',
         hangLoiKg: roundQty(hangLoiMang > 0 ? hangLoiMang : 0, 4),
         thanhPhamKg: roundQty(filmFinished, 4),
-        dinhMucKg: roundQty(dinhMucMang, 4),
+        dinhMucKg: roundQty(dinhMucMangPrint, 4),
         chenhLechKg: roundQty(filmVariance, 4),
-        tiLeChenhLech: computePercentRatio(filmVariance, dinhMucMang),
+        tiLeChenhLech: computePercentRatio(filmVariance, dinhMucMangPrint),
         tiLeHaoHutDinhMucPercent: 100,
         tiLeHaoHutThucTe: computePercentRatio(hangLoiMang > 0 ? hangLoiMang : 0, filmFinished)
       }
     ];
 
-    return { ...group, summaryRows };
+    return {
+      ...group,
+      tongNhuaThanhPham,
+      tongNhuaDinhMuc,
+      tiLeNhuaThucXuatVsDinhMuc,
+      giaTriHaoHutNhuaKg,
+      giaTriHaoHutNhua,
+      tongMangThanhPham,
+      tongMangDinhMuc,
+      tiLeMangThucXuatVsDinhMuc,
+      giaTriHaoHutMangKg,
+      giaTriHaoHutMang,
+      tongGiaTriHaoHutLoiHong,
+      summaryRows
+    };
   });
 }
 

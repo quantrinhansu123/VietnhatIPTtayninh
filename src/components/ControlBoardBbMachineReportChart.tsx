@@ -120,9 +120,9 @@ export default function ControlBoardBbMachineReportChart({
           key: group.groupKey,
           label: `${formatShortDate(group.ngay)} · ${shortenShift(group.shiftLabel || group.shift)} · ${group.orderCode || '—'}`,
           orderCode: group.orderCode,
-          nhuaThuc: Number(group.tongNhuaThucXuat.toFixed(1)),
+          nhuaThuc: Number((group.tongNhuaThanhPham ?? group.tongNhuaThucXuat).toFixed(1)),
           nhuaDm: Number(group.tongNhuaDinhMuc.toFixed(1)),
-          mangThuc: Number(group.tongMangThucXuat.toFixed(1)),
+          mangThuc: Number((group.tongMangThanhPham ?? group.tongMangThucXuat).toFixed(1)),
           mangDm: Number(group.tongMangDinhMuc.toFixed(1)),
           tiLeLoiHong: Number(group.tiLeLoiHong.toFixed(2)),
           tiLeLoiHongDm: Number(group.tiLeLoiHongDinhMuc.toFixed(2)),
@@ -185,7 +185,7 @@ export default function ControlBoardBbMachineReportChart({
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <div className={cardClass} style={cardStyle}>
-          <ChartCardHeader icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />} title="Nhựa: thực xuất vs định mức (kg)" />
+          <ChartCardHeader icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />} title="Nhựa: thành phẩm vs định mức (kg)" />
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="18%">
@@ -194,7 +194,7 @@ export default function ControlBoardBbMachineReportChart({
                 <YAxis {...yAxisProps} />
                 <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={kgTooltipFormat} />} />
                 <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Bar name="Thực xuất" dataKey="nhuaThuc" fill={SERIES_1_BLUE} radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar name="Thành phẩm" dataKey="nhuaThuc" fill={SERIES_1_BLUE} radius={[4, 4, 0, 0]} maxBarSize={20} />
                 <Bar name="Định mức" dataKey="nhuaDm" fill={SERIES_2_AQUA} radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>
@@ -202,7 +202,7 @@ export default function ControlBoardBbMachineReportChart({
         </div>
 
         <div className={cardClass} style={cardStyle}>
-          <ChartCardHeader icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />} title="Màng: thực xuất vs định mức (kg)" />
+          <ChartCardHeader icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />} title="Màng: thành phẩm vs định mức (kg)" />
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="18%">
@@ -211,7 +211,7 @@ export default function ControlBoardBbMachineReportChart({
                 <YAxis {...yAxisProps} />
                 <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={kgTooltipFormat} />} />
                 <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Bar name="Thực xuất" dataKey="mangThuc" fill={SERIES_3_YELLOW} radius={[4, 4, 0, 0]} maxBarSize={20} />
+                <Bar name="Thành phẩm" dataKey="mangThuc" fill={SERIES_3_YELLOW} radius={[4, 4, 0, 0]} maxBarSize={20} />
                 <Bar name="Định mức" dataKey="mangDm" fill={SERIES_2_AQUA} radius={[4, 4, 0, 0]} maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>

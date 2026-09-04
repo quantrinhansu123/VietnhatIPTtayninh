@@ -85,6 +85,7 @@ import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
+import { BieuDoThPanel } from './features/bieu-do-th';
 
 const DEFAULT_REPORT: Omit<ProductionReport, 'id' | 'createdAt'> = {
   date: new Date().toISOString().split('T')[0],
@@ -1549,6 +1550,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <SettingsPanel onBack={() => goBack('quan-tri')} />
+              </motion.div>
+            ) : activeTab === 'bieu-do-th' ? (
+              <motion.div
+                key="bieu-do-th"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <BieuDoThPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
             ) : activeTab === 'dashboard' || activeTab === 'dashboard-auto' ? (
               <motion.div

@@ -16309,6 +16309,14 @@ export function createApp() {
 
       const { data, error } = await query;
       if (error) {
+        if (isMissingTableError(error)) {
+          return res.json({
+            items: [],
+            total: 0,
+            source: 'local',
+            warning: bbBaoCaoLyDoWriteError(error)
+          });
+        }
         console.error('Supabase bb_bao_cao_ly_do query error:', error);
         return res.status(500).json({ error: bbBaoCaoLyDoWriteError(error), items: [], total: 0 });
       }
@@ -16398,6 +16406,14 @@ export function createApp() {
 
       const { data, error } = await query;
       if (error) {
+        if (isMissingTableError(error)) {
+          return res.json({
+            items: [],
+            total: 0,
+            source: 'local',
+            warning: bbPhanTichDanhGiaWriteError(error)
+          });
+        }
         console.error('Supabase bb_phan_tich_danh_gia query error:', error);
         return res.status(500).json({ error: bbPhanTichDanhGiaWriteError(error), items: [], total: 0 });
       }
@@ -16483,6 +16499,14 @@ export function createApp() {
 
       const { data, error } = await query;
       if (error) {
+        if (isMissingTableError(error)) {
+          return res.json({
+            items: [],
+            total: 0,
+            source: 'local',
+            warning: bbGiaiTrinhWriteError(error)
+          });
+        }
         console.error('Supabase bb_giai_trinh query error:', error);
         return res.status(500).json({ error: bbGiaiTrinhWriteError(error), items: [], total: 0 });
       }
@@ -17437,15 +17461,20 @@ export function createApp() {
           : typeof req.query.khoa === 'string'
             ? req.query.khoa.trim()
             : '';
+      const ngayTu = typeof req.query.ngay_tu === 'string' ? req.query.ngay_tu.trim() : '';
+      const ngayDen = typeof req.query.ngay_den === 'string' ? req.query.ngay_den.trim() : '';
       const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 200;
       const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 1000) : 200;
 
       let query = supabase
         .from(SUPABASE_BAO_CAO_TONG_HOP_TABLE)
         .select('*')
+        .order('ngay_tu', { ascending: false })
         .order('updated_at', { ascending: false })
         .limit(limit);
       if (khoa) query = query.eq('khoa_on_dinh', khoa);
+      if (ngayTu) query = query.gte('ngay_tu', ngayTu);
+      if (ngayDen) query = query.lte('ngay_tu', ngayDen);
 
       const { data, error } = await query;
       if (error) {

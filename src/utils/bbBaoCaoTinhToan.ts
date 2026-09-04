@@ -26,6 +26,8 @@ import {
   buildBbInboundReportRows,
   buildBbLoiHongMaterialLinesForShift,
   resolveBbLoiHongFilmScrapMaterialForShift,
+  resolveBbLoiHongNnkmNcTotalKg,
+  isInsulationMachineText,
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
   buildBbSanLuongGroups,
@@ -42,9 +44,7 @@ import {
   groupBbWarehouseExportLines,
   sumBbCuoiCaWeightKg,
   sumBbCuoiCaWeightKgByKind,
-  sumBbDamagedGoodsWeightKg,
-  sumBbDamagedGoodsWeightKgByKind,
-  isInsulationMachineText,
+  resolveBbLoiHongCardWeightByKind,
   sumBbDanhGiaMoney,
   sumBbDauCaWeightKg,
   sumBbDauCaWeightKgByKind,
@@ -55,8 +55,8 @@ import {
   sumBbThucDungWeightKg,
   sumBbTongChenhLech,
   sumBbTongTrongLuongNhapKho,
-  sumBbWarehouseExportWeightKg,
-  sumBbWarehouseExportWeightKgByKind,
+  sumBbWarehouseHistoryExportWeightKgByKind,
+  sumBbWarehouseHistoryExportWeightKgByKind,
   type BbCuoiCaGroup,
   type BbCuoiCaLineRow,
   type BbDamagedGoodsGroup,
@@ -79,7 +79,7 @@ import {
 import { buildBbTieuHaoNvlThucDungRows } from './bbTieuHaoNvlPrintRows';
 import type { ShiftSummaryWarehouseMovement } from './controlBoardShiftSummary';
 import type { MachineNvlSavedReport } from './machineNvlReports';
-import { shiftIsoDateByDays, type ShiftSetting } from './shiftSettings';
+import { type ShiftSetting } from './shiftSettings';
 import type { WeighingRecord } from './weighingRecords';
 import { normalizeBbLyDoToken } from './bbBaoCaoLyDo';
 
@@ -108,7 +108,7 @@ export type BbBaoCaoTinhToanPayload = {
     orderTotals: ReturnType<typeof sumBbProductionOrderTotals>;
     plasticRequiredWeightKg: number;
     exportTotalKg: number;
-    exportWeightByKind: ReturnType<typeof sumBbWarehouseExportWeightKgByKind>;
+    exportWeightByKind: ReturnType<typeof sumBbWarehouseHistoryExportWeightKgByKind>;
     dauCaTotalKg: number;
     dauCaWeightByKind: ReturnType<typeof sumBbDauCaWeightKgByKind>;
     cuoiCaTotalKg: number;
@@ -269,12 +269,27 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
   const damagedGroups = groupBbDamagedGoodsLines(damagedRows).map(group => {
+    const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+      damagedRecords: input.damagedRecords,
+      damagedLines: group.lines || [],
+      ngay: group.ngay,
+      shift: group.shift,
+      machine: group.machine,
+      shiftSettings: input.shiftSettings
+    });
     const mixingLines = buildBbLoiHongMaterialLinesForShift({
       productionOrders: input.productionOrders,
       products: input.products,
+      materials: input.materials,
+      mixingReports: input.mixingReports,
+      damagedRecords: input.damagedRecords,
+      damagedLines: group.lines || [],
+      plasticLoiHongKg,
       ngay: group.ngay,
       shift: group.shift,
-      orderCode: group.orderCode
+      orderCode: group.orderCode,
+      machine: group.machine,
+      shiftSettings: input.shiftSettings
     });
     const filmScrapMaterial = resolveBbLoiHongFilmScrapMaterialForShift({
       productionOrders: input.productionOrders,
@@ -411,16 +426,12 @@ export function buildBbMachineReportSnapshot(input: {
     selectedMachine: input.selectedMachine
   });
 
-  const canTuDongDateTo =
-    sanLuongSource === 'can-tu-dong' && input.dateTo
-      ? shiftIsoDateByDays(input.dateTo, 1) || input.dateTo
-      : input.dateTo;
   const scopedCanTuDong =
     sanLuongSource === 'can-tu-dong'
       ? filterCanTuDongRecordsForBoard(input.canTuDongRecords, {
           shiftFilter: input.shiftFilter,
           dateFrom: input.dateFrom,
-          dateTo: canTuDongDateTo,
+          dateTo: input.dateTo,
           machineFilter: input.machineFilter,
           selectedMachine: input.selectedMachine
         })
@@ -451,7 +462,23 @@ export function buildBbMachineReportSnapshot(input: {
       };
     }
   }
-  const damagedWeightByKind = sumBbDamagedGoodsWeightKgByKind(damagedRows, { isInsulationMachine });
+  const damagedWeightByKind = resolveBbLoiHongCardWeightByKind({
+    damagedGroups,
+    damagedRows,
+    damagedRecords: input.damagedRecords,
+    acceptanceReports: input.acceptanceReports,
+    materials: input.materials,
+    shiftSettings: input.shiftSettings,
+    isInsulationMachine
+  });
+  const exportWeightByKind = sumBbWarehouseHistoryExportWeightKgByKind({
+    warehouseMovements: input.warehouseMovements,
+    materials: input.materials,
+    productionOrders: input.productionOrders,
+    machines: input.machines,
+    shiftSettings: input.shiftSettings,
+    ...filter
+  });
 
   return {
     version: 1,
@@ -477,14 +504,17 @@ export function buildBbMachineReportSnapshot(input: {
     summary: {
       orderTotals: sumBbProductionOrderTotals(orderRows),
       plasticRequiredWeightKg: sumBbProductionOrderPlasticRequiredKg(orderRows),
-      exportTotalKg: sumBbWarehouseExportWeightKg(exportRows),
-      exportWeightByKind: sumBbWarehouseExportWeightKgByKind(exportRows),
+      exportTotalKg: exportWeightByKind.totalKg,
+      exportWeightByKind,
       dauCaTotalKg: sumBbDauCaWeightKg(dauCaRows),
       dauCaWeightByKind: sumBbDauCaWeightKgByKind(dauCaRows),
       cuoiCaTotalKg: sumBbCuoiCaWeightKg(cuoiCaRows),
       cuoiCaWeightByKind: sumBbCuoiCaWeightKgByKind(cuoiCaRows),
-      damagedTotalKg: sumBbDamagedGoodsWeightKg(damagedRows),
-      damagedWeightByKind,
+      damagedTotalKg: damagedWeightByKind.totalKg,
+      damagedWeightByKind: {
+        plasticKg: damagedWeightByKind.plasticKg,
+        otherKg: damagedWeightByKind.otherKg
+      },
       sanLuongTotals,
       canTuDongSanLuongTotals,
       displaySanLuongTotals,

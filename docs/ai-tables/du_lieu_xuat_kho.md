@@ -22,7 +22,7 @@ Ghi khi bấm **Tính toán** (cùng khóa `khoa_on_dinh` với `bb_bao_cao_tinh
 | `ma_sp` / `ten_sp` / `sl_sp` / `dinh_muc_sp_kg` | Nhóm sản phẩm |
 | `ma_nvl` / `ten_nvl` / `don_vi` | Mã · Tên · ĐVT NVL |
 | `sl_dinh_muc` / `trong_luong_dinh_muc_kg` | SL định mức · Trọng lượng định mức |
-| `sl_xuat` / `trong_luong_xuat_kg` | SL / kg thực xuất từ phiếu |
+| `sl_xuat` / `trong_luong_xuat_kg` | SL / kg thực xuất từ phiếu — **nguồn thẳng** cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2 (không quy đổi lại) |
 | `ti_le_percent` | Tỉ lệ % trong lệnh |
 | `ma_phieu` / `khop_lenh` | Mã phiếu XK · khớp lệnh? |
 

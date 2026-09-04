@@ -408,29 +408,6 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
 
-  const danhGiaGroups = enrichBbDanhGiaGroupsWithPrintSummary({
-    danhGiaGroups: buildBbDanhGiaHaoHutGroups({
-      productionOrders: input.productionOrders,
-      products: input.products,
-      warehouseMovements: input.warehouseMovements,
-      machineNvlReports: input.machineNvlReports,
-      acceptanceReports: input.acceptanceReports,
-      materials: input.materials,
-      machines: input.machines,
-      shiftSettings: input.shiftSettings,
-      ...filter
-    }),
-    thucDungGroups,
-    damagedGroups,
-    orderGroups,
-    sanLuongGroups,
-    products: input.products,
-    materials: input.materials,
-    warehouseMovements: input.warehouseMovements,
-    shiftSettings: input.shiftSettings,
-    selectedMachine: input.selectedMachine
-  });
-
   const scopedCanTuDong =
     sanLuongSource === 'can-tu-dong'
       ? filterCanTuDongRecordsForBoard(input.canTuDongRecords, {
@@ -467,6 +444,33 @@ export function buildBbMachineReportSnapshot(input: {
       };
     }
   }
+
+  const danhGiaGroups = enrichBbDanhGiaGroupsWithPrintSummary({
+    danhGiaGroups: buildBbDanhGiaHaoHutGroups({
+      productionOrders: input.productionOrders,
+      products: input.products,
+      warehouseMovements: input.warehouseMovements,
+      machineNvlReports: input.machineNvlReports,
+      acceptanceReports: input.acceptanceReports,
+      materials: input.materials,
+      machines: input.machines,
+      shiftSettings: input.shiftSettings,
+      ...filter
+    }),
+    thucDungGroups,
+    damagedGroups,
+    orderGroups,
+    sanLuongGroups,
+    products: input.products,
+    materials: input.materials,
+    warehouseMovements: input.warehouseMovements,
+    shiftSettings: input.shiftSettings,
+    selectedMachine: input.selectedMachine,
+    // Banner «Tổng nhựa định mức» (chỉ nhựa ĐM, vd. 10,86×32 + 8,86×50).
+    tongNhuaDinhMucKg:
+      insulationPlasticNorm.weightKg > 0 ? insulationPlasticNorm.weightKg : undefined
+  });
+
   const damagedWeightByKind = resolveBbLoiHongCardWeightByKind({
     damagedGroups,
     damagedRows,

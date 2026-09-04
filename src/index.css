@@ -4205,20 +4205,46 @@ input[type="number"] {
 
 .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(2) {
-  width: 26%;
+  width: 24%;
+}
+
+.bb-machine-report-print-evaluation-summary-table col.bb-eval-sum-col-stt {
+  width: 8%;
+}
+.bb-machine-report-print-evaluation-summary-table col.bb-eval-sum-col-label {
+  width: 24%;
+}
+.bb-machine-report-print-evaluation-summary-table col.bb-eval-sum-col-num {
+  width: 12%;
+}
+.bb-machine-report-print-evaluation-summary-table col.bb-eval-sum-col-money {
+  width: 11%;
+}
+.bb-machine-report-print-evaluation-summary-table col.bb-eval-sum-col-note {
+  width: 10%;
 }
 
 .bb-machine-report-print-evaluation-summary-table th:nth-child(3),
-.bb-machine-report-print-evaluation-summary-table td:nth-child(3),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(4),
-.bb-machine-report-print-evaluation-summary-table td:nth-child(4),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(5),
-.bb-machine-report-print-evaluation-summary-table td:nth-child(5),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(6),
+.bb-machine-report-print-evaluation-summary-table th:nth-child(7) {
+  width: 12%;
+  white-space: normal;
+  line-height: 1.15;
+  vertical-align: bottom;
+  text-align: center;
+  overflow-wrap: break-word;
+  word-break: normal;
+  font-size: 7.5pt;
+}
+
+.bb-machine-report-print-evaluation-summary-table td:nth-child(3),
+.bb-machine-report-print-evaluation-summary-table td:nth-child(4),
+.bb-machine-report-print-evaluation-summary-table td:nth-child(5),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(6),
-.bb-machine-report-print-evaluation-summary-table th:nth-child(7),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(7) {
-  width: 9%;
+  width: 12%;
   white-space: nowrap;
 }
 
@@ -4226,7 +4252,7 @@ input[type="number"] {
 .bb-machine-report-print-evaluation-summary-table td:nth-child(8),
 .bb-machine-report-print-evaluation-summary-table th:nth-child(9),
 .bb-machine-report-print-evaluation-summary-table td:nth-child(9) {
-  width: 11%;
+  width: 10%;
 }
 
 /* 4.2 Chi tiết — dòng tổng nhóm (Hao hụt nhựa / Vật tư khác) */
@@ -4637,20 +4663,29 @@ input[type="number"] {
 
   .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(2) {
-    width: 26%;
+    width: 24%;
   }
 
   .bb-machine-report-print-evaluation-summary-table th:nth-child(3),
-  .bb-machine-report-print-evaluation-summary-table td:nth-child(3),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(4),
-  .bb-machine-report-print-evaluation-summary-table td:nth-child(4),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(5),
-  .bb-machine-report-print-evaluation-summary-table td:nth-child(5),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(6),
+  .bb-machine-report-print-evaluation-summary-table th:nth-child(7) {
+    width: 12%;
+    white-space: normal !important;
+    line-height: 1.12 !important;
+    vertical-align: bottom !important;
+    text-align: center !important;
+    overflow-wrap: break-word;
+    font-size: 7pt !important;
+  }
+
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(3),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(4),
+  .bb-machine-report-print-evaluation-summary-table td:nth-child(5),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(6),
-  .bb-machine-report-print-evaluation-summary-table th:nth-child(7),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(7) {
-    width: 9%;
+    width: 12%;
     white-space: nowrap !important;
   }
 
@@ -4658,7 +4693,7 @@ input[type="number"] {
   .bb-machine-report-print-evaluation-summary-table td:nth-child(8),
   .bb-machine-report-print-evaluation-summary-table th:nth-child(9),
   .bb-machine-report-print-evaluation-summary-table td:nth-child(9) {
-    width: 11%;
+    width: 10%;
   }
 
   .bb-machine-report-print-evaluation-detail-table th:first-child,

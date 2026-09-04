@@ -2,28 +2,22 @@
  * Builder tiêu hao NVL khớp phiếu in BB (mục 3.1 / 3.2).
  * Nguồn sự thật cho tab `bao_cao_tieu_hao_nvl` và phiếu in (chỉ mirror).
  */
-import { resolveProductNplItemWeightKg } from '../features/san-pham';
 import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 import type { MaterialRow } from '../features/kho-nvl';
 import { formatProductionOrderShiftLabel, type ProductionOrderLookupSetting } from '../features/ke-hoach-san-xuat';
 import { parseProductionOrderFilterDate } from '../features/cai-dat-thoi-gian';
 import {
   computeMaterialUsageKg,
-  isWarehouseBagExportItem,
-  isWarehouseCoreExportItem,
-  isWarehouseFilmItem,
   isWarehousePlasticNvlLine,
   isWarehouseTapeExportItem
 } from './controlBoardShiftSummary';
 import {
-  convertWarehouseQuantityToKg,
   isWarehouseKgUnit,
   mapMaterialToWeightCatalogItem,
   normalizeWarehouseCodeKey,
   type WarehouseWeightCatalogItem
 } from './warehouseWeight';
 import {
-  allocateBbKgByWeightShare,
   buildBbMaterialKgMapsFromTabLines,
   buildBbWarehouseExportMaterialTotalsForOrderFromExportTab,
   buildOrderBomMaterialMatchKeys,
@@ -32,8 +26,9 @@ import {
   isNnsTronMaterial,
   lookupBbMaterialKgByCodeOrName,
   lookupNnsTronTonDauKg,
-  resolveBbDamagedOtherLoiHongKg,
-  resolveBbDamagedPlasticLoiHongKg,
+  resolveBbLoiHongMixingLineWeightKg,
+  resolveBbLoiHongNnkmNcTotalKg,
+  sumBbDamagedFilmScrapKg,
   type BbCuoiCaGroup,
   type BbDamagedGoodsGroup,
   type BbDauCaGroup,
@@ -58,26 +53,6 @@ function isPlasticNvl(row: { code: string; name: string; unit: string }) {
     itemName: row.name,
     unit: row.unit
   });
-}
-
-function isExcludedFromDamagedOther(row: { code: string; name: string; unit: string }) {
-  if (isWarehouseBagExportItem(row.code, row.name)) return true;
-  if (isWarehouseCoreExportItem(row.code, row.name)) return true;
-  if (isWarehouseTapeExportItem(row.code, row.name)) return true;
-  const text = `${row.code} ${row.name}`
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  return text.includes('tem ') || text.startsWith('tem') || text.includes(' tem');
-}
-
-function isFilmMaterial(row: { code: string; name: string; unit: string }) {
-  if (isWarehouseFilmItem(row.code, row.name, row.unit)) return true;
-  const text = `${row.code} ${row.name}`
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  return text.includes('mang') || text.includes('film');
 }
 
 function lookupCatalogMaterialUnit(
@@ -222,15 +197,6 @@ function resolveProductSanLuongQuantity(
   return line && line.actualQuantity > 0 ? line.actualQuantity : 0;
 }
 
-function resolveLoiHongMixingTiLePercent(line: {
-  tiLeTronPercent: number | null;
-  tiLeDinhMucPercent: number | null;
-}) {
-  if (line.tiLeTronPercent != null && line.tiLeTronPercent > 0) return line.tiLeTronPercent;
-  if (line.tiLeDinhMucPercent != null && line.tiLeDinhMucPercent > 0) return line.tiLeDinhMucPercent;
-  return null;
-}
-
 type MaterialBuildRow = {
   key: string;
   code: string;
@@ -341,8 +307,7 @@ function buildMaterialRowsForOrder(input: {
       shift: order.shift,
       machine: order.machine
     },
-    exportRows || [],
-    materials
+    exportRows || []
   );
   for (const entry of exportMaterialTotals) {
     const row = ensure(entry.itemCode, entry.itemName, entry.unit);
@@ -361,18 +326,11 @@ function buildMaterialRowsForOrder(input: {
   const closingGroups = findOrderGroups(cuoiCaGroups, order);
   const closingLines = closingGroups.flatMap(group => group.lines);
   const closingMaterialLines = closingGroups.flatMap(group => group.materialLines || []);
-  const tonCuoiMaps = buildBbMaterialKgMapsFromTabLines(closingLines);
-  const nnsTronTonCuoiKg = lookupNnsTronTonDauKg(tonCuoiMaps);
+  const nnsTronTonCuoiKg = lookupNnsTronTonDauKg(buildBbMaterialKgMapsFromTabLines(closingLines));
 
   const damagedGroup = findOrderGroup(damagedGroups, order);
   const damagedLines = damagedGroup?.lines || [];
   const groupIsInsulation = isInsulationMachineText(order.machine, selectedMachineName);
-  const damagedPlasticKg = resolveBbDamagedPlasticLoiHongKg(damagedLines, {
-    isInsulationMachine: groupIsInsulation
-  });
-  const damagedOtherKg = resolveBbDamagedOtherLoiHongKg(damagedLines, {
-    isInsulationMachine: groupIsInsulation
-  });
 
   const mixingGroup = findOrderGroup(mixingGroups, order);
   for (const line of mixingGroup?.lines || []) {
@@ -382,22 +340,26 @@ function buildMaterialRowsForOrder(input: {
     row.actualMixedKg += line.totalKlThucTe;
   }
 
-  if (damagedPlasticKg > 0) {
-    for (const line of damagedGroup?.mixingLines || []) {
-      if (
-        isExcludedFromDamagedOther({
-          code: line.materialCode,
-          name: line.materialName,
-          unit: line.unit || 'kg'
-        })
-      ) {
-        continue;
-      }
-      const tiLe = resolveLoiHongMixingTiLePercent(line);
-      if (tiLe == null || !Number.isFinite(tiLe) || !(tiLe > 0)) continue;
-      ensure(line.materialCode, line.materialName, line.unit || 'kg').damagedKg += round4(
-        (damagedPlasticKg * tiLe) / 100
-      );
+  // Lỗi hỏng = cột «Trọng lượng lỗi» tab «Dữ liệu trong báo cáo hàng lỗi hỏng» — không phân bổ lại.
+  for (const row of rows.values()) row.damagedKg = 0;
+  const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+    damagedLines,
+    ngay: order.ngay,
+    shift: order.shift,
+    machine: order.machine
+  });
+  for (const line of damagedGroup?.mixingLines || []) {
+    const kg = resolveBbLoiHongMixingLineWeightKg(line, plasticLoiHongKg);
+    if (kg == null || !(kg > 0)) continue;
+    const row = ensure(line.materialCode, line.materialName, line.unit || 'kg');
+    row.damagedKg = round4(row.damagedKg + kg);
+  }
+  if (groupIsInsulation) {
+    const racMangKg = sumBbDamagedFilmScrapKg(damagedLines);
+    const filmMat = damagedGroup?.filmScrapMaterial;
+    if (racMangKg > 0 && filmMat) {
+      const row = ensure(filmMat.materialCode, filmMat.materialName, filmMat.unit || 'kg');
+      row.damagedKg = round4(row.damagedKg + racMangKg);
     }
   }
 
@@ -417,46 +379,23 @@ function buildMaterialRowsForOrder(input: {
     }
   }
 
+  // Tồn cuối = cột TL trên tab «Dữ liệu trong báo cáo kiểm tồn cuối ca» — không phân bổ NNS-TRON lại.
+  for (const row of rows.values()) row.closingKg = 0;
   if (closingMaterialLines.length > 0) {
-    for (const row of rows.values()) row.closingKg = 0;
     for (const line of closingMaterialLines) {
       const kg = line.tonDauWeightKg;
       if (!(kg > 0)) continue;
       ensure(line.itemCode, line.itemName, line.unit || 'kg').closingKg += kg;
     }
   } else {
-    for (const row of rows.values()) {
-      row.closingKg = lookupBbMaterialKgByCodeOrName(tonCuoiMaps, row.code, row.name);
-    }
     for (const line of closingLines) {
-      const row = ensure(line.itemCode, line.itemName, line.unit);
-      row.closingKg = lookupBbMaterialKgByCodeOrName(tonCuoiMaps, line.itemCode, line.itemName);
-    }
-    if (nnsTronTonCuoiKg > 0) {
-      for (const row of rows.values()) {
-        if (isNnsTronMaterial(row.code, row.name)) {
-          row.closingKg = 0;
-          continue;
-        }
-        const directKg = lookupBbMaterialKgByCodeOrName(tonCuoiMaps, row.code, row.name);
-        const fromActual =
-          row.actualPercent !== null && Number.isFinite(row.actualPercent) && row.actualPercent > 0
-            ? row.actualPercent
-            : null;
-        const fromNorm =
-          row.normPercents.length > 0
-            ? row.normPercents.reduce((sum, value) => sum + value, 0) / row.normPercents.length
-            : null;
-        const tiLe = fromActual ?? fromNorm;
-        if (tiLe !== null && Number.isFinite(tiLe) && tiLe > 0) {
-          row.closingKg = round4(directKg + nnsTronTonCuoiKg * (tiLe / 100));
-        } else {
-          row.closingKg = round4(directKg);
-        }
-      }
+      const kg = line.weightKg;
+      if (!(kg > 0)) continue;
+      ensure(line.itemCode, line.itemName, line.unit || 'kg').closingKg += kg;
     }
   }
 
+  // Nhập thành phẩm = cột TL thực tế NVL trên tab «Báo cáo sản lượng» — không tính lại từ BOM.
   for (const row of rows.values()) row.finishedKg = 0;
   const seenSanLuongProductKeys = new Set<string>();
   for (const productLine of order.lines) {
@@ -475,12 +414,7 @@ function buildMaterialRowsForOrder(input: {
     if (spKey) seenSanLuongProductKeys.add(spKey);
     for (const line of productGroup.lines || []) {
       if (!isInOrderBom(line.itemCode, line.itemName)) continue;
-      const weight =
-        line.actualWeightKg > 0
-          ? line.actualWeightKg
-          : line.normWeightKg > 0
-            ? line.normWeightKg
-            : 0;
+      const weight = line.actualWeightKg > 0 ? line.actualWeightKg : 0;
       if (!(weight > 0)) continue;
       const unit = line.amountType === 'percent' ? 'kg' : String(line.unit || '').trim() || 'Cái';
       const row = ensure(line.itemCode, line.itemName, unit);
@@ -488,7 +422,6 @@ function buildMaterialRowsForOrder(input: {
     }
   }
 
-  const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
   for (const row of rows.values()) {
     if (!isPlasticNvl(row)) row.actualQty = 0;
   }
@@ -507,58 +440,17 @@ function buildMaterialRowsForOrder(input: {
         item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
           ? item.quantity
           : null;
-      if (qtyPerSp == null && !(item.weightKg != null && item.weightKg >= 0)) continue;
+      if (qtyPerSp == null) continue;
       const unit = String(item.unit || '').trim();
       const row = ensure(item.code, item.name, unit || 'Cái');
       if (isPlasticNvl(row)) continue;
-      if (qtyPerSp != null && unit && unit !== '-' && !isWarehouseKgUnit(unit)) {
+      if (unit && unit !== '-' && !isWarehouseKgUnit(unit)) {
         row.actualQty = round4(row.actualQty + qtyPerSp * sl);
-      }
-      if (row.finishedKg > 0) continue;
-      const perSpKg = resolveProductNplItemWeightKg(product, item, materials);
-      if (perSpKg != null && Number.isFinite(perSpKg) && perSpKg > 0) {
-        row.finishedKg = round4(row.finishedKg + perSpKg * sl);
-        continue;
-      }
-      if (qtyPerSp == null) continue;
-      const totalQty = qtyPerSp * sl;
-      if (isWarehouseKgUnit(unit)) {
-        row.finishedKg = round4(row.finishedKg + totalQty);
-        continue;
-      }
-      const converted = convertWarehouseQuantityToKg({
-        quantity: totalQty,
-        unit: unit || 'Cái',
-        itemCode: item.code,
-        warehouseKind: 'nvl',
-        materials: materialsCatalog,
-        preferTongKgOnly: false
-      });
-      if (converted != null && Number.isFinite(converted) && converted > 0) {
-        row.finishedKg = round4(row.finishedKg + converted);
       }
     }
   }
 
-  if (damagedOtherKg > 0) {
-    const candidates = [...rows.values()].filter(row => {
-      if (isPlasticNvl(row)) return false;
-      if (isExcludedFromDamagedOther(row)) return false;
-      return true;
-    });
-    const filmOnly = groupIsInsulation ? candidates.filter(row => isFilmMaterial(row)) : [];
-    const otherRows = filmOnly.length > 0 ? filmOnly : candidates;
-    const shareWeights = otherRows.map(row => Math.max(row.finishedKg, row.exportKg, 0));
-    const allocated = allocateBbKgByWeightShare(
-      damagedOtherKg,
-      shareWeights.map(weightKg => ({ weightKg }))
-    );
-    otherRows.forEach((row, index) => {
-      const kg = allocated[index];
-      if (kg != null && kg > 0) row.damagedKg += round4(kg);
-    });
-  }
-
+  const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
   return [...rows.values()]
     .filter(row => {
       if (
@@ -568,7 +460,7 @@ function buildMaterialRowsForOrder(input: {
         return false;
       }
       if (isInOrderBom(row.code, row.name)) return true;
-      return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0;
+      return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0 || row.damagedKg > 0 || row.finishedKg > 0;
     })
     .map(row => ({
       ...row,

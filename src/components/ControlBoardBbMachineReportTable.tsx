@@ -2027,8 +2027,8 @@ export default function ControlBoardBbMachineReportTable({
     return sumBbProductionOrderPlasticRequiredKg(orderRows);
   }, [reportSnapshot, orderRows]);
   const exportMaterialTotals = useMemo(
-    () => aggregateBbWarehouseExportByMaterial(exportRows, materials),
-    [exportRows, materials]
+    () => aggregateBbWarehouseExportByMaterial(exportRows),
+    [exportRows]
   );
   const exportMaterialTotalKg = useMemo(
     () => exportMaterialTotals.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0),
@@ -6079,43 +6079,55 @@ export default function ControlBoardBbMachineReportTable({
                         </p>
                       ) : (
                         <div className="bb-table-scroll overflow-x-auto">
-                          <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
-                            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-700">
+                          <table className="min-w-[1100px] w-full table-fixed text-left text-sm font-semibold">
+                            <colgroup>
+                              <col className="w-[7%]" />
+                              <col className="w-[28%]" />
+                              <col className="w-[12%]" />
+                              <col className="w-[12%]" />
+                              <col className="w-[12%]" />
+                              <col className="w-[10%]" />
+                              <col className="w-[11%]" />
+                              <col className="w-[8%]" />
+                            </colgroup>
+                            <thead className="bg-slate-50 text-[10px] leading-tight text-slate-700">
                               <tr>
-                                <th className="px-2 py-2.5 text-center font-black">STT</th>
-                                <th className="px-3 py-2.5 font-black">Giá trị phân tích dữ liệu</th>
+                                <th className="px-2 py-2.5 text-center font-black uppercase tracking-wide">
+                                  STT
+                                </th>
+                                <th className="px-3 py-2.5 font-black uppercase tracking-wide">
+                                  Giá trị phân tích dữ liệu
+                                </th>
                                 <th
-                                  className="px-2 py-2.5 text-right font-black"
-                                  title="Định mức theo BOM thành phần × SL nhập TP"
+                                  className="px-1.5 py-2.5 text-center font-black leading-snug"
+                                  title="Vật tư trộn: Tổng nhựa định mức (banner) × tỉ lệ % — chỉ nhựa ĐM"
                                 >
-                                  Định mức Vật tư
+                                  ĐM vật tư
                                   <br />
-                                  của Số lượng nhập TP
-                                  <br />
-                                  (kg)
+                                  nhập TP (kg)
                                 </th>
-                                <th className="px-2 py-2.5 text-right font-black">
-                                  Số lượng thực
+                                <th className="px-1.5 py-2.5 text-center font-black leading-snug">
+                                  Thực xuất
                                   <br />
-                                  xuất dùng (kg)
+                                  dùng (kg)
                                 </th>
                                 <th
-                                  className="px-2 py-2.5 text-right font-black"
-                                  title="Tổng nhựa lỗi hỏng × tỉ lệ %"
-                                >
-                                  Lỗi
-                                </th>
-                                <th
-                                  className="px-2 py-2.5 text-right font-black"
-                                  title="Chênh lệch = Định mức Vật tư của Số lượng nhập TP − Số lượng thực xuất dùng (kg) + Lỗi"
+                                  className="px-1.5 py-2.5 text-center font-black leading-snug"
+                                  title="Chênh lệch = Thực xuất dùng − Định mức nhập TP"
                                 >
                                   Chênh lệch
                                   <br />
-                                  (ĐM − Thực xuất + Lỗi)
+                                  (TX − ĐM)
                                 </th>
-                                <th className="px-2 py-2.5 text-right font-black">Đơn giá</th>
-                                <th className="px-2 py-2.5 text-right font-black">Thành tiền</th>
-                                <th className="px-2 py-2.5 font-black">Đánh giá</th>
+                                <th className="px-1.5 py-2.5 text-center font-black uppercase tracking-wide">
+                                  Đơn giá
+                                </th>
+                                <th className="px-1.5 py-2.5 text-center font-black uppercase tracking-wide">
+                                  Thành tiền
+                                </th>
+                                <th className="px-2 py-2.5 font-black uppercase tracking-wide">
+                                  Đánh giá
+                                </th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100">
@@ -6137,9 +6149,6 @@ export default function ControlBoardBbMachineReportTable({
                                     </td>
                                     <td className="px-2 py-2 text-right font-mono">
                                       {fmtThucXuatKg(row.thucXuatKg)}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
-                                      {fmtThucXuatKg(row.loiKg)}
                                     </td>
                                     <td className="px-2 py-2 text-right font-mono">
                                       {fmtSignedQty(row.chenhLechKg)}

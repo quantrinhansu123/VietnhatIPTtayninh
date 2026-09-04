@@ -1846,7 +1846,7 @@ export type BbWarehouseExportMaterialTotal = {
  */
 export function aggregateBbWarehouseExportByMaterial(
   rows: BbWarehouseExportLineRow[],
-  materials?: MaterialRow[]
+  _materials?: MaterialRow[]
 ): BbWarehouseExportMaterialTotal[] {
   const seen = new Set<string>();
   const map = new Map<string, BbWarehouseExportMaterialTotal>();
@@ -1865,14 +1865,9 @@ export function aggregateBbWarehouseExportByMaterial(
       slipId;
 
     const qty = row.quantity > 0 ? row.quantity : 0;
-    const freshKg =
-      materials && materials.length > 0 ? resolveBbWarehouseExportLineWeightKg(row, materials) : null;
-    const kg =
-      freshKg !== null && freshKg > 0
-        ? freshKg
-        : row.weightKg && row.weightKg > 0
-          ? row.weightKg
-          : 0;
+    // Chỉ lấy trọng lượng đã có trên tab «Dữ liệu xuất kho» (= `trong_luong_xuat_kg`).
+    // Không quy đổi lại từ ĐVT / Tổng kg kho NVL.
+    const kg = row.weightKg && row.weightKg > 0 ? row.weightKg : 0;
     const existing = map.get(materialKey);
     if (!existing) {
       map.set(materialKey, {
@@ -1999,18 +1994,22 @@ export function filterBbWarehouseExportLinesForOrder(
   });
 }
 
-/** Cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2 = Σ «Quy về kg» tab DỮ LIỆU XUẤT KHO (lọc ca). */
+/**
+ * Cột «Trọng lượng vật tư xuất kho» mục 3.1/3.2 =
+ * Σ cột Trọng lượng / Tổng (kg) trên tab «DỮ LIỆU XUẤT KHO» theo lệnh
+ * (= `trong_luong_xuat_kg`) — chỉ cộng số đã có, không quy đổi/tính lại.
+ */
 export function buildBbWarehouseExportMaterialTotalsForOrderFromExportTab(
   exportGroups: BbWarehouseExportGroup[],
   order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string },
   exportRows: BbWarehouseExportLineRow[] = [],
-  materials?: MaterialRow[]
+  _materials?: MaterialRow[]
 ): BbWarehouseExportMaterialTotal[] {
   const lines =
     exportRows.length > 0
       ? filterBbWarehouseExportLinesForOrder(exportRows, order)
       : findBbWarehouseExportGroupsForOrder(exportGroups, order).flatMap(group => group.lines || []);
-  return aggregateBbWarehouseExportByMaterial(lines, materials);
+  return aggregateBbWarehouseExportByMaterial(lines);
 }
 
 export type BbProductionOrderGroup = {
@@ -11013,13 +11012,13 @@ export type BbDanhGiaSummaryRow = {
   label: string;
   tiLeHaoHutDinhMucPercent: number | null;
   tiLeHaoHutThucTe: number | null;
-  /** Định mức Vật tư của Số lượng nhập TP (kg) — theo BOM thành phần × SL nhập TP. */
+  /** Định mức Vật tư của Số lượng nhập TP (kg). Vật tư trộn = Tổng nhựa định mức × %. */
   dinhMucVatTuKg: number | null;
   /** Số lượng thực xuất dùng (kg). Vật tư trộn = Xuất thực dùng × %. */
   thucXuatKg: number | null;
-  /** Lỗi (kg). Vật tư trộn = Tổng nhựa lỗi hỏng × %. */
-  loiKg: number | null;
-  /** Chênh lệch = ĐM nhập TP − Thực xuất dùng + Lỗi. */
+  /** @deprecated Cột Lỗi đã bỏ — giữ để đọc snapshot cũ. */
+  loiKg?: number | null;
+  /** Chênh lệch = Thực xuất dùng − Định mức nhập TP. */
   chenhLechKg: number | null;
   donGia: number | null;
   thanhTien: number | null;
@@ -11427,10 +11426,10 @@ function buildBbDanhGiaSummaryNvlRow(input: {
   section: 'tron' | 'con_lai';
   bomDinhMucKg: number;
   donGia: number;
+  /** Vật tư trộn: cơ sở ĐM = Tổng nhựa định mức × tỉ lệ %. */
+  tongNhuaDinhMucKg?: number;
   /** Vật tư trộn: cơ sở thực xuất = Xuất thực dùng × tỉ lệ %. */
   tongNhuaThucXuatKg?: number;
-  /** Vật tư trộn: cơ sở lỗi = Tổng nhựa lỗi hỏng × tỉ lệ %. */
-  tongNhuaLoiHongKg?: number;
 }): BbDanhGiaSummaryRow {
   const { line, section, bomDinhMucKg, donGia } = input;
   const tiLePercent =
@@ -11443,20 +11442,25 @@ function buildBbDanhGiaSummaryNvlRow(input: {
           line.tiLeThucTeTbPercent > 0
         ? line.tiLeThucTeTbPercent
         : null;
+  const tongNhuaDm =
+    input.tongNhuaDinhMucKg != null &&
+    Number.isFinite(input.tongNhuaDinhMucKg) &&
+    input.tongNhuaDinhMucKg > 0
+      ? input.tongNhuaDinhMucKg
+      : 0;
   const tongXuatThucDung =
     input.tongNhuaThucXuatKg != null &&
     Number.isFinite(input.tongNhuaThucXuatKg) &&
     input.tongNhuaThucXuatKg > 0
       ? input.tongNhuaThucXuatKg
       : 0;
-  const tongNhuaLoi =
-    input.tongNhuaLoiHongKg != null &&
-    Number.isFinite(input.tongNhuaLoiHongKg) &&
-    input.tongNhuaLoiHongKg > 0
-      ? input.tongNhuaLoiHongKg
-      : 0;
-  // Định mức = BOM thành phần thật × SL nhập TP (kg).
-  const dinhMucVatTuKg = bomDinhMucKg > 0 ? roundQty(bomDinhMucKg, 4) : 0;
+  // Vật tư trộn: ĐM = Tổng nhựa định mức × %; còn lại: BOM × SL nhập TP.
+  const dinhMucVatTuKg =
+    section === 'tron' && tiLePercent != null && tongNhuaDm > 0
+      ? roundQty(tongNhuaDm * (tiLePercent / 100), 4)
+      : bomDinhMucKg > 0
+        ? roundQty(bomDinhMucKg, 4)
+        : 0;
   // Vật tư trộn: thực xuất dùng = Xuất thực dùng × %; còn lại: weightKg từng mã.
   // Giữ đúng 2 số thập phân (không làm tròn 1 số).
   const thucXuatKg =
@@ -11465,13 +11469,8 @@ function buildBbDanhGiaSummaryNvlRow(input: {
       : Number.isFinite(line.weightKg)
         ? roundQty(line.weightKg, 2)
         : 0;
-  // Vật tư trộn: Lỗi = Tổng nhựa lỗi hỏng × %.
-  const loiKg =
-    section === 'tron' && tiLePercent != null && tongNhuaLoi > 0
-      ? roundQty(tongNhuaLoi * (tiLePercent / 100), 2)
-      : null;
-  // Chênh lệch = ĐM nhập TP − Thực xuất dùng + Lỗi.
-  const chenhLechKg = roundQty(dinhMucVatTuKg - thucXuatKg + (loiKg ?? 0), 4);
+  // Chênh lệch = Thực xuất dùng − Định mức nhập TP.
+  const chenhLechKg = roundQty(thucXuatKg - dinhMucVatTuKg, 4);
   const unitPrice = donGia > 0 ? donGia : 0;
   const thanhTien = unitPrice > 0 ? Math.round(chenhLechKg * unitPrice) : 0;
   const sttCode = String(line.materialCode || '').trim();
@@ -11487,7 +11486,7 @@ function buildBbDanhGiaSummaryNvlRow(input: {
     tiLeHaoHutThucTe: null,
     dinhMucVatTuKg,
     thucXuatKg,
-    loiKg,
+    loiKg: null,
     chenhLechKg,
     donGia: unitPrice > 0 ? unitPrice : null,
     thanhTien: unitPrice > 0 || chenhLechKg !== 0 ? thanhTien : null,
@@ -11514,7 +11513,7 @@ function buildBbDanhGiaSummaryTongRow(
     ...emptyBbDanhGiaSummaryMetricFields(),
     dinhMucVatTuKg: sum(r => r.dinhMucVatTuKg),
     thucXuatKg: sum(r => r.thucXuatKg),
-    loiKg: sum(r => r.loiKg),
+    loiKg: null,
     chenhLechKg: sum(r => r.chenhLechKg),
     thanhTien: Math.round(
       nvlRows.reduce((acc, row) => acc + (row.thanhTien != null && Number.isFinite(row.thanhTien) ? row.thanhTien : 0), 0)
@@ -11537,6 +11536,11 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
   warehouseMovements?: ShiftSummaryWarehouseMovement[];
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
   selectedMachine?: { code?: string; name?: string } | null;
+  /**
+   * Tổng nhựa định mức (banner «Tổng nhựa định mức» / cân tự động nhựa ĐM).
+   * Chỉ định mức nhựa — không dùng totalNormKg cả lệnh.
+   */
+  tongNhuaDinhMucKg?: number;
 }): BbDanhGiaHaoHutGroup[] {
   const products = input.products || [];
   const materials = input.materials || [];
@@ -11589,11 +11593,19 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
       0
     );
 
-    const dinhMucTong =
-      order && order.totalNormKg > 0
-        ? order.totalNormKg
-        : (order?.lines || []).reduce((sum, line) => sum + (line.totalNormKg || 0), 0);
-    const tongNhuaDinhMucEval = dinhMucTong > 0 ? dinhMucTong : group.tongNhuaDinhMuc;
+    // Chỉ định mức nhựa (banner Tổng nhựa định mức) — không lấy totalNormKg cả lệnh.
+    const bannerNhuaDm =
+      input.tongNhuaDinhMucKg != null &&
+      Number.isFinite(input.tongNhuaDinhMucKg) &&
+      input.tongNhuaDinhMucKg > 0
+        ? input.tongNhuaDinhMucKg
+        : 0;
+    const tongNhuaDinhMucEval =
+      bannerNhuaDm > 0
+        ? bannerNhuaDm
+        : group.tongNhuaDinhMuc > 0
+          ? group.tongNhuaDinhMuc
+          : 0;
     const tongMangDinhMucEval = group.tongMangDinhMuc;
 
     const tongNhuaThanhPham = roundQty(
@@ -11660,8 +11672,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         section: 'tron',
         bomDinhMucKg: lookupBbBomDinhMucKg(bomDinhMucByMaterial, line.materialCode, line.materialName),
         donGia: resolveDonGia(line),
-        tongNhuaThucXuatKg,
-        tongNhuaLoiHongKg: hangLoiNhuaKg
+        tongNhuaDinhMucKg: tongNhuaDinhMuc,
+        tongNhuaThucXuatKg
       })
     );
     const otherNvlRows = otherLines.map(line =>

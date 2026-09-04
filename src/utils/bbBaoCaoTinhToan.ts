@@ -423,6 +423,11 @@ export function buildBbMachineReportSnapshot(input: {
     thucDungGroups,
     damagedGroups,
     orderGroups,
+    sanLuongGroups,
+    products: input.products,
+    materials: input.materials,
+    warehouseMovements: input.warehouseMovements,
+    shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine
   });
 

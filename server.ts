@@ -6304,10 +6304,6 @@ function parseWarehouseSlipLines(
     if (unitPrice < 0) {
       return { error: `Giá của ${code} không hợp lệ.` };
     }
-    if (loaiPhieu === 'xuat' && loaiKho === 'nvl' && !isScanned && !actualWeightImageUrl) {
-      return { error: `Dòng ${code} cần chụp ảnh số cân thực tế.` };
-    }
-
     items.push({
       code,
       name,

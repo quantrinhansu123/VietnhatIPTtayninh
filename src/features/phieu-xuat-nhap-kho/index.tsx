@@ -618,7 +618,6 @@ export function parseWarehouseSlipPayloadItems(
     allowMissingUnitPrice?: boolean;
     requireInboundLot?: boolean;
     includeDocumentQuantity?: boolean;
-    requireActualImages?: boolean;
   }
 ): { error: string } | { items: WarehouseSlipPayloadItem[] } {
   const itemLabel = warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL';
@@ -626,7 +625,6 @@ export function parseWarehouseSlipPayloadItems(
   const allowMissingUnitPrice = options?.allowMissingUnitPrice ?? false;
   const requireInboundLot = options?.requireInboundLot ?? false;
   const includeDocumentQuantity = options?.includeDocumentQuantity ?? false;
-  const requireActualImages = options?.requireActualImages ?? false;
 
   const payloadItems = lines
     .map(line => {
@@ -682,9 +680,6 @@ export function parseWarehouseSlipPayloadItems(
     }
     if (requireInboundLot && !item.sourceInboundLineId) {
       return { error: `Dòng ${item.code} cần chọn lô nhập (giá) khi xuất NVL.` };
-    }
-    if (requireActualImages && !item.isScanned && !item.actualWeightImageUrl) {
-      return { error: `Dòng ${item.code} cần chụp ảnh số cân thực tế.` };
     }
   }
 
@@ -2864,8 +2859,7 @@ export function WarehouseSlipPanel({
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
       allowMissingUnitPrice: isNvlExport,
       requireInboundLot: false,
-      includeDocumentQuantity: slipType === 'xuat',
-      requireActualImages: isNvlExport
+      includeDocumentQuantity: slipType === 'xuat'
     });
     if ('error' in parsed) {
       setFormError(showSaveFailure(parsed.error));

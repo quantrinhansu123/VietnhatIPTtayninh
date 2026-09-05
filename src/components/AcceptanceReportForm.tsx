@@ -23,7 +23,7 @@ import WeighingImagePreviewModal, {
 import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
-import { resolveCanSpKg } from '../utils/canTuDongWeights';
+import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongWeights';
 
 const productLineGridClass =
   'min-w-[50rem] grid-cols-[2.25rem_minmax(9rem,1.1fr)_minmax(12rem,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
@@ -202,21 +202,16 @@ function machineMatches(orderMachine: string, machineCode: string, machineName: 
 }
 
 function parseQrProductCode(raw: string) {
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
-  // Legacy: MãSP+LSX...
-  const plusIdx = trimmed.indexOf('+');
-  if (plusIdx > 0) return trimmed.slice(0, plusIdx).trim();
-  // Tem thực tế: MãSP-ddmmyy + serial random (vd MT- MN009-3107263087).
-  // Vẫn nhận dấu _ để tương thích với các tem đã tạo trước đây.
-  const serialMatch = trimmed.match(/^(.+)[_-](\d{6})([0-9A-Za-z]{2,})$/);
-  if (serialMatch?.[1]) return serialMatch[1].trim();
-  return trimmed;
+  // Cùng quy tắc /can-tu-dong: tiền tố trước `_` / trước `+` / serial ddmmyy.
+  return parseCanTuDongQrProductCode(raw);
 }
 
-// Gom mã theo tiền tố: bỏ phần serial ngẫu nhiên sau dấu «_» (vd MT- MN010_4UOOH7T98S1 → MT- MN010).
+// Gom mã theo tiền tố: bỏ phần serial ngẫu nhiên sau dấu «_» (vd MT-MN010_4UOOH7T98S1 → MT-MN010).
 function autoReportGroupCode(code: string) {
   const trimmed = String(code ?? '').trim();
+  if (!trimmed) return '';
+  const fromQr = parseCanTuDongQrProductCode(trimmed);
+  if (fromQr) return fromQr;
   const underscoreIdx = trimmed.indexOf('_');
   const base = underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx) : trimmed;
   return base.trim();
@@ -227,15 +222,19 @@ function productCodeFromOrder(order: ProductionOrderOption) {
 }
 
 function lineHasProductCode(line: ProductLine, code: string) {
-  const target = normalizeKey(code);
+  const target = normalizeKey(autoReportGroupCode(code));
   if (!target) return false;
-  return normalizeKey(parseQrProductCode(line.mat_hang)) === target;
+  return normalizeKey(autoReportGroupCode(line.mat_hang)) === target;
 }
 
 function findProductOption(code: string, options: ProductSelectOption[]) {
-  const key = normalizeKey(parseQrProductCode(code));
+  const key = normalizeKey(autoReportGroupCode(code));
   if (!key) return null;
-  return options.find(option => normalizeKey(option.code) === key) ?? null;
+  return (
+    options.find(option => normalizeKey(option.code) === key) ??
+    options.find(option => normalizeKey(autoReportGroupCode(option.code)) === key) ??
+    null
+  );
 }
 
 function normalizeCatalogProducts(data: unknown): ProductSelectOption[] {
@@ -689,9 +688,10 @@ export default function AcceptanceReportForm({
           if (!key) return;
           const existing = byCode.get(key);
           byCode.set(key, {
-            code: product.code,
-            name: product.name || existing?.name || '',
-            unit: product.unit || existing?.unit || '',
+            code: existing?.code || product.code,
+            name: existing?.name || product.name || '',
+            // Ưu tiên ĐVT đã có từ Kho hàng (`san_pham.don_vi`), không để lệnh SX / nguồn sau ghi đè.
+            unit: existing?.unit || product.unit || '',
             totalWeightKg: existing?.totalWeightKg ?? product.totalWeightKg
           });
         });
@@ -1216,15 +1216,17 @@ export default function AcceptanceReportForm({
           skipped += 1;
           return;
         }
+        // ĐVT lấy từ Kho hàng (`/kho-hang` · san_pham.don_vi), khớp tiền tố Mã SP — không dùng unit phiếu cân AI.
+        const catalog = findProductOption(qrProductCode, catalogProducts);
         const product = findProductOption(qrProductCode, productOptionsByType['Thành phẩm']);
-        // Gom mã theo tiền tố rồi cộng dồn SL + trọng lượng cho từng nhóm.
-        const code = autoReportGroupCode(product?.code || qrProductCode);
+        const code = autoReportGroupCode(catalog?.code || product?.code || qrProductCode);
         const key = normalizeKey(code);
         const current = quantities.get(key);
         const rollKg = resolveCanSpKg(record);
+        const unitFromKhoHang = String(catalog?.unit || product?.unit || current?.unit || '').trim();
         quantities.set(key, {
           code,
-          unit: product?.unit || current?.unit || String(record.unit ?? '').trim(),
+          unit: unitFromKhoHang,
           quantity: (current?.quantity ?? 0) + 1,
           rollWeightKg: (current?.rollWeightKg ?? 0) + (rollKg ?? 0)
         });
@@ -1233,6 +1235,7 @@ export default function AcceptanceReportForm({
         throw new Error('Phiếu cân AI không có mã QR sản phẩm hợp lệ.');
       }
 
+      const missingUnit = [...quantities.values()].filter(item => !item.unit).length;
       const lines = [...quantities.values()].map(({ code, unit, quantity, rollWeightKg }) => ({
         ...newProductLine(),
         mat_hang: code,
@@ -1245,9 +1248,9 @@ export default function AcceptanceReportForm({
       updateSection('Thành phẩm', section => ({ ...section, lines }));
       setIsAutoReportOpen(false);
       setMessage(
-        `Đã tự động điền ${lines.length} mã SP (gom theo tiền tố) từ ${matched.length} phiếu cân AI (SL = tổng số lần cân, TL = tổng Cân sản phẩm / trọng lượng cuộn)${
+        `Đã tự động điền ${lines.length} mã SP (gom theo tiền tố) từ ${matched.length} phiếu cân AI (SL = tổng số lần cân, TL = tổng Cân sản phẩm / trọng lượng cuộn, ĐVT từ Kho hàng)${
           skipped ? `; bỏ qua ${skipped} bản ghi không có QR hợp lệ` : ''
-        }.`
+        }${missingUnit ? `; ${missingUnit} mã chưa có ĐVT trên /kho-hang` : ''}.`
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thể tạo báo cáo tự động.');

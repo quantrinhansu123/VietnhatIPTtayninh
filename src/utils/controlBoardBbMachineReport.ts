@@ -11051,14 +11051,50 @@ export type BbDanhGiaSummaryRow = {
   dinhMucVatTuKg: number | null;
   /** Số lượng thực xuất dùng (kg). Vật tư trộn = Xuất thực dùng × %. */
   thucXuatKg: number | null;
-  /** @deprecated Cột Lỗi đã bỏ — giữ để đọc snapshot cũ. */
+  /** KL lỗi hỏng phân bổ (kg) — cột «Lỗi hỏng». */
   loiKg?: number | null;
   /** Chênh lệch = Thực xuất dùng − Định mức nhập TP. */
   chenhLechKg: number | null;
   donGia: number | null;
+  /** Thành tiền = Chênh lệch × Đơn giá. */
   thanhTien: number | null;
+  /** Tiền lỗ do hàng lỗi = KL lỗi hỏng phân bổ × Đơn giá. */
+  tienLoDoHangLoi: number | null;
   danhGia?: string;
 };
+
+/** Khóa ổn định để gắn/sửa ghi chú Đánh giá trên từng dòng summary. */
+export function bbDanhGiaSummaryRowKey(row: Pick<BbDanhGiaSummaryRow, 'section' | 'id' | 'sttCode' | 'materialCode' | 'label'>): string {
+  return [
+    row.section || '',
+    row.id || '',
+    row.sttCode || row.materialCode || '',
+    row.label || ''
+  ].join('|');
+}
+
+/** Giữ ghi chú Đánh giá khi tính toán lại (khớp theo groupKey + khóa dòng). */
+export function mergeBbDanhGiaSummaryNotes(
+  nextGroups: BbDanhGiaHaoHutGroup[],
+  prevGroups: BbDanhGiaHaoHutGroup[] | undefined | null
+): BbDanhGiaHaoHutGroup[] {
+  if (!prevGroups?.length) return nextGroups;
+  const prevByGroup = new Map(prevGroups.map(group => [group.groupKey, group]));
+  return nextGroups.map(group => {
+    const prev = prevByGroup.get(group.groupKey);
+    if (!prev?.summaryRows?.length || !group.summaryRows?.length) return group;
+    const noteByKey = new Map(
+      prev.summaryRows.map(row => [bbDanhGiaSummaryRowKey(row), String(row.danhGia || '')])
+    );
+    return {
+      ...group,
+      summaryRows: group.summaryRows.map(row => {
+        const note = noteByKey.get(bbDanhGiaSummaryRowKey(row));
+        return note ? { ...row, danhGia: note } : row;
+      })
+    };
+  });
+}
 
 /** Tách dòng tổng hợp theo Vật tư trộn / Các vật tư còn lại (tương thích snapshot cũ). */
 export function splitBbDanhGiaSummaryRowsBySection(rows: BbDanhGiaSummaryRow[] | undefined): {
@@ -11443,6 +11479,7 @@ function emptyBbDanhGiaSummaryMetricFields(): Pick<
   | 'chenhLechKg'
   | 'donGia'
   | 'thanhTien'
+  | 'tienLoDoHangLoi'
   | 'danhGia'
 > {
   return {
@@ -11456,6 +11493,7 @@ function emptyBbDanhGiaSummaryMetricFields(): Pick<
     chenhLechKg: null,
     donGia: null,
     thanhTien: null,
+    tienLoDoHangLoi: null,
     danhGia: ''
   };
 }
@@ -11469,6 +11507,8 @@ function buildBbDanhGiaSummaryNvlRow(input: {
   tongNhuaDinhMucKg?: number;
   /** Vật tư trộn: cơ sở thực xuất = Xuất thực dùng × tỉ lệ %. */
   tongNhuaThucXuatKg?: number;
+  /** Vật tư trộn: tổng KL nhựa lỗi hỏng — phân bổ theo % nếu dòng chưa có loiHongKg. */
+  tongNhuaLoiHongKg?: number;
 }): BbDanhGiaSummaryRow {
   const { line, section, bomDinhMucKg, donGia } = input;
   const tiLePercent =
@@ -11512,6 +11552,20 @@ function buildBbDanhGiaSummaryNvlRow(input: {
   const chenhLechKg = roundQty(thucXuatKg - dinhMucVatTuKg, 4);
   const unitPrice = donGia > 0 ? donGia : 0;
   const thanhTien = unitPrice > 0 ? Math.round(chenhLechKg * unitPrice) : 0;
+
+  let loiKg =
+    Number.isFinite(line.loiHongKg) && line.loiHongKg > 0 ? roundQty(line.loiHongKg, 4) : 0;
+  const tongNhuaLoi =
+    input.tongNhuaLoiHongKg != null &&
+    Number.isFinite(input.tongNhuaLoiHongKg) &&
+    input.tongNhuaLoiHongKg > 0
+      ? input.tongNhuaLoiHongKg
+      : 0;
+  if (!(loiKg > 0) && section === 'tron' && tiLePercent != null && tongNhuaLoi > 0) {
+    loiKg = roundQty(tongNhuaLoi * (tiLePercent / 100), 4);
+  }
+  const tienLoDoHangLoi = unitPrice > 0 && loiKg > 0 ? Math.round(loiKg * unitPrice) : 0;
+
   const sttCode = String(line.materialCode || '').trim();
   const label = String(line.materialName || line.materialCode || '—').trim() || '—';
   return {
@@ -11525,10 +11579,11 @@ function buildBbDanhGiaSummaryNvlRow(input: {
     tiLeHaoHutThucTe: null,
     dinhMucVatTuKg,
     thucXuatKg,
-    loiKg: null,
+    loiKg: loiKg > 0 ? loiKg : null,
     chenhLechKg,
     donGia: unitPrice > 0 ? unitPrice : null,
     thanhTien: unitPrice > 0 || chenhLechKg !== 0 ? thanhTien : null,
+    tienLoDoHangLoi: tienLoDoHangLoi > 0 ? tienLoDoHangLoi : null,
     danhGia: ''
   };
 }
@@ -11552,10 +11607,17 @@ function buildBbDanhGiaSummaryTongRow(
     ...emptyBbDanhGiaSummaryMetricFields(),
     dinhMucVatTuKg: sum(r => r.dinhMucVatTuKg),
     thucXuatKg: sum(r => r.thucXuatKg),
-    loiKg: null,
+    loiKg: sum(r => r.loiKg),
     chenhLechKg: sum(r => r.chenhLechKg),
     thanhTien: Math.round(
       nvlRows.reduce((acc, row) => acc + (row.thanhTien != null && Number.isFinite(row.thanhTien) ? row.thanhTien : 0), 0)
+    ),
+    tienLoDoHangLoi: Math.round(
+      nvlRows.reduce(
+        (acc, row) =>
+          acc + (row.tienLoDoHangLoi != null && Number.isFinite(row.tienLoDoHangLoi) ? row.tienLoDoHangLoi : 0),
+        0
+      )
     )
   };
 }
@@ -11580,6 +11642,16 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
    * Chỉ định mức nhựa — không dùng totalNormKg cả lệnh.
    */
   tongNhuaDinhMucKg?: number;
+  /**
+   * Banner «Tổng nhựa thành phẩm» (cân TT: nhua_tt_kg).
+   * Ưu tiên hơn Σ klThucTeKg dòng NVL / công thức kho.
+   */
+  tongNhuaThanhPhamKg?: number;
+  /**
+   * Banner «Khối lượng màng» / màng thành phẩm (cân TT: khoi_luong_mang_kg).
+   * Không lấy từ klThucTeKg dòng màng trên tiêu hao (đó không phải màng TP).
+   */
+  tongMangThanhPhamKg?: number;
 }): BbDanhGiaHaoHutGroup[] {
   const products = input.products || [];
   const materials = input.materials || [];
@@ -11613,24 +11685,45 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
 
     const plasticLines = (thucDung?.lines || []).filter(isBbThucDungPlasticSectionRow);
     const otherLines = (thucDung?.lines || []).filter(line => !isBbThucDungPlasticSectionRow(line));
-    const filmLines = otherLines.filter(line =>
-      isWarehouseFilmItem(line.materialCode, line.materialName, line.unit)
-    );
 
+    const plasticFinishedFromBanner =
+      input.tongNhuaThanhPhamKg != null &&
+      Number.isFinite(input.tongNhuaThanhPhamKg) &&
+      input.tongNhuaThanhPhamKg > 0
+        ? input.tongNhuaThanhPhamKg
+        : 0;
     const plasticFinishedFromHeader = plasticLines
       .map(row => row.nhuaThanhPhamHeaderKg)
       .find(kg => kg != null && Number.isFinite(kg) && kg > 0);
-    const plasticFinished =
-      plasticFinishedFromHeader != null && plasticFinishedFromHeader > 0
-        ? plasticFinishedFromHeader
-        : plasticLines.reduce(
-            (sum, row) => sum + (Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0),
-            0
-          );
-    const filmFinished = filmLines.reduce(
+    const plasticFinishedFromLines = plasticLines.reduce(
       (sum, row) => sum + (Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0),
       0
     );
+    /** Nhựa TP: banner cân TT → header dòng → group (kho, chỉ khi > 0) → Σ phân bổ NVL (≥ 0). */
+    const plasticFinishedRaw =
+      plasticFinishedFromBanner > 0
+        ? plasticFinishedFromBanner
+        : plasticFinishedFromHeader != null && plasticFinishedFromHeader > 0
+          ? plasticFinishedFromHeader
+          : group.tongNhuaThanhPham > 0
+            ? group.tongNhuaThanhPham
+            : plasticFinishedFromLines;
+    const plasticFinished = Math.max(0, Number.isFinite(plasticFinishedRaw) ? plasticFinishedRaw : 0);
+
+    const filmFinishedFromBanner =
+      input.tongMangThanhPhamKg != null &&
+      Number.isFinite(input.tongMangThanhPhamKg) &&
+      input.tongMangThanhPhamKg > 0
+        ? input.tongMangThanhPhamKg
+        : 0;
+    /** Màng TP: banner cân TT / kho — không lấy số âm từ công thức kho. */
+    const filmFinishedRaw =
+      filmFinishedFromBanner > 0
+        ? filmFinishedFromBanner
+        : group.tongMangThanhPham > 0
+          ? group.tongMangThanhPham
+          : 0;
+    const filmFinished = Math.max(0, Number.isFinite(filmFinishedRaw) ? filmFinishedRaw : 0);
 
     // Chỉ định mức nhựa (banner Tổng nhựa định mức) — không lấy totalNormKg cả lệnh.
     const bannerNhuaDm =
@@ -11647,14 +11740,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
           : 0;
     const tongMangDinhMucEval = group.tongMangDinhMuc;
 
-    const tongNhuaThanhPham = roundQty(
-      plasticFinished > 0 ? plasticFinished : group.tongNhuaThanhPham || 0,
-      4
-    );
-    const tongMangThanhPham = roundQty(
-      filmFinished > 0 ? filmFinished : group.tongMangThanhPham || 0,
-      4
-    );
+    const tongNhuaThanhPham = roundQty(plasticFinished, 4);
+    const tongMangThanhPham = roundQty(filmFinished, 4);
     const tongNhuaDinhMuc = roundQty(tongNhuaDinhMucEval, 4);
     const tongMangDinhMuc = roundQty(tongMangDinhMucEval, 4);
     const giaTriHaoHutNhuaKg = roundQty(tongNhuaThanhPham - tongNhuaDinhMuc, 4);
@@ -11712,7 +11799,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         bomDinhMucKg: lookupBbBomDinhMucKg(bomDinhMucByMaterial, line.materialCode, line.materialName),
         donGia: resolveDonGia(line),
         tongNhuaDinhMucKg: tongNhuaDinhMuc,
-        tongNhuaThucXuatKg
+        tongNhuaThucXuatKg,
+        tongNhuaLoiHongKg: hangLoiNhuaKg
       })
     );
     const otherNvlRows = otherLines.map(line =>
@@ -11741,7 +11829,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         label: 'Tỉ lệ hàng lỗi hỏng/ Thành phẩm + Hàng lỗi',
         ...emptyBbDanhGiaSummaryMetricFields(),
         trongLuongLoiKg: roundQty(hangLoiTongKg, 4),
-        trongLuongThanhPhamKg: roundQty(thanhPhamTongKg, 4),
+        /** Mẫu số = Thành phẩm + Hàng lỗi. */
+        trongLuongThanhPhamKg: roundQty(thanhPhamTongKg + hangLoiTongKg, 4),
         tiLeHaoHutDinhMucPercent: 2,
         tiLeHaoHutThucTe: computePercentRatio(hangLoiTongKg, thanhPhamTongKg + hangLoiTongKg)
       },
@@ -11761,9 +11850,9 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         section: 'tron',
         label: 'Tỉ lệ màng lỗi hỏng/ Thành phẩm + Hàng lỗi',
         ...emptyBbDanhGiaSummaryMetricFields(),
-        /** Chỉ trọng lượng màng — không cộng nhựa TP / lỗi nhựa. */
+        /** Chỉ trọng lượng màng — mẫu số = màng TP + màng lỗi. */
         trongLuongLoiKg: roundQty(hangLoiMangKg, 4),
-        trongLuongThanhPhamKg: roundQty(tongMangThanhPham, 4),
+        trongLuongThanhPhamKg: roundQty(tongMangThanhPham + hangLoiMangKg, 4),
         tiLeHaoHutDinhMucPercent: 2,
         tiLeHaoHutThucTe: computePercentRatio(hangLoiMangKg, tongMangThanhPham + hangLoiMangKg)
       },

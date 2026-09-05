@@ -472,7 +472,32 @@ export function buildBbMachineReportSnapshot(input: {
     selectedMachine: input.selectedMachine,
     // Banner «Tổng nhựa định mức» (chỉ nhựa ĐM, vd. 10,86×32 + 8,86×50).
     tongNhuaDinhMucKg:
-      insulationPlasticNorm.weightKg > 0 ? insulationPlasticNorm.weightKg : undefined
+      insulationPlasticNorm.weightKg > 0
+        ? insulationPlasticNorm.weightKg
+        : canTuDongTongHopTotals && canTuDongTongHopTotals.nhua_dm_kg > 0
+          ? canTuDongTongHopTotals.nhua_dm_kg
+          : undefined,
+    // Banner «Tổng nhựa thành phẩm» (nhua_tt) + màng TP (khoi_luong_mang) — tỉ lệ lỗi.
+    // Không dùng TL nhựa TP nhập kho (công thức tồn) vì có thể âm khi tồn/xuất lệch.
+    tongNhuaThanhPhamKg: (() => {
+      if (canTuDongTongHopTotals && Number.isFinite(canTuDongTongHopTotals.nhua_tt_kg)) {
+        const kg = Math.max(0, canTuDongTongHopTotals.nhua_tt_kg);
+        if (kg > 0) return kg;
+      }
+      if (displaySanLuongTotals.weightKg > 0) {
+        return isInsulationMachine
+          ? Math.max(0, displaySanLuongTotals.weightKg - insulationFilmWeightKg)
+          : displaySanLuongTotals.weightKg;
+      }
+      return undefined;
+    })(),
+    tongMangThanhPhamKg: (() => {
+      if (canTuDongTongHopTotals && Number.isFinite(canTuDongTongHopTotals.khoi_luong_mang_kg)) {
+        const kg = Math.max(0, canTuDongTongHopTotals.khoi_luong_mang_kg);
+        if (kg > 0) return kg;
+      }
+      return insulationFilmWeightKg > 0 ? insulationFilmWeightKg : undefined;
+    })()
   });
 
   const damagedWeightByKind = resolveBbLoiHongCardWeightByKind({

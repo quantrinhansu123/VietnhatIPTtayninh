@@ -1606,6 +1606,7 @@ function BbMachineOrderPrintSheet({
                     <col className="bb-eval-sum-col-num" />
                     <col className="bb-eval-sum-col-num" />
                     <col className="bb-eval-sum-col-num" />
+                    <col className="bb-eval-sum-col-num" />
                     <col className="bb-eval-sum-col-money" />
                     <col className="bb-eval-sum-col-money" />
                     <col className="bb-eval-sum-col-note" />
@@ -1635,8 +1636,23 @@ function BbMachineOrderPrintSheet({
                         <br />
                         (TX − ĐM)
                       </th>
+                      <th
+                        className="shift-summary-print-num"
+                        title="KL lỗi hỏng phân bổ theo tỉ lệ % (vật tư trộn) hoặc theo dòng"
+                      >
+                        Lỗi hỏng
+                        <br />
+                        (kg)
+                      </th>
                       <th className="shift-summary-print-num">Đơn giá</th>
-                      <th className="shift-summary-print-num">Thành tiền</th>
+                      <th
+                        className="shift-summary-print-num"
+                        title="Tiền lỗ do hàng lỗi = Lỗi hỏng (kg) × Đơn giá"
+                      >
+                        Tiền lỗ
+                        <br />
+                        do hàng lỗi
+                      </th>
                       <th>Đánh giá</th>
                     </tr>
                   </thead>
@@ -1656,15 +1672,16 @@ function BbMachineOrderPrintSheet({
                             <td className="shift-summary-print-num">{fmtQty(row.dinhMucVatTuKg)}</td>
                             <td className="shift-summary-print-num">{fmtThucXuatKg(row.thucXuatKg)}</td>
                             <td className="shift-summary-print-num">{fmtQty(row.chenhLechKg)}</td>
+                            <td className="shift-summary-print-num">{fmtThucXuatKg(row.loiKg)}</td>
                             <td className="shift-summary-print-num">{fmtDonGia(row.donGia)}</td>
-                            <td className="shift-summary-print-num">{fmtMoneyCell(row.thanhTien)}</td>
+                            <td className="shift-summary-print-num">{fmtMoneyCell(row.tienLoDoHangLoi)}</td>
                             <td>{row.danhGia || ''}</td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={8} className="shift-summary-print-center">
+                        <td colSpan={9} className="shift-summary-print-center">
                           Chưa có dòng {title.toLowerCase()}.
                         </td>
                       </tr>
@@ -1678,7 +1695,7 @@ function BbMachineOrderPrintSheet({
                 <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
                   <tbody>
                     <tr>
-                      <td colSpan={8} className="shift-summary-print-center">
+                      <td colSpan={9} className="shift-summary-print-center">
                         Chưa có bảng báo cáo tổng hợp — bấm Tính toán trên báo cáo.
                       </td>
                     </tr>

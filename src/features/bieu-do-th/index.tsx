@@ -9,6 +9,7 @@ import {
   TableToolbar,
   TableDateFilter
 } from '../../components/shared/table';
+import { normalizeMachines, resolveMachineDisplayValue, type MachineRow } from '../danh-sach-may';
 import BieuDoThCharts, { compareShiftCa } from './BieuDoThCharts';
 
 export type BaoCaoTongHopListRow = {
@@ -105,8 +106,15 @@ function signedClass(value: number | null) {
   return value > 0 ? 'text-emerald-700' : 'text-rose-700';
 }
 
+function formatMayLabel(may: string, machines: MachineRow[]) {
+  const raw = String(may || '').trim();
+  if (!raw || raw === 'all') return raw === 'all' ? 'Tất cả' : '—';
+  return resolveMachineDisplayValue(raw, machines) || raw;
+}
+
 export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
   const [rows, setRows] = useState<BaoCaoTongHopListRow[]>([]);
+  const [machines, setMachines] = useState<MachineRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -120,12 +128,17 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
       params.set('limit', '1000');
       if (dateFrom) params.set('ngay_tu', dateFrom);
       if (dateTo) params.set('ngay_den', dateTo);
-      const res = await fetch(`/api/bao-cao-tong-hop?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(String(data?.error || 'Không tải được bao_cao_tong_hop.'));
+      const [tongHopRes, machineRes] = await Promise.all([
+        fetch(`/api/bao-cao-tong-hop?${params.toString()}`),
+        fetch('/api/danh-sach-may')
+      ]);
+      const tongHopData = await tongHopRes.json().catch(() => ({}));
+      const machineData = await machineRes.json().catch(() => ({}));
+      if (!tongHopRes.ok) {
+        throw new Error(String(tongHopData?.error || 'Không tải được bao_cao_tong_hop.'));
       }
-      setRows(normalizeRows(data));
+      setRows(normalizeRows(tongHopData));
+      if (machineRes.ok) setMachines(normalizeMachines(machineData));
     } catch (err) {
       setRows([]);
       setError(err instanceof Error ? err.message : 'Lỗi tải Biểu đồ TH.');
@@ -144,9 +157,9 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
       if (d !== 0) return d;
       const caCmp = compareShiftCa(a.ca, b.ca);
       if (caCmp !== 0) return caCmp;
-      return String(a.may).localeCompare(String(b.may), 'vi');
+      return formatMayLabel(a.may, machines).localeCompare(formatMayLabel(b.may, machines), 'vi');
     });
-  }, [rows]);
+  }, [rows, machines]);
 
   const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo);
 
@@ -200,7 +213,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
         </TableToolbar>
       </section>
 
-      <TableShell minWidthClassName="min-w-[1280px]">
+      <TableShell minWidthClassName="min-w-[1100px]">
         <TableHead>
           <TableHeadCell>Ngày</TableHeadCell>
           <TableHeadCell>Ca</TableHeadCell>
@@ -208,8 +221,6 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           <TableHeadCell className="text-right">SL YC</TableHeadCell>
           <TableHeadCell className="text-right">TL nhựa YC</TableHeadCell>
           <TableHeadCell className="text-right">TL xuất</TableHeadCell>
-          <TableHeadCell className="text-right">Tồn đầu</TableHeadCell>
-          <TableHeadCell className="text-right">Tồn cuối</TableHeadCell>
           <TableHeadCell className="text-right">SL SP</TableHeadCell>
           <TableHeadCell className="text-right">TL màng</TableHeadCell>
           <TableHeadCell className="text-right">TL nhựa TP</TableHeadCell>
@@ -220,12 +231,12 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
         </TableHead>
         <TableBody>
           {isLoading ? (
-            <TableEmptyRow colSpan={15}>
+            <TableEmptyRow colSpan={13}>
               <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
               Đang tải…
             </TableEmptyRow>
           ) : sortedRows.length === 0 ? (
-            <TableEmptyRow colSpan={15}>
+            <TableEmptyRow colSpan={13}>
               Chưa có dữ liệu. Vào Phân tích tự động → Tính toán để ghi bao_cao_tong_hop.
             </TableEmptyRow>
           ) : (
@@ -241,12 +252,12 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
                     : ''}
                 </td>
                 <td className="px-4 py-2.5 font-semibold text-zinc-800">{row.ca}</td>
-                <td className="px-4 py-2.5 font-semibold text-zinc-800">{row.may}</td>
+                <td className="px-4 py-2.5 font-semibold text-zinc-800">
+                  {formatMayLabel(row.may, machines)}
+                </td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_yeu_cau)}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_yeu_cau_kg)}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_xuat_tong_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.ton_dau_tong_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.ton_cuoi_tong_kg)}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_san_luong)}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_mang_kg)}</td>
                 <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_thanh_pham_kg)}</td>

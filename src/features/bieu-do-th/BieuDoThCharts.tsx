@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { BarChart3, Scale, TrendingUp } from 'lucide-react';
+import { BarChart3, TrendingUp } from 'lucide-react';
 
 export type BieuDoThChartSourceRow = {
   ngay_tu: string;
@@ -348,9 +348,9 @@ export default function BieuDoThCharts({
 
         <div className={`${cardClass} lg:col-span-2`} style={cardStyle}>
           <ChartCardHeader
-            icon={<Scale className="h-3.5 w-3.5 text-slate-500" />}
-            title="Tồn đầu / tồn cuối theo ca"
-            subtitle="Khối lượng tồn máy theo Ngày · Ca"
+            icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />}
+            title="Chênh lệch nhựa theo ca"
+            subtitle="Dương = lãi · Âm = lỗ (kg)"
           />
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -360,8 +360,7 @@ export default function BieuDoThCharts({
                 <YAxis {...yAxisProps} />
                 <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={kgTooltip} />} />
                 <Legend wrapperStyle={legendStyle} />
-                <Bar dataKey="tonDau" name="Tồn đầu" fill={SERIES_AMBER} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="tonCuoi" name="Tồn cuối" fill={SERIES_AQUA} radius={[4, 4, 0, 0]} />
+                <ReferenceLine y={0} stroke={GRID_COLOR} />
                 <Bar dataKey="chenhLech" name="Chênh lệch nhựa" radius={[4, 4, 0, 0]}>
                   {chartData.map(point => (
                     <Cell

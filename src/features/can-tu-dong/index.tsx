@@ -1312,52 +1312,6 @@ export function CanTuDongPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={openAutoFillModal}
-            disabled={loading || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp || isBulkDeleting || selectedCount === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 transition hover:bg-violet-100 disabled:opacity-60"
-            title={`Điền Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
-          >
-            {isAutoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {isAutoFilling ? 'Đang điền...' : 'Tự động điền'}
-          </button>
-          <button
-            type="button"
-            onClick={openBulkNgayModal}
-            disabled={
-              loading || isSettingNgay || isSettingCa || isSettingMaSp || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
-            }
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Chọn ngày rồi điền cột Ngày hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
-          >
-            {isSettingNgay ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
-            {isSettingNgay ? 'Đang điền Ngày...' : 'Chọn Ngày · điền hàng loạt'}
-          </button>
-          <button
-            type="button"
-            onClick={openBulkCaModal}
-            disabled={
-              loading || isSettingCa || isSettingNgay || isSettingMaSp || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
-            }
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 text-xs font-bold text-indigo-900 transition hover:bg-indigo-100 disabled:opacity-60"
-            title="Chọn ca rồi điền cột Ca hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
-          >
-            {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-            {isSettingCa ? 'Đang điền Ca...' : 'Chọn Ca · điền hàng loạt'}
-          </button>
-          <button
-            type="button"
-            onClick={openBulkMaSpModal}
-            disabled={
-              loading || isSettingMaSp || isSettingCa || isSettingNgay || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
-            }
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-3 text-xs font-bold text-teal-900 transition hover:bg-teal-100 disabled:opacity-60"
-            title="Đồng bộ TL tiêu chuẩn theo Mã SP (tiền tố QR trước _ / +) hoặc chọn mã trong danh mục"
-          >
-            {isSettingMaSp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-            {isSettingMaSp ? 'Đang đồng bộ...' : 'Đồng bộ theo Mã SP'}
-          </button>
-          <button
-            type="button"
             onClick={handleDownloadExcel}
             disabled={loading || visibleRecords.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
@@ -1688,18 +1642,6 @@ export function CanTuDongPanel({
             >
               Tất cả chênh lệch
             </button>
-            <button
-              type="button"
-              onClick={() => setDiffFilter('gt-2pct')}
-              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
-                diffFilter === 'gt-2pct'
-                  ? 'border-violet-300 bg-violet-600 text-white'
-                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
-              }`}
-              title={`Chỉ hiện dòng |%| > ${PHAN_TICH_NGUONG_PCT}%; bảng Phân tích tách theo ngưỡng ${PHAN_TICH_NGUONG_PCT}%`}
-            >
-              So sánh với {PHAN_TICH_NGUONG_PCT}%
-            </button>
           </div>
           <span className="ml-auto text-[11px] font-semibold text-zinc-500">
             {loading
@@ -1824,16 +1766,6 @@ export function CanTuDongPanel({
       {selectedCount > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-3 py-2.5">
           <p className="mr-auto text-xs font-bold text-rose-800">Đã chọn {selectedCount} dòng</p>
-          <button
-            type="button"
-            onClick={openAutoFillModal}
-            disabled={isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp || isBulkDeleting}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-600 px-3 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
-            title={`Ngày = 20/08/2026 · Ca = ${AUTO_FILL_CA} · Lệnh SX = ${AUTO_FILL_LENH_SX} · Máy = ${AUTO_FILL_MAY}`}
-          >
-            {isAutoFilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {isAutoFilling ? 'Đang điền...' : 'Tự động điền'}
-          </button>
           <button
             type="button"
             onClick={clearSelection}

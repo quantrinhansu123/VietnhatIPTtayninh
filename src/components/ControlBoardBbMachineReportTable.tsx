@@ -80,6 +80,8 @@ import {
   splitBbLoiHongMaterialLinesByMixing,
   splitBbDanhGiaSummaryRowsBySection,
   splitBbDanhGiaSummaryRowsRatioVsDetail,
+  bbDanhGiaSummaryRowKey,
+  mergeBbDanhGiaSummaryNotes,
   buildBbLoiHongMaterialLinesForShift,
   isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
@@ -677,10 +679,15 @@ export default function ControlBoardBbMachineReportTable({
     if (
       activeTab === 'tong_vat_tu_thuc_dung' ||
       activeTab === 'danh_gia_hao_hut' ||
+      String(activeTab) === 'bao_cao_lech_dinh_muc' ||
       String(activeTab) === 'tong_dinh_muc_nvl_nhap_kho' ||
       String(activeTab) === 'bieu_do_so_sanh'
     ) {
-      setActiveTab(activeTab === 'danh_gia_hao_hut' ? 'danh_gia_tong_hop' : 'lenh_sx');
+      setActiveTab(
+        activeTab === 'danh_gia_hao_hut' || String(activeTab) === 'bao_cao_lech_dinh_muc'
+          ? 'danh_gia_tong_hop'
+          : 'lenh_sx'
+      );
     }
   }, [activeTab]);
   /** Đánh dấu tab đã rà soát xong (chỉ tạm trong phiên làm việc, không lưu lại). */
@@ -724,6 +731,8 @@ export default function ControlBoardBbMachineReportTable({
   const [giaiTrinhPrintReport, setGiaiTrinhPrintReport] = useState<BbGiaiTrinhPrintReport | null>(null);
   const [pendingGiaiTrinhPrint, setPendingGiaiTrinhPrint] = useState(false);
   const [reportSnapshot, setReportSnapshot] = useState<BbBaoCaoTinhToanPayload | null>(null);
+  const reportSnapshotRef = useRef<BbBaoCaoTinhToanPayload | null>(null);
+  reportSnapshotRef.current = reportSnapshot;
   const [snapshotCalculatedAt, setSnapshotCalculatedAt] = useState('');
   const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [snapshotMessage, setSnapshotMessage] = useState('');
@@ -1124,7 +1133,7 @@ export default function ControlBoardBbMachineReportTable({
         orderCodes: orderCodeFilter
       });
 
-      const payload = buildBbMachineReportSnapshot({
+      const payloadRaw = buildBbMachineReportSnapshot({
         productionOrders: liveProductionOrders,
         products: liveProducts,
         materials: liveMaterials,
@@ -1146,6 +1155,13 @@ export default function ControlBoardBbMachineReportTable({
         includeAllMachines,
         sanLuongSource
       });
+      const payload = {
+        ...payloadRaw,
+        danhGiaGroups: mergeBbDanhGiaSummaryNotes(
+          payloadRaw.danhGiaGroups || [],
+          reportSnapshot?.danhGiaGroups
+        )
+      };
       const body = {
         khoa_on_dinh: snapshotKey,
         ngay_tu: scope.dateFrom || '',
@@ -1441,7 +1457,11 @@ export default function ControlBoardBbMachineReportTable({
         ngayTu: scope.dateFrom,
         ngayDen: scope.dateTo,
         ca: scope.shiftFilter || 'all',
-        may: scope.machineFilter || 'all',
+        // Biểu đồ TH hiện tên máy (không lưu mã máy).
+        may:
+          String(scope.selectedMachine?.name || '').trim() ||
+          String(scope.machineFilter || '').trim() ||
+          'all',
         nguonSanLuong: sanLuongSource || 'acceptance',
         isInsulationMachine: isInsulationMachineText(
           scope.selectedMachine?.name || scope.machineFilter || ''
@@ -2423,6 +2443,50 @@ export default function ControlBoardBbMachineReportTable({
       };
     });
     setGiaiTrinhSaveMessage('');
+  };
+
+  const updateSummaryRowDanhGia = (groupKey: string, rowKey: string, value: string) => {
+    setReportSnapshot(prev => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        danhGiaGroups: (prev.danhGiaGroups || []).map(group => {
+          if (group.groupKey !== groupKey) return group;
+          return {
+            ...group,
+            summaryRows: (group.summaryRows || []).map(row =>
+              bbDanhGiaSummaryRowKey(row) === rowKey ? { ...row, danhGia: value } : row
+            )
+          };
+        })
+      };
+      reportSnapshotRef.current = next;
+      return next;
+    });
+  };
+
+  const persistSummaryDanhGiaNotes = async () => {
+    const snapshot = reportSnapshotRef.current;
+    if (!snapshot) return;
+    try {
+      await fetch('/api/bb-bao-cao-tinh-toan', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          khoa_on_dinh: reportSnapshotKey,
+          ngay_tu: dateFrom || '',
+          ngay_den: dateTo || '',
+          ca: shiftFilter || 'all',
+          may: machineFilter || 'all',
+          nguon_san_luong: sanLuongSource || 'acceptance',
+          include_all_machines: Boolean(includeAllMachines),
+          ma_lenh_filter: orderCodeFilter,
+          payload: snapshot
+        })
+      });
+    } catch {
+      // Giữ bản local nếu lưu DB lỗi — người dùng vẫn gõ được trên UI.
+    }
   };
 
   const saveGiaiTrinhToDb = async () => {
@@ -3439,7 +3503,7 @@ export default function ControlBoardBbMachineReportTable({
                 Báo cáo tổng hợp
               </p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Cùng bảng trên phiếu in — bấm «Tính toán» để cập nhật từ tiêu hao NVL + lỗi + lệnh.
+                Gồm bảng tổng hợp + lệch định mức (TX − ĐM). Bấm «Tính toán» để cập nhật.
               </p>
             </div>
           ) : activeTab === 'giai_trinh' ? (
@@ -5960,8 +6024,12 @@ export default function ControlBoardBbMachineReportTable({
                   splitBbDanhGiaSummaryRowsRatioVsDetail(mixingRows);
                 const renderRatioTable = (sectionRows: typeof rows) => {
                   if (sectionRows.length === 0) return null;
-                  const fmtWeight = (value: number | null | undefined) =>
-                    value != null && Number.isFinite(value) ? formatKg(value, 2) : '—';
+                  const fmtWeight = (value: number | null | undefined) => {
+                    if (value == null || !Number.isFinite(value)) return '—';
+                    // Trọng lượng TP không hiện âm (snapshot cũ từ công thức kho).
+                    const shown = value < 0 ? 0 : value;
+                    return formatKg(shown, 2);
+                  };
                   return (
                     <div className="overflow-hidden rounded-lg border border-rose-200">
                       <div className="border-b border-rose-200 bg-rose-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-900">
@@ -5980,7 +6048,7 @@ export default function ControlBoardBbMachineReportTable({
                               </th>
                               <th
                                 className="whitespace-nowrap px-2 py-2.5 text-right font-black"
-                                title="Hàng lỗi: nhựa TP + màng TP. Dòng màng: chỉ màng TP."
+                                title="Dòng / Thành phẩm: chỉ TP. Dòng / Thành phẩm + Hàng lỗi: TP + lỗi (mẫu số tỉ lệ)."
                               >
                                 Trọng lượng thành phẩm
                               </th>
@@ -6044,8 +6112,10 @@ export default function ControlBoardBbMachineReportTable({
                     value != null && Number.isFinite(value) && value > 0
                       ? formatMoney(value, 0)
                       : '—';
+                  const danhGiaInputClass =
+                    'w-full min-w-[96px] rounded border border-zinc-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]';
                   return (
-                    <div className={`overflow-hidden rounded-lg border ${border}`}>
+                    <div className={`min-w-0 overflow-hidden rounded-lg border ${border}`}>
                       <div className={`border-b ${border} ${headBg} px-3 py-2 text-xs font-black uppercase tracking-wider`}>
                         {title}
                         {sectionRows.filter(r => r.id === 'nvl').length > 0
@@ -6058,16 +6128,17 @@ export default function ControlBoardBbMachineReportTable({
                         </p>
                       ) : (
                         <div className="bb-table-scroll overflow-x-auto">
-                          <table className="min-w-[1100px] w-full table-fixed text-left text-sm font-semibold">
+                          <table className="min-w-[760px] w-full table-fixed text-left text-sm font-semibold">
                             <colgroup>
-                              <col className="w-[7%]" />
-                              <col className="w-[28%]" />
-                              <col className="w-[12%]" />
-                              <col className="w-[12%]" />
-                              <col className="w-[12%]" />
+                              <col className="w-[6%]" />
+                              <col className="w-[20%]" />
                               <col className="w-[10%]" />
-                              <col className="w-[11%]" />
-                              <col className="w-[8%]" />
+                              <col className="w-[10%]" />
+                              <col className="w-[10%]" />
+                              <col className="w-[10%]" />
+                              <col className="w-[10%]" />
+                              <col className="w-[12%]" />
+                              <col className="w-[12%]" />
                             </colgroup>
                             <thead className="bg-slate-50 text-[10px] leading-tight text-slate-700">
                               <tr>
@@ -6098,11 +6169,24 @@ export default function ControlBoardBbMachineReportTable({
                                   <br />
                                   (TX − ĐM)
                                 </th>
+                                <th
+                                  className="px-1.5 py-2.5 text-center font-black leading-snug uppercase tracking-wide"
+                                  title="KL lỗi hỏng phân bổ theo tỉ lệ % (vật tư trộn) hoặc theo dòng"
+                                >
+                                  Lỗi hỏng
+                                  <br />
+                                  (kg)
+                                </th>
                                 <th className="px-1.5 py-2.5 text-center font-black uppercase tracking-wide">
                                   Đơn giá
                                 </th>
-                                <th className="px-1.5 py-2.5 text-center font-black uppercase tracking-wide">
-                                  Thành tiền
+                                <th
+                                  className="px-1.5 py-2.5 text-center font-black leading-snug uppercase tracking-wide"
+                                  title="Tiền lỗ do hàng lỗi = Lỗi hỏng (kg) × Đơn giá"
+                                >
+                                  Tiền lỗ
+                                  <br />
+                                  do hàng lỗi
                                 </th>
                                 <th className="px-2 py-2.5 font-black uppercase tracking-wide">
                                   Đánh giá
@@ -6112,6 +6196,7 @@ export default function ControlBoardBbMachineReportTable({
                             <tbody className="divide-y divide-zinc-100">
                               {sectionRows.map((row, index) => {
                                 const isTong = row.id === 'tong';
+                                const rowKey = bbDanhGiaSummaryRowKey(row);
                                 return (
                                   <tr
                                     key={`${row.section || 'tron'}|${row.id}|${row.sttCode || row.materialCode || ''}|${index}`}
@@ -6132,14 +6217,33 @@ export default function ControlBoardBbMachineReportTable({
                                     <td className="px-2 py-2 text-right font-mono">
                                       {fmtSignedQty(row.chenhLechKg)}
                                     </td>
+                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
+                                      {fmtThucXuatKg(row.loiKg)}
+                                    </td>
                                     <td className="px-2 py-2 text-right font-mono">
                                       {fmtDonGia(row.donGia)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {fmtMoneyCell(row.thanhTien)}
+                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
+                                      {fmtMoneyCell(row.tienLoDoHangLoi)}
                                     </td>
-                                    <td className="px-2 py-2 text-zinc-500">
-                                      {row.danhGia || ''}
+                                    <td className="px-1.5 py-1.5">
+                                      <input
+                                        type="text"
+                                        value={row.danhGia || ''}
+                                        disabled={!reportSnapshot || isTong}
+                                        onChange={event =>
+                                          updateSummaryRowDanhGia(
+                                            group.groupKey,
+                                            rowKey,
+                                            event.target.value
+                                          )
+                                        }
+                                        onBlur={() => {
+                                          void persistSummaryDanhGiaNotes();
+                                        }}
+                                        placeholder={isTong ? '' : 'Gõ đánh giá...'}
+                                        className={danhGiaInputClass}
+                                      />
                                     </td>
                                   </tr>
                                 );
@@ -6176,8 +6280,10 @@ export default function ControlBoardBbMachineReportTable({
                     ) : (
                       <div className="space-y-3 p-3">
                         {renderRatioTable(ratioRows)}
-                        {renderSummaryTable('Vật tư trộn', mixingDetailRows, 'violet')}
-                        {renderSummaryTable('Các vật tư còn lại', otherRows, 'slate')}
+                        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
+                          {renderSummaryTable('Vật tư trộn', mixingDetailRows, 'violet')}
+                          {renderSummaryTable('Các vật tư còn lại', otherRows, 'slate')}
+                        </div>
                         {(() => {
                           const sumThanhTien = (sectionRows: typeof rows) => {
                             const tongRow = sectionRows.find(r => r.id === 'tong');
@@ -6240,6 +6346,269 @@ export default function ControlBoardBbMachineReportTable({
                             </div>
                           );
                         })()}
+                        <div className="overflow-hidden rounded-lg border border-rose-200">
+                          <div className="border-b border-rose-200 bg-rose-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-900">
+                            Báo cáo lệch định mức
+                            <span className="ml-2 font-semibold normal-case tracking-normal text-rose-700/80">
+                              Nhựa ĐM / TL nhựa = tổng cân tự động theo Ngày · Ca · Máy. Lệch = TL nhựa − Nhựa ĐM
+                            </span>
+                          </div>
+                          <div className="space-y-3 p-3">
+                            {(() => {
+                              const canTuDongTotals =
+                                canTuDongTongHopBanner?.totals ||
+                                reportSnapshot?.summary?.canTuDongTongHopTotals ||
+                                null;
+                              const nhuaDmTong = Math.max(
+                                0,
+                                Number(canTuDongTotals?.nhua_dm_kg) ||
+                                  insulationPlasticNorm.weightKg ||
+                                  0
+                              );
+                              const tlNhuaTong = Math.max(
+                                0,
+                                Number(canTuDongTotals?.nhua_tt_kg) || displayedPlasticWeightKg || 0
+                              );
+                              const thucDungGroup = thucDungGroups.find(
+                                g => g.groupKey === group.groupKey || g.orderCode === group.orderCode
+                              );
+                              const resolveTiLePercent = (row: (typeof mixingDetailRows)[number]) => {
+                                const code = String(row.materialCode || row.sttCode || '')
+                                  .trim()
+                                  .toUpperCase();
+                                const line = (thucDungGroup?.lines || []).find(
+                                  l =>
+                                    String(l.materialCode || '')
+                                      .trim()
+                                      .toUpperCase() === code
+                                );
+                                const tiLe =
+                                  line?.tiLeDinhMucPercent != null &&
+                                  Number.isFinite(line.tiLeDinhMucPercent) &&
+                                  line.tiLeDinhMucPercent > 0
+                                    ? line.tiLeDinhMucPercent
+                                    : line?.tiLeThucTeTbPercent != null &&
+                                        Number.isFinite(line.tiLeThucTeTbPercent) &&
+                                        line.tiLeThucTeTbPercent > 0
+                                      ? line.tiLeThucTeTbPercent
+                                      : null;
+                                return tiLe;
+                              };
+                              const fmtQty = (value: number | null | undefined) =>
+                                value != null && Number.isFinite(value) ? formatKg(value, 2) : '—';
+                              const fmtSigned = (value: number | null | undefined) => {
+                                if (value == null || !Number.isFinite(value)) return '—';
+                                if (value === 0) return formatKg(0, 2);
+                                return formatSignedKg(value, 2);
+                              };
+                              const fmtDonGia = (value: number | null | undefined) =>
+                                value != null && Number.isFinite(value) && value > 0
+                                  ? formatMoney(value, 0)
+                                  : '—';
+                              const fmtMoneyCell = (value: number | null | undefined) =>
+                                value != null && Number.isFinite(value) && value !== 0
+                                  ? `${formatMoney(value, 0)}`
+                                  : '—';
+                              const pctLech = (
+                                dm: number | null | undefined,
+                                lech: number | null | undefined
+                              ) => {
+                                if (
+                                  dm == null ||
+                                  lech == null ||
+                                  !Number.isFinite(dm) ||
+                                  !Number.isFinite(lech) ||
+                                  !(dm > 0)
+                                ) {
+                                  return '—';
+                                }
+                                return formatPercent((lech / dm) * 100, 2);
+                              };
+                              const dataRows = mixingDetailRows.filter(
+                                row => row.id === 'nvl' || row.id === 'tong'
+                              );
+                              const resolveRowMoney = (row: (typeof mixingDetailRows)[number]) => {
+                                const isTong = row.id === 'tong';
+                                const tiLe = isTong ? null : resolveTiLePercent(row);
+                                const nhuaDm = isTong
+                                  ? nhuaDmTong
+                                  : tiLe != null && nhuaDmTong > 0
+                                    ? (nhuaDmTong * tiLe) / 100
+                                    : null;
+                                const tlNhua = isTong
+                                  ? tlNhuaTong
+                                  : tiLe != null && tlNhuaTong > 0
+                                    ? (tlNhuaTong * tiLe) / 100
+                                    : null;
+                                const lechDm =
+                                  nhuaDm != null &&
+                                  tlNhua != null &&
+                                  Number.isFinite(nhuaDm) &&
+                                  Number.isFinite(tlNhua)
+                                    ? tlNhua - nhuaDm
+                                    : null;
+                                const thanhTienNvl =
+                                  !isTong &&
+                                  lechDm != null &&
+                                  row.donGia != null &&
+                                  row.donGia > 0
+                                    ? Math.round(lechDm * row.donGia)
+                                    : null;
+                                return { isTong, nhuaDm, tlNhua, lechDm, thanhTienNvl, tiLe };
+                              };
+                              const tongThanhTien = dataRows
+                                .filter(row => row.id === 'nvl')
+                                .reduce((acc, row) => {
+                                  const { thanhTienNvl } = resolveRowMoney(row);
+                                  return acc + (thanhTienNvl != null ? thanhTienNvl : 0);
+                                }, 0);
+                              const danhGiaInputClass =
+                                'w-full min-w-[96px] rounded border border-zinc-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]';
+                              if (dataRows.length === 0) {
+                                return (
+                                  <p className="px-3 py-6 text-center text-sm font-semibold text-zinc-400">
+                                    Chưa có dòng vật tư trộn. Bấm «Tính toán» — Nhựa ĐM / TL nhựa lấy từ cân
+                                    tự động.
+                                  </p>
+                                );
+                              }
+                              return (
+                                <div className="min-w-0 overflow-hidden rounded-lg border border-violet-200">
+                                  <div className="border-b border-violet-200 bg-violet-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-violet-900">
+                                    Vật tư trộn
+                                    {dataRows.filter(r => r.id === 'nvl').length > 0
+                                      ? ` (${dataRows.filter(r => r.id === 'nvl').length} NVL)`
+                                      : ''}
+                                    <span className="ml-2 font-semibold normal-case tracking-normal text-violet-700/80">
+                                      Nhựa ĐM {formatKg(nhuaDmTong, 2)} · TL nhựa{' '}
+                                      {formatKg(tlNhuaTong, 2)} (cân TT)
+                                    </span>
+                                  </div>
+                                  <div className="bb-table-scroll overflow-x-auto">
+                                    <table className="min-w-[1100px] w-full text-left text-sm font-semibold">
+                                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-700">
+                                        <tr>
+                                          <th className="px-2 py-2.5 text-center font-black">STT</th>
+                                          <th className="px-3 py-2.5 font-black">Mã / Tên NVL</th>
+                                          <th
+                                            className="px-2 py-2.5 text-right font-black"
+                                            title="Tổng Nhựa ĐM cân tự động (theo Ngày·Ca) × tỉ lệ % NVL"
+                                          >
+                                            Nhựa ĐM
+                                          </th>
+                                          <th
+                                            className="px-2 py-2.5 text-right font-black"
+                                            title="Tổng TL nhựa cân tự động (theo Ngày·Ca) × tỉ lệ % NVL"
+                                          >
+                                            TL nhựa
+                                          </th>
+                                          <th
+                                            className="px-2 py-2.5 text-right font-black"
+                                            title="Lệch = TL nhựa − Nhựa ĐM"
+                                          >
+                                            Lệch ĐM (kg)
+                                          </th>
+                                          <th
+                                            className="px-2 py-2.5 text-right font-black"
+                                            title="(Lệch ĐM / Nhựa ĐM) × 100"
+                                          >
+                                            % lệch
+                                          </th>
+                                          <th className="px-2 py-2.5 text-right font-black">Đơn giá</th>
+                                          <th
+                                            className="px-2 py-2.5 text-right font-black"
+                                            title="Thành tiền = Lệch ĐM × Đơn giá · dòng Tổng = Σ thành tiền NVL"
+                                          >
+                                            Thành tiền
+                                          </th>
+                                          <th className="px-2 py-2.5 font-black">Đánh giá</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-zinc-200">
+                                        {dataRows.map((row, index) => {
+                                          const { isTong, nhuaDm, tlNhua, lechDm, thanhTienNvl } =
+                                            resolveRowMoney(row);
+                                          const thanhTien = isTong
+                                            ? tongThanhTien !== 0
+                                              ? tongThanhTien
+                                              : null
+                                            : thanhTienNvl;
+                                          return (
+                                            <tr
+                                              key={`lech|${row.section || 'tron'}|${row.id}|${row.sttCode || row.materialCode || ''}|${index}`}
+                                              className={
+                                                isTong
+                                                  ? 'bg-amber-50/80 font-black'
+                                                  : 'hover:bg-rose-50/20'
+                                              }
+                                            >
+                                              <td className="px-2 py-2 text-center font-mono text-xs">
+                                                {row.sttCode || (isTong ? '' : '—')}
+                                              </td>
+                                              <td className="px-3 py-2">
+                                                {row.materialCode ? (
+                                                  <span className="font-mono text-xs font-bold text-zinc-500">
+                                                    {row.materialCode}{' '}
+                                                  </span>
+                                                ) : null}
+                                                {row.label}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-mono">
+                                                {fmtQty(nhuaDm)}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-mono">
+                                                {fmtQty(tlNhua)}
+                                              </td>
+                                              <td
+                                                className={`px-2 py-2 text-right font-mono font-black ${
+                                                  lechDm != null && lechDm > 0
+                                                    ? 'text-rose-700'
+                                                    : lechDm != null && lechDm < 0
+                                                      ? 'text-emerald-700'
+                                                      : 'text-zinc-800'
+                                                }`}
+                                              >
+                                                {fmtSigned(lechDm)}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-mono">
+                                                {pctLech(nhuaDm, lechDm)}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-mono">
+                                                {fmtDonGia(row.donGia)}
+                                              </td>
+                                              <td className="px-2 py-2 text-right font-mono">
+                                                {fmtMoneyCell(thanhTien)}
+                                              </td>
+                                              <td className="px-1.5 py-1.5">
+                                                <input
+                                                  type="text"
+                                                  value={row.danhGia || ''}
+                                                  disabled={!reportSnapshot || isTong}
+                                                  onChange={event =>
+                                                    updateSummaryRowDanhGia(
+                                                      group.groupKey,
+                                                      bbDanhGiaSummaryRowKey(row),
+                                                      event.target.value
+                                                    )
+                                                  }
+                                                  onBlur={() => {
+                                                    void persistSummaryDanhGiaNotes();
+                                                  }}
+                                                  placeholder={isTong ? '' : 'Gõ đánh giá...'}
+                                                  className={danhGiaInputClass}
+                                                />
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

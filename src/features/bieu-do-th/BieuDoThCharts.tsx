@@ -289,7 +289,7 @@ export default function BieuDoThCharts({
           <ChartCardHeader
             icon={<TrendingUp className="h-3.5 w-3.5 text-slate-500" />}
             title="Nhựa theo ca"
-            subtitle="TL xuất · TL nhựa TP · Xuất thực dùng · Chênh lệch"
+            subtitle="Chênh lệch · Lỗi hỏng theo Ngày · Ca"
           />
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -302,38 +302,20 @@ export default function BieuDoThCharts({
                 <ReferenceLine y={0} stroke={GRID_COLOR} />
                 <Line
                   type="monotone"
-                  dataKey="tlXuatNhua"
-                  name="TL xuất nhựa"
-                  stroke={SERIES_BLUE}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="tlNhuaTp"
-                  name="TL nhựa TP"
-                  stroke={SERIES_AQUA}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="xuatThucDung"
-                  name="Xuất thực dùng"
-                  stroke={SERIES_AMBER}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line
-                  type="monotone"
                   dataKey="chenhLech"
                   name="Chênh lệch"
                   stroke={SERIES_ROSE}
                   strokeWidth={2}
                   strokeDasharray="4 3"
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="loiHong"
+                  name="Lỗi"
+                  stroke={SERIES_AMBER}
+                  strokeWidth={2}
                   dot={{ r: 3 }}
                   activeDot={{ r: 5 }}
                 />

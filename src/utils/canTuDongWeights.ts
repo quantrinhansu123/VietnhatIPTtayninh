@@ -426,20 +426,24 @@ export function computeInsulationPlasticNorm(
 }
 
 /**
- * Tem QR: `MãSP_ddmmyy` + serial (vd MT-MN009_3107268472) hoặc `MãSP+LSX...`.
- * Trả về mã SP để khớp lệnh sản xuất.
+ * Tem QR: `MãSP_hậuTố` (vd MT-MN010_4UOOH7T98S1), `MãSP_ddmmyy`+serial,
+ * hoặc `MãSP+LSX...`.
+ * Mã SP = **tiền tố** trước `_` / trước `+` (hoặc trước hậu tố serial `-000001XX`).
  */
 export function parseCanTuDongQrProductCode(raw?: string | null): string {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return '';
   const plusIdx = trimmed.indexOf('+');
-  if (plusIdx > 0) return trimmed.slice(0, plusIdx).trim();
-  const serialMatch = trimmed.match(/^(.+)[_-](\d{6})([0-9A-Za-z]{2,})$/);
+  const beforePlus = plusIdx > 0 ? trimmed.slice(0, plusIdx).trim() : trimmed;
+  if (!beforePlus) return '';
+  const us = beforePlus.indexOf('_');
+  if (us > 0) return beforePlus.slice(0, us).trim();
+  const serialMatch = beforePlus.match(/^(.+)[_-](\d{6})([0-9A-Za-z]{2,})$/);
   if (serialMatch?.[1]) return serialMatch[1].trim();
-  return trimmed;
+  return beforePlus;
 }
 
-/** Đổi phần mã SP trong QR, giữ serial / phần sau `+` nếu có. */
+/** Đổi phần mã SP trong QR, giữ hậu tố `_…` / serial / phần sau `+` nếu có. */
 export function replaceCanTuDongQrProductCode(
   raw: string | null | undefined,
   newProductCode: string
@@ -450,6 +454,8 @@ export function replaceCanTuDongQrProductCode(
   if (!trimmed) return next;
   const plusIdx = trimmed.indexOf('+');
   if (plusIdx > 0) return `${next}${trimmed.slice(plusIdx)}`;
+  const us = trimmed.indexOf('_');
+  if (us > 0) return `${next}${trimmed.slice(us)}`;
   const serialMatch = trimmed.match(/^(.+?)([_-]\d{6}[0-9A-Za-z]{2,})$/);
   if (serialMatch?.[2]) return `${next}${serialMatch[2]}`;
   return next;

@@ -60,8 +60,8 @@ export function TableHeadCell({
   );
 }
 
-export function TableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-zinc-100">{children}</tbody>;
+export function TableBody({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <tbody className={`divide-y divide-zinc-200 ${className}`.trim()}>{children}</tbody>;
 }
 
 export function TableRow({ children, className = '' }: { children: ReactNode; className?: string; key?: string }) {

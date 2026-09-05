@@ -21,7 +21,7 @@
 | Cân lõi | `tare_weight` | Số đọc ở bước cân lõi | 1,06 kg |
 | Cân sản phẩm | `weight` | Tổng KL sản phẩm còn lõi | 7,84 kg |
 | Trọng lượng bì | (UI, mặc định) | Mặc định **0,16 kg** — chưa lưu DB | 0,16 kg |
-| Trọng lượng tiêu chuẩn | (UI, từ `san_pham`) | `tong_trong_luong` (Tổng TL / Khối lượng) khớp Mã SP từ QR | 7,5 kg |
+| Trọng lượng tiêu chuẩn | (UI, từ `san_pham`) | `tong_trong_luong` khớp **tiền tố** Mã SP từ QR (trước `_` / trước `+`) | 7,5 kg |
 | Nhựa thực tế | (UI tính) | `weight − tare_weight − bì` | 6,62 kg |
 | Nhựa định mức | (UI, từ `san_pham`) | `trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì | 6,28 kg |
 | Chênh lệch nhựa (TT−ĐM) | (UI tính) | **Nhựa thực tế − Nhựa định mức** | +0,34 kg |
@@ -50,17 +50,17 @@
 | `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`). UI nút **Chọn Ca · điền hàng loạt** mở modal chọn ca rồi gửi id các dòng **đang hiện theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong` nút **Chọn Ngày · điền hàng loạt** mở modal chọn ngày rồi gửi id các dòng **đang hiện theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
-| `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới |
+| `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
 
 ## Frontend
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** (Từ/Đến ngày · Ca · **Lệnh SX** · Mã SP · QR trùng) · cột **Ngày** + **Ngày giờ** · Excel · In |
-| `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP (8 cột + Tổng cộng) · khối **Tổng hợp nhựa** (TL nhựa · ĐM · chênh lệch · %) |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · **Đồng bộ theo Mã SP** (tiền tố QR) · Excel · In |
+| `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
-| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr`: iframe `https://tram-can-qr-pilot-0wrt.onrender.com/` · UI `/can-kiem-kho`: iframe `.../kiem-kho` (**Cân kiểm kho**) |
-| `src/utils/canTuDongWeights.ts` | Công thức bì/nhựa + `sumCanTuDongSanLuongTotals` + `sumCanTuDongNhuaTieuChuanKg` + `sumCanTuDongLoiTieuChuanKg` |
+| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr` · `/can-kiem-kho` |
+| `src/utils/canTuDongWeights.ts` | `parseCanTuDongQrProductCode` = tiền tố trước `_`/`+`; công thức bì/nhựa + tổng cột |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel từng phiếu cân AI — giữ cho `/can-tu-dong`; **không** còn dùng trên `/phan-tich-tu-dong` |
 | `src/components/BbCanTuDongTongHopPanel.tsx` | Tab **Dữ liệu cân thực tế** trên `/phan-tich-tu-dong`: đọc `can_tu_dong_tong_hop` (Số cuộn thực tế + Tổng trọng lượng thực tế), không load từng phiếu |
 | `src/components/WeighingImagePreviewModal.tsx` | Thumbnail + modal |

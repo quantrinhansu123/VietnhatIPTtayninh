@@ -487,7 +487,7 @@ function pickCanTuDongText(record: Record<string, unknown>, keys: string[]): str
   return '';
 }
 
-/** Đổi phần mã SP trong QR, giữ serial / phần sau `+` nếu có. */
+/** Đổi phần mã SP trong QR, giữ hậu tố `_…` / serial / phần sau `+` nếu có. */
 function replaceCanTuDongQrProductCode(raw: string | null | undefined, newProductCode: string): string {
   const next = String(newProductCode || '').trim();
   if (!next) return String(raw || '').trim();
@@ -495,6 +495,8 @@ function replaceCanTuDongQrProductCode(raw: string | null | undefined, newProduc
   if (!trimmed) return next;
   const plusIdx = trimmed.indexOf('+');
   if (plusIdx > 0) return `${next}${trimmed.slice(plusIdx)}`;
+  const us = trimmed.indexOf('_');
+  if (us > 0) return `${next}${trimmed.slice(us)}`;
   const serialMatch = trimmed.match(/^(.+?)([_-]\d{6}[0-9A-Za-z]{2,})$/);
   if (serialMatch?.[2]) return `${next}${serialMatch[2]}`;
   return next;

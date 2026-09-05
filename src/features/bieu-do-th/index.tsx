@@ -5,7 +5,6 @@ import {
   TableHead,
   TableHeadCell,
   TableBody,
-  TableRow,
   TableEmptyRow,
   TableToolbar,
   TableDateFilter
@@ -139,21 +138,14 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
     void loadRows();
   }, [loadRows]);
 
-  const groupedByDate = useMemo(() => {
-    const map = new Map<string, BaoCaoTongHopListRow[]>();
-    const sorted = [...rows].sort((a, b) => {
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
       const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
       if (d !== 0) return d;
       const caCmp = compareShiftCa(a.ca, b.ca);
       if (caCmp !== 0) return caCmp;
       return String(a.may).localeCompare(String(b.may), 'vi');
     });
-    for (const row of sorted) {
-      const key = row.ngay_tu || row.ngay_den || '—';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(row);
-    }
-    return [...map.entries()];
   }, [rows]);
 
   const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo);
@@ -232,51 +224,41 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
               <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
               Đang tải…
             </TableEmptyRow>
-          ) : groupedByDate.length === 0 ? (
+          ) : sortedRows.length === 0 ? (
             <TableEmptyRow colSpan={15}>
               Chưa có dữ liệu. Vào Phân tích tự động → Tính toán để ghi bao_cao_tong_hop.
             </TableEmptyRow>
           ) : (
-            groupedByDate.map(([dateKey, dayRows]) => (
-              <React.Fragment key={dateKey}>
-                <tr className="bg-red-700 text-white">
-                  <td colSpan={15} className="px-4 py-2 text-xs font-black uppercase tracking-wider">
-                    {formatDateLabel(dateKey)}
-                    {dayRows[0]?.ngay_den && dayRows[0].ngay_den !== dateKey
-                      ? ` → ${formatDateLabel(dayRows[0].ngay_den)}`
-                      : ''}
-                    <span className="ml-2 font-semibold opacity-80">· {dayRows.length} bản ghi</span>
-                  </td>
-                </tr>
-                {dayRows.map(row => (
-                  <TableRow key={row.id || row.khoa_on_dinh}>
-                    <td className="whitespace-nowrap px-4 py-2 font-mono text-xs font-semibold text-zinc-700">
-                      {formatDateLabel(row.ngay_tu)}
-                      {row.ngay_den && row.ngay_den !== row.ngay_tu
-                        ? ` → ${formatDateLabel(row.ngay_den)}`
-                        : ''}
-                    </td>
-                    <td className="px-4 py-2 font-semibold text-zinc-800">{row.ca}</td>
-                    <td className="px-4 py-2 font-semibold text-zinc-800">{row.may}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatNum(row.sl_yeu_cau)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_yeu_cau_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_xuat_tong_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.ton_dau_tong_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.ton_cuoi_tong_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatNum(row.sl_san_luong)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_mang_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_thanh_pham_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_dinh_muc_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.loi_hong_tong_kg)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums">{formatKg(row.xuat_thuc_dung_kg)}</td>
-                    <td
-                      className={`px-4 py-2 text-right font-mono font-black tabular-nums ${signedClass(row.chenh_lech_nhua_kg)}`}
-                    >
-                      {formatKg(row.chenh_lech_nhua_kg)}
-                    </td>
-                  </TableRow>
-                ))}
-              </React.Fragment>
+            sortedRows.map(row => (
+              <tr
+                key={row.id || row.khoa_on_dinh}
+                className="border-b border-zinc-200 bg-white transition hover:bg-zinc-50"
+              >
+                <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-semibold text-zinc-700">
+                  {formatDateLabel(row.ngay_tu)}
+                  {row.ngay_den && row.ngay_den !== row.ngay_tu
+                    ? ` → ${formatDateLabel(row.ngay_den)}`
+                    : ''}
+                </td>
+                <td className="px-4 py-2.5 font-semibold text-zinc-800">{row.ca}</td>
+                <td className="px-4 py-2.5 font-semibold text-zinc-800">{row.may}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_yeu_cau)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_yeu_cau_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_xuat_tong_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.ton_dau_tong_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.ton_cuoi_tong_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_san_luong)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_mang_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_thanh_pham_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_dinh_muc_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.loi_hong_tong_kg)}</td>
+                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.xuat_thuc_dung_kg)}</td>
+                <td
+                  className={`px-4 py-2.5 text-right font-mono font-black tabular-nums ${signedClass(row.chenh_lech_nhua_kg)}`}
+                >
+                  {formatKg(row.chenh_lech_nhua_kg)}
+                </td>
+              </tr>
             ))
           )}
         </TableBody>

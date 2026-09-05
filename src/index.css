@@ -3769,15 +3769,36 @@ input[type="number"] {
 .acceptance-report-print-table th,
 .acceptance-report-print-table td { box-sizing: border-box; overflow-wrap: anywhere; }
 
-.can-tu-dong-print-table th:nth-child(1) { width: 4%; }
+.can-tu-dong-print-table th:nth-child(1) {
+  width: 6%;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
 .can-tu-dong-print-table th:nth-child(2) { width: 10%; }
 .can-tu-dong-print-table th:nth-child(3) { width: 16%; }
 .can-tu-dong-print-table th:nth-child(4) { width: 7%; }
 .can-tu-dong-print-table th:nth-child(5) { width: 11%; }
 .can-tu-dong-print-table th:nth-child(6) { width: 10%; }
 .can-tu-dong-print-table th:nth-child(7) { width: 11%; }
-.can-tu-dong-print-table th:nth-child(8) { width: 11%; }
+.can-tu-dong-print-table th:nth-child(8) { width: 9%; }
 .can-tu-dong-print-table th:nth-child(9) { width: 10%; }
+
+/* Bố cục riêng khi in từ Danh sách báo cáo; mẫu /can-tu-dong giữ nguyên. */
+.can-tu-dong-print-table--aggregate th:nth-child(1) { width: 8%; }
+.can-tu-dong-print-table--aggregate th:nth-child(2) { width: 10%; }
+.can-tu-dong-print-table--aggregate th:nth-child(3) { width: 16%; }
+.can-tu-dong-print-table--aggregate th:nth-child(4) { width: 9%; }
+.can-tu-dong-print-table--aggregate th:nth-child(5) { width: 11%; }
+.can-tu-dong-print-table--aggregate th:nth-child(6) { width: 12%; }
+.can-tu-dong-print-table--aggregate th:nth-child(7) { width: 12%; }
+.can-tu-dong-print-table--aggregate th:nth-child(8) { width: 12%; }
+.can-tu-dong-print-table--aggregate th:nth-child(9) { width: 10%; }
+.can-tu-dong-print-table--aggregate th:nth-child(1) {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
 
 .can-tu-dong-print-nhua-summary {
   margin-top: 2mm;

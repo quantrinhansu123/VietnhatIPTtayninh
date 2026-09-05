@@ -181,7 +181,14 @@ export function buildCanTuDongPrintData(
   };
 }
 
-export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
+export function CanTuDongPrintSheet({
+  data,
+  variant = 'default'
+}: {
+  data: CanTuDongPrintData;
+  /** Bố cục riêng của bản in Danh sách báo cáo; không ảnh hưởng trang cân gốc. */
+  variant?: 'default' | 'aggregate';
+}) {
   const dateLabel =
     data.fromDate && data.toDate && data.fromDate === data.toDate
       ? formatPrintDate(data.fromDate)
@@ -206,7 +213,7 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
         </div>
 
         <h2 className="production-order-print-section-title">Danh sách sản phẩm theo bộ lọc</h2>
-        <table className="production-order-print-grid-table can-tu-dong-print-table">
+        <table className={`production-order-print-grid-table can-tu-dong-print-table${variant === 'aggregate' ? ' can-tu-dong-print-table--aggregate' : ''}`}>
           <thead>
             <tr>
               <th>STT</th>
@@ -214,10 +221,10 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               <th>Tên SP</th>
               <th>Số lượng</th>
               <th>Tổng trọng lượng</th>
-              <th>Trọng lượng màng</th>
-              <th>Trọng lượng nhựa</th>
-              <th>Tổng trọng lượng lõi</th>
-              <th>Tổng trọng lượng bì</th>
+              {variant === 'aggregate' ? <th>Trọng lượng nhựa</th> : <th>Trọng lượng màng</th>}
+              {variant === 'aggregate' ? <th>Nhựa định mức</th> : <th>Trọng lượng nhựa</th>}
+              {variant === 'aggregate' ? <th>Chênh lệch</th> : <th>Tổng trọng lượng lõi</th>}
+              {variant === 'aggregate' ? <th>Ghi chú</th> : <th>Tổng trọng lượng bì</th>}
             </tr>
           </thead>
           <tbody>
@@ -237,17 +244,35 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
                   <td className="production-order-print-right">
                     {formatNumber(line.tongTrongLuong, 2)} kg
                   </td>
-                  <td className="production-order-print-right">
-                    {line.trongLuongMang > 0 ? `${formatNumber(line.trongLuongMang, 2)} kg` : '—'}
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatNumber(line.trongLuongNhua, 2)} kg
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatNumber(line.tongTrongLuongLoi, 2)} kg
-                  </td>
-                  <td className="production-order-print-right">
-                    {formatNumber(line.tongTrongLuongBi, 2)} kg
+                  {variant === 'aggregate' ? (
+                    <td className="production-order-print-right">
+                      {formatNumber(line.trongLuongNhua, 2)} kg
+                    </td>
+                  ) : (
+                    <td className="production-order-print-right">
+                      {line.trongLuongMang > 0 ? `${formatNumber(line.trongLuongMang, 2)} kg` : '—'}
+                    </td>
+                  )}
+                  {variant === 'aggregate' ? (
+                    <td className="production-order-print-right">
+                      {formatNumber(line.trongLuongNhuaDinhMuc, 2)} kg
+                    </td>
+                  ) : (
+                    <td className="production-order-print-right">
+                      {formatNumber(line.trongLuongNhua, 2)} kg
+                    </td>
+                  )}
+                  {variant === 'aggregate' ? (
+                    <td className="production-order-print-right">
+                      {formatSignedKg(chenhLechNhuaKg(line.trongLuongNhua, line.trongLuongNhuaDinhMuc))}
+                    </td>
+                  ) : (
+                    <td className="production-order-print-right">
+                      {formatNumber(line.tongTrongLuongLoi, 2)} kg
+                    </td>
+                  )}
+                  <td className={variant === 'aggregate' ? 'production-order-print-center' : 'production-order-print-right'}>
+                    {variant === 'aggregate' ? '' : `${formatNumber(line.tongTrongLuongBi, 2)} kg`}
                   </td>
                 </tr>
               ))
@@ -262,19 +287,35 @@ export function CanTuDongPrintSheet({ data }: { data: CanTuDongPrintData }) {
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
                 {formatNumber(data.totalTongTrongLuong, 2)} kg
               </td>
+              {variant === 'aggregate' ? (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {formatNumber(data.totalTrongLuongNhua, 2)} kg
+                </td>
+              ) : (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {data.totalTrongLuongMang > 0 ? `${formatNumber(data.totalTrongLuongMang, 2)} kg` : '—'}
+                </td>
+              )}
+              {variant === 'aggregate' ? (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {formatNumber(data.totalTrongLuongNhuaDinhMuc, 2)} kg
+                </td>
+              ) : (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {formatNumber(data.totalTrongLuongNhua, 2)} kg
+                </td>
+              )}
+              {variant === 'aggregate' ? (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {formatSignedKg(data.totalChenhLechNhua)}
+                </td>
+              ) : (
+                <td className="production-order-print-right" style={{ fontWeight: 700 }}>
+                  {formatNumber(data.totalTongTrongLuongLoi, 2)} kg
+                </td>
+              )}
               <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {data.totalTrongLuongMang > 0
-                  ? `${formatNumber(data.totalTrongLuongMang, 2)} kg`
-                  : '—'}
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(data.totalTrongLuongNhua, 2)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(data.totalTongTrongLuongLoi, 2)} kg
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(data.totalTongTrongLuongBi, 2)} kg
+                {variant === 'aggregate' ? '' : `${formatNumber(data.totalTongTrongLuongBi, 2)} kg`}
               </td>
             </tr>
           </tbody>

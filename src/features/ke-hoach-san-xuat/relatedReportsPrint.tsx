@@ -30,7 +30,7 @@ import {
   normalizeAcceptanceReports,
   type AcceptanceReport
 } from '../../components/AcceptanceReportForm';
-import { findProductByCode, normalizeProductCodeKey } from '../san-pham';
+import { findProductByCode, normalizeProductCodeKey, normalizeProducts } from '../san-pham';
 import type { ProductRow } from '../san-pham/types';
 import { MachineNvlPrintSheet, savedReportToMachineNvlPrintReport } from '../../components/MachineNvlPrintSheet';
 import { MixingReportPrintSheet } from '../../components/MixingReportPrintSheet';
@@ -376,7 +376,7 @@ export async function loadProductionPlanRelatedReports(
     includeAllMachines: true
   });
 
-  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
+  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, canTuDongProductCatalogRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
     await Promise.all([
       fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
       fetchJson('/api/lenh-sx'),
@@ -388,6 +388,8 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-giao-ca?ngay=${encodedDate}&limit=300`),
       fetchJson(`/api/can-tu-dong?from=${encodedDate}&to=${encodedDate}&dateBy=ngay&images=0&limit=10000`),
+      // Phiếu in tổng hợp lấy lại danh mục hiện tại để định mức không bị giữ từ cache màn hình.
+      fetchJson('/api/san-pham?format=table'),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
       fetchJson(`/api/phieu-xuat-nhap-kho?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
       fetchJson('/api/kho-nvl'),
@@ -526,12 +528,17 @@ export async function loadProductionPlanRelatedReports(
     const parsed = Number(String(value ?? '').trim().replace(',', '.'));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
-  productCatalog.forEach(product => {
+  const canTuDongProductCatalog = canTuDongProductCatalogRes.ok
+    ? normalizeProducts(canTuDongProductCatalogRes.data)
+    : productCatalog;
+  canTuDongProductCatalog.forEach(product => {
     const name = product.name || '';
     const totalWeight = asPositiveNumber(product.totalWeight);
     const coreWeight = asPositiveNumber(product.coreWeight);
     const plasticWeight = asPositiveNumber(product.plasticWeight);
-    [product.code, product.newCode].forEach(code => {
+    // QR cân có thể mang mã AMIS; trang /can-tu-dong cũng dùng cả ba mã này
+    // khi tra định mức. Bản in tổng hợp phải giữ cùng quy tắc để lấy đúng nhựa ĐM.
+    [product.code, product.newCode, product.amisCode].forEach(code => {
       const key = normalizeProductKey(code);
       if (!key) return;
       if (name) productNameByCode.set(key, name);
@@ -840,7 +847,7 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
       {/* Phiếu cân tự động — tái dùng đúng mẫu in của /can-tu-dong */}
       {data.canTuDong ? (
         <div className="production-order-print-page">
-          <CanTuDongPrintSheet data={data.canTuDong} />
+          <CanTuDongPrintSheet data={data.canTuDong} variant="aggregate" />
         </div>
       ) : null}
 

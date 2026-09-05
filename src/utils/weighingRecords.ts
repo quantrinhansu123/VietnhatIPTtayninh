@@ -50,6 +50,7 @@ export interface WeighingRecord {
   imageUrl?: string;
   coreWeightImageUrl?: string;
   createdAt?: string;
+  daIn?: boolean;
 }
 
 export type DamagedGoodsDefectSplit = {

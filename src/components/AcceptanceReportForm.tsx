@@ -50,6 +50,7 @@ export type AcceptanceReport = {
   hinh_anh: string;
   hinh_anh_public_id?: string;
   created_at?: string;
+  da_in?: boolean;
 };
 
 interface MachineOption {

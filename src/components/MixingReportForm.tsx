@@ -141,6 +141,7 @@ export type MixingReport = {
   giai_trinh_theo_lan?: Partial<Record<RoundKey, string>>;
   chi_tiet: MixingReportLine[];
   created_at?: string;
+  da_in?: boolean;
 };
 
 interface MachineOption {

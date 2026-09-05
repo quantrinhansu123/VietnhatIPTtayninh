@@ -320,7 +320,7 @@ function ShiftSlipCard({
               >
                 <Printer className="h-3.5 w-3.5" />
               </button>
-              {canEdit ? (
+              {canEdit && !primarySlip.rows.some(r => r.daIn) ? (
                 <button
                   type="button"
                   onClick={() => onEditSlip(primarySlip)}
@@ -549,7 +549,7 @@ function ShiftSlipCard({
                             <td className="px-3 py-2">
                               <RowActionsMenu label="Thao tác dòng cân">
                               <div className="flex items-center justify-center gap-1">
-                                {canEdit ? (
+                                {canEdit && !entry.row.daIn ? (
                                   <button
                                     type="button"
                                     onClick={() => onEditRow(entry.slip, entry.row)}
@@ -885,6 +885,18 @@ export default function WeighingShiftSummary({
   }, []);
 
   const handlePrintSlip = (slip: WeighingSlip) => {
+    if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    const ids = slip.rows.map(row => row.id).filter((id): id is string | number => id !== undefined);
+    if (ids.length > 0) {
+      setRecords(prev => prev.map(row => (ids.includes(row.id as string | number) ? { ...row, daIn: true } : row)));
+      fetch(`${config.apiBasePath}/danh-dau-da-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      }).catch(() => {});
+    }
     const machineName = resolveMachineName(slip.machineName, ...slip.rows.map(row => row.machineName));
     setPrintSlip({
       documentNo: slip.documentNo,
@@ -930,6 +942,10 @@ export default function WeighingShiftSummary({
 
   const handleEditRow = (slip: WeighingSlip, row: WeighingRecord) => {
     if (!canEdit) return;
+    if (row.daIn) {
+      setActionMessage('Phiếu đã in, không thể sửa nữa.');
+      return;
+    }
     handleOpenReportForm({
       productionDate: slip.productionDate,
       shiftName: slip.shiftName,
@@ -945,6 +961,10 @@ export default function WeighingShiftSummary({
 
   const handleEditSlip = (slip: WeighingSlip) => {
     if (!canEdit) return;
+    if (slip.rows.some(row => row.daIn)) {
+      setActionMessage('Phiếu đã in, không thể sửa nữa.');
+      return;
+    }
     handleOpenReportForm({
       productionDate: slip.productionDate,
       shiftName: slip.shiftName,
@@ -1145,7 +1165,7 @@ export default function WeighingShiftSummary({
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {viewingRowSlip && canEdit ? (
+                {viewingRowSlip && canEdit && !viewingRow.daIn ? (
                   <button
                     type="button"
                     onClick={() => {

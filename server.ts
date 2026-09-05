@@ -1107,7 +1107,8 @@ function mapWeighingRow(row: Record<string, unknown>) {
     coreWeightImageUrl: String(row.anh_trong_luong_loi_url ?? '').trim() || undefined,
     acceptanceStatus: String(row.nghiem_thu ?? '').trim(),
     note: String(row.ghi_chu ?? '').trim(),
-    createdAt: String(row.created_at ?? '').trim() || undefined
+    createdAt: String(row.created_at ?? '').trim() || undefined,
+    daIn: row.da_in === true
   };
 }
 
@@ -1613,6 +1614,18 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
         return res.status(400).json({ error: 'Thiếu dữ liệu dòng cân.' });
       }
 
+      if (db && !isLocalWeighingId(id)) {
+        const dbId = parseWeighingId(id);
+        const { data: existingRow } = await db
+          .from(cfg.supabaseTable)
+          .select('da_in')
+          .eq('id', dbId)
+          .maybeSingle();
+        if (existingRow?.da_in) {
+          return res.status(409).json({ error: 'Phiếu đã in, không thể sửa nữa.' });
+        }
+      }
+
       const payload = req.body;
       const record = buildDbRecordFromClientRow(row, payload);
       if (!cfg.requireDamagedMaterialType) {
@@ -1693,6 +1706,28 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
       return res.json({ success: true, row: updated, mode: 'local' });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật dòng cân.' });
+    }
+  });
+
+  app.post(`${apiPath}/danh-dau-da-in`, async (req, res) => {
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map((v: unknown) => String(v)) : [];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách dòng cân cần đánh dấu.' });
+      }
+      if (db) {
+        const dbIds = ids.filter(id => !isLocalWeighingId(id)).map(id => parseWeighingId(id));
+        if (dbIds.length > 0) {
+          const { error } = await db.from(cfg.supabaseTable).update({ da_in: true }).in('id', dbIds);
+          if (error) {
+            console.error(`Supabase[${dbLabel}] ${cfg.entityLabel} đánh dấu đã in error:`, error);
+            return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+          }
+        }
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 
@@ -9447,6 +9482,15 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu ID đơn hàng.' });
       }
 
+      const { data: existingOrder } = await supabase
+        .from(SUPABASE_ORDERS_TABLE)
+        .select('da_in')
+        .eq('id', id)
+        .maybeSingle();
+      if (existingOrder?.da_in) {
+        return res.status(409).json({ error: 'Đơn hàng đã in, không thể sửa nữa.' });
+      }
+
       const parsed = parseOrderBody(req.body);
       if ('error' in parsed) {
         return res.status(400).json({ error: parsed.error });
@@ -9471,6 +9515,24 @@ export function createApp() {
       return res.json({ success: true, order: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật đơn hàng.' });
+    }
+  });
+
+  app.post('/api/don-hang/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const id = String(req.body?.id ?? '').trim();
+      if (!id) return res.status(400).json({ error: 'Thiếu ID đơn hàng.' });
+      const { error } = await supabase.from(SUPABASE_ORDERS_TABLE).update({ da_in: true }).eq('id', id);
+      if (error) {
+        console.error('Supabase don_hang đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 
@@ -9889,6 +9951,17 @@ export function createApp() {
         return res.status(400).json({ error: 'Danh sách lệnh SX trống.' });
       }
 
+      if (planId) {
+        const { data: existingPlan } = await supabase
+          .from(SUPABASE_PRODUCTION_PLANS_TABLE)
+          .select('da_in')
+          .eq('id', planId)
+          .maybeSingle();
+        if (existingPlan?.da_in) {
+          return res.status(409).json({ error: 'Kế hoạch sản xuất đã in, không thể sửa nữa.' });
+        }
+      }
+
       const planDate = parseProductionPlanDateInput(source.ngay_ke_hoach ?? source.planDate) ?? todayDateString();
       const planNote = typeof source.ghi_chu === 'string' ? source.ghi_chu.trim() : '';
       const createdBy = pickRowField(source, ['nguoi_lap', 'createdBy', 'staff'], '');
@@ -9992,6 +10065,22 @@ export function createApp() {
     }
   });
 
+  app.post('/api/ke-hoach-sx/danh-dau-da-in', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    try {
+      const id = String(req.body?.id ?? '').trim();
+      if (!id) return res.status(400).json({ error: 'Thiếu ID kế hoạch.' });
+      const { error } = await supabase.from(SUPABASE_PRODUCTION_PLANS_TABLE).update({ da_in: true }).eq('id', id);
+      if (error) {
+        console.error('Supabase ke_hoach_san_xuat đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
+    }
+  });
+
   app.delete('/api/ke-hoach-sx/:id', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
     const id = String(req.params.id || '').trim();
@@ -10027,6 +10116,15 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
+      const { data: existingOrder } = await supabase
+        .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
+        .select('da_in')
+        .eq('id', id)
+        .maybeSingle();
+      if (existingOrder?.da_in) {
+        return res.status(409).json({ error: 'Lệnh sản xuất đã in, không thể sửa nữa.' });
+      }
+
       const { data: updated, error: updateError } = await updateProductionOrderRecord(id, parsed.record);
 
       if (updateError) {
@@ -10058,6 +10156,26 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Error updating production order.' });
+    }
+  });
+
+  app.post('/api/lenh-sx/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase is not configured.' });
+    }
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map((v: unknown) => String(v)) : [];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách lệnh sản xuất cần đánh dấu.' });
+      }
+      const { error } = await supabase.from(SUPABASE_PRODUCTION_ORDERS_TABLE).update({ da_in: true }).in('id', ids);
+      if (error) {
+        console.error('Supabase lenh_sx đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 
@@ -11432,7 +11550,7 @@ export function createApp() {
 
       const { data: existing, error: fetchError } = await supabase
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-        .select('ma_npl, ma_sp, loai_kho')
+        .select('ma_npl, ma_sp, loai_kho, da_in')
         .eq('ma_phieu', slipCode);
 
       if (fetchError) {
@@ -11444,6 +11562,10 @@ export function createApp() {
 
       if (!existing || existing.length === 0) {
         return res.status(404).json({ error: 'Không tìm thấy phiếu cần cập nhật.' });
+      }
+
+      if (existing.some(row => row.da_in)) {
+        return res.status(409).json({ error: 'Phiếu đã in, không thể sửa nữa.' });
       }
 
       const affectedNvlCodes = new Set<string>();
@@ -11506,6 +11628,29 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật phiếu xuất nhập kho.' });
+    }
+  });
+
+  app.post('/api/phieu-xuat-nhap-kho/:slipCode/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const slipCode = String(req.params.slipCode || '').trim();
+      if (!slipCode) {
+        return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+      }
+      const { error } = await supabase
+        .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+        .update({ da_in: true })
+        .eq('ma_phieu', slipCode);
+      if (error) {
+        console.error('Supabase phieu_xuat_nhap_kho đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu phiếu đã in. ${error.message}` });
+      }
+      return res.json({ success: true, slipCode });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu phiếu đã in.' });
     }
   });
 
@@ -15593,6 +15738,15 @@ export function createApp() {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
+      const { data: existingReport } = await supabase
+        .from(SUPABASE_MIXING_REPORTS_TABLE)
+        .select('da_in')
+        .eq('id', id)
+        .maybeSingle();
+      if (existingReport?.da_in) {
+        return res.status(409).json({ error: 'Báo cáo đã in, không thể sửa nữa.' });
+      }
+
       const parsed = parseMixingReportBody(req.body);
       if ('error' in parsed) {
         return res.status(400).json({ error: parsed.error });
@@ -15618,6 +15772,24 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật báo cáo phối trộn.' });
+    }
+  });
+
+  app.post('/api/bao-cao-phoi-tron/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map((v: unknown) => String(v)) : [];
+      if (ids.length === 0) return res.status(400).json({ error: 'Thiếu danh sách báo cáo cần đánh dấu.' });
+      const { error } = await supabase.from(SUPABASE_MIXING_REPORTS_TABLE).update({ da_in: true }).in('id', ids);
+      if (error) {
+        console.error('Supabase mixing report đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 
@@ -16020,6 +16192,15 @@ export function createApp() {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
+      const { data: existingReport } = await supabase
+        .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
+        .select('da_in')
+        .eq('id', id)
+        .maybeSingle();
+      if (existingReport?.da_in) {
+        return res.status(409).json({ error: 'Báo cáo đã in, không thể sửa nữa.' });
+      }
+
       const parsed = parseMachineNvlReportBody(req.body);
       if ('error' in parsed) {
         return res.status(400).json({ error: parsed.error });
@@ -16064,6 +16245,24 @@ export function createApp() {
       return res.json({ success: true, report: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật báo cáo NVL tồn theo máy.' });
+    }
+  });
+
+  app.post('/api/bao-cao-may-nvl-ton/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const id = String(req.body?.id ?? '').trim();
+      if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
+      const { error } = await supabase.from(SUPABASE_MACHINE_NVL_REPORTS_TABLE).update({ da_in: true }).eq('id', id);
+      if (error) {
+        console.error('Supabase machine NVL report đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 
@@ -17931,6 +18130,15 @@ export function createApp() {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
+      const { data: existingReport } = await supabase
+        .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+        .select('da_in')
+        .eq('id', id)
+        .maybeSingle();
+      if (existingReport?.da_in) {
+        return res.status(409).json({ error: 'Báo cáo đã in, không thể sửa nữa.' });
+      }
+
       const parsed = parseAcceptanceReportBody(req.body);
       if ('error' in parsed) {
         return res.status(400).json({ error: parsed.error });
@@ -17952,6 +18160,24 @@ export function createApp() {
       return res.json({ success: true, report: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật báo cáo sản lượng.' });
+    }
+  });
+
+  app.post('/api/bao-cao-nghiem-thu/danh-dau-da-in', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map((v: unknown) => String(v)) : [];
+      if (ids.length === 0) return res.status(400).json({ error: 'Thiếu danh sách báo cáo cần đánh dấu.' });
+      const { error } = await supabase.from(SUPABASE_ACCEPTANCE_REPORTS_TABLE).update({ da_in: true }).in('id', ids);
+      if (error) {
+        console.error('Supabase acceptance report đánh dấu đã in error:', error);
+        return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi đánh dấu đã in.' });
     }
   });
 

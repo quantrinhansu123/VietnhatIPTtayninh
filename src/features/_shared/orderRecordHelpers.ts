@@ -24,6 +24,7 @@ export interface OrderRow {
   orderDate: string;
   createdAt: string;
   productionOrder?: string;
+  daIn?: boolean;
 }
 
 export function parseOrderProductsFromRecord(record: Record<string, unknown>): OrderProductLine[] {

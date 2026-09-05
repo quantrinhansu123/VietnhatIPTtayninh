@@ -738,6 +738,16 @@ export default function AcceptanceReportListView({
       setError('Chưa có báo cáo sản lượng để in.');
       return;
     }
+    if (!window.confirm('In phiếu sẽ khóa việc sửa các báo cáo này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    const ids = reportsWithNames.map(report => report.id);
+    setReports(prev => prev.map(report => (ids.includes(report.id) ? { ...report, da_in: true } : report)));
+    fetch('/api/bao-cao-nghiem-thu/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    }).catch(() => {});
     setError('');
     setActivePrintSlips(slips);
     setPendingPrint(true);
@@ -1041,7 +1051,7 @@ export default function AcceptanceReportListView({
             Xem
           </span>
         </button>
-        {canEdit ? (
+        {canEdit && !report.da_in ? (
           <button
             type="button"
             onClick={() => onEdit(report)}

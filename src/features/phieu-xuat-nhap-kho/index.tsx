@@ -150,6 +150,7 @@ export interface WarehouseMovementRow {
   acceptanceReportRowId?: string;
   treo?: boolean;
   actualWeightImageUrl?: string;
+  daIn?: boolean;
 }
 
 export interface WarehouseSlipLineDraft {
@@ -1028,7 +1029,8 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         acceptanceReportRowId:
           String(record.id_bao_cao_nghiem_thu ?? record.acceptanceReportRowId ?? '').trim() || undefined,
         treo: record.treo === true,
-        actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined
+        actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined,
+        daIn: record.da_in === true
       };
     })
     .filter((row): row is WarehouseMovementRow => Boolean(row.id || row.slipCode));
@@ -4332,7 +4334,22 @@ export function WarehouseHistoryPanel({
     };
   };
 
+  const markSlipsPrinted = (slipCodes: string[]) => {
+    const codes = [...new Set(slipCodes.filter(Boolean))];
+    if (codes.length === 0) return;
+    setMovements(prev => prev.map(row => (codes.includes(row.slipCode) ? { ...row, daIn: true } : row)));
+    codes.forEach(code => {
+      fetch(`/api/phieu-xuat-nhap-kho/${encodeURIComponent(code)}/danh-dau-da-in`, { method: 'POST' }).catch(() => {});
+    });
+  };
+
   const handlePrintSlipByCode = (slipCode: string, autoPrint = false) => {
+    if (autoPrint) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      markSlipsPrinted([slipCode]);
+    }
     const slip = buildHistoryPrintSlip(slipCode);
     if (!slip) return;
     setHistoryPrintSlips([slip]);
@@ -4348,6 +4365,13 @@ export function WarehouseHistoryPanel({
     if (slips.length === 0) {
       setError('Vui lòng tích chọn ít nhất một phiếu để in gộp.');
       return;
+    }
+
+    if (autoPrint) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa các phiếu này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      markSlipsPrinted(slips.map(slip => slip.slipCode));
     }
 
     // Mọi phiếu xuất/nhập khi in gộp → 1 bảng; trùng mã (+ ĐVT) thì cộng SL.
@@ -4424,6 +4448,10 @@ export function WarehouseHistoryPanel({
       return;
     }
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
+    if (rows.some(row => row.daIn)) {
+      setError('Phiếu đã in, không thể sửa nữa.');
+      return;
+    }
     const draft = buildWarehouseSlipDraftFromHistoryRows(rows, slipCode);
     if (!draft) return;
 
@@ -4718,7 +4746,7 @@ export function WarehouseHistoryPanel({
                             <div><dt className="font-bold text-zinc-400">Người lập</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.createdBy || '-'}</dd></div>
                           </dl>
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                            {canEdit ? (
+                            {canEdit && !header.daIn ? (
                               <button type="button" onClick={() => handleEditSlip(group.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
                             ) : null}
                             <button type="button" onClick={() => handlePrintSlipByCode(group.slipCode, true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-[#ef1b2d]"><Printer className="h-3.5 w-3.5" />In</button>
@@ -4793,7 +4821,7 @@ export function WarehouseHistoryPanel({
                           <td className="px-4 py-3">
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
                             <div className="flex items-center justify-center gap-1">
-                              {canEdit ? (
+                              {canEdit && !header.daIn ? (
                                 <button
                                   type="button"
                                   onClick={() => handleEditSlip(group.slipCode)}
@@ -4972,7 +5000,7 @@ export function WarehouseHistoryPanel({
               </div>
               {isStandalone ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEdit ? (
+                  {canEdit && !viewingRows[0]?.daIn ? (
                     <button
                       type="button"
                       onClick={() => handleEditSlip(viewingSlipCode!)}
@@ -5105,7 +5133,7 @@ export function WarehouseHistoryPanel({
                 {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}
               </div>
               <div className={`flex-wrap items-center gap-2 ${isStandalone ? 'hidden' : 'flex'}`}>
-                {canEdit ? (
+                {canEdit && !viewingRows[0]?.daIn ? (
                   <button
                     type="button"
                     onClick={() => handleEditSlip(viewingSlipCode!)}

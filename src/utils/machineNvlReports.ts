@@ -113,6 +113,7 @@ export type MachineNvlSavedReport = {
   reportKind: MachineNvlReportKind;
   lines: MachineNvlSavedLine[];
   createdAt: string;
+  daIn?: boolean;
 };
 
 export function normalizeMachineNvlReportKind(value: unknown): MachineNvlReportKind {
@@ -213,7 +214,8 @@ export function normalizeMachineNvlReports(data: unknown): MachineNvlSavedReport
         note: String(record.ghi_chu ?? '').trim(),
         reportKind: normalizeMachineNvlReportKind(record.loai_bao_cao ?? record.loai ?? record.reportKind),
         lines,
-        createdAt: String(record.created_at ?? '').trim()
+        createdAt: String(record.created_at ?? '').trim(),
+        daIn: record.da_in === true
       };
     })
     .filter((report): report is MachineNvlSavedReport => Boolean(report));

@@ -123,7 +123,8 @@ export function normalizeOrders(data: unknown): OrderRow[] {
           if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
           return '';
         })(),
-        createdAt: formatCell(record.created_at)
+        createdAt: formatCell(record.created_at),
+        daIn: record.da_in === true
       };
     })
     .filter((order): order is OrderRow => Boolean(order))
@@ -376,6 +377,10 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
 
   const openEditForm = (order: OrderRow) => {
     if (!canEdit) return;
+    if (order.daIn) {
+      setActionMessage('Đơn hàng đã in, không thể sửa nữa.');
+      return;
+    }
     setFormError('');
     setActionMessage('');
     setViewingOrder(null);
@@ -401,8 +406,17 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   }, [orders, productOptions]);
 
   const handlePrintOrder = async (order: OrderRow) => {
+    if (!window.confirm('In phiếu sẽ khóa việc sửa đơn hàng này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, daIn: true } : o)));
+    fetch('/api/don-hang/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: order.id })
+    }).catch(() => {});
     setPendingPrint(false);
-    setPrintOrder(order);
+    setPrintOrder({ ...order, daIn: true });
     setPendingPrint(true);
   };
 
@@ -874,7 +888,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                 <Printer className="h-4 w-4" />
                 In phiếu
               </button>
-              {canEdit ? (
+              {canEdit && !viewingOrder.daIn ? (
                 <button type="button" onClick={() => openEditForm(viewingOrder)} className="flex h-10 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/20 bg-red-50 px-4 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-100">
                   <Pencil className="h-4 w-4" />
                   Sửa
@@ -1016,7 +1030,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
-                      {canEdit ? (
+                      {canEdit && !order.daIn ? (
                         <button
                           type="button"
                           onClick={() => openEditForm(order)}

@@ -431,6 +431,16 @@ export default function MixingReportListView({
       setMessage('');
       return;
     }
+    if (!window.confirm('In phiếu sẽ khóa việc sửa các báo cáo này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    const ids = selectedReports.map(report => report.id);
+    setReports(prev => prev.map(report => (ids.includes(report.id) ? { ...report, da_in: true } : report)));
+    fetch('/api/bao-cao-phoi-tron/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    }).catch(() => {});
     setError('');
     setMessage('');
     // Tạo snapshot mới từ selection hiện tại cho mỗi lần mở preview.
@@ -572,6 +582,10 @@ export default function MixingReportListView({
 
   const openEditReport = (report: MixingReport) => {
     if (!canEdit) return;
+    if (report.da_in) {
+      setError('Báo cáo đã in, không thể sửa nữa.');
+      return;
+    }
     setFormModalMode('edit');
     setPendingEditReport(report);
     setCreateModalOpen(true);
@@ -591,7 +605,7 @@ export default function MixingReportListView({
         <Eye className="h-3.5 w-3.5" />
         {viewingReportId === report.id ? 'Thu gọn' : 'Xem'}
       </button>
-      {canEdit ? (
+      {canEdit && !report.da_in ? (
         <button
           type="button"
           onClick={event => {

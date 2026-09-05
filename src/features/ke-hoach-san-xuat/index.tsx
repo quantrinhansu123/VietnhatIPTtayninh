@@ -127,6 +127,7 @@ export interface ProductionOrderRow {
   note: string;
   position: string;
   priority: number;
+  daIn?: boolean;
 }
 
 export function resolveProductionOrderMachine(row: ProductionOrderRow, machines: MachineRow[] = []): string {
@@ -1756,6 +1757,7 @@ export type ProductionPlanHistorySummary = {
   note: string;
   createdBy: string;
   createdAt: string;
+  daIn?: boolean;
 };
 
 export type ProductionPlanHistoryLine = {
@@ -1798,7 +1800,8 @@ export function normalizeProductionPlanHistory(data: unknown): ProductionPlanHis
         orderCount: Number(record.so_lenh ?? record.orderCount ?? 0) || 0,
         note: pickText(record, ['ghi_chu', 'note'], ''),
         createdBy: pickText(record, ['nguoi_lap', 'createdBy'], ''),
-        createdAt: formatCell(record.created_at ?? record.createdAt)
+        createdAt: formatCell(record.created_at ?? record.createdAt),
+        daIn: record.da_in === true
       };
     })
     .filter((row): row is ProductionPlanHistorySummary => Boolean(row));
@@ -2107,6 +2110,10 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   };
 
   const openEditPlan = async (plan: ProductionPlanHistorySummary) => {
+    if (plan.daIn) {
+      setLoadError('Kế hoạch sản xuất đã in, không thể sửa nữa.');
+      return;
+    }
     setIsLoadingCreate(true);
     setLoadError('');
     try {
@@ -2332,7 +2339,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                             )}
                             In
                           </button>
-                          {canEdit ? <button type="button" onClick={() => void openEditPlan(plan)} disabled={isLoadingCreate} className="inline-flex h-7 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button> : null}
+                          {canEdit && !plan.daIn ? <button type="button" onClick={() => void openEditPlan(plan)} disabled={isLoadingCreate} className="inline-flex h-7 items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-700 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button> : null}
                           {canDelete ? <button type="button" onClick={() => void deletePlan(plan)} disabled={deletingPlanId === plan.id} className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700 disabled:opacity-50">{deletingPlanId === plan.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Xóa</button> : null}
                         </div>
                       </div>
@@ -2517,6 +2524,7 @@ export function ProductionPlanModal({
   const [planLines, setPlanLines] = useState<ProductionPlanLine[]>([]);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [printLocked, setPrintLocked] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [pendingNvlPrint, setPendingNvlPrint] = useState(false);
@@ -2938,6 +2946,11 @@ export function ProductionPlanModal({
       return;
     }
 
+    if (printLocked) {
+      setFormError('Kế hoạch sản xuất đã in, không thể sửa nữa.');
+      return;
+    }
+
     setIsSaving(true);
     setFormError('');
 
@@ -2966,8 +2979,23 @@ export function ProductionPlanModal({
     }
   };
 
+  const confirmAndLockPrint = () => {
+    if (!editPlanId) return true;
+    if (!window.confirm('In phiếu sẽ khóa việc sửa kế hoạch sản xuất này. Bạn có chắc chắn muốn in?')) {
+      return false;
+    }
+    setPrintLocked(true);
+    fetch('/api/ke-hoach-sx/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editPlanId })
+    }).catch(() => {});
+    return true;
+  };
+
   const handlePrint = async () => {
     if (displayLines.length === 0) return;
+    if (!confirmAndLockPrint()) return;
     setFormError('');
     setPrintMaterialsByLine({});
     setPendingPrint(true);
@@ -2975,6 +3003,7 @@ export function ProductionPlanModal({
 
   const handlePrintNvl = async () => {
     if (displayLines.length === 0) return;
+    if (!confirmAndLockPrint()) return;
     setIsLoadingNvlPrint(true);
     setFormError('');
 
@@ -2994,6 +3023,7 @@ export function ProductionPlanModal({
       setFormError('Vui lòng chọn ngày kế hoạch trước khi in các phiếu liên quan.');
       return;
     }
+    if (!confirmAndLockPrint()) return;
     setIsLoadingRelatedPrint(true);
     setFormError('');
 
@@ -3726,7 +3756,7 @@ export function ProductionPlanModal({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={isSaving || displayLines.length === 0}
+                disabled={isSaving || printLocked || displayLines.length === 0}
                 className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -3888,7 +3918,8 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
         traineeStaff: pickText(record, ['hoc_viec', 'traineeStaff'], '-'),
         note: pickText(record, ['ghi_chu', 'note', 'mo_ta'], ''),
         position: pickText(record, ['vi_tri', 'position'], '-'),
-        priority: Number(record.thu_tu_uu_tien ?? record.priority ?? 0) || 0
+        priority: Number(record.thu_tu_uu_tien ?? record.priority ?? 0) || 0,
+        daIn: record.da_in === true
       };
     })
     .filter((row): row is ProductionOrderRow => Boolean(row));
@@ -4491,7 +4522,16 @@ export function useProductionOrderPrint() {
       .catch(() => setShiftSettings([]));
   }, []);
 
-  const printProductionOrder = async (order: ProductionOrderRow) => {
+  const printProductionOrder = async (order: ProductionOrderRow, onPrinted?: () => void) => {
+    if (!window.confirm('In phiếu sẽ khóa việc sửa lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    fetch('/api/lenh-sx/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [order.id] })
+    }).catch(() => {});
+    onPrinted?.();
     setIsLoadingPrint(true);
     try {
       const [productCatalog, { materials, product }, machineLabel] = await Promise.all([

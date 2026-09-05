@@ -200,6 +200,10 @@ export function ProductionOrderDetailPage() {
 
   const openEditModal = async () => {
     if (!row || !canEdit) return;
+    if (row.daIn) {
+      setActionMessage('Lệnh sản xuất đã in, không thể sửa nữa.');
+      return;
+    }
     setIsLoadingEdit(true);
     setActionMessage('');
     try {
@@ -241,14 +245,18 @@ export function ProductionOrderDetailPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => printProductionOrder(row)}
+                onClick={() =>
+                  printProductionOrder(row, () =>
+                    setRows(prev => prev.map(r => (r.id === row.id ? { ...r, daIn: true } : r)))
+                  )
+                }
                 disabled={isLoadingPrint}
                 className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
               >
                 {isLoadingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                 In lệnh sản xuất
               </button>
-              {canEdit ? (
+              {canEdit && !row.daIn ? (
                 <button
                   type="button"
                   onClick={openEditModal}
@@ -388,6 +396,10 @@ export function ProductionOrdersPanel({
 
   const openEditModal = async (row: ProductionOrderRow) => {
     if (!canEdit) return;
+    if (row.daIn) {
+      setActionMessage('Lệnh sản xuất đã in, không thể sửa nữa.');
+      return;
+    }
     setIsLoadingEdit(true);
     setActionMessage('');
     try {
@@ -587,6 +599,17 @@ export function ProductionOrdersPanel({
   const handlePrintSelected = async () => {
     const rowsToPrint = filteredRows.filter(row => selectedIds.includes(row.id));
     if (rowsToPrint.length === 0) return;
+
+    if (!window.confirm('In phiếu sẽ khóa việc sửa các lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
+      return;
+    }
+    const printedIds = rowsToPrint.map(row => row.id);
+    setRows(prev => prev.map(r => (printedIds.includes(r.id) ? { ...r, daIn: true } : r)));
+    fetch('/api/lenh-sx/danh-dau-da-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: printedIds })
+    }).catch(() => {});
 
     setIsBatchPrinting(true);
     try {
@@ -908,8 +931,8 @@ export function ProductionOrdersPanel({
                           </dl>
 
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                            <button type="button" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-700 disabled:opacity-50"><Printer className="h-3.5 w-3.5" />In</button>
-                            {canEdit && <button type="button" onClick={() => openEditModal(row)} disabled={isLoadingEdit} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button>}
+                            <button type="button" onClick={() => printProductionOrder(row, () => setRows(prev => prev.map(r => (r.id === row.id ? { ...r, daIn: true } : r))))} disabled={isLoadingPrint} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-700 disabled:opacity-50"><Printer className="h-3.5 w-3.5" />In</button>
+                            {canEdit && !row.daIn && <button type="button" onClick={() => openEditModal(row)} disabled={isLoadingEdit} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800 disabled:opacity-50"><Pencil className="h-3.5 w-3.5" />Sửa</button>}
                             {canDelete && <button type="button" onClick={() => deleteProductionOrder(row)} disabled={deletingId === row.id} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 px-2 text-xs font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Xóa</button>}
                           </div>
                         </div>
@@ -992,10 +1015,10 @@ export function ProductionOrdersPanel({
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
                           <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`} colorful>
-                            <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row)} disabled={isLoadingPrint}>
+                            <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row, () => setRows(prev => prev.map(r => (r.id === row.id ? { ...r, daIn: true } : r))))} disabled={isLoadingPrint}>
                               <Printer className="h-4 w-4" />
                             </button>
-                            {canEdit && (
+                            {canEdit && !row.daIn && (
                               <button type="button" title="Sửa lệnh SX" onClick={() => openEditModal(row)} disabled={isLoadingEdit}>
                                 <Pencil className="h-4 w-4" />
                               </button>

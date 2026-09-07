@@ -4345,10 +4345,13 @@ export function WarehouseHistoryPanel({
 
   const handlePrintSlipByCode = (slipCode: string, autoPrint = false) => {
     if (autoPrint) {
-      if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
-        return;
+      const alreadyPrinted = movements.some(row => row.slipCode === slipCode && row.daIn);
+      if (!alreadyPrinted) {
+        if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
+          return;
+        }
+        markSlipsPrinted([slipCode]);
       }
-      markSlipsPrinted([slipCode]);
     }
     const slip = buildHistoryPrintSlip(slipCode);
     if (!slip) return;
@@ -4368,10 +4371,15 @@ export function WarehouseHistoryPanel({
     }
 
     if (autoPrint) {
-      if (!window.confirm('In phiếu sẽ khóa việc sửa các phiếu này. Bạn có chắc chắn muốn in?')) {
-        return;
+      const unprintedCodes = slips
+        .map(slip => slip.slipCode)
+        .filter(code => !movements.some(row => row.slipCode === code && row.daIn));
+      if (unprintedCodes.length > 0) {
+        if (!window.confirm('In phiếu sẽ khóa việc sửa các phiếu này. Bạn có chắc chắn muốn in?')) {
+          return;
+        }
+        markSlipsPrinted(unprintedCodes);
       }
-      markSlipsPrinted(slips.map(slip => slip.slipCode));
     }
 
     // Mọi phiếu xuất/nhập khi in gộp → 1 bảng; trùng mã (+ ĐVT) thì cộng SL.

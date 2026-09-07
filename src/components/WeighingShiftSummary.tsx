@@ -885,17 +885,20 @@ export default function WeighingShiftSummary({
   }, []);
 
   const handlePrintSlip = (slip: WeighingSlip) => {
-    if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
-      return;
-    }
-    const ids = slip.rows.map(row => row.id).filter((id): id is string | number => id !== undefined);
-    if (ids.length > 0) {
-      setRecords(prev => prev.map(row => (ids.includes(row.id as string | number) ? { ...row, daIn: true } : row)));
-      fetch(`${config.apiBasePath}/danh-dau-da-in`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      }).catch(() => {});
+    const alreadyPrinted = slip.rows.every(row => row.daIn);
+    if (!alreadyPrinted) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      const ids = slip.rows.map(row => row.id).filter((id): id is string | number => id !== undefined);
+      if (ids.length > 0) {
+        setRecords(prev => prev.map(row => (ids.includes(row.id as string | number) ? { ...row, daIn: true } : row)));
+        fetch(`${config.apiBasePath}/danh-dau-da-in`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        }).catch(() => {});
+      }
     }
     const machineName = resolveMachineName(slip.machineName, ...slip.rows.map(row => row.machineName));
     setPrintSlip({

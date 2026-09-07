@@ -707,6 +707,21 @@ function mergeCanTuDongNgayLenhSxMetadata(
   return next;
 }
 
+/** Bỏ cột hệ thống / generated khi nhân bản dòng can_tu_dong. */
+function buildCanTuDongDuplicateInsertPayload(source: Record<string, unknown>): Record<string, unknown> {
+  const omit = new Set(['id', 'created_at', 'updated_at', 'net_weight', 'event_id']);
+  const payload: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (omit.has(key)) continue;
+    payload[key] = value;
+  }
+  // event_id là UUID unique từ thiết bị cân — tạo UUID mới, giữ nguyên mọi giá trị nghiệp vụ khác.
+  if (source.event_id != null && String(source.event_id).trim()) {
+    payload.event_id = crypto.randomUUID();
+  }
+  return payload;
+}
+
 function parseClockMinutes(value: string): number | null {
   const match = String(value || '')
     .trim()
@@ -13174,6 +13189,40 @@ export function createApp() {
       return res.json({ success: true, record: data });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi cập nhật dòng cân tự động.' });
+    }
+  });
+
+  app.post('/api/can-tu-dong/:id/duplicate', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({ error: 'Chưa cấu hình DB cân tự động.' });
+    }
+    const idText = String(req.params.id ?? '').trim();
+    if (!idText) return res.status(400).json({ error: 'Thiếu ID cân tự động.' });
+    const idNumber = Number(idText);
+    const id: string | number = Number.isFinite(idNumber) && String(idNumber) === idText ? idNumber : idText;
+    try {
+      const { data: existing, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (readError) {
+        return res.status(500).json({ error: readError.message || 'Không thể đọc dòng cân tự động.' });
+      }
+      if (!existing) return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động.' });
+      const payload = buildCanTuDongDuplicateInsertPayload(existing as Record<string, unknown>);
+      const { data, error } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .insert(payload)
+        .select('*')
+        .maybeSingle();
+      if (error) {
+        return res.status(500).json({ error: error.message || 'Không thể nhân bản dòng cân tự động.' });
+      }
+      if (!data) return res.status(500).json({ error: 'Không tạo được dòng nhân bản.' });
+      return res.json({ success: true, record: data, sourceId: id });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi nhân bản dòng cân tự động.' });
     }
   });
 

@@ -84,10 +84,13 @@ import {
 } from './weighingRecords';
 import {
   buildCanTuDongFilmKgByProductCode,
+  canTuDongShiftMatches,
   computeInsulationFilmWeightKg,
   filterCanTuDongRecordsForBoard,
   listInsulationFilmBomLines,
   parseCanTuDongQrProductCode,
+  resolveCanTuDongBusinessDate,
+  resolveCanTuDongMachine,
   resolveInsulationFilmBomWeightPerUnit,
   resolveInsulationFilmKgPerRoll,
   sumCanTuDongSanLuongTotals,
@@ -2361,7 +2364,23 @@ export function isBbThanhPhamProductWarehouse(warehouse?: string | null): boolea
   );
 }
 
-/** Phiếu Báo cáo sản lượng — Thành phẩm + mã SP thuộc Kho thành phẩm. */
+/**
+ * Mã SP đủ điều kiện vào tab Báo cáo sản lượng / Nhập TP từ phiếu Thành phẩm.
+ * - Kho thành phẩm: luôn nhận
+ * - Chưa gán `ten_kho`: vẫn nhận (nhiều SP BB trên danh sách sản lượng chưa điền kho)
+ * - Kho hàng hỏng / rác: loại
+ */
+export function isBbSanLuongThanhPhamCatalogProduct(product: ProductRow | undefined | null): boolean {
+  if (!product) return false;
+  const warehouse = product.warehouse;
+  if (!String(warehouse ?? '').trim()) return true;
+  if (isBbDamagedGoodsProductWarehouse(warehouse) || isBbRacMaterialWarehouse(warehouse)) {
+    return false;
+  }
+  return isBbThanhPhamProductWarehouse(warehouse);
+}
+
+/** Phiếu `/danh-sach-bao-cao-san-luong` — Thành phẩm (nguồn SL TP / Nhập thành phẩm). */
 export function isAcceptanceThanhPhamKhoReport(
   report: AcceptanceReport,
   products: ProductRow[]
@@ -2370,8 +2389,7 @@ export function isAcceptanceThanhPhamKhoReport(
   const productCode = resolveAcceptanceReportProductCode(report.mat_hang);
   if (!productCode) return false;
   const product = findProductByCode(products, productCode);
-  if (!product) return false;
-  return isBbThanhPhamProductWarehouse(product.warehouse);
+  return isBbSanLuongThanhPhamCatalogProduct(product);
 }
 
 /** NVL thuộc kho rác (cột Kho trên danh mục `kho_nvl`) — dùng cho SP rác trên Báo cáo sản lượng. */
@@ -7048,7 +7066,17 @@ export function buildBbSanLuongGroups(input: {
     if (input.includeAllMachines) return true;
     return isBbMachineText(report.ma_may, report.ten_may);
   });
-  if (acceptanceReports.length === 0) return [];
+
+  const scopedCanTuDongForSanLuong = filterCanTuDongRecordsForBoard(canTuDongRecords, {
+    shiftFilter: input.shiftFilter,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    machineFilter: input.machineFilter,
+    selectedMachine: input.selectedMachine
+  });
+
+  // Nguồn cân tự động: vẫn dựng SL SP / NVL khi chưa có phiếu nghiệm thu.
+  if (acceptanceReports.length === 0 && scopedCanTuDongForSanLuong.length === 0) return [];
 
   type ReportBucket = {
     ngay: string;
@@ -7071,6 +7099,21 @@ export function buildBbSanLuongGroups(input: {
       buckets.set(key, bucket);
     }
     bucket.reports.push(report);
+  }
+
+  // Seed bucket Ngày·Ca·Máy từ cân tự động khi thiếu nghiệm thu (SL = số cuộn theo mã SP).
+  if (acceptanceReports.length === 0) {
+    for (const record of scopedCanTuDongForSanLuong) {
+      const ngay = resolveCanTuDongBusinessDate(record) || '';
+      const shift = String(record.ca || '').trim();
+      const machine = resolveCanTuDongMachine(record) || '—';
+      if (!ngay || !shift) continue;
+      if (!input.includeAllMachines && !isBbMachineText(machine)) continue;
+      const key = `${ngay}|${shift}|${machine}`;
+      if (!buckets.has(key)) {
+        buckets.set(key, { ngay, shift, machine, reports: [] });
+      }
+    }
   }
 
   const findOrderCodeForBucket = (bucket: ReportBucket) => {
@@ -7128,7 +7171,7 @@ export function buildBbSanLuongGroups(input: {
       const productCodeRaw = resolveAcceptanceReportProductCode(report.mat_hang);
       if (!productCodeRaw) continue;
       const catalog = findProductByCode(input.products, productCodeRaw);
-      if (!catalog || !isBbThanhPhamProductWarehouse(catalog.warehouse)) continue;
+      if (!catalog || !isBbSanLuongThanhPhamCatalogProduct(catalog)) continue;
 
       const qty = Number(report.so_luong);
       const inboundQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
@@ -7252,6 +7295,132 @@ export function buildBbSanLuongGroups(input: {
           } else {
             existing.normWeightKg = roundQty(existing.normWeightKg + lineKg, 4);
             existing.actualWeightKg = roundQty(existing.actualWeightKg + lineKg, 4);
+          }
+        }
+      }
+    }
+
+    // Không có phiếu nghiệm thu: SL SP = số lần cân (cuộn) theo mã SP từ QR cân tự động.
+    if (bucket.reports.length === 0 && scopedCanTuDongForSanLuong.length > 0) {
+      const materialsCatalog = input.materials.map(mapMaterialToWeightCatalogItem);
+      const rollsByProduct = new Map<string, { code: string; count: number }>();
+      for (const record of scopedCanTuDongForSanLuong) {
+        const ngay = resolveCanTuDongBusinessDate(record) || '';
+        if (ngay !== bucket.ngay) continue;
+        if (!canTuDongShiftMatches(String(record.ca || ''), bucket.shift)) continue;
+        const rowMachine = resolveCanTuDongMachine(record) || '';
+        if (
+          bucket.machine &&
+          bucket.machine !== '—' &&
+          !machineValueMatchesFilter(bucket.machine, null, rowMachine)
+        ) {
+          continue;
+        }
+        const productCodeRaw = parseCanTuDongQrProductCode(record.qr_code);
+        if (!productCodeRaw) continue;
+        const catalog = findProductByCode(input.products, productCodeRaw);
+        if (!catalog || !isBbSanLuongThanhPhamCatalogProduct(catalog)) continue;
+        const productKey = normalizeProductCodeKey(productCodeRaw) || productCodeRaw.toUpperCase();
+        const existingRoll = rollsByProduct.get(productKey);
+        if (existingRoll) existingRoll.count += 1;
+        else rollsByProduct.set(productKey, { code: productCodeRaw, count: 1 });
+      }
+
+      for (const [productKey, roll] of rollsByProduct.entries()) {
+        const inboundQty = roll.count;
+        if (!(inboundQty > 0)) continue;
+        const catalog = findProductByCode(input.products, roll.code);
+        if (!catalog) continue;
+        const plasticPerUnit = resolveProductMaterialBaseKg(catalog);
+        const productWeightKg = plasticPerUnit > 0 ? plasticPerUnit * inboundQty : 0;
+        reportedProductQtyTotal += inboundQty;
+
+        let product = productMap.get(productKey);
+        if (!product) {
+          product = {
+            productCode: roll.code,
+            productName: String(catalog.name || '').trim() || roll.code,
+            unit: String(catalog.unit || '').trim() || 'Cuộn',
+            quantity: 0,
+            weightKg: 0,
+            reportCount: 0,
+            nvlAgg: new Map()
+          };
+          productMap.set(productKey, product);
+        }
+        product.quantity += inboundQty;
+        product.weightKg += productWeightKg;
+        product.reportCount += 1;
+
+        const nvlItems = mergeSanLuongNvlFromBomAndSnapshot(catalog.nplItems || [], inboundQty, []);
+        for (const item of nvlItems) {
+          const materialKey = nvlDinhMucItemMatchKey(item);
+          if (!materialKey) continue;
+          const hasSnapshot = item.hasSnapshot !== false;
+          const bomItem = findProductNplItemInBom(catalog, item);
+          const rateFromBom = bomItem ? resolveProductNplSanLuongRate(bomItem) : null;
+          const rate =
+            item.rate > 0
+              ? item.rate
+              : rateFromBom != null && rateFromBom > 0
+                ? rateFromBom
+                : 0;
+          const isPercent = item.amountType === 'percent';
+          const isNvlPhu = isBbSanLuongNvlPhu(item.amountType);
+          const lineQty = isNvlPhu
+            ? resolveBbSanLuongNvlPhuQuantity(inboundQty)
+            : isPercent
+              ? rate
+              : !hasSnapshot
+                ? 0
+                : item.quantityBySl != null && item.quantityBySl > 0
+                  ? item.quantityBySl
+                  : roundQuantityByUnit(rate * inboundQty, item.unit || '');
+          const lineKg = isNvlPhu
+            ? resolveBbSanLuongNvlPhuWeightKg(
+                lineQty,
+                resolveBbSanLuongNvlPhuKgPerUnit(bomItem?.weightKg, item.code, materialsCatalog)
+              )
+            : isPercent || hasSnapshot
+              ? resolveBbSanLuongNvlLineWeightKg({
+                  item,
+                  bomItem,
+                  catalog,
+                  inboundQty,
+                  reportWeightKg: productWeightKg,
+                  lineQty,
+                  rate,
+                  materialsCatalog,
+                  materials: input.materials
+                })
+              : 0;
+
+          const existing = product.nvlAgg.get(materialKey);
+          if (!existing) {
+            product.nvlAgg.set(materialKey, {
+              itemCode: item.code || '',
+              itemName: item.name || item.code || '',
+              unit: isPercent ? '%' : resolveBbSanLuongNvlPhuUnit(item.unit),
+              amountType: item.amountType,
+              rate,
+              quantity: lineQty >= 0 ? lineQty : null,
+              normWeightKg: lineKg,
+              actualWeightKg: lineKg
+            });
+          } else {
+            if (isPercent && rate > 0) {
+              existing.quantity = rate;
+              existing.rate = rate;
+            } else if (lineQty > 0) {
+              existing.quantity = roundQty((existing.quantity || 0) + lineQty, 4);
+            }
+            if (isPercent) {
+              existing.normWeightKg = existing.normWeightKg + lineKg;
+              existing.actualWeightKg = existing.actualWeightKg + lineKg;
+            } else {
+              existing.normWeightKg = roundQty(existing.normWeightKg + lineKg, 4);
+              existing.actualWeightKg = roundQty(existing.actualWeightKg + lineKg, 4);
+            }
           }
         }
       }

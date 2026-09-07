@@ -20,10 +20,11 @@ Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.d
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
-Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm` + mã SP thuộc **Kho thành phẩm** trên `san_pham`).
+Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm`; mã SP thuộc **Kho thành phẩm** hoặc **chưa gán kho** — loại kho hàng hỏng/rác).
+Cột **SL TP / Nhập thành phẩm** trên tiêu hao NVL cũng lấy từ các phiếu này (`/danh-sach-bao-cao-san-luong`), không lấy phiếu xuất kho.
 Trên `/phan-tich-tu-dong`:
 - Tab **Dữ liệu cân thực tế** lấy từ `can_tu_dong` (Cân AI)
-- Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm · Kho thành phẩm)
+- Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm · Kho thành phẩm / chưa gán kho)
   - Sau **Tính toán**: SL/`trong_luong` trên phiếu + snapshot NVL `bao_cao_san_luong_nvl_dinh_muc`
   - NVL phụ (Cái/m²/…): `SL NVL = SL SP`; `TL NVL = SL × khoi_luong_kg`, không có thì `SL × tong_trong_luong`
   - NVL % (nhựa trộn): `TL NVL = Σ Nhựa thực tế Cân AI` (ngày·ca·máy·mã SP) × `%`; không có cân thì `trong_luong_nhua × SL × %`

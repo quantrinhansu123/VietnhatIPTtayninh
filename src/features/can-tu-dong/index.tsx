@@ -490,6 +490,7 @@ export function CanTuDongPanel({
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
   const [productStandardWeightByCode, setProductStandardWeightByCode] = useState<Map<string, number>>(
     () => new Map()
@@ -1190,6 +1191,25 @@ export function CanTuDongPanel({
     }
   };
 
+  const handleDuplicateRow = async (row: CanTuDongRecord) => {
+    const idKey = rowIdKey(row.id);
+    setDuplicatingId(idKey);
+    try {
+      const res = await fetch(`/api/can-tu-dong/${encodeURIComponent(String(row.id))}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không thể nhân bản dòng cân tự động.');
+      showAppToast('Đã nhân bản 1 dòng mới (sao chép y nguyên).');
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không thể nhân bản dòng cân tự động.', 'error');
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
   const handleDeleteRow = async (row: CanTuDongRecord) => {
     if (!window.confirm(`Xóa dòng ${row.qr_code || row.id}?\n\nHành động này không thể hoàn tác.`)) return;
     try {
@@ -1310,6 +1330,18 @@ export function CanTuDongPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openBulkCaModal}
+            disabled={
+              loading || isSettingCa || isSettingNgay || isSettingMaSp || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
+            }
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 text-xs font-bold text-indigo-900 transition hover:bg-indigo-100 disabled:opacity-60"
+            title="Chọn ca rồi sửa cột Ca hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
+          >
+            {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+            {isSettingCa ? 'Đang sửa Ca...' : 'Sửa Ca theo bộ lọc'}
+          </button>
           <button
             type="button"
             onClick={handleDownloadExcel}
@@ -2137,6 +2169,20 @@ export function CanTuDongPanel({
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
+                        onClick={() => void handleDuplicateRow(row)}
+                        disabled={duplicatingId === idKey}
+                        title="Nhân bản y nguyên dòng này thành dòng mới"
+                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                      >
+                        {duplicatingId === idKey ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}{' '}
+                        Nhân bản
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => openEdit(row)}
                         className="inline-flex h-8 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-bold text-sky-700 hover:bg-sky-100"
                       >
@@ -2225,10 +2271,10 @@ export function CanTuDongPanel({
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
               <div>
                 <h3 id="can-tu-dong-bulk-ca-title" className="text-base font-black text-zinc-950">
-                  Điền Ca hàng loạt
+                  Sửa Ca theo bộ lọc
                 </h3>
                 <p className="text-xs font-semibold text-zinc-500">
-                  Áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)
+                  Chọn ca trong sổ xuống · áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện
                 </p>
               </div>
               <button
@@ -2272,7 +2318,7 @@ export function CanTuDongPanel({
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-xs font-extrabold text-white hover:bg-indigo-700 disabled:opacity-60"
               >
                 {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                {isSettingCa ? 'Đang điền...' : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
+                {isSettingCa ? 'Đang sửa...' : `Sửa ${formatNumber(visibleRecords.length, 0)} dòng`}
               </button>
             </div>
           </div>

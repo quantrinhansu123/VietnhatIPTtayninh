@@ -63,6 +63,23 @@ type PendingScan = {
   code: string;
 };
 
+/** Một dòng trong danh sách "đang quét" hiển thị trong pop — gom theo Mã SP. */
+type ScannedItem = {
+  code: string;
+  qty: number;
+};
+
+/** Đưa mã vừa quét lên đầu danh sách; tăng SL nếu là lần nhận hợp lệ, giữ nguyên SL nếu chỉ báo trùng. */
+function bumpScannedItem(list: ScannedItem[], code: string, increment: boolean): ScannedItem[] {
+  const idx = list.findIndex(item => item.code === code);
+  if (idx === -1) {
+    return [{ code, qty: 1 }, ...list];
+  }
+  const current = list[idx];
+  const rest = list.filter((_, i) => i !== idx);
+  return [{ code, qty: increment ? current.qty + 1 : current.qty }, ...rest];
+}
+
 function isAppleMobile() {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
@@ -274,6 +291,7 @@ export default function ProductQrScanner({
   const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [lastScannedValue, setLastScannedValue] = useState('');
   const [sessionScannedCount, setSessionScannedCount] = useState(0);
+  const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
   const [cameraEnabled, setCameraEnabled] = useState(loadCameraPreference);
   const useCamera = !hardwareOnly && cameraEnabled;
   const displayedScannedCount = Math.max(0, Math.trunc(scannedCount ?? sessionScannedCount));
@@ -322,6 +340,7 @@ export default function ProductQrScanner({
   useEffect(() => {
     if (!open) return;
     setSessionScannedCount(0);
+    setScannedItems([]);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -362,11 +381,13 @@ export default function ProductQrScanner({
     }
 
     if (scanResult === 'duplicate') {
+      setScannedItems(prev => bumpScannedItem(prev, code, false));
       setFeedback({ type: 'duplicate', text: `Mã SP đã có — không tăng SL: ${code}` });
       return true;
     }
 
     playScanBeep(audioCtxRef.current);
+    setScannedItems(prev => bumpScannedItem(prev, code, true));
     setSessionScannedCount(current => current + 1);
     setFeedback({ type: 'success', text: `Đã thêm mã SP: ${code}` });
     if (closeAfterScan) {
@@ -424,6 +445,7 @@ export default function ProductQrScanner({
       setFeedbackPulse(0);
       setPendingScan(null);
       setLastScannedValue('');
+      setScannedItems([]);
       return;
     }
 
@@ -705,8 +727,8 @@ export default function ProductQrScanner({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-hidden bg-black/60 p-2 sm:items-center sm:p-4">
-      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl sm:max-h-[92dvh]">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-black/60 p-3 sm:p-4">
+      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl sm:max-h-[92dvh]">
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-3 py-2.5 sm:px-4 sm:py-3">
           <div className="flex items-center gap-2">
             <ScanBarcode className="h-5 w-5 text-[#ef1b2d]" />
@@ -765,23 +787,14 @@ export default function ProductQrScanner({
               id={regionId}
               className="qr-scanner-region min-h-[220px] overflow-hidden rounded-xl bg-zinc-950 sm:min-h-[240px]"
             />
-          ) : (
+          ) : !hardwareOnly ? (
             <div className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-4 text-center">
               <ScanBarcode className="h-8 w-8 text-zinc-300" />
               <p className="mt-2 text-xs font-semibold text-zinc-500">
-                {hardwareOnly
-                  ? 'Bấm cò trên BT-A700. Máy sẽ dùng laser, phát tiếng báo và điền dữ liệu vào dòng sản phẩm.'
-                  : 'Camera đang tắt để đỡ tải máy. Bấm cò máy quét laser để quét mã.'}
+                Camera đang tắt để đỡ tải máy. Bấm cò máy quét laser để quét mã.
               </p>
-              {hardwareOnly && (
-                <p className="mt-1 text-[11px] font-medium text-zinc-400">
-                  {allowDuplicateScans
-                    ? 'Có thể quét liên tục. Tem cũ không có hậu tố được phép quét trùng mã; mỗi lần quét sẽ tăng số lượng.'
-                    : 'Có thể quét liên tục. Mỗi Mã SP chỉ được nhận một lần; quét tem khác cùng Mã SP sẽ được báo trùng.'}
-                </p>
-              )}
             </div>
-          )}
+          ) : null}
           {isStarting && (
             <p className="mt-3 text-center text-xs font-semibold text-zinc-500">Đang mở camera...</p>
           )}
@@ -792,6 +805,36 @@ export default function ProductQrScanner({
             >
               <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">Mã vừa quét</p>
               <p className="mt-1 break-all font-mono text-base font-black text-zinc-900">{lastScannedValue}</p>
+            </div>
+          )}
+          {scannedItems.length > 0 && (
+            <div
+              data-testid="scanned-items-list"
+              className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-white"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-100 bg-zinc-50 px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-600">
+                  Đang quét · {scannedItems.length} mã SP
+                </p>
+                <p className="text-[10px] font-semibold text-zinc-400">Mới nhất trên cùng</p>
+              </div>
+              <ul className="max-h-44 divide-y divide-zinc-100 overflow-y-auto">
+                {scannedItems.map((item, index) => (
+                  <li
+                    key={item.code}
+                    className={`flex items-center justify-between gap-3 px-3 py-2 ${
+                      index === 0 ? 'bg-emerald-50' : ''
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm font-bold text-zinc-900">
+                      {item.code}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-[#ef1b2d] px-2 py-0.5 text-xs font-black text-white">
+                      SL {item.qty}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {feedback && (

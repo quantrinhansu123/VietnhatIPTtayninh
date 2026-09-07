@@ -600,16 +600,18 @@ export function ProductionOrdersPanel({
     const rowsToPrint = filteredRows.filter(row => selectedIds.includes(row.id));
     if (rowsToPrint.length === 0) return;
 
-    if (!window.confirm('In phiếu sẽ khóa việc sửa các lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
-      return;
+    const unprintedIds = rowsToPrint.filter(row => !row.daIn).map(row => row.id);
+    if (unprintedIds.length > 0) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa các lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      setRows(prev => prev.map(r => (unprintedIds.includes(r.id) ? { ...r, daIn: true } : r)));
+      fetch('/api/lenh-sx/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: unprintedIds })
+      }).catch(() => {});
     }
-    const printedIds = rowsToPrint.map(row => row.id);
-    setRows(prev => prev.map(r => (printedIds.includes(r.id) ? { ...r, daIn: true } : r)));
-    fetch('/api/lenh-sx/danh-dau-da-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: printedIds })
-    }).catch(() => {});
 
     setIsBatchPrinting(true);
     try {

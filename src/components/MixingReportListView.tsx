@@ -431,16 +431,18 @@ export default function MixingReportListView({
       setMessage('');
       return;
     }
-    if (!window.confirm('In phiếu sẽ khóa việc sửa các báo cáo này. Bạn có chắc chắn muốn in?')) {
-      return;
+    const ids = selectedReports.filter(report => !report.da_in).map(report => report.id);
+    if (ids.length > 0) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa các báo cáo này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      setReports(prev => prev.map(report => (ids.includes(report.id) ? { ...report, da_in: true } : report)));
+      fetch('/api/bao-cao-phoi-tron/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      }).catch(() => {});
     }
-    const ids = selectedReports.map(report => report.id);
-    setReports(prev => prev.map(report => (ids.includes(report.id) ? { ...report, da_in: true } : report)));
-    fetch('/api/bao-cao-phoi-tron/danh-dau-da-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids })
-    }).catch(() => {});
     setError('');
     setMessage('');
     // Tạo snapshot mới từ selection hiện tại cho mỗi lần mở preview.

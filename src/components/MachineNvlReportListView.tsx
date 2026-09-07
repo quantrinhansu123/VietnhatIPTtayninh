@@ -897,16 +897,18 @@ export default function MachineNvlReportListView({
   };
 
   const handlePrint = (report: MachineNvlSavedReport) => {
-    if (!window.confirm('In phiếu sẽ khóa việc sửa báo cáo này. Bạn có chắc chắn muốn in?')) {
-      return;
+    if (!report.daIn) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa báo cáo này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      setDauCaReports(prev => prev.map(r => (r.id === report.id ? { ...r, daIn: true } : r)));
+      setCuoiCaReports(prev => prev.map(r => (r.id === report.id ? { ...r, daIn: true } : r)));
+      fetch('/api/bao-cao-may-nvl-ton/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: report.id })
+      }).catch(() => {});
     }
-    setDauCaReports(prev => prev.map(r => (r.id === report.id ? { ...r, daIn: true } : r)));
-    setCuoiCaReports(prev => prev.map(r => (r.id === report.id ? { ...r, daIn: true } : r)));
-    fetch('/api/bao-cao-may-nvl-ton/danh-dau-da-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: report.id })
-    }).catch(() => {});
     setPrintReport(savedReportToMachineNvlPrintReport(report));
     setPendingPrint(true);
   };

@@ -2488,6 +2488,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         initialLines={editingPlan ? editLines : undefined}
         initialPlanDate={editingPlan?.planDate}
         initialNote={editingPlan?.note}
+        initialDaIn={editingPlan?.daIn}
       />
     </div>
   );
@@ -2504,6 +2505,7 @@ export function ProductionPlanModal({
   initialLines,
   initialPlanDate,
   initialNote,
+  initialDaIn,
   seedOrderIds
 }: {
   open: boolean;
@@ -2516,6 +2518,7 @@ export function ProductionPlanModal({
   initialLines?: ProductionPlanLine[];
   initialPlanDate?: string;
   initialNote?: string;
+  initialDaIn?: boolean;
   /** Lệnh đang tick trên bảng điều khiển — dùng suy ngày kế hoạch mặc định. */
   seedOrderIds?: string[];
 }) {
@@ -2524,7 +2527,7 @@ export function ProductionPlanModal({
   const [planLines, setPlanLines] = useState<ProductionPlanLine[]>([]);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [printLocked, setPrintLocked] = useState(false);
+  const [printLocked, setPrintLocked] = useState(Boolean(initialDaIn));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [pendingNvlPrint, setPendingNvlPrint] = useState(false);
@@ -2591,6 +2594,10 @@ export function ProductionPlanModal({
 
   const allAvailableOrdersSelected =
     availableOrders.length > 0 && availableOrders.every(order => selectedOrderIds.has(order.id));
+
+  useEffect(() => {
+    if (open) setPrintLocked(Boolean(initialDaIn));
+  }, [open, editPlanId, initialDaIn]);
 
   useEffect(() => {
     if (!open) return;
@@ -2980,7 +2987,7 @@ export function ProductionPlanModal({
   };
 
   const confirmAndLockPrint = () => {
-    if (!editPlanId) return true;
+    if (!editPlanId || printLocked) return true;
     if (!window.confirm('In phiếu sẽ khóa việc sửa kế hoạch sản xuất này. Bạn có chắc chắn muốn in?')) {
       return false;
     }
@@ -4523,15 +4530,17 @@ export function useProductionOrderPrint() {
   }, []);
 
   const printProductionOrder = async (order: ProductionOrderRow, onPrinted?: () => void) => {
-    if (!window.confirm('In phiếu sẽ khóa việc sửa lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
-      return;
+    if (!order.daIn) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa lệnh sản xuất này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      fetch('/api/lenh-sx/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [order.id] })
+      }).catch(() => {});
+      onPrinted?.();
     }
-    fetch('/api/lenh-sx/danh-dau-da-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [order.id] })
-    }).catch(() => {});
-    onPrinted?.();
     setIsLoadingPrint(true);
     try {
       const [productCatalog, { materials, product }, machineLabel] = await Promise.all([

@@ -406,15 +406,17 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   }, [orders, productOptions]);
 
   const handlePrintOrder = async (order: OrderRow) => {
-    if (!window.confirm('In phiếu sẽ khóa việc sửa đơn hàng này. Bạn có chắc chắn muốn in?')) {
-      return;
+    if (!order.daIn) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa đơn hàng này. Bạn có chắc chắn muốn in?')) {
+        return;
+      }
+      setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, daIn: true } : o)));
+      fetch('/api/don-hang/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id })
+      }).catch(() => {});
     }
-    setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, daIn: true } : o)));
-    fetch('/api/don-hang/danh-dau-da-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: order.id })
-    }).catch(() => {});
     setPendingPrint(false);
     setPrintOrder({ ...order, daIn: true });
     setPendingPrint(true);

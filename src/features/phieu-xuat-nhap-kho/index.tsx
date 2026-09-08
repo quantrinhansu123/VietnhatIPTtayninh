@@ -4202,11 +4202,13 @@ export function WarehouseHistoryPanel({
       current.push(group);
       map.set(key, current);
     });
-    return [...map.entries()].map(([slipDate, groups]) => ({
-      slipDate,
-      groups,
-      totalAmount: groups.reduce((sum, group) => sum + group.totalAmount, 0)
-    }));
+    return [...map.entries()]
+      .map(([slipDate, groups]) => ({
+        slipDate,
+        groups,
+        totalAmount: groups.reduce((sum, group) => sum + group.totalAmount, 0)
+      }))
+      .sort((a, b) => b.slipDate.localeCompare(a.slipDate));
   }, [slipGroups]);
 
   const sortedMovementLines = useMemo(
@@ -4705,7 +4707,12 @@ export function WarehouseHistoryPanel({
               <div className="flex items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
                 <div className="flex items-baseline gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>
-                  <span className="font-mono text-sm font-black text-zinc-900">{dateGroup.slipDate}</span>
+                  <span className="font-mono text-sm font-black text-zinc-900">
+                    {(() => {
+                      const [y, m, d] = dateGroup.slipDate.split('-');
+                      return y && m && d ? `${d}/${m}/${y}` : dateGroup.slipDate;
+                    })()}
+                  </span>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
                     {dateGroup.groups.length} phiếu
                   </span>

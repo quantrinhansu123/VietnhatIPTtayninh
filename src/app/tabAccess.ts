@@ -19,7 +19,9 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   /** Cùng quyền «Báo cáo mới» /phan-tich-tu-dong (alias cũ dashboard). */
   'dashboard-auto': 'dashboard',
   /** Trang chi tiết lệnh SX (mở tab mới) dùng chung quyền với danh sách lệnh SX. */
-  'production-order-detail': 'production-orders'
+  'production-order-detail': 'production-orders',
+  /** Trang chi tiết đơn hàng (mở tab mới) dùng chung quyền với danh sách đơn hàng. */
+  'orders-detail': 'orders'
 };
 
 /**

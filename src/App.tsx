@@ -65,7 +65,7 @@ import { InventoryCatalogPanel } from './features/kho-hang';
 import { WarehouseSlipPanel, WarehouseHistoryPanel } from './features/phieu-xuat-nhap-kho';
 import { CustomersPanel } from './features/khach-hang';
 import { ShippingOrdersPanel } from './features/lenh-xuat-hang';
-import { OrdersPanel } from './features/don-hang';
+import { OrdersPanel, OrderDetailPage } from './features/don-hang';
 import { ProductionOrdersPanel, ProductionOrderDetailPage } from './features/lenh-sx';
 import { ProductionPlanHistoryPanel } from './features/ke-hoach-san-xuat';
 import { SettingsPanel } from './features/cai-dat-thoi-gian';
@@ -1524,6 +1524,16 @@ export default function App() {
                   canEdit={menuFullAccess || editableMenuTabs.has('production-orders')}
                   canDelete={menuFullAccess || deletableMenuTabs.has('production-orders')}
                 />
+              </motion.div>
+            ) : activeTab === 'orders-detail' ? (
+              <motion.div
+                key="orders-detail"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <OrderDetailPage />
               </motion.div>
             ) : activeTab === 'production-order-detail' ? (
               <motion.div

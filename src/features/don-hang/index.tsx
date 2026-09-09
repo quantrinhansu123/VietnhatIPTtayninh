@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Eye, Loader2, Pencil, Plus, Printer, Save, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
@@ -258,6 +258,165 @@ export function orderToForm(order: OrderRow): OrderFormState {
   };
 }
 
+/** Trang chi tiết đơn hàng mở ở tab mới trên màn hình desktop. */
+export function OrderDetailPage() {
+  const orderId = useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('id') || '';
+    } catch {
+      return '';
+    }
+  }, []);
+  const [order, setOrder] = useState<OrderRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [printOrder, setPrintOrder] = useState<OrderRow | null>(null);
+  const [pendingPrint, setPendingPrint] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError('');
+    fetch('/api/don-hang')
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Không thể tải đơn hàng.');
+        return normalizeOrders(data);
+      })
+      .then(rows => {
+        if (cancelled) return;
+        const found = rows.find(item => item.id === orderId) || null;
+        setOrder(found);
+        if (!found) setError('Không tìm thấy đơn hàng.');
+      })
+      .catch((err: any) => {
+        if (!cancelled) setError(err?.message || 'Không thể tải đơn hàng.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    if (order) document.title = `Chi tiết đơn hàng · ${order.orderCode || '-'}`;
+  }, [order]);
+
+  const handlePrint = async () => {
+    if (!order) return;
+    if (!order.daIn) {
+      if (!window.confirm('In phiếu sẽ khóa việc sửa đơn hàng này. Bạn có chắc chắn muốn in?')) return;
+      setOrder(prev => (prev ? { ...prev, daIn: true } : prev));
+      fetch('/api/don-hang/danh-dau-da-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id })
+      }).catch(() => {});
+    }
+    setPendingPrint(false);
+    setPrintOrder({ ...order, daIn: true });
+    setPendingPrint(true);
+  };
+
+  useEffect(() => {
+    if (!pendingPrint || !printOrder) return;
+    let cancelled = false;
+    enablePortraitPrintPage('order-print-page-portrait');
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (!cancelled) window.print();
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      disablePortraitPrintPage('order-print-page-portrait');
+    };
+  }, [pendingPrint, printOrder]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setPendingPrint(false);
+      setPrintOrder(null);
+      disablePortraitPrintPage('order-print-page-portrait');
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
+  return (
+    <div className="w-full space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 sm:px-6">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết đơn hàng</h3>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+              {order ? order.orderCode || '-' : isLoading ? 'Đang tải…' : '-'}
+            </p>
+          </div>
+          {order ? (
+            <button
+              type="button"
+              onClick={() => void handlePrint()}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              <Printer className="h-4 w-4" />
+              In phiếu
+            </button>
+          ) : null}
+        </div>
+        {isLoading ? (
+          <div className="flex items-center gap-2 p-6 text-sm font-bold text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Đang tải đơn hàng…
+          </div>
+        ) : error ? (
+          <p className="p-6 text-sm font-bold text-red-600">{error}</p>
+        ) : order ? (
+          <div className="grid grid-cols-1 gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3 sm:px-6">
+            {[
+              ['Mã đơn', order.orderCode],
+              ['Ngày tạo', formatOrderCreatedAt(order.createdAt)],
+              ['Loại đơn', order.orderType],
+              ['Trạng thái', order.status],
+              ['Nhân viên', order.staffName],
+              ['Khách hàng', order.customer],
+              ['Ghi chú', order.note || '-']
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>
+                <p className="mt-1 whitespace-pre-wrap font-bold text-zinc-900">{value || '-'}</p>
+              </div>
+            ))}
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 sm:col-span-2 lg:col-span-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Sản phẩm</p>
+              <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                <div className="hidden border-b border-[#ef1b2d] bg-[#ef1b2d] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_6rem_7rem] sm:gap-3">
+                  <span>Mã SP</span>
+                  <span>Tên sản phẩm</span>
+                  <span>ĐVT</span>
+                  <span className="text-right">Số lượng</span>
+                </div>
+                {getOrderProductLines(order).map((line, index) => (
+                  <div key={`${line.productCode}-${line.productName}-${index}`} className="grid grid-cols-1 gap-1 border-b border-zinc-100 px-3 py-2 text-sm last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_6rem_7rem] sm:gap-3">
+                    <span className="font-black text-zinc-950">{line.productCode || '-'}</span>
+                    <span className="font-semibold text-zinc-800">{line.productName || '-'}</span>
+                    <span className="font-bold text-zinc-600">{line.unit || '-'}</span>
+                    <span className="font-mono font-bold text-zinc-900 sm:text-right">{line.quantity || '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {printOrder ? createPortal(<OrderPrintSheet order={printOrder} />, document.body) : null}
+    </div>
+  );
+}
+
 export function OrdersPanel({ onBack }: { onBack: () => void }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('orders');
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -278,6 +437,18 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
   const [productOptions, setProductOptions] = useState<OrderProductOption[]>([]);
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
+
+  const openOrderDetail = (order: OrderRow) => {
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(max-width: 767px)').matches;
+    if (isMobile) {
+      setViewingOrder(order);
+      return;
+    }
+    window.open(`/don-hang/chi-tiet?id=${encodeURIComponent(order.id)}`, '_blank', 'noopener');
+  };
   const [lookupError, setLookupError] = useState('');
   const [orderForm, setOrderForm] = useState<OrderFormState>(emptyOrderForm);
 
@@ -1013,7 +1184,15 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
             {filteredOrders.map(order => (
               <React.Fragment key={order.id}>
                 <TableRow>
-                  <td className="px-3 py-2.5 align-top font-black text-zinc-950">{order.orderCode || '-'}</td>
+                  <td className="px-3 py-2.5 align-top font-black">
+                    <button
+                      type="button"
+                      onClick={() => openOrderDetail(order)}
+                      className="text-left text-[#ef1b2d] transition hover:text-[#b30d1c]"
+                    >
+                      {order.orderCode || '-'}
+                    </button>
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2.5 align-top font-mono text-xs font-semibold text-zinc-600">
                     {formatOrderCreatedAt(order.createdAt)}
                   </td>
@@ -1052,14 +1231,6 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-emerald-700 transition hover:bg-emerald-50"
                       >
                         <Printer className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setViewingOrder(order)}
-                        title="Xem"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 transition hover:bg-zinc-50"
-                      >
-                        <Eye className="h-4 w-4" />
                       </button>
                       {canEdit && !order.daIn ? (
                         <button

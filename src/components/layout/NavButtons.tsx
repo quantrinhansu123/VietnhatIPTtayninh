@@ -100,6 +100,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'dashboard-auto': 'quan-tri',
   'bieu-do-th': 'quan-tri',
   'orders': 'business',
+  'orders-detail': 'orders',
   'customers': 'business',
   'shipping-orders': 'business',
   'production-orders': 'factory-quan-doc',

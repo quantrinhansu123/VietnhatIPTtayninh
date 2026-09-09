@@ -1067,6 +1067,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'hr': { group: 'HCNS', sub: 'Hồ sơ nhân sự' },
   'vehicles': { group: 'Trang chủ', sub: 'Lái xe' },
   'orders': { group: 'Kinh doanh', sub: 'Đơn đặt hàng' },
+  'orders-detail': { group: 'Kinh doanh', sub: 'Chi tiết đơn hàng' },
   'customers': { group: 'Kinh doanh', sub: 'Khách hàng' },
   'shipping-orders': { group: 'Kinh doanh', sub: 'Lệnh giao / xuất hàng' },
   'production-orders': { group: 'Quản Đốc', sub: 'Lệnh sản xuất' },

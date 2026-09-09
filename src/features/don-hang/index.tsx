@@ -711,6 +711,16 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                 ) : null}
               </label>
 
+              <label className="col-span-2 space-y-1.5">
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
+                <textarea
+                  value={orderForm.note}
+                  onChange={e => setOrderForm(prev => ({ ...prev, note: e.target.value }))}
+                  className={`${orderFieldClass} min-h-24 resize-y py-2.5`}
+                  placeholder="Nhập ghi chú cho đơn hàng"
+                />
+              </label>
+
               <RepeatableLinesBlock
                 className="col-span-2"
                 title="Sản phẩm"

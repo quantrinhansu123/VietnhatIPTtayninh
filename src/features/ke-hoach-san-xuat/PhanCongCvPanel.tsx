@@ -156,6 +156,14 @@ const fieldClass =
 const cellClass =
   'h-9 w-full min-w-0 border-0 bg-transparent px-1.5 text-sm font-semibold text-zinc-800 outline-none focus:bg-red-50';
 
+const DEFAULT_JOB_SUGGESTIONS = [
+  'Phụ kho',
+  'Bảo trì máy bao bì',
+  'Bảo trì máy cách nhiệt',
+  'Xử lý hàng rác màng xi',
+  'Xử lý lựa nối cách nhiệt lỗi'
+];
+
 function PhanCongCvPrintSheet({
   ngay,
   ca,
@@ -280,7 +288,7 @@ export default function PhanCongCvPanel({
 
   const jobOptions = useMemo(() => {
     const fromRows = rows.map(row => row.congViec);
-    return uniqueJobOptions([...knownJobs, ...fromRows]);
+    return uniqueJobOptions([...DEFAULT_JOB_SUGGESTIONS, ...knownJobs, ...fromRows]);
   }, [knownJobs, rows]);
 
   const filledCount = useMemo(

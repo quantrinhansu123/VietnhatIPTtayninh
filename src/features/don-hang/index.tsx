@@ -33,6 +33,7 @@ import {
 } from '../_shared/orderRecordHelpers';
 import { normalizeDaNangBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
 import OrderPrintSheet from '../../components/OrderPrintSheet';
+import { OrderFormModal } from './OrderFormModal';
 import {
   FilterCombobox,
   TableToolbar,
@@ -260,6 +261,7 @@ export function orderToForm(order: OrderRow): OrderFormState {
 
 /** Trang chi tiết đơn hàng mở ở tab mới trên màn hình desktop. */
 export function OrderDetailPage() {
+  const { canEdit } = useTabAccess('orders');
   const orderId = useMemo(() => {
     try {
       return new URLSearchParams(window.location.search).get('id') || '';
@@ -272,6 +274,7 @@ export function OrderDetailPage() {
   const [error, setError] = useState('');
   const [printOrder, setPrintOrder] = useState<OrderRow | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -357,14 +360,26 @@ export function OrderDetailPage() {
             </p>
           </div>
           {order ? (
-            <button
-              type="button"
-              onClick={() => void handlePrint()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
-            >
-              <Printer className="h-4 w-4" />
-              In phiếu
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handlePrint()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                <Printer className="h-4 w-4" />
+                In phiếu
+              </button>
+              {canEdit && !order.daIn ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Sửa
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
         {isLoading ? (
@@ -412,6 +427,16 @@ export function OrderDetailPage() {
           </div>
         ) : null}
       </div>
+      <OrderFormModal
+        open={isEditOpen}
+        mode="edit"
+        editingOrder={order}
+        onClose={() => setIsEditOpen(false)}
+        onSaved={updatedOrder => {
+          setOrder(updatedOrder);
+          setIsEditOpen(false);
+        }}
+      />
       {printOrder ? createPortal(<OrderPrintSheet order={printOrder} />, document.body) : null}
     </div>
   );
@@ -1035,8 +1060,8 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
       )}
 
       {viewingOrder && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết đơn hàng</h3>

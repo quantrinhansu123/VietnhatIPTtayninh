@@ -3,6 +3,8 @@ export interface OrderProductLine {
   productName: string;
   unit: string;
   quantity: string;
+  /** Ghi chú theo dòng sản phẩm (lưu trong san_pham jsonb). */
+  note?: string;
   orderRef?: string;
 }
 
@@ -63,12 +65,13 @@ export function expandMergedProductionProducts(
   productName: string,
   unit: string,
   quantity: string,
-  orderRef?: string
+  orderRef?: string,
+  note?: string
 ): OrderProductLine[] {
   const codes = splitProductionProductCodes(productCode);
   if (codes.length <= 1) {
     if (!productCode && !productName) return [];
-    return [{ productCode, productName, unit, quantity, orderRef }];
+    return [{ productCode, productName, unit, quantity, orderRef, note }];
   }
 
   const names = splitProductionProductNames(productName, codes.length);
@@ -80,7 +83,8 @@ export function expandMergedProductionProducts(
     productName: names[index] ?? names[0] ?? '',
     unit: units[index] ?? units[0] ?? unit,
     quantity: quantities[index] ?? quantities[0] ?? quantity,
-    orderRef
+    orderRef,
+    note: index === 0 ? note : undefined
   }));
 }
 
@@ -92,7 +96,8 @@ export function expandProductionOrderProductLines(lines: OrderProductLine[]): Or
       line.productName,
       line.unit,
       line.quantity,
-      line.orderRef
+      line.orderRef,
+      line.note
     );
   });
 }

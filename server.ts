@@ -6737,6 +6737,7 @@ type OrderProductRecord = {
   ten_sp: string;
   don_vi: string;
   so_luong: number | null;
+  ghi_chu?: string;
 };
 
 function parseOrderProductsInput(
@@ -6762,6 +6763,7 @@ function parseOrderProductsInput(
     const don_vi = pickRowField(row, ['don_vi', 'unit']);
     const so_luong = parseOrderQuantity(row.so_luong ?? row.quantity);
     const ma_don_hang = pickRowField(row, ['ma_don_hang', 'orderRef', 'order_code']);
+    const ghi_chu = pickRowField(row, ['ghi_chu', 'note', 'lineNote']);
 
     if (!ma_sp && !ten_sp) {
       return { error: 'Mỗi dòng sản phẩm cần có mã SP hoặc tên SP.' };
@@ -6770,7 +6772,14 @@ function parseOrderProductsInput(
       return { error: `Số lượng phải lớn hơn 0 cho sản phẩm ${ma_sp || ten_sp}.` };
     }
 
-    products.push({ ma_don_hang, ma_sp, ten_sp, don_vi, so_luong });
+    products.push({
+      ma_don_hang,
+      ma_sp,
+      ten_sp,
+      don_vi,
+      so_luong,
+      ...(ghi_chu ? { ghi_chu } : {})
+    });
   }
 
   if (products.length === 0) {
@@ -6809,12 +6818,14 @@ function parseOrderProductsFromRow(row: Record<string, unknown>): OrderProductRe
         const ma_sp = pickRowField(record, ['ma_sp', 'ma_hang', 'productCode', 'code']);
         const ten_sp = pickRowField(record, ['ten_sp', 'ten_hang', 'productName', 'name']);
         if (!ma_sp && !ten_sp) return null;
+        const ghi_chu = pickRowField(record, ['ghi_chu', 'note', 'lineNote']);
         return {
           ma_don_hang: pickRowField(record, ['ma_don_hang', 'orderRef', 'order_code']),
           ma_sp,
           ten_sp,
           don_vi: pickRowField(record, ['don_vi', 'unit']),
-          so_luong: parseOrderQuantity(record.so_luong ?? record.quantity)
+          so_luong: parseOrderQuantity(record.so_luong ?? record.quantity),
+          ...(ghi_chu ? { ghi_chu } : {})
         };
       })
       .filter((item): item is OrderProductRecord => Boolean(item));

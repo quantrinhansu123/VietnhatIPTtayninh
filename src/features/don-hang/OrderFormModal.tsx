@@ -30,7 +30,7 @@ import {
 } from './index';
 
 const orderProductGridClass =
-  'grid-cols-2 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.5fr)_6rem_6rem_2.5rem]';
+  'grid-cols-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_5rem_5rem_minmax(0,1.1fr)_2.5rem]';
 
 export function OrderFormModal({
   open,
@@ -366,6 +366,7 @@ export function OrderFormModal({
                 { key: 'name', label: 'Tên SP' },
                 { key: 'unit', label: 'ĐVT' },
                 { key: 'qty', label: 'SL', required: true },
+                { key: 'note', label: 'Ghi chú' },
                 { key: 'actions', label: '' }
               ]}
             >
@@ -424,6 +425,14 @@ export function OrderFormModal({
                         onChange={e => updateProductLine(line.key, { quantity: e.target.value })}
                         className={`${orderFieldClass} bg-white`}
                         placeholder="0"
+                      />
+                    </div>
+                    <div className="col-span-2 min-w-0 md:col-span-1">
+                      <input
+                        value={line.note}
+                        onChange={e => updateProductLine(line.key, { note: e.target.value })}
+                        className={`${orderFieldClass} bg-white`}
+                        placeholder="Ghi chú dòng"
                       />
                     </div>
                     {orderForm.productLines.length > 1 ? (

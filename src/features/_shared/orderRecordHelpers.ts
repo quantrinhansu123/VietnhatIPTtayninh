@@ -64,6 +64,7 @@ export function parseOrderProductsFromRecord(record: Record<string, unknown>): O
             productName,
             unit,
             quantity,
+            note: pickText(row, ['ghi_chu', 'note', 'lineNote'], ''),
             orderRef: pickText(row, ['ma_don_hang', 'orderRef', 'order_code'], '')
           };
         })
@@ -123,8 +124,9 @@ export function formatOrderProductsSummary(products: OrderProductLine[]) {
     .map(line => {
       const qty = line.quantity && line.quantity !== '-' ? line.quantity : '';
       const unit = line.unit && line.unit !== '-' ? line.unit : '';
+      const note = line.note?.trim() ? ` (${line.note.trim()})` : '';
       const label = line.productCode || line.productName || '-';
-      return `${label}${qty ? ` × ${qty}` : ''}${unit ? ` ${unit}` : ''}`;
+      return `${label}${qty ? ` × ${qty}` : ''}${unit ? ` ${unit}` : ''}${note}`;
     })
     .join(' · ');
 }

@@ -102,7 +102,7 @@ export default function OrderPrintSheet({ order }: { order: OrderRow }) {
                     {displayCell(line.quantity) || '—'}
                   </td>
                   <td />
-                  <td>{idx === 0 ? orderNote : ''}</td>
+                  <td>{displayCell(line.note) || (idx === 0 ? orderNote : '')}</td>
                 </tr>
               ))
             )}

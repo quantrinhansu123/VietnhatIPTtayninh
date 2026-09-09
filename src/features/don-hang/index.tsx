@@ -50,7 +50,7 @@ import {
 export type { OrderProductLine, OrderRow };
 
 const orderProductGridClass =
-  'grid-cols-2 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.5fr)_6rem_6rem_2.5rem]';
+  'grid-cols-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_5rem_5rem_minmax(0,1.1fr)_2.5rem]';
 export {
   parseOrderProductsFromRecord,
   summarizeOrderProducts,
@@ -149,6 +149,7 @@ export type OrderProductFormLine = {
   productName: string;
   unit: string;
   quantity: string;
+  note: string;
 };
 
 export function newOrderProductFormLine(): OrderProductFormLine {
@@ -157,7 +158,8 @@ export function newOrderProductFormLine(): OrderProductFormLine {
     productCode: '',
     productName: '',
     unit: '',
-    quantity: ''
+    quantity: '',
+    note: ''
   };
 }
 
@@ -206,11 +208,13 @@ export function orderProductLinesToPayload(lines: OrderProductFormLine[], produc
       const unit = line.unit.trim() || resolved.unit;
       const quantity = parsePercentInput(line.quantity);
 
+      const ghi_chu = line.note.trim();
       return {
         ma_sp: productCode,
         ten_sp: productName,
         don_vi: unit,
-        so_luong: Number.isFinite(quantity) && quantity > 0 ? quantity : null
+        so_luong: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+        ...(ghi_chu ? { ghi_chu } : {})
       };
     })
     .filter(item => item.ma_sp || item.ten_sp);
@@ -234,7 +238,8 @@ export function orderToForm(order: OrderRow): OrderFormState {
     productCode: orderCellToInput(line.productCode),
     productName: orderCellToInput(line.productName),
     unit: orderCellToInput(line.unit),
-    quantity: orderCellToInput(line.quantity)
+    quantity: orderCellToInput(line.quantity),
+    note: orderCellToInput(line.note || '')
   }));
 
   return {
@@ -739,6 +744,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                   { key: 'name', label: 'Tên SP' },
                   { key: 'unit', label: 'ĐVT' },
                   { key: 'qty', label: 'SL', required: true },
+                  { key: 'note', label: 'Ghi chú' },
                   { key: 'actions', label: '' }
                 ]}
               >
@@ -797,6 +803,14 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                           onChange={e => updateProductLine(line.key, { quantity: e.target.value })}
                           className={`${orderFieldClass} bg-white`}
                           placeholder="0"
+                        />
+                      </div>
+                      <div className="col-span-2 min-w-0 md:col-span-1">
+                        <input
+                          value={line.note}
+                          onChange={e => updateProductLine(line.key, { note: e.target.value })}
+                          className={`${orderFieldClass} bg-white`}
+                          placeholder="Ghi chú dòng"
                         />
                       </div>
                       {orderForm.productLines.length > 1 ? (
@@ -886,6 +900,9 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                         SL: {line.quantity || '-'}
                         {line.unit && line.unit !== '-' ? ` ${line.unit}` : ''}
                       </p>
+                      {line.note ? (
+                        <p className="mt-0.5 text-xs font-semibold text-zinc-500">Ghi chú: {line.note}</p>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -980,12 +997,13 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
             <TableHeadCell>Trạng thái</TableHeadCell>
             <TableHeadCell>Nhân viên</TableHeadCell>
             <TableHeadCell>Khách hàng</TableHeadCell>
-            <TableHeadCell className="min-w-[420px]">
-              <div className="grid grid-cols-[minmax(72px,0.9fr)_minmax(120px,1.6fr)_72px_56px] gap-2">
+            <TableHeadCell className="min-w-[520px]">
+              <div className="grid grid-cols-[minmax(72px,0.8fr)_minmax(100px,1.2fr)_56px_48px_minmax(80px,1fr)] gap-2">
                 <span>Mã SP</span>
                 <span>Tên sản phẩm</span>
                 <span className="text-right">SL</span>
                 <span>ĐVT</span>
+                <span>Ghi chú</span>
               </div>
             </TableHeadCell>
             <TableHeadCell>Ghi chú</TableHeadCell>
@@ -1012,12 +1030,13 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                       {getOrderProductLines(order).map((line, index) => (
                         <div
                           key={`${order.id}-${line.productCode}-${line.productName}-${index}`}
-                          className="grid grid-cols-[minmax(72px,0.9fr)_minmax(120px,1.6fr)_72px_56px] gap-2 py-1.5 text-xs font-semibold text-zinc-700 first:pt-0 last:pb-0"
+                          className="grid grid-cols-[minmax(72px,0.8fr)_minmax(100px,1.2fr)_56px_48px_minmax(80px,1fr)] gap-2 py-1.5 text-xs font-semibold text-zinc-700 first:pt-0 last:pb-0"
                         >
                           <span className="font-black text-zinc-950">{line.productCode || '-'}</span>
                           <span className="text-zinc-800">{line.productName || '-'}</span>
                           <span className="text-right font-mono font-bold text-zinc-900">{line.quantity || '-'}</span>
                           <span className="font-bold text-zinc-600">{line.unit || '-'}</span>
+                          <span className="text-zinc-500">{line.note || '-'}</span>
                         </div>
                       ))}
                     </div>

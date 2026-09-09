@@ -1,6 +1,6 @@
 -- Chạy trong Supabase SQL Editor (an toàn khi chạy lại)
 -- Thêm cột sản phẩm dạng JSONB + các cột cần thiết cho bảng don_hang.
--- Mỗi phần tử san_pham: { "ma_sp", "ten_sp", "don_vi", "so_luong" }
+-- Mỗi phần tử san_pham: { "ma_sp", "ten_sp", "don_vi", "so_luong", "ghi_chu"? }
 
 alter table public.don_hang
   add column if not exists trang_thai text default 'Chờ sx',
@@ -16,7 +16,7 @@ alter table public.don_hang
 comment on column public.don_hang.trang_thai is
   'Trạng thái đơn hàng: Chờ sx, Đang sx, Hoàn thành, Hủy.';
 comment on column public.don_hang.san_pham is
-  'Danh sách sản phẩm trong đơn: ma_sp, ten_sp, don_vi, so_luong.';
+  'Danh sách sản phẩm trong đơn: ma_sp, ten_sp, don_vi, so_luong, ghi_chu (tuỳ chọn theo dòng).';
 comment on column public.don_hang.created_at is
   'Ngày tạo đơn (server ghi đè theo ngày người dùng chọn khi tạo/sửa đơn).';
 

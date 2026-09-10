@@ -4010,8 +4010,8 @@ export function buildProductionOrderMaterialProposal(
   items: ProductNplItem[],
   product?: Pick<ProductRow, 'plasticWeight' | 'totalWeight' | 'coreWeight' | 'bagWeight'> | null
 ): ProductionOrderMaterialLine[] {
-  const totalWeightKg = resolveProductUnitNormKg(product);
-  const finishedWeightKg = totalWeightKg !== null && totalWeightKg > 0 ? totalWeightKg * orderQuantity : orderQuantity;
+  const materialBaseKg = resolveProductMaterialBaseKg(product);
+  const finishedWeightKg = materialBaseKg > 0 ? materialBaseKg * orderQuantity : orderQuantity;
 
   return items.map(item => {
     const isPercent = item.amountType !== 'quantity';
@@ -4074,8 +4074,8 @@ export function buildProductionOrderMaterialProposalFromActualWeighing(
     Number.isFinite(actualPlasticKg) && actualPlasticKg > 0
       ? actualPlasticKg
       : (() => {
-          const unitNorm = resolveProductUnitNormKg(product);
-          return unitNorm != null && unitNorm > 0 && qty > 0 ? unitNorm * qty : 0;
+          const materialBaseKg = resolveProductMaterialBaseKg(product);
+          return materialBaseKg > 0 && qty > 0 ? materialBaseKg * qty : 0;
         })();
 
   return items.map(item => {

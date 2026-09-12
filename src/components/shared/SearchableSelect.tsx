@@ -100,6 +100,12 @@ export function SearchableSelect({
   }, [selectedLabel, open]);
 
   const filteredOptions = useMemo(() => {
+    // Combobox không có ô tìm: luôn hiện đủ danh sách.
+    // Nếu lọc theo `query` (= giá trị đang chọn) thì đổi ca sẽ mất option khác
+    // (vd đang HC1 → "hc2" không chứa "hc1" → không chọn được HC2).
+    if (comboboxMode && !comboboxSearchable) {
+      return options.slice(0, maxResults);
+    }
     const normalized = normalizeSearchText(query.trim());
     const list = normalized
       ? options.filter(item => {
@@ -109,7 +115,16 @@ export function SearchableSelect({
         })
       : options;
     return list.slice(0, maxResults);
-  }, [options, query, getLabel, getSearchText, getValue, maxResults]);
+  }, [
+    options,
+    query,
+    getLabel,
+    getSearchText,
+    getValue,
+    maxResults,
+    comboboxMode,
+    comboboxSearchable
+  ]);
 
   const commitValue = (nextValue: string, item: unknown | null = null) => {
     const trimmed = nextValue.trim();

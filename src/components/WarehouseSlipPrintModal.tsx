@@ -263,6 +263,21 @@ function formatPrintQty(value: number | null | undefined, fractionDigits = 2) {
   return formatNumber(value, fractionDigits);
 }
 
+/** Phiếu xuất NVL: số nguyên không hiện phần lẻ; số có phần lẻ làm tròn 2 chữ số. */
+function formatNvlExportNumber(value: number | null | undefined, fractionDigits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '';
+  if (Number.isInteger(value)) return formatNumber(value, 0);
+  return new Intl.NumberFormat('vi-VN', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  }).format(value);
+}
+
+function formatNvlExportQty(value: number | null | undefined, fractionDigits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value === 0) return '';
+  return formatNvlExportNumber(value, fractionDigits);
+}
+
 function sumPrintQty(lines: WarehouseSlipPrintLine[]) {
   return lines.reduce((sum, line) => {
     const value = line.quantity;
@@ -300,7 +315,7 @@ function sortPrintLinesByUnit(lines: WarehouseSlipPrintLine[]) {
 
 function formatPrintWeightKg(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '';
-  return formatNumber(value, 1);
+  return formatNvlExportNumber(value, 2);
 }
 
 function formatNhapKhoDateParts(value: string) {
@@ -539,7 +554,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               <td>{line.code || ''}</td>
               <td className="warehouse-slip-print-name">{line.name || ''}</td>
               <td className="warehouse-slip-print-center">{line.unit || ''}</td>
-              <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity, 1)}</td>
+              <td className="warehouse-slip-print-right">{formatNvlExportQty(line.quantity, 2)}</td>
               <td className="warehouse-slip-print-right">{formatPrintWeightKg(line.weightKg)}</td>
               <td>{line.lineNote || ''}</td>
             </tr>
@@ -551,7 +566,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG NHỰA (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalPlasticKg > 0 ? `${formatNumber(totalPlasticKg, 1)} kg` : '0 kg'}
+              {totalPlasticKg > 0 ? `${formatNvlExportNumber(totalPlasticKg, 2)} kg` : '0 kg'}
             </td>
             <td />
           </tr> : null}
@@ -560,7 +575,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG VẬT TƯ KHÁC (kg)
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {totalOtherMaterialKg > 0 ? `${formatNumber(totalOtherMaterialKg, 1)} kg` : '0 kg'}
+              {totalOtherMaterialKg > 0 ? `${formatNvlExportNumber(totalOtherMaterialKg, 2)} kg` : '0 kg'}
             </td>
             <td />
           </tr> : null}
@@ -569,7 +584,7 @@ function NvlExportPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               TỔNG KG
             </td>
             <td className="warehouse-slip-print-right warehouse-slip-print-total-value">
-              {grandTotalKg > 0 ? `${formatNumber(grandTotalKg, 1)} kg` : '0 kg'}
+              {grandTotalKg > 0 ? `${formatNvlExportNumber(grandTotalKg, 2)} kg` : '0 kg'}
             </td>
             <td />
           </tr>

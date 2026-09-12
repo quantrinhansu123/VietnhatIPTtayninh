@@ -54,7 +54,7 @@ import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
-  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight
+  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode
   , X
 } from 'lucide-react';
 import type { AppTab } from '../routes';
@@ -213,6 +213,13 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Nhật ký sản xuất kiêm phiếu giao ca QT-16-BM02: thành phẩm, hàng lỗi và báo cáo cuối ca.',
     icon: ArrowLeftRight,
     tab: 'shift-handover-report'
+  },
+  {
+    title: 'Đối soát',
+    desc: 'Quét QR đối soát theo kho và đợt — tối ưu máy quét BT-A700.',
+    icon: ScanBarcode,
+    icon3d: cardIndexDividers3d,
+    tab: 'doi-soat'
   }
 ];
 
@@ -1047,6 +1054,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'machine-downtime-report': { group: 'Sản xuất', sub: 'Báo cáo máy dừng' },
   'machine-downtime-list': { group: 'Quản Đốc', sub: 'DS máy dừng' },
   'shift-handover-report': { group: 'Sản xuất', sub: 'Phiếu giao ca' },
+  'doi-soat': { group: 'Sản xuất', sub: 'Đối soát' },
   'shift-handover-list': { group: 'Quản Đốc', sub: 'DS phiếu giao ca' },
   'machine-run-log': { group: 'Sản xuất', sub: 'Nhật ký chạy máy' },
   'machine-run-log-list': { group: 'Quản Đốc', sub: 'DS nhật ký chạy máy' },

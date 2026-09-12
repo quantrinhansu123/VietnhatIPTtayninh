@@ -121,6 +121,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'machine-downtime-report': 'report-forms',
   'shift-handover-list': 'report-lists',
   'shift-handover-report': 'report-forms',
+  'doi-soat': 'report-forms',
   'machine-run-log': 'report-forms',
   'machine-run-log-list': 'report-lists',
   'acceptance-report': 'report-forms',

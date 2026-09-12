@@ -65,6 +65,7 @@ import {
   getProductionShiftOptions,
   normalizeShiftSettings,
   resolveShiftName,
+  shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
 import {
@@ -170,10 +171,7 @@ function extractIsoDate(value: string) {
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
-  if (!orderShift || !selectedShift) return false;
-  const left = orderShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  const right = selectedShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  return left === right || left.includes(right) || right.includes(left);
+  return shiftNamesMatch(orderShift, selectedShift);
 }
 
 function machineMatches(
@@ -1170,24 +1168,17 @@ export default function MixingReportForm({
   }, [form.ngay, productionOrders]);
 
   const shiftSelectOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = [];
-    productionOrdersForDate.forEach(order => {
-      const rawShift = normalizeMixingCaInput(order.shift);
-      if (!rawShift) return;
-      const value = resolveShiftName(rawShift, shiftOptions) || rawShift;
-      if (options.some(option => shiftMatches(option.value, value))) return;
-      const configured = shiftOptions.find(
-        option => shiftMatches(option.value, value) || shiftMatches(option.label, value)
-      );
-      options.push({ value, label: configured?.label || value });
-    });
-
+    // Nguồn Ca = toàn bộ ca trong Cài đặt (HC1/HC2 không bị loại vì khớp nhầm với C2/HC).
+    const options = shiftOptions.map(option => ({
+      value: option.value,
+      label: option.label
+    }));
     const current = normalizeMixingCaInput(form.ca);
     if (editingId && current && !options.some(option => shiftMatches(option.value, current))) {
       options.unshift({ value: current, label: current });
     }
     return options;
-  }, [editingId, form.ca, productionOrdersForDate, shiftOptions]);
+  }, [editingId, form.ca, shiftOptions]);
 
   useEffect(() => {
     const current = normalizeMixingCaInput(form.ca);

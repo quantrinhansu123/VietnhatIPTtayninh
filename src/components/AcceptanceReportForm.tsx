@@ -22,7 +22,7 @@ import WeighingImagePreviewModal, {
 } from './WeighingImagePreviewModal';
 import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
-import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
+import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongWeights';
 
 const productLineGridClass =
@@ -182,10 +182,7 @@ function calculateProductWeight(product: ProductSelectOption | null, quantityVal
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
-  if (!orderShift || !selectedShift) return false;
-  const left = orderShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  const right = selectedShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  return left === right || left.includes(right) || right.includes(left);
+  return shiftNamesMatch(orderShift, selectedShift);
 }
 
 function machineMatches(orderMachine: string, machineCode: string, machineName: string, machineRef: string) {

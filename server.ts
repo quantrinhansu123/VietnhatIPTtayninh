@@ -119,6 +119,7 @@ const SUPABASE_MACHINE_NVL_REPORTS_TABLE =
   process.env.SUPABASE_MACHINE_NVL_REPORTS_TABLE || 'bao_cao_may_nvl_ton';
 const SUPABASE_MACHINE_DOWNTIME_TABLE =
   process.env.SUPABASE_MACHINE_DOWNTIME_TABLE || 'phieu_bao_dung_may';
+const SUPABASE_DOI_SOAT_TABLE = process.env.SUPABASE_DOI_SOAT_TABLE || 'doi_soat';
 const SUPABASE_SHIFT_HANDOVER_TABLE =
   process.env.SUPABASE_SHIFT_HANDOVER_TABLE || 'phieu_giao_ca';
 const SUPABASE_PHAN_CONG_CV_TABLE = process.env.SUPABASE_PHAN_CONG_CV_TABLE || 'phan_cong_cv';
@@ -397,6 +398,7 @@ if (supabaseWeighing) {
   console.log(`[SUPABASE:${SUPABASE_WEIGHING_DB_LABEL}] Connected to`, SUPABASE_WEIGHING_URL, {
     weighing: SUPABASE_WEIGHING_TABLE,
     canTuDong: SUPABASE_CAN_TU_DONG_TABLE,
+    doiSoat: SUPABASE_DOI_SOAT_TABLE,
     kiemKho: SUPABASE_KIEM_KHO_TABLE,
     quanLyKho: SUPABASE_QUAN_LY_KHO_TABLE,
     key: usingWeighingServiceKey ? 'service_role' : 'anon/publishable'
@@ -2756,6 +2758,9 @@ async function resolveSupabaseClientForTable(table: string): Promise<SupabaseDbR
       table === SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
   ) {
     return { client: supabaseKiemKho, label: SUPABASE_KIEM_KHO_DB_LABEL };
+  }
+  if (supabaseWeighing && table === SUPABASE_DOI_SOAT_TABLE) {
+    return { client: supabaseWeighing, label: SUPABASE_WEIGHING_DB_LABEL };
   }
 
   const cached = supabaseTableClientCache.get(table);
@@ -14428,6 +14433,421 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi xóa kiểm kho.',
+        db: resolved.label
+      });
+    }
+  });
+
+  /** ---- Đối soát (QR gọn) — bảng doi_soat trên DB chính ---- */
+
+  function computeDoiSoatDotGroups(
+    rows: Array<{
+      dot_doi_soat?: unknown;
+      ten_kho?: unknown;
+      ngay_gio_doi_soat?: unknown;
+    }>
+  ) {
+    type Acc = {
+      dot_doi_soat: string;
+      ten_kho: string | null;
+      ngay_bat_dau: string | null;
+      so_dong: number;
+      thu_tu_trong_ngay: number;
+      tong_dot_trong_ngay: number;
+    };
+    const map = new Map<string, Acc>();
+    for (const row of rows) {
+      const dot = String(row.dot_doi_soat ?? '').trim();
+      if (!dot) continue;
+      const ngay = String(row.ngay_gio_doi_soat ?? '').trim() || null;
+      const tenKho = String(row.ten_kho ?? '').trim() || null;
+      const existing = map.get(dot);
+      if (!existing) {
+        map.set(dot, {
+          dot_doi_soat: dot,
+          ten_kho: tenKho,
+          ngay_bat_dau: ngay,
+          so_dong: 1,
+          thu_tu_trong_ngay: 1,
+          tong_dot_trong_ngay: 1
+        });
+        continue;
+      }
+      existing.so_dong += 1;
+      if (ngay && (!existing.ngay_bat_dau || ngay < existing.ngay_bat_dau)) {
+        existing.ngay_bat_dau = ngay;
+      }
+      if (!existing.ten_kho && tenKho) existing.ten_kho = tenKho;
+    }
+
+    const groups = Array.from(map.values()).sort((a, b) =>
+      (a.ngay_bat_dau || '') < (b.ngay_bat_dau || '') ? -1 : 1
+    );
+
+    const dayKey = (iso: string | null) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+      // VN timezone day bucket
+      const local = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+      return local.toISOString().slice(0, 10);
+    };
+
+    const byDay = new Map<string, Acc[]>();
+    for (const g of groups) {
+      const key = dayKey(g.ngay_bat_dau);
+      const list = byDay.get(key) ?? [];
+      list.push(g);
+      byDay.set(key, list);
+    }
+    for (const list of byDay.values()) {
+      list.forEach((g, idx) => {
+        g.thu_tu_trong_ngay = idx + 1;
+        g.tong_dot_trong_ngay = list.length;
+      });
+    }
+
+    return groups;
+  }
+
+  async function loadDoiSoatDotSourceRows(
+    db: SupabaseClient,
+    options: { tenKho?: string; limit?: number } = {}
+  ) {
+    const tenKho = String(options.tenKho ?? '').trim();
+    const limit = Number.isFinite(options.limit) ? Math.max(1, Math.trunc(options.limit!)) : 5000;
+    let query = db
+      .from(SUPABASE_DOI_SOAT_TABLE)
+      .select('dot_doi_soat, ten_kho, ngay_gio_doi_soat')
+      .not('dot_doi_soat', 'is', null)
+      .order('ngay_gio_doi_soat', { ascending: true })
+      .limit(limit);
+    if (tenKho) query = query.eq('ten_kho', tenKho);
+    const { data, error } = await query;
+    return {
+      rows: Array.isArray(data) ? data : [],
+      error: error as { message?: string } | null
+    };
+  }
+
+  app.get('/api/doi-soat', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_DOI_SOAT_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_DOI_SOAT_TABLE} chưa có trên Supabase. Hãy chạy supabase-doi-soat.sql.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+
+    const limitRaw = Number(req.query.limit ?? 200);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 2000) : 200;
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
+    const dotDoiSoat = String(req.query.dotDoiSoat ?? req.query.dot_doi_soat ?? '').trim();
+    const maSp = String(req.query.maSp ?? req.query.ma_sp ?? '').trim();
+    const from = String(req.query.from ?? '').trim();
+    const to = String(req.query.to ?? '').trim();
+
+    try {
+      let query = db
+        .from(SUPABASE_DOI_SOAT_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(limit);
+
+      if (tenKho) query = query.eq('ten_kho', tenKho);
+      if (dotDoiSoat) query = query.eq('dot_doi_soat', dotDoiSoat);
+      if (maSp) query = query.eq('ma_sp', maSp);
+      if (from) query = query.gte('ngay_gio_doi_soat', `${from}T00:00:00`);
+      if (to) query = query.lte('ngay_gio_doi_soat', `${to}T23:59:59.999`);
+
+      const { data, error } = await query;
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không đọc được bảng doi_soat.',
+          db: dbLabel
+        });
+      }
+
+      const records = Array.isArray(data) ? data : [];
+      return res.json({
+        records,
+        total: records.length,
+        source: 'supabase',
+        db: dbLabel,
+        table: SUPABASE_DOI_SOAT_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tải đối soát.',
+        db: dbLabel
+      });
+    }
+  });
+
+  app.get('/api/doi-soat/dot-mo', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_DOI_SOAT_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_DOI_SOAT_TABLE} chưa có trên Supabase. Hãy chạy supabase-doi-soat.sql.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
+
+    try {
+      const { rows, error } = await loadDoiSoatDotSourceRows(db, { tenKho, limit: 5000 });
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không đọc được danh sách đợt đối soát.',
+          db: dbLabel
+        });
+      }
+
+      // Không chốt đợt — "đợt mở" = tất cả đợt của kho (mới nhất trước).
+      const records = computeDoiSoatDotGroups(rows)
+        .map(g => ({
+          dot_doi_soat: g.dot_doi_soat,
+          ten_kho: g.ten_kho,
+          ngay_bat_dau: g.ngay_bat_dau,
+          so_dong: g.so_dong,
+          thu_tu_trong_ngay: g.thu_tu_trong_ngay,
+          tong_dot_trong_ngay: g.tong_dot_trong_ngay
+        }))
+        .sort((a, b) => ((a.ngay_bat_dau || '') < (b.ngay_bat_dau || '') ? 1 : -1));
+
+      return res.json({ records, total: records.length, source: 'supabase', db: dbLabel });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tải danh sách đợt đối soát.',
+        db: dbLabel
+      });
+    }
+  });
+
+  app.get('/api/doi-soat/dot', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_DOI_SOAT_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_DOI_SOAT_TABLE} chưa có trên Supabase. Hãy chạy supabase-doi-soat.sql.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+    const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
+
+    try {
+      const { rows, error } = await loadDoiSoatDotSourceRows(db, { tenKho, limit: 20000 });
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không đọc được danh sách đợt đối soát.',
+          db: dbLabel
+        });
+      }
+
+      const records = computeDoiSoatDotGroups(rows).sort((a, b) =>
+        (a.ngay_bat_dau || '') < (b.ngay_bat_dau || '') ? 1 : -1
+      );
+
+      return res.json({ records, total: records.length, source: 'supabase', db: dbLabel });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tải danh sách đợt đối soát.',
+        db: dbLabel
+      });
+    }
+  });
+
+  app.post('/api/doi-soat', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_DOI_SOAT_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_DOI_SOAT_TABLE} chưa có trên Supabase. Hãy chạy supabase-doi-soat.sql.`
+      });
+    }
+    const db = resolved.client;
+    const dbLabel = resolved.label;
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const tenKho = String(body.ten_kho ?? body.tenKho ?? '').trim();
+    const dotDoiSoat = String(body.dot_doi_soat ?? body.dotDoiSoat ?? '').trim();
+    const nguoiDoiSoat = String(body.nguoi_doi_soat ?? body.nguoiDoiSoat ?? '').trim();
+    const ngayGio =
+      String(body.ngay_gio_doi_soat ?? body.ngayGioDoiSoat ?? '').trim() || new Date().toISOString();
+
+    const rawLines = Array.isArray(body.lines)
+      ? body.lines
+      : Array.isArray(body.records)
+        ? body.records
+        : body.ma_sp || body.maSp
+          ? [body]
+          : [];
+
+    if (!tenKho) {
+      return res.status(400).json({ error: 'Thiếu kho đối soát.' });
+    }
+    if (!dotDoiSoat) {
+      return res.status(400).json({ error: 'Thiếu đợt đối soát.' });
+    }
+    if (!nguoiDoiSoat) {
+      return res.status(400).json({ error: 'Thiếu người đối soát.' });
+    }
+    if (!rawLines.length) {
+      return res.status(400).json({ error: 'Chưa có dòng sản phẩm để lưu.' });
+    }
+
+    const rows = rawLines
+      .map((item: any) => {
+        const maSp = String(item?.ma_sp ?? item?.maSp ?? '').trim();
+        if (!maSp) return null;
+        const maNvlRaw = String(item?.ma_nvl ?? item?.maNvl ?? '').trim();
+        const maNvl =
+          maNvlRaw || (maSp.includes('_') ? maSp.slice(0, maSp.indexOf('_')).trim() : maSp);
+        return {
+          ten_kho: tenKho,
+          dot_doi_soat: dotDoiSoat,
+          ma_nvl: maNvl || null,
+          ma_sp: maSp,
+          ten_sp: String(item?.ten_sp ?? item?.tenSp ?? '').trim() || null,
+          loai_sp: String(item?.loai_sp ?? item?.loaiSp ?? '').trim() || null,
+          allow_duplicate_scan: item?.allow_duplicate_scan === true || item?.allowDuplicateScan === true,
+          ngay_gio_doi_soat: ngayGio,
+          nguoi_doi_soat: nguoiDoiSoat
+        };
+      })
+      .filter(Boolean);
+
+    if (!rows.length) {
+      return res.status(400).json({ error: 'Không có mã SP hợp lệ để lưu.' });
+    }
+
+    try {
+      const normalizeMaSp = (value: unknown) =>
+        String(value ?? '')
+          .trim()
+          .toLocaleLowerCase('vi-VN')
+          .replace(/\s+/g, ' ');
+      const uniqueRows: any[] = [];
+      const incomingKeys = new Set<string>();
+      let skippedCount = 0;
+
+      for (const row of rows as any[]) {
+        const key = normalizeMaSp(row.ma_sp);
+        if (!key || (incomingKeys.has(key) && !row.allow_duplicate_scan)) {
+          skippedCount += 1;
+          continue;
+        }
+        incomingKeys.add(key);
+        uniqueRows.push(row);
+      }
+
+      const existingKeys = new Set<string>();
+      const PAGE_SIZE = 1000;
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page, error: existingError } = await db
+          .from(SUPABASE_DOI_SOAT_TABLE)
+          .select('ma_sp')
+          .eq('dot_doi_soat', dotDoiSoat)
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (existingError) {
+          return res.status(500).json({
+            error: existingError.message || 'Không kiểm tra được mã SP đã có trong đợt đối soát.',
+            db: dbLabel
+          });
+        }
+
+        const records = Array.isArray(page) ? page : [];
+        for (const record of records) {
+          const key = normalizeMaSp(record?.ma_sp);
+          if (key) existingKeys.add(key);
+        }
+        if (records.length < PAGE_SIZE) break;
+      }
+
+      const rowsToInsert = uniqueRows.filter(row => {
+        if (existingKeys.has(normalizeMaSp(row.ma_sp)) && !row.allow_duplicate_scan) {
+          skippedCount += 1;
+          return false;
+        }
+        return true;
+      });
+
+      if (rowsToInsert.length === 0) {
+        return res.status(200).json({
+          records: [],
+          total: 0,
+          saved_count: 0,
+          skipped_count: skippedCount,
+          source: 'supabase',
+          db: dbLabel,
+          table: SUPABASE_DOI_SOAT_TABLE
+        });
+      }
+
+      const { data, error } = await db
+        .from(SUPABASE_DOI_SOAT_TABLE)
+        .insert(rowsToInsert.map(({ allow_duplicate_scan: _allowDuplicateScan, ...row }) => row))
+        .select('*');
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không lưu được đối soát.',
+          db: dbLabel
+        });
+      }
+
+      const records = Array.isArray(data) ? data : [];
+      return res.status(201).json({
+        records,
+        total: records.length,
+        saved_count: records.length,
+        skipped_count: skippedCount,
+        source: 'supabase',
+        db: dbLabel,
+        table: SUPABASE_DOI_SOAT_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi lưu đối soát.',
+        db: dbLabel
+      });
+    }
+  });
+
+  app.delete('/api/doi-soat/:id', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_DOI_SOAT_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_DOI_SOAT_TABLE} chưa có trên Supabase. Hãy chạy supabase-doi-soat.sql.`
+      });
+    }
+
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID đối soát.' });
+
+    try {
+      const { data, error } = await resolved.client
+        .from(SUPABASE_DOI_SOAT_TABLE)
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không xóa được dòng đối soát.',
+          db: resolved.label
+        });
+      }
+      if (!data) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng đối soát.', db: resolved.label });
+      }
+      return res.json({ success: true, db: resolved.label });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi xóa đối soát.',
         db: resolved.label
       });
     }

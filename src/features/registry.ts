@@ -9,6 +9,7 @@ export type TableId =
   | 'can_tu_dong_tong_hop'
   | 'kiem_kho'
   | 'kiem_kho_chenh_lech'
+  | 'doi_soat'
   | 'quan_ly_kho'
   | 'bao_cao_hang_hong'
   | 'san_pham'
@@ -120,6 +121,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     serverLines: 'GET/POST/DELETE /api/kiem-kho + /api/kiem-kho/dot-mo, /dot, /dot-xac-nhan + /api/kiem-kho-tong-hop',
     appTab: 'kiem-kho',
     appLines: 'src/features/kiem-kho/index.tsx',
+    components: ['src/components/ProductQrScanner.tsx'],
+    utils: []
+  },
+  doi_soat: {
+    table: 'doi_soat',
+    label: 'Đối soát QR',
+    sql: ['supabase-doi-soat.sql'],
+    apiPrefix: '/api/doi-soat',
+    serverLines: 'GET/POST/DELETE /api/doi-soat + /api/doi-soat/dot-mo, /dot',
+    appTab: 'doi-soat',
+    appLines: 'src/features/doi-soat/index.tsx',
     components: ['src/components/ProductQrScanner.tsx'],
     utils: []
   },

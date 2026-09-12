@@ -17,6 +17,7 @@ import { formatNumber } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 import { waitForPrintImagesReady } from '../utils/printReady';
+import { shiftNamesMatch } from '../utils/shiftSettings';
 
 const fieldClass =
   'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -86,10 +87,7 @@ function calcDowntimeMinutes(start: string, end: string) {
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
-  if (!orderShift || !selectedShift) return false;
-  const left = orderShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  const right = selectedShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  return left === right || left.includes(right) || right.includes(left);
+  return shiftNamesMatch(orderShift, selectedShift);
 }
 
 function parseOrderDate(value: string) {

@@ -40,6 +40,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'damaged-goods-report',
     'acceptance-report',
     'kiem-kho',
+    'doi-soat',
     // form ↔ list (nút Danh sách / Sửa)
     'machine-nvl-report-list',
     'mixing-report-list',

@@ -342,7 +342,7 @@ function shiftMatches(orderShift: string, selectedShift: string) {
   if (shiftNamesMatch(orderShift, selectedShift)) return true;
   const left = orderShift.replace(/^ca\s*/i, '').trim().toLowerCase();
   const right = selectedShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  return left === right || left.includes(right) || right.includes(left);
+  return left === right;
 }
 
 function machineMatches(

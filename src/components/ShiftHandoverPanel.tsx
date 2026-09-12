@@ -16,6 +16,7 @@ import {
 import {
   getProductionShiftOptions,
   normalizeShiftSettings,
+  shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
 import {
@@ -84,10 +85,7 @@ function normalizeMachines(data: unknown): MachineOption[] {
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
-  if (!orderShift || !selectedShift) return false;
-  const left = orderShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  const right = selectedShift.replace(/^ca\s*/i, '').trim().toLowerCase();
-  return left === right || left.includes(right) || right.includes(left);
+  return shiftNamesMatch(orderShift, selectedShift);
 }
 
 function normalizeProductionStaff(data: unknown): StaffOption[] {

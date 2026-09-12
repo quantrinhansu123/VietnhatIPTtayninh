@@ -76,6 +76,7 @@ import { VehiclesPanel } from './features/danh-sach-xe';
 import { CanTuDongPanel } from './features/can-tu-dong';
 import { CanTuDongPilotPanel, CanKiemKhoPilotPanel } from './features/can-tu-dong/pilot';
 import { KiemKhoPanel } from './features/kiem-kho';
+import { DoiSoatPanel } from './features/doi-soat';
 import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
@@ -1314,6 +1315,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <ShiftHandoverPanel onBack={() => goBack('report-forms')} />
+              </motion.div>
+            ) : activeTab === 'doi-soat' ? (
+              <motion.div
+                key="doi-soat"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <DoiSoatPanel onBack={() => goBack('report-forms')} currentUser={authUser} />
               </motion.div>
             ) : activeTab === 'shift-handover-list' ? (
               <motion.div

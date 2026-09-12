@@ -29,6 +29,7 @@ import {
   type MachineNvlSavedLine,
   type MachineNvlSavedReport
 } from '../../utils/machineNvlReports';
+import { shiftNamesMatch } from '../../utils/shiftSettings';
 import { normalizeProductCodeKey } from '../san-pham/types';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
@@ -250,10 +251,7 @@ export function machineNvlShiftKey(value: string) {
 }
 
 export function machineNvlShiftMatches(orderShift: string, selectedShift: string) {
-  const orderKey = machineNvlShiftKey(orderShift);
-  const selectedKey = machineNvlShiftKey(selectedShift);
-  if (!orderKey || !selectedKey || orderKey === '-') return false;
-  return orderKey === selectedKey || orderKey.includes(selectedKey) || selectedKey.includes(orderKey);
+  return shiftNamesMatch(orderShift, selectedShift);
 }
 
 export function machineNvlOrderMatchesMachine(orderMachine: string, selectedMachine: MachineRow | null, machineRef: string) {

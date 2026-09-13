@@ -279,6 +279,21 @@ export function SearchableSelect({
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
       if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      const trimmed = query.trim();
+      if (allowCustomValue && trimmed) {
+        const exactValue = options.find(item => getValue(item).toLowerCase() === trimmed.toLowerCase());
+        if (exactValue) {
+          commitValue(getValue(exactValue), exactValue);
+          return;
+        }
+        const exactLabel = options.find(item => getLabel(item).toLowerCase() === trimmed.toLowerCase());
+        if (exactLabel) {
+          commitValue(getValue(exactLabel), exactLabel);
+          return;
+        }
+        commitValue(trimmed, null);
+        return;
+      }
       setQuery(selectedLabel);
       setOpen(false);
     };
@@ -287,13 +302,69 @@ export function SearchableSelect({
       if (focusTimer !== null) window.clearTimeout(focusTimer);
       document.removeEventListener('mousedown', closeOnOutsideClick);
     };
-  }, [open, comboboxMode, comboboxSearchable, selectedLabel]);
+  }, [
+    open,
+    comboboxMode,
+    comboboxSearchable,
+    selectedLabel,
+    allowCustomValue,
+    query,
+    options,
+    getValue,
+    getLabel
+  ]);
 
   const dropdownPanelClass =
     'fixed z-[200] max-h-52 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-lg';
 
   const keepFocusForSelection = () => {
     suppressBlurRef.current = true;
+  };
+
+  const queryTrimmed = query.trim();
+  const hasExactQueryMatch = useMemo(() => {
+    if (!queryTrimmed) return false;
+    const normalized = queryTrimmed.toLowerCase();
+    return options.some(
+      item =>
+        getValue(item).toLowerCase() === normalized || getLabel(item).toLowerCase() === normalized
+    );
+  }, [options, queryTrimmed, getValue, getLabel]);
+
+  const commitTypedOrMatchedValue = () => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    const exactValue = options.find(item => getValue(item).toLowerCase() === trimmed.toLowerCase());
+    if (exactValue) {
+      commitValue(getValue(exactValue), exactValue);
+      return;
+    }
+    const exactLabel = options.find(item => getLabel(item).toLowerCase() === trimmed.toLowerCase());
+    if (exactLabel) {
+      commitValue(getValue(exactLabel), exactLabel);
+      return;
+    }
+    if (allowCustomValue) {
+      commitValue(trimmed, null);
+      return;
+    }
+    if (filteredOptions.length === 1) {
+      commitValue(getValue(filteredOptions[0]), filteredOptions[0]);
+    }
+  };
+
+  const renderCustomAddOption = () => {
+    if (!allowCustomValue || !queryTrimmed || hasExactQueryMatch) return null;
+    return (
+      <button
+        type="button"
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => commitValue(queryTrimmed, null)}
+        className="block w-full px-3 py-2.5 text-left text-sm font-extrabold text-[#ef1b2d] transition hover:bg-red-50"
+      >
+        Thêm «{queryTrimmed}»
+      </button>
+    );
   };
 
   const renderDropdown = () => {
@@ -314,6 +385,11 @@ export function SearchableSelect({
                   ref={searchInputRef}
                   value={query}
                   onChange={event => setQuery(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    commitTypedOrMatchedValue();
+                  }}
                   placeholder={searchPlaceholder || placeholder}
                   className="h-10 w-full rounded-lg bg-zinc-50 pl-9 pr-3 text-sm font-medium text-zinc-800 outline-none ring-1 ring-transparent placeholder:text-zinc-400 focus:bg-white focus:ring-red-200"
                 />
@@ -332,6 +408,7 @@ export function SearchableSelect({
                 {placeholder}
               </button>
             ) : null}
+            {renderCustomAddOption()}
             {filteredOptions.length > 0 ? (
               filteredOptions.map((item, index) => {
                 const optionValue = getValue(item);
@@ -351,7 +428,7 @@ export function SearchableSelect({
                   </button>
                 );
               })
-            ) : (
+            ) : allowCustomValue && queryTrimmed ? null : (
               <div className="px-4 py-8 text-center text-sm font-medium text-zinc-400">
                 {isLoading ? 'Đang tải...' : 'Không tìm thấy kết quả phù hợp'}
               </div>
@@ -362,7 +439,7 @@ export function SearchableSelect({
       );
     }
 
-    if (filteredOptions.length > 0) {
+    if (filteredOptions.length > 0 || (allowCustomValue && queryTrimmed && !hasExactQueryMatch)) {
       return createPortal(
         <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
           {allowEmpty && !query.trim() && (
@@ -375,6 +452,7 @@ export function SearchableSelect({
               {placeholder}
             </button>
           )}
+          {renderCustomAddOption()}
           {filteredOptions.map((item, index) => {
             const optionValue = getValue(item);
             const optionLabel = (getOptionLabel ?? getLabel)(item);

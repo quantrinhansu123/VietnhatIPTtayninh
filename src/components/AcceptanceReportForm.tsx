@@ -642,13 +642,40 @@ export default function AcceptanceReportForm({
     [productionOrders, header.ngay]
   );
 
-  const settingShiftOptions = useMemo(
-    () => getProductionShiftOptions(shiftSettings).map(option => option.value),
-    [shiftSettings]
-  );
+  /** Nguồn Ca duy nhất: trang Cài đặt (`/api/cai-dat`) — dùng native select để HC1/HC2 không bị lọc nhầm. */
+  const shiftSelectOptions = useMemo(() => {
+    const options = getProductionShiftOptions(shiftSettings);
+    const current = header.ca.trim();
+    if (
+      current &&
+      !options.some(
+        option =>
+          option.value === current ||
+          shiftNamesMatch(option.value, current) ||
+          shiftNamesMatch(option.label, current)
+      )
+    ) {
+      return [{ value: current, label: current }, ...options];
+    }
+    return options;
+  }, [shiftSettings, header.ca]);
 
-  /** Nguồn Ca duy nhất: trang Cài đặt (`/api/cai-dat`). */
-  const shiftOptions = settingShiftOptions;
+  const autoReportShiftOptions = useMemo(() => {
+    const options = getProductionShiftOptions(shiftSettings);
+    const current = autoReportFilter.ca.trim();
+    if (
+      current &&
+      !options.some(
+        option =>
+          option.value === current ||
+          shiftNamesMatch(option.value, current) ||
+          shiftNamesMatch(option.label, current)
+      )
+    ) {
+      return [{ value: current, label: current }, ...options];
+    }
+    return options;
+  }, [shiftSettings, autoReportFilter.ca]);
 
   const teamOptions = useMemo(
     () =>
@@ -1344,19 +1371,21 @@ export default function AcceptanceReportForm({
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Ca
               </span>
-              <ComboSelect
+              <select
                 value={header.ca}
-                onChange={handleShiftChange}
-                options={shiftOptions}
-                placeholder={settingShiftOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
-                inputClassName={inputClass}
-                disabled={settingShiftOptions.length === 0}
-                comboboxMode
-                comboboxSearchable={false}
-                matchDropdownWidth
-                getValue={item => String(item)}
-                getLabel={item => String(item)}
-              />
+                onChange={event => handleShiftChange(event.target.value)}
+                disabled={shiftSelectOptions.length === 0}
+                className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <option value="">
+                  {shiftSelectOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
+                </option>
+                {shiftSelectOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label || option.value}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="flex gap-3">
               <label className="field-cell flex-1">
@@ -1675,18 +1704,21 @@ export default function AcceptanceReportForm({
               </label>
               <label className="field-cell">
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
-                <ComboSelect
+                <select
                   value={autoReportFilter.ca}
-                  onChange={ca => setAutoReportFilter(prev => ({ ...prev, ca }))}
-                  options={settingShiftOptions}
-                  placeholder="Chọn ca..."
-                  inputClassName={inputClass}
-                  comboboxMode
-                  comboboxSearchable={false}
-                  matchDropdownWidth
-                  getValue={item => String(item)}
-                  getLabel={item => String(item)}
-                />
+                  onChange={event => setAutoReportFilter(prev => ({ ...prev, ca: event.target.value }))}
+                  disabled={autoReportShiftOptions.length === 0}
+                  className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <option value="">
+                    {autoReportShiftOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
+                  </option>
+                  {autoReportShiftOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label || option.value}
+                    </option>
+                  ))}
+                </select>
               </label>
               <p className="rounded-xl bg-blue-50 px-3 py-2.5 text-xs font-semibold leading-5 text-blue-800">
                 Mỗi QR cân AI được tính là 1 sản phẩm. Các QR cùng mã SP sẽ được cộng thành một dòng số lượng. Dữ liệu sẽ điền vào phiếu Thành phẩm.

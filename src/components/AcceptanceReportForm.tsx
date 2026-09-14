@@ -1053,10 +1053,6 @@ export default function AcceptanceReportForm({
       }
     }
 
-    if (!section.hinh_anh.trim() && !section.imagePreview.trim()) {
-      return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chụp ảnh.`;
-    }
-
     return validLines;
   };
 
@@ -1078,11 +1074,10 @@ export default function AcceptanceReportForm({
     setError('');
     setMessage('');
     try {
-      const resolvedImage = await resolveImageForSave(section);
-      if (!resolvedImage) {
-        setError(showSaveFailure(`Phiếu ${MATERIAL_TYPE_LABELS[editingType]}: vui lòng chụp ảnh.`));
-        return;
-      }
+      const resolvedImage = (await resolveImageForSave(section)) ?? {
+        hinh_anh: '',
+        hinh_anh_public_id: ''
+      };
       const line = prepared[0];
       const res = await fetch(`/api/bao-cao-nghiem-thu/${editingId}`, {
         method: 'PATCH',
@@ -1095,8 +1090,8 @@ export default function AcceptanceReportForm({
           ma_may: header.ma_may,
           ten_may: header.ten_may,
           loai_vat_tu: editingType,
-          hinh_anh: resolvedImage.hinh_anh,
-          hinh_anh_public_id: resolvedImage.hinh_anh_public_id,
+          hinh_anh: resolvedImage.hinh_anh || null,
+          hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
           mat_hang: line.mat_hang,
           don_vi: line.don_vi,
           so_luong: line.soLuong,
@@ -1148,10 +1143,10 @@ export default function AcceptanceReportForm({
       let totalSaved = 0;
       for (const type of filledTypes) {
         const section = sections[type];
-        const resolvedImage = await resolveImageForSave(section);
-        if (!resolvedImage) {
-          throw new Error(`Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chụp ảnh.`);
-        }
+        const resolvedImage = (await resolveImageForSave(section)) ?? {
+          hinh_anh: '',
+          hinh_anh_public_id: ''
+        };
         const validLines = preparedByType.get(type) ?? [];
         let savedForType = 0;
         for (const line of validLines) {
@@ -1166,8 +1161,8 @@ export default function AcceptanceReportForm({
               ma_may: header.ma_may,
               ten_may: header.ten_may,
               loai_vat_tu: type,
-              hinh_anh: resolvedImage.hinh_anh,
-              hinh_anh_public_id: resolvedImage.hinh_anh_public_id,
+              hinh_anh: resolvedImage.hinh_anh || null,
+              hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
               mat_hang: line.mat_hang,
               don_vi: line.don_vi,
               so_luong: line.soLuong,

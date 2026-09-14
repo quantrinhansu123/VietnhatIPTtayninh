@@ -5561,7 +5561,6 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   if (so_luong === null || so_luong <= 0) return { error: 'Số lượng phải lớn hơn 0.' };
 
   const hinh_anh = String(source.hinh_anh ?? source.imageUrl ?? '').trim();
-  if (!hinh_anh) return { error: 'Vui lòng chụp hoặc tải ảnh sản lượng.' };
 
   return {
     record: {
@@ -5577,8 +5576,10 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
       so_luong,
       trong_luong,
       don_vi_trong_luong: String(source.don_vi_trong_luong ?? source.weightUnit ?? 'Kg').trim() || 'Kg',
-      hinh_anh,
-      hinh_anh_public_id: String(source.hinh_anh_public_id ?? source.imagePublicId ?? '').trim() || null
+      hinh_anh: hinh_anh || null,
+      hinh_anh_public_id: hinh_anh
+        ? String(source.hinh_anh_public_id ?? source.imagePublicId ?? '').trim() || null
+        : null
     }
   };
 }

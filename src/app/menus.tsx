@@ -315,8 +315,8 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary-list'
   },
   {
-    title: 'Cân AI cũ',
-    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
+    title: 'Danh sách cân',
+    desc: 'Danh sách dữ liệu cân (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
@@ -589,8 +589,8 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'weighing-summary-list'
   },
   {
-    title: 'Cân AI cũ',
-    desc: 'Danh sách dữ liệu cân AI cũ (can_tu_dong); bấm ảnh để xem trong app.',
+    title: 'Danh sách cân',
+    desc: 'Danh sách dữ liệu cân (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
@@ -982,7 +982,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'BOM và tỷ lệ phối trộn', tab: 'mixing-report-list' },
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },
-      { label: 'Cân AI cũ', tab: 'can-tu-dong' },
+      { label: 'Danh sách cân', tab: 'can-tu-dong' },
       { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Kiểm tra kho thành phẩm', tab: 'acceptance-report-list' },
       { label: 'Báo cáo chất lượng', tab: 'factory-qc', disabled: true }
@@ -1039,7 +1039,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'report-lists': { group: 'Sản xuất', sub: 'Lịch sử công việc' },
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
-  'can-tu-dong': { group: 'Sản xuất', sub: 'Cân AI cũ' },
+  'can-tu-dong': { group: 'Sản xuất', sub: 'Danh sách cân' },
   'can-tu-dong-pilot': { group: 'Sản xuất', sub: 'Trạm cân QR' },
   'can-kiem-kho': { group: 'Kho', sub: 'Cân kiểm kho' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },

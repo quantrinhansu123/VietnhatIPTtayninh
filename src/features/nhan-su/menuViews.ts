@@ -59,7 +59,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'mixing-report-list', label: 'BOM và tỷ lệ phối trộn' },
       { tab: 'damaged-goods-report-list', label: 'Kiểm soát hàng hỏng' },
       { tab: 'weighing-summary-list', label: 'Phiếu cân ca' },
-      { tab: 'can-tu-dong', label: 'Cân AI cũ' },
+      { tab: 'can-tu-dong', label: 'Danh sách cân' },
       { tab: 'can-tu-dong-pilot', label: 'Trạm cân QR' },
       { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'acceptance-report-list', label: 'Kiểm tra kho thành phẩm' }

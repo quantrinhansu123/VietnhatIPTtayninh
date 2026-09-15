@@ -466,6 +466,7 @@ export function CanTuDongPanel({
   const [isSettingMaSp, setIsSettingMaSp] = useState(false);
   const [showBulkNgayModal, setShowBulkNgayModal] = useState(false);
   const [bulkNgayValue, setBulkNgayValue] = useState(() => localIsoDateToday());
+  const [bulkNgayScope, setBulkNgayScope] = useState<'visible' | 'selected'>('selected');
   const [showBulkCaModal, setShowBulkCaModal] = useState(false);
   const [bulkCaValue, setBulkCaValue] = useState(AUTO_FILL_CA);
   const [showBulkMaSpModal, setShowBulkMaSpModal] = useState(false);
@@ -989,19 +990,28 @@ export function CanTuDongPanel({
     }
   };
 
-  const openBulkNgayModal = () => {
-    if (visibleRecords.length === 0) {
-      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+  const openBulkNgayModalForSelected = () => {
+    if (selectedIds.size === 0) {
+      showAppToast('Hãy tick chọn các dòng cần sửa ngày.', 'error');
       return;
     }
+    setBulkNgayScope('selected');
     setBulkNgayValue(localIsoDateToday());
     setShowBulkNgayModal(true);
   };
 
-  const handleBulkSetNgayForVisible = async () => {
-    const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
+  const handleBulkSetNgay = async () => {
+    const ids =
+      bulkNgayScope === 'selected'
+        ? [...selectedIds]
+        : visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
     if (ids.length === 0) {
-      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      showAppToast(
+        bulkNgayScope === 'selected'
+          ? 'Hãy tick chọn các dòng cần sửa ngày.'
+          : 'Không có dòng nào trong bộ lọc hiện tại.',
+        'error'
+      );
       return;
     }
     const ngay = bulkNgayValue.trim();
@@ -1014,13 +1024,27 @@ export function CanTuDongPanel({
     setIsSettingNgay(true);
     try {
       const updated = await postCanTuDongBulkSetNgay(ids, ngay);
-      setFromDate(ngay);
-      setToDate(ngay);
-      showAppToast(`Đã điền Ngày ${ngayLabel} cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`);
+      if (bulkNgayScope === 'selected') {
+        setFromDate(ngay);
+        setToDate(ngay);
+        clearSelection();
+        showAppToast(`Đã sửa Ngày ${ngayLabel} cho ${formatNumber(updated, 0)} dòng đã chọn.`);
+      } else {
+        setFromDate(ngay);
+        setToDate(ngay);
+        showAppToast(`Đã điền Ngày ${ngayLabel} cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`);
+      }
       setShowBulkNgayModal(false);
       await loadRecords();
     } catch (err: unknown) {
-      showAppToast(err instanceof Error ? err.message : 'Không thể điền Ngày các dòng đang lọc.', 'error');
+      showAppToast(
+        err instanceof Error
+          ? err.message
+          : bulkNgayScope === 'selected'
+            ? 'Không thể sửa Ngày các dòng đã chọn.'
+            : 'Không thể điền Ngày các dòng đang lọc.',
+        'error'
+      );
     } finally {
       setIsSettingNgay(false);
     }
@@ -1808,6 +1832,16 @@ export function CanTuDongPanel({
           </button>
           <button
             type="button"
+            onClick={openBulkNgayModalForSelected}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+            title="Sửa cột Ngày (SOURCE_DATE) cho các dòng đã tick"
+          >
+            {isSettingNgay ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarDays className="h-3.5 w-3.5" />}
+            {isSettingNgay ? 'Đang sửa ngày...' : `Sửa ngày (${selectedCount})`}
+          </button>
+          <button
+            type="button"
             onClick={() => void handleBulkDelete()}
             disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
@@ -2215,10 +2249,12 @@ export function CanTuDongPanel({
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
               <div>
                 <h3 id="can-tu-dong-bulk-ngay-title" className="text-base font-black text-zinc-950">
-                  Điền Ngày hàng loạt
+                  {bulkNgayScope === 'selected' ? 'Sửa Ngày đã chọn' : 'Điền Ngày hàng loạt'}
                 </h3>
                 <p className="text-xs font-semibold text-zinc-500">
-                  Áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)
+                  {bulkNgayScope === 'selected'
+                    ? `Áp dụng cho ${formatNumber(selectedCount, 0)} dòng đã tick`
+                    : `Áp dụng cho ${formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)`}
                 </p>
               </div>
               <button
@@ -2248,12 +2284,16 @@ export function CanTuDongPanel({
               </button>
               <button
                 type="button"
-                onClick={() => void handleBulkSetNgayForVisible()}
+                onClick={() => void handleBulkSetNgay()}
                 disabled={isSettingNgay}
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
               >
                 {isSettingNgay ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
-                {isSettingNgay ? 'Đang điền...' : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
+                {isSettingNgay
+                  ? 'Đang sửa...'
+                  : bulkNgayScope === 'selected'
+                    ? `Sửa ${formatNumber(selectedCount, 0)} dòng`
+                    : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
               </button>
             </div>
           </div>

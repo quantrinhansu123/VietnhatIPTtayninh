@@ -38,6 +38,7 @@ import {
   FilterCombobox,
   TableToolbar,
   TableSearchInput,
+  TableDateFilter,
   TableShell,
   TableHead,
   TableHeadCell,
@@ -447,6 +448,8 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [ordersError, setOrdersError] = useState('');
   const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
@@ -778,20 +781,25 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesType = selectedType === 'all' || order.orderType === selectedType;
+      const orderDate = order.orderDate || order.createdAt.slice(0, 10);
+      const matchesDateFrom = !dateFrom || Boolean(orderDate && orderDate >= dateFrom);
+      const matchesDateTo = !dateTo || Boolean(orderDate && orderDate <= dateTo);
       const matchesSearch =
         !normalizedSearch ||
         `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${formatOrderProductsSummary(getOrderProductLines(order))} ${order.note}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesType && matchesSearch;
+      return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
     });
-  }, [orders, normalizedSearch, selectedType]);
+  }, [dateFrom, dateTo, orders, normalizedSearch, selectedType]);
 
-  const hasActiveFilters = selectedType !== 'all' || Boolean(searchText);
+  const hasActiveFilters = selectedType !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
 
   const resetFilters = () => {
     setSelectedType('all');
     setSearchText('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const customerCount = new Set(orders.map(order => order.customer).filter(customer => customer && customer !== '-')).size;
@@ -956,6 +964,8 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
                           placeholder="Gõ để tìm mã SP"
                           isLoading={isLoadingLookups}
                           inputClassName={orderFieldClass}
+                          openUpward
+                          matchDropdownWidth
                           getValue={item => (item as OrderProductOption).code}
                           getSearchText={item => {
                             const product = item as OrderProductOption;
@@ -1166,21 +1176,36 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
           loadError={ordersError}
           actionMessage={actionMessage}
         >
-          <TableSearchInput
+          <div className="w-full min-w-0 lg:flex-1">
+            <TableSearchInput
             value={searchText}
             onChange={setSearchText}
             placeholder="Tìm mã đơn, khách hàng, mã hàng..."
             disabled={isLoadingOrders}
           />
+          </div>
 
-          <FilterCombobox
+          <div className="w-full min-w-0 sm:w-auto">
+            <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
+          </div>
+
+          <div className="w-full min-w-0 sm:w-auto">
+            <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
+          </div>
+
+          <div className="w-full min-w-0 sm:w-auto">
+            <FilterCombobox
             label="Loại đơn"
             options={orderTypeOptions}
             value={selectedType}
             onChange={setSelectedType}
             compact
             searchable={false}
+            className="w-full sm:w-auto"
+            buttonClassName="w-full justify-between sm:w-auto"
+            matchButtonWidth
           />
+          </div>
         </TableToolbar>
 
         <TableShell

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Save, Trash2 } from 'lucide-react';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
+import { DateInput } from '../../components/shared/DateInput';
 import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
 import {
   ORDER_TYPE_OPTIONS,
@@ -227,9 +228,9 @@ export function OrderFormModal({
 
   return (
     <div
-      className={`fixed inset-0 ${zIndexClassName} flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4`}
+      className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center bg-zinc-950/40 p-3 backdrop-blur-sm sm:p-4`}
     >
-      <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">
@@ -267,10 +268,10 @@ export function OrderFormModal({
             </label>
             <label className="space-y-1.5">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày tạo *</span>
-              <input
-                type="date"
+              <DateInput
                 value={orderForm.createdAt}
-                onChange={e => setOrderForm(prev => ({ ...prev, createdAt: e.target.value }))}
+                onChange={createdAt => setOrderForm(prev => ({ ...prev, createdAt }))}
+                required
                 className={orderFieldClass}
               />
             </label>
@@ -382,6 +383,8 @@ export function OrderFormModal({
                         placeholder="Gõ để tìm mã SP"
                         isLoading={isLoadingLookups}
                         inputClassName={orderFieldClass}
+                        openUpward
+                        matchDropdownWidth
                         getValue={item => (item as OrderProductOption).code}
                         getSearchText={item => {
                           const product = item as OrderProductOption;

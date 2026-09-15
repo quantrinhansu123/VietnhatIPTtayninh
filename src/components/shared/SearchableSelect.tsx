@@ -37,6 +37,7 @@ export function SearchableSelect({
   getSearchText,
   displaySelectedAsValue = false,
   desktopAutoFlip = false,
+  openUpward = false,
   comboboxMode = false,
   comboboxSearchable = true,
   matchDropdownWidth = false,
@@ -64,6 +65,7 @@ export function SearchableSelect({
   displaySelectedAsValue?: boolean;
   /** Trên desktop, tự mở menu lên trên nếu phía dưới không đủ chỗ. */
   desktopAutoFlip?: boolean;
+  openUpward?: boolean;
   /** Hiển thị dạng combobox: nút có mũi tên, menu mở ra có ô tìm kiếm riêng. */
   comboboxMode?: boolean;
   /** Cho phép hiển thị ô tìm kiếm bên trong menu combobox. */
@@ -215,21 +217,22 @@ export function SearchableSelect({
       : Math.max(rect.width, Math.min(340, viewportWidth - margin * 2));
     const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - width - margin));
     const isDesktop = window.matchMedia('(min-width: 1280px)').matches;
-    const isMobile =
-      window.matchMedia('(max-width: 768px)').matches || window.matchMedia('(pointer: coarse)').matches;
+    const viewportHeight = document.documentElement.clientHeight;
+    const preferredHeight = 208;
+    const spaceBelow = Math.max(0, viewportHeight - rect.bottom - margin);
+    const spaceAbove = Math.max(0, rect.top - margin);
 
-    // Trên mobile luôn mở dropdown xuống dưới để không che ô nhập liệu.
-    if (isMobile) {
-      setMenuStyle({ top: rect.bottom + 4, left, width });
+    if (openUpward && spaceAbove > 0) {
+      setMenuStyle({
+        bottom: viewportHeight - rect.top + 4,
+        left,
+        width,
+        maxHeight: Math.min(preferredHeight, spaceAbove)
+      });
       return;
     }
 
     if (desktopAutoFlip && isDesktop) {
-      const viewportHeight = document.documentElement.clientHeight;
-      const preferredHeight = 208;
-      const spaceBelow = Math.max(0, viewportHeight - rect.bottom - margin);
-      const spaceAbove = Math.max(0, rect.top - margin);
-
       if (spaceBelow < preferredHeight && spaceAbove > spaceBelow) {
         setMenuStyle({
           bottom: viewportHeight - rect.top + 4,
@@ -269,7 +272,7 @@ export function SearchableSelect({
       window.removeEventListener('scroll', handleReposition, true);
       document.removeEventListener('scroll', handleReposition, true);
     };
-  }, [open, query, filteredOptions.length, desktopAutoFlip, matchDropdownWidth]);
+  }, [open, query, filteredOptions.length, desktopAutoFlip, openUpward, matchDropdownWidth]);
 
   useEffect(() => {
     if (!open || !comboboxMode) return;

@@ -20,6 +20,7 @@ export function FilterCombobox({
   searchable = true,
   alignDropdown = 'left',
   dropdownWidth = 'w-max min-w-[12rem] max-w-[min(24rem,calc(100vw-1rem))]',
+  matchButtonWidth = false,
   className = '',
   buttonClassName = ''
 }: {
@@ -35,14 +36,18 @@ export function FilterCombobox({
   searchable?: boolean;
   alignDropdown?: 'left' | 'right';
   dropdownWidth?: string;
+  matchButtonWidth?: boolean;
   className?: string;
   buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; minWidth: number } | null>(
-    null
-  );
+  const [menuStyle, setMenuStyle] = useState<{
+    top: number;
+    left: number;
+    minWidth: number;
+    width?: number;
+  } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +56,10 @@ export function FilterCombobox({
     if (!button) return;
     const rect = button.getBoundingClientRect();
     const menuHeight = menuRef.current?.offsetHeight ?? 280;
-    const menuWidth = Math.max(rect.width, menuRef.current?.offsetWidth ?? 192);
+    const menuWidth = matchButtonWidth
+      ? Math.min(rect.width, window.innerWidth - VIEWPORT_GAP * 2)
+      : Math.max(rect.width, menuRef.current?.offsetWidth ?? 192);
+    const maxLeft = Math.max(VIEWPORT_GAP, window.innerWidth - menuWidth - VIEWPORT_GAP);
     const fitsBelow = rect.bottom + 6 + menuHeight <= window.innerHeight - VIEWPORT_GAP;
     const top = fitsBelow
       ? rect.bottom + 6
@@ -60,13 +68,18 @@ export function FilterCombobox({
       alignDropdown === 'right'
         ? Math.min(
             Math.max(VIEWPORT_GAP, rect.right - menuWidth),
-            window.innerWidth - menuWidth - VIEWPORT_GAP
+            maxLeft
           )
         : Math.min(
             Math.max(VIEWPORT_GAP, rect.left),
-            window.innerWidth - menuWidth - VIEWPORT_GAP
+            maxLeft
           );
-    setMenuStyle({ top, left, minWidth: rect.width });
+    setMenuStyle({
+      top,
+      left,
+      minWidth: rect.width,
+      ...(matchButtonWidth ? { width: menuWidth } : {})
+    });
   };
 
   useLayoutEffect(() => {
@@ -75,7 +88,7 @@ export function FilterCombobox({
       return;
     }
     positionMenu();
-  }, [open, options.length, query, alignDropdown]);
+  }, [open, options.length, query, alignDropdown, matchButtonWidth]);
 
   useEffect(() => {
     if (!open) return;

@@ -70,7 +70,7 @@ export function TableSearchInput({
   disabled?: boolean;
 }) {
   return (
-    <label className="flex h-11 min-w-[320px] flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
+    <label className="flex h-11 w-full min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
       <Search className="h-4 w-4 text-zinc-400" />
       <input
         value={value}

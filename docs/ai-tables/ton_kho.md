@@ -17,7 +17,7 @@
 
 | File | Nội dung |
 |---|---|
-| `src/features/ton-kho/index.tsx` | Chi tiết hiển thị mã SP, số lượng tồn, tên SP, loại SP và kho; tổng hợp gộp theo tiền tố trước `_`, hiển thị tồn đầu/nhập/xuất/tồn cuối |
+| `src/features/ton-kho/index.tsx` | Chi tiết hiển thị mã SP, số lượng tồn, tên SP, loại SP và kho; tổng hợp gộp theo tiền tố trước `_`; **Tổng hợp kỳ**: tồn đầu theo ngày đầu kỳ, nhập/xuất/tồn cuối từ `phieu_xuat_nhap_kho` từ ngày đó trở đi (cập nhật kỳ gần nhất sẽ bổ sung sau) |
 | `src/App.tsx` | Shell routing, import `TonKhoPanel` |
 | `src/app/menus.tsx` | Menu và tiêu đề tab |
 

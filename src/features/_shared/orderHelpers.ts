@@ -54,14 +54,24 @@ export function normalizeStaffOptions(data: unknown): StaffOption[] {
 
 export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[] {
   const branches = normalizeHrBranches(data);
+  const isQuanDocText = (value: string) => {
+    const text = normalizeLookupText(value);
+    return text === 'quan doc' || text.includes('quan doc');
+  };
   const staff = branches.flatMap(branch => {
     const branchText = normalizeLookupText(`${branch.name} ${branch.shortName}`);
     if (!branchText.includes('da nang')) return [];
 
     return branch.departments.flatMap(department => {
       const departmentText = normalizeLookupText(department.name);
-      if (!departmentText.includes('kinh doanh')) return [];
-      return department.members.map(member => ({ name: member.name }));
+      const isBusinessDept = departmentText.includes('kinh doanh');
+      const isQuanDocDept = isQuanDocText(department.name);
+      return department.members
+        .filter(member => {
+          if (isBusinessDept || isQuanDocDept) return true;
+          return isQuanDocText(member.role) || isQuanDocText(member.position || '');
+        })
+        .map(member => ({ name: member.name }));
     });
   });
 

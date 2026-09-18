@@ -32,6 +32,7 @@ Tạo lệnh SX: `POST /api/lenh-sx/from-don-hang/:id`
 ### Form đơn hàng
 
 - **Khách hàng**: sổ xuống (`<select>`) lấy từ `/api/khach-hang` (bảng danh mục Khách hàng), bắt buộc chọn.
+- **Nhân viên**: chọn từ `/api/nhan-su` (Phòng kinh doanh + Quản đốc) hoặc **nhập tay** (`allowCustomValue`).
 - Modal dùng chung: `src/features/don-hang/OrderFormModal.tsx` — mở từ trang Đơn hàng và từ **Thêm lệnh SX** (nút **Thêm đơn mới**).
 - **Ghi chú từng dòng SP**: lưu trong jsonb `san_pham[].ghi_chu` (không cần cột DB mới). Form + danh sách + phiếu in đọc/ghi field này.
 

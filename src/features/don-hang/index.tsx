@@ -889,12 +889,14 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
               </label>
               <label className="space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Nhân viên</span>
-                <SimpleSelect
+                <SearchableSelect
                   value={orderForm.staffName}
                   onChange={staffName => setOrderForm(prev => ({ ...prev, staffName }))}
                   options={staffOptions}
-                  placeholder="Chọn nhân viên Phòng Kinh Doanh"
+                  placeholder="Chọn hoặc nhập tên nhân viên"
+                  searchPlaceholder="Tìm / nhập nhân viên..."
                   isLoading={isLoadingLookups}
+                  allowCustomValue
                   getValue={item => (item as StaffOption).name}
                   getLabel={item => (item as StaffOption).name}
                 />

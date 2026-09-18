@@ -75,11 +75,23 @@ export function normalizeStaffOptions(data: unknown): StaffOption[] {
 
 export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[] {
   const branches = normalizeHrBranches(data);
+  const isQuanDocText = (value: string) => {
+    const text = normalizeLookupText(value);
+    return text === 'quan doc' || text.includes('quan doc');
+  };
   const staff = branches.flatMap(branch =>
     branch.departments.flatMap(department => {
       const departmentText = normalizeLookupText(department.name);
-      if (departmentText !== 'phong kinh doanh') return [];
-      return department.members.map(member => ({ name: member.name }));
+      const isBusinessDept =
+        departmentText === 'phong kinh doanh' || departmentText.includes('kinh doanh');
+      const isQuanDocDept = isQuanDocText(department.name);
+      return department.members
+        .filter(member => {
+          if (isBusinessDept || isQuanDocDept) return true;
+          // Cho phép nhân sự chức vụ/vai trò Quản đốc dù thuộc phòng khác.
+          return isQuanDocText(member.role) || isQuanDocText(member.position || '');
+        })
+        .map(member => ({ name: member.name }));
     })
   );
 

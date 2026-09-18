@@ -87,20 +87,25 @@ export function TableSearchInput({
 export function TableDateFilter({
   label,
   value,
-  onChange
+  onChange,
+  className = 'shrink-0',
+  inputMinWidthClassName = 'min-w-[8.5rem]'
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  className?: string;
+  /** Bề rộng tối thiểu của riêng ô ngày (không tính nhãn) — lịch chọn ngày rộng bằng ô này. */
+  inputMinWidthClassName?: string;
 }) {
   return (
-    <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700">
+    <label className={`flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 ${className}`}>
       <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">{label}</span>
       <DateInput
         value={value}
         onChange={onChange}
         aria-label={label}
-        wrapperClassName="relative inline-flex min-w-[8.5rem] flex-1 items-center"
+        wrapperClassName={`relative inline-flex flex-1 items-center ${inputMinWidthClassName}`}
         className="min-w-0 flex-1 bg-transparent pr-8 font-mono text-sm font-semibold text-zinc-900 placeholder:font-sans placeholder:text-zinc-400 focus:outline-none"
       />
     </label>

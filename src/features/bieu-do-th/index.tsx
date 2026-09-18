@@ -226,14 +226,26 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           }}
           loadError={error}
         >
-          <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
-          <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
-          <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700">
+          <TableDateFilter
+            label="Từ ngày"
+            value={dateFrom}
+            onChange={setDateFrom}
+            className="w-full sm:w-auto sm:min-w-[20rem] sm:shrink-0"
+            inputMinWidthClassName="min-w-[8.5rem] sm:min-w-[17rem]"
+          />
+          <TableDateFilter
+            label="Đến ngày"
+            value={dateTo}
+            onChange={setDateTo}
+            className="w-full sm:w-auto sm:min-w-[20rem] sm:shrink-0"
+            inputMinWidthClassName="min-w-[8.5rem] sm:min-w-[17rem]"
+          />
+          <label className="flex h-11 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 sm:w-auto sm:shrink-0">
             <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">Ca</span>
             <select
               value={caFilter}
               onChange={event => setCaFilter(event.target.value)}
-              className="min-w-[7rem] flex-1 bg-transparent font-semibold text-zinc-900 focus:outline-none"
+              className="min-w-0 flex-1 bg-transparent font-semibold text-zinc-900 focus:outline-none sm:min-w-[7rem]"
             >
               <option value="all">Tất cả</option>
               {caOptions.map(ca => (

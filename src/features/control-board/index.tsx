@@ -21,12 +21,6 @@ import {
   movementLinksProductionOrderCode
 } from '../../utils/controlBoardShiftSummary';
 import {
-  filterMachinesByReportKind,
-  machineMatchesReportKind,
-  isBbMachineText,
-  type BbMachineReportKind
-} from '../../utils/controlBoardBbMachineReport';
-import {
   getProductionShiftOptions,
   resolvePreviousProductionShift,
   shiftIsoDateByDays,
@@ -95,22 +89,6 @@ function formatProductionOrderPanelDate(value: string): string {
   if (!iso) return value && value !== '-' ? value : '-';
   const [year, month, day] = iso.split('-');
   return `${day}/${month}/${year}`;
-}
-
-const BB_MACHINE_KIND_STORAGE_KEY = 'control-board-bb-machine-kind-v1';
-
-function loadBoardMachineKind(): BbMachineReportKind {
-  if (typeof window === 'undefined') return 'insulation';
-  const raw = localStorage.getItem(BB_MACHINE_KIND_STORAGE_KEY);
-  return raw === 'packaging' ? 'packaging' : 'insulation';
-}
-
-function persistBoardMachineKind(kind: BbMachineReportKind) {
-  try {
-    localStorage.setItem(BB_MACHINE_KIND_STORAGE_KEY, kind);
-  } catch {
-    /* ignore quota */
-  }
 }
 
 function compareProductionOrderByRecentDate(a: ProductionOrderRow, b: ProductionOrderRow): number {
@@ -242,8 +220,6 @@ export function ControlBoardPanel({
   const [draftBoardFilterMachine, setDraftBoardFilterMachine] = useState('all');
   const [draftBoardFilterProductionOrder, setDraftBoardFilterProductionOrder] = useState('all');
   const [draftBoardFilterProductionOrderQuery, setDraftBoardFilterProductionOrderQuery] = useState('');
-  const [boardMachineKind, setBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
-  const [draftBoardMachineKind, setDraftBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
   const [filterReloadToken, setFilterReloadToken] = useState(0);
   // Mở từ Biểu đồ TH (?ngay=...): ẩn bộ lọc, chỉ hiển thị tóm tắt — dữ liệu đã nạp sẵn, không cần bấm Áp dụng.
   const [lockedByUrlFilters] = useState(() => {
@@ -260,7 +236,6 @@ export function ControlBoardPanel({
   const uiBoardFilterProductionOrderQuery = isAutoReport
     ? draftBoardFilterProductionOrderQuery
     : boardFilterProductionOrderQuery;
-  const uiBoardMachineKind = isAutoReport ? draftBoardMachineKind : boardMachineKind;
   const uiDateScopeAll = uiBoardDateScope === 'all';
   const uiEffectiveDateFrom = uiDateScopeAll ? '' : uiShiftSummaryDateFrom;
   const uiEffectiveDateTo = uiDateScopeAll ? '' : uiShiftSummaryDateTo;
@@ -297,15 +272,11 @@ export function ControlBoardPanel({
     const initTo = urlNgay || defaultRange.to;
     const initShift = urlCa || 'all';
     const initMachine = urlMay || 'all';
-    // "may" trên URL có thể là nhãn nhóm (vd. "Máy Bao Bì") chứ không phải mã máy cụ thể — suy ra
-    // đúng nhóm Bao Bì/Cách nhiệt trước, để bộ tự chọn máy theo lệnh SX (ngày+ca) tìm đúng máy.
-    const initKind: BbMachineReportKind = isBbMachineText(urlMay) ? 'packaging' : 'insulation';
     setShiftSummaryDateFrom(initFrom);
     setShiftSummaryDateTo(initTo);
     setBoardDateScope('range');
     setBoardFilterShift(initShift);
     setBoardFilterMachine(initMachine);
-    setBoardMachineKind(initKind);
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
     setDraftShiftSummaryDateFrom(initFrom);
@@ -313,7 +284,6 @@ export function ControlBoardPanel({
     setDraftBoardDateScope('range');
     setDraftBoardFilterShift(initShift);
     setDraftBoardFilterMachine(initMachine);
-    setDraftBoardMachineKind(initKind);
     setDraftBoardFilterProductionOrder('all');
     setDraftBoardFilterProductionOrderQuery('');
   }, [isAutoReport]);
@@ -595,13 +565,9 @@ export function ControlBoardPanel({
     );
   }, [machines, productionOrders, uiBoardFilterShift, uiEffectiveDateFrom, uiEffectiveDateTo]);
 
-  /** `/phan-tich-tu-dong`: lọc máy theo loại bao bì / cách nhiệt. */
-  const panelMachines = useMemo(() => {
-    if (!isAutoReport) return shiftScopedMachines;
-    return filterMachinesByReportKind(shiftScopedMachines, uiBoardMachineKind);
-  }, [isAutoReport, shiftScopedMachines, uiBoardMachineKind]);
+  const panelMachines = shiftScopedMachines;
 
-  // `/phan-tich-tu-dong`: tự điền Máy theo lệnh SX của Ngày + Ca (+ loại Bao bì/Cách nhiệt).
+  // `/phan-tich-tu-dong`: tự điền Máy theo lệnh SX của Ngày + Ca.
   // Trang thường: chỉ auto khi ca/ngày có đúng 1 máy.
   const lastMachineAutoKeyRef = useRef('');
   useEffect(() => {
@@ -629,7 +595,7 @@ export function ControlBoardPanel({
     });
     if (!preferred) return;
 
-    const key = `${uiEffectiveDateFrom}|${uiEffectiveDateTo}|${uiBoardFilterShift}|${uiBoardMachineKind}`;
+    const key = `${uiEffectiveDateFrom}|${uiEffectiveDateTo}|${uiBoardFilterShift}`;
     const keyChanged = lastMachineAutoKeyRef.current !== key;
     lastMachineAutoKeyRef.current = key;
 
@@ -644,7 +610,6 @@ export function ControlBoardPanel({
     uiDateScopeAll,
     uiBoardFilterShift,
     uiBoardFilterMachine,
-    uiBoardMachineKind,
     uiEffectiveDateFrom,
     uiEffectiveDateTo,
     panelMachines,
@@ -668,21 +633,6 @@ export function ControlBoardPanel({
       setDraftBoardFilterMachine(value);
     });
   }, [isAutoReport, panelMachines, uiBoardFilterMachine]);
-
-  const handleBoardMachineKindChange = (kind: BbMachineReportKind) => {
-    persistBoardMachineKind(kind);
-    if (isAutoReport) {
-      setDraftBoardMachineKind(kind);
-      const filtered = filterMachinesByReportKind(shiftScopedMachines, kind);
-      const current = machines.find(machine => machine.code === draftBoardFilterMachine);
-      if (draftBoardFilterMachine !== 'all' && current && machineMatchesReportKind(current, kind)) return;
-      setDraftBoardFilterMachine(filtered[0]?.code || 'all');
-      return;
-    }
-    setBoardMachineKind(kind);
-    const filtered = filterMachinesByReportKind(shiftScopedMachines, kind);
-    syncMachineFilterToPanelMachines(filtered, boardFilterMachine, setBoardFilterMachine);
-  };
 
   /** Lệnh SX khớp ngày + ca (+ máy) đang chọn trên bộ lọc (draft khi `/phan-tich-tu-dong`). */
   const uiBucketProductionOrders = useMemo(() => {
@@ -1199,7 +1149,6 @@ export function ControlBoardPanel({
       draftShiftSummaryDateTo !== shiftSummaryDateTo ||
       draftBoardFilterShift !== boardFilterShift ||
       draftBoardFilterMachine !== boardFilterMachine ||
-      draftBoardMachineKind !== boardMachineKind ||
       draftBoardFilterProductionOrder !== boardFilterProductionOrder ||
       draftBoardFilterProductionOrderQuery !== boardFilterProductionOrderQuery
     );
@@ -1215,8 +1164,6 @@ export function ControlBoardPanel({
     boardFilterShift,
     draftBoardFilterMachine,
     boardFilterMachine,
-    draftBoardMachineKind,
-    boardMachineKind,
     draftBoardFilterProductionOrder,
     boardFilterProductionOrder,
     draftBoardFilterProductionOrderQuery,
@@ -1234,7 +1181,6 @@ export function ControlBoardPanel({
     setShiftSummaryDateTo(draftShiftSummaryDateTo);
     setBoardFilterShift(draftBoardFilterShift);
     setBoardFilterMachine(draftBoardFilterMachine);
-    setBoardMachineKind(draftBoardMachineKind);
     setBoardFilterProductionOrder(draftBoardFilterProductionOrder);
     setBoardFilterProductionOrderQuery(draftBoardFilterProductionOrderQuery);
     if (dateChanged) setFilterReloadToken(token => token + 1);
@@ -1247,8 +1193,6 @@ export function ControlBoardPanel({
     setShiftSummaryDateTo(defaultRange.to);
     setBoardFilterShift('all');
     setBoardFilterMachine('all');
-    setBoardMachineKind('insulation');
-    persistBoardMachineKind('insulation');
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
     if (isAutoReport) {
@@ -1257,7 +1201,6 @@ export function ControlBoardPanel({
       setDraftShiftSummaryDateTo(defaultRange.to);
       setDraftBoardFilterShift('all');
       setDraftBoardFilterMachine('all');
-      setDraftBoardMachineKind('insulation');
       setDraftBoardFilterProductionOrder('all');
       setDraftBoardFilterProductionOrderQuery('');
       setFilterReloadToken(token => token + 1);
@@ -1626,9 +1569,6 @@ export function ControlBoardPanel({
           deferApply={isAutoReport}
           onApply={applyBoardFilters}
           hasPendingChanges={hasPendingFilterChanges}
-          showMachineKindToggle={isAutoReport}
-          machineKindFilter={uiBoardMachineKind}
-          onMachineKindFilterChange={handleBoardMachineKindChange}
         />
         )}
         {reportOnly ? (

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import type { MachineRow } from '../features/danh-sach-may';
-import type { BbMachineReportKind } from '../utils/controlBoardBbMachineReport';
 
 const inputClass =
   'h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-800 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 sm:text-xs';
@@ -182,10 +181,7 @@ export function ControlBoardCommonFilters({
   isLoading,
   deferApply,
   onApply,
-  hasPendingChanges,
-  showMachineKindToggle,
-  machineKindFilter,
-  onMachineKindFilterChange
+  hasPendingChanges
 }: {
   dateScope?: ControlBoardDateScope;
   onDateScopeChange?: (value: ControlBoardDateScope) => void;
@@ -211,10 +207,6 @@ export function ControlBoardCommonFilters({
   deferApply?: boolean;
   onApply?: () => void;
   hasPendingChanges?: boolean;
-  /** `/phan-tich-tu-dong`: chuyển nhanh máy bao bì ↔ cách nhiệt. */
-  showMachineKindToggle?: boolean;
-  machineKindFilter?: BbMachineReportKind;
-  onMachineKindFilterChange?: (kind: BbMachineReportKind) => void;
 }) {
   const dateInputsDisabled = isLoading || dateScope === 'all';
   return (
@@ -297,36 +289,6 @@ export function ControlBoardCommonFilters({
         </label>
         <div className="space-y-0.5">
           <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
-          {showMachineKindToggle && machineKindFilter && onMachineKindFilterChange ? (
-            <div className="mb-1 flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={() => onMachineKindFilterChange('packaging')}
-                className={`flex-1 rounded-md px-1.5 py-1 text-[10px] font-black transition disabled:opacity-50 ${
-                  machineKindFilter === 'packaging'
-                    ? 'bg-white text-red-700 shadow-sm ring-1 ring-red-200'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-                title="Máy bao bì (BB) — công thức banner nhựa thường"
-              >
-                Bao bì
-              </button>
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={() => onMachineKindFilterChange('insulation')}
-                className={`flex-1 rounded-md px-1.5 py-1 text-[10px] font-black transition disabled:opacity-50 ${
-                  machineKindFilter === 'insulation'
-                    ? 'bg-white text-sky-800 shadow-sm ring-1 ring-sky-200'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-                title="Máy cách nhiệt — trừ màng, định mức nhựa"
-              >
-                Cách nhiệt
-              </button>
-            </div>
-          ) : null}
           <select
             value={machine}
             onChange={event => onMachineChange(event.target.value)}

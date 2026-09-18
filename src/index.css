@@ -4717,6 +4717,21 @@ input[type="number"] {
     width: 10%;
   }
 
+  .bb-machine-report-print-evaluation-ratio-table th:first-child,
+  .bb-machine-report-print-evaluation-ratio-table td:first-child {
+    width: 34%;
+    max-width: none;
+    font-size: 7.5pt !important;
+    text-align: left !important;
+    white-space: normal;
+    vertical-align: middle !important;
+  }
+
+  .bb-machine-report-print-evaluation-ratio-table th:nth-child(n+2),
+  .bb-machine-report-print-evaluation-ratio-table td:nth-child(n+2) {
+    width: 16.5%;
+  }
+
   .bb-machine-report-print-evaluation-detail-table th:first-child,
   .bb-machine-report-print-evaluation-detail-table td:first-child {
     width: 0.8%;

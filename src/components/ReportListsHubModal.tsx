@@ -110,16 +110,23 @@ export default function ReportListsHubModal({
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
 
+  // Bộ lọc trang chi tiết đã biết đúng 1 ngày + 1 ca (vd. mở từ Biểu đồ TH) → in gộp luôn, khỏi hỏi lại.
+  const lockedPrintDate = filters?.dateFrom && filters.dateFrom === filters.dateTo ? filters.dateFrom : '';
+  const lockedPrintShift = filters?.shift && filters.shift !== 'all' ? filters.shift : '';
+  const isAutoPrint = Boolean(lockedPrintDate && lockedPrintShift);
+
   useEffect(() => {
     if (!open) return;
-    setPrintDate(getLocalTodayIso());
-    setPrintShift(filters?.shift && filters.shift !== 'all' ? filters.shift : '');
+    setPrintDate(lockedPrintDate || getLocalTodayIso());
+    setPrintShift(lockedPrintShift || '');
     setPrintData(null);
     setPrintError('');
-  }, [open, filters?.dateFrom, filters?.dateTo, filters?.shift]);
+  }, [open, lockedPrintDate, lockedPrintShift]);
 
-  const prepareAndPrint = async () => {
-    if (!printDate || !printShift) {
+  const prepareAndPrint = async (dateOverride?: string, shiftOverride?: string) => {
+    const date = dateOverride || printDate;
+    const shift = shiftOverride || printShift;
+    if (!date || !shift) {
       setPrintError('Vui lòng chọn ngày và ca trước khi in.');
       return;
     }
@@ -129,7 +136,7 @@ export default function ReportListsHubModal({
       const productRes = await fetch('/api/san-pham');
       const productJson = await productRes.json().catch(() => []);
       const catalog = productRes.ok ? normalizeProducts(productJson) : [];
-      const data = await loadProductionPlanRelatedReports(printDate, [printShift], catalog);
+      const data = await loadProductionPlanRelatedReports(date, [shift], catalog);
       if (data.isEmpty) {
         setPrintError('Không có phiếu nào của ngày và ca đã chọn để in.');
         return;
@@ -141,6 +148,12 @@ export default function ReportListsHubModal({
       setIsPreparingPrint(false);
     }
   };
+
+  useEffect(() => {
+    if (!open || !isAutoPrint) return;
+    void prepareAndPrint(lockedPrintDate, lockedPrintShift);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift]);
 
   useEffect(() => {
     if (!printData) return;
@@ -162,6 +175,7 @@ export default function ReportListsHubModal({
       document.body.classList.remove('bb-machine-report-print-active');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
       setPrintData(null);
+      if (isAutoPrint) onClose();
     };
     window.addEventListener('afterprint', cleanup, { once: true });
     return () => {
@@ -172,7 +186,7 @@ export default function ReportListsHubModal({
       document.body.classList.remove('bb-machine-report-print-active');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     };
-  }, [printData]);
+  }, [printData, isAutoPrint, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -213,8 +227,28 @@ export default function ReportListsHubModal({
 
   // Trang phân tích tự động chỉ cần popup chọn phạm vi để in gộp; không hiển thị
   // lại trung tâm các danh sách báo cáo ở đây.
+  // Đã biết đúng 1 ngày + 1 ca (mở từ Biểu đồ TH) → in gộp thẳng, không hỏi lại.
   return <>
     {createPortal(
+      isAutoPrint ? (
+        <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Đang chuẩn bị bản in">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl">
+            {printError ? (
+              <>
+                <p className="text-sm font-bold text-rose-600">{printError}</p>
+                <div className="mt-3 flex justify-end">
+                  <button type="button" onClick={onClose} className="h-9 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50">Đóng</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2.5 text-zinc-700">
+                <Loader2 className="h-5 w-5 animate-spin text-red-600" />
+                <span className="text-sm font-bold">Đang chuẩn bị bản in {lockedPrintDate} · {lockedPrintShift}...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Chọn ngày và ca để in">
         <div className="w-full max-w-md overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-3.5 text-zinc-950">
@@ -251,7 +285,8 @@ export default function ReportListsHubModal({
             </div>
           </div>
         </div>
-      </div>,
+      </div>
+      ),
       document.body
     )}
     {printData ? createPortal(<div className="production-order-print-batch"><ProductionPlanRelatedPrintContent data={printData} /></div>, document.body) : null}

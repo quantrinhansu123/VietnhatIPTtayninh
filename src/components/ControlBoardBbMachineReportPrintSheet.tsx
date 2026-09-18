@@ -1550,7 +1550,7 @@ function BbMachineOrderPrintSheet({
               return (
                 <React.Fragment key="ti-le-loi-hong">
                   <h4 className="production-order-print-section-subtitle">Tỉ lệ hàng lỗi hỏng</h4>
-                  <table className="shift-summary-print-table bb-machine-report-print-evaluation-table bb-machine-report-print-evaluation-summary-table">
+                  <table className="shift-summary-print-table bb-machine-report-print-evaluation-ratio-table">
                     <thead>
                       <tr>
                         <th>Chỉ số</th>

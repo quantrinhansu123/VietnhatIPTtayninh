@@ -23,6 +23,7 @@ import {
 import {
   filterMachinesByReportKind,
   machineMatchesReportKind,
+  isBbMachineText,
   type BbMachineReportKind
 } from '../../utils/controlBoardBbMachineReport';
 import {
@@ -85,7 +86,8 @@ import {
   Pencil,
   Trash2,
   Printer,
-  Loader2
+  Loader2,
+  ChevronLeft
 } from 'lucide-react';
 
 function formatProductionOrderPanelDate(value: string): string {
@@ -128,7 +130,7 @@ function buildPanelProductionOrderOptionLabel(
   const shiftLabel = formatProductionOrderShiftLabel(order.shift, productionOrderSettings);
   const machineLabel = resolveProductionOrderMachine(order, machines);
   const parts = [code];
-  if (ngay) parts.push(ngay);
+  if (ngay) parts.push(formatProductionOrderPanelDate(ngay));
   else if (order.startDate && order.startDate !== '-') parts.push(String(order.startDate));
   if (shiftLabel && shiftLabel !== '-') parts.push(shiftLabel);
   if (machineLabel && machineLabel !== '-') parts.push(machineLabel);
@@ -243,6 +245,12 @@ export function ControlBoardPanel({
   const [boardMachineKind, setBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
   const [draftBoardMachineKind, setDraftBoardMachineKind] = useState<BbMachineReportKind>(loadBoardMachineKind);
   const [filterReloadToken, setFilterReloadToken] = useState(0);
+  // Mở từ Biểu đồ TH (?ngay=...): ẩn bộ lọc, chỉ hiển thị tóm tắt — dữ liệu đã nạp sẵn, không cần bấm Áp dụng.
+  const [lockedByUrlFilters] = useState(() => {
+    if (mode !== 'report-only-auto' || typeof window === 'undefined') return false;
+    return Boolean(new URLSearchParams(window.location.search).get('ngay'));
+  });
+  const showFilterBar = !lockedByUrlFilters;
   const uiBoardDateScope = isAutoReport ? draftBoardDateScope : boardDateScope;
   const uiShiftSummaryDateFrom = isAutoReport ? draftShiftSummaryDateFrom : shiftSummaryDateFrom;
   const uiShiftSummaryDateTo = isAutoReport ? draftShiftSummaryDateTo : shiftSummaryDateTo;
@@ -280,20 +288,32 @@ export function ControlBoardPanel({
   useEffect(() => {
     if (!isAutoReport) return;
     const defaultRange = defaultShiftSummaryDateRange(14);
-    setShiftSummaryDateFrom(defaultRange.from);
-    setShiftSummaryDateTo(defaultRange.to);
+    // Mở từ Biểu đồ TH (/bieu-do-th?ngay=...&ca=...&may=...): nạp sẵn bộ lọc theo dòng đã bấm.
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const urlNgay = urlParams?.get('ngay')?.trim() || '';
+    const urlCa = urlParams?.get('ca')?.trim() || '';
+    const urlMay = urlParams?.get('may')?.trim() || '';
+    const initFrom = urlNgay || defaultRange.from;
+    const initTo = urlNgay || defaultRange.to;
+    const initShift = urlCa || 'all';
+    const initMachine = urlMay || 'all';
+    // "may" trên URL có thể là nhãn nhóm (vd. "Máy Bao Bì") chứ không phải mã máy cụ thể — suy ra
+    // đúng nhóm Bao Bì/Cách nhiệt trước, để bộ tự chọn máy theo lệnh SX (ngày+ca) tìm đúng máy.
+    const initKind: BbMachineReportKind = isBbMachineText(urlMay) ? 'packaging' : 'insulation';
+    setShiftSummaryDateFrom(initFrom);
+    setShiftSummaryDateTo(initTo);
     setBoardDateScope('range');
-    setBoardFilterShift('all');
-    setBoardFilterMachine('all');
-    setBoardMachineKind('insulation');
+    setBoardFilterShift(initShift);
+    setBoardFilterMachine(initMachine);
+    setBoardMachineKind(initKind);
     setBoardFilterProductionOrder('all');
     setBoardFilterProductionOrderQuery('');
-    setDraftShiftSummaryDateFrom(defaultRange.from);
-    setDraftShiftSummaryDateTo(defaultRange.to);
+    setDraftShiftSummaryDateFrom(initFrom);
+    setDraftShiftSummaryDateTo(initTo);
     setDraftBoardDateScope('range');
-    setDraftBoardFilterShift('all');
-    setDraftBoardFilterMachine('all');
-    setDraftBoardMachineKind('insulation');
+    setDraftBoardFilterShift(initShift);
+    setDraftBoardFilterMachine(initMachine);
+    setDraftBoardMachineKind(initKind);
     setDraftBoardFilterProductionOrder('all');
     setDraftBoardFilterProductionOrderQuery('');
   }, [isAutoReport]);
@@ -741,6 +761,26 @@ export function ControlBoardPanel({
     productionOrderSettings,
     draftBoardFilterProductionOrder,
     draftBoardFilterProductionOrderQuery
+  ]);
+
+  // Bộ lọc bị khóa theo URL: không có nút Áp dụng, nên đồng bộ ngay Máy/Lệnh SX tự chọn (draft) sang state hiển thị.
+  useEffect(() => {
+    if (!lockedByUrlFilters) return;
+    if (boardFilterMachine !== draftBoardFilterMachine) setBoardFilterMachine(draftBoardFilterMachine);
+    if (boardFilterProductionOrder !== draftBoardFilterProductionOrder) {
+      setBoardFilterProductionOrder(draftBoardFilterProductionOrder);
+    }
+    if (boardFilterProductionOrderQuery !== draftBoardFilterProductionOrderQuery) {
+      setBoardFilterProductionOrderQuery(draftBoardFilterProductionOrderQuery);
+    }
+  }, [
+    lockedByUrlFilters,
+    draftBoardFilterMachine,
+    draftBoardFilterProductionOrder,
+    draftBoardFilterProductionOrderQuery,
+    boardFilterMachine,
+    boardFilterProductionOrder,
+    boardFilterProductionOrderQuery
   ]);
 
   const handleUiBoardShiftChange = (shift: string) => {
@@ -1523,6 +1563,43 @@ export function ControlBoardPanel({
       )}
 
       <div className="order-[-30] flex flex-col gap-2">
+        {!showFilterBar ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-700">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = '/bieu-do-th';
+              }}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-100"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Quay lại
+            </button>
+            <span>
+              Ngày:{' '}
+              <span className="text-zinc-900">
+                {shiftSummaryDateFrom ? formatProductionOrderPanelDate(shiftSummaryDateFrom) : '—'}
+              </span>
+            </span>
+            <span>
+              Ca: <span className="text-zinc-900">{boardFilterShift === 'all' ? 'Tất cả' : formatPanelShiftLabel(boardFilterShift)}</span>
+            </span>
+            <span>
+              Máy:{' '}
+              <span className="text-zinc-900">
+                {selectedBoardMachine?.name ||
+                  selectedBoardMachine?.code ||
+                  (boardFilterMachine === 'all' ? 'Tất cả' : boardFilterMachine)}
+              </span>
+            </span>
+            <span>
+              Lệnh SX:{' '}
+              <span className="text-zinc-900">
+                {boardFilterProductionOrderQuery || (boardFilterProductionOrder !== 'all' ? boardFilterProductionOrder : '—')}
+              </span>
+            </span>
+          </div>
+        ) : (
         <ControlBoardCommonFilters
           dateScope={uiBoardDateScope}
           onDateScopeChange={isAutoReport ? setDraftBoardDateScope : setBoardDateScope}
@@ -1553,6 +1630,7 @@ export function ControlBoardPanel({
           machineKindFilter={uiBoardMachineKind}
           onMachineKindFilterChange={handleBoardMachineKindChange}
         />
+        )}
         {reportOnly ? (
           <div className="flex justify-end">
             <button

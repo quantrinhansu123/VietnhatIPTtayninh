@@ -1576,7 +1576,7 @@ export default function App() {
               >
                 <SettingsPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
-            ) : activeTab === 'bieu-do-th' ? (
+            ) : activeTab === 'bieu-do-th' && !new URLSearchParams(window.location.search).get('ngay') ? (
               <motion.div
                 key="bieu-do-th"
                 initial={{ opacity: 0, y: 8 }}
@@ -1586,7 +1586,7 @@ export default function App() {
               >
                 <BieuDoThPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
-            ) : activeTab === 'dashboard' || activeTab === 'dashboard-auto' ? (
+            ) : activeTab === 'bieu-do-th' || activeTab === 'dashboard' || activeTab === 'dashboard-auto' ? (
               <motion.div
                 key="dashboard-auto-charts"
                 initial={{ opacity: 0, x: 10 }}

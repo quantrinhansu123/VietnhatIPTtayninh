@@ -124,10 +124,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'doi-soat': 'report-forms',
   'machine-run-log': 'report-forms',
   'machine-run-log-list': 'report-lists',
-  'acceptance-report': 'report-forms',
-  'dashboard': 'quan-tri',
-  'dashboard-auto': 'quan-tri',
-  'bieu-do-th': 'quan-tri'
+  'acceptance-report': 'report-forms'
 };
 
 export function MobileBackNavButton({

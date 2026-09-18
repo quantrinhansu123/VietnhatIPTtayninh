@@ -112,6 +112,15 @@ function formatMayLabel(may: string, machines: MachineRow[]) {
   return resolveMachineDisplayValue(raw, machines) || raw;
 }
 
+function buildBieuDoThDetailUrl(row: BaoCaoTongHopListRow): string {
+  const params = new URLSearchParams();
+  if (row.ngay_tu) params.set('ngay', row.ngay_tu);
+  if (row.ca && row.ca !== 'all') params.set('ca', row.ca);
+  if (row.may && row.may !== 'all') params.set('may', row.may);
+  const qs = params.toString();
+  return qs ? `/bieu-do-th?${qs}` : '/bieu-do-th';
+}
+
 export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
   const [rows, setRows] = useState<BaoCaoTongHopListRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
@@ -119,6 +128,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
   const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [caFilter, setCaFilter] = useState('all');
 
   const loadRows = useCallback(async () => {
     setIsLoading(true);
@@ -151,17 +161,24 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
     void loadRows();
   }, [loadRows]);
 
-  const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
-      if (d !== 0) return d;
-      const caCmp = compareShiftCa(a.ca, b.ca);
-      if (caCmp !== 0) return caCmp;
-      return formatMayLabel(a.may, machines).localeCompare(formatMayLabel(b.may, machines), 'vi');
-    });
-  }, [rows, machines]);
+  const caOptions = useMemo(
+    () => [...new Set(rows.map(row => row.ca).filter(Boolean))].sort(compareShiftCa),
+    [rows]
+  );
 
-  const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo);
+  const sortedRows = useMemo(() => {
+    return rows
+      .filter(row => caFilter === 'all' || row.ca === caFilter)
+      .sort((a, b) => {
+        const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
+        if (d !== 0) return d;
+        const caCmp = compareShiftCa(a.ca, b.ca);
+        if (caCmp !== 0) return caCmp;
+        return formatMayLabel(a.may, machines).localeCompare(formatMayLabel(b.may, machines), 'vi');
+      });
+  }, [rows, machines, caFilter]);
+
+  const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo) || caFilter !== 'all';
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
@@ -205,11 +222,27 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           onResetFilters={() => {
             setDateFrom('');
             setDateTo('');
+            setCaFilter('all');
           }}
           loadError={error}
         >
           <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
           <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
+          <label className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700">
+            <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">Ca</span>
+            <select
+              value={caFilter}
+              onChange={event => setCaFilter(event.target.value)}
+              className="min-w-[7rem] flex-1 bg-transparent font-semibold text-zinc-900 focus:outline-none"
+            >
+              <option value="all">Tất cả</option>
+              {caOptions.map(ca => (
+                <option key={ca} value={ca}>
+                  {ca}
+                </option>
+              ))}
+            </select>
+          </label>
         </TableToolbar>
       </section>
 
@@ -243,7 +276,9 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
             sortedRows.map(row => (
               <tr
                 key={row.id || row.khoa_on_dinh}
-                className="border-b border-zinc-200 bg-white transition hover:bg-zinc-50"
+                onClick={() => window.open(buildBieuDoThDetailUrl(row), '_blank', 'noopener')}
+                title="Mở báo cáo chi tiết ngày/ca này"
+                className="cursor-pointer border-b border-zinc-200 bg-white transition hover:bg-zinc-50"
               >
                 <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-semibold text-zinc-700">
                   {formatDateLabel(row.ngay_tu)}
@@ -275,7 +310,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
         </TableBody>
       </TableShell>
 
-      <BieuDoThCharts rows={rows} isLoading={isLoading} />
+      <BieuDoThCharts rows={sortedRows} isLoading={isLoading} />
     </div>
   );
 }

@@ -180,6 +180,37 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
 
   const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo) || caFilter !== 'all';
 
+  const totals = useMemo(
+    () =>
+      sortedRows.reduce(
+        (total, row) => ({
+          slYeuCau: total.slYeuCau + (row.sl_yeu_cau ?? 0),
+          tlNhuaYeuCau: total.tlNhuaYeuCau + (row.tl_nhua_yeu_cau_kg ?? 0),
+          tlXuat: total.tlXuat + (row.tl_xuat_tong_kg ?? 0),
+          slSanLuong: total.slSanLuong + (row.sl_san_luong ?? 0),
+          tlMang: total.tlMang + (row.tl_mang_kg ?? 0),
+          tlNhuaThanhPham: total.tlNhuaThanhPham + (row.tl_nhua_thanh_pham_kg ?? 0),
+          tlNhuaDinhMuc: total.tlNhuaDinhMuc + (row.tl_nhua_dinh_muc_kg ?? 0),
+          loiHong: total.loiHong + (row.loi_hong_tong_kg ?? 0),
+          xuatThucDung: total.xuatThucDung + (row.xuat_thuc_dung_kg ?? 0),
+          chenhLech: total.chenhLech + (row.chenh_lech_nhua_kg ?? 0)
+        }),
+        {
+          slYeuCau: 0,
+          tlNhuaYeuCau: 0,
+          tlXuat: 0,
+          slSanLuong: 0,
+          tlMang: 0,
+          tlNhuaThanhPham: 0,
+          tlNhuaDinhMuc: 0,
+          loiHong: 0,
+          xuatThucDung: 0,
+          chenhLech: 0
+        }
+      ),
+    [sortedRows]
+  );
+
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -275,6 +306,25 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           <TableHeadCell className="text-right">Chênh lệch</TableHeadCell>
         </TableHead>
         <TableBody>
+          {!isLoading && sortedRows.length > 0 ? (
+            <tr className="border-b border-red-200 bg-red-50 font-black text-zinc-900">
+              <td colSpan={3} className="px-4 py-2.5 uppercase">
+                TỔNG CỘNG
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(totals.slYeuCau)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaYeuCau)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlXuat)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(totals.slSanLuong)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlMang)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaThanhPham)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaDinhMuc)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.loiHong)}</td>
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.xuatThucDung)}</td>
+              <td className={`px-4 py-2.5 text-right font-mono tabular-nums ${signedClass(totals.chenhLech)}`}>
+                {formatKg(totals.chenhLech)}
+              </td>
+            </tr>
+          ) : null}
           {isLoading ? (
             <TableEmptyRow colSpan={13}>
               <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />

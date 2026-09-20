@@ -19,7 +19,7 @@ Kiểm tra tính năng cảnh báo chênh lệch tại trang **Kho → Báo cáo
   bản đang deploy.
 - Đăng nhập tài khoản quản trị có sẵn trong code (dùng khi chưa có tài khoản
   nhân sự cấu hình riêng):
-  - Tài khoản: `itvietnhat2026@gmail.com`
+  - Tài khoản: `itvietnhattn2026@gmail.com`
   - Mật khẩu: `123456`
 - **Tạo riêng một máy chỉ dùng để test**, tránh làm nhiễu số liệu của máy thật
   đang sản xuất:

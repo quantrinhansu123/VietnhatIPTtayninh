@@ -14,7 +14,7 @@ export type StaffViewGroup = {
 export type StaffViewPermissions = StaffViewGroup[];
 
 /** Tài khoản quản trị hệ thống luôn có toàn quyền, không phụ thuộc cấu hình menu theo nhân sự. */
-export const PRIMARY_ADMIN_USERNAME = 'itvietnhat2026@gmail.com';
+export const PRIMARY_ADMIN_USERNAME = 'itvietnhattn2026@gmail.com';
 
 /** Cây menu cha / con dùng cấp quyền (đồng bộ cấu trúc menu app) */
 export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [

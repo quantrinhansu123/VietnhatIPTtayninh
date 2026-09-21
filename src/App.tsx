@@ -40,6 +40,7 @@ import {
 
 import { readCachedReports, STORAGE_DRAFT_KEY, STORAGE_OFFLINE_KEY, STORAGE_REPORTS_CACHE_KEY, STORAGE_AUTH_KEY } from './features/_shared/storage';
 import LoginPage, { grantResolvedAccess, type AuthUser } from './components/LoginPage';
+import loginHeroUrl from './assets/Loginimage.png';
 import { AccessControlProvider } from './app/accessControl';
 import { buildAllowedTabSet, hasFullMenuAccess } from './features/nhan-su/menuViews';
 import { refreshAuthUserPermissions } from './app/refreshAuthPermissions';
@@ -552,7 +553,7 @@ export default function App() {
   const activeMetrics = computeReportMetrics(reportForm);
 
   if (!authUser) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage key="login-screen" onLogin={handleLogin} />;
   }
 
   // Chỉ quản trị mới xem toàn bộ; còn lại đúng theo ma trận Phân quyền (và vị trí gán).
@@ -589,8 +590,9 @@ export default function App() {
   return (
     <AccessControlProvider user={authUser}>
     <div
-      className="flex h-[100dvh] overflow-hidden bg-slate-50 font-sans text-slate-800 selection:bg-brand-500 selection:text-white"
+      className="relative z-0 flex h-[100dvh] isolate overflow-hidden bg-slate-50 font-sans text-slate-800 selection:bg-brand-500 selection:text-white"
       id="main-root-container"
+      style={{ backgroundColor: '#f8fafc' }}
     >
       <aside className="hidden shrink-0 flex-col items-center gap-1 border-r border-slate-800/60 bg-gradient-to-b from-slate-900 to-slate-950 py-3 pt-safe sm:flex sm:w-16">
         {BACK_TAB_MAP[activeTab] && (
@@ -610,7 +612,7 @@ export default function App() {
         <div className="mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col overflow-hidden bg-white shadow-[var(--shadow-card)]">
 
         {/* Brand Header — logo + trigger Drawer + offline pill */}
-        <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl px-3 md:px-5 h-14 md:h-16 pt-safe shrink-0 flex items-center gap-2" style={{ boxShadow: 'var(--shadow-soft)' }}>
+        <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white px-3 md:px-5 h-14 md:h-16 pt-safe shrink-0 flex items-center gap-2" style={{ boxShadow: 'var(--shadow-soft)', backgroundColor: '#ffffff' }}>
           <button
             type="button"
             onClick={() => setQuickNavOpen(true)}
@@ -758,18 +760,20 @@ export default function App() {
         </AnimatePresence>
 
         {/* Main Content scrollable container viewport */}
-        <main className={`flex-1 min-h-0 overflow-y-auto bg-slate-50 focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
-          activeTab === 'control-board'
-            ? 'p-2 md:p-4'
+        <main className={`flex-1 min-h-0 overflow-y-auto focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
+          activeTab === 'menu'
+            ? 'bg-slate-100 p-0'
+            : activeTab === 'control-board'
+            ? 'bg-slate-50 p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
-              ? 'overflow-hidden p-0'
+              ? 'bg-slate-50 overflow-hidden p-0'
               : activeTab === 'kiem-kho'
-                ? 'p-2 md:p-3 pb-4'
+                ? 'bg-slate-50 p-2 md:p-3 pb-4'
               : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'warehouse-history-detail' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
-                ? 'p-2 md:p-3 pb-4'
+                ? 'bg-slate-50 p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'
-                  ? 'p-2 md:p-4 pb-4'
-                : 'p-4 md:p-6 pb-4'
+                  ? 'bg-slate-50 p-2 md:p-4 pb-4'
+                : 'bg-slate-50 p-4 md:p-6 pb-4'
         }`} id="applet-viewport">
           <div
             className={
@@ -815,9 +819,21 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="space-y-5"
+                className="relative min-h-[calc(100dvh-3.5rem)] md:min-h-[calc(100dvh-4rem)] overflow-hidden"
               >
-                <MainMenuFlow items={visibleMainMenuItems} onNavigate={navigateToTab} />
+                <img
+                  src={loginHeroUrl}
+                  alt=""
+                  className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+                  draggable={false}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/80 via-slate-50/70 to-slate-100/85" />
+                <div className="relative z-10 space-y-5 p-4 md:p-6 pb-8">
+                  <MainMenuFlow items={visibleMainMenuItems} onNavigate={navigateToTab} />
+                  <div className="flex w-full justify-center pt-6 pb-2 md:pt-10">
+                    <VietNhatLogo className="h-16 w-auto max-w-[180px] object-contain opacity-30 sm:h-20 sm:max-w-[220px] md:h-24 md:max-w-[260px]" />
+                  </div>
+                </div>
               </motion.div>
             ) : activeTab === 'quan-tri' ? (
               <motion.div

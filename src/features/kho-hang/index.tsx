@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTabAccess } from '../../app/useTabAccess';
-import { FilterCombobox } from '../../components/shared/table';
 import { MaterialsInventoryPanel } from '../kho-nvl';
 import { ProductsPanel } from '../san-pham';
 
 export type InventoryCatalogKind = 'materials' | 'products';
-type InventoryMovementKind = 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
 
 export type InventoryBalanceRow = {
   ma: string;
@@ -34,22 +32,42 @@ function warehouseCatalogKind(name: string): InventoryCatalogKind {
     : 'materials';
 }
 
-function warehouseMovementKind(name: string): InventoryMovementKind {
-  const normalized = normalizeWarehouseName(name);
-  if (normalized.includes('san pham') || normalized.includes('thanh pham')) return 'san_pham';
-  if (normalized.includes('tai che')) return 'tai_che';
-  if (normalized.includes('hang hong')) return 'hang_hong';
-  if (normalized.includes('hang hoa')) return 'hang_hoa';
-  if (normalized.includes('cong cu') || normalized.includes('dung cu')) return 'cong_cu_dung_cu';
-  if (normalized.includes('gia cong')) return 'gia_cong';
-  return 'nvl';
-}
-
 export function isDefaultWarehouse(name: string, kind: InventoryCatalogKind) {
   const normalized = normalizeWarehouseName(name);
   return kind === 'products'
     ? normalized === 'kho san pham' || normalized === 'kho thanh pham'
     : normalized === 'kho nvl' || normalized === 'kho nguyen vat lieu';
+}
+
+/** Kho chuẩn luôn có trong dropdown (kể cả khi chưa có dòng trong quan_ly_kho). */
+export const STANDARD_WAREHOUSE_NAMES = [
+  'Kho NVL',
+  'Kho thành phẩm',
+  'Kho sản phẩm',
+  'Kho hàng hóa',
+  'Kho tái chế',
+  'Kho hàng hỏng',
+  'Kho công cụ dụng cụ',
+  'Kho gia công'
+] as const;
+
+/** Gộp kho từ API + kho chuẩn; giữ tên đã có trên DB, bổ sung thiếu. */
+export function ensureStandardWarehouses(names: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (raw: string) => {
+    const name = String(raw ?? '').trim();
+    if (!name) return;
+    const key = normalizeWarehouseName(name);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(name);
+  };
+
+  for (const name of names) push(name);
+  for (const name of STANDARD_WAREHOUSE_NAMES) push(name);
+  return result;
 }
 
 /** Khớp tên kho khi lọc danh mục: alias kho mặc định (SP↔thành phẩm, NVL↔nguyên vật liệu) + chưa gán kho. */
@@ -73,54 +91,53 @@ export function matchesWarehouseFilter(
   return false;
 }
 
+function mapBalanceRecords(
+  records: unknown[],
+  fallbackWarehouse = ''
+): InventoryBalanceRow[] {
+  return records
+    .map((record: unknown) => {
+      const row = (record && typeof record === 'object' ? record : {}) as Record<string, unknown>;
+      return {
+        ma: String(row.ma ?? '').trim(),
+        ten: String(row.ten ?? '').trim(),
+        don_vi: String(row.don_vi ?? '').trim(),
+        ten_kho: String(row.ten_kho ?? '').trim() || fallbackWarehouse,
+        ton_dau_ky: Number(row.ton_dau_ky) || 0,
+        nhap_trong_ky: Number(row.nhap_trong_ky) || 0,
+        xuat_trong_ky: Number(row.xuat_trong_ky) || 0,
+        ton_cuoi_ky: Number(row.ton_cuoi_ky) || 0
+      };
+    })
+    .filter(record => Boolean(record.ma));
+}
+
+async function fetchTonKhoBalances(
+  loaiKho: string,
+  asOfDate: string,
+  signal: AbortSignal
+): Promise<InventoryBalanceRow[]> {
+  const params = new URLSearchParams({ loai_kho: loaiKho, to: asOfDate });
+  const response = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, { signal });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Không thể tính tồn kho đến ngày đã chọn.');
+  return mapBalanceRecords(Array.isArray(data?.records) ? data.records : []);
+}
+
+/** /kho-hang: hiện full NVL + SP, không lọc theo kho. */
 export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
   const materialsAccess = useTabAccess('materials');
   const productsAccess = useTabAccess('products');
-  const [warehouses, setWarehouses] = useState<string[]>([]);
-  const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [asOfDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [balanceRows, setBalanceRows] = useState<InventoryBalanceRow[]>([]);
+  const [materialBalances, setMaterialBalances] = useState<InventoryBalanceRow[]>([]);
+  const [productBalances, setProductBalances] = useState<InventoryBalanceRow[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState('');
 
   useEffect(() => {
-    const loadWarehouses = async () => {
-      try {
-        const response = await fetch('/api/quan-ly-kho');
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) return;
-        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
-        setWarehouses(Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean))));
-      } catch {
-        setWarehouses([]);
-      }
-    };
-    void loadWarehouses();
-  }, []);
-
-  const accessibleWarehouses = useMemo(
-    () => warehouses.filter(name => {
-      const kind = warehouseCatalogKind(name);
-      return kind === 'products' ? productsAccess.canView : materialsAccess.canView;
-    }),
-    [materialsAccess.canView, productsAccess.canView, warehouses]
-  );
-
-  const kind = selectedWarehouse
-    ? warehouseCatalogKind(selectedWarehouse)
-    : materialsAccess.canView
-      ? 'materials'
-      : 'products';
-
-  useEffect(() => {
-    if (!accessibleWarehouses.includes(selectedWarehouse)) {
-      setSelectedWarehouse(accessibleWarehouses[0] || '');
-    }
-  }, [accessibleWarehouses, selectedWarehouse]);
-
-  useEffect(() => {
-    if (!selectedWarehouse || !asOfDate) {
-      setBalanceRows([]);
+    if (!asOfDate) {
+      setMaterialBalances([]);
+      setProductBalances([]);
       setBalanceError('');
       setIsLoadingBalances(false);
       return;
@@ -128,36 +145,33 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
 
     const controller = new AbortController();
     const loadBalances = async () => {
-      setBalanceRows([]);
       setBalanceError('');
       setIsLoadingBalances(true);
       try {
-        const params = new URLSearchParams({
-          loai_kho: warehouseMovementKind(selectedWarehouse),
-          to: asOfDate
-        });
-        // Luôn lọc tại database theo đúng kho đang chọn. Không gộp dữ liệu
-        // không gán kho hoặc kho alias vào kho hiện tại.
-        params.set('ten_kho', selectedWarehouse);
-        const response = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, {
-          signal: controller.signal
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Không thể tính tồn kho đến ngày đã chọn.');
-        const records = Array.isArray(data?.records) ? data.records : [];
-        setBalanceRows(records.map((record: Record<string, unknown>) => ({
-          ma: String(record.ma ?? '').trim(),
-          ten: String(record.ten ?? '').trim(),
-          don_vi: String(record.don_vi ?? '').trim(),
-          ten_kho: String(record.ten_kho ?? '').trim() || selectedWarehouse,
-          ton_dau_ky: Number(record.ton_dau_ky) || 0,
-          nhap_trong_ky: Number(record.nhap_trong_ky) || 0,
-          xuat_trong_ky: Number(record.xuat_trong_ky) || 0,
-          ton_cuoi_ky: Number(record.ton_cuoi_ky) || 0
-        })).filter((record: InventoryBalanceRow) => Boolean(record.ma)));
+        const tasks: Array<Promise<void>> = [];
+        if (materialsAccess.canView) {
+          tasks.push(
+            fetchTonKhoBalances('nvl', asOfDate, controller.signal).then(rows => {
+              setMaterialBalances(rows);
+            })
+          );
+        } else {
+          setMaterialBalances([]);
+        }
+        if (productsAccess.canView) {
+          tasks.push(
+            fetchTonKhoBalances('san_pham', asOfDate, controller.signal).then(rows => {
+              setProductBalances(rows);
+            })
+          );
+        } else {
+          setProductBalances([]);
+        }
+        await Promise.all(tasks);
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        setBalanceRows([]);
+        setMaterialBalances([]);
+        setProductBalances([]);
         setBalanceError(error instanceof Error ? error.message : 'Không thể tính tồn kho đến ngày đã chọn.');
       } finally {
         setIsLoadingBalances(false);
@@ -165,79 +179,43 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
     };
     void loadBalances();
     return () => controller.abort();
-  }, [asOfDate, kind, selectedWarehouse]);
+  }, [asOfDate, materialsAccess.canView, productsAccess.canView]);
 
   if (!materialsAccess.canView && !productsAccess.canView) return null;
 
+  const loadingHint = isLoadingBalances ? (
+    <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
+  ) : null;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {balanceError ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
           {balanceError}
         </p>
       ) : null}
 
-      {!selectedWarehouse ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <FilterCombobox
-            label="Kho"
-            options={accessibleWarehouses}
-            value={selectedWarehouse}
-            onChange={setSelectedWarehouse}
-            formatOption={value => value}
-            includeAll={false}
-            searchPlaceholder="Tìm kho..."
-          />
-        </div>
-      ) : kind === 'materials' ? (
+      {materialsAccess.canView ? (
         <MaterialsInventoryPanel
           onBack={onBack}
-          warehouseFilter={selectedWarehouse}
+          warehouseFilter=""
           includeUnassigned
           asOfDate={asOfDate}
-          balanceRows={balanceRows}
-          topControls={
-            <>
-              <FilterCombobox
-                label="Kho"
-                options={accessibleWarehouses}
-                value={selectedWarehouse}
-                onChange={setSelectedWarehouse}
-                formatOption={value => value}
-                includeAll={false}
-                searchPlaceholder="Tìm kho..."
-              />
-              {isLoadingBalances ? (
-                <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
-              ) : null}
-            </>
-          }
+          balanceRows={materialBalances}
+          topControls={loadingHint}
         />
-      ) : (
+      ) : null}
+
+      {productsAccess.canView ? (
         <ProductsPanel
           onBack={onBack}
-          warehouseFilter={selectedWarehouse}
+          warehouseFilter=""
           includeUnassigned
           asOfDate={asOfDate}
-          balanceRows={balanceRows}
-          topControls={
-            <>
-              <FilterCombobox
-                label="Kho"
-                options={accessibleWarehouses}
-                value={selectedWarehouse}
-                onChange={setSelectedWarehouse}
-                formatOption={value => value}
-                includeAll={false}
-                searchPlaceholder="Tìm kho..."
-              />
-              {isLoadingBalances ? (
-                <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
-              ) : null}
-            </>
-          }
+          balanceRows={productBalances}
+          topControls={loadingHint}
         />
-      )}
+      ) : null}
     </div>
   );
 }

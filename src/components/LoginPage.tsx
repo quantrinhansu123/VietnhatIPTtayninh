@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, User2 } from 'lucide-react';
 import { normalizeHrBranches } from '../features/_shared/hr';
 import {
@@ -32,6 +33,17 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [portalReady, setPortalReady] = useState(false);
+
+  useEffect(() => {
+    setPortalReady(true);
+    document.documentElement.classList.add('login-screen-active');
+    document.body.classList.add('login-screen-active');
+    return () => {
+      document.documentElement.classList.remove('login-screen-active');
+      document.body.classList.remove('login-screen-active');
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -150,34 +162,28 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
     }
   };
 
-  return (
-    <div className="flex min-h-[100dvh] w-full font-sans text-white">
-      {/* Left — brand / factory visual */}
-      <section className="relative hidden min-h-[100dvh] w-[58%] overflow-hidden lg:block">
+  const ui = (
+    <div
+      id="login-screen-root"
+      className="fixed inset-0 z-[9999] flex overflow-hidden bg-[#121212] font-sans text-white"
+      style={{ backgroundColor: '#121212' }}
+    >
+      <section className="relative hidden h-full w-[58%] overflow-hidden bg-[#0a0a0a] lg:block">
         <img
           src={loginHeroUrl}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover object-[center_40%]"
+          draggable={false}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/35 to-black/20" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30" />
-
-        <div className="relative z-10 flex h-full flex-col justify-end p-10 xl:p-14">
-          <div className="mb-[18%] ml-auto max-w-xs space-y-5 text-right">
-            <p className="text-[11px] font-bold uppercase leading-relaxed tracking-[0.08em] text-zinc-900">
-              Chất lượng tạo nên giá trị bền vững
-              <span className="mt-1.5 ml-auto block h-0.5 w-28 bg-[#e11d2e]" />
-            </p>
-            <p className="text-[11px] font-bold uppercase leading-relaxed tracking-[0.08em] text-zinc-900">
-              An toàn hiệu quả phát triển
-              <span className="mt-1.5 ml-auto block h-0.5 w-28 bg-[#e11d2e]" />
-            </p>
-          </div>
-        </div>
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[32%] bg-gradient-to-b from-black/85 via-black/45 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-[22%] bg-gradient-to-r from-black/35 to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
       </section>
 
-      {/* Right — login form */}
-      <section className="flex min-h-[100dvh] w-full flex-col justify-center bg-[#121212] px-6 py-10 sm:px-10 lg:w-[42%] lg:px-12 xl:px-16">
+      <section
+        className="relative z-10 flex h-full w-full flex-col justify-center bg-[#121212] px-6 py-10 sm:px-10 lg:w-[42%] lg:px-12 xl:px-16"
+        style={{ backgroundColor: '#121212' }}
+      >
         <div className="mx-auto w-full max-w-[380px]">
           <div className="mb-8 flex flex-col items-center text-center">
             <div className="mb-6 flex h-28 w-44 items-center justify-center sm:h-32 sm:w-52">
@@ -297,4 +303,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
       </section>
     </div>
   );
+
+  if (!portalReady || typeof document === 'undefined') return null;
+  return createPortal(ui, document.body);
 }

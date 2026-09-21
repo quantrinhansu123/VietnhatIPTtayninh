@@ -185,7 +185,7 @@ begin
     limit 1
   ) sp on true
   where not exists (
-    select 1 from public.lenh_sx_dong d where d.lenh_sx_id = ls.id
+    select 1 from public.lenh_sx_dong d where d.lenh_sx_id::text = ls.id::text
   )
     and (
       nullif(trim(coalesce(ord.item ->> 'ma_sp', ord.item ->> 'ma_hang', '')), '') is not null
@@ -197,46 +197,52 @@ exception
 end $$;
 
 -- Backfill lệnh chỉ có cột phẳng (không JSON mảng SP).
-insert into public.lenh_sx_dong (
-  lenh_sx_id,
-  ma_lenh_sx,
-  stt,
-  ma_sp,
-  ten_sp,
-  don_vi,
-  so_luong,
-  ma_don_hang,
-  dinh_muc_kg,
-  trong_luong_nhua_kg,
-  tong_kg
-)
-select
-  ls.id,
-  ls.ma_lenh_sx,
-  1,
-  nullif(trim(coalesce(ls.ma_hang, '')), ''),
-  nullif(trim(coalesce(ls.ten_hang, '')), ''),
-  nullif(trim(coalesce(ls.don_vi, '')), ''),
-  ls.so_luong,
-  nullif(trim(coalesce(ls.ma_don_hang, '')), ''),
-  sp.tong_trong_luong,
-  sp.trong_luong_nhua,
-  case
-    when sp.tong_trong_luong is not null and ls.so_luong is not null
-    then round(sp.tong_trong_luong * ls.so_luong, 4)
-    else null
-  end
-from public.lenh_sx ls
-left join lateral (
-  select p.tong_trong_luong, p.trong_luong_nhua
-  from public.san_pham p
-  where trim(coalesce(p.ma_sp, '')) = trim(coalesce(split_part(ls.ma_hang, ',', 1), ''))
-  limit 1
-) sp on true
-where not exists (
-  select 1 from public.lenh_sx_dong d where d.lenh_sx_id = ls.id
-)
-  and (
-    nullif(trim(coalesce(ls.ma_hang, '')), '') is not null
-    or nullif(trim(coalesce(ls.ten_hang, '')), '') is not null
-  );
+do $$
+begin
+  insert into public.lenh_sx_dong (
+    lenh_sx_id,
+    ma_lenh_sx,
+    stt,
+    ma_sp,
+    ten_sp,
+    don_vi,
+    so_luong,
+    ma_don_hang,
+    dinh_muc_kg,
+    trong_luong_nhua_kg,
+    tong_kg
+  )
+  select
+    ls.id,
+    ls.ma_lenh_sx,
+    1,
+    nullif(trim(coalesce(ls.ma_hang, '')), ''),
+    nullif(trim(coalesce(ls.ten_hang, '')), ''),
+    nullif(trim(coalesce(ls.don_vi, '')), ''),
+    ls.so_luong,
+    nullif(trim(coalesce(ls.ma_don_hang, '')), ''),
+    sp.tong_trong_luong,
+    sp.trong_luong_nhua,
+    case
+      when sp.tong_trong_luong is not null and ls.so_luong is not null
+      then round(sp.tong_trong_luong * ls.so_luong, 4)
+      else null
+    end
+  from public.lenh_sx ls
+  left join lateral (
+    select p.tong_trong_luong, p.trong_luong_nhua
+    from public.san_pham p
+    where trim(coalesce(p.ma_sp, '')) = trim(coalesce(split_part(ls.ma_hang, ',', 1), ''))
+    limit 1
+  ) sp on true
+  where not exists (
+    select 1 from public.lenh_sx_dong d where d.lenh_sx_id::text = ls.id::text
+  )
+    and (
+      nullif(trim(coalesce(ls.ma_hang, '')), '') is not null
+      or nullif(trim(coalesce(ls.ten_hang, '')), '') is not null
+    );
+exception
+  when others then
+    raise notice 'Backfill cột phẳng bỏ qua: %', SQLERRM;
+end $$;

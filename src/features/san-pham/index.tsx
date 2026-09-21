@@ -34,7 +34,7 @@ import {
   productCatalogRowToPayload
 } from '../../utils/productCatalogExcel';
 import { showAppToast } from '../../lib/appToast';
-import { matchesWarehouseFilter, normalizeWarehouseName, type InventoryBalanceRow } from '../kho-hang';
+import { matchesWarehouseFilter, normalizeWarehouseName, ensureStandardWarehouses, type InventoryBalanceRow } from '../kho-hang';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import ProductQrPrintModal, {
   type ProductQrPrintLabel as WarehouseProductQrPrintLabel
@@ -2692,7 +2692,8 @@ export function ProductsPanel({
   includeUnassigned = false,
   asOfDate = '',
   balanceRows = [],
-  topControls = null
+  topControls = null,
+  onWarehouseReassigned
 }: {
   onBack: () => void;
   warehouseFilter?: string;
@@ -2700,6 +2701,7 @@ export function ProductsPanel({
   asOfDate?: string;
   balanceRows?: InventoryBalanceRow[];
   topControls?: ReactNode;
+  onWarehouseReassigned?: (warehouse: string) => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -2783,13 +2785,14 @@ export function ProductsPanel({
       try {
         const res = await fetch('/api/quan-ly-kho');
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
-        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
+        const records: Array<{ ten_kho?: string }> = res.ok && Array.isArray(data?.records) ? data.records : [];
         setWarehouseOptions(
-          Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+          ensureStandardWarehouses(
+            Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+          )
         );
       } catch {
-        setWarehouseOptions([]);
+        setWarehouseOptions(ensureStandardWarehouses([]));
       }
     };
     void loadWarehouses();
@@ -3713,6 +3716,7 @@ export function ProductsPanel({
           : `Không còn sản phẩm đang lọc cần đổi kho.`
       );
       setIsWarehouseReassignOpen(false);
+      onWarehouseReassigned?.(data.ten_kho || warehouseName);
       await loadProducts();
     } catch (error: any) {
       setProductError(error.message || 'Không thể đổi kho theo bộ lọc.');
@@ -3721,7 +3725,7 @@ export function ProductsPanel({
     }
   };
 
-  const isInventoryHeader = Boolean(warehouseFilter);
+  const isInventoryHeader = Boolean(asOfDate);
   const summaryStats = isCatalogMode
     ? [
         ['Sản phẩm', displayProducts.length],

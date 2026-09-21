@@ -24,7 +24,7 @@ create table if not exists public.ke_hoach_san_xuat_dong (
 alter table public.ke_hoach_san_xuat_dong
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists ke_hoach_id uuid references public.ke_hoach_san_xuat (id) on delete cascade,
-  add column if not exists lenh_sx_id bigint,
+  add column if not exists lenh_sx_id uuid,
   add column if not exists thu_tu_uu_tien integer default 0,
   add column if not exists vi_tri text,
   add column if not exists ghi_chu text,
@@ -38,6 +38,33 @@ alter table public.ke_hoach_san_xuat_dong
   add column if not exists tho_phu text,
   add column if not exists hoc_viec text,
   add column if not exists san_pham jsonb not null default '[]'::jsonb;
+
+-- Đổi lenh_sx_id bigint → uuid nếu bảng trống / cột cũ
+do $$
+declare
+  col_type text;
+  n bigint;
+begin
+  select c.data_type into col_type
+  from information_schema.columns c
+  where c.table_schema = 'public'
+    and c.table_name = 'ke_hoach_san_xuat_dong'
+    and c.column_name = 'lenh_sx_id';
+
+  if col_type in ('bigint', 'integer', 'numeric') then
+    select count(*) into n from public.ke_hoach_san_xuat_dong;
+    if coalesce(n, 0) = 0 then
+      drop index if exists ke_hoach_san_xuat_dong_lenh_idx;
+      alter table public.ke_hoach_san_xuat_dong drop column lenh_sx_id;
+      alter table public.ke_hoach_san_xuat_dong add column lenh_sx_id uuid;
+    else
+      raise notice 'ke_hoach_san_xuat_dong.lenh_sx_id đang % và có dữ liệu — bỏ qua đổi kiểu.', col_type;
+    end if;
+  end if;
+exception
+  when others then
+    raise notice 'Điều chỉnh ke_hoach_san_xuat_dong.lenh_sx_id: %', SQLERRM;
+end $$;
 
 create index if not exists ke_hoach_san_xuat_ngay_idx
   on public.ke_hoach_san_xuat (ngay_ke_hoach desc);

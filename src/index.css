@@ -428,6 +428,7 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
+  background-color: #f8fafc;
 }
 
 body {
@@ -437,6 +438,14 @@ body {
   font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Login portal: tách khỏi #root, gỡ sạch khi đăng nhập xong */
+body.login-screen-active #root {
+  visibility: hidden;
+}
+#login-screen-root {
+  background-color: #121212 !important;
 }
 
 /* Industrial micro-detail */

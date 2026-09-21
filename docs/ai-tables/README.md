@@ -16,6 +16,14 @@
 
 Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...`) và `registry.ts` ngay.
 
+## SQL bootstrap (DB mới)
+
+| File | Dùng cho |
+|------|----------|
+| **`supabase-full-he-thong.sql`** | **Full bảng DB chính** (`SUPABASE_URL`) — paste SQL Editor → Run |
+| **`supabase-full-ton.sql`** | Full bảng DB tồn (`SUPABASE_TON_URL`) — `bao_cao_may_nvl_ton` |
+| `supabase-<ten>.sql` | Từng bảng lẻ (khi chỉ cần 1 bảng) |
+
 ## Danh sách bảng
 
 | Bảng | Tab / Route | Manifest |

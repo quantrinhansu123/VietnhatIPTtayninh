@@ -1050,7 +1050,6 @@ export function MaterialsInventoryPanel({
   const [formError, setFormError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [materialForm, setMaterialForm] = useState<MaterialFormState>(emptyMaterialForm);
-  const [showBulkTotalWeight, setShowBulkTotalWeight] = useState(false);
   const [isImportingCatalog, setIsImportingCatalog] = useState(false);
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
@@ -1312,15 +1311,6 @@ export function MaterialsInventoryPanel({
   const hasActiveFilters = Boolean(searchText);
   const resetFilters = () => {
     setSearchText('');
-  };
-
-  const handleDownloadTotalWeightTemplate = () => {
-    downloadBulkMaterialTotalWeightTemplate(
-      materials.map(material => ({
-        code: material.code,
-        totalWeight: material.totalWeight
-      }))
-    );
   };
 
   const handleDownloadCatalogTemplate = () => {
@@ -1624,26 +1614,6 @@ export function MaterialsInventoryPanel({
             className="hidden"
             onChange={event => void handleImportCatalogExcel(event.target.files?.[0])}
           />
-          <button
-            type="button"
-            onClick={handleDownloadTotalWeightTemplate}
-            disabled={isLoadingMaterials}
-            className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-            title="Chỉ cập nhật cột Tổng kg theo mã NVL"
-          >
-            <Download className="h-4 w-4" />
-            Mẫu cập nhật Tổng kg
-          </button>
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => setShowBulkTotalWeight(true)}
-              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200"
-            >
-              <Upload className="h-4 w-4" />
-              Nhập Tổng kg
-            </button>
-          ) : null}
           {canCreate ? (
             <button
               type="button"
@@ -1942,16 +1912,6 @@ export function MaterialsInventoryPanel({
         onClose={() => {
           setMaterialQrPrintOpen(false);
           setMaterialQrPrintLabels([]);
-        }}
-      />
-
-      <BulkMaterialTotalWeightModal
-        open={showBulkTotalWeight}
-        materials={materials}
-        onClose={() => setShowBulkTotalWeight(false)}
-        onApplied={message => {
-          setActionMessage(message);
-          void loadMaterials();
         }}
       />
 

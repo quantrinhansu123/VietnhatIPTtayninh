@@ -48,8 +48,21 @@ const SUPABASE_KIEM_KHO_KEY =
   process.env.SUPABASE_KIEM_KHO_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_KIEM_KHO_PUBLISHABLE_KEY ||
   '';
+/** DB riêng cho bảng tồn / kiểm tồn máy-NVL (`bao_cao_may_nvl_ton`). */
+const SUPABASE_TON_URL =
+  process.env.SUPABASE_TON_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_TON_URL ||
+  '';
+const SUPABASE_TON_SERVICE_KEY = process.env.SUPABASE_TON_SERVICE_KEY || '';
+const SUPABASE_TON_KEY =
+  SUPABASE_TON_SERVICE_KEY ||
+  process.env.SUPABASE_TON_KEY ||
+  process.env.SUPABASE_TON_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_TON_PUBLISHABLE_KEY ||
+  '';
 const SUPABASE_KIEM_KHO_DB_LABEL = process.env.SUPABASE_KIEM_KHO_DB_LABEL || 'kiem-kho';
 const SUPABASE_WEIGHING_DB_LABEL = process.env.SUPABASE_WEIGHING_DB_LABEL || 'phieu-can';
+const SUPABASE_TON_DB_LABEL = process.env.SUPABASE_TON_DB_LABEL || 'ton';
 const SUPABASE_MAIN_DB_LABEL = process.env.SUPABASE_MAIN_DB_LABEL || 'he-thong';
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || 'reports';
 const SUPABASE_WEIGHING_TABLE = process.env.SUPABASE_WEIGHING_TABLE || 'phieu_can_dinh_ki';
@@ -350,10 +363,22 @@ const supabaseKiemKho =
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
+/** Client riêng — API `/api/bao-cao-may-nvl-ton` (kiểm tồn đầu/cuối ca). */
+const supabaseTon =
+  SUPABASE_TON_URL && SUPABASE_TON_KEY
+    ? createClient(SUPABASE_TON_URL, SUPABASE_TON_KEY, {
+        global: { fetch: fetchWithTimeoutAndRetry }
+      })
+    : null;
 const useSupabase = Boolean(supabase);
 const usingServiceKey = Boolean(process.env.SUPABASE_SERVICE_KEY);
 const usingWeighingServiceKey = Boolean(SUPABASE_WEIGHING_SERVICE_KEY);
 const usingKiemKhoServiceKey = Boolean(SUPABASE_KIEM_KHO_SERVICE_KEY);
+const usingTonServiceKey = Boolean(SUPABASE_TON_SERVICE_KEY);
+
+function getMachineNvlDb(): SupabaseClient | null {
+  return supabaseTon || supabase;
+}
 if (useSupabase) {
   console.log(`[SUPABASE:${SUPABASE_MAIN_DB_LABEL}] Connected to`, SUPABASE_URL, 'tables', {
     reports: SUPABASE_TABLE,
@@ -414,6 +439,16 @@ if (supabaseKiemKho) {
     kiemKhoTongHop: SUPABASE_KIEM_KHO_TONG_HOP_TABLE,
     key: usingKiemKhoServiceKey ? 'service_role' : 'anon/publishable'
   });
+}
+if (supabaseTon) {
+  console.log(`[SUPABASE:${SUPABASE_TON_DB_LABEL}] Connected to`, SUPABASE_TON_URL, {
+    machineNvlReports: SUPABASE_MACHINE_NVL_REPORTS_TABLE,
+    key: usingTonServiceKey ? 'service_role' : 'anon/publishable'
+  });
+} else {
+  console.log(
+    `[SUPABASE:${SUPABASE_TON_DB_LABEL}] Chưa cấu hình riêng — bao_cao_may_nvl_ton dùng DB ${SUPABASE_MAIN_DB_LABEL} (nếu có).`
+  );
 }
 
 async function resolveCanTuDongImageUrl(
@@ -2582,6 +2617,7 @@ function listSupabaseDbRefsPreferNew(): SupabaseDbRef[] {
   };
 
   push(supabaseWeighing, SUPABASE_WEIGHING_DB_LABEL, SUPABASE_WEIGHING_URL);
+  push(supabaseTon, SUPABASE_TON_DB_LABEL, SUPABASE_TON_URL);
   push(supabase, SUPABASE_MAIN_DB_LABEL, SUPABASE_URL || '');
   return refs;
 }
@@ -2758,6 +2794,9 @@ async function resolveSupabaseClientForTable(table: string): Promise<SupabaseDbR
       table === SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
   ) {
     return { client: supabaseKiemKho, label: SUPABASE_KIEM_KHO_DB_LABEL };
+  }
+  if (supabaseTon && table === SUPABASE_MACHINE_NVL_REPORTS_TABLE) {
+    return { client: supabaseTon, label: SUPABASE_TON_DB_LABEL };
   }
   if (supabaseWeighing && table === SUPABASE_DOI_SOAT_TABLE) {
     return { client: supabaseWeighing, label: SUPABASE_WEIGHING_DB_LABEL };
@@ -4145,7 +4184,8 @@ async function findExistingMachineNvlDuplicate(opts: {
   ten_may?: string | null;
   excludeId?: string | null;
 }) {
-  if (!supabase) return null;
+  const db = getMachineNvlDb();
+  if (!db) return null;
   const ngay = String(opts.ngay || '').trim();
   const ca = String(opts.ca || '').trim();
   const loai = opts.loai_bao_cao;
@@ -4154,7 +4194,7 @@ async function findExistingMachineNvlDuplicate(opts: {
   const excludeId = String(opts.excludeId || '').trim();
   if (!ngay || !ca || (!maMay && !tenMay)) return null;
 
-  let query = supabase
+  let query = db
     .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
     .select('id, ngay, ca, ma_may, ten_may, loai_bao_cao')
     .eq('ngay', ngay)
@@ -7880,6 +7920,22 @@ export function createApp() {
           kiemKho: SUPABASE_KIEM_KHO_TABLE,
           kiemKhoTongHop: SUPABASE_KIEM_KHO_TONG_HOP_TABLE,
           role: usingKiemKhoServiceKey ? 'service_role' : 'anon/publishable'
+        },
+        [SUPABASE_TON_DB_LABEL]: {
+          connected: Boolean(supabaseTon),
+          url: SUPABASE_TON_URL
+            ? `${SUPABASE_TON_URL.slice(0, 40)}...`
+            : SUPABASE_URL
+              ? `${SUPABASE_URL.slice(0, 40)}... (fallback ${SUPABASE_MAIN_DB_LABEL})`
+              : null,
+          machineNvlReports: SUPABASE_MACHINE_NVL_REPORTS_TABLE,
+          role: supabaseTon
+            ? usingTonServiceKey
+              ? 'service_role'
+              : 'anon/publishable'
+            : usingServiceKey
+              ? 'service_role'
+              : 'anon/public'
         }
       },
       tables: {
@@ -16573,8 +16629,11 @@ export function createApp() {
   });
 
   app.get('/api/bao-cao-may-nvl-ton', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
 
     try {
@@ -16586,7 +16645,7 @@ export function createApp() {
       const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
       const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 300) : 100;
 
-      let query = supabase
+      let query = db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
@@ -16615,8 +16674,11 @@ export function createApp() {
   });
 
   app.post('/api/bao-cao-may-nvl-ton', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
 
     try {
@@ -16647,7 +16709,7 @@ export function createApp() {
         });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .insert(parsed.record)
         .select('*')
@@ -16665,15 +16727,18 @@ export function createApp() {
   });
 
   app.put('/api/bao-cao-may-nvl-ton/:id', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
 
     try {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
-      const { data: existingReport } = await supabase
+      const { data: existingReport } = await db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .select('da_in')
         .eq('id', id)
@@ -16710,7 +16775,7 @@ export function createApp() {
         });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .update(parsed.record)
         .eq('id', id)
@@ -16730,13 +16795,16 @@ export function createApp() {
   });
 
   app.post('/api/bao-cao-may-nvl-ton/danh-dau-da-in', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
     try {
       const id = String(req.body?.id ?? '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
-      const { error } = await supabase.from(SUPABASE_MACHINE_NVL_REPORTS_TABLE).update({ da_in: true }).eq('id', id);
+      const { error } = await db.from(SUPABASE_MACHINE_NVL_REPORTS_TABLE).update({ da_in: true }).eq('id', id);
       if (error) {
         console.error('Supabase machine NVL report đánh dấu đã in error:', error);
         return res.status(500).json({ error: `Không thể đánh dấu đã in. ${error.message}` });
@@ -16748,15 +16816,18 @@ export function createApp() {
   });
 
   app.delete('/api/bao-cao-may-nvl-ton/:id', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
 
     try {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .delete()
         .eq('id', id)
@@ -16776,8 +16847,11 @@ export function createApp() {
   });
 
   app.post('/api/bao-cao-may-nvl-ton/bulk-delete', async (req, res) => {
-    if (!supabase) {
-      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const db = getMachineNvlDb();
+    if (!db) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB tồn. Cần SUPABASE_TON_URL / SUPABASE_TON_SERVICE_KEY (label ${SUPABASE_TON_DB_LABEL}) hoặc DB chính.`
+      });
     }
 
     try {
@@ -16788,7 +16862,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu danh sách ID báo cáo.' });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(SUPABASE_MACHINE_NVL_REPORTS_TABLE)
         .delete()
         .in('id', ids)

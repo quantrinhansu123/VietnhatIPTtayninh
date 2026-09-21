@@ -3,7 +3,7 @@
 | **Bảng** | `bao_cao_may_nvl_ton` |
 | **Tab** | `machine-nvl-report`, `machine-nvl-report-list` |
 | **DB** | Riêng — label `ton` (`SUPABASE_TON_*`). Fallback DB chính nếu chưa cấu hình. |
-| **SQL** | `supabase-bao-cao-may-nvl-ton.sql`, `supabase-bao-cao-may-nvl-ton-loai.sql` |
+| **SQL** | **`supabase-db-ton-kho.sql`** (bootstrap full DB tồn) · alias `supabase-full-ton.sql` · lẻ: `supabase-bao-cao-may-nvl-ton.sql`, `supabase-bao-cao-may-nvl-ton-loai.sql` |
 
 **API:** `server.ts` — `/api/bao-cao-may-nvl-ton`  
 **Feature:** `src/features/bao-cao-may-nvl-ton/index.tsx` — `MachineNvlReportPanel`  

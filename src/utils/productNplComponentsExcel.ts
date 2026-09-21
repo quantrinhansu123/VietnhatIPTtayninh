@@ -1578,6 +1578,11 @@ export async function parseImportSpExcelRows(file: File): Promise<ImportSpExcelR
     } else if (typeIsPercent || isPercentUnit(dvt || '')) {
       phan_tram = gia_tri;
       don_vi = '%';
+    } else if (type === 'quantity' && !dvt) {
+      // Mẫu định mức: dòng «Số lượng» thiếu ĐVT=Kg → coi là trọng lượng kg.
+      khoi_luong_kg = gia_tri;
+      so_luong = 0;
+      don_vi = 'kg';
     } else if (typeIsQty) {
       so_luong = gia_tri;
       don_vi = dvt || 'Cái';

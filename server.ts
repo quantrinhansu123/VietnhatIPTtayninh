@@ -8933,8 +8933,78 @@ export function createApp() {
 
     try {
       const limitRaw = Number(req.query.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 2000) : 500;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 5000) : 500;
       const batchId = typeof req.query.batch_id === 'string' ? req.query.batch_id.trim() : '';
+      const maSpRaw = typeof req.query.ma_sp === 'string' ? req.query.ma_sp.trim() : '';
+      const normalizeKey = (code: unknown) =>
+        String(code ?? '')
+          .trim()
+          .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+          .toUpperCase();
+      const targetKey = normalizeKey(maSpRaw);
+
+      // Lọc theo mã SP: ưu tiên eq + biến thể khoảng trắng; fallback quét nhẹ.
+      if (targetKey) {
+        const variants = Array.from(
+          new Set([
+            maSpRaw,
+            targetKey,
+            targetKey.replace(/^([A-Z]+)(-?)([A-Z]+)(\d+)$/i, (_, a, _d, b, n) => `${a}-${b}${n}`),
+            targetKey.replace(/^([A-Z]+)-([A-Z]+)(\d+)$/i, (_, a, b, n) => `${a}- ${b}${n}`)
+          ].map(value => String(value || '').trim()).filter(Boolean))
+        );
+
+        const matchedMap = new Map<string, Record<string, unknown>>();
+        for (const variant of variants) {
+          const { data, error } = await supabase
+            .from(SUPABASE_IMPORT_SP_TABLE)
+            .select('*')
+            .eq('ma_sp', variant)
+            .order('imported_at', { ascending: false })
+            .limit(limit);
+          if (error) {
+            console.error('Supabase import_sp query by ma_sp error:', error);
+            return res.status(500).json({
+              error: `Không thể tải ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`
+            });
+          }
+          for (const row of (data || []) as Record<string, unknown>[]) {
+            const id = String(row.id ?? '');
+            if (id) matchedMap.set(id, row);
+            else matchedMap.set(`${row.ma_sp}|${row.ma_nvl}|${row.so_dong_excel}`, row);
+          }
+        }
+
+        // Nếu chưa khớp exact, lấy mẫu gần đây rồi lọc bỏ khoảng trắng.
+        if (matchedMap.size === 0) {
+          const { data, error } = await supabase
+            .from(SUPABASE_IMPORT_SP_TABLE)
+            .select('*')
+            .ilike('ma_sp', `%${targetKey.replace(/[^A-Z0-9]/gi, '%')}%`)
+            .order('imported_at', { ascending: false })
+            .limit(Math.min(limit * 5, 2000));
+          if (error) {
+            console.error('Supabase import_sp ilike ma_sp error:', error);
+            return res.status(500).json({
+              error: `Không thể tải ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`
+            });
+          }
+          for (const row of (data || []) as Record<string, unknown>[]) {
+            if (normalizeKey(row.ma_sp) !== targetKey) continue;
+            const id = String(row.id ?? '');
+            if (id) matchedMap.set(id, row);
+            else matchedMap.set(`${row.ma_sp}|${row.ma_nvl}|${row.so_dong_excel}`, row);
+          }
+        }
+
+        const matched = [...matchedMap.values()];
+        return res.json({
+          rows: matched.slice(0, limit),
+          total: matched.length,
+          ma_sp: maSpRaw,
+          source: 'supabase'
+        });
+      }
 
       let query = supabase
         .from(SUPABASE_IMPORT_SP_TABLE)
@@ -9062,12 +9132,14 @@ export function createApp() {
       const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
       const batchId = String(body.batch_id ?? body.batchId ?? '').trim();
       const onlyMoi = body.only_moi !== false && body.onlyMoi !== false;
+      const filterMaSp = String(body.ma_sp ?? body.maSp ?? '').trim();
 
       const normalizeKey = (code: unknown) =>
         String(code ?? '')
           .trim()
           .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
           .toUpperCase();
+      const filterMaSpKey = normalizeKey(filterMaSp);
 
       const pageSize = 1000;
       const importRows: Record<string, unknown>[] = [];
@@ -9127,6 +9199,8 @@ export function createApp() {
         so_luong: number | null;
         khoi_luong_kg: number | null;
         don_vi: string | null;
+        emptyDvtQty: number | null;
+        hasExplicitPieceUnit: boolean;
         importIds: string[];
       };
 
@@ -9138,6 +9212,7 @@ export function createApp() {
         const id = String(row.id ?? '').trim();
         if (!maSp || !maNvl) continue;
         const productKey = normalizeKey(maSp);
+        if (filterMaSpKey && productKey !== filterMaSpKey) continue;
         const nvlKey = normalizeKey(maNvl);
         if (!productKey || !nvlKey) continue;
 
@@ -9161,6 +9236,8 @@ export function createApp() {
             so_luong: null,
             khoi_luong_kg: null,
             don_vi: null,
+            emptyDvtQty: null,
+            hasExplicitPieceUnit: false,
             importIds: []
           };
           bucket.nvl.set(nvlKey, agg);
@@ -9172,8 +9249,20 @@ export function createApp() {
         const phanTram = parseServerNumber(row.phan_tram);
         const soLuong = parseServerNumber(row.so_luong);
         const khoiLuong = parseServerNumber(row.khoi_luong_kg);
-        const dvt = String(row.dvt ?? row.don_vi ?? '').trim();
-        const dvtNorm = dvt.toLowerCase().replace(/[^a-z%]/g, '');
+        const dvtRaw = String(row.dvt ?? '').trim();
+        const donViRaw = String(row.don_vi ?? '').trim();
+        const dvt = dvtRaw || donViRaw;
+        const loaiNorm = String(row.loai ?? '')
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd');
+        const dvtNorm = dvt
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z%]/g, '');
 
         if (Number.isFinite(phanTram) && phanTram >= 0) {
           agg.phan_tram = phanTram;
@@ -9186,9 +9275,29 @@ export function createApp() {
         if (Number.isFinite(soLuong) && soLuong >= 0) {
           const isKgUnit = dvtNorm.startsWith('kg');
           const isPercentUnit = dvtNorm === '%' || dvtNorm.includes('phantram');
-          if (!isKgUnit && !isPercentUnit && (soLuong > 0 || Boolean(dvt))) {
+          const isPieceUnit =
+            dvtNorm.includes('cai') ||
+            dvtNorm.includes('cuon') ||
+            dvtNorm.includes('bo') ||
+            dvtNorm.includes('met') ||
+            dvtNorm === 'm' ||
+            dvtNorm.includes('tam');
+          const loaiIsQty = loaiNorm.includes('so luong') || loaiNorm.includes('soluong') || loaiNorm.includes('quantity');
+          // Excel thiếu cột ĐVT (dvt trống) dù parser gán don_vi=Cái → vẫn là ứng viên Kg.
+          const missingExcelUnit = !dvtRaw && loaiIsQty && soLuong > 0;
+
+          if (isKgUnit) {
+            // Dòng ĐVT=Kg đôi khi so_luong=0 + khoi_luong_kg; đôi khi giá trị nằm ở so_luong.
+            if (soLuong > 0) agg.khoi_luong_kg = soLuong;
+            else if (agg.khoi_luong_kg === null && Number.isFinite(khoiLuong)) {
+              agg.khoi_luong_kg = khoiLuong;
+            }
+          } else if (missingExcelUnit) {
+            agg.emptyDvtQty = soLuong;
+          } else if (!isKgUnit && !isPercentUnit && (soLuong > 0 || Boolean(dvt))) {
             agg.so_luong = soLuong;
             agg.don_vi = dvt || agg.don_vi || 'Cái';
+            if (isPieceUnit || Boolean(dvtRaw)) agg.hasExplicitPieceUnit = true;
           } else if (agg.so_luong === null && !isKgUnit && soLuong > 0) {
             agg.so_luong = soLuong;
             agg.don_vi = dvt || agg.don_vi;
@@ -9211,11 +9320,34 @@ export function createApp() {
 
         const items: ProductNplPhanTramItem[] = [];
         for (const agg of bucket.nvl.values()) {
+          const hasPercent = agg.phan_tram !== null && Number.isFinite(agg.phan_tram);
+          // Có % mà thiếu khoi_luong_kg: lấy dòng Số lượng thiếu ĐVT làm Kg.
+          if (
+            hasPercent &&
+            (agg.khoi_luong_kg === null || !Number.isFinite(agg.khoi_luong_kg)) &&
+            agg.emptyDvtQty !== null &&
+            Number.isFinite(agg.emptyDvtQty)
+          ) {
+            agg.khoi_luong_kg = agg.emptyDvtQty;
+            if (!agg.hasExplicitPieceUnit) {
+              agg.so_luong = null;
+              if (agg.don_vi === 'Cái') agg.don_vi = '%';
+            }
+          } else if (
+            !hasPercent &&
+            agg.so_luong === null &&
+            agg.emptyDvtQty !== null &&
+            Number.isFinite(agg.emptyDvtQty)
+          ) {
+            // Không có %: dòng thiếu ĐVT giữ như số lượng.
+            agg.so_luong = agg.emptyDvtQty;
+            agg.don_vi = agg.don_vi || 'Cái';
+          }
+
           const weightKg =
             agg.khoi_luong_kg !== null && Number.isFinite(agg.khoi_luong_kg) && agg.khoi_luong_kg >= 0
               ? agg.khoi_luong_kg
               : null;
-          const hasPercent = agg.phan_tram !== null && Number.isFinite(agg.phan_tram);
           const hasQty = agg.so_luong !== null && Number.isFinite(agg.so_luong) && agg.so_luong > 0;
 
           if (hasPercent) {

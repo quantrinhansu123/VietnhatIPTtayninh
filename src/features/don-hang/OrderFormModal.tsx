@@ -11,6 +11,7 @@ import {
   normalizeOrderProducts,
   findOrderProductByCode,
   resolveOrderProductFields,
+  resolveStaffNameFromLogin,
   readUnitSuggestions,
   saveUnitSuggestion,
   type OrderProductOption,
@@ -18,7 +19,8 @@ import {
   type CustomerOption
 } from '../_shared/orderHelpers';
 import { type OrderRow } from '../_shared/orderRecordHelpers';
-import { normalizeDaNangBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
+import { normalizeHcmBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
+import type { AuthUser } from '../../app/authUser';
 import {
   emptyOrderForm,
   generateNextOrderCode,
@@ -39,6 +41,7 @@ export function OrderFormModal({
   editingOrder = null,
   existingOrderCodes = [],
   defaultCreatedAt = '',
+  currentUser = null,
   zIndexClassName = 'z-[70]',
   onClose,
   onSaved
@@ -49,6 +52,7 @@ export function OrderFormModal({
   existingOrderCodes?: string[];
   /** Prefill ngày tạo (dùng khi mở từ lệnh SX). */
   defaultCreatedAt?: string;
+  currentUser?: AuthUser | null;
   zIndexClassName?: string;
   onClose: () => void;
   onSaved: (order: OrderRow) => void | Promise<void>;
@@ -74,10 +78,11 @@ export function OrderFormModal({
       setOrderForm({
         ...emptyOrderForm(),
         orderCode: generateNextOrderCode(existingOrderCodes),
-        createdAt
+        createdAt,
+        staffName: resolveStaffNameFromLogin(currentUser?.name)
       });
     }
-  }, [defaultCreatedAt, editingOrder, existingOrderCodes, mode, open]);
+  }, [currentUser?.name, defaultCreatedAt, editingOrder, existingOrderCodes, mode, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,9 +109,16 @@ export function OrderFormModal({
         if (!productRes.ok) throw new Error(productData.error || 'Không thể tải hàng hóa.');
 
         if (!cancelled) {
-          setStaffOptions(normalizeDaNangBusinessStaffOptions(staffData));
+          const nextStaff = normalizeHcmBusinessStaffOptions(staffData);
+          setStaffOptions(nextStaff);
           setCustomerOptions(normalizeCustomerOptions(customerData));
           setProductOptions(normalizeOrderProducts(productData));
+          if (mode === 'add' && currentUser?.name) {
+            setOrderForm(prev => ({
+              ...prev,
+              staffName: resolveStaffNameFromLogin(currentUser.name, nextStaff) || prev.staffName
+            }));
+          }
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -124,7 +136,7 @@ export function OrderFormModal({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [currentUser?.name, mode, open]);
 
   const unitSuggestions = useMemo(() => {
     const fromProducts = productOptions.map(product => product.unit).filter(Boolean);

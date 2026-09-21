@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTabAccess } from '../../app/useTabAccess';
+import { FilterCombobox } from '../../components/shared/table';
 import { MaterialsInventoryPanel } from '../kho-nvl';
 import { ProductsPanel } from '../san-pham';
 
 export type InventoryCatalogKind = 'materials' | 'products';
+type InventoryMovementKind = 'nvl' | 'san_pham' | 'tai_che' | 'hang_hong' | 'hang_hoa' | 'cong_cu_dung_cu' | 'gia_cong';
 
 export type InventoryBalanceRow = {
   ma: string;
@@ -30,6 +32,17 @@ function warehouseCatalogKind(name: string): InventoryCatalogKind {
   return normalized.includes('san pham') || normalized.includes('thanh pham') || normalized.includes('hang hoa')
     ? 'products'
     : 'materials';
+}
+
+function warehouseMovementKind(name: string): InventoryMovementKind {
+  const normalized = normalizeWarehouseName(name);
+  if (normalized.includes('san pham') || normalized.includes('thanh pham')) return 'san_pham';
+  if (normalized.includes('tai che')) return 'tai_che';
+  if (normalized.includes('hang hong')) return 'hang_hong';
+  if (normalized.includes('hang hoa')) return 'hang_hoa';
+  if (normalized.includes('cong cu') || normalized.includes('dung cu')) return 'cong_cu_dung_cu';
+  if (normalized.includes('gia cong')) return 'gia_cong';
+  return 'nvl';
 }
 
 export function isDefaultWarehouse(name: string, kind: InventoryCatalogKind) {
@@ -112,32 +125,101 @@ function mapBalanceRecords(
     .filter(record => Boolean(record.ma));
 }
 
-async function fetchTonKhoBalances(
-  loaiKho: string,
-  asOfDate: string,
-  signal: AbortSignal
-): Promise<InventoryBalanceRow[]> {
-  const params = new URLSearchParams({ loai_kho: loaiKho, to: asOfDate });
-  const response = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, { signal });
+async function fetchTonKhoBalances(options: {
+  loaiKho: string;
+  asOfDate: string;
+  tenKho?: string;
+  signal: AbortSignal;
+}): Promise<InventoryBalanceRow[]> {
+  const params = new URLSearchParams({
+    loai_kho: options.loaiKho,
+    to: options.asOfDate
+  });
+  if (options.tenKho) params.set('ten_kho', options.tenKho);
+  const response = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, {
+    signal: options.signal
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Không thể tính tồn kho đến ngày đã chọn.');
-  return mapBalanceRecords(Array.isArray(data?.records) ? data.records : []);
+  return mapBalanceRecords(
+    Array.isArray(data?.records) ? data.records : [],
+    options.tenKho || ''
+  );
 }
 
-/** /kho-hang: hiện full NVL + SP, không lọc theo kho. */
+/** /kho-hang: một danh mục theo kho đang chọn (không chồng NVL + SP). */
 export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
   const materialsAccess = useTabAccess('materials');
   const productsAccess = useTabAccess('products');
+  const [warehouses, setWarehouses] = useState<string[]>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [asOfDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [materialBalances, setMaterialBalances] = useState<InventoryBalanceRow[]>([]);
-  const [productBalances, setProductBalances] = useState<InventoryBalanceRow[]>([]);
+  const [balanceRows, setBalanceRows] = useState<InventoryBalanceRow[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [balanceError, setBalanceError] = useState('');
 
   useEffect(() => {
-    if (!asOfDate) {
-      setMaterialBalances([]);
-      setProductBalances([]);
+    const loadWarehouses = async () => {
+      try {
+        const response = await fetch('/api/quan-ly-kho');
+        const data = await response.json().catch(() => ({}));
+        const records: Array<{ ten_kho?: string }> =
+          response.ok && Array.isArray(data?.records) ? data.records : [];
+        setWarehouses(
+          ensureStandardWarehouses(
+            Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
+          )
+        );
+      } catch {
+        setWarehouses(ensureStandardWarehouses([]));
+      }
+    };
+    void loadWarehouses();
+  }, []);
+
+  const accessibleWarehouses = useMemo(() => {
+    if (!materialsAccess.canView && !productsAccess.canView) return [];
+    if (materialsAccess.canView && productsAccess.canView) return warehouses;
+    return warehouses.filter(name => {
+      const catalogKind = warehouseCatalogKind(name);
+      return catalogKind === 'products' ? productsAccess.canView : materialsAccess.canView;
+    });
+  }, [materialsAccess.canView, productsAccess.canView, warehouses]);
+
+  const selectedWarehouseName = String(selectedWarehouse ?? '').trim();
+
+  const kind: InventoryCatalogKind = selectedWarehouseName
+    ? warehouseCatalogKind(selectedWarehouseName)
+    : materialsAccess.canView
+      ? 'materials'
+      : 'products';
+
+  const handleWarehouseChange = (name: string) => {
+    const next = String(name ?? '').trim();
+    // Không dùng "Tất cả" — luôn chọn một kho cụ thể.
+    if (!next || next === 'all') return;
+    setSelectedWarehouse(next);
+  };
+
+  const handleProductsWarehouseReassigned = (name: string) => {
+    const next = String(name ?? '').trim();
+    if (!next) return;
+    setSelectedWarehouse(next);
+  };
+
+  useEffect(() => {
+    if (!accessibleWarehouses.length) {
+      setSelectedWarehouse('');
+      return;
+    }
+    if (!selectedWarehouseName || !accessibleWarehouses.includes(selectedWarehouseName)) {
+      setSelectedWarehouse(accessibleWarehouses[0]);
+    }
+  }, [accessibleWarehouses, selectedWarehouseName]);
+
+  useEffect(() => {
+    if (!asOfDate || !selectedWarehouseName) {
+      setBalanceRows([]);
       setBalanceError('');
       setIsLoadingBalances(false);
       return;
@@ -148,30 +230,18 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
       setBalanceError('');
       setIsLoadingBalances(true);
       try {
-        const tasks: Array<Promise<void>> = [];
-        if (materialsAccess.canView) {
-          tasks.push(
-            fetchTonKhoBalances('nvl', asOfDate, controller.signal).then(rows => {
-              setMaterialBalances(rows);
-            })
-          );
-        } else {
-          setMaterialBalances([]);
-        }
-        if (productsAccess.canView) {
-          tasks.push(
-            fetchTonKhoBalances('san_pham', asOfDate, controller.signal).then(rows => {
-              setProductBalances(rows);
-            })
-          );
-        } else {
-          setProductBalances([]);
-        }
-        await Promise.all(tasks);
+        const loaiKho =
+          kind === 'products' ? 'san_pham' : warehouseMovementKind(selectedWarehouseName);
+        // Không siết ten_kho: danh mục vẫn hiện dù cột Kho chưa khớp tên đang chọn.
+        const rows = await fetchTonKhoBalances({
+          loaiKho,
+          asOfDate,
+          signal: controller.signal
+        });
+        setBalanceRows(rows);
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        setMaterialBalances([]);
-        setProductBalances([]);
+        setBalanceRows([]);
         setBalanceError(error instanceof Error ? error.message : 'Không thể tính tồn kho đến ngày đã chọn.');
       } finally {
         setIsLoadingBalances(false);
@@ -179,41 +249,71 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
     };
     void loadBalances();
     return () => controller.abort();
-  }, [asOfDate, materialsAccess.canView, productsAccess.canView]);
+  }, [asOfDate, kind, selectedWarehouseName]);
 
   if (!materialsAccess.canView && !productsAccess.canView) return null;
 
-  const loadingHint = isLoadingBalances ? (
-    <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
-  ) : null;
+  if (!selectedWarehouseName) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <FilterCombobox
+          label="Kho"
+          options={accessibleWarehouses}
+          value={selectedWarehouse}
+          onChange={handleWarehouseChange}
+          formatOption={value => value}
+          includeAll={false}
+          searchPlaceholder="Tìm kho..."
+        />
+      </div>
+    );
+  }
+
+  const warehouseControls = (
+    <>
+      <FilterCombobox
+        label="Kho"
+        options={accessibleWarehouses}
+        value={selectedWarehouse}
+        onChange={handleWarehouseChange}
+        formatOption={value => value}
+        includeAll={false}
+        searchPlaceholder="Tìm kho..."
+      />
+      {isLoadingBalances ? (
+        <span className="shrink-0 text-xs font-bold text-zinc-500">Đang tính tồn...</span>
+      ) : null}
+    </>
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {balanceError ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
           {balanceError}
         </p>
       ) : null}
 
-      {materialsAccess.canView ? (
-        <MaterialsInventoryPanel
-          onBack={onBack}
-          warehouseFilter=""
-          includeUnassigned
-          asOfDate={asOfDate}
-          balanceRows={materialBalances}
-          topControls={loadingHint}
-        />
-      ) : null}
-
-      {productsAccess.canView ? (
+      {kind === 'materials' ? (
+        materialsAccess.canView ? (
+          <MaterialsInventoryPanel
+            onBack={onBack}
+            warehouseFilter=""
+            includeUnassigned
+            asOfDate={asOfDate}
+            balanceRows={balanceRows}
+            topControls={warehouseControls}
+          />
+        ) : null
+      ) : productsAccess.canView ? (
         <ProductsPanel
           onBack={onBack}
           warehouseFilter=""
           includeUnassigned
           asOfDate={asOfDate}
-          balanceRows={productBalances}
-          topControls={loadingHint}
+          balanceRows={balanceRows}
+          topControls={warehouseControls}
+          onWarehouseReassigned={handleProductsWarehouseReassigned}
         />
       ) : null}
     </div>

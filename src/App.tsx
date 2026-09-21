@@ -1515,7 +1515,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <OrdersPanel onBack={() => goBack('menu')} />
+                <OrdersPanel onBack={() => goBack('menu')} currentUser={authUser} />
               </motion.div>
             ) : activeTab === 'customers' ? (
               <motion.div

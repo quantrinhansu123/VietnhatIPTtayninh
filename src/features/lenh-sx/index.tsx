@@ -846,6 +846,7 @@ export function ProductionOrdersPanel({
         open={showCreateOrderModal}
         mode="add"
         existingOrderCodes={orders.map(order => order.orderCode)}
+        currentUser={currentUser}
         onClose={() => setShowCreateOrderModal(false)}
         onSaved={createdOrder => {
           setShowCreateOrderModal(false);

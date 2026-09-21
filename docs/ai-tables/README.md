@@ -21,7 +21,8 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | File | Dùng cho |
 |------|----------|
 | **`supabase-full-he-thong.sql`** | **Full bảng DB chính** (`SUPABASE_URL`) — paste SQL Editor → Run |
-| **`supabase-full-ton.sql`** | Full bảng DB tồn (`SUPABASE_TON_URL`) — `bao_cao_may_nvl_ton` |
+| **`supabase-db-ton-kho.sql`** / **`supabase-full-ton.sql`** | Full DB tồn (`SUPABASE_TON_URL`) — `bao_cao_may_nvl_ton` |
+| **`supabase-db-kiem-kho.sql`** | Full DB kiểm kho (`SUPABASE_KIEM_KHO_*`) — `kiem_kho` + tổng hợp + RPC |
 | `supabase-<ten>.sql` | Từng bảng lẻ (khi chỉ cần 1 bảng) |
 
 ## Danh sách bảng

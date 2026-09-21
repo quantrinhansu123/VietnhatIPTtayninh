@@ -5,7 +5,7 @@
 | **Bảng** | `kiem_kho` |
 | **Tab** | `kiem-kho` → `/kiem-kho` |
 | **DB** | Riêng — label `kiem-kho` (project `grlcgkzotqishzxwpddc`), cấu hình qua `SUPABASE_KIEM_KHO_*` |
-| **SQL** | `supabase-kiem-kho.sql` |
+| **SQL** | **`supabase-db-kiem-kho.sql`** (bootstrap full — chạy 1 lần khi báo «Bảng kiem_kho chưa có…») · lẻ: `supabase-kiem-kho.sql`, `supabase-kiem-kho-tong-hop.sql`, `supabase-kiem-kho-tong-hop-rpc.sql`, `supabase-kiem-kho-chenh-lech-xu-ly.sql` |
 
 ## Cột
 

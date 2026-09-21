@@ -1141,13 +1141,21 @@ export function MaterialsInventoryPanel({
       if (!key || key === '-') return [];
       seenKeys.add(key);
       const balance = balanceByCode.get(key);
+      const hasMovement = Boolean(
+        balance &&
+          (balance.ton_dau_ky !== 0 ||
+            balance.nhap_trong_ky !== 0 ||
+            balance.xuat_trong_ky !== 0 ||
+            balance.ton_cuoi_ky !== 0)
+      );
+      const catalogOr = (catalogValue: string) =>
+        catalogValue && catalogValue !== '-' ? catalogValue : '0';
       return [{
         ...material,
-        // Cột Kho luôn theo bộ lọc đang chọn trên /kho-hang.
-        warehouse: warehouseFilter || balance?.ten_kho || material.warehouse,
-        openingStock: balance ? String(balance.ton_dau_ky) : material.openingStock && material.openingStock !== '-' ? material.openingStock : '0',
-        inbound: balance ? String(balance.nhap_trong_ky) : '0',
-        outbound: balance ? String(balance.xuat_trong_ky) : '0'
+        warehouse: warehouseFilter || material.warehouse || balance?.ten_kho || '',
+        openingStock: hasMovement ? String(balance!.ton_dau_ky) : catalogOr(material.openingStock),
+        inbound: hasMovement ? String(balance!.nhap_trong_ky) : '0',
+        outbound: hasMovement ? String(balance!.xuat_trong_ky) : '0'
       }];
     });
 

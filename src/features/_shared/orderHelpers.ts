@@ -35,6 +35,17 @@ export function normalizeLookupText(value: string) {
     .toLowerCase();
 }
 
+export function resolveStaffNameFromLogin(
+  loginName: string | undefined | null,
+  options: StaffOption[] = []
+): string {
+  const name = String(loginName || '').trim();
+  if (!name) return '';
+  const key = normalizeLookupText(name);
+  const match = options.find(option => normalizeLookupText(option.name) === key);
+  return match?.name || name;
+}
+
 export function normalizeStaffOptions(data: unknown): StaffOption[] {
   if (!Array.isArray(data)) return [];
 
@@ -52,7 +63,18 @@ export function normalizeStaffOptions(data: unknown): StaffOption[] {
     .filter((item): item is StaffOption => Boolean(item));
 }
 
-export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[] {
+function isHcmBranchText(value: string) {
+  const text = normalizeLookupText(value);
+  return (
+    text.includes('hcm') ||
+    text.includes('ho chi minh') ||
+    text.includes('tp hcm') ||
+    text.includes('sai gon')
+  );
+}
+
+/** Nhân viên KD / Quản đốc chi nhánh HCM — sổ Nhân viên form đơn hàng. */
+export function normalizeHcmBusinessStaffOptions(data: unknown): StaffOption[] {
   const branches = normalizeHrBranches(data);
   const isQuanDocText = (value: string) => {
     const text = normalizeLookupText(value);
@@ -60,7 +82,7 @@ export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[
   };
   const staff = branches.flatMap(branch => {
     const branchText = normalizeLookupText(`${branch.name} ${branch.shortName}`);
-    if (!branchText.includes('da nang')) return [];
+    if (!isHcmBranchText(branchText)) return [];
 
     return branch.departments.flatMap(department => {
       const departmentText = normalizeLookupText(department.name);
@@ -85,6 +107,9 @@ export function normalizeDaNangBusinessStaffOptions(data: unknown): StaffOption[
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }
+
+/** @deprecated Dùng normalizeHcmBusinessStaffOptions */
+export const normalizeDaNangBusinessStaffOptions = normalizeHcmBusinessStaffOptions;
 
 export function normalizeCustomerOptions(data: unknown): CustomerOption[] {
   if (!data || typeof data !== 'object') return [];

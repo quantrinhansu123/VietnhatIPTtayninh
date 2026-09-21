@@ -615,6 +615,124 @@ export function productAmisDisplayCode(product: Pick<ProductRow, 'amisCode' | 'c
   return product.amisCode && product.amisCode !== '-' ? product.amisCode : product.code || '-';
 }
 
+/** Gộp dòng import_sp (Xem) thành dòng bảng Thành phần của một mã SP. */
+function importSpRowsToNplItems(
+  rows: Array<Record<string, unknown>>,
+  productKeys: Set<string>
+): ProductNplItem[] {
+  type Agg = ProductNplItem & { emptyDvtQty: number | null; hasExplicitPieceUnit: boolean };
+  const map = new Map<string, Agg>();
+  for (const row of rows) {
+    const productKey = normalizeProductCodeKey(String(row.ma_sp ?? ''));
+    if (!productKey || !productKeys.has(productKey)) continue;
+    const code = String(row.ma_nvl ?? '').trim();
+    if (!code) continue;
+    const key = normalizeProductCodeKey(code);
+    const name = String(row.ten_nvl ?? '').trim() || code;
+    const dvtRaw = String(row.dvt ?? '').trim();
+    const donViRaw = String(row.don_vi ?? '').trim();
+    const dvt = dvtRaw || donViRaw;
+    const loai = String(row.loai ?? '').trim().toLowerCase();
+    const readNum = (value: unknown) => {
+      const n = typeof value === 'number' ? value : Number(String(value ?? '').trim().replace(/\s/g, '').replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    };
+    const percent = readNum(row.phan_tram);
+    const qty = readNum(row.so_luong);
+    const kg = readNum(row.khoi_luong_kg);
+    const giaTri = readNum(row.gia_tri);
+    const dvtNorm = dvt
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z%]/g, '');
+    const loaiNorm = loai.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    const isKg = dvtNorm.startsWith('kg');
+    const isPercent = loaiNorm.includes('phan') || loai.includes('percent') || dvtNorm === '%' || dvtNorm.includes('phantram');
+    const isPiece =
+      dvtNorm.includes('cai') ||
+      dvtNorm.includes('cuon') ||
+      dvtNorm.includes('met') ||
+      dvtNorm === 'm' ||
+      dvtNorm.includes('tam');
+    const loaiIsQty = loaiNorm.includes('so luong') || loaiNorm.includes('soluong') || loaiNorm.includes('quantity');
+    const missingExcelUnit = !dvtRaw && loaiIsQty && (qty ?? giaTri) !== null && (qty ?? giaTri)! > 0;
+
+    const prev = map.get(key) ?? {
+      code,
+      name,
+      amountType: 'quantity' as const,
+      percent: null,
+      quantity: null,
+      unit: dvt || '-',
+      weightKg: null,
+      emptyDvtQty: null,
+      hasExplicitPieceUnit: false
+    };
+
+    if (isPercent) {
+      const value = percent ?? giaTri;
+      if (value !== null) {
+        prev.percent = value;
+        prev.amountType = 'percent';
+        prev.unit = '%';
+      }
+    } else if (isKg) {
+      const value = kg ?? giaTri ?? (qty !== null && qty > 0 ? qty : null);
+      if (value !== null) prev.weightKg = value;
+    } else if (missingExcelUnit) {
+      prev.emptyDvtQty = qty ?? giaTri;
+    } else {
+      const value = qty ?? giaTri;
+      if (value !== null) {
+        prev.quantity = value;
+        prev.unit = dvt || prev.unit || 'Cái';
+        if (prev.percent === null) prev.amountType = 'quantity';
+        if (isPiece || Boolean(dvtRaw)) prev.hasExplicitPieceUnit = true;
+      }
+      if (kg !== null) prev.weightKg = kg;
+    }
+    if (name && name !== code) prev.name = name;
+    map.set(key, { ...prev });
+  }
+
+  return [...map.values()].map(item => {
+    let weightKg = item.weightKg;
+    let quantity = item.quantity;
+    let unit = item.unit;
+    let amountType = item.amountType;
+    if (
+      item.percent !== null &&
+      (weightKg === null || weightKg === undefined) &&
+      item.emptyDvtQty !== null
+    ) {
+      weightKg = item.emptyDvtQty;
+      if (!item.hasExplicitPieceUnit) {
+        quantity = null;
+        unit = '%';
+        amountType = 'percent';
+      }
+    } else if (
+      item.percent === null &&
+      (quantity === null || quantity === undefined) &&
+      item.emptyDvtQty !== null
+    ) {
+      quantity = item.emptyDvtQty;
+      unit = unit && unit !== '-' ? unit : 'Cái';
+      amountType = 'quantity';
+    }
+    return {
+      code: item.code,
+      name: item.name,
+      amountType,
+      percent: item.percent,
+      quantity,
+      unit,
+      weightKg
+    };
+  });
+}
+
 export function ProductViewModal({
   product,
   initialTab = 'info',
@@ -695,10 +813,114 @@ export function ProductViewModal({
   });
   const [isLoadingStockFromKiem, setIsLoadingStockFromKiem] = useState(false);
   const [stockFromKiemError, setStockFromKiemError] = useState('');
+  const [isLoadingImportComponents, setIsLoadingImportComponents] = useState(false);
+  const filledImportProductId = useRef('');
+  const onSaveItemsRef = useRef(onSaveItems);
+  onSaveItemsRef.current = onSaveItems;
+
+  const nplSignature = product.nplItems
+    .map(item => `${item.code}:${item.percent ?? ''}:${item.quantity ?? ''}:${item.weightKg ?? ''}:${item.unit}`)
+    .join('|');
 
   useEffect(() => {
     setItems(product.nplItems);
-  }, [product.id]);
+  }, [product.id, nplSignature]);
+
+  useEffect(() => {
+    if (tab !== 'components') return;
+    if (product.nplItems.length > 0) return;
+    if (filledImportProductId.current === product.id) return;
+
+    const productKeys = new Set(
+      [product.code, product.newCode, product.amisCode]
+        .map(code => normalizeProductCodeKey(code))
+        .filter(Boolean)
+    );
+    if (productKeys.size === 0) return;
+
+    const controller = new AbortController();
+    const primaryCode = String(product.code || product.newCode || product.amisCode || '').trim();
+    setIsLoadingImportComponents(true);
+    setComponentsExcelError('');
+    void fetch(`/api/import-sp?limit=2000&ma_sp=${encodeURIComponent(primaryCode)}`, {
+      signal: controller.signal
+    })
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setComponentsExcelError(data.error || 'Không thể tải import_sp.');
+          return;
+        }
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const next = importSpRowsToNplItems(rows, productKeys);
+        filledImportProductId.current = product.id;
+        if (next.length === 0) {
+          setComponentsExcelError(
+            `Mã SP "${primaryCode}" chưa có dòng trong mục Xem (import_sp). Hãy nhập Excel định mức có đúng mã này, rồi bấm «Đồng bộ Thành phần» hoặc «Lấy từ import_sp».`
+          );
+          return;
+        }
+        setItems(next);
+        setComponentsExcelMessage(`Đã lấy ${next.length} NVL từ import_sp cho ${primaryCode}.`);
+        try {
+          await onSaveItemsRef.current(next);
+        } catch (error: unknown) {
+          setComponentsExcelError(
+            error instanceof Error ? error.message : 'Đã hiện bảng nhưng chưa lưu được xuống sản phẩm.'
+          );
+        }
+      })
+      .catch(error => {
+        if (error?.name !== 'AbortError') {
+          setComponentsExcelError(error?.message || 'Không thể tải import_sp.');
+        }
+      })
+      .finally(() => setIsLoadingImportComponents(false));
+
+    return () => controller.abort();
+  }, [tab, product.id, product.code, product.newCode, product.amisCode, product.nplItems.length]);
+
+  const handlePullImportSpComponents = async () => {
+    if (!canEditComponents) return;
+    const productKeys = new Set(
+      [product.code, product.newCode, product.amisCode]
+        .map(code => normalizeProductCodeKey(code))
+        .filter(Boolean)
+    );
+    const primaryCode = String(product.code || product.newCode || product.amisCode || '').trim();
+    if (!primaryCode) return;
+
+    setIsLoadingImportComponents(true);
+    setComponentsExcelError('');
+    setComponentsExcelMessage('');
+    try {
+      // Đồng bộ lại từ import_sp (kể cả đã áp dụng) rồi lấy đúng mã SP.
+      await fetch('/api/import-sp/dong-bo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_moi: false, ma_sp: primaryCode })
+      }).catch(() => null);
+
+      const response = await fetch(`/api/import-sp?limit=2000&ma_sp=${encodeURIComponent(primaryCode)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể tải import_sp.');
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const next = importSpRowsToNplItems(rows, productKeys);
+      if (next.length === 0) {
+        throw new Error(
+          `Không có dòng import_sp khớp mã "${primaryCode}". Kiểm tra cột Mã SP trong Excel / mục Xem.`
+        );
+      }
+      filledImportProductId.current = product.id;
+      setItems(next);
+      await onSaveItemsRef.current(next);
+      setComponentsExcelMessage(`Đã lấy và lưu ${next.length} NVL từ import_sp.`);
+    } catch (error: unknown) {
+      setComponentsExcelError(error instanceof Error ? error.message : 'Không lấy được từ import_sp.');
+    } finally {
+      setIsLoadingImportComponents(false);
+    }
+  };
 
   useEffect(() => {
     setTab(initialTab);
@@ -1425,9 +1647,9 @@ export function ProductViewModal({
         .filter(Boolean)
         .join(' · ');
 
-      if (withWeight === 0) {
+      if (withWeight === 0 && importedItems.every(item => item.percent === null || item.percent === undefined)) {
         throw new Error(
-          `Không đọc được dòng Trọng lượng (Loại=Số lượng, ĐVT=Kg).\n` +
+          `Không đọc được định lượng (cần Loại=Phần trăm hoặc Số lượng/Kg).\n` +
             `Mã SP đang mở: "${product.code}" (khớp Excel bỏ khoảng trắng → ${normalizeProductCodeKey(product.code) || '—'}).\n` +
             `Mã trong file: ${[...new Set([...bulkMap.keys(), ...longMap.keys()])].slice(0, 8).join(', ') || '(không có)'}.`
         );
@@ -2028,6 +2250,20 @@ export function ProductViewModal({
                     <>
                       <button
                         type="button"
+                        onClick={() => void handlePullImportSpComponents()}
+                        disabled={isSaving || isLoadingImportComponents}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-extrabold text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Lấy thành phần từ bảng import_sp (mục Xem) theo đúng mã SP đang mở"
+                      >
+                        {isLoadingImportComponents ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        {isLoadingImportComponents ? 'Đang lấy...' : 'Lấy từ import_sp'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleDownloadComponentsTemplate}
                         className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50"
                       >
@@ -2140,7 +2376,11 @@ export function ProductViewModal({
                     </React.Fragment>
                   ))}
                   {items.length === 0 && (
-                    <TableEmptyRow colSpan={6}>Chưa khai báo thành phần NVL.</TableEmptyRow>
+                    <TableEmptyRow colSpan={6}>
+                      {isLoadingImportComponents
+                        ? 'Đang lấy thành phần từ mục Xem...'
+                        : 'Chưa khai báo thành phần NVL.'}
+                    </TableEmptyRow>
                   )}
                 </TableBody>
               </TableShell>
@@ -3191,12 +3431,27 @@ export function ProductsPanel({
         throw new Error(data.error || 'Không thể ghi Excel vào import_sp.');
       }
 
-      setProductActionMessage(
-        `Đã đổ ${data.inserted ?? rows.length} dòng vào import_sp` +
-          (data.batch_id ? ` (batch ${String(data.batch_id).slice(0, 8)}…)` : '') +
-          '. Bấm «Xem import_sp» để kiểm tra.'
-      );
-      showAppToast(`Đã ghi ${data.inserted ?? rows.length} dòng → import_sp`);
+      const syncRes = await fetch('/api/import-sp/dong-bo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_moi: true })
+      });
+      const syncData = await syncRes.json().catch(() => ({}));
+      if (!syncRes.ok) {
+        throw new Error(syncData.error || 'Đã ghi import_sp nhưng chưa đồng bộ được thành phần.');
+      }
+
+      const missing = Array.isArray(syncData.missing_product_codes) ? syncData.missing_product_codes : [];
+      const summary = [
+        `Đã ghi ${data.inserted ?? rows.length} dòng và đồng bộ ${syncData.updated_products ?? 0} SP (${syncData.updated_lines ?? 0} dòng NVL).`,
+        missing.length ? `Bỏ qua ${missing.length} mã SP chưa có trong danh mục.` : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+      setProductActionMessage(summary);
+      showAppToast(summary);
+      await loadProducts();
+      if (isImportSpViewOpen) await loadImportSpRows();
     } catch (error: any) {
       setProductError(error.message || 'Không thể tải Excel vào import_sp.');
     } finally {
@@ -3306,18 +3561,24 @@ export function ProductsPanel({
       if (!key || key === '-') return [];
       seenKeys.add(key);
       const balance = balanceByCode.get(key);
+      const hasMovement = Boolean(
+        balance &&
+          (balance.ton_dau_ky !== 0 ||
+            balance.nhap_trong_ky !== 0 ||
+            balance.xuat_trong_ky !== 0 ||
+            balance.ton_cuoi_ky !== 0)
+      );
+      const catalogOr = (catalogValue: string, fallback: string) =>
+        catalogValue && catalogValue !== '-' ? catalogValue : fallback;
       return [{
         ...product,
-        // Cột Kho luôn theo bộ lọc đang chọn trên /kho-hang.
-        warehouse: warehouseFilter || balance?.ten_kho || product.warehouse,
-        openingStock: balance
-          ? String(balance.ton_dau_ky)
-          : product.openingStock && product.openingStock !== '-'
-            ? product.openingStock
-            : '0',
-        inbound: balance ? String(balance.nhap_trong_ky) : '0',
-        outbound: balance ? String(balance.xuat_trong_ky) : '0',
-        stock: balance ? String(balance.ton_cuoi_ky) : '0'
+        warehouse: warehouseFilter || product.warehouse || balance?.ten_kho || '',
+        openingStock: hasMovement
+          ? String(balance!.ton_dau_ky)
+          : catalogOr(product.openingStock, '0'),
+        inbound: hasMovement ? String(balance!.nhap_trong_ky) : catalogOr(product.inbound, '0'),
+        outbound: hasMovement ? String(balance!.xuat_trong_ky) : catalogOr(product.outbound, '0'),
+        stock: hasMovement ? String(balance!.ton_cuoi_ky) : catalogOr(product.stock, '0')
       }];
     });
 

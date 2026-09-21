@@ -17,6 +17,7 @@ import {
   normalizeOrderProducts,
   findOrderProductByCode,
   resolveOrderProductFields,
+  resolveStaffNameFromLogin,
   readUnitSuggestions,
   saveUnitSuggestion,
   type OrderProductOption,
@@ -31,7 +32,8 @@ import {
   type OrderRow,
   type OrderProductLine
 } from '../_shared/orderRecordHelpers';
-import { normalizeDaNangBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
+import { normalizeHcmBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
+import type { AuthUser } from '../../app/authUser';
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { OrderFormModal } from './OrderFormModal';
 import {
@@ -443,7 +445,13 @@ export function OrderDetailPage() {
   );
 }
 
-export function OrdersPanel({ onBack }: { onBack: () => void }) {
+export function OrdersPanel({
+  onBack,
+  currentUser = null
+}: {
+  onBack: () => void;
+  currentUser?: AuthUser | null;
+}) {
   const { canCreate, canEdit, canDelete } = useTabAccess('orders');
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -542,9 +550,16 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
         }
 
         if (!cancelled) {
-          setStaffOptions(normalizeDaNangBusinessStaffOptions(staffData));
+          const nextStaff = normalizeHcmBusinessStaffOptions(staffData);
+          setStaffOptions(nextStaff);
           setCustomerOptions(normalizeCustomerOptions(customerData));
           setProductOptions(normalizeOrderProducts(productData));
+          if (formMode === 'add' && currentUser?.name) {
+            setOrderForm(prev => ({
+              ...prev,
+              staffName: resolveStaffNameFromLogin(currentUser.name, nextStaff) || prev.staffName
+            }));
+          }
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -565,7 +580,7 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [formMode]);
+  }, [currentUser?.name, formMode]);
 
   const openAddForm = () => {
     if (!canCreate) return;
@@ -574,7 +589,8 @@ export function OrdersPanel({ onBack }: { onBack: () => void }) {
     setEditingId(null);
     setOrderForm({
       ...emptyOrderForm(),
-      orderCode: generateNextOrderCode(orders.map(order => order.orderCode))
+      orderCode: generateNextOrderCode(orders.map(order => order.orderCode)),
+      staffName: resolveStaffNameFromLogin(currentUser?.name, staffOptions)
     });
     setFormMode('add');
   };

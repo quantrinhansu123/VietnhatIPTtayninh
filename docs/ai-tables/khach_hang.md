@@ -3,8 +3,8 @@
 | **Bảng** | `khach_hang` |
 | **Tab** | `customers` → `/khach-hang` |
 
-**API:** `server.ts` — CRUD `/api/khach-hang`; `POST /api/khach-hang/replace`; `GET /api/address-lookup`; `PATCH /api/khach-hang/:id/dia-chi-moi`
-**UI:** `src/features/khach-hang/index.tsx` — `CustomersPanel`
+**API:** `server.ts` — CRUD `/api/khach-hang` (GET phân trang PostgREST `range` 1000 để lấy hết); `POST /api/khach-hang/replace`; `GET /api/address-lookup`; `PATCH /api/khach-hang/:id/dia-chi-moi`
+**UI:** `src/features/khach-hang/index.tsx` — `CustomersPanel` + `TablePagination` (25/50/100/200)
 **Utils:** `src/utils/customerExcel.ts` — tải mẫu và đọc dữ liệu khách hàng từ Excel
 **SQL:** `supabase-khach-hang.sql`
 

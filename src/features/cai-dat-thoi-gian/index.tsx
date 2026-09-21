@@ -215,6 +215,8 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
   const [deletingPermissionId, setDeletingPermissionId] = useState('');
   const [permissionError, setPermissionError] = useState('');
   const [permissionMessage, setPermissionMessage] = useState('');
+  /** true = đang tạo vai trò mới, không tự nạp quyền từ bản đã lưu khi chọn vị trí mặc định */
+  const [permissionCreateDraft, setPermissionCreateDraft] = useState(false);
   const [isLoadingStaffOptions, setIsLoadingStaffOptions] = useState(true);
   const [staffOptionsError, setStaffOptionsError] = useState('');
 
@@ -449,7 +451,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
     return [...names].sort((a, b) => a.localeCompare(b, 'vi'));
   }, [branches]);
 
-  // Vị trí = distinct cong_viec (role) từ nhan_su, theo phòng ban đang chọn
+  // Vị trí = distinct từ nhan_su theo phòng + các vị trí đã lưu trong ma trận quyền
   const positionOptions = useMemo(() => {
     const names = new Set<string>();
     branches.forEach(branch =>
@@ -461,6 +463,11 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
         });
       })
     );
+    permissionSettings.forEach(item => {
+      if (permissionForm.department && item.department !== permissionForm.department) return;
+      const position = item.position.trim();
+      if (position) names.add(position);
+    });
     if (names.size === 0) {
       branches.forEach(branch =>
         branch.departments.forEach(department => {
@@ -472,7 +479,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
       );
     }
     return [...names].sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [branches, permissionForm.department]);
+  }, [branches, permissionForm.department, permissionSettings]);
 
   useEffect(() => {
     if (!permissionForm.department && departmentOptions[0]) {
@@ -482,21 +489,53 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (!permissionForm.position) {
-      if (positionOptions[0]) {
-        setPermissionForm(prev => ({ ...prev, position: positionOptions[0] }));
+      if (!positionOptions[0] || !permissionForm.department) return;
+      const position = positionOptions[0];
+      const existed = permissionCreateDraft
+        ? undefined
+        : permissionSettings.find(
+            item => item.department === permissionForm.department && item.position === position
+          );
+      if (existed) {
+        setPermissionForm({
+          id: existed.id,
+          department: existed.department,
+          position: existed.position,
+          viewPermissions: existed.viewPermissions,
+          editPermissions: existed.editPermissions,
+          deletePermissions: existed.deletePermissions
+        });
+        return;
       }
+      setPermissionForm(prev => ({ ...prev, position }));
       return;
     }
+    // Đang chọn vai trò đã lưu: giữ nguyên vị trí dù HR chưa có đúng chữ (tránh xóa quyền trên form).
+    if (permissionForm.id) return;
     if (positionOptions.length > 0 && !positionOptions.includes(permissionForm.position)) {
-      setPermissionForm(prev => ({ ...prev, position: positionOptions[0] || '' }));
+      setPermissionForm(prev => ({
+        ...prev,
+        position: positionOptions[0] || '',
+        viewPermissions: [],
+        editPermissions: [],
+        deletePermissions: []
+      }));
     }
-  }, [positionOptions, permissionForm.position]);
+  }, [
+    permissionCreateDraft,
+    permissionForm.department,
+    permissionForm.id,
+    permissionForm.position,
+    permissionSettings,
+    positionOptions
+  ]);
 
   const currentPermissionKey = buildPermissionKey(permissionForm.department, permissionForm.position);
 
   const handleSelectPermission = (permissionId: string) => {
     const selected = permissionSettings.find(item => item.id === permissionId);
     if (!selected) return;
+    setPermissionCreateDraft(false);
     setPermissionForm({
       id: selected.id,
       department: selected.department,
@@ -510,6 +549,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
   };
 
   const resetPermissionForm = () => {
+    setPermissionCreateDraft(true);
     setPermissionForm({
       id: '',
       department: departmentOptions[0] || '',
@@ -542,7 +582,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
           item.permissionKey === currentPermissionKey &&
           (!permissionForm.id || permissionForm.id !== item.id)
       );
-      const targetId = permissionForm.id || existed?.id || '';
+      const targetId = String(permissionForm.id || existed?.id || '').trim();
       const payload = {
         code: `PERM_KEY_${currentPermissionKey}`,
         name: `${permissionForm.department} - ${permissionForm.position}`,
@@ -568,11 +608,20 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
       if (!res.ok) {
         throw new Error(data.error || 'Không thể lưu key phân quyền.');
       }
-      setPermissionMessage(targetId ? 'Đã cập nhật key phân quyền.' : 'Đã tạo key phân quyền.');
+
+      const savedId = String(
+        (data?.setting && typeof data.setting === 'object'
+          ? (data.setting as { id?: unknown }).id
+          : null) ?? targetId
+      ).trim();
+
       await loadSettings();
-      if (!targetId) {
-        setPermissionForm(prev => ({ ...prev, id: '' }));
-      }
+      setPermissionCreateDraft(false);
+      setPermissionForm(prev => ({
+        ...prev,
+        id: savedId || prev.id
+      }));
+      setPermissionMessage('Đã lưu quyền vai trò.');
     } catch (error: any) {
       setPermissionError(error.message || 'Không thể lưu key phân quyền.');
     } finally {
@@ -1242,7 +1291,8 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
                   <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Phòng ban</span>
                   <select
                     value={permissionForm.department}
-                    onChange={event =>
+                    onChange={event => {
+                      setPermissionCreateDraft(true);
                       setPermissionForm(prev => ({
                         ...prev,
                         id: '',
@@ -1251,8 +1301,8 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
                         viewPermissions: [],
                         editPermissions: [],
                         deletePermissions: []
-                      }))
-                    }
+                      }));
+                    }}
                     disabled={isLoadingStaffOptions || departmentOptions.length === 0}
                     className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10 disabled:bg-zinc-50 disabled:text-zinc-400"
                   >
@@ -1283,6 +1333,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
                         handleSelectPermission(existed.id);
                         return;
                       }
+                      setPermissionCreateDraft(true);
                       setPermissionForm(prev => ({
                         ...prev,
                         id: '',

@@ -10564,27 +10564,27 @@ export function createApp() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from(SUPABASE_CUSTOMERS_TABLE)
-        .select('*')
-        .order('created_at', { ascending: false, nullsFirst: false });
+      // PostgREST mặc định tối đa 1000 dòng/query → phân trang range để lấy hết.
+      const PAGE_SIZE = 1000;
+      const customers: Record<string, unknown>[] = [];
 
-      if (error && isMissingColumnError(error)) {
-        const fallback = await supabase
-          .from(SUPABASE_CUSTOMERS_TABLE)
-          .select('*')
-          .order('ma_khach_hang', { ascending: true, nullsFirst: false });
-        if (fallback.error) {
-          console.error('Supabase khach_hang query error:', fallback.error);
-          return res.status(500).json({
-            error: `Không thể tải khách hàng từ ${SUPABASE_CUSTOMERS_TABLE}. ${fallback.error.message}`
-          });
+      const fetchPages = async (orderByCreatedAt: boolean) => {
+        customers.length = 0;
+        for (let from = 0; ; from += PAGE_SIZE) {
+          let query = supabase.from(SUPABASE_CUSTOMERS_TABLE).select('*');
+          query = orderByCreatedAt
+            ? query.order('created_at', { ascending: false, nullsFirst: false })
+            : query.order('ma_khach_hang', { ascending: true, nullsFirst: false });
+          const { data: page, error } = await query.range(from, from + PAGE_SIZE - 1);
+          if (error) return error;
+          customers.push(...((page || []) as Record<string, unknown>[]));
+          if (!page || page.length < PAGE_SIZE) return null;
         }
-        return res.json({
-          customers: fallback.data || [],
-          total: fallback.data?.length || 0,
-          source: 'supabase'
-        });
+      };
+
+      let error = await fetchPages(true);
+      if (error && isMissingColumnError(error)) {
+        error = await fetchPages(false);
       }
 
       if (error) {
@@ -10595,8 +10595,8 @@ export function createApp() {
       }
 
       return res.json({
-        customers: data || [],
-        total: data?.length || 0,
+        customers,
+        total: customers.length,
         source: 'supabase'
       });
     } catch (err: any) {

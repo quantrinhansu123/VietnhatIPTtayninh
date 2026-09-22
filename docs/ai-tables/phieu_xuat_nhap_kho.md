@@ -56,7 +56,7 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 
 - Phiếu **Nhập** chỉ có một trường **Số lượng**, lưu tại `so_luong`; `so_luong_chung_tu` luôn `NULL`.
 - Phiếu **Nhập** tự lưu các phiếu đang quét vào trình duyệt (gồm cả mã tem đầy đủ để tiếp tục chống quét trùng). Người dùng có thể chọn lại **Phiếu đang quét**, bấm **Lưu tạm phiếu**, xóa phiếu tạm hoặc **In tạm phiếu**. Không có nút tạo phiếu mới thủ công; chỉ sau khi **Lưu & in phiếu nhập kho** thành công, form mới được làm trống để lập phiếu tiếp theo. Bản lưu/in tạm không gọi API, không ghi lịch sử và không cập nhật tồn kho.
-- Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc; chỉ đếm các mã quét thành công, không tăng khi mã trùng hoặc lỗi.
+- Modal quét máy/QR: mỗi lần quét thành công **ghi thẳng** 1 dòng vào DB kho mới (`nhap_kho`/`xuat_kho` qua `POST /api/kho/quet`, `so_luong=1`) — **không** cộng dồn SL trên dòng đã có. Tem serial trùng tuyệt đối → bỏ qua. Xem [kho.md](./kho.md).
 - Phiếu **Xuất** có **SL CT** (`so_luong_chung_tu`) và **SL THỰC** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
 - Form **Xuất kho** có **Chụp ảnh số cân thực tế** — upload Cloudinary (`/api/cloudinary/upload`, folder `phieu_xuat_nhap_kho`), lưu URL vào `link_anh_can_thuc_te` trên mỗi dòng `phieu_xuat_nhap_kho` (cùng giá trị header phiếu). Xem ảnh trong modal Chi tiết phiếu (Lịch sử) qua `WeighingImagePreviewModal`.
 - Dòng NVL **thêm thủ công** hiển thị trường ảnh số cân ở giữa; dòng được **quét mã** đặt cờ `isScanned` và không yêu cầu/hiển thị trường ảnh này.

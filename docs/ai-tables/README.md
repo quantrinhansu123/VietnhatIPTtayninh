@@ -23,6 +23,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | **`supabase-full-he-thong.sql`** | **Full bảng DB chính** (`SUPABASE_URL`) — paste SQL Editor → Run |
 | **`supabase-db-ton-kho.sql`** / **`supabase-full-ton.sql`** | Full DB tồn (`SUPABASE_TON_URL`) — `bao_cao_may_nvl_ton` |
 | **`supabase-db-kiem-kho.sql`** | Full DB kiểm kho (`SUPABASE_KIEM_KHO_*`) — `kiem_kho` + tổng hợp + RPC |
+| **`supabase-db-kho.sql`** | DB kho mới — `phieu_xuat` / `phieu_nhap` / `xuat_kho` / `nhap_kho` / `kho` → [kho.md](./kho.md) |
 | `supabase-<ten>.sql` | Từng bảng lẻ (khi chỉ cần 1 bảng) |
 
 ## Danh sách bảng
@@ -43,6 +44,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `danh_sach_may` | `/danh-sach-may` | [danh_sach_may.md](./danh_sach_may.md) |
 | `kho_nvl` | `/kho-hang` (cũ: `/kho-nvl`) | [kho_nvl.md](./kho_nvl.md) |
 | `ma_qr_nvl` | `/kho-hang` (QR đã cấp của NVL) | [kho_nvl.md](./kho_nvl.md) |
+| `kho` *(DB kho mới)* | `/phieu-xuat-nhap-kho` (quét máy) | [kho.md](./kho.md) |
 | `phieu_xuat_nhap_kho` | `/phieu-xuat-nhap-kho` | [phieu_xuat_nhap_kho.md](./phieu_xuat_nhap_kho.md) |
 | `ton_kho` *(tổng hợp)* | `/ton-kho` | [ton_kho.md](./ton_kho.md) |
 | `don_hang` | `/don-hang` | [don_hang.md](./don_hang.md) |

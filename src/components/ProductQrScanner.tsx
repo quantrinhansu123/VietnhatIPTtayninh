@@ -42,7 +42,7 @@ function saveCameraPreference(enabled: boolean) {
 interface ProductQrScannerProps {
   open: boolean;
   onClose: () => void;
-  onScan: (value: string) => boolean | 'duplicate' | void;
+  onScan: (value: string) => boolean | 'duplicate' | void | Promise<boolean | 'duplicate' | void>;
   hardwareOnly?: boolean;
   hardwareV2?: boolean;
   closeAfterScan?: boolean;
@@ -363,7 +363,7 @@ export default function ProductQrScanner({
     };
   }, [open]);
 
-  const commitScanResult = (raw: string) => {
+  const commitScanResult = async (raw: string) => {
     const code = parseQrProductCode(raw);
     if (!code) {
       setFeedback({ type: 'error', text: 'Mã QR / mã vạch không hợp lệ.' });
@@ -371,24 +371,31 @@ export default function ProductQrScanner({
       return false;
     }
 
-    const scanResult = onScanRef.current(raw);
+    let scanResult: boolean | 'duplicate' | void;
+    try {
+      scanResult = await onScanRef.current(raw);
+    } catch {
+      setFeedbackPulse(prev => prev + 1);
+      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${code}` });
+      return false;
+    }
     setFeedbackPulse(prev => prev + 1);
 
     if (scanResult === false) {
-      setFeedback({ type: 'error', text: `Không thể thêm mã SP: ${code}` });
+      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${code}` });
       return false;
     }
 
     if (scanResult === 'duplicate') {
       setScannedItems(prev => bumpScannedItem(prev, code, false));
-      setFeedback({ type: 'duplicate', text: `Mã SP đã có — không tăng SL: ${code}` });
+      setFeedback({ type: 'duplicate', text: `Mã đã quét — bỏ qua: ${code}` });
       return true;
     }
 
     playScanBeep(audioCtxRef.current);
     setScannedItems(prev => bumpScannedItem(prev, code, true));
     setSessionScannedCount(current => current + 1);
-    setFeedback({ type: 'success', text: `Đã thêm mã SP: ${code}` });
+    setFeedback({ type: 'success', text: `Đã ghi nhận: ${code}` });
     if (closeAfterScan) {
       void stopScannerSafely(scannerRef.current);
       onCloseRef.current();

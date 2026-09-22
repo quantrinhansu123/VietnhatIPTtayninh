@@ -1843,6 +1843,11 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
+  // Chống quét trùng tem (hậu tố serial) + mã phiếu phiên quét ghi thẳng DB kho mới.
+  const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
+  const khoScanMaPhieuRef = useRef<string>('');
+  const khoScanCountRef = useRef(0);
+
   /**
    * Nhập kho và Xuất kho là hai phiếu độc lập. Không giữ các dòng của form
    * trước khi người dùng đổi loại phiếu, vì điều này làm NVL vừa tự điền cho
@@ -1870,27 +1875,17 @@ export function WarehouseSlipPanel({
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     setLines(emptyLines);
+    scannedFullCodesByPrefixRef.current.clear();
+    khoScanMaPhieuRef.current = '';
+    khoScanCountRef.current = 0;
   };
 
-  // Ô Mã NPL/SP chỉ lưu tiền tố (mã gốc trong danh mục), không mang hậu tố lô/serial — nên
-  // phải nhớ riêng từng mã đầy đủ (tiền tố+hậu tố) đã quét theo tiền tố để chống quét trùng tem.
-  // Tổng SL trên modal: cộng SL các dòng đã quét (mã chỉ tiền tố quét lại vẫn tăng SL).
-  const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
-  const scannedItemCount = (() => {
-    let total = 0;
-    for (const prefixKey of scannedFullCodesByPrefixRef.current.keys()) {
-      const line = lines.find(
-        entry => entry.code.trim() && normalizeMaterialCodeKey(entry.code.trim()) === prefixKey
-      );
-      if (line) {
-        const parsed = parsePercentInput(line.quantity);
-        total += Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-      } else {
-        total += scannedFullCodesByPrefixRef.current.get(prefixKey)?.size ?? 0;
-      }
-    }
-    return total;
-  })();
+  // Tổng SL trên modal: số dòng đã quét thành công trong phiên (mỗi quét = 1, không cộng dồn).
+  const scannedItemCount = lines.reduce((total, line) => {
+    if (!line.isScanned) return total;
+    const parsed = parsePercentInput(line.quantity);
+    return total + (Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+  }, 0);
 
   const buildCurrentScanningDraft = (id: string, updatedAt = Date.now()): WarehouseScanningDraft => ({
     id,
@@ -2018,6 +2013,8 @@ export function WarehouseSlipPanel({
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     scannedFullCodesByPrefixRef.current.clear();
+    khoScanMaPhieuRef.current = '';
+    khoScanCountRef.current = 0;
     setLines(emptyLines);
     setActionMessage('Đã xóa phiếu lưu tạm.');
   };
@@ -2045,13 +2042,31 @@ export function WarehouseSlipPanel({
   ]);
 
   /**
-   * Quét/nhận một mã: 1 mã = tiền tố (trước "_") + hậu tố lô/serial (nếu có).
-   * - Có hậu tố và trùng đúng mã đầy đủ đã quét → báo lỗi, không cộng.
-   * - Chỉ tiền tố (không hậu tố) → quét lại vẫn cộng dồn SL.
-   * - Cùng tiền tố, khác hậu tố → cộng dồn 1 vào SL thực của dòng đã có, không thêm dòng mới.
-   * - Chưa gặp tiền tố này → thêm dòng mới, SL thực = 1. Ô Mã NPL/SP chỉ lưu tiền tố.
+   * Quét/nhận một mã → ghi thẳng 1 dòng vào DB kho mới (nhap_kho / xuat_kho), so_luong = 1.
+   * Không cộng dồn SL trên dòng đã có. Tem có hậu tố serial trùng tuyệt đối → bỏ qua.
+   * Ô Mã NPL/SP vẫn lưu tiền tố danh mục; mỗi lần quét thành công thêm 1 dòng SL = 1 trên form.
    */
-  const addLineFromScan = (raw: string): boolean | 'duplicate' => {
+  const ensureKhoScanMaPhieu = () => {
+    const editing = String(editSlipCode || '').trim();
+    if (editing) {
+      khoScanMaPhieuRef.current = editing;
+      return editing;
+    }
+    if (!khoScanMaPhieuRef.current) {
+      const now = new Date();
+      const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+        now.getDate()
+      ).padStart(2, '0')}`;
+      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
+        2,
+        '0'
+      )}${String(now.getSeconds()).padStart(2, '0')}`;
+      khoScanMaPhieuRef.current = `${slipType === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
+    }
+    return khoScanMaPhieuRef.current;
+  };
+
+  const addLineFromScan = async (raw: string): Promise<boolean | 'duplicate'> => {
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
     const current = linesRef.current;
@@ -2061,39 +2076,10 @@ export function WarehouseSlipPanel({
     const hasLotSuffix = warehouseScanHasLotSuffix(fullCode);
 
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
-    // Chỉ chặn trùng khi tem có hậu tố serial. Tem chỉ mã gốc → cho phép quét lại để đếm SL.
     if (hasLotSuffix && scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
-    const prefixIndex = current.findIndex(
-      line => line.code.trim() && normalizeMaterialCodeKey(line.code.trim()) === prefixKey
-    );
-
-    if (prefixIndex >= 0) {
-      if (hasLotSuffix) {
-        if (scannedForPrefix) {
-          scannedForPrefix.add(fullCodeKey);
-        } else {
-          scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
-        }
-      } else if (!scannedFullCodesByPrefixRef.current.has(prefixKey)) {
-        // Đánh dấu tiền tố đã quét để Tổng SL / phiếu tạm vẫn nhận diện dòng này.
-        scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
-      }
-      const nextLines = current.map((line, idx) => {
-        if (idx !== prefixIndex) return line;
-        const parsed = parsePercentInput(line.quantity);
-        const nextQty = (Number.isFinite(parsed) && parsed > 0 ? parsed : 0) + 1;
-        return { ...line, quantity: formatNumber(nextQty, 3), isScanned: true };
-      });
-      linesRef.current = nextLines;
-      setLines(nextLines);
-      return true;
-    }
-
-    // Mã không thuộc danh mục của kho đang chọn (VD quét nhầm tem NVL trong lúc đang lập
-    // phiếu Kho hàng hóa) — không thêm dòng để tránh lẫn dữ liệu giữa các kho.
     const belongsToWarehouse = itemOptions.some(
       option => normalizeMaterialCodeKey(option.code) === prefixKey
     );
@@ -2101,10 +2087,50 @@ export function WarehouseSlipPanel({
       return false;
     }
 
-    scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
-
     const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
-    const canonicalCode = patch.code;
+    const maPhieu = ensureKhoScanMaPhieu();
+
+    try {
+      const res = await fetch('/api/kho/quet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loai_phieu: slipType === 'xuat' ? 'xuat' : 'nhap',
+          ma_sp: fullCode,
+          ma_phieu: maPhieu,
+          loai: warehouseKind,
+          ten_sp: patch.name || '',
+          nhan_su: createdBy.trim() || loginName,
+          ngay: slipDate,
+          so_luong: 1
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFormError(String(data?.error || 'Không ghi nhận được mã quét vào kho.'));
+        return false;
+      }
+      if (data?.ma_phieu) {
+        khoScanMaPhieuRef.current = String(data.ma_phieu);
+      }
+    } catch {
+      setFormError('Không kết nối được máy chủ khi ghi nhận mã quét.');
+      return false;
+    }
+
+    if (hasLotSuffix) {
+      if (scannedForPrefix) {
+        scannedForPrefix.add(fullCodeKey);
+      } else {
+        scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
+      }
+    } else if (!scannedFullCodesByPrefixRef.current.has(prefixKey)) {
+      scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
+    }
+
+    khoScanCountRef.current += 1;
+
+    const draft = createWarehouseLineDraft();
     const emptyIndex = current.findIndex(line => !line.code.trim());
     let targetKey: string;
     let nextLines: WarehouseSlipLineDraft[];
@@ -2112,15 +2138,15 @@ export function WarehouseSlipPanel({
       targetKey = current[emptyIndex].key;
       nextLines = current.map((line, idx) => (idx === emptyIndex ? { ...line, ...patch } : line));
     } else {
-      const draft = createWarehouseLineDraft();
       targetKey = draft.key;
       nextLines = [...current, { ...draft, ...patch }];
     }
     linesRef.current = nextLines;
     setLines(nextLines);
+    setFormError('');
 
     if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
-      void loadNvlAvgInboundPrice(canonicalCode, slipDate, {
+      void loadNvlAvgInboundPrice(patch.code, slipDate, {
         lineKey: targetKey,
         applySuggestion: true,
         forceOverwrite: true
@@ -2998,6 +3024,8 @@ export function WarehouseSlipPanel({
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
+      khoScanMaPhieuRef.current = '';
+      khoScanCountRef.current = 0;
       setLines([createWarehouseLineDraft()]);
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu phiếu xuất nhập kho.'));
@@ -3617,6 +3645,8 @@ export function WarehouseSlipPanel({
                     onClick={() => {
                       if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
                       scannedFullCodesByPrefixRef.current.clear();
+                      khoScanMaPhieuRef.current = '';
+                      khoScanCountRef.current = 0;
                       setLines([createWarehouseLineDraft()]);
                     }}
                     className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:border-red-200 hover:bg-red-50 hover:text-[#ef1b2d]"

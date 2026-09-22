@@ -60,9 +60,22 @@ const SUPABASE_TON_KEY =
   process.env.SUPABASE_TON_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_TON_PUBLISHABLE_KEY ||
   '';
+/** DB kho mới — `phieu_xuat` / `phieu_nhap` / `xuat_kho` / `nhap_kho` / `kho` (supabase-db-kho.sql). */
+const SUPABASE_KHO_URL =
+  process.env.SUPABASE_KHO_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_KHO_URL ||
+  '';
+const SUPABASE_KHO_SERVICE_KEY = process.env.SUPABASE_KHO_SERVICE_KEY || '';
+const SUPABASE_KHO_KEY =
+  SUPABASE_KHO_SERVICE_KEY ||
+  process.env.SUPABASE_KHO_KEY ||
+  process.env.SUPABASE_KHO_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_KHO_PUBLISHABLE_KEY ||
+  '';
 const SUPABASE_KIEM_KHO_DB_LABEL = process.env.SUPABASE_KIEM_KHO_DB_LABEL || 'kiem-kho';
 const SUPABASE_WEIGHING_DB_LABEL = process.env.SUPABASE_WEIGHING_DB_LABEL || 'phieu-can';
 const SUPABASE_TON_DB_LABEL = process.env.SUPABASE_TON_DB_LABEL || 'ton';
+const SUPABASE_KHO_DB_LABEL = process.env.SUPABASE_KHO_DB_LABEL || 'kho';
 const SUPABASE_MAIN_DB_LABEL = process.env.SUPABASE_MAIN_DB_LABEL || 'he-thong';
 const SUPABASE_TABLE = process.env.SUPABASE_TABLE || 'reports';
 const SUPABASE_WEIGHING_TABLE = process.env.SUPABASE_WEIGHING_TABLE || 'phieu_can_dinh_ki';
@@ -370,11 +383,19 @@ const supabaseTon =
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
+/** Client riêng — DB kho mới (`xuat_kho` / `nhap_kho` / `kho`). */
+const supabaseKho =
+  SUPABASE_KHO_URL && SUPABASE_KHO_KEY
+    ? createClient(SUPABASE_KHO_URL, SUPABASE_KHO_KEY, {
+        global: { fetch: fetchWithTimeoutAndRetry }
+      })
+    : null;
 const useSupabase = Boolean(supabase);
 const usingServiceKey = Boolean(process.env.SUPABASE_SERVICE_KEY);
 const usingWeighingServiceKey = Boolean(SUPABASE_WEIGHING_SERVICE_KEY);
 const usingKiemKhoServiceKey = Boolean(SUPABASE_KIEM_KHO_SERVICE_KEY);
 const usingTonServiceKey = Boolean(SUPABASE_TON_SERVICE_KEY);
+const usingKhoServiceKey = Boolean(SUPABASE_KHO_SERVICE_KEY);
 
 function getMachineNvlDb(): SupabaseClient | null {
   return supabaseTon || supabase;
@@ -448,6 +469,16 @@ if (supabaseTon) {
 } else {
   console.log(
     `[SUPABASE:${SUPABASE_TON_DB_LABEL}] Chưa cấu hình riêng — bao_cao_may_nvl_ton dùng DB ${SUPABASE_MAIN_DB_LABEL} (nếu có).`
+  );
+}
+if (supabaseKho) {
+  console.log(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] Connected to`, SUPABASE_KHO_URL, {
+    tables: 'phieu_xuat, phieu_nhap, xuat_kho, nhap_kho, kho',
+    key: usingKhoServiceKey ? 'service_role' : 'anon/publishable'
+  });
+} else {
+  console.log(
+    `[SUPABASE:${SUPABASE_KHO_DB_LABEL}] Chưa cấu hình SUPABASE_KHO_* — quét nhập/xuất kho chưa ghi DB kho mới.`
   );
 }
 
@@ -7936,6 +7967,12 @@ export function createApp() {
             : usingServiceKey
               ? 'service_role'
               : 'anon/public'
+        },
+        [SUPABASE_KHO_DB_LABEL]: {
+          connected: Boolean(supabaseKho),
+          url: SUPABASE_KHO_URL ? `${SUPABASE_KHO_URL.slice(0, 40)}...` : null,
+          tables: ['phieu_xuat', 'phieu_nhap', 'xuat_kho', 'nhap_kho', 'kho'],
+          role: usingKhoServiceKey ? 'service_role' : 'anon/publishable'
         }
       },
       tables: {
@@ -11347,6 +11384,162 @@ export function createApp() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa nguyên phụ liệu.' });
+    }
+  });
+
+  /**
+   * Quét máy nhập/xuất kho → ghi thẳng 1 dòng vào nhap_kho hoặc xuat_kho (DB kho mới).
+   * Không cộng dồn số lượng trên form; mỗi lần quét = so_luong 1.
+   */
+  app.post('/api/kho/quet', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_SERVICE_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const loaiPhieuRaw = String(body.loai_phieu ?? body.loaiPhieu ?? body.type ?? '')
+        .trim()
+        .toLowerCase();
+      const loaiPhieu =
+        loaiPhieuRaw === 'xuat' || loaiPhieuRaw === 'px'
+          ? 'xuat'
+          : loaiPhieuRaw === 'nhap' || loaiPhieuRaw === 'pn'
+            ? 'nhap'
+            : '';
+      const maSpFull = String(body.ma_sp ?? body.maSp ?? body.code ?? '').trim();
+      const loai = String(body.loai ?? body.loai_kho ?? body.warehouseKind ?? '').trim() || null;
+      const tenSp = String(body.ten_sp ?? body.tenSp ?? body.name ?? '').trim() || null;
+      const nhanSu = String(body.nhan_su ?? body.nhanSu ?? body.createdBy ?? '').trim() || null;
+      const soLuongRaw = Number(body.so_luong ?? body.soLuong ?? body.quantity ?? 1);
+      const soLuong = Number.isFinite(soLuongRaw) && soLuongRaw > 0 ? soLuongRaw : 1;
+      let maPhieu = String(body.ma_phieu ?? body.maPhieu ?? body.slipCode ?? '').trim();
+
+      if (!loaiPhieu) {
+        return res.status(400).json({ error: 'Thiếu loai_phieu (nhap|xuat).' });
+      }
+      if (!maSpFull) {
+        return res.status(400).json({ error: 'Thiếu ma_sp.' });
+      }
+
+      if (!maPhieu) {
+        maPhieu = generateWarehouseSlipCode(loaiPhieu);
+      }
+
+      const nowVn = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })
+      );
+      const ngay =
+        String(body.ngay ?? body.date ?? '').trim() ||
+        `${nowVn.getFullYear()}-${String(nowVn.getMonth() + 1).padStart(2, '0')}-${String(
+          nowVn.getDate()
+        ).padStart(2, '0')}`;
+      const gio = `${String(nowVn.getHours()).padStart(2, '0')}:${String(nowVn.getMinutes()).padStart(
+        2,
+        '0'
+      )}:${String(nowVn.getSeconds()).padStart(2, '0')}`;
+
+      const underscoreIdx = maSpFull.indexOf('_');
+      const maSpTon = underscoreIdx > 0 ? maSpFull.slice(0, underscoreIdx).trim() : maSpFull;
+
+      const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+
+      const { error: headerError } = await supabaseKho.from(headerTable).upsert(
+        {
+          ma_phieu: maPhieu,
+          ngay,
+          gio,
+          nhan_su: nhanSu
+        },
+        { onConflict: 'ma_phieu' }
+      );
+      if (headerError) {
+        console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} upsert error:`, headerError);
+        return res.status(500).json({
+          error: `Không thể tạo phiếu ${loaiPhieu}. ${headerError.message}`
+        });
+      }
+
+      const { data: lineRow, error: lineError } = await supabaseKho
+        .from(lineTable)
+        .insert({
+          ma_sp: maSpFull,
+          loai,
+          so_luong: soLuong,
+          ma_phieu: maPhieu
+        })
+        .select('id, ma_sp, loai, so_luong, ma_phieu, created_at')
+        .single();
+
+      if (lineError) {
+        console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} insert error:`, lineError);
+        return res.status(500).json({
+          error: `Không thể ghi ${lineTable}. ${lineError.message}`
+        });
+      }
+
+      const { data: stockRow } = await supabaseKho
+        .from('kho')
+        .select('id, ma_sp, ton_dau, xuat, nhap, ton_cuoi, ton_toi_thieu, loai, ten_sp')
+        .eq('ma_sp', maSpTon)
+        .maybeSingle();
+
+      const tonDau = Number(stockRow?.ton_dau ?? 0) || 0;
+      const nhapPrev = Number(stockRow?.nhap ?? 0) || 0;
+      const xuatPrev = Number(stockRow?.xuat ?? 0) || 0;
+      const nhapNext = nhapPrev + (loaiPhieu === 'nhap' ? soLuong : 0);
+      const xuatNext = xuatPrev + (loaiPhieu === 'xuat' ? soLuong : 0);
+      const tonCuoi = tonDau + nhapNext - xuatNext;
+
+      if (stockRow?.id) {
+        const { error: stockUpdateError } = await supabaseKho
+          .from('kho')
+          .update({
+            nhap: nhapNext,
+            xuat: xuatNext,
+            ton_cuoi: tonCuoi,
+            loai: loai || stockRow.loai || null,
+            ten_sp: tenSp || stockRow.ten_sp || null
+          })
+          .eq('id', stockRow.id);
+        if (stockUpdateError) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] kho update error:`, stockUpdateError);
+        }
+      } else {
+        const { error: stockInsertError } = await supabaseKho.from('kho').insert({
+          ma_sp: maSpTon,
+          ton_dau: 0,
+          nhap: nhapNext,
+          xuat: xuatNext,
+          ton_cuoi: tonCuoi,
+          ton_toi_thieu: 0,
+          loai,
+          ten_sp: tenSp
+        });
+        if (stockInsertError) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] kho insert error:`, stockInsertError);
+        }
+      }
+
+      return res.status(201).json({
+        success: true,
+        loai_phieu: loaiPhieu,
+        ma_phieu: maPhieu,
+        line: lineRow,
+        kho: {
+          ma_sp: maSpTon,
+          nhap: nhapNext,
+          xuat: xuatNext,
+          ton_cuoi: tonCuoi
+        },
+        source: SUPABASE_KHO_DB_LABEL
+      });
+    } catch (err: any) {
+      console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/quet error:`, err);
+      return res.status(500).json({ error: err.message || 'Lỗi khi ghi nhận quét kho.' });
     }
   });
 

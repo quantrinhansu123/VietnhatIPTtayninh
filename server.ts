@@ -383,13 +383,15 @@ const supabaseTon =
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
-/** Client riêng — DB kho mới (`xuat_kho` / `nhap_kho` / `kho`). */
+/** Client riêng — DB kho mới (`xuat_kho` / `nhap_kho` / `kho` / `phieu_xuat_nhap_kho`). */
 const supabaseKho =
   SUPABASE_KHO_URL && SUPABASE_KHO_KEY
     ? createClient(SUPABASE_KHO_URL, SUPABASE_KHO_KEY, {
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
+/** Phiếu xuất nhập kho: ưu tiên DB kho mới khi đã cấu hình SUPABASE_KHO_*. */
+const supabaseWarehouse = supabaseKho || supabase;
 const useSupabase = Boolean(supabase);
 const usingServiceKey = Boolean(process.env.SUPABASE_SERVICE_KEY);
 const usingWeighingServiceKey = Boolean(SUPABASE_WEIGHING_SERVICE_KEY);
@@ -473,12 +475,13 @@ if (supabaseTon) {
 }
 if (supabaseKho) {
   console.log(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] Connected to`, SUPABASE_KHO_URL, {
-    tables: 'phieu_xuat, phieu_nhap, xuat_kho, nhap_kho, kho',
+    tables: 'phieu_xuat, phieu_nhap, xuat_kho, nhap_kho, kho, phieu_xuat_nhap_kho',
+    warehouseMovements: 'via supabaseWarehouse (ưu tiên DB kho)',
     key: usingKhoServiceKey ? 'service_role' : 'anon/publishable'
   });
 } else {
   console.log(
-    `[SUPABASE:${SUPABASE_KHO_DB_LABEL}] Chưa cấu hình SUPABASE_KHO_* — quét nhập/xuất kho chưa ghi DB kho mới.`
+    `[SUPABASE:${SUPABASE_KHO_DB_LABEL}] Chưa cấu hình SUPABASE_KHO_* — phiếu/quét kho dùng DB ${SUPABASE_MAIN_DB_LABEL}.`
   );
 }
 
@@ -6121,7 +6124,7 @@ async function buildNvlInboundAvgPriceForMonth(
     return { don_gia: 0, thang: range.thang, so_dong: 0, tong_sl: 0, price_source: 'none' };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseWarehouse
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('don_gia, so_luong, ngay_phieu, loai_phieu, loai_kho, ma_npl')
     .ilike('ma_npl', code)
@@ -6146,7 +6149,7 @@ async function buildNvlInboundAvgPriceForMonth(
   let priceSource: 'month' | 'all' | 'none' = agg.don_gia > 0 ? 'month' : 'none';
 
   if (agg.don_gia <= 0) {
-    const { data: allData, error: allError } = await supabase
+    const { data: allData, error: allError } = await supabaseWarehouse
       .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
       .select('don_gia, so_luong, ngay_phieu, loai_phieu, loai_kho, ma_npl')
       .ilike('ma_npl', code)
@@ -6178,7 +6181,7 @@ async function buildNvlInboundLots(
   const code = String(maNpl || '').trim();
   if (!code) return { lots: [] };
 
-  const { data: inboundRows, error: inboundError } = await supabase
+  const { data: inboundRows, error: inboundError } = await supabaseWarehouse
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('id, ma_phieu, ngay_phieu, ma_npl, ten_npl, don_vi, don_gia, so_luong, loai_phieu, loai_kho')
     .eq('ma_npl', code)
@@ -6192,7 +6195,7 @@ async function buildNvlInboundLots(
     return { error: `Không thể tải lô nhập. ${inboundError.message}`, lots: [] };
   }
 
-  const { data: outboundRows, error: outboundError } = await supabase
+  const { data: outboundRows, error: outboundError } = await supabaseWarehouse
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('id, ma_phieu, so_luong, id_dong_nhap_nguon, loai_phieu, loai_kho')
     .eq('ma_npl', code)
@@ -6646,7 +6649,7 @@ async function syncProductDetailCodeFromMovements(fullCode: string) {
   }
   if (!registered) return;
 
-  const { data: movements, error: movementError } = await supabase
+  const { data: movements, error: movementError } = await supabaseWarehouse
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('ma_phieu, loai_phieu, so_luong, created_at')
     .eq('loai_kho', 'san_pham')
@@ -6692,7 +6695,7 @@ async function buildMaterialMovementTotals(): Promise<Map<string, { nhap: number
   const totals = new Map<string, { nhap: number; xuat: number }>();
   if (!supabase) return totals;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseWarehouse
     .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
     .select('ma_npl, loai_phieu, so_luong')
     .or('loai_kho.eq.nvl,loai_kho.is.null')
@@ -8393,7 +8396,7 @@ export function createApp() {
         return res.json({ movements: [], total: 0, loai, source: 'supabase' });
       }
 
-      let query = supabase
+      let query = supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('*')
         .eq('loai_phieu', loai)
@@ -11619,7 +11622,7 @@ export function createApp() {
       const maSp = String(req.query.ma_sp ?? req.query.productCode ?? '').trim();
       const treoFilter = String(req.query.treo ?? '').trim().toLowerCase();
 
-      let query = supabase
+      let query = supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
@@ -11702,7 +11705,7 @@ export function createApp() {
       const slipCode = String(req.params.slipCode || '').trim();
       if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu nhập.' });
 
-      const { data: slipRows, error: slipRowsError } = await supabase
+      const { data: slipRows, error: slipRowsError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('loai_kho')
         .eq('ma_phieu', slipCode)
@@ -11795,7 +11798,7 @@ export function createApp() {
         .map(item => String(item.damagedReportRowId ?? '').trim())
         .filter(Boolean);
       if (damagedReportRowIds.length > 0) {
-        const { data: alreadyImported, error: linkCheckError } = await supabase
+        const { data: alreadyImported, error: linkCheckError } = await supabaseWarehouse
           .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
           .select('id_bao_cao_hang_hong')
           .in('id_bao_cao_hang_hong', damagedReportRowIds)
@@ -11814,7 +11817,7 @@ export function createApp() {
         .map(item => String(item.acceptanceReportRowId ?? '').trim())
         .filter(Boolean);
       if (acceptanceReportRowIds.length > 0) {
-        const { data: alreadyImported, error: linkCheckError } = await supabase
+        const { data: alreadyImported, error: linkCheckError } = await supabaseWarehouse
           .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
           .select('id_bao_cao_nghiem_thu')
           .in('id_bao_cao_nghiem_thu', acceptanceReportRowIds)
@@ -11835,7 +11838,7 @@ export function createApp() {
 
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .insert(records)
         .select('*');
@@ -11876,7 +11879,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu mã phiếu.' });
       }
 
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing, error: fetchError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('id, ma_npl, ten_npl, ma_sp, ten_sp, don_vi, don_gia, so_luong, id_dong_nhap_nguon, ma_phieu_nhap_nguon, loai_kho, loai_phieu, treo')
         .eq('ma_phieu', slipCode);
@@ -11920,7 +11923,7 @@ export function createApp() {
         }
       }
 
-      const { data: updated, error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .update({ treo: false })
         .eq('ma_phieu', slipCode)
@@ -11982,7 +11985,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Ca nguồn và ca đích phải khác nhau.' });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .update({ ca: toShift })
         .eq('ca', fromShift)
@@ -12029,7 +12032,7 @@ export function createApp() {
         }
       }
 
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing, error: fetchError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('ma_npl, ma_sp, loai_kho, da_in')
         .eq('ma_phieu', slipCode);
@@ -12073,7 +12076,7 @@ export function createApp() {
         });
       }
 
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .delete()
         .eq('ma_phieu', slipCode);
@@ -12085,7 +12088,7 @@ export function createApp() {
 
       const records = buildWarehouseSlipInsertRecords(parsed, slipCode);
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .insert(records)
         .select('*');
@@ -12121,7 +12124,7 @@ export function createApp() {
       if (!slipCode) {
         return res.status(400).json({ error: 'Thiếu mã phiếu.' });
       }
-      const { error } = await supabase
+      const { error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .update({ da_in: true })
         .eq('ma_phieu', slipCode);
@@ -12146,7 +12149,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu mã phiếu.' });
       }
 
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing, error: fetchError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .select('id, ma_npl, ma_sp, loai_kho')
         .eq('ma_phieu', slipCode);
@@ -12173,7 +12176,7 @@ export function createApp() {
         }
       });
 
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .delete()
         .eq('ma_phieu', slipCode);
@@ -12207,7 +12210,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu ID dòng phiếu.' });
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .delete()
         .eq('id', id)
@@ -15982,7 +15985,7 @@ export function createApp() {
         return query.range(from, to);
       }),
       loadAllTonKhoRows((from, to) => {
-        let query = supabase!
+        let query = supabaseWarehouse!
           .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
           .select('ma_npl, ten_npl, ma_sp, ten_sp, don_vi, so_luong, ngay_phieu, loai_phieu, loai_kho, ten_kho');
         query = isProduct
@@ -16295,7 +16298,7 @@ export function createApp() {
             )
             .order('created_at', { ascending: false, nullsFirst: false })
             .limit(1000),
-          supabase
+          supabaseWarehouse
             .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
             .select('id_bao_cao_hang_hong')
             .not('id_bao_cao_hang_hong', 'is', null),
@@ -16425,7 +16428,7 @@ export function createApp() {
             .eq('ngay', ngay)
             .order('created_at', { ascending: true })
             .limit(2000),
-          supabase
+          supabaseWarehouse
             .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
             .select('id_bao_cao_nghiem_thu')
             .not('id_bao_cao_nghiem_thu', 'is', null),

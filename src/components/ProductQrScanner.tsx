@@ -44,8 +44,7 @@ interface ProductQrScannerProps {
   onClose: () => void;
   onScan: (value: string) => boolean | 'duplicate' | void;
   hardwareOnly?: boolean;
-  /** Tem cũ không có hậu tố: cho phép mỗi lần quét cùng mã được tính là một đơn vị. */
-  allowDuplicateScans?: boolean;
+  hardwareV2?: boolean;
   closeAfterScan?: boolean;
   requireConfirm?: boolean;
   getConfirmMessage?: (code: string) => string;
@@ -264,7 +263,7 @@ export default function ProductQrScanner({
   onClose,
   onScan,
   hardwareOnly = false,
-  allowDuplicateScans = false,
+  hardwareV2 = false,
   closeAfterScan = false,
   requireConfirm = true,
   getConfirmMessage,
@@ -734,8 +733,8 @@ export default function ProductQrScanner({
             <ScanBarcode className="h-5 w-5 text-[#ef1b2d]" />
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-900">
               {hardwareOnly
-                ? allowDuplicateScans
-                  ? 'Quét máy V2 BT-A700'
+                ? hardwareV2
+                  ? 'Quét máy BT-A700'
                   : 'Quét máy BT-A700'
                 : 'Quét QR / mã vạch sản phẩm'}
             </h3>

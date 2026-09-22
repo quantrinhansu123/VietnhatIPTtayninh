@@ -63,7 +63,7 @@ Route `dot-mo` và `dot` dùng chung helper `computeKiemKhoDotGroups()` (gộp t
 
 ### Quy tắc chống trùng khi lưu
 
-`POST /api/kiem-kho` chuẩn hóa và bỏ qua `ma_sp` trùng trong payload hoặc đã có trong cùng `dot_kiem_kho`. Ngoại lệ: dòng có `allow_duplicate_scan: true` từ nút **Quét máy V2** được lưu mỗi lần quét, phục vụ tem cũ không có hậu tố. Response trả `saved_count` và `skipped_count`; frontend dùng hai số này để thông báo chính xác, không lấy tổng số dòng trên form.
+`POST /api/kiem-kho` chuẩn hóa và bỏ qua `ma_sp` trùng trong payload hoặc đã có trong cùng `dot_kiem_kho`, bao gồm cả mã quét từ nút **Quét máy**. Response trả `saved_count` và `skipped_count`; frontend dùng hai số này để thông báo chính xác, không lấy tổng số dòng trên form.
 
 ### Tên đợt trong cùng ngày
 

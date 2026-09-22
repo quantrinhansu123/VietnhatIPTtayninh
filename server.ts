@@ -14524,8 +14524,6 @@ export function createApp() {
           ma_sp: maSp,
           ten_sp: String(item?.ten_sp ?? item?.tenSp ?? '').trim() || null,
           loai_sp: String(item?.loai_sp ?? item?.loaiSp ?? '').trim() || null,
-          // Chỉ Quét máy V2 được phép lưu nhiều dòng cùng mã (tem cũ không có hậu tố).
-          allow_duplicate_scan: item?.allow_duplicate_scan === true || item?.allowDuplicateScan === true,
           ngay_gio_kiem_kho: ngayGio,
           nguoi_kiem_kho: nguoiKiemKho
         };
@@ -14550,7 +14548,7 @@ export function createApp() {
 
       for (const row of rows as any[]) {
         const key = normalizeMaSp(row.ma_sp);
-        if (!key || (incomingKeys.has(key) && !row.allow_duplicate_scan)) {
+        if (!key || incomingKeys.has(key)) {
           skippedCount += 1;
           continue;
         }
@@ -14584,7 +14582,7 @@ export function createApp() {
       }
 
       const rowsToInsert = uniqueRows.filter(row => {
-        if (existingKeys.has(normalizeMaSp(row.ma_sp)) && !row.allow_duplicate_scan) {
+        if (existingKeys.has(normalizeMaSp(row.ma_sp))) {
           skippedCount += 1;
           return false;
         }
@@ -14605,8 +14603,7 @@ export function createApp() {
 
       const { data, error } = await db
         .from(SUPABASE_KIEM_KHO_TABLE)
-        // allow_duplicate_scan chỉ là cờ xử lý API, không phải cột của bảng Supabase.
-        .insert(rowsToInsert.map(({ allow_duplicate_scan: _allowDuplicateScan, ...row }) => row))
+        .insert(rowsToInsert)
         .select('*');
       if (error) {
         const missingColumn =

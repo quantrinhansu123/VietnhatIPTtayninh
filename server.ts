@@ -9181,6 +9181,38 @@ export function createApp() {
         });
       }
 
+      // Map tên NVL từ kho — khi import_sp.ten_nvl trống / trùng mã.
+      const materialNameByCode = new Map<string, string>();
+      {
+        const matPage = 1000;
+        for (let from = 0; ; from += matPage) {
+          const { data: matRows, error: matError } = await supabase
+            .from(SUPABASE_MATERIALS_TABLE)
+            .select('ma_npl, ten_npl')
+            .range(from, from + matPage - 1);
+          if (matError) {
+            console.warn('Supabase import_sp dong-bo kho_nvl lookup:', matError.message);
+            break;
+          }
+          for (const row of matRows || []) {
+            const code = normalizeKey((row as { ma_npl?: unknown }).ma_npl);
+            const name = String((row as { ten_npl?: unknown }).ten_npl ?? '').trim();
+            if (code && name && normalizeKey(name) !== code) {
+              materialNameByCode.set(code, name);
+            }
+          }
+          if (!matRows || matRows.length < matPage) break;
+        }
+      }
+
+      const resolveNvlName = (maNvl: string, tenNvl: string) => {
+        const code = String(maNvl || '').trim();
+        const name = String(tenNvl || '').trim();
+        const catalog = materialNameByCode.get(normalizeKey(code)) || '';
+        if (catalog && (!name || normalizeKey(name) === normalizeKey(code))) return catalog;
+        return name || catalog || code;
+      };
+
       const productByKey = new Map<string, { id: string; ma_sp: string }>();
       for (const product of products || []) {
         const row = product as { id: string; ma_sp?: string; ma_sp_moi?: string; ma_amis?: string };
@@ -9231,7 +9263,7 @@ export function createApp() {
         if (!agg) {
           agg = {
             ma_npl: maNvl,
-            ten_npl: String(row.ten_nvl ?? '').trim() || maNvl,
+            ten_npl: resolveNvlName(maNvl, String(row.ten_nvl ?? '').trim()),
             phan_tram: null,
             so_luong: null,
             khoi_luong_kg: null,
@@ -9244,7 +9276,10 @@ export function createApp() {
         }
         if (id) agg.importIds.push(id);
         const ten = String(row.ten_nvl ?? '').trim();
-        if (ten) agg.ten_npl = ten;
+        if (ten) agg.ten_npl = resolveNvlName(maNvl, ten);
+        else if (!agg.ten_npl || normalizeKey(agg.ten_npl) === nvlKey) {
+          agg.ten_npl = resolveNvlName(maNvl, '');
+        }
 
         const phanTram = parseServerNumber(row.phan_tram);
         const soLuong = parseServerNumber(row.so_luong);
@@ -11054,18 +11089,51 @@ export function createApp() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from(SUPABASE_MATERIALS_TABLE)
-        .select('*')
-        .order('created_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false });
+      // PostgREST mặc định tối đa 1000 dòng/query → phân trang range để lấy hết.
+      const PAGE_SIZE = 1000;
+      const rows: Record<string, unknown>[] = [];
+      let queryError: { message?: string; code?: string } | null = null;
 
-      if (error) {
-        return respondSupabaseReadError(res, error, SUPABASE_MATERIALS_TABLE, { materials: [], total: 0 });
+      for (let from = 0; ; from += PAGE_SIZE) {
+        let query = supabase.from(SUPABASE_MATERIALS_TABLE).select('*');
+        const ordered = await query
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (ordered.error && isMissingColumnError(ordered.error)) {
+          const fallback = await supabase
+            .from(SUPABASE_MATERIALS_TABLE)
+            .select('*')
+            .order('id', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+          if (fallback.error) {
+            queryError = fallback.error;
+            break;
+          }
+          rows.push(...((fallback.data || []) as Record<string, unknown>[]));
+          if (!fallback.data || fallback.data.length < PAGE_SIZE) break;
+          continue;
+        }
+
+        if (ordered.error) {
+          queryError = ordered.error;
+          break;
+        }
+
+        rows.push(...((ordered.data || []) as Record<string, unknown>[]));
+        if (!ordered.data || ordered.data.length < PAGE_SIZE) break;
+      }
+
+      if (queryError) {
+        return respondSupabaseReadError(res, queryError, SUPABASE_MATERIALS_TABLE, {
+          materials: [],
+          total: 0
+        });
       }
 
       const movementTotals = await buildMaterialMovementTotals();
-      const materials = applyMaterialMovementTotals(data || [], movementTotals);
+      const materials = applyMaterialMovementTotals(rows, movementTotals);
 
       return res.json({
         materials,

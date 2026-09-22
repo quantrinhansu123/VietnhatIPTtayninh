@@ -26,7 +26,7 @@
 
 
 
-**Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts`, `utils/mixingNormSuggestion.ts`
+**Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts` (`resolveMixingMaterialDisplayName` — nếu BOM để tên = mã thì lấy `ten_npl` từ kho NVL), `utils/mixingNormSuggestion.ts`
 
 
 

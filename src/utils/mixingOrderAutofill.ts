@@ -617,6 +617,31 @@ function isMixingKgItem(item: MixingBomItem): boolean {
   return !unit || unit === '-' || isWarehouseKgUnit(unit);
 }
 
+/** Tên hiển thị: nếu BOM để trống hoặc copy mã → lấy tên từ kho NVL. */
+export function resolveMixingMaterialDisplayName(
+  code: string,
+  bomName: string,
+  catalogName?: string
+): string {
+  const codeTrim = String(code ?? '').trim();
+  const bom = String(bomName ?? '').trim();
+  const catalog = String(catalogName ?? '').trim();
+  const codeKey = normalizeKey(codeTrim);
+  const bomIsCodeOnly = !bom || (codeKey && normalizeKey(bom) === codeKey);
+  if (bomIsCodeOnly && catalog && normalizeKey(catalog) !== codeKey) return catalog;
+  if (bom && !bomIsCodeOnly) return bom;
+  return catalog || bom || codeTrim;
+}
+
+function lookupMaterialMeta(
+  materialLookup: Map<string, { name: string; unit: string }>,
+  code: string
+) {
+  const key = normalizeKey(code);
+  if (!key) return undefined;
+  return materialLookup.get(key);
+}
+
 function bomToRoundItems(
   bomItems: MixingBomItem[],
   materialLookup: Map<string, { name: string; unit: string }>
@@ -624,10 +649,10 @@ function bomToRoundItems(
   return bomItems
     .filter(isMixingKgItem)
     .map(item => {
-      const matched = materialLookup.get(normalizeKey(item.code));
+      const matched = lookupMaterialMeta(materialLookup, item.code);
       return {
         ma_nvl: item.code,
-        ten_vat_tu: item.name || matched?.name || item.code,
+        ten_vat_tu: resolveMixingMaterialDisplayName(item.code, item.name, matched?.name),
         don_vi: item.unit && item.unit !== '-' ? item.unit : matched?.unit || 'kg',
         ti_le_phan_tram: item.amountType === 'percent' ? item.percent : null,
         so_luong: item.amountType === 'quantity' ? item.quantity : null,

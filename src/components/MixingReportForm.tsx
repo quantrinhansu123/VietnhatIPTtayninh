@@ -29,6 +29,7 @@ import MixingProductionOrderAutofillModal from './MixingProductionOrderAutofillM
 import {
   normalizeMixingCatalogProducts,
   normalizeMixingProductionOrders,
+  resolveMixingMaterialDisplayName,
   type MixingCatalogProduct,
   type MixingProductionOrder
 } from '../utils/mixingOrderAutofill';
@@ -1728,17 +1729,40 @@ export default function MixingReportForm({
       setError('Không có NVL để điền từ lệnh sản xuất.');
       return;
     }
+    const enriched = items.map(item => {
+      const matched = materials.find(
+        material =>
+          material.code &&
+          material.code.trim().toLowerCase().replace(/\s+/g, '') ===
+            item.ma_nvl.trim().toLowerCase().replace(/\s+/g, '')
+      );
+      return {
+        ...item,
+        ten_vat_tu: resolveMixingMaterialDisplayName(item.ma_nvl, item.ten_vat_tu, matched?.name),
+        don_vi: item.don_vi && item.don_vi !== '-' ? item.don_vi : matched?.unit || item.don_vi || 'kg'
+      };
+    });
     setForm(prev => ({
       ...prev,
       chi_tiet: applyMixingRoundAutofill(
         prev.chi_tiet,
         roundKey,
-        items,
+        enriched,
         resolveRoundBatchWeight(prev.chi_tiet, roundKey)
       )
     }));
-    setMessage(`Đã tự động điền ${items.length} NVL từ lệnh sản xuất.`);
-    showAppToast(`Đã tự động điền ${items.length} NVL từ lệnh sản xuất.`);
+    setMessage(`Đã tự động điền ${enriched.length} NVL từ lệnh sản xuất.`);
+    showAppToast(`Đã tự động điền ${enriched.length} NVL từ lệnh sản xuất.`);
+  };
+
+  const displayMaterialName = (maNvl: string, tenVatTu: string) => {
+    const matched = materials.find(
+      material =>
+        material.code &&
+        material.code.trim().toLowerCase().replace(/\s+/g, '') ===
+          maNvl.trim().toLowerCase().replace(/\s+/g, '')
+    );
+    return resolveMixingMaterialDisplayName(maNvl, tenVatTu, matched?.name) || '-';
   };
 
   const openEditLineModal = (index: number) => {
@@ -2339,7 +2363,7 @@ export default function MixingReportForm({
                                   {entry.item.ma_nvl || '-'}
                                 </span>
                                 <p className="line-clamp-1 text-[10px] font-semibold leading-tight text-zinc-600">
-                                  {entry.item.ten_vat_tu || '-'}
+                                  {displayMaterialName(entry.item.ma_nvl, entry.item.ten_vat_tu)}
                                 </p>
                               </div>
                               <div className="flex shrink-0 items-center gap-0.5">
@@ -2492,7 +2516,9 @@ export default function MixingReportForm({
                               <td className="px-2 py-2 font-mono font-semibold text-zinc-700">
                                 {entry.item.ma_nvl || '-'}
                               </td>
-                              <td className="px-2 py-2 text-zinc-800">{entry.item.ten_vat_tu || '-'}</td>
+                              <td className="px-2 py-2 text-zinc-800">
+                                {displayMaterialName(entry.item.ma_nvl, entry.item.ten_vat_tu)}
+                              </td>
                               <td className="px-2 py-2 font-mono font-semibold text-zinc-700">
                                 {formatOptionalNumber(entry.item.ti_le_phan_tram) || '-'}
                               </td>

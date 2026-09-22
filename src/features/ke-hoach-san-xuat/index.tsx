@@ -4695,6 +4695,41 @@ export function mergeProductionOrderDateTime(date: string, datetimeLocal: string
   return date ? `${date}T${timePart}` : datetimeLocal;
 }
 
+function addProductionOrderDays(date: string, days: number) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  parsed.setDate(parsed.getDate() + days);
+  return todayIsoDate(parsed);
+}
+
+function getProductionShiftDateTimeDefaults(
+  date: string,
+  shift: string,
+  settings: ProductionOrderLookupSetting[]
+) {
+  if (!date || !shift) return null;
+
+  const normalizedShift = shift.trim().toLowerCase();
+  const setting = settings.find(item =>
+    [item.name, item.code].some(value => value.trim().toLowerCase() === normalizedShift)
+  );
+  const match = `${setting?.timeFrame || ''} ${shift}`.match(
+    /(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})/
+  );
+  if (!match) return null;
+
+  const start = `${match[1].padStart(2, '0')}:${match[2]}`;
+  const end = `${match[3].padStart(2, '0')}:${match[4]}`;
+  const startMinutes = Number(match[1]) * 60 + Number(match[2]);
+  const endMinutes = Number(match[3]) * 60 + Number(match[4]);
+  const endDate = endMinutes <= startMinutes ? addProductionOrderDays(date, 1) : date;
+
+  return {
+    startDateTime: `${date}T${start}`,
+    endDateTime: `${endDate}T${end}`
+  };
+}
+
 export function settingMatchesShift(setting: ProductionOrderLookupSetting, shift: string) {
   if (!shift) return false;
   const needle = shift.toLowerCase();
@@ -4951,6 +4986,79 @@ export type ProductionOrderFormState = {
   note: string;
 };
 
+const PRODUCTION_ORDER_DRAFT_STORAGE_KEY = 'lenh_sx_add_draft_v1';
+
+type ProductionOrderDraft = {
+  form: ProductionOrderFormState;
+  selectedShifts: string[];
+  savedAt: number;
+};
+
+function readProductionOrderDraft(): ProductionOrderDraft | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PRODUCTION_ORDER_DRAFT_STORAGE_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const record = parsed as Record<string, unknown>;
+    const rawForm = record.form;
+    const savedAt = Number(record.savedAt);
+    if (!rawForm || typeof rawForm !== 'object' || !Number.isFinite(new Date(savedAt).getTime())) return null;
+
+    const formRecord = rawForm as Record<string, unknown>;
+    const rawLines = Array.isArray(formRecord.entryLines) ? formRecord.entryLines : [];
+    const entryLines = rawLines
+      .filter(line => line && typeof line === 'object')
+      .map(line => ({ ...newProductionOrderEntryLine(), ...(line as Partial<ProductionOrderEntryLine>) }));
+
+    return {
+      form: {
+        ...emptyProductionOrderForm(),
+        ...formRecord,
+        entryLines: entryLines.length > 0 ? entryLines : [newProductionOrderEntryLine()]
+      } as ProductionOrderFormState,
+      selectedShifts: Array.isArray(record.selectedShifts)
+        ? record.selectedShifts.filter((shift): shift is string => typeof shift === 'string')
+        : [],
+      savedAt
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasProductionOrderDraftContent(form: ProductionOrderFormState, selectedShifts: string[]) {
+  const empty = emptyProductionOrderForm();
+  return Boolean(
+    form.code.trim() ||
+      form.name.trim() ||
+      form.entryLines.some(line => line.orderRef.trim() || line.productCode.trim() || line.quantity.trim()) ||
+      form.status !== empty.status ||
+      form.shift.trim() ||
+      selectedShifts.length > 0 ||
+      form.selectedStaffIds.length > 0 ||
+      form.shiftLeadId ||
+      form.mainStaffId ||
+      form.assistantStaffId ||
+      form.traineeStaffId ||
+      form.startDate !== empty.startDate ||
+      form.endDateTime.trim() ||
+      form.machine.trim() ||
+      form.note.trim()
+  );
+}
+
+function formatProductionOrderDraftTime(value: number) {
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(new Date(value)).replace(/\//g, '-');
+}
+
 type ProductionStaffRoleKey = 'shiftLeadId' | 'mainStaffId' | 'assistantStaffId' | 'traineeStaffId';
 
 /** Phòng ban nguồn cho Trưởng ca / NS chính / Thợ phụ (/ Học việc) trên lệnh SX */
@@ -5145,6 +5253,7 @@ export function AddProductionOrderModal({
   const [lineDraftQuantity, setLineDraftQuantity] = useState('');
   const [lineDraftError, setLineDraftError] = useState('');
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<ProductionOrderDraft | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -5164,6 +5273,7 @@ export function AddProductionOrderModal({
     setLineDraftQuantity('');
     setLineDraftError('');
     setShowCreateOrderModal(false);
+    setSavedDraft(seedOrder ? null : readProductionOrderDraft());
     setIsLoadingLookups(true);
 
     const loadLookups = async () => {
@@ -5613,10 +5723,52 @@ export function AddProductionOrderModal({
   };
 
   const toggleShift = (shift: string) => {
-    setSelectedShifts(prev =>
-      prev.includes(shift) ? prev.filter(item => item !== shift) : [...prev, shift]
-    );
-    setForm(prev => ({ ...prev, machine: '' }));
+    const nextSelectedShifts = selectedShifts.includes(shift)
+      ? selectedShifts.filter(item => item !== shift)
+      : [...selectedShifts, shift];
+    const defaults = getProductionShiftDateTimeDefaults(form.startDate, nextSelectedShifts[0] || '', settings);
+    setSelectedShifts(nextSelectedShifts);
+    setForm(prev => ({
+      ...prev,
+      machine: '',
+      ...(defaults || {})
+    }));
+  };
+
+  const handleClose = () => {
+    if (isSaving) return;
+
+    try {
+      if (!seedOrder && hasProductionOrderDraftContent(form, selectedShifts)) {
+        localStorage.setItem(
+          PRODUCTION_ORDER_DRAFT_STORAGE_KEY,
+          JSON.stringify({ form, selectedShifts, savedAt: Date.now() })
+        );
+      } else {
+        localStorage.removeItem(PRODUCTION_ORDER_DRAFT_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage quota/privacy errors; closing the form must still work.
+    }
+
+    onClose();
+  };
+
+  const restoreDraft = () => {
+    if (!savedDraft) return;
+    setForm(savedDraft.form);
+    setSelectedShifts(savedDraft.selectedShifts);
+    setSavedDraft(null);
+    setFormError('');
+  };
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem(PRODUCTION_ORDER_DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore storage privacy errors; hiding the banner is enough for this session.
+    }
+    setSavedDraft(null);
   };
 
   if (!open) return null;
@@ -5701,6 +5853,11 @@ export function AddProductionOrderModal({
       }
 
       await onCreated();
+      try {
+        localStorage.removeItem(PRODUCTION_ORDER_DRAFT_STORAGE_KEY);
+      } catch {
+        // Ignore storage privacy errors after the order was already created.
+      }
       onClose();
     } catch (error: any) {
       setFormError(error.message || 'Không thể tạo lệnh sản xuất.');
@@ -5718,13 +5875,33 @@ export function AddProductionOrderModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isSaving}
             className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Đóng
           </button>
         </div>
+
+        {savedDraft && !seedOrder ? (
+          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-800">
+            <span>
+              Có bản nháp lưu lúc <strong>{formatProductionOrderDraftTime(savedDraft.savedAt)}</strong>.
+            </span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={discardDraft} className="px-2 py-1 font-bold text-zinc-500 hover:text-zinc-700">
+                Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={restoreDraft}
+                className="rounded-lg bg-[#d9152b] px-3 py-1.5 font-bold text-white transition hover:bg-[#b30d1c]"
+              >
+                Khôi phục
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {formError && (
           <div className="mx-4 mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold leading-5 text-rose-700">
@@ -5754,10 +5931,12 @@ export function AddProductionOrderModal({
             <DateInput
               value={form.startDate}
               onChange={startDate => {
+                const defaults = getProductionShiftDateTimeDefaults(startDate, selectedShifts[0] || '', settings);
                 setForm(prev => ({
                   ...prev,
                   startDate,
-                  startDateTime: mergeProductionOrderDateTime(startDate, prev.startDateTime)
+                  startDateTime: defaults?.startDateTime || mergeProductionOrderDateTime(startDate, prev.startDateTime),
+                  endDateTime: defaults?.endDateTime || prev.endDateTime
                 }));
               }}
               required
@@ -5946,7 +6125,7 @@ export function AddProductionOrderModal({
             )}
           </label>
 
-          <label className="space-y-1.5">
+          <label className="col-span-2 space-y-1.5 sm:col-span-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Trạng thái</span>
             <SearchableSelect
               value={form.status}
@@ -5959,7 +6138,7 @@ export function AddProductionOrderModal({
             />
           </label>
 
-          <label className="col-span-2 space-y-1.5">
+          <label className="col-span-2 space-y-1.5 sm:col-span-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Máy *</span>
             {renderMachineSelect(
               form.machine,

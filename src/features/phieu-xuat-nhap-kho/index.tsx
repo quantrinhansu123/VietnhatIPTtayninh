@@ -119,6 +119,8 @@ const WAREHOUSE_HISTORY_TABS = [
   ['tai_che', 'Kho tái chế', Recycle]
 ] as const satisfies ReadonlyArray<readonly [WarehouseKind, string, React.ComponentType<{ className?: string }>]>;
 
+type WarehouseHistoryOption = { name: string; kind: WarehouseKind };
+
 const WAREHOUSE_HISTORY_SLIP_TYPE_TABS = [
   { key: 'xuat' as const, label: 'Xuất kho', hint: 'Phiếu xuất kho đã lưu', Icon: ArrowUpFromLine },
   { key: 'nhap' as const, label: 'Nhập kho', hint: 'Phiếu nhập kho đã lưu', Icon: ArrowDownToLine }
@@ -1245,7 +1247,7 @@ export function WarehouseSlipPanel({
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [recipient, setRecipient] = useState('');
   const [deliverer, setDeliverer] = useState('');
-  const [warehouseLocation, setWarehouseLocation] = useState('Đà Nẵng');
+  const [warehouseLocation, setWarehouseLocation] = useState('HCM');
   const [lines, setLines] = useState<WarehouseSlipLineDraft[]>(() => [createWarehouseLineDraft()]);
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
@@ -1568,7 +1570,7 @@ export function WarehouseSlipPanel({
       setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
       setRecipient(draft.recipient || '');
       setDeliverer(draft.deliverer || draft.recipient || '');
-      setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
+      setWarehouseLocation(draft.warehouseLocation || 'HCM');
       const draftLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
       setLines(draft.slipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
       // Catalog Tổng kg có thể chưa kịp load — xếp lại theo khối lượng khi weightCatalog sẵn sàng.
@@ -1966,7 +1968,7 @@ export function WarehouseSlipPanel({
     setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
     setRecipient(draft.recipient || '');
     setDeliverer(draft.deliverer || '');
-    setWarehouseLocation(draft.warehouseLocation || 'Đà Nẵng');
+    setWarehouseLocation(draft.warehouseLocation || 'HCM');
     const restoredLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
     linesRef.current = restoredLines;
     setLines(restoredLines);
@@ -3419,7 +3421,7 @@ export function WarehouseSlipPanel({
                   value={warehouseLocation}
                   onChange={event => setWarehouseLocation(event.target.value)}
                   className={warehouseFieldClass}
-                  placeholder="VD: Đà Nẵng"
+                  placeholder="VD: HCM"
                 />
               </label>
               <label className="block min-w-0 space-y-1.5">
@@ -4008,6 +4010,8 @@ export function WarehouseHistoryPanel({
       ? initialWarehouseTab
       : accessibleWarehouseTabs[0]?.[0] ?? initialWarehouseTab
   );
+  const [warehouseOptions, setWarehouseOptions] = useState<WarehouseHistoryOption[]>([]);
+  const [selectedWarehouseName, setSelectedWarehouseName] = useState('');
   const { canView, canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseTab);
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -4076,6 +4080,33 @@ export function WarehouseHistoryPanel({
   }, []);
 
   useEffect(() => {
+    const loadWarehouses = async () => {
+      try {
+        const res = await fetch('/api/quan-ly-kho');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const records: Array<{ ten_kho?: string }> = Array.isArray(data?.records) ? data.records : [];
+        const allowedKinds = new Set(accessibleWarehouseTabs.map(([kind]) => kind));
+        const options = Array.from(
+          new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean))
+        )
+          .map(name => ({ name, kind: inferWarehouseKindFromName(name) }))
+          .filter(option => allowedKinds.has(option.kind))
+          .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+        setWarehouseOptions(options);
+        const initialOption = options.find(option => option.kind === initialWarehouseTab) || options[0];
+        if (initialOption) {
+          setSelectedWarehouseName(initialOption.name);
+          setWarehouseTab(initialOption.kind);
+        }
+      } catch {
+        setWarehouseOptions([]);
+      }
+    };
+    void loadWarehouses();
+  }, [warehouseAccess.vatTu.canView, warehouseAccess.thanhPham.canView]);
+
+  useEffect(() => {
     if (canView) return;
     const firstAllowed = accessibleWarehouseTabs[0]?.[0];
     if (firstAllowed && firstAllowed !== warehouseTab) setWarehouseTab(firstAllowed);
@@ -4099,6 +4130,7 @@ export function WarehouseHistoryPanel({
       } else {
         params.set('loai_kho', warehouseTab);
         params.set('loai', selectedType);
+        if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
         if (fromDate) params.set('from', fromDate);
         if (toDate) params.set('to', toDate);
       }
@@ -4121,7 +4153,11 @@ export function WarehouseHistoryPanel({
           .map(order => [order.orderCode.trim().toUpperCase(), order.machine] as const)
       );
       const rows = normalizeWarehouseMovements(data)
-        .filter(row => (standaloneSlipCode ? row.slipCode === standaloneSlipCode : row.warehouseKind === warehouseTab))
+        .filter(row => (
+          standaloneSlipCode
+            ? row.slipCode === standaloneSlipCode
+            : row.warehouseKind === warehouseTab && (!selectedWarehouseName || row.warehouseName === selectedWarehouseName)
+        ))
         .map(row => {
           if (row.machine) return row;
           const linkedCodes = extractLinkedProductionOrderCodes(row.reason, row.note);
@@ -4148,7 +4184,7 @@ export function WarehouseHistoryPanel({
     setViewingSlipCode(null);
     setSelectedSlipCodes(new Set());
     loadMovements();
-  }, [warehouseTab, selectedType, fromDate, toDate]);
+  }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate]);
 
   const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(filterShift) || Boolean(searchText);
 
@@ -4602,14 +4638,18 @@ export function WarehouseHistoryPanel({
         <div className="min-w-0">
           <FilterCombobox
             label="Chọn kho"
-            options={accessibleWarehouseTabs.map(([kind]) => kind)}
-            value={warehouseTab}
-            onChange={value => setWarehouseTab(value as WarehouseKind)}
-            formatOption={value =>
-              WAREHOUSE_HISTORY_TABS.find(([kind]) => kind === value)?.[1] || warehouseKindLabel(value as WarehouseKind)
-            }
+            options={warehouseOptions.map(option => option.name)}
+            value={selectedWarehouseName || 'all'}
+            onChange={value => {
+              const option = warehouseOptions.find(item => item.name === value);
+              if (!option) return;
+              setSelectedWarehouseName(option.name);
+              setWarehouseTab(option.kind);
+            }}
             searchPlaceholder="Tìm kho..."
             includeAll={false}
+            matchButtonWidth
+            dropdownWidth="min-w-0 max-w-none"
           />
         </div>
         {canCreate ? (

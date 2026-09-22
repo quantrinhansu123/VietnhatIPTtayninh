@@ -11622,6 +11622,7 @@ export function createApp() {
       const khoFilter = parseWarehouseStorageType(req.query.loai_kho ?? req.query.kho ?? req.query.warehouseKind);
       const fromDate = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const toDate = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      const warehouseNameFilter = String(req.query.ten_kho ?? req.query.warehouseName ?? '').trim();
       const slipCode = String(req.query.ma_phieu ?? req.query.slipCode ?? '').trim();
       const maNpl = String(req.query.ma_npl ?? req.query.materialCode ?? '').trim();
       const maSp = String(req.query.ma_sp ?? req.query.productCode ?? '').trim();
@@ -11663,6 +11664,7 @@ export function createApp() {
       } else if (khoFilter === 'nvl') {
         query = query.or('loai_kho.eq.nvl,loai_kho.is.null');
       }
+      if (warehouseNameFilter) query = query.eq('ten_kho', warehouseNameFilter);
       if (fromDate) query = query.gte('ngay_phieu', fromDate);
       if (toDate) query = query.lte('ngay_phieu', toDate);
       if (slipCode) query = query.eq('ma_phieu', slipCode);

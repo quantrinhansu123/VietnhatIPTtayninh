@@ -991,11 +991,11 @@ export function ProductionOrdersPanel({
                             className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
                           />
                         </td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top font-black">
+                        <td className="min-w-0 px-2 py-2 align-top font-black">
                           <button
                             type="button"
                             onClick={() => openOrderDetail(row)}
-                            className="text-[#ef1b2d] transition hover:text-[#b30d1c]"
+                            className="block min-w-0 max-w-full break-words text-left [overflow-wrap:anywhere] text-[#ef1b2d] transition hover:text-[#b30d1c]"
                           >
                             {row.code || '-'}
                           </button>
@@ -1005,7 +1005,7 @@ export function ProductionOrdersPanel({
                           <StatusBadge label={row.status} color="amber" />
                         </td>
                         <td className="min-w-[160px] max-w-[240px] break-words px-2 py-2 align-top leading-4 text-zinc-700">{row.customer}</td>
-                        <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-600">{row.orderRef}</td>
+                        <td className="min-w-0 break-words px-2 py-2 align-top text-zinc-600 [overflow-wrap:anywhere]">{row.orderRef}</td>
                         <td className="px-2 py-2 align-top font-semibold text-zinc-700">
                           {staffNames.length > 0 ? (
                             <div className="space-y-1 leading-tight">

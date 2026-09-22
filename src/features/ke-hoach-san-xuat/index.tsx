@@ -4734,8 +4734,9 @@ export function parseRowQuantity(raw: string): number {
 }
 
 export function getOrderProductQuantity(orders: OrderRow[], orderRef: string, productCode: string): number {
+  const orderRefs = new Set(splitProductionOrderRefs(orderRef));
   return orders
-    .filter(order => order.orderCode === orderRef)
+    .filter(order => orderRefs.has(order.orderCode))
     .reduce((sum, order) => {
       const lines = getOrderProductLines(order);
       return (
@@ -4752,12 +4753,16 @@ export function getAllocatedProductionQuantity(
   orderRef: string,
   productCode: string
 ): number {
+  const orderRefs = new Set(splitProductionOrderRefs(orderRef));
   return productionOrders
     .reduce((sum, po) => {
       return (
         sum +
         getProductionOrderProductLines(po)
-          .filter(line => (line.orderRef || po.orderRef) === orderRef && line.productCode === productCode)
+          .filter(line => {
+            const lineRefs = splitProductionOrderRefs(line.orderRef || po.orderRef);
+            return line.productCode === productCode && lineRefs.some(ref => orderRefs.has(ref));
+          })
           .reduce((lineSum, line) => lineSum + parseRowQuantity(line.quantity), 0)
       );
     }, 0);
@@ -4775,8 +4780,9 @@ export function getRemainingProductionQuantity(
 }
 
 export function getOrderProductUnit(orders: OrderRow[], orderRef: string, productCode: string): string {
+  const orderRefs = new Set(splitProductionOrderRefs(orderRef));
   const line = orders
-    .filter(order => order.orderCode === orderRef)
+    .filter(order => orderRefs.has(order.orderCode))
     .flatMap(order => getOrderProductLines(order))
     .find(item => item.productCode === productCode);
   return line?.unit && line.unit !== '-' ? line.unit : '';
@@ -4880,8 +4886,10 @@ export function listProductOptionsForOrder(
 ) {
   if (!orderRef) return [];
 
+  const orderRefs = new Set(splitProductionOrderRefs(orderRef));
+
   const fromOrders = orders
-    .filter(order => order.orderCode === orderRef)
+    .filter(order => orderRefs.has(order.orderCode))
     .flatMap(order =>
       getOrderProductLines(order).map(line => ({
         code: line.productCode,

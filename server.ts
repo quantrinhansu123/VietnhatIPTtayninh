@@ -7707,18 +7707,26 @@ function splitProductionProductCodes(raw: string): string[] {
     .filter(code => code && code !== '-');
 }
 
+function splitProductionOrderRefs(raw: string): string[] {
+  return String(raw || '')
+    .split(/[,;+]/)
+    .map(ref => ref.trim())
+    .filter(ref => ref && ref !== '-');
+}
+
 async function getRemainingProductionQuantityForProduct(
   orderRef: string,
   productCode: string
 ): Promise<{ ordered: number; allocated: number; remaining: number }> {
-  if (!supabase || !orderRef || !productCode) {
+  const orderRefs = splitProductionOrderRefs(orderRef);
+  if (!supabase || orderRefs.length === 0 || !productCode) {
     return { ordered: 0, allocated: 0, remaining: 0 };
   }
 
   const { data: orderRowsByCode, error: orderRowsError } = await supabase
     .from(SUPABASE_ORDERS_TABLE)
     .select('san_pham')
-    .eq('ma_don_hang', orderRef);
+    .in('ma_don_hang', orderRefs);
 
   if (orderRowsError) {
     console.error('Supabase don_hang remaining qty error:', orderRowsError);
@@ -7740,18 +7748,15 @@ async function getRemainingProductionQuantityForProduct(
 
   const allocated = (productionRows || []).reduce((sum, row) => {
     const productionRow = row as Record<string, unknown>;
-    const rowOrderRefs = String(productionRow.ma_don_hang ?? '')
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean);
+    const rowOrderRefs = splitProductionOrderRefs(String(productionRow.ma_don_hang ?? ''));
 
     return (
       sum +
       parseOrderProductsFromRow(productionRow).reduce((innerSum, item) => {
-        const itemOrderRef = String(item.ma_don_hang ?? '').trim();
-        const matchesOrder = itemOrderRef
-          ? itemOrderRef === orderRef
-          : rowOrderRefs.length === 0 || rowOrderRefs.includes(orderRef);
+        const itemOrderRefs = splitProductionOrderRefs(String(item.ma_don_hang ?? ''));
+        const matchesOrder = itemOrderRefs.length > 0
+          ? itemOrderRefs.some(ref => orderRefs.includes(ref))
+          : rowOrderRefs.length === 0 || rowOrderRefs.some(ref => orderRefs.includes(ref));
         if (!matchesOrder || item.ma_sp !== productCode) return innerSum;
         return innerSum + (item.so_luong ?? 0);
       }, 0)

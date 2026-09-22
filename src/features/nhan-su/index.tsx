@@ -486,7 +486,7 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
               <p className="text-xs font-black uppercase tracking-wider text-red-300">Quản lý nhân sự</p>
               <h2 className="mt-1 text-2xl font-black leading-tight">Chi nhánh & Phòng ban</h2>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-300">
-                Phòng ban Sản xuất · Chi nhánh Đà Nẵng.
+                Phòng ban Sản xuất · Chi nhánh HCM.
               </p>
             </div>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -1150,7 +1150,7 @@ export function emptyStaffForm(defaults?: { branch?: string; department?: string
   return {
     name: '',
     code: '',
-    branch: defaults?.branch || 'Đà Nẵng',
+    branch: defaults?.branch || 'HCM',
     department: defaults?.department || 'Sản xuất',
     role: 'Nhân sự',
     shift: '',
@@ -1203,7 +1203,7 @@ export function AddStaffModal({
 
   const branchOptions = useMemo(() => {
     const names = branches.map(branch => branch.name).filter(Boolean);
-    return names.length > 0 ? names : ['Đà Nẵng'];
+    return names.length > 0 ? names : ['HCM'];
   }, [branches]);
 
   useEffect(() => {
@@ -1214,7 +1214,7 @@ export function AddStaffModal({
       setForm({
         name: member.name,
         code: member.code || '',
-        branch: branchName || branchOptions[0] || 'Đà Nẵng',
+        branch: branchName || branchOptions[0] || 'HCM',
         department: departmentName || departmentOptions[0] || 'Sản xuất',
         role: member.role || 'Nhân sự',
         shift: member.shift || '',
@@ -1228,7 +1228,7 @@ export function AddStaffModal({
       return;
     }
 
-    const branchName = branches.find(branch => branch.id === defaultBranchId)?.name || branchOptions[0] || 'Đà Nẵng';
+    const branchName = branches.find(branch => branch.id === defaultBranchId)?.name || branchOptions[0] || 'HCM';
     const nextCode = generateNextStaffCode(collectStaffCodes(branches));
     setForm({
       ...emptyStaffForm({ branch: branchName, department: defaultDepartment || departmentOptions[0] || 'Sản xuất' }),

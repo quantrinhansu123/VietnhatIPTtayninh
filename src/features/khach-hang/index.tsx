@@ -121,9 +121,6 @@ export function normalizeHcmBusinessStaffOptions(data: unknown): StaffOption[] {
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }
 
-/** @deprecated Dùng normalizeHcmBusinessStaffOptions — giữ alias để không gãy import cũ. */
-export const normalizeDaNangBusinessStaffOptions = normalizeHcmBusinessStaffOptions;
-
 function pickNumber(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = record[key];

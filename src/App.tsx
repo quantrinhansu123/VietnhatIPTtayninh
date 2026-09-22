@@ -444,7 +444,7 @@ export default function App() {
 
         if (res.ok) {
           const newRep = await res.json();
-          addNotification('Lưu báo cáo lên database Đà Nẵng thành công!', 'success');
+          addNotification('Lưu báo cáo lên database HCM thành công!', 'success');
           // Update local list
           setReports(prev => [newRep, ...prev]);
           // Reset form draft
@@ -1086,7 +1086,7 @@ export default function App() {
                   <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="p-5 bg-white rounded-2xl shadow-xl flex items-center gap-3.5 text-slate-800 font-bold max-w-sm">
                       <Loader2 className="w-6 h-6 text-emerald-600 animate-spin shrink-0" />
-                      <span>Đang mã hóa & đồng bộ dữ liệu Đà Nẵng...</span>
+                      <span>Đang mã hóa & đồng bộ dữ liệu HCM...</span>
                     </div>
                   </div>
                 )}

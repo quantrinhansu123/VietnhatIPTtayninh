@@ -26,4 +26,4 @@
 
 **UI chọn:**
 - **Công việc:** task việc — sổ xuống các task đã lưu trong `phan_cong_cv.cong_viec`, hoặc nhập task mới
-- **Nhân sự phụ trách:** sổ xuống nhân sự chi nhánh **Đà Nẵng** (`GET /api/nhan-su?format=groups`)
+- **Nhân sự phụ trách:** sổ xuống nhân sự chi nhánh **HCM** (`GET /api/nhan-su?format=groups`)

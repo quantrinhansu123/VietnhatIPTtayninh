@@ -108,9 +108,6 @@ export function normalizeHcmBusinessStaffOptions(data: unknown): StaffOption[] {
     .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }
 
-/** @deprecated Dùng normalizeHcmBusinessStaffOptions */
-export const normalizeDaNangBusinessStaffOptions = normalizeHcmBusinessStaffOptions;
-
 export function normalizeCustomerOptions(data: unknown): CustomerOption[] {
   if (!data || typeof data !== 'object') return [];
   const customers = (data as { customers?: unknown }).customers;

@@ -1,7 +1,7 @@
 {
   "name": "Viet Nhat IPT - Báo cáo Sản Xuất",
   "short_name": "Viet Nhat",
-  "description": "Hệ thống báo cáo sản xuất di động - Đà Nẵng Plant",
+  "description": "Hệ thống báo cáo sản xuất di động - HCM Plant",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

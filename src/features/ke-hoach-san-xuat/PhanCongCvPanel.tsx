@@ -26,9 +26,9 @@ function normalizeBranchKey(value: string) {
     .replace(/\s+/g, ' ');
 }
 
-function isDaNangBranch(name: string) {
+function isHcmBranch(name: string) {
   const key = normalizeBranchKey(name);
-  return key.includes('da nang') || key.includes('danang');
+  return key.includes('hcm') || key.includes('ho chi minh') || key.includes('sai gon');
 }
 
 export type PhanCongCvRow = {
@@ -87,13 +87,13 @@ function normalizeRows(data: unknown): PhanCongCvRow[] {
     .filter((row): row is PhanCongCvRow => Boolean(row));
 }
 
-function collectDaNangStaff(data: unknown): StaffOption[] {
+function collectHcmStaff(data: unknown): StaffOption[] {
   const branches = normalizeHrBranches(data);
-  const daNang =
-    branches.find(branch => isDaNangBranch(branch.name)) ||
-    branches.find(branch => isDaNangBranch(branch.shortName)) ||
+  const hcmBranch =
+    branches.find(branch => isHcmBranch(branch.name)) ||
+    branches.find(branch => isHcmBranch(branch.shortName)) ||
     null;
-  const source = daNang ? [daNang] : branches;
+  const source = hcmBranch ? [hcmBranch] : branches;
   const members: StaffOption[] = [];
   const seen = new Set<string>();
 
@@ -372,7 +372,7 @@ export default function PhanCongCvPanel({
         if (!alive) return;
         const options = getProductionShiftOptions(normalizeShiftSettings(settingData));
         setShiftOptions(options);
-        const staff = collectDaNangStaff(staffData);
+        const staff = collectHcmStaff(staffData);
         setStaffOptions(staff);
 
         const firstCa = String(options[0]?.value || '');
@@ -556,7 +556,7 @@ export default function PhanCongCvPanel({
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch CV</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-              {planGroups.length} bản ghi · task việc + NV Đà Nẵng
+              {planGroups.length} bản ghi · task việc + NV HCM
             </p>
           </div>
           <div className="max-h-[70vh] overflow-auto">
@@ -642,7 +642,7 @@ export default function PhanCongCvPanel({
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ef1b2d]">Kế hoạch CV</p>
               <h3 className="text-sm font-black text-zinc-950">Chi tiết phân công công việc</h3>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Công việc = task việc · Nhân sự Đà Nẵng
+                Công việc = task việc · Nhân sự HCM
                 {isLoadingLookups ? ' · Đang tải danh mục...' : ` · ${jobOptions.length} task · ${staffOptions.length} NV`}
               </p>
             </div>
@@ -774,8 +774,8 @@ export default function PhanCongCvPanel({
                               value={row.nhanSuPhuTrach}
                               onChange={value => updateRow(row.key, { nhanSuPhuTrach: value })}
                               options={staffOptions}
-                              placeholder="Chọn NV Đà Nẵng"
-                              searchPlaceholder="Tìm nhân sự Đà Nẵng..."
+                              placeholder="Chọn NV HCM"
+                              searchPlaceholder="Tìm nhân sự HCM..."
                               inputClassName={fieldClass}
                               comboboxMode
                               allowCustomValue

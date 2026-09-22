@@ -1,6 +1,6 @@
 {
   "name": "Mobile Production Reporting Tool",
-  "description": "Hệ thống báo cáo sản xuất di động tối ưu dành cho nhân sự vận hành máy sản xuất tại nhà máy (ví dụ: Nhà máy Đà Nẵng).",
+  "description": "Hệ thống báo cáo sản xuất di động tối ưu dành cho nhân sự vận hành máy sản xuất tại nhà máy HCM.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

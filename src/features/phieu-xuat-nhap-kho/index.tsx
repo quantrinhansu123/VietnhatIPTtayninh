@@ -1837,7 +1837,7 @@ export function WarehouseSlipPanel({
   };
 
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
-  const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('camera');
+  const [scannerMode, setScannerMode] = useState<'hardware-v2' | 'camera'>('camera');
   // Theo dõi `lines` bằng ref để quét liên tiếp (nhiều mã trong 1 nhịp camera) không bị đọc dữ
   // liệu cũ khi state React chưa kịp render lại giữa hai lần quét.
   const linesRef = useRef(lines);
@@ -1849,6 +1849,9 @@ export function WarehouseSlipPanel({
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
   const khoScanMaPhieuRef = useRef<string>('');
   const khoScanCountRef = useRef(0);
+  const scanWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingScanWritesRef = useRef(new Set<Promise<void>>());
+  const scanWriteErrorRef = useRef('');
 
   /**
    * Nhập kho và Xuất kho là hai phiếu độc lập. Không giữ các dòng của form
@@ -1880,6 +1883,7 @@ export function WarehouseSlipPanel({
     scannedFullCodesByPrefixRef.current.clear();
     khoScanMaPhieuRef.current = '';
     khoScanCountRef.current = 0;
+    scanWriteErrorRef.current = '';
   };
 
   // Tổng SL trên modal: số dòng đã quét thành công trong phiên (mỗi quét = 1, không cộng dồn).
@@ -2017,6 +2021,7 @@ export function WarehouseSlipPanel({
     scannedFullCodesByPrefixRef.current.clear();
     khoScanMaPhieuRef.current = '';
     khoScanCountRef.current = 0;
+    scanWriteErrorRef.current = '';
     setLines(emptyLines);
     setActionMessage('Đã xóa phiếu lưu tạm.');
   };
@@ -2092,34 +2097,6 @@ export function WarehouseSlipPanel({
     const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
     const maPhieu = ensureKhoScanMaPhieu();
 
-    try {
-      const res = await fetch('/api/kho/quet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          loai_phieu: slipType === 'xuat' ? 'xuat' : 'nhap',
-          ma_sp: fullCode,
-          ma_phieu: maPhieu,
-          loai: warehouseKind,
-          ten_sp: patch.name || '',
-          nhan_su: createdBy.trim() || loginName,
-          ngay: slipDate,
-          so_luong: 1
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setFormError(String(data?.error || 'Không ghi nhận được mã quét vào kho.'));
-        return false;
-      }
-      if (data?.ma_phieu) {
-        khoScanMaPhieuRef.current = String(data.ma_phieu);
-      }
-    } catch {
-      setFormError('Không kết nối được máy chủ khi ghi nhận mã quét.');
-      return false;
-    }
-
     if (hasLotSuffix) {
       if (scannedForPrefix) {
         scannedForPrefix.add(fullCodeKey);
@@ -2146,6 +2123,59 @@ export function WarehouseSlipPanel({
     linesRef.current = nextLines;
     setLines(nextLines);
     setFormError('');
+    scanWriteErrorRef.current = '';
+
+    const scanWrite = scanWriteQueueRef.current.then(async () => {
+      let res: Response;
+      try {
+        res = await fetch('/api/kho/quet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loai_phieu: slipType === 'xuat' ? 'xuat' : 'nhap',
+            ma_sp: fullCode,
+            ma_phieu: maPhieu,
+            loai: warehouseKind,
+            ten_sp: patch.name || '',
+            nhan_su: createdBy.trim() || loginName,
+            ngay: slipDate,
+            so_luong: 1
+          })
+        });
+      } catch {
+        throw new Error('Không kết nối được máy chủ khi ghi nhận mã quét.');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || 'Không ghi nhận được mã quét vào kho.'));
+      }
+      if (data?.ma_phieu && khoScanMaPhieuRef.current === maPhieu) {
+        khoScanMaPhieuRef.current = String(data.ma_phieu);
+      }
+    }).catch(error => {
+      const message = error instanceof Error
+        ? error.message
+        : 'Không kết nối được máy chủ khi ghi nhận mã quét.';
+      scanWriteErrorRef.current = message;
+      const restored = linesRef.current.filter(line => line.key !== targetKey);
+      const next = restored.length > 0 ? restored : [createWarehouseLineDraft()];
+      linesRef.current = next;
+      setLines(next);
+      if (hasLotSuffix) {
+        const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
+        codes?.delete(fullCodeKey);
+        if (codes && codes.size === 0) scannedFullCodesByPrefixRef.current.delete(prefixKey);
+      }
+      khoScanCountRef.current = Math.max(0, khoScanCountRef.current - 1);
+      setFormError(message);
+      throw error;
+    });
+    scanWriteQueueRef.current = scanWrite.catch(() => undefined);
+    pendingScanWritesRef.current.add(scanWrite);
+    void scanWrite.then(
+      () => pendingScanWritesRef.current.delete(scanWrite),
+      () => pendingScanWritesRef.current.delete(scanWrite)
+    );
 
     if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
       void loadNvlAvgInboundPrice(patch.code, slipDate, {
@@ -2154,6 +2184,7 @@ export function WarehouseSlipPanel({
         forceOverwrite: true
       });
     }
+    // Cập nhật local trước để máy quét nhận mã kế tiếp ngay; API được ghi tuần tự ở trên.
     return true;
   };
 
@@ -2880,7 +2911,20 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(lines) : lines;
+    const pendingScanWrites = [...pendingScanWritesRef.current];
+    if (pendingScanWrites.length > 0) {
+      setQrScannerOpen(false);
+      setIsSaving(true);
+      const results = await Promise.allSettled(pendingScanWrites);
+      if (results.some(result => result.status === 'rejected')) {
+        setFormError(scanWriteErrorRef.current || 'Không ghi nhận đủ các mã đã quét vào kho.');
+        setIsSaving(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
+    const currentLines = linesRef.current;
+    const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(currentLines) : currentLines;
     const mergedLines = isNvlExport ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
     if (slipType === 'xuat') setLines(mergedLines);
     const linesForSave = isNvlExport
@@ -3028,7 +3072,10 @@ export function WarehouseSlipPanel({
       scannedFullCodesByPrefixRef.current.clear();
       khoScanMaPhieuRef.current = '';
       khoScanCountRef.current = 0;
-      setLines([createWarehouseLineDraft()]);
+      scanWriteErrorRef.current = '';
+      const emptyLines = [createWarehouseLineDraft()];
+      linesRef.current = emptyLines;
+      setLines(emptyLines);
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu phiếu xuất nhập kho.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3487,7 +3534,7 @@ export function WarehouseSlipPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setScannerMode('hardware');
+                  setScannerMode('hardware-v2');
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
@@ -3581,7 +3628,7 @@ export function WarehouseSlipPanel({
               <button
                 type="button"
                 onClick={() => {
-                  setScannerMode('hardware');
+                  setScannerMode('hardware-v2');
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
@@ -3649,7 +3696,10 @@ export function WarehouseSlipPanel({
                       scannedFullCodesByPrefixRef.current.clear();
                       khoScanMaPhieuRef.current = '';
                       khoScanCountRef.current = 0;
-                      setLines([createWarehouseLineDraft()]);
+                      scanWriteErrorRef.current = '';
+                      const emptyLines = [createWarehouseLineDraft()];
+                      linesRef.current = emptyLines;
+                      setLines(emptyLines);
                     }}
                     className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:border-red-200 hover:bg-red-50 hover:text-[#ef1b2d]"
                     title="Xóa toàn bộ các dòng đã nhập/import"
@@ -3971,7 +4021,8 @@ export function WarehouseSlipPanel({
         open={qrScannerOpen}
         onClose={() => setQrScannerOpen(false)}
         onScan={addLineFromScan}
-        hardwareOnly={scannerMode === 'hardware'}
+        hardwareOnly={scannerMode !== 'camera'}
+        hardwareV2={scannerMode === 'hardware-v2'}
         closeAfterScan={false}
         requireConfirm={false}
         scannedCount={scannedItemCount}

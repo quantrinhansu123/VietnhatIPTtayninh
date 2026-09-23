@@ -6568,10 +6568,14 @@ function buildWarehouseSlipInsertRecords(
         parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' && item.sourceInboundSlipCode
           ? item.sourceInboundSlipCode
           : null,
-      link_anh_can_thuc_te:
-        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImageUrl || null : null,
-      link_anh_can_thuc_te_public_id:
-        parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl' ? item.actualWeightImagePublicId || null : null
+      ...(parsed.loaiPhieu === 'xuat' &&
+      parsed.loaiKho === 'nvl' &&
+      (item.actualWeightImageUrl || item.actualWeightImagePublicId)
+        ? {
+            link_anh_can_thuc_te: item.actualWeightImageUrl || null,
+            link_anh_can_thuc_te_public_id: item.actualWeightImagePublicId || null
+          }
+        : {})
     };
 
     // Các cột liên kết báo cáo là migration tùy chọn; không gửi key null để phiếu thường

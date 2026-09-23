@@ -5795,22 +5795,7 @@ export function AddProductionOrderModal({
         setFormError(`${productName} không có trong đơn ${line.orderRef} hoặc chưa có số lượng đặt hàng.`);
         return;
       }
-      const remaining = getRemainingProductionQuantity(
-        orders,
-        productionOrders,
-        line.orderRef.trim(),
-        line.productCode
-      );
-      if (remaining <= 0) {
-        setFormError(`${productName} đã được lập đủ lệnh SX cho đơn ${line.orderRef}.`);
-        return;
-      }
-      if (quantity > remaining) {
-        setFormError(
-          `Số lượng ${productName} (đơn ${line.orderRef}) vượt quá còn lại (${formatNumber(remaining, 0)}).`
-        );
-        return;
-      }
+      // Cho phép SL lệnh > còn lại theo đơn (cảnh báo hiển thị trên dòng "Còn N").
     }
     if (selectedShifts.length === 0) {
       setFormError('Vui lòng chọn ít nhất một ca.');

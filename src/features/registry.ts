@@ -17,7 +17,6 @@ export type TableId =
   | 'ma_san_pham_chi_tiet'
   | 'danh_sach_may'
   | 'kho_nvl'
-  | 'kho'
   | 'phieu_xuat_nhap_kho'
   | 'ton_kho'
   | 'don_hang'
@@ -227,17 +226,6 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/utils/bulkMaterialTotalWeightExcel.ts',
       'src/utils/materialCatalogExcel.ts'
     ]
-  },
-  kho: {
-    table: 'kho',
-    label: 'DB kho mới (xuat_kho / nhap_kho / phieu_*)',
-    sql: ['supabase-db-kho.sql'],
-    apiPrefix: '/api/kho/quet',
-    serverLines: 'POST /api/kho/quet',
-    appTab: 'warehouse-slip',
-    appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx (addLineFromScan)',
-    components: ['src/components/ProductQrScanner.tsx'],
-    utils: []
   },
   phieu_xuat_nhap_kho: {
     table: 'phieu_xuat_nhap_kho',

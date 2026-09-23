@@ -370,32 +370,36 @@ export default function ProductQrScanner({
       setFeedbackPulse(prev => prev + 1);
       return false;
     }
+    // Danh sách "Đang quét" hiển thị đúng mã đầy đủ (cả tiền tố + hậu tố lô/serial) vừa quét —
+    // khác với ô Mã SP ngoài form vốn chỉ lưu mã gốc; mỗi lần quét thành công là một mã khác
+    // nhau (quét trùng đã bị chặn ở onScan) nên không gộp theo mã gốc ở đây.
+    const fullCode = raw.trim();
 
     let scanResult: boolean | 'duplicate' | void;
     try {
       scanResult = await onScanRef.current(raw);
     } catch {
       setFeedbackPulse(prev => prev + 1);
-      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${code}` });
+      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
     }
     setFeedbackPulse(prev => prev + 1);
 
     if (scanResult === false) {
-      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${code}` });
+      setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
     }
 
     if (scanResult === 'duplicate') {
-      setScannedItems(prev => bumpScannedItem(prev, code, false));
-      setFeedback({ type: 'duplicate', text: `Mã đã quét — bỏ qua: ${code}` });
+      setScannedItems(prev => bumpScannedItem(prev, fullCode, false));
+      setFeedback({ type: 'duplicate', text: `Mã đã quét — bỏ qua: ${fullCode}` });
       return true;
     }
 
     playScanBeep(audioCtxRef.current);
-    setScannedItems(prev => bumpScannedItem(prev, code, true));
+    setScannedItems(prev => bumpScannedItem(prev, fullCode, true));
     setSessionScannedCount(current => current + 1);
-    setFeedback({ type: 'success', text: `Đã ghi nhận: ${code}` });
+    setFeedback({ type: 'success', text: `Đã ghi nhận: ${fullCode}` });
     if (closeAfterScan) {
       void stopScannerSafely(scannerRef.current);
       onCloseRef.current();

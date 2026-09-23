@@ -37,6 +37,7 @@ export function SearchableSelect({
   getSearchText,
   displaySelectedAsValue = false,
   desktopAutoFlip = false,
+  autoFlip = false,
   openUpward = false,
   comboboxMode = false,
   comboboxSearchable = true,
@@ -65,6 +66,8 @@ export function SearchableSelect({
   displaySelectedAsValue?: boolean;
   /** Trên desktop, tự mở menu lên trên nếu phía dưới không đủ chỗ. */
   desktopAutoFlip?: boolean;
+  /** Tự mở menu lên trên nếu phía dưới không đủ chỗ, ở MỌI kích thước màn hình (kể cả mobile). */
+  autoFlip?: boolean;
   openUpward?: boolean;
   /** Hiển thị dạng combobox: nút có mũi tên, menu mở ra có ô tìm kiếm riêng. */
   comboboxMode?: boolean;
@@ -232,7 +235,7 @@ export function SearchableSelect({
       return;
     }
 
-    if (desktopAutoFlip && isDesktop) {
+    if (autoFlip || (desktopAutoFlip && isDesktop)) {
       if (spaceBelow < preferredHeight && spaceAbove > spaceBelow) {
         setMenuStyle({
           bottom: viewportHeight - rect.top + 4,
@@ -272,7 +275,7 @@ export function SearchableSelect({
       window.removeEventListener('scroll', handleReposition, true);
       document.removeEventListener('scroll', handleReposition, true);
     };
-  }, [open, query, filteredOptions.length, desktopAutoFlip, openUpward, matchDropdownWidth]);
+  }, [open, query, filteredOptions.length, desktopAutoFlip, autoFlip, openUpward, matchDropdownWidth]);
 
   useEffect(() => {
     if (!open || !comboboxMode) return;
@@ -377,11 +380,11 @@ export function SearchableSelect({
       return createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[200] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
+          className="fixed z-[200] flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
           style={menuStyle}
         >
           {comboboxSearchable ? (
-            <div className="border-b border-zinc-100 bg-white p-2">
+            <div className="shrink-0 border-b border-zinc-100 bg-white p-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
                 <input
@@ -399,7 +402,10 @@ export function SearchableSelect({
               </div>
             </div>
           ) : null}
-          <div className={`${comboboxSearchable ? 'max-h-44' : 'max-h-52'} overflow-y-auto py-1`}>
+          {/* flex-1 + min-h-0: luôn vừa đúng phần không gian còn lại trong menuStyle.maxHeight (đã
+              tính theo khoảng trống thật của viewport) thay vì max-h cố định — tránh bị outer
+              overflow-hidden cắt mất mấy dòng cuối mà không cuộn tới được. */}
+          <div className="min-h-0 flex-1 overflow-y-auto py-1">
             {allowEmpty && !query.trim() ? (
               <button
                 type="button"

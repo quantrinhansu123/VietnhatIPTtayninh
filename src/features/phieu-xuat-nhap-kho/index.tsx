@@ -370,17 +370,21 @@ const warehouseLineFieldClass =
 const warehouseLineHeaderClass =
   'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
 
+// Mobile: Mã SP, Tên SP, Số lượng, Trọng lượng — min-w cố định để cuộn ngang thay vì bị bóp chữ.
+const warehouseMobileLineColsClass =
+  'min-w-[26rem] grid-cols-[minmax(5.5rem,1fr)_minmax(5.5rem,1.1fr)_minmax(3.5rem,0.65fr)_minmax(4rem,0.85fr)]';
+
 const warehouseNhapLineGridClass =
-  'grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]';
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]`;
 
 const warehouseXuatLineGridClass =
-  'grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]';
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]`;
 
 const warehouseNhapHeaderGridClass =
-  'mb-1 grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]';
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]`;
 
 const warehouseXuatHeaderGridClass =
-  'mb-1 grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,0.72fr)_minmax(0,0.88fr)] items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]';
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]`;
 
 const warehouseLineMobileHiddenClass = 'hidden md:block';
 
@@ -573,11 +577,11 @@ export function warehouseKindLabel(kind: WarehouseKind) {
 }
 
 export function warehouseItemCodeLabel(kind: WarehouseKind) {
-  return kind === 'san_pham' ? 'Mã SP' : 'Mã NPL';
+  return kind === 'san_pham' ? 'Mã TP' : 'Mã NVL';
 }
 
 export function warehouseItemNameLabel(kind: WarehouseKind) {
-  return kind === 'san_pham' ? 'Tên SP' : 'Tên NVL';
+  return kind === 'san_pham' ? 'Tên TP' : 'Tên NVL';
 }
 
 export function computeWarehouseLineAmount(quantityText: string, unitPriceText: string): number {
@@ -858,19 +862,18 @@ function mergeWarehouseExportLineDrafts(lines: WarehouseSlipLineDraft[]): Wareho
   return order.map(key => map.get(key)!);
 }
 
-/** Tiền tố trước dấu "_" — dùng để tra tên/ĐVT trong danh mục khi mã quét có hậu tố lô/serial (VD "L30cm_3701190208G" → "L30cm"). */
+/**
+ * Tiền tố trước hậu tố lô/serial — dùng để tra tên/ĐVT trong danh mục khi mã quét có hậu tố.
+ * Tem thực tế dùng dấu "_" làm ranh giới (VD "MN-BB332_CXIxxxx" → "MN-BB332"); bản thân mã gốc
+ * có thể chứa dấu "-" nên KHÔNG được tách theo "-", chỉ tách theo "_".
+ */
 function warehouseCodePrefix(raw: string) {
   const trimmed = raw.trim();
   if (!trimmed) return '';
+  const plusIdx = trimmed.indexOf('+');
+  if (plusIdx > 0) return trimmed.slice(0, plusIdx).trim();
   const underscoreIdx = trimmed.indexOf('_');
   return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
-}
-
-/** Có hậu tố lô/serial sau dấu `_` (VD `MT-MN001_3701190208G`). Mã chỉ tiền tố → không chặn quét trùng. */
-function warehouseScanHasLotSuffix(raw: string) {
-  const trimmed = raw.trim();
-  const underscoreIdx = trimmed.indexOf('_');
-  return underscoreIdx > 0 && underscoreIdx < trimmed.length - 1;
 }
 
 export function createWarehouseLineDraft(): WarehouseSlipLineDraft {
@@ -1634,25 +1637,36 @@ export function WarehouseSlipPanel({
           // Mã trong kho_nvl đôi khi bị nhập thiếu dấu cách so với mã gốc bên danh mục sản
           // phẩm (VD "MT-MN043" vs "MT- MN043") — quy về đúng mã gốc để khớp giữa các kho.
           const productData = await spRes.json().catch(() => ({}));
+          const products = spRes.ok ? normalizeProducts(productData) : [];
           const canonicalCodeByKey = new Map<string, string>();
-          if (spRes.ok) {
-            for (const product of normalizeProducts(productData)) {
-              const key = normalizeMaterialCodeKey(product.code);
-              if (key) canonicalCodeByKey.set(key, product.code);
-            }
+          for (const product of products) {
+            const key = normalizeMaterialCodeKey(product.code);
+            if (key) canonicalCodeByKey.set(key, product.code);
           }
+
+          // kho_nvl hiện có thể chưa được seed; khi đó dùng BOM sản phẩm để vẫn gợi ý mã NVL.
+          const bomMaterials = products.flatMap(product =>
+            product.nplItems.map(item => ({
+              code: item.code,
+              name: item.name || item.code,
+              unit: item.unit || '-',
+              warehouse: '',
+              totalWeight: ''
+            }))
+          );
+          const catalogMaterials = materials.length > 0 ? materials : bomMaterials;
 
           const selectedWarehouseKey = normalizeWarehouseNameKey(warehouseName);
           // Các kho vật tư gợi ý theo tên kho đã chọn trong Quản lý kho; NVL chưa được gán kho
           // (phần lớn danh mục hiện nay) vẫn hiển thị để không chặn việc chọn mã.
           const filteredMaterials = selectedWarehouseKey
-            ? materials.filter(material => {
+            ? catalogMaterials.filter(material => {
                 const materialWarehouseKey = normalizeWarehouseNameKey(
                   material.warehouse === '-' ? '' : material.warehouse
                 );
                 return !materialWarehouseKey || materialWarehouseKey === selectedWarehouseKey;
               })
-            : materials;
+            : catalogMaterials;
           const selectableMaterials = dedupeWarehouseSlipMaterials(filteredMaterials, warehouseName);
           setItemOptions(
             selectableMaterials.map(material => ({
@@ -1845,13 +1859,8 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
-  // Chống quét trùng tem (hậu tố serial) + mã phiếu phiên quét ghi thẳng DB kho mới.
+  // Chống quét trùng tem (hậu tố serial).
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
-  const khoScanMaPhieuRef = useRef<string>('');
-  const khoScanCountRef = useRef(0);
-  const scanWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const pendingScanWritesRef = useRef(new Set<Promise<void>>());
-  const scanWriteErrorRef = useRef('');
 
   /**
    * Nhập kho và Xuất kho là hai phiếu độc lập. Không giữ các dòng của form
@@ -1881,16 +1890,14 @@ export function WarehouseSlipPanel({
     linesRef.current = emptyLines;
     setLines(emptyLines);
     scannedFullCodesByPrefixRef.current.clear();
-    khoScanMaPhieuRef.current = '';
-    khoScanCountRef.current = 0;
-    scanWriteErrorRef.current = '';
   };
 
-  // Tổng SL trên modal: số dòng đã quét thành công trong phiên (mỗi quét = 1, không cộng dồn).
+  // Tổng SL trên modal: tổng số lượng đã quét trong phiên — mã cùng gốc khác hậu tố lô/serial
+  // cộng dồn vào 1 dòng nên đếm theo SL từng dòng, không phải số dòng.
   const scannedItemCount = lines.reduce((total, line) => {
-    if (!line.isScanned) return total;
-    const parsed = parsePercentInput(line.quantity);
-    return total + (Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+    if (!line.isScanned || !line.code.trim()) return total;
+    const qty = parsePercentInput(line.quantity);
+    return total + (Number.isFinite(qty) && qty > 0 ? qty : 1);
   }, 0);
 
   const buildCurrentScanningDraft = (id: string, updatedAt = Date.now()): WarehouseScanningDraft => ({
@@ -2019,60 +2026,14 @@ export function WarehouseSlipPanel({
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     scannedFullCodesByPrefixRef.current.clear();
-    khoScanMaPhieuRef.current = '';
-    khoScanCountRef.current = 0;
-    scanWriteErrorRef.current = '';
     setLines(emptyLines);
     setActionMessage('Đã xóa phiếu lưu tạm.');
   };
 
-  useEffect(() => {
-    if (slipType !== 'nhap' || editSlipCode || !lines.some(line => line.code.trim())) return;
-    const timer = window.setTimeout(() => persistScanningDraft(), 300);
-    return () => window.clearTimeout(timer);
-  }, [
-    warehouseKind,
-    warehouseName,
-    slipType,
-    slipDate,
-    reason,
-    note,
-    createdBy,
-    productionOrderCodes,
-    machine,
-    selectedShifts,
-    recipient,
-    deliverer,
-    warehouseLocation,
-    lines,
-    editSlipCode
-  ]);
-
   /**
-   * Quét/nhận một mã → ghi thẳng 1 dòng vào DB kho mới (nhap_kho / xuat_kho), so_luong = 1.
-   * Không cộng dồn SL trên dòng đã có. Tem có hậu tố serial trùng tuyệt đối → bỏ qua.
-   * Ô Mã NPL/SP vẫn lưu tiền tố danh mục; mỗi lần quét thành công thêm 1 dòng SL = 1 trên form.
+   * Quét/nhận một mã → thêm/cộng dồn 1 dòng trên form, so_luong += 1. Tem có hậu tố serial
+   * trùng tuyệt đối → bỏ qua. Ô Mã NPL/SP lưu tiền tố danh mục (mã gốc).
    */
-  const ensureKhoScanMaPhieu = () => {
-    const editing = String(editSlipCode || '').trim();
-    if (editing) {
-      khoScanMaPhieuRef.current = editing;
-      return editing;
-    }
-    if (!khoScanMaPhieuRef.current) {
-      const now = new Date();
-      const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-        now.getDate()
-      ).padStart(2, '0')}`;
-      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
-        2,
-        '0'
-      )}${String(now.getSeconds()).padStart(2, '0')}`;
-      khoScanMaPhieuRef.current = `${slipType === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
-    }
-    return khoScanMaPhieuRef.current;
-  };
-
   const addLineFromScan = async (raw: string): Promise<boolean | 'duplicate'> => {
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
@@ -2080,40 +2041,42 @@ export function WarehouseSlipPanel({
     const prefix = warehouseCodePrefix(fullCode);
     const prefixKey = normalizeMaterialCodeKey(prefix);
     const fullCodeKey = normalizeMaterialCodeKey(fullCode);
-    const hasLotSuffix = warehouseScanHasLotSuffix(fullCode);
 
+    // Trùng mã = trùng đúng cả chuỗi vừa quét (giống nút quét ở trang Kiểm kho) — so khớp trực
+    // tiếp theo chuỗi đầy đủ, không phụ thuộc việc nhận diện đúng định dạng hậu tố lô/serial.
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
-    if (hasLotSuffix && scannedForPrefix?.has(fullCodeKey)) {
+    if (scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
-    const belongsToWarehouse = itemOptions.some(
-      option => normalizeMaterialCodeKey(option.code) === prefixKey
-    );
-    if (!belongsToWarehouse) {
-      return false;
-    }
-
+    // Vẫn nhận mã dù chưa khớp danh mục hiện tại (giống nút quét ở trang Kiểm kho) — tên/ĐVT
+    // để trống, người dùng bổ sung tay thay vì bị chặn hẳn không ghi nhận được mã.
     const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
-    const maPhieu = ensureKhoScanMaPhieu();
 
-    if (hasLotSuffix) {
-      if (scannedForPrefix) {
-        scannedForPrefix.add(fullCodeKey);
-      } else {
-        scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
-      }
-    } else if (!scannedFullCodesByPrefixRef.current.has(prefixKey)) {
+    if (scannedForPrefix) {
+      scannedForPrefix.add(fullCodeKey);
+    } else {
       scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
     }
 
-    khoScanCountRef.current += 1;
-
+    // Mã quét mang hậu tố lô/serial khác nhau nhưng cùng mã gốc (patch.code) → cộng dồn vào
+    // đúng 1 dòng hiện có thay vì tạo thêm dòng mới; dòng chỉ hiển thị mã gốc sản phẩm.
+    const canonicalCodeKey = normalizeMaterialCodeKey(patch.code);
+    const existingIndex = canonicalCodeKey
+      ? current.findIndex(line => line.code.trim() && normalizeMaterialCodeKey(line.code) === canonicalCodeKey)
+      : -1;
     const draft = createWarehouseLineDraft();
     const emptyIndex = current.findIndex(line => !line.code.trim());
     let targetKey: string;
     let nextLines: WarehouseSlipLineDraft[];
-    if (emptyIndex >= 0) {
+    if (existingIndex >= 0) {
+      targetKey = current[existingIndex].key;
+      nextLines = current.map((line, idx) => {
+        if (idx !== existingIndex) return line;
+        const nextQuantity = (parsePercentInput(line.quantity) || 0) + 1;
+        return { ...line, ...patch, quantity: String(nextQuantity), isScanned: true };
+      });
+    } else if (emptyIndex >= 0) {
       targetKey = current[emptyIndex].key;
       nextLines = current.map((line, idx) => (idx === emptyIndex ? { ...line, ...patch } : line));
     } else {
@@ -2123,59 +2086,6 @@ export function WarehouseSlipPanel({
     linesRef.current = nextLines;
     setLines(nextLines);
     setFormError('');
-    scanWriteErrorRef.current = '';
-
-    const scanWrite = scanWriteQueueRef.current.then(async () => {
-      let res: Response;
-      try {
-        res = await fetch('/api/kho/quet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            loai_phieu: slipType === 'xuat' ? 'xuat' : 'nhap',
-            ma_sp: fullCode,
-            ma_phieu: maPhieu,
-            loai: warehouseKind,
-            ten_sp: patch.name || '',
-            nhan_su: createdBy.trim() || loginName,
-            ngay: slipDate,
-            so_luong: 1
-          })
-        });
-      } catch {
-        throw new Error('Không kết nối được máy chủ khi ghi nhận mã quét.');
-      }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(String(data?.error || 'Không ghi nhận được mã quét vào kho.'));
-      }
-      if (data?.ma_phieu && khoScanMaPhieuRef.current === maPhieu) {
-        khoScanMaPhieuRef.current = String(data.ma_phieu);
-      }
-    }).catch(error => {
-      const message = error instanceof Error
-        ? error.message
-        : 'Không kết nối được máy chủ khi ghi nhận mã quét.';
-      scanWriteErrorRef.current = message;
-      const restored = linesRef.current.filter(line => line.key !== targetKey);
-      const next = restored.length > 0 ? restored : [createWarehouseLineDraft()];
-      linesRef.current = next;
-      setLines(next);
-      if (hasLotSuffix) {
-        const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
-        codes?.delete(fullCodeKey);
-        if (codes && codes.size === 0) scannedFullCodesByPrefixRef.current.delete(prefixKey);
-      }
-      khoScanCountRef.current = Math.max(0, khoScanCountRef.current - 1);
-      setFormError(message);
-      throw error;
-    });
-    scanWriteQueueRef.current = scanWrite.catch(() => undefined);
-    pendingScanWritesRef.current.add(scanWrite);
-    void scanWrite.then(
-      () => pendingScanWritesRef.current.delete(scanWrite),
-      () => pendingScanWritesRef.current.delete(scanWrite)
-    );
 
     if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
       void loadNvlAvgInboundPrice(patch.code, slipDate, {
@@ -2184,7 +2094,6 @@ export function WarehouseSlipPanel({
         forceOverwrite: true
       });
     }
-    // Cập nhật local trước để máy quét nhận mã kế tiếp ngay; API được ghi tuần tự ở trên.
     return true;
   };
 
@@ -2911,18 +2820,6 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const pendingScanWrites = [...pendingScanWritesRef.current];
-    if (pendingScanWrites.length > 0) {
-      setQrScannerOpen(false);
-      setIsSaving(true);
-      const results = await Promise.allSettled(pendingScanWrites);
-      if (results.some(result => result.status === 'rejected')) {
-        setFormError(scanWriteErrorRef.current || 'Không ghi nhận đủ các mã đã quét vào kho.');
-        setIsSaving(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-    }
     const currentLines = linesRef.current;
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(currentLines) : currentLines;
     const mergedLines = isNvlExport ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
@@ -3070,9 +2967,6 @@ export function WarehouseSlipPanel({
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
-      khoScanMaPhieuRef.current = '';
-      khoScanCountRef.current = 0;
-      scanWriteErrorRef.current = '';
       const emptyLines = [createWarehouseLineDraft()];
       linesRef.current = emptyLines;
       setLines(emptyLines);
@@ -3253,10 +3147,10 @@ export function WarehouseSlipPanel({
             ) : null}
             <p className="w-full text-[11px] font-semibold text-amber-800">
               {lastDraftSavedAt
-                ? `Đã tự lưu tạm lúc ${formatWarehouseDraftUpdatedAt(lastDraftSavedAt)}. Có thể đóng trang và mở lại để quét tiếp.`
+                ? `Đã lưu tạm lúc ${formatWarehouseDraftUpdatedAt(lastDraftSavedAt)}. Có thể đóng trang và mở lại để quét tiếp.`
                 : ownedScanningDrafts.length > 0
                   ? `Có ${ownedScanningDrafts.length} phiếu đang quét. Chọn một phiếu để tiếp tục.`
-                  : 'Phiếu sẽ tự lưu tạm sau khi quét hoặc nhập mã đầu tiên.'}
+                  : 'Bấm "Lưu tạm phiếu" sau khi quét để không mất dữ liệu nếu đóng trang.'}
             </p>
           </div>
         ) : null}
@@ -3305,6 +3199,7 @@ export function WarehouseSlipPanel({
                 comboboxMode
                 comboboxSearchable={false}
                 matchDropdownWidth
+                autoFlip
               />
               {warehouseName ? (
                 <p className="text-[11px] font-semibold text-zinc-500">
@@ -3538,7 +3433,7 @@ export function WarehouseSlipPanel({
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
-                title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                title="Quét máy: mã trùng sẽ không được thêm"
               >
                 <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
                 Quét máy
@@ -3632,7 +3527,7 @@ export function WarehouseSlipPanel({
                   setQrScannerOpen(true);
                 }}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-[#ef1b2d] bg-[#ef1b2d] px-5 text-sm font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-[#b30d1c] sm:h-14 sm:text-base"
-                title="Quét máy: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                title="Quét máy: mã trùng sẽ không được thêm"
               >
                 <ScanBarcode className="h-5 w-5 sm:h-6 sm:w-6" />
                 Quét máy
@@ -3659,7 +3554,7 @@ export function WarehouseSlipPanel({
                     setQrScannerOpen(true);
                   }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  title="Quét ĐT: mã chỉ tiền tố quét lại vẫn cộng SL; tem có hậu tố trùng đúng mã thì báo lỗi"
+                  title="Quét ĐT: mã trùng sẽ không được thêm"
                 >
                   <ScanBarcode className="h-3.5 w-3.5" />
                   Quét ĐT
@@ -3694,9 +3589,6 @@ export function WarehouseSlipPanel({
                     onClick={() => {
                       if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
                       scannedFullCodesByPrefixRef.current.clear();
-                      khoScanMaPhieuRef.current = '';
-                      khoScanCountRef.current = 0;
-                      scanWriteErrorRef.current = '';
                       const emptyLines = [createWarehouseLineDraft()];
                       linesRef.current = emptyLines;
                       setLines(emptyLines);
@@ -3712,18 +3604,16 @@ export function WarehouseSlipPanel({
             ) : null}
           </div>
 
-          <div className="scrollbar-hidden -mx-0.5 md:overflow-x-auto">
+          <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
             <div
               className={slipType === 'xuat' ? warehouseXuatHeaderGridClass : warehouseNhapHeaderGridClass}
             >
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-center`}>STT</span>
               <span className={warehouseLineHeaderClass}>
-                <span className="md:hidden">{warehouseKind === 'san_pham' ? 'Mã SP *' : 'Mã NVL *'}</span>
+                <span className="md:hidden">{warehouseKind === 'san_pham' ? 'Mã TP *' : 'Mã NVL *'}</span>
                 <span className="hidden md:inline">{warehouseItemCodeLabel(warehouseKind)} *</span>
               </span>
-              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>
-                {warehouseItemNameLabel(warehouseKind)}
-              </span>
+              <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>ĐVT</span>
               {slipType === 'xuat' ? (
                 <>
@@ -3770,7 +3660,7 @@ export function WarehouseSlipPanel({
                       getValue={item => (item as MaterialOption).code}
                     />
                   </div>
-                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
+                  <div className="min-w-0">
                     <input
                       value={line.name}
                       onChange={event => updateLine(line.key, { name: event.target.value })}
@@ -5333,4 +5223,3 @@ export function WarehouseHistoryPanel({
     </div>
   );
 }
-

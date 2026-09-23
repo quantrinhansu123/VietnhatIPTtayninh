@@ -1865,8 +1865,75 @@ export function WarehouseSlipPanel({
     linesRef.current = lines;
   }, [lines]);
 
-  // Chống quét trùng tem (hậu tố serial).
+  // Chống quét trùng tem + mã phiếu phiên quét ghi thẳng DB kho (nền, hàng tuần tự).
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
+  const khoScanMaPhieuRef = useRef<string>('');
+  const khoScanQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const ensureKhoScanMaPhieu = () => {
+    const editing = String(editSlipCode || '').trim();
+    if (editing) {
+      khoScanMaPhieuRef.current = editing;
+      return editing;
+    }
+    if (!khoScanMaPhieuRef.current) {
+      const now = new Date();
+      const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+        now.getDate()
+      ).padStart(2, '0')}`;
+      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
+        2,
+        '0'
+      )}${String(now.getSeconds()).padStart(2, '0')}`;
+      khoScanMaPhieuRef.current = `${slipType === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
+    }
+    return khoScanMaPhieuRef.current;
+  };
+
+  /**
+   * Xếp hàng tuần tự POST /api/kho/quet — UI không await.
+   * Mỗi job chờ job trước xong (kể cả lỗi) rồi mới gửi, tránh race tồn `kho`.
+   */
+  const syncScanToKhoDb = (payload: {
+    fullCode: string;
+    name: string;
+    maPhieu: string;
+    loaiPhieu: 'nhap' | 'xuat';
+    loai: string;
+    nhanSu: string;
+    ngay: string;
+  }) => {
+    khoScanQueueRef.current = khoScanQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const res = await fetch('/api/kho/quet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              loai_phieu: payload.loaiPhieu,
+              ma_sp: payload.fullCode,
+              ma_phieu: payload.maPhieu || khoScanMaPhieuRef.current,
+              loai: payload.loai,
+              ten_sp: payload.name || '',
+              nhan_su: payload.nhanSu,
+              ngay: payload.ngay,
+              so_luong: 1
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            console.warn('[kho/quet]', data?.error || res.statusText);
+            return;
+          }
+          if (data?.ma_phieu) {
+            khoScanMaPhieuRef.current = String(data.ma_phieu);
+          }
+        } catch (err: any) {
+          console.warn('[kho/quet]', err?.message || err);
+        }
+      });
+  };
 
   /**
    * Nhập kho và Xuất kho là hai phiếu độc lập. Không giữ các dòng của form
@@ -1896,6 +1963,7 @@ export function WarehouseSlipPanel({
     linesRef.current = emptyLines;
     setLines(emptyLines);
     scannedFullCodesByPrefixRef.current.clear();
+    khoScanMaPhieuRef.current = '';
   };
 
   // Tổng SL trên modal: tổng số lượng đã quét trong phiên — mã cùng gốc khác hậu tố lô/serial
@@ -2032,13 +2100,14 @@ export function WarehouseSlipPanel({
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     scannedFullCodesByPrefixRef.current.clear();
+    khoScanMaPhieuRef.current = '';
     setLines(emptyLines);
     setActionMessage('Đã xóa phiếu lưu tạm.');
   };
 
   /**
-   * Quét/nhận một mã → thêm/cộng dồn 1 dòng trên form, so_luong += 1. Tem có hậu tố serial
-   * trùng tuyệt đối → bỏ qua. Ô Mã NPL/SP lưu tiền tố danh mục (mã gốc).
+   * Quét → cập nhật form ngay; đồng bộ nền vào DB kho (nhap_kho / xuat_kho tuỳ phiếu).
+   * Tem trùng tuyệt đối → bỏ qua. Cùng mã gốc → cộng SL trên form; mỗi lần quét vẫn ghi 1 dòng DB.
    */
   const addLineFromScan = async (raw: string): Promise<boolean | 'duplicate'> => {
     const fullCode = String(raw ?? '').trim();
@@ -2048,16 +2117,13 @@ export function WarehouseSlipPanel({
     const prefixKey = normalizeMaterialCodeKey(prefix);
     const fullCodeKey = normalizeMaterialCodeKey(fullCode);
 
-    // Trùng mã = trùng đúng cả chuỗi vừa quét (giống nút quét ở trang Kiểm kho) — so khớp trực
-    // tiếp theo chuỗi đầy đủ, không phụ thuộc việc nhận diện đúng định dạng hậu tố lô/serial.
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
     if (scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
-    // Vẫn nhận mã dù chưa khớp danh mục hiện tại (giống nút quét ở trang Kiểm kho) — tên/ĐVT
-    // để trống, người dùng bổ sung tay thay vì bị chặn hẳn không ghi nhận được mã.
     const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
+    const maPhieu = ensureKhoScanMaPhieu();
 
     if (scannedForPrefix) {
       scannedForPrefix.add(fullCodeKey);
@@ -2065,8 +2131,6 @@ export function WarehouseSlipPanel({
       scannedFullCodesByPrefixRef.current.set(prefixKey, new Set([fullCodeKey]));
     }
 
-    // Mã quét mang hậu tố lô/serial khác nhau nhưng cùng mã gốc (patch.code) → cộng dồn vào
-    // đúng 1 dòng hiện có thay vì tạo thêm dòng mới; dòng chỉ hiển thị mã gốc sản phẩm.
     const canonicalCodeKey = normalizeMaterialCodeKey(patch.code);
     const existingIndex = canonicalCodeKey
       ? current.findIndex(line => line.code.trim() && normalizeMaterialCodeKey(line.code) === canonicalCodeKey)
@@ -2092,6 +2156,17 @@ export function WarehouseSlipPanel({
     linesRef.current = nextLines;
     setLines(nextLines);
     setFormError('');
+
+    // Đồng bộ dần theo hàng tuần tự — không await, quét tiếp được ngay.
+    syncScanToKhoDb({
+      fullCode,
+      name: patch.name || '',
+      maPhieu,
+      loaiPhieu: slipType === 'xuat' ? 'xuat' : 'nhap',
+      loai: warehouseKind,
+      nhanSu: createdBy.trim() || loginName,
+      ngay: slipDate
+    });
 
     if ((warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat') {
       void loadNvlAvgInboundPrice(patch.code, slipDate, {
@@ -2973,6 +3048,7 @@ export function WarehouseSlipPanel({
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
+      khoScanMaPhieuRef.current = '';
       const emptyLines = [createWarehouseLineDraft()];
       linesRef.current = emptyLines;
       setLines(emptyLines);
@@ -3594,6 +3670,7 @@ export function WarehouseSlipPanel({
                     onClick={() => {
                       if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
                       scannedFullCodesByPrefixRef.current.clear();
+                      khoScanMaPhieuRef.current = '';
                       const emptyLines = [createWarehouseLineDraft()];
                       linesRef.current = emptyLines;
                       setLines(emptyLines);

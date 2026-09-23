@@ -11406,6 +11406,141 @@ export function createApp() {
     }
   });
 
+  /**
+   * Quét máy nhập/xuất → ghi thẳng 1 dòng nhap_kho / xuat_kho (DB kho).
+   * FE gọi nền khi quét — không chặn thao tác tiếp.
+   */
+  app.post('/api/kho/quet', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const loaiPhieuRaw = String(body.loai_phieu ?? body.loaiPhieu ?? body.type ?? '')
+        .trim()
+        .toLowerCase();
+      const loaiPhieu =
+        loaiPhieuRaw === 'xuat' || loaiPhieuRaw === 'px'
+          ? 'xuat'
+          : loaiPhieuRaw === 'nhap' || loaiPhieuRaw === 'pn'
+            ? 'nhap'
+            : '';
+      const maSpFull = String(body.ma_sp ?? body.maSp ?? body.code ?? '').trim();
+      const loai = String(body.loai ?? body.loai_kho ?? body.warehouseKind ?? '').trim() || null;
+      const tenSp = String(body.ten_sp ?? body.tenSp ?? body.name ?? '').trim() || null;
+      const nhanSu = String(body.nhan_su ?? body.nhanSu ?? body.createdBy ?? '').trim() || null;
+      const soLuongRaw = Number(body.so_luong ?? body.soLuong ?? body.quantity ?? 1);
+      const soLuong = Number.isFinite(soLuongRaw) && soLuongRaw > 0 ? soLuongRaw : 1;
+      let maPhieu = String(body.ma_phieu ?? body.maPhieu ?? body.slipCode ?? '').trim();
+
+      if (!loaiPhieu) {
+        return res.status(400).json({ error: 'Thiếu loai_phieu (nhap|xuat).' });
+      }
+      if (!maSpFull) {
+        return res.status(400).json({ error: 'Thiếu ma_sp.' });
+      }
+      if (!maPhieu) {
+        maPhieu = generateWarehouseSlipCode(loaiPhieu);
+      }
+
+      const nowVn = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })
+      );
+      const ngay =
+        String(body.ngay ?? body.date ?? '').trim() ||
+        `${nowVn.getFullYear()}-${String(nowVn.getMonth() + 1).padStart(2, '0')}-${String(
+          nowVn.getDate()
+        ).padStart(2, '0')}`;
+      const gio = `${String(nowVn.getHours()).padStart(2, '0')}:${String(nowVn.getMinutes()).padStart(
+        2,
+        '0'
+      )}:${String(nowVn.getSeconds()).padStart(2, '0')}`;
+
+      const underscoreIdx = maSpFull.indexOf('_');
+      const maSpTon = underscoreIdx > 0 ? maSpFull.slice(0, underscoreIdx).trim() : maSpFull;
+      const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+
+      const { error: headerError } = await supabaseKho.from(headerTable).upsert(
+        { ma_phieu: maPhieu, ngay, gio, nhan_su: nhanSu },
+        { onConflict: 'ma_phieu' }
+      );
+      if (headerError) {
+        console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} upsert error:`, headerError);
+        return res.status(500).json({ error: `Không thể tạo phiếu ${loaiPhieu}. ${headerError.message}` });
+      }
+
+      const { data: lineRow, error: lineError } = await supabaseKho
+        .from(lineTable)
+        .insert({ ma_sp: maSpFull, loai, so_luong: soLuong, ma_phieu: maPhieu })
+        .select('id, ma_sp, loai, so_luong, ma_phieu, created_at')
+        .single();
+
+      if (lineError) {
+        console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} insert error:`, lineError);
+        return res.status(500).json({ error: `Không thể ghi ${lineTable}. ${lineError.message}` });
+      }
+
+      const { data: stockRow } = await supabaseKho
+        .from('kho')
+        .select('id, ma_sp, ton_dau, xuat, nhap, ton_cuoi, loai, ten_sp')
+        .eq('ma_sp', maSpTon)
+        .maybeSingle();
+
+      const tonDau = Number(stockRow?.ton_dau ?? 0) || 0;
+      const nhapPrev = Number(stockRow?.nhap ?? 0) || 0;
+      const xuatPrev = Number(stockRow?.xuat ?? 0) || 0;
+      const nhapNext = nhapPrev + (loaiPhieu === 'nhap' ? soLuong : 0);
+      const xuatNext = xuatPrev + (loaiPhieu === 'xuat' ? soLuong : 0);
+      const tonCuoi = tonDau + nhapNext - xuatNext;
+
+      if (stockRow?.id) {
+        const { error: stockUpdateError } = await supabaseKho
+          .from('kho')
+          .update({
+            nhap: nhapNext,
+            xuat: xuatNext,
+            ton_cuoi: tonCuoi,
+            loai: loai || stockRow.loai || null,
+            ten_sp: tenSp || stockRow.ten_sp || null
+          })
+          .eq('id', stockRow.id);
+        if (stockUpdateError) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] kho update error:`, stockUpdateError);
+        }
+      } else {
+        const { error: stockInsertError } = await supabaseKho.from('kho').insert({
+          ma_sp: maSpTon,
+          ton_dau: 0,
+          nhap: nhapNext,
+          xuat: xuatNext,
+          ton_cuoi: tonCuoi,
+          ton_toi_thieu: 0,
+          loai,
+          ten_sp: tenSp
+        });
+        if (stockInsertError) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] kho insert error:`, stockInsertError);
+        }
+      }
+
+      return res.status(201).json({
+        success: true,
+        loai_phieu: loaiPhieu,
+        ma_phieu: maPhieu,
+        line: lineRow,
+        kho: { ma_sp: maSpTon, nhap: nhapNext, xuat: xuatNext, ton_cuoi: tonCuoi },
+        source: SUPABASE_KHO_DB_LABEL
+      });
+    } catch (err: any) {
+      console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/quet error:`, err);
+      return res.status(500).json({ error: err.message || 'Lỗi khi ghi nhận quét kho.' });
+    }
+  });
+
   app.get('/api/phieu-xuat-nhap-kho/gia-tb-nhap', async (req, res) => {
     if (!supabase) {
       return res.json({ don_gia: 0, thang: '', so_dong: 0, tong_sl: 0, source: 'local' });

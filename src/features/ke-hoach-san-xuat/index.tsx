@@ -4891,6 +4891,59 @@ export function autofillProductKey(orderRef: string, productCode: string) {
   return `${orderRef}::${productCode}`;
 }
 
+export type AutofillProductCandidate = {
+  key: string;
+  orderRef: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  remainingQty: number;
+};
+
+/** Gộp sản phẩm cùng mã (nhiều đơn) — cộng còn lại, gộp mã đơn. */
+export function groupAutofillProductsByCode(products: AutofillProductCandidate[]) {
+  const groups: Array<{
+    codeKey: string;
+    productCode: string;
+    productName: string;
+    unit: string;
+    remainingQty: number;
+    orderRefs: string[];
+    keys: string[];
+  }> = [];
+  const indexByCode = new Map<string, number>();
+
+  for (const product of products) {
+    const productCode = String(product.productCode || '').trim();
+    if (!productCode || productCode === '-') continue;
+    const codeKey = normalizeProductCodeKey(productCode);
+    const existingIndex = indexByCode.get(codeKey);
+    if (existingIndex === undefined) {
+      indexByCode.set(codeKey, groups.length);
+      groups.push({
+        codeKey,
+        productCode,
+        productName: product.productName,
+        unit: product.unit,
+        remainingQty: Number(product.remainingQty) || 0,
+        orderRefs: product.orderRef.trim() ? [product.orderRef.trim()] : [],
+        keys: [product.key]
+      });
+      continue;
+    }
+
+    const group = groups[existingIndex];
+    group.remainingQty += Number(product.remainingQty) || 0;
+    const orderRef = product.orderRef.trim();
+    if (orderRef && !group.orderRefs.includes(orderRef)) group.orderRefs.push(orderRef);
+    if (!group.keys.includes(product.key)) group.keys.push(product.key);
+    if (!group.productName.trim()) group.productName = product.productName;
+    if (!group.unit.trim()) group.unit = product.unit;
+  }
+
+  return groups;
+}
+
 export function splitProductionOrderRefs(orderRef: string): string[] {
   return String(orderRef || '')
     .split(/[,;+]/)
@@ -5494,9 +5547,17 @@ export function AddProductionOrderModal({
     );
   }, [autofillProductCandidates, autofillProductOrderFilter, autofillProductSearch]);
 
+  /** Hiển thị/chọn theo mã hàng — cùng mã ở nhiều đơn gộp thành 1 dòng. */
+  const filteredAutofillProductGroups = useMemo(
+    () => groupAutofillProductsByCode(filteredAutofillProducts),
+    [filteredAutofillProducts]
+  );
+
   const allFilteredProductsSelected =
-    filteredAutofillProducts.length > 0 &&
-    filteredAutofillProducts.every(item => selectedAutofillProductKeys.includes(item.key));
+    filteredAutofillProductGroups.length > 0 &&
+    filteredAutofillProductGroups.every(group =>
+      group.keys.every(key => selectedAutofillProductKeys.includes(key))
+    );
 
   const toggleAutofillOrderCode = (orderCode: string) => {
     setSelectedAutofillOrderCodes(prev => {
@@ -5512,14 +5573,16 @@ export function AddProductionOrderModal({
     });
   };
 
-  const toggleAutofillProductKey = (key: string) => {
-    setSelectedAutofillProductKeys(prev =>
-      prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]
-    );
+  const toggleAutofillProductGroup = (keys: string[]) => {
+    setSelectedAutofillProductKeys(prev => {
+      const allSelected = keys.every(key => prev.includes(key));
+      if (allSelected) return prev.filter(key => !keys.includes(key));
+      return [...new Set([...prev, ...keys])];
+    });
   };
 
   const toggleAutofillSelectAllFiltered = () => {
-    const keys = filteredAutofillProducts.map(item => item.key);
+    const keys = filteredAutofillProductGroups.flatMap(group => group.keys);
     if (allFilteredProductsSelected) {
       setSelectedAutofillProductKeys(prev => prev.filter(key => !keys.includes(key)));
       return;
@@ -5543,20 +5606,15 @@ export function AddProductionOrderModal({
       return;
     }
 
-    const nextLines = mergeProductionOrderEntryLinesByProductCode(
-      selectedProducts.map(product => ({
-        key: `entry-${product.orderRef}-${product.productCode}-${Math.random().toString(36).slice(2, 7)}`,
-        orderRef: product.orderRef,
-        ...buildProductionEntryLine(
-          orders,
-          productionOrders,
-          product.orderRef,
-          product.productCode,
-          product.productName,
-          product.unit
-        )
-      }))
-    );
+    // Cùng mã hàng (nhiều đơn) → 1 dòng lệnh SX, cộng SL còn lại, gộp mã đơn.
+    const nextLines = groupAutofillProductsByCode(selectedProducts).map(group => ({
+      key: `entry-${group.productCode}-${Math.random().toString(36).slice(2, 7)}`,
+      orderRef: mergeProductionOrderRefs(...group.orderRefs),
+      productCode: group.productCode,
+      productName: group.productName,
+      unit: group.unit,
+      quantity: group.remainingQty > 0 ? String(group.remainingQty) : ''
+    }));
 
     setForm(prev => ({
       ...prev,
@@ -6355,7 +6413,7 @@ export function AddProductionOrderModal({
                         type="checkbox"
                         checked={allFilteredProductsSelected}
                         onChange={toggleAutofillSelectAllFiltered}
-                        disabled={filteredAutofillProducts.length === 0}
+                        disabled={filteredAutofillProductGroups.length === 0}
                         className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:opacity-50"
                       />
                       <span className="text-xs font-extrabold text-zinc-700">Chọn tất cả (đang lọc)</span>
@@ -6363,7 +6421,7 @@ export function AddProductionOrderModal({
                   </div>
 
                   <div className="mt-3 rounded-xl border border-zinc-200 bg-white">
-                    {filteredAutofillProducts.length === 0 ? (
+                    {filteredAutofillProductGroups.length === 0 ? (
                       <div className="px-4 py-6 text-center text-xs font-bold text-zinc-400">
                         {autofillProductSearch.trim()
                           ? 'Không có sản phẩm phù hợp từ khóa tìm kiếm.'
@@ -6371,11 +6429,13 @@ export function AddProductionOrderModal({
                       </div>
                     ) : (
                       <div className="divide-y divide-zinc-100">
-                        {filteredAutofillProducts.map(product => {
-                          const checked = selectedAutofillProductKeys.includes(product.key);
+                        {filteredAutofillProductGroups.map(group => {
+                          const checked = group.keys.every(key =>
+                            selectedAutofillProductKeys.includes(key)
+                          );
                           return (
                             <label
-                              key={product.key}
+                              key={group.codeKey}
                               className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 transition ${
                                 checked ? 'bg-red-50/70' : 'hover:bg-zinc-50'
                               }`}
@@ -6383,20 +6443,27 @@ export function AddProductionOrderModal({
                               <input
                                 type="checkbox"
                                 checked={checked}
-                                onChange={() => toggleAutofillProductKey(product.key)}
+                                onChange={() => toggleAutofillProductGroup(group.keys)}
                                 className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-black text-zinc-950">{product.productCode}</span>
-                                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-black text-zinc-600">
-                                    {product.orderRef}
-                                  </span>
+                                  <span className="font-black text-zinc-950">{group.productCode}</span>
+                                  {group.orderRefs.map(orderRef => (
+                                    <span
+                                      key={orderRef}
+                                      className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-black text-zinc-600"
+                                    >
+                                      {orderRef}
+                                    </span>
+                                  ))}
                                   <span className="text-[11px] font-bold text-emerald-700">
-                                    Còn {formatNumber(product.remainingQty, 0)} {product.unit || ''}
+                                    Còn {formatNumber(group.remainingQty, 0)} {group.unit || ''}
                                   </span>
                                 </div>
-                                <p className="mt-0.5 text-xs font-semibold text-zinc-600">{product.productName || '-'}</p>
+                                <p className="mt-0.5 text-xs font-semibold text-zinc-600">
+                                  {group.productName || '-'}
+                                </p>
                               </div>
                             </label>
                           );
@@ -6410,7 +6477,15 @@ export function AddProductionOrderModal({
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
               <span className="text-xs font-bold text-zinc-500">
-                Đã chọn {selectedAutofillOrderCodes.length} đơn · {selectedAutofillProductKeys.length} sản phẩm
+                Đã chọn {selectedAutofillOrderCodes.length} đơn ·{' '}
+                {
+                  groupAutofillProductsByCode(
+                    autofillProductCandidates.filter(item =>
+                      selectedAutofillProductKeys.includes(item.key)
+                    )
+                  ).length
+                }{' '}
+                sản phẩm
               </span>
               <div className="flex items-center gap-2">
                 <button

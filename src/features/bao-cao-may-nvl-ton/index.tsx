@@ -1246,35 +1246,23 @@ export function MachineNvlReportPanel({
                         <div className="flex w-[42%] min-w-[128px] max-w-[220px] shrink-0 flex-col gap-1">
                           <div className="relative overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50">
                             {lineImageSrc ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setViewingImage({
-                                      url: lineImageSrc,
-                                      title: `Ảnh ${line.code || line.name || index + 1}`
-                                    })
-                                  }
-                                  className="block h-[76px] w-full overflow-hidden"
-                                  title="Xem ảnh"
-                                >
-                                  <img
-                                    src={cloudinaryPreviewUrl(lineImageSrc, 240)}
-                                    alt={`Ảnh ${line.code || line.name || index + 1}`}
-                                    className="h-full w-full object-cover"
-                                  />
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label={`Xóa ảnh ${line.code || line.name || index + 1}`}
-                                  title="Xóa ảnh"
-                                  disabled={isUploadingLineImage}
-                                  onClick={() => updateLine(line.key, { imageUrl: '', imagePublicId: '', imagePreview: '' })}
-                                  className="absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-lg border border-white/80 bg-rose-600 text-white shadow-md transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <Trash2 className="h-5 w-5" aria-hidden="true" />
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setViewingImage({
+                                    url: lineImageSrc,
+                                    title: `Ảnh ${line.code || line.name || index + 1}`
+                                  })
+                                }
+                                className="block h-[76px] w-full overflow-hidden"
+                                title="Xem ảnh"
+                              >
+                                <img
+                                  src={cloudinaryPreviewUrl(lineImageSrc, 240)}
+                                  alt={`Ảnh ${line.code || line.name || index + 1}`}
+                                  className="h-full w-full object-cover"
+                                />
+                              </button>
                             ) : (
                               <label className="flex h-[76px] w-full cursor-pointer flex-col items-center justify-center gap-1 text-[9px] font-bold text-zinc-400">
                                 <Camera className="h-4 w-4" />

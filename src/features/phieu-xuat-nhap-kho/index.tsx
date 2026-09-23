@@ -1333,7 +1333,10 @@ export function WarehouseSlipPanel({
     [scanningDrafts, loginName]
   );
   const selectedWarehouseName = warehouseName.trim();
-  const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl';
+  const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl' && slipType === 'xuat';
+  const showWarehouseShiftAndMachine =
+    showNvlShiftAndMachine || (Boolean(selectedWarehouseName) && warehouseKind === 'san_pham' && slipType === 'nhap');
+  const showFullWarehouseSlipFields = slipType === 'nhap' || warehouseKind === 'san_pham';
   const productionReportLoai: 'thanh_pham' | 'gia_cong' | 'sp_loi' | 'sp_rac' | null = !selectedWarehouseName
     ? null
     : isFinishedGoodsWarehouseName(warehouseName)
@@ -1713,7 +1716,10 @@ export function WarehouseSlipPanel({
       setLines([createWarehouseLineDraft()]);
       setAvgInboundPriceByKey({});
     }
-    if (!nextName || nextKind !== 'nvl') {
+    const showShiftAndMachineForNextWarehouse =
+      Boolean(nextName) &&
+      ((nextKind === 'nvl' && slipType === 'xuat') || (nextKind === 'san_pham' && slipType === 'nhap'));
+    if (!showShiftAndMachineForNextWarehouse) {
       setSelectedShifts([]);
       setMachine('');
     }
@@ -2752,7 +2758,7 @@ export function WarehouseSlipPanel({
 
   const shiftLabel = formatWarehouseShiftSelection(selectedShifts);
   const productionOrderCodesForSave = showOrderFields ? productionOrderCodes : [];
-  const shiftLabelForSave = showNvlShiftAndMachine ? shiftLabel : '';
+  const shiftLabelForSave = showWarehouseShiftAndMachine ? shiftLabel : '';
   const productionOrderLabelForSave = showOrderFields ? productionOrderLabel : '';
   const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodesForSave);
 
@@ -2858,7 +2864,7 @@ export function WarehouseSlipPanel({
       ghiChu: note.trim(),
       nguoiLap: createdBy.trim(),
       ca: shiftLabelForSave || null,
-      may: showNvlShiftAndMachine ? machine.trim() || null : null,
+      may: showWarehouseShiftAndMachine ? machine.trim() || null : null,
       // "Xuất kho treo" là form chờ lấy dữ liệu báo cáo hàng hỏng; khi lưu phải thành phiếu xuất chính thức.
       treo: false,
       items: payloadItems
@@ -3266,11 +3272,10 @@ export function WarehouseSlipPanel({
               </span>
             </div>
           </label>
-          {showNvlShiftAndMachine ? (
+          {showWarehouseShiftAndMachine ? (
           <label className="block min-w-0 space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
-              Ca{' '}
-              <span className="font-semibold normal-case tracking-normal text-zinc-400">(không bắt buộc)</span>
+              Ca
             </span>
             <SearchableSelect
               value={selectedShifts[0] ?? ''}
@@ -3291,7 +3296,7 @@ export function WarehouseSlipPanel({
             />
           </label>
           ) : null}
-          {showNvlShiftAndMachine ? (
+          {showWarehouseShiftAndMachine ? (
             <label className="block min-w-0 space-y-1">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Máy</span>
               <SearchableSelect
@@ -3338,7 +3343,7 @@ export function WarehouseSlipPanel({
               title={loginName ? `Theo tài khoản đăng nhập: ${loginName}` : undefined}
             />
           </label>
-          {slipType === 'nhap' ? (
+          {showFullWarehouseSlipFields ? (
             <label className="block min-w-0 space-y-1.5">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người giao hàng</span>
               <input
@@ -3355,7 +3360,7 @@ export function WarehouseSlipPanel({
             </label>
           )}
 
-          {slipType === 'nhap' ? (
+          {showFullWarehouseSlipFields ? (
             <>
               <label className="block min-w-0 space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Địa điểm</span>

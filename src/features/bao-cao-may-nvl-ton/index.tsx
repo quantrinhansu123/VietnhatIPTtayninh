@@ -1243,7 +1243,7 @@ export function MachineNvlReportPanel({
                       </div>
 
                       <div className="flex gap-2">
-                        <div className="flex w-[34%] min-w-[108px] max-w-[148px] shrink-0 flex-col gap-1">
+                        <div className="flex w-[42%] min-w-[128px] max-w-[220px] shrink-0 flex-col gap-1">
                           <div className="relative overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50">
                             {lineImageSrc ? (
                               <button
@@ -1304,6 +1304,8 @@ export function MachineNvlReportPanel({
                                 placeholder="Mã"
                                 isLoading={isLoading}
                                 displaySelectedAsValue
+                                dropdownMinWidth={460}
+                                openUpward
                                 inputClassName="machine-nvl-line-mobile-input h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
                                 getLabel={item => (item as MaterialRow).code}
                                 getSearchText={item => {
@@ -1362,7 +1364,7 @@ export function MachineNvlReportPanel({
                           ) : null}
                         </div>
 
-                        <div className="machine-nvl-line-mobile-grid min-w-0 flex-1 grid grid-cols-4 gap-0.5">
+                        <div className="machine-nvl-line-mobile-grid min-w-0 max-w-[1200px] flex-1 grid grid-cols-4 gap-0.5">
                           <label className="field-cell">
                             <span className="machine-nvl-line-mobile-label">Tồn máy</span>
                             <input

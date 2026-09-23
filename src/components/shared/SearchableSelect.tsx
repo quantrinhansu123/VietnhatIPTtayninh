@@ -42,6 +42,7 @@ export function SearchableSelect({
   comboboxMode = false,
   comboboxSearchable = true,
   matchDropdownWidth = false,
+  dropdownMinWidth = 0,
   searchPlaceholder
 }: {
   value: string;
@@ -74,6 +75,7 @@ export function SearchableSelect({
   /** Cho phép hiển thị ô tìm kiếm bên trong menu combobox. */
   comboboxSearchable?: boolean;
   matchDropdownWidth?: boolean;
+  dropdownMinWidth?: number;
   /** Placeholder riêng cho ô tìm kiếm trong menu combobox. */
   searchPlaceholder?: string;
 }) {
@@ -217,7 +219,7 @@ export function SearchableSelect({
     const margin = 8;
     const width = matchDropdownWidth
       ? Math.min(rect.width, viewportWidth - margin * 2)
-      : Math.max(rect.width, Math.min(340, viewportWidth - margin * 2));
+      : Math.max(rect.width, Math.min(Math.max(340, dropdownMinWidth), viewportWidth - margin * 2));
     const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - width - margin));
     const isDesktop = window.matchMedia('(min-width: 1280px)').matches;
     const viewportHeight = document.documentElement.clientHeight;
@@ -275,7 +277,7 @@ export function SearchableSelect({
       window.removeEventListener('scroll', handleReposition, true);
       document.removeEventListener('scroll', handleReposition, true);
     };
-  }, [open, query, filteredOptions.length, desktopAutoFlip, autoFlip, openUpward, matchDropdownWidth]);
+  }, [open, query, filteredOptions.length, desktopAutoFlip, autoFlip, openUpward, matchDropdownWidth, dropdownMinWidth]);
 
   useEffect(() => {
     if (!open || !comboboxMode) return;

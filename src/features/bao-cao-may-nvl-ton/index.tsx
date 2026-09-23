@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
-import { Camera, ClipboardList, Loader2, Plus, Printer, Trash2, Wand2, X } from 'lucide-react';
+import { Camera, ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
 import { cloudinaryPreviewUrl, fileToOptimizedImageDataUrl, uploadImage } from '../_shared/recordHelpers';
@@ -1246,23 +1246,35 @@ export function MachineNvlReportPanel({
                         <div className="flex w-[42%] min-w-[128px] max-w-[220px] shrink-0 flex-col gap-1">
                           <div className="relative overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50">
                             {lineImageSrc ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setViewingImage({
-                                    url: lineImageSrc,
-                                    title: `Ảnh ${line.code || line.name || index + 1}`
-                                  })
-                                }
-                                className="block h-[76px] w-full overflow-hidden"
-                                title="Xem ảnh"
-                              >
-                                <img
-                                  src={cloudinaryPreviewUrl(lineImageSrc, 240)}
-                                  alt={`Ảnh ${line.code || line.name || index + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setViewingImage({
+                                      url: lineImageSrc,
+                                      title: `Ảnh ${line.code || line.name || index + 1}`
+                                    })
+                                  }
+                                  className="block h-[76px] w-full overflow-hidden"
+                                  title="Xem ảnh"
+                                >
+                                  <img
+                                    src={cloudinaryPreviewUrl(lineImageSrc, 240)}
+                                    alt={`Ảnh ${line.code || line.name || index + 1}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Xóa ảnh ${line.code || line.name || index + 1}`}
+                                  title="Xóa ảnh"
+                                  disabled={isUploadingLineImage}
+                                  onClick={() => updateLine(line.key, { imageUrl: '', imagePublicId: '', imagePreview: '' })}
+                                  className="absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-lg border border-white/80 bg-rose-600 text-white shadow-md transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-5 w-5" aria-hidden="true" />
+                                </button>
+                              </>
                             ) : (
                               <label className="flex h-[76px] w-full cursor-pointer flex-col items-center justify-center gap-1 text-[9px] font-bold text-zinc-400">
                                 <Camera className="h-4 w-4" />
@@ -1287,7 +1299,7 @@ export function MachineNvlReportPanel({
                             ) : null}
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1">
+                          <div className="grid grid-cols-1 gap-1 md:grid-cols-2">
                             <label className="field-cell min-w-0">
                               <span className="machine-nvl-line-mobile-label">Mã NVL</span>
                               <SearchableSelect
@@ -1364,7 +1376,7 @@ export function MachineNvlReportPanel({
                           ) : null}
                         </div>
 
-                        <div className="machine-nvl-line-mobile-grid min-w-0 max-w-[1200px] flex-1 grid grid-cols-4 gap-0.5">
+                        <div className="machine-nvl-line-mobile-grid min-w-0 max-w-[1200px] flex-1 grid grid-cols-2 gap-1 md:grid-cols-4">
                           <label className="field-cell">
                             <span className="machine-nvl-line-mobile-label">Tồn máy</span>
                             <input
@@ -1439,7 +1451,7 @@ export function MachineNvlReportPanel({
                               className={machineNvlLineMobileQtyReadonlyClass}
                             />
                           </label>
-                          <label className="field-cell col-span-4">
+                          <label className="field-cell col-span-2 md:col-span-4">
                             <span className="machine-nvl-line-mobile-label">Ghi chú</span>
                             <textarea
                               value={line.note}
@@ -1488,9 +1500,18 @@ export function MachineNvlReportPanel({
                 ) : null}
                 <button
                   type="button"
+                  onClick={() => void saveReport()}
+                  disabled={isSaving}
+                  className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60 md:hidden"
+                >
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Save className="h-3.5 w-3.5 shrink-0" />}
+                  <span className="truncate normal-case">Lưu báo cáo</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => void saveReport({ printAfterSave: true })}
                   disabled={isSaving}
-                  className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60"
+                  className="hidden h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60 md:inline-flex"
                 >
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Printer className="h-3.5 w-3.5 shrink-0" />}
                   <span className="truncate normal-case">Lưu và in báo cáo</span>

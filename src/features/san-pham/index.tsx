@@ -438,7 +438,7 @@ export function resolveProductMaterialBaseKg(
 }
 
 /**
- * Cột Trọng lượng (kg) — tối đa 4 chữ số thập phân.
+ * Cột Trọng lượng (kg) — giữ nguyên số Excel / tính toán (không làm tròn).
  * Thứ tự:
  * 1) Excel: weightKg (dòng Loại=Số lượng, ĐVT=Kg)
  * 2) Định lượng chính đang là Kg
@@ -451,7 +451,7 @@ export function resolveProductNplItemWeightKg(
   materialOptions: MaterialOption[]
 ): number | null {
   if (item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg) && item.weightKg >= 0) {
-    return roundNplNumber(item.weightKg);
+    return item.weightKg;
   }
 
   if (
@@ -461,13 +461,13 @@ export function resolveProductNplItemWeightKg(
     item.quantity >= 0 &&
     isProductNplKgUnit(item.unit)
   ) {
-    return roundNplNumber(item.quantity);
+    return item.quantity;
   }
 
   if (item.percent !== null && item.percent !== undefined && Number.isFinite(item.percent) && item.percent >= 0) {
     const materialBaseKg = resolveProductMaterialBaseKg(product);
     if (materialBaseKg > 0) {
-      return roundNplNumber((item.percent / 100) * materialBaseKg);
+      return (item.percent / 100) * materialBaseKg;
     }
   }
 
@@ -479,12 +479,12 @@ export function resolveProductNplItemWeightKg(
   const material = materialOptions.find(option => normalizeProductCodeKey(option.code) === key);
   const totalWeightPerUnit = parseProductSpecNumber(material?.totalWeight ?? '');
   if (totalWeightPerUnit !== null && totalWeightPerUnit > 0) {
-    return roundNplNumber(item.quantity * totalWeightPerUnit);
+    return item.quantity * totalWeightPerUnit;
   }
 
   const fromName = parseWeightKgFromLabel(material?.name || item.name || '');
   if (fromName !== null && fromName > 0) {
-    return roundNplNumber(item.quantity * fromName);
+    return item.quantity * fromName;
   }
 
   return null;
@@ -3409,7 +3409,7 @@ export function ProductsPanel({
       }
 
       const confirmMessage = [
-        `Ghi ${rows.length} dòng vào bảng import_sp?`,
+        `Ghi thêm ${rows.length} dòng vào bảng import_sp?`,
         `File: ${file.name}`,
         `Ví dụ: ${rows
           .slice(0, 3)
@@ -3443,7 +3443,7 @@ export function ProductsPanel({
 
       const missing = Array.isArray(syncData.missing_product_codes) ? syncData.missing_product_codes : [];
       const summary = [
-        `Đã ghi ${data.inserted ?? rows.length} dòng và đồng bộ ${syncData.updated_products ?? 0} SP (${syncData.updated_lines ?? 0} dòng NVL).`,
+        `Đã ghi thêm ${data.inserted ?? rows.length} dòng và đồng bộ ${syncData.updated_products ?? 0} SP (${syncData.updated_lines ?? 0} dòng NVL).`,
         missing.length ? `Bỏ qua ${missing.length} mã SP chưa có trong danh mục.` : ''
       ]
         .filter(Boolean)

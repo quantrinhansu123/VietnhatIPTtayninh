@@ -23,7 +23,7 @@
 
 ## Luồng
 
-1. **Nhập định mức NVL** → Excel → `import_sp` (`trang_thai=moi`)
+1. **Nhập định mức NVL** → Excel → `import_sp` (`trang_thai=moi`). **Nhập thêm**: luôn ghi thêm dòng mới (không xóa/ghi đè bản cũ cùng mã SP).
 2. **Xem import_sp** → kiểm tra
 3. **Đồng bộ Thành phần** → gộp theo `ma_sp` + `ma_nvl` → ghi đè Thành phần SP → đánh dấu `da_ap_dung`
 

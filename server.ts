@@ -9120,7 +9120,10 @@ export function createApp() {
 
           const parseNum = (value: unknown) => {
             if (value === null || value === undefined || value === '') return null;
-            const n = typeof value === 'number' ? value : Number(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+            const n =
+              typeof value === 'number'
+                ? value
+                : Number(String(value).trim().replace(/\s/g, '').replace(',', '.'));
             return Number.isFinite(n) && n >= 0 ? n : null;
           };
 
@@ -9137,10 +9140,9 @@ export function createApp() {
             don_vi: String(row.don_vi ?? row.donVi ?? '').trim() || null,
             batch_id: batchId,
             file_name: fileName,
-            so_dong_excel:
-              Number.isFinite(Number(row.so_dong_excel ?? row.soDongExcel))
-                ? Number(row.so_dong_excel ?? row.soDongExcel)
-                : index + 1,
+            so_dong_excel: Number.isFinite(Number(row.so_dong_excel ?? row.soDongExcel))
+              ? Number(row.so_dong_excel ?? row.soDongExcel)
+              : index + 1,
             trang_thai: 'moi',
             imported_by: importedBy
           };
@@ -9151,6 +9153,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Không có dòng hợp lệ (cần Mã SP + Mã NVL).' });
       }
 
+      // Nhập thêm: luôn insert dòng mới — không xóa/ghi đè import_sp cũ cùng mã SP.
       const chunkSize = 200;
       let inserted = 0;
       for (let i = 0; i < records.length; i += chunkSize) {

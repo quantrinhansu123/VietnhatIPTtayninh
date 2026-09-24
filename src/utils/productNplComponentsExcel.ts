@@ -1233,7 +1233,7 @@ type LongFormatAgg = {
 /**
  * Parser cấu trúc Excel người dùng:
  * Mã SP | Mã NVL | Loại | Giá trị | ĐVT
- * — gộp theo Mã SP+Mã NVL: Phần trăm+% → %, Số lượng+Cái → SL, Số lượng+Kg → Trọng lượng (tối đa 4 chữ số thập phân).
+ * — gộp theo Mã SP+Mã NVL: Phần trăm+% → %, Số lượng+Cái → SL, Số lượng+Kg → Trọng lượng (giữ nguyên số, không làm tròn).
  * Vẫn hỗ trợ format ngang: Phần trăm | Giá trị | ĐVT (không cột Loại).
  */
 export async function parseThanhPhanLongFormatExcel(

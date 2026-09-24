@@ -155,12 +155,9 @@ export function formatNplDecimal(value: number) {
   return fixed.replace('.', ',');
 }
 
-/** Trọng lượng từ Excel: tối đa 4 chữ số thập phân, bỏ 0 thừa. */
+/** Trọng lượng từ Excel / định mức: giữ nguyên số (không làm tròn), bỏ 0 thừa. */
 export function formatNplWeightKg(value: number) {
-  if (!Number.isFinite(value)) return '0';
-  const rounded = roundNplNumber(value);
-  const fixed = rounded.toFixed(4).replace(/\.?0+$/, '');
-  return fixed.replace('.', ',');
+  return formatNplDecimal(value);
 }
 
 export function resolveProductNplAmountType(record: Record<string, unknown>): ProductNplAmountType {

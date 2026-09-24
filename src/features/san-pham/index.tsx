@@ -2935,6 +2935,7 @@ export function ProductsPanel({
   topControls = null,
   hideQrColumn = false,
   hideCategoryFilters = false,
+  searchWarehouseFilter = '',
   onWarehouseReassigned
 }: {
   onBack: () => void;
@@ -2945,6 +2946,7 @@ export function ProductsPanel({
   topControls?: ReactNode;
   hideQrColumn?: boolean;
   hideCategoryFilters?: boolean;
+  searchWarehouseFilter?: string;
   onWarehouseReassigned?: (warehouse: string) => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
@@ -3629,6 +3631,14 @@ export function ProductsPanel({
     [displayProducts]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
+  const searchWarehouseProductCodes = useMemo(
+    () => new Set(
+      balanceRows
+        .filter(row => matchesWarehouseFilter(row.ten_kho, searchWarehouseFilter))
+        .map(row => normalizeProductCodeKey(row.ma))
+    ),
+    [balanceRows, searchWarehouseFilter]
+  );
   const filteredProducts = useMemo(() => {
     return displayProducts.filter(product => {
       const matchesWarehouse = matchesWarehouseFilter(product.warehouse, warehouseFilter, {
@@ -3641,9 +3651,14 @@ export function ProductsPanel({
         `${product.code} ${product.newCode} ${product.name} ${product.nature} ${product.group} ${product.origin} ${formatProductNplSummary(product.nplItems)}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesWarehouse && matchesGroup && matchesNature && matchesSearch;
+      const matchesSearchWarehouse =
+        !normalizedSearch ||
+        !searchWarehouseFilter ||
+        matchesWarehouseFilter(product.warehouse, searchWarehouseFilter) ||
+        searchWarehouseProductCodes.has(normalizeProductCodeKey(product.code));
+      return matchesWarehouse && matchesGroup && matchesNature && matchesSearch && matchesSearchWarehouse;
     });
-  }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
+  }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, searchWarehouseFilter, searchWarehouseProductCodes, selectedGroup, selectedNatures, warehouseFilter]);
 
   const totalProductQuantity = useMemo(
     () => displayProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),

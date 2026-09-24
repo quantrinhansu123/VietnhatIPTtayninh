@@ -312,6 +312,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           hideCategoryFilters
           warehouseFilter=""
           includeUnassigned
+          searchWarehouseFilter={selectedWarehouseName}
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={warehouseControls}

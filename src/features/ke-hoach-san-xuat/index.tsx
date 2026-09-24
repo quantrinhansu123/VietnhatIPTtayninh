@@ -5298,8 +5298,6 @@ export function AddProductionOrderModal({
   const [autofillSearch, setAutofillSearch] = useState('');
   const [selectedAutofillOrderCodes, setSelectedAutofillOrderCodes] = useState<string[]>([]);
   const [selectedAutofillProductKeys, setSelectedAutofillProductKeys] = useState<string[]>([]);
-  const [autofillProductOrderFilter, setAutofillProductOrderFilter] = useState('all');
-  const [autofillProductSearch, setAutofillProductSearch] = useState('');
   const [showAddLine, setShowAddLine] = useState(false);
   const [lineDraftOrderRef, setLineDraftOrderRef] = useState('');
   const [lineDraftProductCode, setLineDraftProductCode] = useState('');
@@ -5318,8 +5316,6 @@ export function AddProductionOrderModal({
     setAutofillSearch('');
     setSelectedAutofillOrderCodes([]);
     setSelectedAutofillProductKeys([]);
-    setAutofillProductOrderFilter('all');
-    setAutofillProductSearch('');
     setShowAddLine(false);
     setLineDraftOrderRef('');
     setLineDraftProductCode('');
@@ -5397,9 +5393,7 @@ export function AddProductionOrderModal({
   useEffect(() => {
     setSelectedAutofillOrderCodes([]);
     setSelectedAutofillProductKeys([]);
-    setAutofillProductOrderFilter('all');
     setAutofillSearch('');
-    setAutofillProductSearch('');
   }, [form.startDate]);
 
   const ordersForSelectedDate = useMemo(
@@ -5460,18 +5454,7 @@ export function AddProductionOrderModal({
 
   const workshopStaff = useMemo(() => collectProductionWorkshopStaff(staffBranches), [staffBranches]);
 
-  const staffOptions = useMemo(() => {
-    if (selectedShifts.length === 0) return workshopStaff;
-
-    const needles = selectedShifts.map(shift => shift.toLowerCase());
-    const filtered = workshopStaff.filter(member => {
-      const memberShift = member.shift.toLowerCase();
-      return needles.some(needle => memberShift.includes(needle) || needle.includes(memberShift));
-    });
-
-    // Giữ trong PHÂN XƯỞNG SẢN XUẤT — không fallback sang phòng ban khác
-    return filtered.length > 0 ? filtered : workshopStaff;
-  }, [selectedShifts, workshopStaff]);
+  const staffOptions = workshopStaff;
 
   const staffOptionsByRole = useMemo(() => {
     // Trưởng ca / NS chính / Thợ phụ (/ Học việc): sổ từ cùng pool phòng PHÂN XƯỞNG SẢN XUẤT
@@ -5508,6 +5491,10 @@ export function AddProductionOrderModal({
       .sort((a, b) => a.orderCode.localeCompare(b.orderCode, 'vi'));
   }, [autofillSearch, ordersForSelectedDate]);
 
+  const allAutofillOrdersSelected =
+    autofillOrderOptions.length > 0 &&
+    autofillOrderOptions.every(order => selectedAutofillOrderCodes.includes(order.orderCode));
+
   const autofillProductCandidates = useMemo(() => {
     return selectedAutofillOrderCodes.flatMap(orderRef =>
       listProductOptionsForOrder(ordersForSelectedDate, productionOrders, catalogProducts, orderRef)
@@ -5523,42 +5510,6 @@ export function AddProductionOrderModal({
     );
   }, [selectedAutofillOrderCodes, ordersForSelectedDate, productionOrders, catalogProducts]);
 
-  const autofillOrderFilterOptions = useMemo(
-    () => [
-      { value: 'all', label: `Tất cả đơn đã chọn (${selectedAutofillOrderCodes.length})` },
-      ...selectedAutofillOrderCodes.map(orderCode => ({ value: orderCode, label: orderCode }))
-    ],
-    [selectedAutofillOrderCodes]
-  );
-
-  const filteredAutofillProducts = useMemo(() => {
-    const byOrder =
-      autofillProductOrderFilter === 'all'
-        ? autofillProductCandidates
-        : autofillProductCandidates.filter(item => item.orderRef === autofillProductOrderFilter);
-
-    const normalized = autofillProductSearch.trim().toLowerCase();
-    if (!normalized) return byOrder;
-
-    return byOrder.filter(item =>
-      `${item.productCode} ${item.productName} ${item.orderRef} ${item.unit}`
-        .toLowerCase()
-        .includes(normalized)
-    );
-  }, [autofillProductCandidates, autofillProductOrderFilter, autofillProductSearch]);
-
-  /** Hiển thị/chọn theo mã hàng — cùng mã ở nhiều đơn gộp thành 1 dòng. */
-  const filteredAutofillProductGroups = useMemo(
-    () => groupAutofillProductsByCode(filteredAutofillProducts),
-    [filteredAutofillProducts]
-  );
-
-  const allFilteredProductsSelected =
-    filteredAutofillProductGroups.length > 0 &&
-    filteredAutofillProductGroups.every(group =>
-      group.keys.every(key => selectedAutofillProductKeys.includes(key))
-    );
-
   const toggleAutofillOrderCode = (orderCode: string) => {
     setSelectedAutofillOrderCodes(prev => {
       const isSelected = prev.includes(orderCode);
@@ -5566,28 +5517,27 @@ export function AddProductionOrderModal({
         setSelectedAutofillProductKeys(keys =>
           keys.filter(key => !key.startsWith(`${orderCode}::`))
         );
-        setAutofillProductOrderFilter(current => (current === orderCode ? 'all' : current));
         return prev.filter(code => code !== orderCode);
       }
       return [...prev, orderCode];
     });
   };
 
-  const toggleAutofillProductGroup = (keys: string[]) => {
-    setSelectedAutofillProductKeys(prev => {
-      const allSelected = keys.every(key => prev.includes(key));
-      if (allSelected) return prev.filter(key => !keys.includes(key));
-      return [...new Set([...prev, ...keys])];
-    });
-  };
-
-  const toggleAutofillSelectAllFiltered = () => {
-    const keys = filteredAutofillProductGroups.flatMap(group => group.keys);
-    if (allFilteredProductsSelected) {
-      setSelectedAutofillProductKeys(prev => prev.filter(key => !keys.includes(key)));
+  const toggleAllAutofillOrders = () => {
+    const codes = autofillOrderOptions.map(order => order.orderCode);
+    if (allAutofillOrdersSelected) {
+      const codeSet = new Set(codes);
+      setSelectedAutofillOrderCodes(prev => prev.filter(code => !codeSet.has(code)));
+      setSelectedAutofillProductKeys(prev => prev.filter(key => !codes.some(code => key.startsWith(`${code}::`))));
       return;
     }
-    setSelectedAutofillProductKeys(prev => [...new Set([...prev, ...keys])]);
+    setSelectedAutofillOrderCodes(prev => [...new Set([...prev, ...codes])]);
+  };
+
+  const toggleAutofillProduct = (key: string) => {
+    setSelectedAutofillProductKeys(prev =>
+      prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]
+    );
   };
 
   const applyAutofillOrders = () => {
@@ -5853,7 +5803,6 @@ export function AddProductionOrderModal({
         setFormError(`${productName} không có trong đơn ${line.orderRef} hoặc chưa có số lượng đặt hàng.`);
         return;
       }
-      // Cho phép SL lệnh > còn lại theo đơn (cảnh báo hiển thị trên dòng "Còn N").
     }
     if (selectedShifts.length === 0) {
       setFormError('Vui lòng chọn ít nhất một ca.');
@@ -6101,11 +6050,6 @@ export function AddProductionOrderModal({
                       placeholder="SL"
                     />
                   </div>
-                  {line.orderRef && line.productCode && selectedProduct && selectedProduct.orderQty > 0 && (
-                    <span className="col-span-2 mb-2 shrink-0 text-[11px] font-bold text-zinc-500">
-                      Còn {formatNumber(selectedProduct.remainingQty, 0)}
-                    </span>
-                  )}
                   {form.entryLines.length > 1 && (
                     <button
                       type="button"
@@ -6332,6 +6276,17 @@ export function AddProductionOrderModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               <div className="p-4">
+                {autofillOrderOptions.length > 0 && (
+                  <label className="mb-3 flex h-11 w-fit cursor-pointer items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3">
+                    <input
+                      type="checkbox"
+                      checked={allAutofillOrdersSelected}
+                      onChange={toggleAllAutofillOrders}
+                      className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                    />
+                    <span className="text-xs font-extrabold text-zinc-700">Chọn tất cả đơn hàng</span>
+                  </label>
+                )}
                 {autofillOrderOptions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-8 text-center text-sm font-bold text-zinc-400">
                     {form.startDate
@@ -6343,21 +6298,28 @@ export function AddProductionOrderModal({
                     {autofillOrderOptions.map(order => {
                       const checked = selectedAutofillOrderCodes.includes(order.orderCode);
                       const productLines = getOrderProductLines(order);
+                      const orderProducts = checked
+                        ? autofillProductCandidates.filter(item => item.orderRef === order.orderCode)
+                        : [];
+                      const allOrderProductsSelected =
+                        orderProducts.length > 0 &&
+                        orderProducts.every(product => selectedAutofillProductKeys.includes(product.key));
                       return (
-                        <label
+                        <div
                           key={order.id}
-                          className={`block cursor-pointer rounded-xl border p-3 transition ${
+                          className={`rounded-xl border p-3 transition ${
                             checked ? 'border-[#ef1b2d]/35 bg-red-50' : 'border-zinc-200 bg-white hover:bg-zinc-50'
                           }`}
                         >
                           <div className="flex items-start gap-3">
                             <input
+                              id={`autofill-order-${order.id}`}
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleAutofillOrderCode(order.orderCode)}
-                              className="mt-1 h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
                             />
-                            <div className="min-w-0 flex-1">
+                            <label htmlFor={`autofill-order-${order.id}`} className="min-w-0 flex-1 cursor-pointer">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-black text-zinc-950">{order.orderCode || '-'}</span>
                                 <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-black text-zinc-600">
@@ -6365,114 +6327,72 @@ export function AddProductionOrderModal({
                                 </span>
                                 <span className="text-xs font-semibold text-zinc-500">{order.customer}</span>
                               </div>
-                              <p className="mt-1 text-xs font-semibold leading-5 text-zinc-600">
-                                {formatOrderProductsSummary(productLines)}
-                              </p>
-                            </div>
+                            </label>
                           </div>
-                        </label>
+                          {checked && (
+                            <div className="ml-4 mt-3 divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
+                              {orderProducts.length === 0 ? (
+                                <p className="px-3 py-3 text-center text-xs font-bold text-zinc-400">
+                                  Đơn hàng không còn sản phẩm cần lập lệnh SX.
+                                </p>
+                              ) : (
+                                <>
+                                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-xs font-extrabold text-zinc-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={allOrderProductsSelected}
+                                      onChange={() => {
+                                        const keys = orderProducts.map(product => product.key);
+                                        setSelectedAutofillProductKeys(prev =>
+                                          allOrderProductsSelected
+                                            ? prev.filter(key => !keys.includes(key))
+                                            : [...new Set([...prev, ...keys])]
+                                        );
+                                      }}
+                                      className="h-4 w-4 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                                    />
+                                    Chọn tất cả sản phẩm
+                                  </label>
+                                  {orderProducts.map(product => {
+                                    const productChecked = selectedAutofillProductKeys.includes(product.key);
+                                    return (
+                                      <label
+                                        key={product.key}
+                                        className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 ${
+                                          productChecked ? 'bg-red-50/70' : 'hover:bg-zinc-50'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={productChecked}
+                                          onChange={() => toggleAutofillProduct(product.key)}
+                                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                                        />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="flex flex-wrap items-center gap-2">
+                                            <span className="font-black text-zinc-950">{product.productCode}</span>
+                                            <span className="text-[11px] font-bold text-emerald-700">
+                                              Còn {formatNumber(product.remainingQty, 0)} {product.unit || ''}
+                                            </span>
+                                          </span>
+                                          <span className="mt-0.5 block text-xs font-semibold text-zinc-600">
+                                            {product.productName || '-'}
+                                          </span>
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
                 )}
               </div>
 
-              {selectedAutofillOrderCodes.length > 0 && (
-                <div className="border-t border-zinc-100 bg-zinc-50/80 p-4 pb-6">
-                  <p className="mb-2 text-xs font-black uppercase tracking-wider text-zinc-500">Chọn sản phẩm trong đơn</p>
-                  <div className="flex flex-col gap-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="min-w-0 space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lọc theo đơn hàng</span>
-                        <SearchableSelect
-                          value={autofillProductOrderFilter}
-                          onChange={setAutofillProductOrderFilter}
-                          options={autofillOrderFilterOptions}
-                          placeholder="Gõ để tìm đơn hàng"
-                          getValue={item => String((item as { value: string }).value)}
-                          getLabel={item => String((item as { label: string }).label)}
-                          allowEmpty={false}
-                          inputClassName={`${orderFieldClass} bg-white`}
-                        />
-                      </label>
-                      <label className="min-w-0 space-y-1.5">
-                        <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tìm sản phẩm</span>
-                        <div className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
-                          <Search className="h-4 w-4 shrink-0 text-zinc-400" />
-                          <input
-                            value={autofillProductSearch}
-                            onChange={event => setAutofillProductSearch(event.target.value)}
-                            placeholder="Gõ mã SP, tên hàng, mã đơn..."
-                            className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
-                          />
-                        </div>
-                      </label>
-                    </div>
-                    <label className="flex h-11 w-fit cursor-pointer items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3">
-                      <input
-                        type="checkbox"
-                        checked={allFilteredProductsSelected}
-                        onChange={toggleAutofillSelectAllFiltered}
-                        disabled={filteredAutofillProductGroups.length === 0}
-                        className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:opacity-50"
-                      />
-                      <span className="text-xs font-extrabold text-zinc-700">Chọn tất cả (đang lọc)</span>
-                    </label>
-                  </div>
-
-                  <div className="mt-3 rounded-xl border border-zinc-200 bg-white">
-                    {filteredAutofillProductGroups.length === 0 ? (
-                      <div className="px-4 py-6 text-center text-xs font-bold text-zinc-400">
-                        {autofillProductSearch.trim()
-                          ? 'Không có sản phẩm phù hợp từ khóa tìm kiếm.'
-                          : 'Đơn đã chọn không còn sản phẩm cần lập lệnh SX.'}
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-zinc-100">
-                        {filteredAutofillProductGroups.map(group => {
-                          const checked = group.keys.every(key =>
-                            selectedAutofillProductKeys.includes(key)
-                          );
-                          return (
-                            <label
-                              key={group.codeKey}
-                              className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 transition ${
-                                checked ? 'bg-red-50/70' : 'hover:bg-zinc-50'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleAutofillProductGroup(group.keys)}
-                                className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-black text-zinc-950">{group.productCode}</span>
-                                  {group.orderRefs.map(orderRef => (
-                                    <span
-                                      key={orderRef}
-                                      className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-black text-zinc-600"
-                                    >
-                                      {orderRef}
-                                    </span>
-                                  ))}
-                                  <span className="text-[11px] font-bold text-emerald-700">
-                                    Còn {formatNumber(group.remainingQty, 0)} {group.unit || ''}
-                                  </span>
-                                </div>
-                                <p className="mt-0.5 text-xs font-semibold text-zinc-600">
-                                  {group.productName || '-'}
-                                </p>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
@@ -6493,8 +6413,6 @@ export function AddProductionOrderModal({
                   onClick={() => {
                     setSelectedAutofillOrderCodes([]);
                     setSelectedAutofillProductKeys([]);
-                    setAutofillProductOrderFilter('all');
-                    setAutofillProductSearch('');
                   }}
                   className="h-10 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50"
                 >

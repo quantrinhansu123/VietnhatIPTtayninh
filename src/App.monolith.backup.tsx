@@ -11623,20 +11623,8 @@ function AddProductionOrderModal({
         setFormError(`${productName} không có trong đơn ${line.orderRef} hoặc chưa có số lượng đặt hàng.`);
         return;
       }
-      const remaining = getRemainingProductionQuantity(
-        orders,
-        productionOrders,
-        line.orderRef.trim(),
-        line.productCode
-      );
       if (remaining <= 0) {
         setFormError(`${productName} đã được lập đủ lệnh SX cho đơn ${line.orderRef}.`);
-        return;
-      }
-      if (quantity > remaining) {
-        setFormError(
-          `Số lượng ${productName} (đơn ${line.orderRef}) vượt quá còn lại (${formatNumber(remaining, 0)}).`
-        );
         return;
       }
     }
@@ -11852,11 +11840,6 @@ function AddProductionOrderModal({
                       placeholder="SL"
                     />
                   </div>
-                  {line.orderRef && line.productCode && selectedProduct && selectedProduct.orderQty > 0 && (
-                    <span className="col-span-2 mb-2 shrink-0 text-[11px] font-bold text-zinc-500">
-                      Còn {formatNumber(selectedProduct.remainingQty, 0)}
-                    </span>
-                  )}
                   {form.entryLines.length > 1 && (
                     <button
                       type="button"

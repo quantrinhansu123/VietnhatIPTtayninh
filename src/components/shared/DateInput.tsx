@@ -104,7 +104,7 @@ export function DateInput({
       const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth);
       const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
       const bounds = boundaryRect ?? new DOMRect(viewportLeft, viewportTop, viewportRight - viewportLeft, viewportBottom - viewportTop);
-      const width = Math.min(rect.width, Math.max(0, bounds.width - 16));
+      const width = Math.min(320, Math.max(0, bounds.width - 16));
       const minLeft = bounds.left + 8;
       const maxLeft = Math.max(minLeft, bounds.right - width - 8);
       const left = Math.max(minLeft, Math.min(rect.left, maxLeft));

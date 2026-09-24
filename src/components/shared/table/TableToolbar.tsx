@@ -62,15 +62,17 @@ export function TableSearchInput({
   value,
   onChange,
   placeholder = 'Tìm kiếm...',
-  disabled
+  disabled,
+  fullWidthOnMobile = true
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  fullWidthOnMobile?: boolean;
 }) {
   return (
-    <label className="flex h-11 w-full min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
+    <label className={`flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10 ${fullWidthOnMobile ? 'w-full basis-full lg:basis-0' : 'w-auto basis-0'}`}>
       <Search className="h-4 w-4 text-zinc-400" />
       <input
         value={value}

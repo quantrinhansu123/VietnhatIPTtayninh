@@ -2934,6 +2934,7 @@ export function ProductsPanel({
   balanceRows = [],
   topControls = null,
   hideQrColumn = false,
+  hideCategoryFilters = false,
   onWarehouseReassigned
 }: {
   onBack: () => void;
@@ -2943,6 +2944,7 @@ export function ProductsPanel({
   balanceRows?: InventoryBalanceRow[];
   topControls?: ReactNode;
   hideQrColumn?: boolean;
+  hideCategoryFilters?: boolean;
   onWarehouseReassigned?: (warehouse: string) => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
@@ -4059,24 +4061,28 @@ export function ProductsPanel({
               disabled={isLoadingProducts || products.length === 0}
             />
 
-            <FilterCombobox
-              label="Nhóm"
-              options={productGroups.filter(group => group !== 'all')}
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              searchPlaceholder="Tìm nhóm..."
-              compact
-            />
+            {!hideCategoryFilters ? (
+              <>
+                <FilterCombobox
+                  label="Nhóm"
+                  options={productGroups.filter(group => group !== 'all')}
+                  value={selectedGroup}
+                  onChange={setSelectedGroup}
+                  searchPlaceholder="Tìm nhóm..."
+                  compact
+                />
 
-            <MultiSelectFilter
-              label="Tính chất"
-              allLabel="Tất cả tính chất"
-              searchPlaceholder="Tìm tính chất..."
-              emptyLabel="Không tìm thấy tính chất"
-              options={productNatures}
-              values={[...selectedNatures]}
-              onChange={values => setSelectedNatures(new Set(values))}
-            />
+                <MultiSelectFilter
+                  label="Tính chất"
+                  allLabel="Tất cả tính chất"
+                  searchPlaceholder="Tìm tính chất..."
+                  emptyLabel="Không tìm thấy tính chất"
+                  options={productNatures}
+                  values={[...selectedNatures]}
+                  onChange={values => setSelectedNatures(new Set(values))}
+                />
+              </>
+            ) : null}
 
             {isLoadingProducts ? (
               <div className="flex h-10 shrink-0 items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
@@ -4167,24 +4173,28 @@ export function ProductsPanel({
             loadError={productError}
             actionMessage={productActionMessage}
           >
-            <FilterCombobox
-              label="Nhóm"
-              options={productGroups.filter(group => group !== 'all')}
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              searchPlaceholder="Tìm nhóm..."
-              compact
-            />
+            {!hideCategoryFilters ? (
+              <>
+                <FilterCombobox
+                  label="Nhóm"
+                  options={productGroups.filter(group => group !== 'all')}
+                  value={selectedGroup}
+                  onChange={setSelectedGroup}
+                  searchPlaceholder="Tìm nhóm..."
+                  compact
+                />
 
-            <MultiSelectFilter
-              label="Tính chất"
-              allLabel="Tất cả tính chất"
-              searchPlaceholder="Tìm tính chất..."
-              emptyLabel="Không tìm thấy tính chất"
-              options={productNatures}
-              values={[...selectedNatures]}
-              onChange={values => setSelectedNatures(new Set(values))}
-            />
+                <MultiSelectFilter
+                  label="Tính chất"
+                  allLabel="Tất cả tính chất"
+                  searchPlaceholder="Tìm tính chất..."
+                  emptyLabel="Không tìm thấy tính chất"
+                  options={productNatures}
+                  values={[...selectedNatures]}
+                  onChange={values => setSelectedNatures(new Set(values))}
+                />
+              </>
+            ) : null}
           </TableToolbar>
         </>
       )}

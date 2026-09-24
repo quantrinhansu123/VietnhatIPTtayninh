@@ -308,6 +308,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
       ) : productsAccess.canView ? (
         <ProductsPanel
           onBack={onBack}
+          hideQrColumn
           warehouseFilter=""
           includeUnassigned
           asOfDate={asOfDate}

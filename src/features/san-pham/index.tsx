@@ -2933,6 +2933,7 @@ export function ProductsPanel({
   asOfDate = '',
   balanceRows = [],
   topControls = null,
+  hideQrColumn = false,
   onWarehouseReassigned
 }: {
   onBack: () => void;
@@ -2941,6 +2942,7 @@ export function ProductsPanel({
   asOfDate?: string;
   balanceRows?: InventoryBalanceRow[];
   topControls?: ReactNode;
+  hideQrColumn?: boolean;
   onWarehouseReassigned?: (warehouse: string) => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
@@ -3676,8 +3678,12 @@ export function ProductsPanel({
   };
 
   useEffect(() => {
-    let cancelled = false;
+    if (hideQrColumn) {
+      setQrImages({});
+      return;
+    }
 
+    let cancelled = false;
     const generateQrImages = async () => {
       const nextEntries = await Promise.all(
         displayProducts
@@ -3695,7 +3701,6 @@ export function ProductsPanel({
               });
               return [product.id, url] as const;
             } catch {
-              // Một mã dữ liệu lỗi không được chặn việc tạo QR cho các dòng còn lại.
               return null;
             }
           })
@@ -3706,16 +3711,13 @@ export function ProductsPanel({
       }
     };
 
-    if (displayProducts.length > 0) {
-      generateQrImages();
-    } else {
-      setQrImages({});
-    }
+    if (displayProducts.length > 0) void generateQrImages();
+    else setQrImages({});
 
     return () => {
       cancelled = true;
     };
-  }, [displayProducts]);
+  }, [displayProducts, hideQrColumn]);
 
   const toggleProduct = (productId: string) => {
     setSelectedProductIds(prev => {
@@ -4303,7 +4305,13 @@ export function ProductsPanel({
         ) : null}
       </section>
 
-      <TableShell minWidthClassName={isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'}>
+      <TableShell
+        minWidthClassName={
+          hideQrColumn
+            ? isCatalogMode ? 'min-w-[1300px]' : 'min-w-[1150px]'
+            : isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'
+        }
+      >
         <TableHead>
           <TableHeadCell align="center" className="w-14">
             <input
@@ -4315,7 +4323,7 @@ export function ProductsPanel({
             />
           </TableHeadCell>
           <TableHeadCell>Mã SP</TableHeadCell>
-          <TableHeadCell align="center">Mã QR</TableHeadCell>
+          {!hideQrColumn ? <TableHeadCell align="center">Mã QR</TableHeadCell> : null}
           <TableHeadCell>Tên sản phẩm</TableHeadCell>
           <TableHeadCell>Tính chất</TableHeadCell>
           <TableHeadCell align="center">Nhóm</TableHeadCell>
@@ -4351,15 +4359,17 @@ export function ProductsPanel({
                   />
                 </td>
                 <td className="px-4 py-3.5 font-black text-zinc-950">{product.code || '-'}</td>
-                <td className="px-3 py-3.5">
-                  {qrImages[product.id] ? (
-                    <div className="relative mx-auto h-14 w-14 rounded-lg border border-zinc-200 bg-white p-1">
-                      <img src={qrImages[product.id]} alt={`QR ${product.code}`} className="h-full w-full" />
-                    </div>
-                  ) : (
-                    <span className="text-xs font-semibold text-zinc-300">Đang tạo</span>
-                  )}
-                </td>
+                {!hideQrColumn ? (
+                  <td className="px-3 py-3.5">
+                    {qrImages[product.id] ? (
+                      <div className="relative mx-auto h-14 w-14 rounded-lg border border-zinc-200 bg-white p-1">
+                        <img src={qrImages[product.id]} alt={`QR ${product.code}`} className="h-full w-full" />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-semibold text-zinc-300">Đang tạo</span>
+                    )}
+                  </td>
+                ) : null}
                 <td className="px-4 py-3.5">
                   <div className="font-black text-zinc-950">{product.name || '-'}</div>
                   {product.description && (

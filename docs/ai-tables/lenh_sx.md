@@ -46,6 +46,8 @@ Nút **Thêm đơn mới** trong form thêm lệnh SX cũng mở `OrderFormModal
 
 **Trùng mã hàng:** các dòng cùng `ma_sp` được gộp thành 1 dòng — cộng số lượng, gộp mã đơn (`DH001, DH002`). Áp dụng khi tự điền / thêm đơn / thêm dòng / chọn mã / lúc lưu.
 
+**SL vs còn lại:** form/API **không chặn** khi số lượng lệnh > còn lại theo đơn (chỉ báo «Còn N» trên UI). Vẫn yêu cầu mã hàng thuộc đơn hàng.
+
 ### Lọc theo đăng nhập
 
 - Nếu `cong_viec` / chức vụ đăng nhập đúng **Nhân Viên** (không phân biệt hoa thường, bỏ dấu khi so):

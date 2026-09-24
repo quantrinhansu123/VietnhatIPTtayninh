@@ -10052,24 +10052,14 @@ export function createApp() {
 
       for (const product of orderProducts) {
         const productCode = product.ma_sp;
-        const requestQuantity = product.so_luong ?? 0;
         const productOrderRef = String(product.ma_don_hang ?? '').trim() || orderRef;
         if (!productOrderRef || !productCode) continue;
 
-        const { ordered, remaining } = await getRemainingProductionQuantityForProduct(productOrderRef, productCode);
+        // Chỉ kiểm tra SP có trong đơn; cho phép SL lệnh > còn lại / đã lập đủ.
+        const { ordered } = await getRemainingProductionQuantityForProduct(productOrderRef, productCode);
         if (ordered <= 0) {
           return res.status(400).json({
             error: `Sản phẩm ${productCode} không có trong đơn ${productOrderRef} hoặc chưa có số lượng đặt hàng.`
-          });
-        }
-        if (remaining <= 0) {
-          return res.status(400).json({
-            error: `Sản phẩm ${productCode} đã được lập đủ lệnh SX cho đơn ${productOrderRef}.`
-          });
-        }
-        if (requestQuantity > remaining) {
-          return res.status(400).json({
-            error: `Số lượng vượt quá còn lại (${remaining}) cho ${productCode}.`
           });
         }
       }

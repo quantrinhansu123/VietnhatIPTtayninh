@@ -4694,37 +4694,40 @@ export function WarehouseHistoryPanel({
         loadError={error}
         actionMessage={message}
       >
-        <TableSearchInput
-          value={searchText}
-          onChange={setSearchText}
-          placeholder={
-            warehouseTab === 'san_pham'
-              ? 'Tìm mã phiếu, SP, lý do...'
-              : warehouseTab === 'hang_hong'
-                ? 'Tìm mã phiếu, hàng hỏng, máy...'
-              : warehouseTab === 'hang_hoa'
-                ? 'Tìm mã phiếu, hàng hóa, lý do...'
-              : warehouseTab === 'cong_cu_dung_cu'
-                ? 'Tìm mã phiếu, công cụ dụng cụ...'
-              : warehouseTab === 'gia_cong'
-                ? 'Tìm mã phiếu, hàng gia công...'
-              : warehouseTab === 'tai_che'
-                ? 'Tìm mã phiếu, NPL tái chế, lý do...'
-                : 'Tìm mã phiếu, NPL, lý do...'
-          }
-          disabled={isLoading}
-        />
+        <div className="flex w-full min-w-0 items-center gap-3 lg:contents">
+          <TableSearchInput
+            value={searchText}
+            onChange={setSearchText}
+            placeholder={
+              warehouseTab === 'san_pham'
+                ? 'Tìm mã phiếu, SP, lý do...'
+                : warehouseTab === 'hang_hong'
+                  ? 'Tìm mã phiếu, hàng hỏng, máy...'
+                : warehouseTab === 'hang_hoa'
+                  ? 'Tìm mã phiếu, hàng hóa, lý do...'
+                : warehouseTab === 'cong_cu_dung_cu'
+                  ? 'Tìm mã phiếu, công cụ dụng cụ...'
+                : warehouseTab === 'gia_cong'
+                  ? 'Tìm mã phiếu, hàng gia công...'
+                : warehouseTab === 'tai_che'
+                  ? 'Tìm mã phiếu, NPL tái chế, lý do...'
+                  : 'Tìm mã phiếu, NPL, lý do...'
+            }
+            disabled={isLoading}
+            fullWidthOnMobile={false}
+          />
+          <FilterCombobox
+            label="Ca"
+            options={shiftOptions}
+            value={filterShift || 'all'}
+            onChange={value => setFilterShift(value === 'all' ? '' : value)}
+            searchPlaceholder="Tìm ca..."
+            compact
+          />
+        </div>
 
-        <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} />
-        <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
-        <FilterCombobox
-          label="Ca"
-          options={shiftOptions}
-          value={filterShift || 'all'}
-          onChange={value => setFilterShift(value === 'all' ? '' : value)}
-          searchPlaceholder="Tìm ca..."
-          compact
-        />
+        <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} className="w-full shrink-0 sm:w-auto" />
+        <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} className="w-full shrink-0 sm:w-auto" />
       </TableToolbar>
 
       {selectableSlips.length > 0 && (
@@ -5094,10 +5097,10 @@ export function WarehouseHistoryPanel({
       )}
 
       {viewingSlipCode && viewingRows[0] && (
-        <div className={isStandalone ? 'w-full' : 'fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4 backdrop-blur-sm'}>
+        <div className={isStandalone ? 'w-full' : 'fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-2 backdrop-blur-sm sm:p-4'}>
           <div className={isStandalone
             ? 'flex w-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-card'
-            : 'flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl'}>
+            : 'flex h-[90dvh] max-h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl sm:h-[85vh] sm:max-h-[85vh]'}>
             <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết phiếu</h3>

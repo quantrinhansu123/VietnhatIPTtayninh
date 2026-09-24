@@ -2933,6 +2933,9 @@ export function ProductsPanel({
   asOfDate = '',
   balanceRows = [],
   topControls = null,
+  hideQrColumn = false,
+  hideCategoryFilters = false,
+  searchWarehouseFilter = '',
   onWarehouseReassigned
 }: {
   onBack: () => void;
@@ -2941,6 +2944,9 @@ export function ProductsPanel({
   asOfDate?: string;
   balanceRows?: InventoryBalanceRow[];
   topControls?: ReactNode;
+  hideQrColumn?: boolean;
+  hideCategoryFilters?: boolean;
+  searchWarehouseFilter?: string;
   onWarehouseReassigned?: (warehouse: string) => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('products');
@@ -3625,6 +3631,14 @@ export function ProductsPanel({
     [displayProducts]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
+  const searchWarehouseProductCodes = useMemo(
+    () => new Set(
+      balanceRows
+        .filter(row => matchesWarehouseFilter(row.ten_kho, searchWarehouseFilter))
+        .map(row => normalizeProductCodeKey(row.ma))
+    ),
+    [balanceRows, searchWarehouseFilter]
+  );
   const filteredProducts = useMemo(() => {
     return displayProducts.filter(product => {
       const matchesWarehouse = matchesWarehouseFilter(product.warehouse, warehouseFilter, {
@@ -3637,9 +3651,14 @@ export function ProductsPanel({
         `${product.code} ${product.newCode} ${product.name} ${product.nature} ${product.group} ${product.origin} ${formatProductNplSummary(product.nplItems)}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesWarehouse && matchesGroup && matchesNature && matchesSearch;
+      const matchesSearchWarehouse =
+        !normalizedSearch ||
+        !searchWarehouseFilter ||
+        matchesWarehouseFilter(product.warehouse, searchWarehouseFilter) ||
+        searchWarehouseProductCodes.has(normalizeProductCodeKey(product.code));
+      return matchesWarehouse && matchesGroup && matchesNature && matchesSearch && matchesSearchWarehouse;
     });
-  }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, selectedGroup, selectedNatures, warehouseFilter]);
+  }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, searchWarehouseFilter, searchWarehouseProductCodes, selectedGroup, selectedNatures, warehouseFilter]);
 
   const totalProductQuantity = useMemo(
     () => displayProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
@@ -3676,8 +3695,12 @@ export function ProductsPanel({
   };
 
   useEffect(() => {
-    let cancelled = false;
+    if (hideQrColumn) {
+      setQrImages({});
+      return;
+    }
 
+    let cancelled = false;
     const generateQrImages = async () => {
       const nextEntries = await Promise.all(
         displayProducts
@@ -3695,7 +3718,6 @@ export function ProductsPanel({
               });
               return [product.id, url] as const;
             } catch {
-              // Một mã dữ liệu lỗi không được chặn việc tạo QR cho các dòng còn lại.
               return null;
             }
           })
@@ -3706,16 +3728,13 @@ export function ProductsPanel({
       }
     };
 
-    if (displayProducts.length > 0) {
-      generateQrImages();
-    } else {
-      setQrImages({});
-    }
+    if (displayProducts.length > 0) void generateQrImages();
+    else setQrImages({});
 
     return () => {
       cancelled = true;
     };
-  }, [displayProducts]);
+  }, [displayProducts, hideQrColumn]);
 
   const toggleProduct = (productId: string) => {
     setSelectedProductIds(prev => {
@@ -4057,24 +4076,28 @@ export function ProductsPanel({
               disabled={isLoadingProducts || products.length === 0}
             />
 
-            <FilterCombobox
-              label="Nhóm"
-              options={productGroups.filter(group => group !== 'all')}
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              searchPlaceholder="Tìm nhóm..."
-              compact
-            />
+            {!hideCategoryFilters ? (
+              <>
+                <FilterCombobox
+                  label="Nhóm"
+                  options={productGroups.filter(group => group !== 'all')}
+                  value={selectedGroup}
+                  onChange={setSelectedGroup}
+                  searchPlaceholder="Tìm nhóm..."
+                  compact
+                />
 
-            <MultiSelectFilter
-              label="Tính chất"
-              allLabel="Tất cả tính chất"
-              searchPlaceholder="Tìm tính chất..."
-              emptyLabel="Không tìm thấy tính chất"
-              options={productNatures}
-              values={[...selectedNatures]}
-              onChange={values => setSelectedNatures(new Set(values))}
-            />
+                <MultiSelectFilter
+                  label="Tính chất"
+                  allLabel="Tất cả tính chất"
+                  searchPlaceholder="Tìm tính chất..."
+                  emptyLabel="Không tìm thấy tính chất"
+                  options={productNatures}
+                  values={[...selectedNatures]}
+                  onChange={values => setSelectedNatures(new Set(values))}
+                />
+              </>
+            ) : null}
 
             {isLoadingProducts ? (
               <div className="flex h-10 shrink-0 items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
@@ -4165,24 +4188,28 @@ export function ProductsPanel({
             loadError={productError}
             actionMessage={productActionMessage}
           >
-            <FilterCombobox
-              label="Nhóm"
-              options={productGroups.filter(group => group !== 'all')}
-              value={selectedGroup}
-              onChange={setSelectedGroup}
-              searchPlaceholder="Tìm nhóm..."
-              compact
-            />
+            {!hideCategoryFilters ? (
+              <>
+                <FilterCombobox
+                  label="Nhóm"
+                  options={productGroups.filter(group => group !== 'all')}
+                  value={selectedGroup}
+                  onChange={setSelectedGroup}
+                  searchPlaceholder="Tìm nhóm..."
+                  compact
+                />
 
-            <MultiSelectFilter
-              label="Tính chất"
-              allLabel="Tất cả tính chất"
-              searchPlaceholder="Tìm tính chất..."
-              emptyLabel="Không tìm thấy tính chất"
-              options={productNatures}
-              values={[...selectedNatures]}
-              onChange={values => setSelectedNatures(new Set(values))}
-            />
+                <MultiSelectFilter
+                  label="Tính chất"
+                  allLabel="Tất cả tính chất"
+                  searchPlaceholder="Tìm tính chất..."
+                  emptyLabel="Không tìm thấy tính chất"
+                  options={productNatures}
+                  values={[...selectedNatures]}
+                  onChange={values => setSelectedNatures(new Set(values))}
+                />
+              </>
+            ) : null}
           </TableToolbar>
         </>
       )}
@@ -4303,7 +4330,13 @@ export function ProductsPanel({
         ) : null}
       </section>
 
-      <TableShell minWidthClassName={isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'}>
+      <TableShell
+        minWidthClassName={
+          hideQrColumn
+            ? isCatalogMode ? 'min-w-[1300px]' : 'min-w-[1150px]'
+            : isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'
+        }
+      >
         <TableHead>
           <TableHeadCell align="center" className="w-14">
             <input
@@ -4315,7 +4348,7 @@ export function ProductsPanel({
             />
           </TableHeadCell>
           <TableHeadCell>Mã SP</TableHeadCell>
-          <TableHeadCell align="center">Mã QR</TableHeadCell>
+          {!hideQrColumn ? <TableHeadCell align="center">Mã QR</TableHeadCell> : null}
           <TableHeadCell>Tên sản phẩm</TableHeadCell>
           <TableHeadCell>Tính chất</TableHeadCell>
           <TableHeadCell align="center">Nhóm</TableHeadCell>
@@ -4351,15 +4384,17 @@ export function ProductsPanel({
                   />
                 </td>
                 <td className="px-4 py-3.5 font-black text-zinc-950">{product.code || '-'}</td>
-                <td className="px-3 py-3.5">
-                  {qrImages[product.id] ? (
-                    <div className="relative mx-auto h-14 w-14 rounded-lg border border-zinc-200 bg-white p-1">
-                      <img src={qrImages[product.id]} alt={`QR ${product.code}`} className="h-full w-full" />
-                    </div>
-                  ) : (
-                    <span className="text-xs font-semibold text-zinc-300">Đang tạo</span>
-                  )}
-                </td>
+                {!hideQrColumn ? (
+                  <td className="px-3 py-3.5">
+                    {qrImages[product.id] ? (
+                      <div className="relative mx-auto h-14 w-14 rounded-lg border border-zinc-200 bg-white p-1">
+                        <img src={qrImages[product.id]} alt={`QR ${product.code}`} className="h-full w-full" />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-semibold text-zinc-300">Đang tạo</span>
+                    )}
+                  </td>
+                ) : null}
                 <td className="px-4 py-3.5">
                   <div className="font-black text-zinc-950">{product.name || '-'}</div>
                   {product.description && (

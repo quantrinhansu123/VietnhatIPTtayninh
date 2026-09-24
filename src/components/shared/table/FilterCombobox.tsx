@@ -56,9 +56,11 @@ export function FilterCombobox({
     if (!button) return;
     const rect = button.getBoundingClientRect();
     const menuHeight = menuRef.current?.offsetHeight ?? 280;
-    const menuWidth = matchButtonWidth
-      ? Math.min(rect.width, window.innerWidth - VIEWPORT_GAP * 2)
-      : Math.max(rect.width, menuRef.current?.offsetWidth ?? 192);
+    const availableWidth = window.innerWidth - VIEWPORT_GAP * 2;
+    const menuWidth = Math.min(
+      availableWidth,
+      matchButtonWidth ? rect.width : Math.max(rect.width, menuRef.current?.offsetWidth ?? 192)
+    );
     const maxLeft = Math.max(VIEWPORT_GAP, window.innerWidth - menuWidth - VIEWPORT_GAP);
     const fitsBelow = rect.bottom + 6 + menuHeight <= window.innerHeight - VIEWPORT_GAP;
     const top = fitsBelow
@@ -77,8 +79,8 @@ export function FilterCombobox({
     setMenuStyle({
       top,
       left,
-      minWidth: rect.width,
-      ...(matchButtonWidth ? { width: menuWidth } : {})
+      minWidth: Math.min(rect.width, availableWidth),
+      width: menuWidth
     });
   };
 

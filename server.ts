@@ -8202,19 +8202,27 @@ export function createApp() {
     try {
       const format = typeof req.query.format === 'string' ? req.query.format : 'list';
       if (format === 'table') {
-        const { data, error } = await supabase
-          .from(SUPABASE_PRODUCTS_TABLE)
-          .select('*')
-          .order('created_at', { ascending: false, nullsFirst: false })
-          .order('id', { ascending: false });
+        const pageSize = 1000;
+        const products = [];
+        for (let from = 0; ; from += pageSize) {
+          const { data, error } = await supabase
+            .from(SUPABASE_PRODUCTS_TABLE)
+            .select('*')
+            .order('created_at', { ascending: false, nullsFirst: false })
+            .order('id', { ascending: false })
+            .range(from, from + pageSize - 1);
 
-        if (error) {
-          return respondSupabaseReadError(res, error, SUPABASE_PRODUCTS_TABLE, { products: [], total: 0 });
+          if (error) {
+            return respondSupabaseReadError(res, error, SUPABASE_PRODUCTS_TABLE, { products: [], total: 0 });
+          }
+
+          products.push(...(data || []));
+          if (!data || data.length < pageSize) break;
         }
 
         return res.json({
-          products: data || [],
-          total: data?.length || 0,
+          products,
+          total: products.length,
           source: 'supabase'
         });
       }

@@ -663,7 +663,7 @@ export default function App() {
               onClick={handleLogout}
               aria-label="Đăng xuất"
               title="Đăng xuất"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 shrink-0"
+              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 sm:inline-flex"
             >
               <LogOut className="h-[18px] w-[18px]" />
             </button>
@@ -750,6 +750,14 @@ export default function App() {
                     setQuickNavOpen(false);
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-2 inline-flex h-11 w-full items-center gap-2 rounded-xl border border-rose-100 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Đăng xuất
+                </button>
               </div>
               <div className="px-3 py-2 border-t border-slate-100 text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center justify-between">
                 <span>Phím tắt</span>

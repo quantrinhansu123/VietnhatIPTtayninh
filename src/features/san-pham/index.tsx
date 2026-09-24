@@ -19,6 +19,7 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
+  TablePagination,
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
@@ -781,6 +782,9 @@ export function ProductViewModal({
   const [selectedDetailCodeIds, setSelectedDetailCodeIds] = useState<Set<string>>(() => new Set());
   const [isPrintingDetailCodes, setIsPrintingDetailCodes] = useState(false);
   const [issuedQrCodes, setIssuedQrCodes] = useState<ProductIssuedQrCode[]>([]);
+  const [issuedQrTotal, setIssuedQrTotal] = useState(0);
+  const [issuedQrPage, setIssuedQrPage] = useState(1);
+  const [issuedQrPageSize, setIssuedQrPageSize] = useState(50);
   const [isLoadingIssuedQrCodes, setIsLoadingIssuedQrCodes] = useState(false);
   const [issuedQrCodesError, setIssuedQrCodesError] = useState('');
   const [selectedIssuedQrIds, setSelectedIssuedQrIds] = useState<Set<string>>(() => new Set());
@@ -964,16 +968,30 @@ export function ProductViewModal({
   }, [product.id, tab]);
 
   useEffect(() => {
+    setIssuedQrPage(1);
+    setSelectedIssuedQrIds(new Set());
+  }, [product.id]);
+
+  useEffect(() => {
     if (tab !== 'issued-qr') return;
     const controller = new AbortController();
     setIsLoadingIssuedQrCodes(true);
     setIssuedQrCodesError('');
 
-    void fetch(`/api/san-pham/${encodeURIComponent(product.id)}/ma-qr-hang-hoa`, { signal: controller.signal })
+    const query = new URLSearchParams({ page: String(issuedQrPage), pageSize: String(issuedQrPageSize) });
+    if (issuedQrStatusFilter !== 'all') query.set('trang_thai', issuedQrStatusFilter);
+    void fetch(`/api/san-pham/${encodeURIComponent(product.id)}/ma-qr-hang-hoa?${query}`, { signal: controller.signal })
       .then(async response => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Không thể tải danh sách QR đã cấp.');
         const records = Array.isArray(data.records) ? data.records : [];
+        const total = Number(data.total) || 0;
+        setIssuedQrTotal(total);
+        const lastPage = Math.max(1, Math.ceil(total / issuedQrPageSize));
+        if (issuedQrPage > lastPage) {
+          setIssuedQrPage(lastPage);
+          return;
+        }
         const normalizedRecords: ProductIssuedQrCode[] = records.map((record: Record<string, unknown>) => ({
           id: String(record.id ?? ''),
           ma_qr: String(record.ma_qr ?? ''),
@@ -992,13 +1010,14 @@ export function ProductViewModal({
       .catch(error => {
         if (error?.name !== 'AbortError') {
           setIssuedQrCodes([]);
+          setIssuedQrTotal(0);
           setIssuedQrCodesError(error?.message || 'Không thể tải danh sách QR đã cấp.');
         }
       })
       .finally(() => setIsLoadingIssuedQrCodes(false));
 
     return () => controller.abort();
-  }, [product.id, tab]);
+  }, [product.id, tab, issuedQrPage, issuedQrPageSize, issuedQrStatusFilter]);
 
   useEffect(() => {
     if (tab !== 'kiem-kho') return;
@@ -2031,6 +2050,7 @@ export function ProductViewModal({
                     value={issuedQrStatusFilter}
                     onChange={value => {
                       setIssuedQrStatusFilter(value as 'all' | 'dang_dung' | 'da_huy');
+                      setIssuedQrPage(1);
                       setSelectedIssuedQrIds(new Set());
                     }}
                     formatOption={value => value === 'dang_dung' ? 'Đang dùng' : 'Đã hủy'}
@@ -2042,7 +2062,7 @@ export function ProductViewModal({
                   <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-[#ef1b2d]">
                     {selectedIssuedQrCodes.length > 0
                       ? `Đã chọn ${selectedIssuedQrCodes.length}/${printableIssuedQrCodes.length}`
-                      : `${filteredIssuedQrCodes.length} mã`}
+                      : `${issuedQrTotal} mã`}
                   </span>
                   {onPrintIssuedQrCodes ? (
                     <button
@@ -2102,7 +2122,7 @@ export function ProductViewModal({
                           className="h-4 w-4 cursor-pointer accent-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40"
                         />
                       </td>
-                      <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
+                      <td className="px-4 py-3 font-bold text-zinc-500">{(issuedQrPage - 1) * issuedQrPageSize + index + 1}</td>
                       <td className="px-4 py-3 font-mono font-black text-zinc-950">{code.ma_qr}</td>
                       <td className="px-4 py-3">
                         {canEditQrCodes ? (
@@ -2130,6 +2150,21 @@ export function ProductViewModal({
                   {isLoadingIssuedQrCodes ? <TableEmptyRow colSpan={8}>Đang tải danh sách QR đã cấp...</TableEmptyRow> : null}
                 </TableBody>
               </TableShell>
+              <TablePagination
+                totalRecords={issuedQrTotal}
+                currentPage={issuedQrPage}
+                totalPages={Math.max(1, Math.ceil(issuedQrTotal / issuedQrPageSize))}
+                pageSize={issuedQrPageSize}
+                onPageChange={page => {
+                  setIssuedQrPage(page);
+                  setSelectedIssuedQrIds(new Set());
+                }}
+                onPageSizeChange={pageSize => {
+                  setIssuedQrPageSize(pageSize);
+                  setIssuedQrPage(1);
+                  setSelectedIssuedQrIds(new Set());
+                }}
+              />
             </div>
           ) : tab === 'codes' ? (
             <div className="space-y-3">

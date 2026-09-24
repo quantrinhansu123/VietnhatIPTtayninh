@@ -8324,11 +8324,16 @@ export function createApp() {
     try {
       const productId = String(req.params.id || '').trim();
       if (!productId) return res.status(400).json({ error: 'Thiếu ID sản phẩm.' });
-      const { data, error } = await supabase
+      const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
+      const pageSize = Math.min(100, Math.max(1, Math.floor(Number(req.query.pageSize) || 50)));
+      const status = String(req.query.trang_thai || '').trim();
+      let query = supabase
         .from(SUPABASE_GOODS_QR_CODES_TABLE)
-        .select('id, ma_qr, ma_sp_goc, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, created_at')
+        .select('id, ma_qr, ma_sp_goc, ten_kho, so_lan_in, ngay_in_gan_nhat, nguoi_tao, trang_thai, created_at', { count: 'exact' })
         .eq('san_pham_id', productId)
         .order('created_at', { ascending: false });
+      if (status === 'dang_dung' || status === 'da_huy') query = query.eq('trang_thai', status);
+      const { data, error, count } = await query.range((page - 1) * pageSize, page * pageSize - 1);
       if (error) {
         const missingMigration = isMissingTableError(error);
         return res.status(500).json({
@@ -8337,7 +8342,7 @@ export function createApp() {
             : error.message || 'Không thể tải danh sách QR đã cấp.'
         });
       }
-      return res.json({ records: data || [], total: data?.length || 0 });
+      return res.json({ records: data || [], total: count || 0, page, pageSize });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải danh sách QR đã cấp.' });
     }

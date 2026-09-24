@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
@@ -34,6 +35,8 @@ import {
   ProductionOrderPrintSheet,
   ProductionOrderDetailBody,
   ProductionOrderViewModal,
+  getProductionOrderProductLines,
+  parseProductionOrderQuantity,
   resolveProductionOrderMachineLabel,
   useProductionOrderPrint,
   type PrintableProductionOrder,
@@ -42,9 +45,10 @@ import {
 import { normalizeOrders } from '../don-hang';
 import { OrderFormModal } from '../don-hang/OrderFormModal';
 import { normalizeProducts } from '../san-pham';
-import type { ProductRow } from '../san-pham/types';
+import { normalizeProductCodeKey, type ProductRow } from '../san-pham/types';
 import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
+import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
@@ -53,6 +57,8 @@ import {
   Pencil,
   Plus,
   Printer,
+  QrCode,
+  X,
   Trash2
 } from 'lucide-react';
 
@@ -157,6 +163,12 @@ export function ProductionOrderDetailPage() {
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
   const [editingRow, setEditingRow] = useState<ProductionOrderRow | null>(null);
   const [actionMessage, setActionMessage] = useState('');
+  const [isPreparingQr, setIsPreparingQr] = useState(false);
+  const [showQrQuantityModal, setShowQrQuantityModal] = useState(false);
+  const [qrQuantityLines, setQrQuantityLines] = useState<Array<{ productId: string; code: string; name: string; quantity: string }>>([]);
+  const [bulkQrQuantity, setBulkQrQuantity] = useState('1');
+  const [qrQuantityError, setQrQuantityError] = useState('');
+  const [qrPrintLabels, setQrPrintLabels] = useState<ProductQrPrintLabel[]>([]);
   const {
     printingOrder,
     printingMaterials,
@@ -231,6 +243,96 @@ export function ProductionOrderDetailPage() {
     }
   };
 
+  const handlePrintFinishedGoodsQr = async () => {
+    if (!row || isPreparingQr) return;
+    setIsPreparingQr(true);
+    setActionMessage('');
+    try {
+      const productResponse = await fetch('/api/san-pham?format=table');
+      const productData = await productResponse.json().catch(() => ({}));
+      if (!productResponse.ok) throw new Error((productData as any)?.error || 'Không thể tải danh mục thành phẩm.');
+      const productByCode = new Map(
+        normalizeProducts(productData).map(product => [normalizeProductCodeKey(product.code), product])
+      );
+      const quantityByProductId = new Map<string, number>();
+      const productById = new Map<string, ProductRow>();
+      for (const line of getProductionOrderProductLines(row)) {
+        const quantity = Math.floor(parseProductionOrderQuantity(line.quantity));
+        if (quantity <= 0) continue;
+        const product = productByCode.get(normalizeProductCodeKey(line.productCode));
+        if (!product) throw new Error(`Không tìm thấy thành phẩm ${line.productCode || line.productName} trong Kho hàng.`);
+        quantityByProductId.set(product.id, (quantityByProductId.get(product.id) || 0) + quantity);
+        productById.set(product.id, product);
+      }
+      const lines = [...quantityByProductId].map(([productId, quantity]) => ({
+        productId,
+        code: productById.get(productId)?.code || '',
+        name: productById.get(productId)?.name || '',
+        quantity: String(quantity)
+      }));
+      if (lines.length === 0) throw new Error('Lệnh sản xuất không có thành phẩm hợp lệ hoặc số lượng lớn hơn 0.');
+      setQrQuantityLines(lines);
+      setBulkQrQuantity('1');
+      setQrQuantityError('');
+      setShowQrQuantityModal(true);
+    } catch (reason: unknown) {
+      setActionMessage(reason instanceof Error ? reason.message : 'Không thể tải thành phẩm của lệnh.');
+    } finally {
+      setIsPreparingQr(false);
+    }
+  };
+
+  const totalQrCopies = qrQuantityLines.reduce((sum, line) => sum + Math.max(0, Math.floor(Number(line.quantity) || 0)), 0);
+
+  const handleConfirmPrintFinishedGoodsQr = async () => {
+    setQrQuantityError('');
+    if (totalQrCopies > 999) {
+      setQrQuantityError('Tổng số tem mỗi lần in không được vượt quá 999.');
+      return;
+    }
+    const items = qrQuantityLines
+      .map(line => ({
+        sanPhamId: line.productId,
+        soLuongTem: Math.max(0, Math.floor(Number(line.quantity.replace(',', '.')) || 0))
+      }))
+      .filter(item => item.soLuongTem > 0);
+    if (items.length === 0) {
+      setQrQuantityError('Nhập số lượng (> 0) cho ít nhất một mã SP.');
+      return;
+    }
+    setIsPreparingQr(true);
+    try {
+      const response = await fetch('/api/ma-qr-hang-hoa/cap-moi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể cấp mã QR mới.');
+      const records: Array<Record<string, unknown>> = Array.isArray(data.records) ? data.records : [];
+      const labels = records.map(record => ({
+        key: String(record.id ?? record.ma_qr ?? ''),
+        payload: String(record.ma_qr ?? '').trim(),
+        productCode: String(record.ma_sp_goc ?? '').trim(),
+        productName: String(record.ten_sp ?? '').trim() || '-'
+      })).filter(label => Boolean(label.key && label.payload && label.productCode));
+      const expectedCount = items.reduce((sum, item) => sum + item.soLuongTem, 0);
+      if (labels.length !== expectedCount) throw new Error('CSDL trả về thiếu mã QR. Chưa thể mở tem để in.');
+      setShowQrQuantityModal(false);
+      setQrPrintLabels(labels);
+    } catch (reason: unknown) {
+      setQrQuantityError(reason instanceof Error ? reason.message : 'Không thể tạo mã QR thành phẩm.');
+    } finally {
+      setIsPreparingQr(false);
+    }
+  };
+
+  const applyBulkQrQuantity = () => {
+    const quantity = String(Math.min(999, Math.max(1, Math.floor(Number(bulkQrQuantity.replace(',', '.')) || 1))));
+    setBulkQrQuantity(quantity);
+    setQrQuantityLines(lines => lines.map(line => ({ ...line, quantity })));
+  };
+
   return (
     <div className="w-full space-y-4">
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-card">
@@ -243,6 +345,15 @@ export function ProductionOrderDetailPage() {
           </div>
           {row ? (
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handlePrintFinishedGoodsQr()}
+                disabled={isPreparingQr}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-extrabold text-sky-700 transition hover:bg-sky-100 disabled:opacity-50"
+              >
+                {isPreparingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                In mã QR
+              </button>
               <button
                 type="button"
                 onClick={() =>
@@ -302,6 +413,94 @@ export function ProductionOrderDetailPage() {
         }}
       />
 
+      {showQrQuantityModal && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 p-4">
+              <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
+                <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">In tem QR</p>
+                    <h3 className="mt-1 text-lg font-black text-zinc-950">Số bản theo mã SP</h3>
+                    <p className="mt-1 text-sm font-medium text-zinc-500">Nhập số tem cần in cho từng sản phẩm · không lưu vào CSDL</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowQrQuantityModal(false)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                    aria-label="Đóng"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-3 overflow-y-auto px-5 py-4">
+                  <div className="flex flex-wrap items-end gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                    <label className="min-w-[120px] flex-1 text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Áp dụng tất cả
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={bulkQrQuantity}
+                        onChange={event => setBulkQrQuantity(event.target.value)}
+                        className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={applyBulkQrQuantity}
+                      className="h-10 rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-700 transition hover:border-zinc-950"
+                    >
+                      Áp dụng
+                    </button>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-zinc-200">
+                    <div className="grid grid-cols-[1fr_7rem] bg-[#ef1b2d] px-4 py-3 text-xs font-black uppercase tracking-wide text-white">
+                      <span>Mã SP</span><span className="text-center">Số bản</span>
+                    </div>
+                    {qrQuantityLines.map(line => (
+                      <div key={line.productId} className="grid grid-cols-[1fr_7rem] items-center gap-3 border-t border-zinc-100 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="font-black text-zinc-900">{line.code}</p>
+                          <p className="line-clamp-1 text-xs font-semibold text-zinc-500">{line.name || '—'}</p>
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          max={999}
+                          value={line.quantity}
+                          onChange={event => setQrQuantityLines(lines => lines.map(item => item.productId === line.productId ? { ...item, quantity: event.target.value } : item))}
+                          className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-black text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {qrQuantityError ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{qrQuantityError}</p> : null}
+                  <p className="text-xs font-semibold text-zinc-500">Tổng sẽ in: <span className="font-black text-[#ef1b2d]">{totalQrCopies}</span> tem</p>
+                </div>
+                <div className="flex gap-2 border-t border-zinc-100 px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowQrQuantityModal(false)}
+                    className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmPrintFinishedGoodsQr()}
+                    disabled={totalQrCopies <= 0 || isPreparingQr}
+                    className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] text-xs font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isPreparingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                    {isPreparingQr ? 'Đang cấp QR...' : `Xem trước ${totalQrCopies > 0 ? `${totalQrCopies} tem` : 'QR'}`}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
       {printingOrder && (
         <ProductionOrderPrintSheet
           order={printingOrder}
@@ -312,6 +511,16 @@ export function ProductionOrderDetailPage() {
           shiftSettings={shiftSettings}
         />
       )}
+      <ProductQrPrintModal
+        open={qrPrintLabels.length > 0}
+        labels={qrPrintLabels}
+        trackProductPrint={false}
+        trackGoodsCatalogPrint
+        showPayload={false}
+        title="Mã QR thành phẩm"
+        description={`${qrPrintLabels.length} tem theo số lượng thành phẩm của lệnh sản xuất`}
+        onClose={() => setQrPrintLabels([])}
+      />
     </div>
   );
 }

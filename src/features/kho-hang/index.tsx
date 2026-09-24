@@ -165,13 +165,9 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         const data = await response.json().catch(() => ({}));
         const records: Array<{ ten_kho?: string }> =
           response.ok && Array.isArray(data?.records) ? data.records : [];
-        setWarehouses(
-          ensureStandardWarehouses(
-            Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean)))
-          )
-        );
+        setWarehouses(Array.from(new Set(records.map(record => String(record.ten_kho ?? '').trim()).filter(Boolean))));
       } catch {
-        setWarehouses(ensureStandardWarehouses([]));
+        setWarehouses([]);
       }
     };
     void loadWarehouses();
@@ -232,10 +228,10 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
       try {
         const loaiKho =
           kind === 'products' ? 'san_pham' : warehouseMovementKind(selectedWarehouseName);
-        // Không siết ten_kho: danh mục vẫn hiện dù cột Kho chưa khớp tên đang chọn.
         const rows = await fetchTonKhoBalances({
           loaiKho,
           asOfDate,
+          tenKho: selectedWarehouseName,
           signal: controller.signal
         });
         setBalanceRows(rows);
@@ -298,8 +294,8 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
         materialsAccess.canView ? (
           <MaterialsInventoryPanel
             onBack={onBack}
-            warehouseFilter=""
-            includeUnassigned
+            warehouseFilter={selectedWarehouseName}
+            includeUnassigned={false}
             asOfDate={asOfDate}
             balanceRows={balanceRows}
             topControls={warehouseControls}
@@ -310,9 +306,8 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           onBack={onBack}
           hideQrColumn
           hideCategoryFilters
-          warehouseFilter=""
-          includeUnassigned
-          searchWarehouseFilter={selectedWarehouseName}
+          warehouseFilter={selectedWarehouseName}
+          includeUnassigned={false}
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={warehouseControls}

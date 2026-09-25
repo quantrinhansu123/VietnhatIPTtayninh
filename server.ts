@@ -6474,6 +6474,7 @@ function parseWarehouseSlipLines(
 function parseWarehouseSlipBody(body: unknown): {
   error: string;
 } | {
+  slipCode: string | null;
   loaiPhieu: 'nhap' | 'xuat';
   loaiKho: WarehouseStorageType;
   ngayPhieu: string;
@@ -6492,12 +6493,16 @@ function parseWarehouseSlipBody(body: unknown): {
   const loaiPhieu = parseWarehouseSlipType(source.loaiPhieu ?? source.loai_phieu ?? source.type);
   const loaiKho = parseWarehouseStorageType(source.loaiKho ?? source.loai_kho ?? source.kho) ?? 'nvl';
   const ngayPhieu = parseWarehouseSlipDate(source.ngayPhieu ?? source.ngay_phieu ?? source.date);
+  const slipCode = String(source.maPhieu ?? source.ma_phieu ?? '').trim() || null;
   const parsedItems = parseWarehouseSlipLines(source.items ?? source.lines ?? source.chi_tiet, loaiKho, loaiPhieu);
   const treoRaw = source.treo;
   const treo = treoRaw === true || treoRaw === 'true' || treoRaw === 1;
 
   if (!loaiPhieu) {
     return { error: 'Loại phiếu phải là nhập hoặc xuất.' };
+  }
+  if (slipCode && !new RegExp(`^${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-\\d{8}-\\d{6}$`).test(slipCode)) {
+    return { error: 'Mã phiếu không hợp lệ.' };
   }
   if (!ngayPhieu) {
     return { error: 'Vui lòng chọn ngày phiếu hợp lệ.' };
@@ -6512,6 +6517,7 @@ function parseWarehouseSlipBody(body: unknown): {
   const isExport = loaiPhieu === 'xuat';
 
   return {
+    slipCode,
     loaiPhieu,
     loaiKho,
     ngayPhieu,
@@ -11425,6 +11431,312 @@ export function createApp() {
    * Quét máy nhập/xuất → ghi thẳng 1 dòng nhap_kho / xuat_kho (DB kho).
    * FE gọi nền khi quét — không chặn thao tác tiếp.
    */
+  app.get(['/api/kho/chi-tiet', '/api/kho/xuat-kho'], async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+
+    const maPhieu = String(req.query.ma_phieu ?? req.query.maPhieu ?? '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+    const slipType = String(req.query.loai_phieu ?? 'xuat').trim().toLowerCase();
+    if (slipType !== 'nhap' && slipType !== 'xuat') {
+      return res.status(400).json({ error: 'Loại phiếu phải là nhap hoặc xuat.' });
+    }
+    const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+    if (String(req.query.summary ?? '') === 'true') {
+      try {
+        const grouped = new Map<string, { ma_sp: string; ten_sp: string; so_luong: number }>();
+        const batchSize = 500;
+        let offset = 0;
+        while (true) {
+          const { data, error } = await supabaseKho
+            .from(lineTable)
+            .select('id, ma_sp, ten_sp, so_luong')
+            .eq('ma_phieu', maPhieu)
+            .order('ma_sp', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + batchSize - 1);
+          if (error) return res.status(500).json({ error: error.message || 'Không tải được tổng hợp chi tiết phiếu.' });
+          const rows = data || [];
+          for (const row of rows) {
+            const maSp = String(row.ma_sp || '').trim();
+            const key = maSp.replace(/\s+/g, '').toUpperCase();
+            if (!key) continue;
+            const item = grouped.get(key) || { ma_sp: maSp, ten_sp: String(row.ten_sp || ''), so_luong: 0 };
+            item.so_luong += Number(row.so_luong) || 0;
+            if (!item.ten_sp && row.ten_sp) item.ten_sp = String(row.ten_sp);
+            grouped.set(key, item);
+          }
+          offset += rows.length;
+          if (rows.length < batchSize) break;
+        }
+        return res.json({ records: [...grouped.values()], total: grouped.size });
+      } catch (err: any) {
+        return res.status(500).json({ error: err?.message || 'Lỗi khi tải tổng hợp chi tiết phiếu.' });
+      }
+    }
+    const limitRaw = Number(req.query.limit ?? 50);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 100) : 50;
+    const offsetRaw = Number(req.query.offset ?? 0);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0;
+
+    try {
+      const { data, error, count } = await supabaseKho
+        .from(lineTable)
+        .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at', { count: 'exact' })
+        .eq('ma_phieu', maPhieu)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1);
+
+      if (error) return res.status(500).json({ error: error.message || 'Không tải được chi tiết phiếu.' });
+      return res.json({ records: data || [], total: count ?? data?.length ?? 0, limit, offset });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải chi tiết phiếu.' });
+    }
+  });
+
+  app.get('/api/kho/lich-su', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const slipCode = String(req.query.ma_phieu ?? req.query.slipCode ?? '').trim();
+      const rawType = String(req.query.loai ?? req.query.loai_phieu ?? '').trim().toLowerCase();
+      const slipType = rawType === 'nhap' || rawType === 'xuat'
+        ? rawType
+        : slipCode.toUpperCase().startsWith('PN-') ? 'nhap' : 'xuat';
+      const kindFilter = parseWarehouseStorageType(req.query.loai_kho ?? req.query.warehouseKind);
+      const warehouseName = String(req.query.ten_kho ?? req.query.warehouseName ?? '').trim();
+      const fromDate = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
+      const toDate = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+      const inferKind = (value: unknown): WarehouseStorageType => {
+        const name = String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (name.includes('thanh pham') || name.includes('san pham')) return 'san_pham';
+        if (name.includes('hang hong')) return 'hang_hong';
+        if (name.includes('hang hoa')) return 'hang_hoa';
+        if (name.includes('cong cu') || name.includes('dung cu')) return 'cong_cu_dung_cu';
+        if (name.includes('gia cong')) return 'gia_cong';
+        if (name.includes('tai che')) return 'tai_che';
+        return 'nvl';
+      };
+      const headers: any[] = [];
+      const pageSize = 500;
+
+      for (let offset = 0; ; offset += pageSize) {
+        let query = supabaseKho
+          .from(headerTable)
+          .select('id, ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu')
+          .order('ngay', { ascending: false })
+          .order('ma_phieu', { ascending: false });
+        if (slipCode) query = query.eq('ma_phieu', slipCode);
+        if (warehouseName) query = query.eq('kho', warehouseName);
+        if (fromDate) query = query.gte('ngay', fromDate);
+        if (toDate) query = query.lte('ngay', toDate);
+        const { data, error } = await query.range(offset, offset + pageSize - 1);
+        if (error) return res.status(500).json({ error: `Không tải được ${headerTable}. ${error.message}` });
+        const rows = data || [];
+        headers.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+
+      const headerByCode = new Map(headers.map(header => [String(header.ma_phieu), header]));
+      const codes = [...headerByCode.keys()];
+      const movements: any[] = [];
+      const headersWithLines = new Set<string>();
+      for (let index = 0; index < codes.length; index += 100) {
+        const codeBatch = codes.slice(index, index + 100);
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabaseKho
+            .from(lineTable)
+            .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at')
+            .in('ma_phieu', codeBatch)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(offset, offset + pageSize - 1);
+          if (error) return res.status(500).json({ error: `Không tải được ${lineTable}. ${error.message}` });
+          const rows = data || [];
+          for (const line of rows) {
+            const header = headerByCode.get(String(line.ma_phieu));
+            if (!header) continue;
+            const kind = parseWarehouseStorageType(line.loai) || inferKind(header.kho);
+            if (kindFilter && kind !== kindFilter) continue;
+            headersWithLines.add(String(line.ma_phieu));
+            const product = kind === 'san_pham';
+            movements.push({
+              id: line.id,
+              ma_phieu: line.ma_phieu,
+              loai_phieu: slipType,
+              loai_kho: kind,
+              ten_kho: header.kho || '',
+              ngay_phieu: header.ngay,
+              ca: header.ca || '',
+              may: header.may || '',
+              nhan_su: header.nhan_su || '',
+              ghi_chu: header.ghi_chu || '',
+              ma_sp: product ? line.ma_sp : null,
+              ma_npl: product ? null : line.ma_sp,
+              ten_sp: product ? line.ten_sp : null,
+              ten_npl: product ? null : line.ten_sp,
+              ma_sp_quet: line.ma_sp_quet || '',
+              so_luong: Number(line.so_luong) || 0,
+              don_vi: '-',
+              don_gia: 0,
+              thanh_tien: 0,
+              created_at: line.created_at,
+              treo: false,
+              da_in: false
+            });
+          }
+          if (rows.length < pageSize) break;
+        }
+      }
+      for (const header of headers) {
+        const code = String(header.ma_phieu);
+        if (headersWithLines.has(code)) continue;
+        const kind = inferKind(header.kho);
+        if (kindFilter && kind !== kindFilter) continue;
+        movements.push({
+          id: header.id,
+          ma_phieu: code,
+          loai_phieu: slipType,
+          loai_kho: kind,
+          ten_kho: header.kho || '',
+          ngay_phieu: header.ngay,
+          ca: header.ca || '',
+          may: header.may || '',
+          nhan_su: header.nhan_su || '',
+          ghi_chu: header.ghi_chu || '',
+          so_luong: 0,
+          don_vi: '-',
+          don_gia: 0,
+          thanh_tien: 0,
+          treo: false,
+          da_in: false
+        });
+      }
+      return res.json({ movements, total: movements.length, source: 'supabase', db: SUPABASE_KHO_DB_LABEL });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải lịch sử xuất nhập kho.' });
+    }
+  });
+
+  app.post('/api/kho/phieu', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const loaiPhieu = String(body.loai_phieu ?? body.loaiPhieu ?? '').trim().toLowerCase();
+      const maPhieu = String(body.ma_phieu ?? body.maPhieu ?? '').trim();
+      if (!['nhap', 'xuat'].includes(loaiPhieu) || !maPhieu) {
+        return res.status(400).json({ error: 'Cần loai_phieu (nhap|xuat) và ma_phieu.' });
+      }
+
+      const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const optionalText = (value: unknown) => String(value ?? '').trim() || null;
+      const { data, error } = await supabaseKho
+        .from(headerTable)
+        .upsert(
+          {
+            ma_phieu: maPhieu,
+            ngay: optionalText(body.ngay) || undefined,
+            nhan_su: optionalText(body.nhan_su ?? body.nhanSu),
+            kho: optionalText(body.kho),
+            ca: optionalText(body.ca),
+            may: optionalText(body.may),
+            ghi_chu: optionalText(body.ghi_chu ?? body.ghiChu)
+          },
+          { onConflict: 'ma_phieu' }
+        )
+        .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu')
+        .single();
+      if (error) {
+        console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} metadata upsert error:`, error);
+        return res.status(500).json({ error: `Không thể lưu thông tin phiếu. ${error.message}` });
+      }
+      return res.json({ success: true, header: data, source: SUPABASE_KHO_DB_LABEL });
+    } catch (err: any) {
+      console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/phieu error:`, err);
+      return res.status(500).json({ error: err?.message || 'Lỗi khi lưu thông tin phiếu kho.' });
+    }
+  });
+
+  app.delete('/api/kho/phieu/:slipCode', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+    const slipCode = String(req.params.slipCode || '').trim();
+    if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+
+    try {
+      let slipType: 'nhap' | 'xuat' | null = null;
+      for (const type of ['nhap', 'xuat'] as const) {
+        const table = type === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+        const { data, error } = await supabaseKho.from(table).select('ma_phieu').eq('ma_phieu', slipCode).maybeSingle();
+        if (error) return res.status(500).json({ error: `Không tải được phiếu. ${error.message}` });
+        if (data) slipType = type;
+      }
+      if (!slipType) return res.status(404).json({ error: 'Không tìm thấy phiếu cần xóa.' });
+
+      const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+      const { data: lines, error: linesError } = await supabaseKho
+        .from(lineTable)
+        .select('id, ma_sp, so_luong')
+        .eq('ma_phieu', slipCode);
+      if (linesError) return res.status(500).json({ error: `Không tải được chi tiết phiếu. ${linesError.message}` });
+
+      const stockDeltas = new Map<string, number>();
+      for (const line of lines || []) {
+        const fullCode = String(line.ma_sp || '').trim();
+        const separatorIdx = Math.min(...['_', '+'].map(separator => {
+          const index = fullCode.indexOf(separator);
+          return index > 0 ? index : Number.POSITIVE_INFINITY;
+        }));
+        const code = Number.isFinite(separatorIdx) ? fullCode.slice(0, separatorIdx).trim() : fullCode;
+        if (code) stockDeltas.set(code, (stockDeltas.get(code) || 0) + (Number(line.so_luong) || 0));
+      }
+      const { error: lineDeleteError } = await supabaseKho.from(lineTable).delete().eq('ma_phieu', slipCode);
+      if (lineDeleteError) return res.status(500).json({ error: `Không thể xóa chi tiết phiếu. ${lineDeleteError.message}` });
+
+      for (const [code, quantity] of stockDeltas) {
+        const { data: stock, error: stockReadError } = await supabaseKho
+          .from('kho')
+          .select('id, ton_dau, nhap, xuat')
+          .eq('ma_sp', code)
+          .maybeSingle();
+        if (stockReadError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockReadError.message}` });
+        if (!stock) continue;
+        const nhap = Math.max(0, (Number(stock.nhap) || 0) - (slipType === 'nhap' ? quantity : 0));
+        const xuat = Math.max(0, (Number(stock.xuat) || 0) - (slipType === 'xuat' ? quantity : 0));
+        const { error: stockUpdateError } = await supabaseKho
+          .from('kho')
+          .update({ nhap, xuat, ton_cuoi: (Number(stock.ton_dau) || 0) + nhap - xuat })
+          .eq('id', stock.id);
+        if (stockUpdateError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockUpdateError.message}` });
+      }
+
+      const { error: headerDeleteError } = await supabaseKho.from(headerTable).delete().eq('ma_phieu', slipCode);
+      if (headerDeleteError) return res.status(500).json({ error: `Không thể xóa header phiếu. ${headerDeleteError.message}` });
+      return res.json({ success: true, deletedCount: lines?.length || 0 });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi xóa phiếu kho.' });
+    }
+  });
+
   app.post('/api/kho/quet', async (req, res) => {
     if (!supabaseKho) {
       return res.status(503).json({
@@ -11474,8 +11786,13 @@ export function createApp() {
         '0'
       )}:${String(nowVn.getSeconds()).padStart(2, '0')}`;
 
-      const underscoreIdx = maSpFull.indexOf('_');
-      const maSpTon = underscoreIdx > 0 ? maSpFull.slice(0, underscoreIdx).trim() : maSpFull;
+      const separatorIdx = Math.min(
+        ...['_', '+'].map(separator => {
+          const index = maSpFull.indexOf(separator);
+          return index > 0 ? index : Number.POSITIVE_INFINITY;
+        })
+      );
+      const maSpTon = Number.isFinite(separatorIdx) ? maSpFull.slice(0, separatorIdx).trim() : maSpFull;
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
 
@@ -11488,10 +11805,18 @@ export function createApp() {
         return res.status(500).json({ error: `Không thể tạo phiếu ${loaiPhieu}. ${headerError.message}` });
       }
 
+      const lineData = {
+        ma_sp: loaiPhieu === 'xuat' || loai === 'san_pham' ? maSpTon : maSpFull,
+        ma_sp_quet: maSpFull,
+        ten_sp: tenSp,
+        loai,
+        so_luong: soLuong,
+        ma_phieu: maPhieu
+      };
       const { data: lineRow, error: lineError } = await supabaseKho
         .from(lineTable)
-        .insert({ ma_sp: maSpFull, loai, so_luong: soLuong, ma_phieu: maPhieu })
-        .select('id, ma_sp, loai, so_luong, ma_phieu, created_at')
+        .insert(lineData)
+        .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at')
         .single();
 
       if (lineError) {
@@ -11770,7 +12095,7 @@ export function createApp() {
         }
       }
 
-      const maPhieu = generateWarehouseSlipCode(parsed.loaiPhieu);
+      const maPhieu = parsed.slipCode || generateWarehouseSlipCode(parsed.loaiPhieu);
 
       // Nhập kho NVL không còn sinh mã QR/serial theo từng đơn vị — tem QR NVL được
       // cấp và in trực tiếp tại Danh mục Kho NVL (/kho-hang), không phải ở phiếu nhập.
@@ -14658,9 +14983,15 @@ export function createApp() {
 
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
     if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+    const limitRaw = Number(req.query.limit ?? 50);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 50;
+    const offsetRaw = Number(req.query.offset ?? 0);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0;
 
     try {
-      const { data, error } = await db.rpc('kiem_kho_gop_theo_ma_nvl', { p_dot: dotKiemKho });
+      const { data, error, count } = await db
+        .rpc('kiem_kho_gop_theo_ma_nvl', { p_dot: dotKiemKho }, { count: 'exact' })
+        .range(offset, offset + limit - 1);
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không tổng hợp được đợt kiểm kho.',
@@ -14674,7 +15005,7 @@ export function createApp() {
         da_chot: false
       }));
 
-      return res.json({ records, total: records.length, source: 'supabase', db: dbLabel });
+      return res.json({ records, total: count ?? records.length, source: 'supabase', db: dbLabel, limit, offset });
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi tổng hợp đợt kiểm kho.',
@@ -15329,21 +15660,22 @@ export function createApp() {
     const db = resolved.client;
     const dbLabel = resolved.label;
 
-    const limitRaw = Number(req.query.limit ?? 200);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 1000) : 200;
+    const limitRaw = Number(req.query.limit ?? 50);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 50;
+    const offsetRaw = Number(req.query.offset ?? 0);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0;
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
 
     try {
       let query = db
         .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false })
-        .limit(limit);
+        .order('id', { ascending: false });
 
       if (dotKiemKho) query = query.eq('dot_kiem_kho', dotKiemKho);
 
-      const { data, error } = await query;
+      const { data, error, count } = await query.range(offset, offset + limit - 1);
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không đọc được bảng kiem_kho_tong_hop.',
@@ -15354,7 +15686,9 @@ export function createApp() {
       const records = Array.isArray(data) ? data : [];
       return res.json({
         records,
-        total: records.length,
+        total: count ?? records.length,
+        limit,
+        offset,
         source: 'supabase',
         db: dbLabel,
         table: SUPABASE_KIEM_KHO_TONG_HOP_TABLE

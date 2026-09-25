@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Html5Qrcode as Html5QrcodeInstance } from 'html5-qrcode';
-import { ScanBarcode, X } from 'lucide-react';
+import { Save, ScanBarcode, X } from 'lucide-react';
 
 /**
  * html5-qrcode là thư viện decode khá nặng (kèm engine zxing). Chỉ tải nó khi thực sự bật
@@ -50,6 +50,9 @@ interface ProductQrScannerProps {
   getConfirmMessage?: (code: string) => string;
   /** Tổng số mã đã quét thành công trong danh sách hiện tại; nếu bỏ trống sẽ đếm trong phiên mở scanner. */
   scannedCount?: number;
+  onSaveBatch?: () => void;
+  savingBatch?: boolean;
+  saveBatchDisabled?: boolean;
 }
 
 type ScanFeedback = {
@@ -267,7 +270,10 @@ export default function ProductQrScanner({
   closeAfterScan = false,
   requireConfirm = true,
   getConfirmMessage,
-  scannedCount
+  scannedCount,
+  onSaveBatch,
+  savingBatch = false,
+  saveBatchDisabled = false
 }: ProductQrScannerProps) {
   const reactId = useId();
   const regionId = `product-qr-${reactId.replace(/:/g, '')}`;
@@ -760,22 +766,28 @@ export default function ProductQrScanner({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           <div className="mb-2.5 flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2">
-            <div className="min-w-0">
-              <span className="block text-[11px] font-bold text-zinc-600">
-                {hardwareOnly
-                  ? 'Đầu đọc laser của máy'
-                  : useCamera
-                    ? 'Camera đang bật'
-                    : 'Camera đang tắt — dùng máy quét laser'}
-              </span>
-              <span className="mt-0.5 block text-[10px] font-semibold text-emerald-700">
-                BT-A700: đã sẵn sàng — hãy bấm cò quét
-              </span>
-            </div>
-            <span
-              className="ml-auto shrink-0 text-right text-sm font-black text-[#ef1b2d]"
-              data-testid="scanner-total-count"
-            >
+            {!hardwareOnly && (
+              <div className="min-w-0">
+                <span className="block text-[11px] font-bold text-zinc-600">
+                  {useCamera ? 'Camera đang bật' : 'Camera đang tắt — dùng máy quét laser'}
+                </span>
+                <span className="mt-0.5 block text-[10px] font-semibold text-emerald-700">
+                  BT-A700: đã sẵn sàng — hãy bấm cò quét
+                </span>
+              </div>
+            )}
+            {hardwareOnly && onSaveBatch ? (
+              <button
+                type="button"
+                onClick={onSaveBatch}
+                disabled={savingBatch || saveBatchDisabled}
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {savingBatch ? 'Đang lưu...' : 'Lưu đợt'}
+              </button>
+            ) : null}
+            <span className="ml-auto shrink-0 text-right text-sm font-black text-[#ef1b2d]" data-testid="scanner-total-count">
               Tổng SL: {displayedScannedCount}
             </span>
             {!hardwareOnly && (

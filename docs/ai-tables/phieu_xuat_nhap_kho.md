@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Bảng** | `phieu_xuat_nhap_kho` |
+| **Bảng** | Lịch sử kho mới: `phieu_nhap`, `phieu_xuat`, `nhap_kho`, `xuat_kho`; các phiếu cũ vẫn nằm trong `phieu_xuat_nhap_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
 | **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (căn cứ báo cáo: `supabase-phieu-xuat-nhap-kho-can-cu-bao-cao.sql`; QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; QR NVL: `supabase-ma-qr-nvl.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`; treo: `supabase-phieu-xuat-nhap-kho-treo.sql`; ảnh thực tế: `supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql`; bỏ ảnh số bao: `supabase-phieu-xuat-nhap-kho-xoa-anh-so-bao-thuc-te.sql`) |
 
@@ -11,6 +11,7 @@
 | Method | Path | Dòng |
 |--------|------|------|
 | GET | `/api/phieu-xuat-nhap-kho` | Danh sách phiếu; lọc `loai`, `loai_kho`, `ma_sp` (khớp cả bản không dấu cách) |
+| GET | `/api/kho/lich-su` | Trang `/lich-su-xuat-nhap-kho` ghép header và chi tiết từ DB kho mới theo `ma_phieu` |
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | Nhật ký theo SP — dùng tab Nhập kho / Xuất kho trong Xem sản phẩm |
 | GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
 | GET | `/api/phieu-xuat-nhap-kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |

@@ -10,9 +10,11 @@ import {
   ClipboardCheck,
   Clock,
   Factory,
+  FilePlus2,
   History,
   ImagePlus,
   Loader2,
+  ListChecks,
   Package,
   Pencil,
   Plus,
@@ -41,6 +43,7 @@ import {
   TableSearchInput,
   TableDateFilter,
   TableShell,
+  TablePagination,
   TableHead,
   TableHeadCell,
   TableBody,
@@ -61,8 +64,7 @@ import WarehouseSlipPrintModal, {
 } from '../../components/WarehouseSlipPrintModal';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import {
-  STORAGE_WAREHOUSE_SLIP_DRAFT_KEY,
-  STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY
+  STORAGE_WAREHOUSE_SLIP_DRAFT_KEY
 } from '../_shared/storageKeys';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch } from '../../utils/shiftSettings';
 import { findProductByCode, normalizeProducts } from '../san-pham';
@@ -264,57 +266,26 @@ export type WarehouseSlipPrefillDraft = {
   >;
 };
 
-type WarehouseScanningDraft = WarehouseSlipPrefillDraft & {
-  id: string;
-  updatedAt: number;
-  owner: string;
-  scannedFullCodes: Record<string, string[]>;
+type SavedProductScanRow = {
+  id: string | number;
+  ma_sp: string;
+  ma_sp_quet?: string | null;
+  ten_sp?: string | null;
+  created_at?: string | null;
 };
 
-function readWarehouseScanningDrafts(): WarehouseScanningDraft[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(draft => draft && typeof draft.id === 'string' && Array.isArray(draft.lines))
-      .sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0));
-  } catch {
-    return [];
-  }
-}
+type SavedProductSummaryRow = {
+  ma_sp: string;
+  ten_sp: string;
+  so_luong: number;
+};
 
-function writeWarehouseScanningDrafts(drafts: WarehouseScanningDraft[]) {
-  localStorage.setItem(
-    STORAGE_WAREHOUSE_SLIP_SCANNING_DRAFTS_KEY,
-    JSON.stringify([...drafts].sort((left, right) => right.updatedAt - left.updatedAt))
-  );
-}
-
-function createWarehouseScanningDraftId() {
-  return `warehouse-scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function formatWarehouseDraftUpdatedAt(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '';
-  return new Date(value).toLocaleString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
+function formatWarehouseSavedAt(value: string) {
+  if (!value) return 'Đang lưu…';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN', {
+    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
   });
-}
-
-function warehouseScanningDraftLabel(draft: WarehouseScanningDraft) {
-  const itemCount = draft.lines.filter(line => line.code.trim()).length;
-  return `${draft.warehouseName || warehouseKindLabel(draft.warehouseKind)} · ${itemCount} mã · ${formatWarehouseDraftUpdatedAt(draft.updatedAt)}`;
-}
-
-function warehouseScanningDraftSearchText(draft: WarehouseScanningDraft) {
-  const lineText = draft.lines.map(line => `${line.code} ${line.name}`).join(' ');
-  return [warehouseScanningDraftLabel(draft), draft.createdBy, draft.reason, draft.note, lineText]
-    .filter(Boolean)
-    .join(' ');
 }
 
 /** Draft quá thời gian này (ms) coi như đã cũ/bỏ dở, không tự điền vào phiếu mới nữa. */
@@ -1234,6 +1205,7 @@ export function WarehouseSlipPanel({
   const [warehouseName, setWarehouseName] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
+  const [newSlipCode, setNewSlipCode] = useState(() => generateWarehouseSlipPreviewCode(slipType));
   /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
   const [isXuatTreoMode, setIsXuatTreoMode] = useState(false);
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1252,6 +1224,8 @@ export function WarehouseSlipPanel({
   const [deliverer, setDeliverer] = useState('');
   const [warehouseLocation, setWarehouseLocation] = useState('HCM');
   const [lines, setLines] = useState<WarehouseSlipLineDraft[]>(() => [createWarehouseLineDraft()]);
+  const [productLineView, setProductLineView] = useState<'detail' | 'summary'>('detail');
+  const [productExportView, setProductExportView] = useState<'thuc-hien' | 'chi-tiet' | 'lap-phieu'>('thuc-hien');
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [avgInboundPriceByKey, setAvgInboundPriceByKey] = useState<Record<string, number>>({});
@@ -1285,9 +1259,6 @@ export function WarehouseSlipPanel({
   const [editSlipCode, setEditSlipCode] = useState<string | null>(null);
   const [uploadingLineImageKey, setUploadingLineImageKey] = useState<string | null>(null);
   const [viewingSlipImage, setViewingSlipImage] = useState<WeighingPreviewImage | null>(null);
-  const [scanningDrafts, setScanningDrafts] = useState<WarehouseScanningDraft[]>(readWarehouseScanningDrafts);
-  const [activeScanningDraftId, setActiveScanningDraftId] = useState<string | null>(null);
-  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<number | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ReturnType<typeof normalizeShiftSettings>>([]);
   const [machineOptions, setMachineOptions] = useState<WarehouseMachineOption[]>([]);
   const [isLoadingMachines, setIsLoadingMachines] = useState(false);
@@ -1328,10 +1299,6 @@ export function WarehouseSlipPanel({
     }
     return options;
   }, [machine, machineOptions]);
-  const ownedScanningDrafts = useMemo(
-    () => scanningDrafts.filter(draft => String(draft.owner || '').trim() === loginName),
-    [scanningDrafts, loginName]
-  );
   const selectedWarehouseName = warehouseName.trim();
   const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl' && slipType === 'xuat';
   const showWarehouseShiftAndMachine =
@@ -1867,6 +1834,34 @@ export function WarehouseSlipPanel({
 
   // Chống quét trùng tem + mã phiếu phiên quét ghi thẳng DB kho (nền, hàng tuần tự).
   const scannedFullCodesByPrefixRef = useRef<Map<string, Set<string>>>(new Map());
+  const [scannedSavedAtByCode, setScannedSavedAtByCode] = useState<Record<string, string>>({});
+  const [savedProductScanRows, setSavedProductScanRows] = useState<SavedProductScanRow[] | null>(null);
+  const [savedProductScanTotal, setSavedProductScanTotal] = useState(0);
+  const [savedProductScanPage, setSavedProductScanPage] = useState(1);
+  const [savedProductScanPageSize, setSavedProductScanPageSize] = useState(50);
+  const [loadingSavedProductScans, setLoadingSavedProductScans] = useState(false);
+  const [savedProductScanError, setSavedProductScanError] = useState('');
+  const [savedProductSummary, setSavedProductSummary] = useState<SavedProductSummaryRow[]>([]);
+  const [loadingProductSummary, setLoadingProductSummary] = useState(false);
+  const [productSummaryError, setProductSummaryError] = useState('');
+  const scannedProductDetails = lines.flatMap(line => {
+    const prefixKey = normalizeMaterialCodeKey(line.code);
+    const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
+    if (codes?.size) {
+      return [...codes].map(fullCode => ({
+        key: `${prefixKey}:${fullCode}`,
+        baseCode: warehouseCodePrefix(fullCode),
+        fullCode,
+        name: line.name,
+        unit: line.unit,
+        savedAt: scannedSavedAtByCode[fullCode] || '',
+        quantity: '1'
+      }));
+    }
+    return line.code.trim()
+      ? [{ key: line.key, baseCode: line.code, fullCode: line.code, name: line.name, unit: line.unit, savedAt: scannedSavedAtByCode[line.code] || '', quantity: line.quantity }]
+      : [];
+  });
   const khoScanMaPhieuRef = useRef<string>('');
   const khoScanQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -1876,17 +1871,7 @@ export function WarehouseSlipPanel({
       khoScanMaPhieuRef.current = editing;
       return editing;
     }
-    if (!khoScanMaPhieuRef.current) {
-      const now = new Date();
-      const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-        now.getDate()
-      ).padStart(2, '0')}`;
-      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(
-        2,
-        '0'
-      )}${String(now.getSeconds()).padStart(2, '0')}`;
-      khoScanMaPhieuRef.current = `${slipType === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
-    }
+    if (!khoScanMaPhieuRef.current) khoScanMaPhieuRef.current = newSlipCode || generateWarehouseSlipPreviewCode(slipType);
     return khoScanMaPhieuRef.current;
   };
 
@@ -1929,6 +1914,9 @@ export function WarehouseSlipPanel({
           if (data?.ma_phieu) {
             khoScanMaPhieuRef.current = String(data.ma_phieu);
           }
+          if (data?.line?.created_at) {
+            setScannedSavedAtByCode(current => ({ ...current, [payload.fullCode]: String(data.line.created_at) }));
+          }
         } catch (err: any) {
           console.warn('[kho/quet]', err?.message || err);
         }
@@ -1947,6 +1935,12 @@ export function WarehouseSlipPanel({
     clearSavedPrint();
     setSlipType(nextSlipType);
     setIsXuatTreoMode(nextIsXuatTreoMode);
+    setProductExportView('thuc-hien');
+    if (!editSlipCode) {
+      const nextSlipCode = generateWarehouseSlipPreviewCode(nextSlipType);
+      setNewSlipCode(nextSlipCode);
+      khoScanMaPhieuRef.current = nextSlipCode;
+    }
     setReason('');
     setNote('');
     setProductionOrderCodes([]);
@@ -1963,7 +1957,6 @@ export function WarehouseSlipPanel({
     linesRef.current = emptyLines;
     setLines(emptyLines);
     scannedFullCodesByPrefixRef.current.clear();
-    khoScanMaPhieuRef.current = '';
   };
 
   // Tổng SL trên modal: tổng số lượng đã quét trong phiên — mã cùng gốc khác hậu tố lô/serial
@@ -1973,137 +1966,6 @@ export function WarehouseSlipPanel({
     const qty = parsePercentInput(line.quantity);
     return total + (Number.isFinite(qty) && qty > 0 ? qty : 1);
   }, 0);
-
-  const buildCurrentScanningDraft = (id: string, updatedAt = Date.now()): WarehouseScanningDraft => ({
-    id,
-    updatedAt,
-    owner: loginName,
-    scannedFullCodes: Object.fromEntries(
-      [...scannedFullCodesByPrefixRef.current.entries()].map(([prefix, codes]) => [prefix, [...codes]])
-    ),
-    slipType: 'nhap',
-    warehouseKind,
-    warehouseName,
-    slipDate,
-    reason,
-    note,
-    createdBy: createdBy.trim() || loginName,
-    productionOrderRef: formatWarehouseProductionOrderSelection(productionOrderCodes),
-    machine,
-    shift: formatWarehouseShiftSelection(selectedShifts),
-    recipient,
-    deliverer,
-    warehouseLocation,
-    createdAt: updatedAt,
-    lines: lines.map(line => ({
-      code: line.code,
-      name: line.name,
-      unit: line.unit,
-      quantity: line.quantity,
-      documentQuantity: line.documentQuantity,
-      unitPrice: line.unitPrice,
-      quotaQuantity: line.quotaQuantity,
-      suggestedQuantity: line.suggestedQuantity,
-      lineNote: line.lineNote,
-      sourceInboundLineId: line.sourceInboundLineId,
-      sourceInboundSlipCode: line.sourceInboundSlipCode,
-      damagedReportRowId: line.damagedReportRowId
-    }))
-  });
-
-  const persistScanningDraft = (requestedId?: string | null) => {
-    if (slipType !== 'nhap' || editSlipCode || !lines.some(line => line.code.trim())) return null;
-    const id = requestedId || activeScanningDraftId || createWarehouseScanningDraftId();
-    const updatedAt = Date.now();
-    const draft = buildCurrentScanningDraft(id, updatedAt);
-    setScanningDrafts(current => {
-      const next = [draft, ...current.filter(item => item.id !== id)];
-      writeWarehouseScanningDrafts(next);
-      return next;
-    });
-    setActiveScanningDraftId(id);
-    setLastDraftSavedAt(updatedAt);
-    return id;
-  };
-
-  const loadScanningDraft = (draftId: string) => {
-    if (!draftId) return;
-    if (activeScanningDraftId && activeScanningDraftId !== draftId) {
-      persistScanningDraft(activeScanningDraftId);
-    }
-    const draft = scanningDrafts.find(item => item.id === draftId);
-    if (!draft) return;
-    const draftAccess = pickWarehouseSlipAccess(warehouseAccess, draft.warehouseKind);
-    if (!draftAccess.canCreate) {
-      setFormError('Bạn không có quyền tiếp tục phiếu tạm thuộc kho này.');
-      return;
-    }
-    clearSavedPrint();
-    setSlipType('nhap');
-    setIsXuatTreoMode(false);
-    setWarehouseKind(draft.warehouseKind);
-    setWarehouseName(draft.warehouseName || '');
-    setSlipDate(draft.slipDate || new Date().toISOString().slice(0, 10));
-    setReason(draft.reason || '');
-    setNote(draft.note || '');
-    setCreatedBy(draft.createdBy || loginName);
-    setProductionOrderCodes(parseWarehouseProductionOrderSelection(draft.productionOrderRef));
-    setProductionOrderSearch('');
-    setMachine(draft.machine || '');
-    setSelectedShifts(parseWarehouseShiftSelection(draft.shift));
-    setRecipient(draft.recipient || '');
-    setDeliverer(draft.deliverer || '');
-    setWarehouseLocation(draft.warehouseLocation || 'HCM');
-    const restoredLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
-    linesRef.current = restoredLines;
-    setLines(restoredLines);
-    scannedFullCodesByPrefixRef.current = new Map(
-      Object.entries((draft.scannedFullCodes || {}) as Record<string, string[]>).map(([prefix, codes]) => [
-        prefix,
-        new Set(codes)
-      ])
-    );
-    setActiveScanningDraftId(draft.id);
-    setLastDraftSavedAt(draft.updatedAt);
-    setEditSlipCode(null);
-    setFormError('');
-    setActionMessage(`Đã mở phiếu đang quét, lưu tạm lúc ${formatWarehouseDraftUpdatedAt(draft.updatedAt)}.`);
-  };
-
-  const handleSaveScanningDraft = () => {
-    if (!warehouseName.trim()) {
-      setFormError('Vui lòng chọn tên kho trước khi lưu tạm phiếu.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (!lines.some(line => line.code.trim())) {
-      setFormError('Vui lòng quét hoặc nhập ít nhất một mã trước khi lưu tạm phiếu.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    const savedDraftId = persistScanningDraft(activeScanningDraftId);
-    if (!savedDraftId) return;
-    const message = 'Đã lưu tạm phiếu. Phiếu chưa ghi lịch sử và chưa cập nhật tồn kho.';
-    setFormError('');
-    setActionMessage(message);
-    showAppToast(message);
-  };
-
-  const deleteActiveScanningDraft = () => {
-    if (!activeScanningDraftId) return;
-    if (!window.confirm('Xóa phiếu đang quét này khỏi danh sách lưu tạm?')) return;
-    const next = scanningDrafts.filter(draft => draft.id !== activeScanningDraftId);
-    writeWarehouseScanningDrafts(next);
-    setScanningDrafts(next);
-    setActiveScanningDraftId(null);
-    setLastDraftSavedAt(null);
-    const emptyLines = [createWarehouseLineDraft()];
-    linesRef.current = emptyLines;
-    scannedFullCodesByPrefixRef.current.clear();
-    khoScanMaPhieuRef.current = '';
-    setLines(emptyLines);
-    setActionMessage('Đã xóa phiếu lưu tạm.');
-  };
 
   /**
    * Quét → cập nhật form ngay; đồng bộ nền vào DB kho (nhap_kho / xuat_kho tuỳ phiếu).
@@ -2184,6 +2046,96 @@ export function WarehouseSlipPanel({
   // Phiếu xuất kho NVL dùng lệnh SX để tự lập các dòng theo định mức BOM.
   // Các loại phiếu xuất khác không có luồng này.
   const showOrderFields = isNvlExport;
+  const showProductExportTabs = warehouseKind === 'san_pham' && !isXuatTreoMode;
+  const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
+
+  useEffect(() => {
+    setSavedProductScanPage(1);
+  }, [productDetailSlipCode]);
+
+  useEffect(() => {
+    if (!showProductExportTabs || productExportView !== 'chi-tiet' || !productDetailSlipCode) return;
+    let cancelled = false;
+    const offset = (savedProductScanPage - 1) * savedProductScanPageSize;
+    setLoadingSavedProductScans(true);
+    setSavedProductScanError('');
+    fetch(`/api/kho/chi-tiet?loai_phieu=${slipType}&ma_phieu=${encodeURIComponent(productDetailSlipCode)}&limit=${savedProductScanPageSize}&offset=${offset}`)
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Không tải được chi tiết phiếu.');
+        if (cancelled) return;
+        setSavedProductScanRows(Array.isArray(data?.records) ? data.records : []);
+        setSavedProductScanTotal(Number(data?.total) || 0);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setSavedProductScanRows(null);
+        setSavedProductScanTotal(0);
+        setSavedProductScanError(err?.message || 'Không tải được chi tiết phiếu.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSavedProductScans(false);
+      });
+    return () => { cancelled = true; };
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, savedProductScanPage, savedProductScanPageSize, scannedSavedAtByCode]);
+
+  useEffect(() => {
+    if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode) return;
+    let cancelled = false;
+    setLoadingProductSummary(true);
+    setProductSummaryError('');
+    setLines([]);
+    fetch(`/api/kho/chi-tiet?loai_phieu=${slipType}&ma_phieu=${encodeURIComponent(productDetailSlipCode)}&summary=true`)
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách tổng hợp sản phẩm.');
+        if (!cancelled) setSavedProductSummary(Array.isArray(data?.records) ? data.records : []);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setSavedProductSummary([]);
+        setProductSummaryError(err?.message || 'Không tải được danh sách tổng hợp sản phẩm.');
+      })
+      .finally(() => { if (!cancelled) setLoadingProductSummary(false); });
+    return () => { cancelled = true; };
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode]);
+
+  useEffect(() => {
+    if (!showProductExportTabs || productExportView !== 'lap-phieu' || loadingProductSummary || productSummaryError) return;
+    setLines(savedProductSummary.map(row => {
+      const code = String(row.ma_sp || '').trim();
+      const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(code));
+      return {
+        ...createWarehouseLineDraft(),
+        code,
+        name: String(row.ten_sp || item?.name || ''),
+        unit: item?.unit || '',
+        quantity: String(row.so_luong || 0),
+        documentQuantity: String(row.so_luong || 0)
+      };
+    }));
+  }, [showProductExportTabs, productExportView, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions]);
+
+  const savedProductDetails = savedProductScanRows?.map(row => {
+    const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
+    const baseCode = warehouseCodePrefix(String(row.ma_sp || fullCode));
+    const codeKey = normalizeMaterialCodeKey(baseCode);
+    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
+    const line = lines.find(candidate => normalizeMaterialCodeKey(candidate.code) === codeKey);
+    return {
+      key: String(row.id),
+      baseCode,
+      fullCode,
+      name: String(row.ten_sp || item?.name || line?.name || ''),
+      unit: item?.unit || line?.unit || '',
+      savedAt: String(row.created_at || '')
+    };
+  }) ?? null;
+  const productDetailRows = savedProductDetails ?? scannedProductDetails.slice(
+    (savedProductScanPage - 1) * savedProductScanPageSize,
+    savedProductScanPage * savedProductScanPageSize
+  );
+  const productDetailTotal = savedProductDetails ? savedProductScanTotal : scannedProductDetails.length;
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -2875,7 +2827,7 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const handleSave = async (autoPrint = false) => {
+  const handleSave = async (autoPrint = false, closeScannerAfterSave = false) => {
     if (!(editSlipCode ? canEdit : canCreate)) {
       setFormError(
         showSaveFailure(
@@ -2931,6 +2883,7 @@ export function WarehouseSlipPanel({
     const printSlipType: WarehouseSlipType = slipType === 'xuat' ? 'xuat' : 'nhap';
     const isXuatTreoFlow = isXuatTreoMode && slipType === 'xuat';
     const slipPayload = {
+      maPhieu: isEditing ? undefined : newSlipCode,
       loaiPhieu: printSlipType,
       loaiKho: warehouseKind,
       tenKho: warehouseName.trim(),
@@ -2946,6 +2899,27 @@ export function WarehouseSlipPanel({
     };
 
     try {
+      if (showProductExportTabs) await khoScanQueueRef.current;
+      if (scannedItemCount > 0 && !isXuatTreoFlow) {
+        const headerRes = await fetch('/api/kho/phieu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loai_phieu: printSlipType,
+            ma_phieu: editSlipCode || khoScanMaPhieuRef.current || newSlipCode,
+            ngay: slipDate,
+            nhan_su: createdBy.trim() || loginName,
+            kho: warehouseName.trim(),
+            ca: shiftLabelForSave,
+            may: showWarehouseShiftAndMachine ? machine.trim() : '',
+            ghi_chu: note.trim()
+          })
+        });
+        const headerData = await headerRes.json().catch(() => ({}));
+        if (!headerRes.ok) {
+          throw new Error(readApiErrorMessage(headerRes, headerData, 'Không thể lưu thông tin phiếu vào DB kho.'));
+        }
+      }
       const res = await fetch(
         isEditing ? `/api/phieu-xuat-nhap-kho/${encodeURIComponent(editSlipCode!)}` : '/api/phieu-xuat-nhap-kho',
         {
@@ -3031,15 +3005,6 @@ export function WarehouseSlipPanel({
         setReviewingDamagedReportKey('');
         void loadPendingDamagedReports();
       }
-      if (activeScanningDraftId) {
-        setScanningDrafts(current => {
-          const next = current.filter(draft => draft.id !== activeScanningDraftId);
-          writeWarehouseScanningDrafts(next);
-          return next;
-        });
-        setActiveScanningDraftId(null);
-        setLastDraftSavedAt(null);
-      }
       setEditSlipCode(null);
       setReason('');
       setNote('');
@@ -3048,10 +3013,13 @@ export function WarehouseSlipPanel({
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
-      khoScanMaPhieuRef.current = '';
+      const nextSlipCode = generateWarehouseSlipPreviewCode(printSlipType);
+      setNewSlipCode(nextSlipCode);
+      khoScanMaPhieuRef.current = nextSlipCode;
       const emptyLines = [createWarehouseLineDraft()];
       linesRef.current = emptyLines;
       setLines(emptyLines);
+      if (closeScannerAfterSave) setQrScannerOpen(false);
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu phiếu xuất nhập kho.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3191,51 +3159,6 @@ export function WarehouseSlipPanel({
       )}
 
       <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-        {slipType === 'nhap' && !editSlipCode ? (
-          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-            <label className="min-w-[16rem] flex-1 space-y-1">
-              <span className="text-xs font-black uppercase tracking-wide text-amber-900">Phiếu đang quét</span>
-              <SearchableSelect
-                value={activeScanningDraftId || ''}
-                onChange={draftId => loadScanningDraft(draftId)}
-                options={ownedScanningDrafts}
-                placeholder="-- Chọn phiếu lưu tạm để quét tiếp --"
-                searchPlaceholder="Tìm theo kho, mã hàng, người lập..."
-                getLabel={item => warehouseScanningDraftLabel(item as WarehouseScanningDraft)}
-                getValue={item => (item as WarehouseScanningDraft).id}
-                getSearchText={item => warehouseScanningDraftSearchText(item as WarehouseScanningDraft)}
-                inputClassName={warehouseFieldClass}
-                allowEmpty={false}
-                comboboxMode
-                comboboxSearchable
-                desktopAutoFlip
-              />
-            </label>
-            <button
-              type="button"
-              onClick={handleSaveScanningDraft}
-              className="flex h-10 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-extrabold text-amber-900 transition hover:bg-amber-100"
-            >
-              <Save className="h-4 w-4" /> Lưu tạm phiếu
-            </button>
-            {activeScanningDraftId ? (
-              <button
-                type="button"
-                onClick={deleteActiveScanningDraft}
-                className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-extrabold text-rose-700 transition hover:bg-rose-50"
-              >
-                <Trash2 className="h-4 w-4" /> Xóa phiếu tạm
-              </button>
-            ) : null}
-            <p className="w-full text-[11px] font-semibold text-amber-800">
-              {lastDraftSavedAt
-                ? `Đã lưu tạm lúc ${formatWarehouseDraftUpdatedAt(lastDraftSavedAt)}. Có thể đóng trang và mở lại để quét tiếp.`
-                : ownedScanningDrafts.length > 0
-                  ? `Có ${ownedScanningDrafts.length} phiếu đang quét. Chọn một phiếu để tiếp tục.`
-                  : 'Bấm "Lưu tạm phiếu" sau khi quét để không mất dữ liệu nếu đóng trang.'}
-            </p>
-          </div>
-        ) : null}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-2">
             <div>
@@ -3301,7 +3224,39 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
+      {showProductExportTabs ? (
+        <nav aria-label="Chức năng xuất kho thành phẩm" className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2">
+          {([
+            { key: 'thuc-hien', label: 'Thực hiện', Icon: ClipboardCheck },
+            { key: 'chi-tiet', label: 'Chi tiết', Icon: ListChecks },
+            { key: 'lap-phieu', label: 'Lập phiếu', Icon: FilePlus2 }
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              aria-current={productExportView === tab.key ? 'page' : undefined}
+              onClick={() => {
+                setProductExportView(tab.key);
+                if (tab.key === 'lap-phieu') setProductLineView('summary');
+              }}
+              className={`flex min-h-[60px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[84px] sm:flex-row sm:justify-center sm:gap-3 sm:px-3 ${
+                productExportView === tab.key
+                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+              }`}
+            >
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11 sm:rounded-xl ${productExportView === tab.key ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+                <tab.Icon className="h-4 w-4 sm:h-6 sm:w-6" />
+              </span>
+              <span className="text-[11px] font-black leading-tight text-zinc-900 sm:text-base">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
       {selectedWarehouseName ? (
+        <>
+      {!showProductExportTabs || productExportView === 'lap-phieu' ? (
         <>
       <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="flex items-center gap-2 border-b border-zinc-100 pb-2">
@@ -3316,6 +3271,14 @@ export function WarehouseSlipPanel({
           className="grid gap-x-2 gap-y-1.5"
           style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
         >
+          <label className="col-span-2 block min-w-0 space-y-1">
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Mã phiếu</span>
+            <input
+              value={editSlipCode || newSlipCode}
+              readOnly
+              className={`${warehouseFieldClass} block w-full bg-zinc-50 font-mono font-bold text-[#ef1b2d]`}
+            />
+          </label>
           <label className="block min-w-0 w-full max-w-full space-y-1 overflow-hidden">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <div className="relative min-w-0 w-full max-w-full overflow-hidden">
@@ -3599,7 +3562,7 @@ export function WarehouseSlipPanel({
                 )
               : null}
             </div>
-          ) : (editSlipCode ? canEdit : canCreate) ? (
+          ) : (editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
             <div className="relative col-span-2 block min-w-0">
               <button
                 type="button"
@@ -3623,10 +3586,28 @@ export function WarehouseSlipPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Chi tiết {warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}
+                {showProductExportTabs && productExportView === 'lap-phieu' ? 'Tổng hợp sản phẩm đã quét' : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}`}
               </p>
             </div>
-            {(editSlipCode ? canEdit : canCreate) ? (
+            {warehouseKind === 'san_pham' && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
+              <div role="tablist" aria-label="Cách xem chi tiết sản phẩm" className="flex rounded-lg bg-zinc-200/70 p-1">
+                {(['detail', 'summary'] as const).map(view => (
+                  <button
+                    key={view}
+                    type="button"
+                    role="tab"
+                    aria-selected={productLineView === view}
+                    onClick={() => setProductLineView(view)}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-extrabold transition ${
+                      productLineView === view ? 'bg-white text-[#ef1b2d] shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+                    }`}
+                  >
+                    {view === 'detail' ? 'Chi tiết' : 'Tổng hợp'}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {(editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
               <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                 <button
                   type="button"
@@ -3642,7 +3623,10 @@ export function WarehouseSlipPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLines(current => [...current, createWarehouseLineDraft()])}
+                  onClick={() => {
+                    setProductLineView('summary');
+                    setLines(current => [...current, createWarehouseLineDraft()]);
+                  }}
                   className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:bg-zinc-100"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -3664,28 +3648,74 @@ export function WarehouseSlipPanel({
                     Làm mới Tổng kg
                   </button>
                 ) : null}
-                {canDelete ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!window.confirm('Xóa hết tất cả các dòng sản phẩm trong phiếu?')) return;
-                      scannedFullCodesByPrefixRef.current.clear();
-                      khoScanMaPhieuRef.current = '';
-                      const emptyLines = [createWarehouseLineDraft()];
-                      linesRef.current = emptyLines;
-                      setLines(emptyLines);
-                    }}
-                    className="flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-extrabold text-zinc-700 transition hover:border-red-200 hover:bg-red-50 hover:text-[#ef1b2d]"
-                    title="Xóa toàn bộ các dòng đã nhập/import"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Xóa hết
-                  </button>
-                ) : null}
               </div>
             ) : null}
           </div>
 
+          {showProductExportTabs && productExportView === 'lap-phieu' ? (
+            <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
+              <table className="w-full min-w-[620px] border-separate border-spacing-0 text-left text-xs">
+                <thead>
+                  <tr className="bg-[#ef1b2d] text-white">
+                    {['STT', 'Mã TP', 'Tên TP', 'Số lượng', 'Trọng lượng'].map(label => (
+                      <th key={label} className="px-3 py-2 font-black first:rounded-tl-lg last:rounded-tr-lg">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {savedProductSummary.map((row, index) => {
+                    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(row.ma_sp));
+                    const weightKg = convertWarehouseQuantityToKg({
+                      quantity: Number(row.so_luong),
+                      unit: item?.unit || '',
+                      itemCode: row.ma_sp,
+                      warehouseKind: 'san_pham',
+                      products: weightCatalog
+                    });
+                    return (
+                      <tr key={row.ma_sp} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                        <td className="px-3 py-2 text-zinc-500">{index + 1}</td>
+                        <td className="px-3 py-2 font-bold text-zinc-800">{row.ma_sp}</td>
+                        <td className="px-3 py-2">{row.ten_sp || item?.name || '—'}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatNumber(Number(row.so_luong) || 0)}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatWarehouseWeightKg(weightKg)}</td>
+                      </tr>
+                    );
+                  })}
+                  {!savedProductSummary.length ? (
+                    <tr><td colSpan={5} className="px-3 py-8 text-center text-zinc-500">{loadingProductSummary ? 'Đang tải danh sách…' : productSummaryError || 'Chưa có sản phẩm đã quét cho phiếu này.'}</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          ) : warehouseKind === 'san_pham' && productLineView === 'detail' ? (
+            <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
+              <table className="w-full min-w-[620px] border-separate border-spacing-0 text-left text-xs">
+                <thead>
+                  <tr className="bg-[#ef1b2d] text-white">
+                    {['STT', 'Mã gốc', 'Mã chi tiết', 'Tên sản phẩm', 'ĐVT', 'Số lượng'].map(label => (
+                      <th key={label} className="px-3 py-2 font-black first:rounded-tl-lg last:rounded-tr-lg">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {scannedProductDetails.map((detail, index) => (
+                    <tr key={detail.key} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                      <td className="px-3 py-2 text-zinc-500">{index + 1}</td>
+                      <td className="px-3 py-2 font-bold text-zinc-800">{detail.baseCode}</td>
+                      <td className="px-3 py-2 font-mono font-bold text-[#ef1b2d]">{detail.fullCode}</td>
+                      <td className="px-3 py-2">{detail.name || '—'}</td>
+                      <td className="px-3 py-2">{detail.unit || '—'}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{detail.quantity}</td>
+                    </tr>
+                  ))}
+                  {!scannedProductDetails.length ? (
+                    <tr><td colSpan={6} className="px-3 py-8 text-center text-zinc-500">Quét mã QR để hiện từng mã chi tiết tại đây.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
             <div
               className={slipType === 'xuat' ? warehouseXuatHeaderGridClass : warehouseNhapHeaderGridClass}
@@ -3912,6 +3942,7 @@ export function WarehouseSlipPanel({
               ))}
             </div>
           </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -3934,7 +3965,7 @@ export function WarehouseSlipPanel({
               type="button"
               onClick={handlePrintSavedSlip}
               disabled={isSaving || !printSlip}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="hidden h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:flex"
             >
               <Printer className="h-4 w-4" />
               In phiếu
@@ -3942,6 +3973,133 @@ export function WarehouseSlipPanel({
           </>
         </div>
       </section>
+        </>
+      ) : null}
+
+      {showProductExportTabs && productExportView === 'thuc-hien' ? (
+        <>
+          <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-black text-zinc-900">Thông tin phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'}</h2>
+              {(editSlipCode ? canEdit : canCreate) ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSave(false)}
+                  disabled={isSaving || scannedItemCount === 0}
+                  className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
+                >
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSaving ? 'Đang lưu...' : 'Lưu phiếu'}
+                </button>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                Kho
+                <input value={warehouseName} readOnly className={`${warehouseFieldClass} mt-1 bg-zinc-50`} />
+              </label>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                Mã phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'}
+                <input value={editSlipCode || newSlipCode} readOnly className={`${warehouseFieldClass} mt-1 bg-zinc-50 font-mono text-zinc-800`} />
+              </label>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-2.5">
+              <div className="min-w-0">
+                <h2 className="text-sm font-black text-zinc-900">Danh sách mã sản phẩm</h2>
+                <p className="mt-1 rounded-lg bg-zinc-100 px-2.5 py-1.5 text-lg font-black leading-tight text-black sm:w-fit">
+                  SL mã QR đã quét: {scannedItemCount}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                <button
+                  type="button"
+                  onClick={() => { setScannerMode('hardware-v2'); setQrScannerOpen(true); }}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                >
+                  <ScanBarcode className="h-4 w-4" /> Quét máy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setScannerMode('camera'); setQrScannerOpen(true); }}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-white px-3 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50"
+                >
+                  <ScanBarcode className="h-4 w-4" /> Quét ĐT
+                </button>
+              </div>
+            </div>
+            <div className="p-3 text-center text-xs font-semibold text-zinc-500">
+              Quét mã QR để ghi nhận từng mã đầy đủ; mã gốc và tổng số lượng sẽ được gộp ở tab Lập phiếu.
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {showProductExportTabs && productExportView === 'chi-tiet' ? (
+        <>
+          <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+            <h2 className="text-sm font-black text-zinc-900">Chi tiết mã đã quét</h2>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                Kho
+                <input value={warehouseName} readOnly className={`${warehouseFieldClass} mt-1 bg-zinc-50`} />
+              </label>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                Mã phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'}
+                <input value={editSlipCode || newSlipCode} readOnly className={`${warehouseFieldClass} mt-1 bg-zinc-50 font-mono text-zinc-800`} />
+              </label>
+            </div>
+          </section>
+          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+            <div className="border-b border-zinc-100 p-3 text-sm font-black text-zinc-900">
+              Danh sách sản phẩm đã quét <span className="ml-1 rounded-full bg-zinc-100 px-2 py-1 text-xs">{productDetailTotal} mã</span>
+            </div>
+            <div className="min-w-0 overflow-hidden sm:scrollbar-hidden sm:overflow-x-auto">
+              <table className="w-full min-w-0 table-fixed text-left text-[9px] sm:min-w-[1000px] sm:text-xs">
+                <thead className="bg-[#ef1b2d] text-white">
+                  <tr>
+                    <th className="w-[8%] break-words px-0.5 py-1.5 leading-tight sm:w-12 sm:px-3 sm:py-2">STT</th>
+                    <th className="w-[15%] break-words px-0.5 py-1.5 leading-tight sm:w-28 sm:px-3 sm:py-2">Mã TP gốc</th>
+                    <th className="w-[20%] break-words px-0.5 py-1.5 leading-tight sm:px-3 sm:py-2">Mã quét</th>
+                    <th className="w-[15%] break-words px-0.5 py-1.5 leading-tight sm:px-3 sm:py-2">Tên TP</th>
+                    <th className="w-[7%] break-words px-0.5 py-1.5 leading-tight sm:w-16 sm:px-3 sm:py-2">ĐV</th>
+                    <th className="w-[13%] break-words px-0.5 py-1.5 leading-tight sm:px-3 sm:py-2">Kho</th>
+                    <th className="w-[22%] break-words px-0.5 py-1.5 leading-tight sm:px-3 sm:py-2">Thời điểm lưu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productDetailRows.map((detail, index) => (
+                    <tr key={detail.key} className="border-b border-zinc-100 even:bg-zinc-50">
+                      <td className="break-all px-0.5 py-2 text-zinc-500 sm:px-3 sm:py-3">{(savedProductScanPage - 1) * savedProductScanPageSize + index + 1}</td>
+                      <td className="break-all px-0.5 py-2 font-bold text-zinc-800 sm:px-3 sm:py-3">{detail.baseCode}</td>
+                      <td className="break-all px-0.5 py-2 font-mono font-bold text-zinc-800 sm:px-3 sm:py-3">{detail.fullCode}</td>
+                      <td className="break-words px-0.5 py-2 text-zinc-800 sm:px-3 sm:py-3">{detail.name || '—'}</td>
+                      <td className="break-words px-0.5 py-2 text-zinc-800 sm:px-3 sm:py-3">{detail.unit || '—'}</td>
+                      <td className="break-words px-0.5 py-2 text-zinc-800 sm:px-3 sm:py-3">{warehouseName || '—'}</td>
+                      <td className="break-words px-0.5 py-2 text-zinc-600 sm:whitespace-nowrap sm:px-3 sm:py-3">{formatWarehouseSavedAt(detail.savedAt)}</td>
+                    </tr>
+                  ))}
+                  {!productDetailRows.length ? (
+                    <tr><td colSpan={7} className="px-3 py-8 text-center font-semibold text-zinc-500">{loadingSavedProductScans ? 'Đang tải danh sách…' : savedProductScanError || 'Chưa có mã QR nào được quét.'}</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            {productDetailTotal > 0 ? (
+              <TablePagination
+                totalRecords={productDetailTotal}
+                currentPage={savedProductScanPage}
+                totalPages={Math.max(1, Math.ceil(productDetailTotal / savedProductScanPageSize))}
+                pageSize={savedProductScanPageSize}
+                onPageChange={setSavedProductScanPage}
+                onPageSizeChange={size => { setSavedProductScanPageSize(size); setSavedProductScanPage(1); }}
+              />
+            ) : null}
+          </section>
+        </>
+      ) : null}
         </>
       ) : null}
 
@@ -3998,6 +4156,9 @@ export function WarehouseSlipPanel({
         closeAfterScan={false}
         requireConfirm={false}
         scannedCount={scannedItemCount}
+        onSaveBatch={() => void handleSave(false, true)}
+        savingBatch={isSaving}
+        saveBatchDisabled={scannedItemCount === 0}
       />
 
       <WeighingImagePreviewModal image={viewingSlipImage} onClose={() => setViewingSlipImage(null)} />
@@ -4159,7 +4320,7 @@ export function WarehouseHistoryPanel({
       }
 
       const [res, orderRes] = await Promise.all([
-        fetch(`/api/phieu-xuat-nhap-kho?${params.toString()}`),
+        fetch(`/api/kho/lich-su?${params.toString()}`),
         fetch('/api/lenh-sx')
       ]);
       const [data, orderData] = await Promise.all([
@@ -4570,7 +4731,7 @@ export function WarehouseHistoryPanel({
     setDeletingSlipCode(slipCode);
     setError('');
     try {
-      const res = await fetch(`/api/phieu-xuat-nhap-kho/slip/${encodeURIComponent(slipCode)}`, {
+      const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}`, {
         method: 'DELETE'
       });
       const data = await res.json().catch(() => ({}));
@@ -4601,7 +4762,7 @@ export function WarehouseHistoryPanel({
     setError('');
     try {
       for (const slipCode of selectedSlipCodes) {
-        const res = await fetch(`/api/phieu-xuat-nhap-kho/slip/${encodeURIComponent(slipCode)}`, {
+        const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}`, {
           method: 'DELETE'
         });
         const data = await res.json().catch(() => ({}));
@@ -5152,7 +5313,7 @@ export function WarehouseHistoryPanel({
                 </button>
               )}
             </div>
-            <div className={isStandalone ? '' : 'flex min-h-0 flex-1 flex-col overflow-hidden'}>
+            <div className={isStandalone ? '' : 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y'}>
               <div className="grid shrink-0 grid-cols-2 gap-2 p-4 sm:grid-cols-3">
                 {[
                   ['Kho', warehouseKindLabel(viewingRows[0].warehouseKind)],
@@ -5173,7 +5334,7 @@ export function WarehouseHistoryPanel({
                   </div>
                 ))}
               </div>
-              <div className={`border-t border-zinc-200 px-4 py-3 ${isStandalone ? 'overflow-x-auto' : 'min-h-0 flex-1 overflow-auto'}`}>
+              <div className={`border-t border-zinc-200 px-4 py-3 ${isStandalone ? 'overflow-x-auto' : 'shrink-0 overflow-x-auto'}`}>
               <table className={`text-left text-sm ${isStandalone ? 'w-full' : 'min-w-[640px]'}`}>
                 <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
                   <tr>

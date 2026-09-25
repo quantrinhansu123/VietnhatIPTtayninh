@@ -306,6 +306,9 @@ export function KiemKhoPanel({
 
   // Tab "Bảng tổng hợp"
   const [summaryRows, setSummaryRows] = useState<KiemKhoTongHopRow[]>([]);
+  const [summaryTotal, setSummaryTotal] = useState(0);
+  const [summaryPage, setSummaryPage] = useState(1);
+  const [summaryPageSize, setSummaryPageSize] = useState(50);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState('');
   const [selectedSummaryDot, setSelectedSummaryDot] = useState('');
@@ -547,31 +550,36 @@ export function KiemKhoPanel({
   // Tải tổng hợp CHỈ của 1 đợt (không tải cả lịch sử về rồi lọc client) — đợt đã
   // chốt đọc bảng kiem_kho_tong_hop có sẵn, đợt chưa chốt gộp "live" từ kiem_kho
   // (GROUP BY chạy trong Postgres qua RPC, xem docs/de-xuat-tong-hop-hien-thi-dot-chua-chot.md).
-  const loadSummary = useCallback(async (dot: string, daXacNhan: boolean) => {
+  const loadSummary = useCallback(async (dot: string, daXacNhan: boolean, page = summaryPage, pageSize = summaryPageSize) => {
     if (!dot) {
       setSummaryRows([]);
+      setSummaryTotal(0);
       return;
     }
     setLoadingSummary(true);
     setSummaryError('');
     try {
+      const offset = (page - 1) * pageSize;
+      const params = `dotKiemKho=${encodeURIComponent(dot)}&limit=${pageSize}&offset=${offset}`;
       const url = daXacNhan
-        ? `/api/kiem-kho-tong-hop?dotKiemKho=${encodeURIComponent(dot)}&limit=1000`
-        : `/api/kiem-kho/dot-tong-hop-live?dotKiemKho=${encodeURIComponent(dot)}`;
+        ? `/api/kiem-kho-tong-hop?${params}`
+        : `/api/kiem-kho/dot-tong-hop-live?${params}`;
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được bảng tổng hợp.'));
       const records: KiemKhoTongHopRow[] = Array.isArray(data?.records) ? data.records : [];
       setSummaryRows(daXacNhan ? records.map(row => ({ ...row, da_chot: true })) : records);
+      setSummaryTotal(Number(data?.total) || 0);
     } catch (err: any) {
       setSummaryRows([]);
+      setSummaryTotal(0);
       const text = err?.message || 'Không tải được bảng tổng hợp.';
       setSummaryError(text);
       showAppToast(text, 'error');
     } finally {
       setLoadingSummary(false);
     }
-  }, []);
+  }, [summaryPage, summaryPageSize]);
 
   // Liệt kê mọi đợt (đã chốt lẫn chưa chốt) — mới nhất trước, theo thứ tự allBatches trả về.
   const summaryDotOptions = useMemo(() => allBatches.map(b => b.dot_kiem_kho), [allBatches]);
@@ -589,35 +597,65 @@ export function KiemKhoPanel({
 
   useEffect(() => {
     if (view !== 'tong-hop') return;
-    void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan);
-  }, [view, selectedSummaryDot, selectedSummaryDotGroup, loadSummary]);
+    void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan, summaryPage, summaryPageSize);
+  }, [view, selectedSummaryDot, selectedSummaryDotGroup, summaryPage, summaryPageSize, loadSummary]);
 
-  const handlePrintSummary = () => {
+  useEffect(() => {
+    setSummaryPage(1);
+  }, [selectedSummaryDot]);
+
+  const handlePrintSummary = async () => {
     if (!selectedSummaryDotGroup || !selectedSummaryDot) {
       showAppToast('Chọn đợt kiểm kho trước khi in phiếu.', 'error');
       return;
     }
 
-    setPrintReport({
-      dotLabel: formatDotLabel(
-        selectedSummaryDotGroup.ngay_bat_dau,
-        selectedSummaryDotGroup.thoi_gian_xac_nhan,
-        selectedSummaryDotGroup.thu_tu_trong_ngay,
-        selectedSummaryDotGroup.tong_dot_trong_ngay
-      ),
-      dotKiemKho: selectedSummaryDot,
-      ngayBatDau: selectedSummaryDotGroup.ngay_bat_dau,
-      thoiGianXacNhan: selectedSummaryDotGroup.thoi_gian_xac_nhan,
-      nguoiChot: String(summaryRows.find(row => row.nguoi_chot)?.nguoi_chot ?? '').trim(),
-      daXacNhan: selectedSummaryDotGroup.da_xac_nhan,
-      rows: summaryRows.map(row => ({
-        maNvl: String(row.ma_nvl ?? '').trim(),
-        tenSp: String(row.ten_sp ?? '').trim(),
-        loaiSp: String(row.loai_sp ?? '').trim(),
-        tongSoLuong: Number(row.tong_so_luong) || 0
-      }))
-    });
-    setPendingPrint(true);
+    setLoadingSummary(true);
+    try {
+      const pageSize = 500;
+      const allRows: KiemKhoTongHopRow[] = [];
+      let total = 0;
+      for (let offset = 0; offset === 0 || offset < total; offset += pageSize) {
+        const params = `dotKiemKho=${encodeURIComponent(selectedSummaryDot)}&limit=${pageSize}&offset=${offset}`;
+        const url = selectedSummaryDotGroup.da_xac_nhan
+          ? `/api/kiem-kho-tong-hop?${params}`
+          : `/api/kiem-kho/dot-tong-hop-live?${params}`;
+        const res = await fetch(url);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải đủ dữ liệu để in phiếu.'));
+        const records: KiemKhoTongHopRow[] = Array.isArray(data?.records) ? data.records : [];
+        total = Number(data?.total) || 0;
+        allRows.push(...(selectedSummaryDotGroup.da_xac_nhan
+          ? records.map(row => ({ ...row, da_chot: true }))
+          : records));
+        if (!records.length) break;
+      }
+
+      setPrintReport({
+        dotLabel: formatDotLabel(
+          selectedSummaryDotGroup.ngay_bat_dau,
+          selectedSummaryDotGroup.thoi_gian_xac_nhan,
+          selectedSummaryDotGroup.thu_tu_trong_ngay,
+          selectedSummaryDotGroup.tong_dot_trong_ngay
+        ),
+        dotKiemKho: selectedSummaryDot,
+        ngayBatDau: selectedSummaryDotGroup.ngay_bat_dau,
+        thoiGianXacNhan: selectedSummaryDotGroup.thoi_gian_xac_nhan,
+        nguoiChot: String(allRows.find(row => row.nguoi_chot)?.nguoi_chot ?? '').trim(),
+        daXacNhan: selectedSummaryDotGroup.da_xac_nhan,
+        rows: allRows.map(row => ({
+          maNvl: String(row.ma_nvl ?? '').trim(),
+          tenSp: String(row.ten_sp ?? '').trim(),
+          loaiSp: String(row.loai_sp ?? '').trim(),
+          tongSoLuong: Number(row.tong_so_luong) || 0
+        }))
+      });
+      setPendingPrint(true);
+    } catch (err: any) {
+      showAppToast(err?.message || 'Không tải đủ dữ liệu để in phiếu.', 'error');
+    } finally {
+      setLoadingSummary(false);
+    }
   };
 
   useEffect(() => {
@@ -1740,7 +1778,7 @@ export function KiemKhoPanel({
           <div>
             <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm</h2>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {summaryRows.length} mã SP · gộp theo mã SP gốc của đợt đang chọn
+              {summaryTotal} mã SP · gộp theo mã SP gốc của đợt đang chọn
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1756,7 +1794,7 @@ export function KiemKhoPanel({
             </button>
             <button
               type="button"
-              onClick={() => void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan)}
+              onClick={() => void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan, summaryPage, summaryPageSize)}
               disabled={loadingSummary}
               className="text-[11px] font-bold text-[#ef1b2d] hover:underline disabled:opacity-50"
             >
@@ -1771,7 +1809,20 @@ export function KiemKhoPanel({
           </div>
         ) : null}
 
-        <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[560px]">
+        <TableShell
+          minWidthClassName="min-w-[900px]"
+          maxHeightClassName="max-h-[560px]"
+          footer={summaryTotal > 0 ? (
+            <TablePagination
+              totalRecords={summaryTotal}
+              currentPage={summaryPage}
+              totalPages={Math.max(1, Math.ceil(summaryTotal / summaryPageSize))}
+              pageSize={summaryPageSize}
+              onPageChange={setSummaryPage}
+              onPageSizeChange={size => { setSummaryPageSize(size); setSummaryPage(1); }}
+            />
+          ) : null}
+        >
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
             <TableHeadCell>Mã SP gốc</TableHeadCell>
@@ -1785,7 +1836,7 @@ export function KiemKhoPanel({
             {summaryRows.map((row, index) => (
               <React.Fragment key={row.da_chot ? String(row.id) : `live-${row.ma_nvl}`}>
                 <TableRow>
-                  <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
+                  <td className="px-4 py-3 font-bold text-zinc-500">{(summaryPage - 1) * summaryPageSize + index + 1}</td>
                   <td className="px-4 py-3 font-mono font-bold text-zinc-800">{row.ma_nvl || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-zinc-700">{row.ten_sp || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-zinc-600">{row.loai_sp || '—'}</td>

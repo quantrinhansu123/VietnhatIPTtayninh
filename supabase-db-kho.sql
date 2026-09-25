@@ -12,8 +12,8 @@
 -- Bảng:
 --   • phieu_xuat   — header phiếu xuất (ma_phieu, ngay, gio, nhan_su)
 --   • phieu_nhap   — header phiếu nhập (cùng cấu trúc; dùng cho nhap_kho.ma_phieu)
---   • xuat_kho     — dòng xuất (ma_sp, loai, so_luong, ma_phieu)
---   • nhap_kho     — dòng nhập (ma_sp, loai, so_luong, ma_phieu)
+--   • xuat_kho     — dòng xuất (ma_sp gốc, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu)
+--   • nhap_kho     — dòng nhập (ma_sp gốc, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu)
 --   • kho          — tồn theo mã SP (ton_dau, xuat, nhap, ton_cuoi, ton_toi_thieu)
 --
 -- Công thức gợi ý: ton_cuoi = ton_dau + nhap - xuat
@@ -30,6 +30,10 @@ create table if not exists public.phieu_xuat (
   ngay date not null default (timezone('Asia/Ho_Chi_Minh', now()))::date,
   gio time,
   nhan_su text,
+  kho text,
+  ca text,
+  may text,
+  ghi_chu text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint uq_phieu_xuat_ma_phieu unique (ma_phieu)
@@ -43,6 +47,10 @@ comment on column public.phieu_xuat.ma_phieu is 'Ma phieu xuat — khoa nghiep v
 comment on column public.phieu_xuat.ngay is 'Ngay lap phieu.';
 comment on column public.phieu_xuat.gio is 'Gio lap phieu.';
 comment on column public.phieu_xuat.nhan_su is 'Nguoi lap / nhan su xuat kho.';
+comment on column public.phieu_xuat.kho is 'Kho lap phieu (khong bat buoc).';
+comment on column public.phieu_xuat.ca is 'Ca san xuat (khong bat buoc).';
+comment on column public.phieu_xuat.may is 'May san xuat (khong bat buoc).';
+comment on column public.phieu_xuat.ghi_chu is 'Ghi chu phieu (khong bat buoc).';
 
 -- -----------------------------------------------------------------------------
 -- 2) Header phiếu nhập (đối xứng — phục vụ nhap_kho.ma_phieu)
@@ -53,6 +61,10 @@ create table if not exists public.phieu_nhap (
   ngay date not null default (timezone('Asia/Ho_Chi_Minh', now()))::date,
   gio time,
   nhan_su text,
+  kho text,
+  ca text,
+  may text,
+  ghi_chu text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint uq_phieu_nhap_ma_phieu unique (ma_phieu)
@@ -63,6 +75,19 @@ create index if not exists idx_phieu_nhap_nhan_su on public.phieu_nhap (nhan_su)
 
 comment on table public.phieu_nhap is 'Header phieu nhap kho.';
 comment on column public.phieu_nhap.ma_phieu is 'Ma phieu nhap — khoa nghiep vu, khop nhap_kho.ma_phieu.';
+comment on column public.phieu_nhap.kho is 'Kho lap phieu (khong bat buoc).';
+comment on column public.phieu_nhap.ca is 'Ca san xuat (khong bat buoc).';
+comment on column public.phieu_nhap.may is 'May san xuat (khong bat buoc).';
+comment on column public.phieu_nhap.ghi_chu is 'Ghi chu phieu (khong bat buoc).';
+
+alter table public.phieu_xuat add column if not exists kho text;
+alter table public.phieu_xuat add column if not exists ca text;
+alter table public.phieu_xuat add column if not exists may text;
+alter table public.phieu_xuat add column if not exists ghi_chu text;
+alter table public.phieu_nhap add column if not exists kho text;
+alter table public.phieu_nhap add column if not exists ca text;
+alter table public.phieu_nhap add column if not exists may text;
+alter table public.phieu_nhap add column if not exists ghi_chu text;
 
 -- -----------------------------------------------------------------------------
 -- 3) Dòng xuất kho
@@ -70,6 +95,8 @@ comment on column public.phieu_nhap.ma_phieu is 'Ma phieu nhap — khoa nghiep v
 create table if not exists public.xuat_kho (
   id uuid primary key default gen_random_uuid(),
   ma_sp text not null,
+  ma_sp_quet text,
+  ten_sp text,
   loai text,
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
@@ -80,12 +107,17 @@ create table if not exists public.xuat_kho (
     on update cascade on delete restrict
 );
 
+alter table public.xuat_kho add column if not exists ma_sp_quet text;
+alter table public.xuat_kho add column if not exists ten_sp text;
+
 create index if not exists idx_xuat_kho_ma_sp on public.xuat_kho (ma_sp);
 create index if not exists idx_xuat_kho_ma_phieu on public.xuat_kho (ma_phieu);
 create index if not exists idx_xuat_kho_loai on public.xuat_kho (loai);
 
 comment on table public.xuat_kho is 'Dong xuat kho theo ma SP / ma phieu.';
-comment on column public.xuat_kho.ma_sp is 'Ma san pham / NVL.';
+comment on column public.xuat_kho.ma_sp is 'Ma san pham goc.';
+comment on column public.xuat_kho.ma_sp_quet is 'Ma QR day du da quet, gom ca tien to va hau to.';
+comment on column public.xuat_kho.ten_sp is 'Ten thanh pham duoc quet.';
 comment on column public.xuat_kho.loai is 'Loai hang (NVL, thanh pham, ...).';
 comment on column public.xuat_kho.so_luong is 'So luong xuat.';
 comment on column public.xuat_kho.ma_phieu is 'Ma phieu xuat — tham chieu phieu_xuat.ma_phieu.';
@@ -96,6 +128,8 @@ comment on column public.xuat_kho.ma_phieu is 'Ma phieu xuat — tham chieu phie
 create table if not exists public.nhap_kho (
   id uuid primary key default gen_random_uuid(),
   ma_sp text not null,
+  ma_sp_quet text,
+  ten_sp text,
   loai text,
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
@@ -106,12 +140,17 @@ create table if not exists public.nhap_kho (
     on update cascade on delete restrict
 );
 
+alter table public.nhap_kho add column if not exists ma_sp_quet text;
+alter table public.nhap_kho add column if not exists ten_sp text;
+
 create index if not exists idx_nhap_kho_ma_sp on public.nhap_kho (ma_sp);
 create index if not exists idx_nhap_kho_ma_phieu on public.nhap_kho (ma_phieu);
 create index if not exists idx_nhap_kho_loai on public.nhap_kho (loai);
 
 comment on table public.nhap_kho is 'Dong nhap kho theo ma SP / ma phieu.';
 comment on column public.nhap_kho.ma_sp is 'Ma san pham / NVL.';
+comment on column public.nhap_kho.ma_sp_quet is 'Ma QR day du da quet, gom ca tien to va hau to.';
+comment on column public.nhap_kho.ten_sp is 'Ten san pham duoc quet.';
 comment on column public.nhap_kho.loai is 'Loai hang (NVL, thanh pham, ...).';
 comment on column public.nhap_kho.so_luong is 'So luong nhap.';
 comment on column public.nhap_kho.ma_phieu is 'Ma phieu nhap — tham chieu phieu_nhap.ma_phieu.';

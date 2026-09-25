@@ -1896,7 +1896,7 @@ export function WarehouseSlipPanel({
 
   const createNewProductSlip = useCallback(() => {
     const code = generateWarehouseSlipPreviewCode(slipType);
-    setProductExportView('lap-phieu');
+    setProductExportView('thuc-hien');
     setSelectedProductSlipCode('');
     setNewSlipCode(code);
     khoScanMaPhieuRef.current = '';

@@ -1000,6 +1000,7 @@ export function KiemKhoPanel({
                 value={selectedKho}
                 onChange={setSelectedKho}
                 options={warehouses}
+                maxResults={warehouses.length}
                 getValue={item => (item as WarehouseCatalogItem).ten_kho}
                 getLabel={item => (item as WarehouseCatalogItem).ten_kho}
                 placeholder="Chọn kho..."
@@ -1007,6 +1008,7 @@ export function KiemKhoPanel({
                 allowEmpty={false}
                 inputClassName={inputClass}
                 comboboxMode
+                comboboxSearchable={false}
               />
             </div>
           </label>
@@ -1017,6 +1019,7 @@ export function KiemKhoPanel({
                 value={dotKiemKho}
                 onChange={setDotKiemKho}
                 options={performBatchOptions}
+                maxResults={performBatchOptions.length}
                 getValue={item => (item as OpenBatch).dot_kiem_kho}
                 getLabel={item => {
                   const batch = item as OpenBatch;
@@ -1035,6 +1038,7 @@ export function KiemKhoPanel({
                 disabled={!selectedKho}
                 inputClassName={inputClass}
                 comboboxMode
+                autoFlip
                 comboboxSearchable={false}
               />
             </div>
@@ -1484,6 +1488,7 @@ export function KiemKhoPanel({
                 value={selectedKho}
                 onChange={setSelectedKho}
                 options={warehouses}
+                maxResults={warehouses.length}
                 getValue={item => (item as WarehouseCatalogItem).ten_kho}
                 getLabel={item => (item as WarehouseCatalogItem).ten_kho}
                 placeholder="Chọn kho..."
@@ -1491,6 +1496,7 @@ export function KiemKhoPanel({
                 allowEmpty={false}
                 inputClassName={inputClass}
                 comboboxMode
+                comboboxSearchable={false}
               />
             </div>
           </label>
@@ -1501,6 +1507,7 @@ export function KiemKhoPanel({
                 value={selectedDot}
                 onChange={setSelectedDot}
                 options={allBatches}
+                maxResults={allBatches.length}
                 getValue={item => (item as DotGroup).dot_kiem_kho}
                 getLabel={item => {
                   const b = item as DotGroup;
@@ -1512,12 +1519,14 @@ export function KiemKhoPanel({
                     b.tong_dot_trong_ngay
                   )} · ${b.so_dong} mã · ${status}`;
                 }}
-                placeholder={selectedKho ? 'Tìm đợt kiểm kho...' : 'Chọn kho trước'}
+                placeholder={selectedKho ? 'Chọn đợt kiểm kho...' : 'Chọn kho trước'}
                 isLoading={loadingAllBatches}
                 allowEmpty={false}
                 disabled={!selectedKho}
                 inputClassName={inputClass}
                 comboboxMode
+                autoFlip
+                comboboxSearchable={false}
               />
             </div>
           </label>
@@ -1657,6 +1666,7 @@ export function KiemKhoPanel({
                 value={selectedKho}
                 onChange={setSelectedKho}
                 options={warehouses}
+                maxResults={warehouses.length}
                 getValue={item => (item as WarehouseCatalogItem).ten_kho}
                 getLabel={item => (item as WarehouseCatalogItem).ten_kho}
                 placeholder="Chọn kho..."
@@ -1664,6 +1674,7 @@ export function KiemKhoPanel({
                 allowEmpty={false}
                 inputClassName={inputClass}
                 comboboxMode
+                comboboxSearchable={false}
               />
             </div>
           </label>
@@ -1677,6 +1688,7 @@ export function KiemKhoPanel({
                   setSummaryDotTouched(true);
                 }}
                 options={allBatches}
+                maxResults={allBatches.length}
                 getValue={item => (item as DotGroup).dot_kiem_kho}
                 getLabel={item => {
                   const b = item as DotGroup;
@@ -1687,12 +1699,14 @@ export function KiemKhoPanel({
                     b.tong_dot_trong_ngay
                   )} · ${b.so_dong} mã · ${b.da_xac_nhan ? 'Đã xác nhận' : 'Chưa xác nhận'}`;
                 }}
-                placeholder={selectedKho ? 'Tìm đợt kiểm kho...' : 'Chọn kho trước'}
+                placeholder={selectedKho ? 'Chọn đợt kiểm kho...' : 'Chọn kho trước'}
                 isLoading={loadingAllBatches}
                 allowEmpty={false}
                 disabled={!selectedKho}
                 inputClassName={inputClass}
                 comboboxMode
+                autoFlip
+                comboboxSearchable={false}
               />
             </div>
           </label>

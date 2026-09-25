@@ -23,7 +23,7 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 
 | File | Nội dung |
 |------|----------|
-| `src/features/phieu-xuat-nhap-kho/index.tsx` | `addLineFromScan` — **không** cộng dồn SL; gọi `/api/kho/quet` rồi thêm dòng form SL=1 |
+| `src/features/phieu-xuat-nhap-kho/index.tsx` | `addLineFromScan` giữ mã thành phẩm trong phiếu nháp; nút **Lưu đợt** mới ghi từng QR vào `/api/kho/quet` (`nhap_kho`/`xuat_kho`) và gộp SL trên form |
 | `src/components/ProductQrScanner.tsx` | Hỗ trợ `onScan` async; feedback “Đã ghi nhận” |
 
 ## Ghi chú

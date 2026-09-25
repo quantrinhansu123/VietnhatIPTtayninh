@@ -75,6 +75,7 @@ type KiemKhoLine = {
   soLuong: string;
   trongLuong: string;
   rawQr: string;
+  scanned?: boolean;
 };
 
 type OpenBatch = {
@@ -743,7 +744,8 @@ export function KiemKhoPanel({
         // Mỗi mã QR đại diện đúng một đơn vị kiểm kho.
         soLuong: '1',
         trongLuong: matched?.totalWeight || '',
-        rawQr: fullCode
+        rawQr: fullCode,
+        scanned: true
       };
       const nextLines = [...linesRef.current, nextLine];
       linesRef.current = nextLines;
@@ -840,7 +842,7 @@ export function KiemKhoPanel({
 
   const updateLine = useCallback((key: string, patch: Partial<KiemKhoLine>) => {
     setLines(previous => {
-      const next = previous.map(line => (line.key === key ? { ...line, ...patch } : line));
+      const next = previous.map(line => (line.key === key && !line.scanned ? { ...line, ...patch } : line));
       linesRef.current = next;
       return next;
     });
@@ -1223,6 +1225,7 @@ export function KiemKhoPanel({
                       <div className="mt-1">
                         <SearchableSelect
                           value={line.maNvl}
+                          disabled={line.scanned}
                           onChange={value => updateLineCode(line.key, value)}
                           options={manualProductOptions}
                           placeholder={`Mã ${khoAbbr}`}
@@ -1247,8 +1250,9 @@ export function KiemKhoPanel({
                     ) : (
                       <input
                         value={line.maSp}
+                        readOnly={line.scanned}
                         onChange={event => updateLine(line.key, { maSp: event.target.value, rawQr: event.target.value })}
-                        className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-black text-zinc-950 outline-none focus:border-[#ef1b2d]"
+                        className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-black text-zinc-950 outline-none focus:border-[#ef1b2d] read-only:bg-zinc-50 read-only:text-zinc-500"
                         placeholder="Mã"
                       />
                     )}
@@ -1272,6 +1276,7 @@ export function KiemKhoPanel({
                       <div className="mt-1">
                         <SearchableSelect
                           value={line.maNvl}
+                          disabled={line.scanned}
                           onChange={value => updateLineCode(line.key, value)}
                           options={manualProductOptions}
                           placeholder={`Mã ${khoAbbr}`}
@@ -1286,21 +1291,22 @@ export function KiemKhoPanel({
                       </div>
                     </label>
                   ) : null}
-                  <label><p className="font-bold text-zinc-400">ĐV</p><input value={line.donVi} onChange={event => updateLine(line.key, { donVi: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="ĐVT" /></label>
-                  <label><p className="font-bold text-zinc-400">Số lượng</p><input type="text" inputMode="decimal" value={line.soLuong} onChange={event => updateLine(line.key, { soLuong: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="SL" /></label>
+                  <label><p className="font-bold text-zinc-400">ĐV</p><input readOnly={line.scanned} value={line.donVi} onChange={event => updateLine(line.key, { donVi: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] read-only:bg-zinc-50 read-only:text-zinc-500" placeholder="ĐVT" /></label>
+                  <label><p className="font-bold text-zinc-400">Số lượng</p><input readOnly={line.scanned} type="text" inputMode="decimal" value={line.soLuong} onChange={event => updateLine(line.key, { soLuong: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] read-only:bg-zinc-50 read-only:text-zinc-500" placeholder="SL" /></label>
                   <label>
                     <p className="font-bold text-zinc-400">Trọng lượng</p>
                     <input
                       type="text"
+                      readOnly={line.scanned}
                       inputMode="decimal"
                       value={line.trongLuong}
                       onChange={event => updateLine(line.key, { trongLuong: event.target.value })}
-                      className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]"
+                      className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] read-only:bg-zinc-50 read-only:text-zinc-500"
                       placeholder="—"
                     />
                   </label>
                   <div><p className="font-bold text-zinc-400">Kho</p><p className="mt-0.5 font-semibold text-zinc-700">{selectedKho || '—'}</p></div>
-                  <label className="col-span-2"><p className="font-bold text-zinc-400">Tên {khoAbbr}</p><input value={line.tenSp} onChange={event => updateLine(line.key, { tenSp: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d]" placeholder="Tên" /></label>
+                  <label className="col-span-2"><p className="font-bold text-zinc-400">Tên {khoAbbr}</p><input readOnly={line.scanned} value={line.tenSp} onChange={event => updateLine(line.key, { tenSp: event.target.value })} className="mt-1 h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] read-only:bg-zinc-50 read-only:text-zinc-500" placeholder="Tên" /></label>
                 </div>
               </article>
             );
@@ -1337,6 +1343,7 @@ export function KiemKhoPanel({
                     <td className={`min-w-56 px-1 py-2 ${highlightClass}`}>
                       <SearchableSelect
                         value={line.maNvl}
+                        disabled={line.scanned}
                         onChange={value => updateLineCode(line.key, value)}
                         options={manualProductOptions}
                         placeholder={`Mã ${khoAbbr}`}
@@ -1363,8 +1370,9 @@ export function KiemKhoPanel({
                       <td className={`min-w-56 px-1 py-2 ${highlightClass}`}>
                         <input
                           value={line.maSp}
+                          readOnly={line.scanned}
                           onChange={event => updateLine(line.key, { maSp: event.target.value, rawQr: event.target.value })}
-                          className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-bold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                          className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 font-mono text-sm font-bold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 read-only:bg-zinc-50 read-only:text-zinc-500"
                           placeholder="Mã quét"
                         />
                       </td>
@@ -1372,36 +1380,40 @@ export function KiemKhoPanel({
                     <td className={`min-w-64 px-1 py-2 ${highlightClass}`}>
                       <input
                         value={line.tenSp}
+                        readOnly={line.scanned}
                         onChange={event => updateLine(line.key, { tenSp: event.target.value })}
-                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 read-only:bg-zinc-50 read-only:text-zinc-500"
                         placeholder="Tên"
                       />
                     </td>
                     <td className={`w-24 px-1 py-2 ${highlightClass}`}>
                       <input
                         value={line.donVi}
+                        readOnly={line.scanned}
                         onChange={event => updateLine(line.key, { donVi: event.target.value })}
-                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 read-only:bg-zinc-50 read-only:text-zinc-500"
                         placeholder="ĐVT"
                       />
                     </td>
                     <td className={`w-24 px-1 py-2 ${highlightClass}`}>
                       <input
                         type="text"
+                        readOnly={line.scanned}
                         inputMode="decimal"
                         value={line.soLuong}
                         onChange={event => updateLine(line.key, { soLuong: event.target.value })}
-                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 read-only:bg-zinc-50 read-only:text-zinc-500"
                         placeholder="SL"
                       />
                     </td>
                     <td className={`px-2 py-2 text-center ${highlightClass}`}>
                       <input
                         type="text"
+                        readOnly={line.scanned}
                         inputMode="decimal"
                         value={line.trongLuong}
                         onChange={event => updateLine(line.key, { trongLuong: event.target.value })}
-                        className="h-9 w-28 rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                        className="h-9 w-28 rounded-lg border border-zinc-200 bg-white px-2 text-center text-sm font-semibold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 read-only:bg-zinc-50 read-only:text-zinc-500"
                         placeholder="—"
                         aria-label={`Trọng lượng ${line.maNvl || line.maSp}`}
                       />

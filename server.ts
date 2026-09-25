@@ -11498,6 +11498,41 @@ export function createApp() {
     }
   });
 
+  app.delete('/api/kho/chi-tiet', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `DB kho chưa cấu hình (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+    const slipType = String(req.query.loai_phieu ?? '').trim().toLowerCase();
+    const maPhieu = String(req.query.ma_phieu ?? '').trim();
+    const maSpQuet = String(req.query.ma_sp_quet ?? '').trim();
+    if (!['nhap', 'xuat'].includes(slipType) || !maPhieu || !maSpQuet) {
+      return res.status(400).json({ error: 'Cần loai_phieu, ma_phieu và ma_sp_quet.' });
+    }
+    const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+    const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+    try {
+      const { data: header, error: headerError } = await supabaseKho
+        .from(headerTable)
+        .select('ma_phieu')
+        .eq('ma_phieu', maPhieu)
+        .maybeSingle();
+      if (headerError) return res.status(500).json({ error: headerError.message || 'Không thể kiểm tra phiếu.' });
+      if (header) return res.status(409).json({ error: 'Phiếu đã được lập; không thể xóa riêng mã khỏi đợt.' });
+
+      const { data, error } = await supabaseKho
+        .from(lineTable)
+        .delete()
+        .eq('ma_phieu', maPhieu)
+        .eq('ma_sp_quet', maSpQuet)
+        .select('id');
+      if (error) return res.status(500).json({ error: error.message || 'Không thể xóa mã khỏi đợt.' });
+      if (!data?.length) return res.status(404).json({ error: 'Không tìm thấy mã đã lưu trong đợt.' });
+      return res.json({ success: true, deletedCount: data.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi xóa mã khỏi đợt.' });
+    }
+  });
+
   app.get('/api/kho/lich-su', async (req, res) => {
     if (!supabaseKho) {
       return res.status(503).json({
@@ -11761,6 +11796,7 @@ export function createApp() {
       const nhanSu = String(body.nhan_su ?? body.nhanSu ?? body.createdBy ?? '').trim() || null;
       const soLuongRaw = Number(body.so_luong ?? body.soLuong ?? body.quantity ?? 1);
       const soLuong = Number.isFinite(soLuongRaw) && soLuongRaw > 0 ? soLuongRaw : 1;
+      const detailOnly = body.chi_tiet_only === true;
       let maPhieu = String(body.ma_phieu ?? body.maPhieu ?? body.slipCode ?? '').trim();
 
       if (!loaiPhieu) {
@@ -11796,6 +11832,17 @@ export function createApp() {
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
 
+      if (detailOnly) {
+        const { data: existingHeader, error: headerCheckError } = await supabaseKho
+          .from(headerTable)
+          .select('ma_phieu')
+          .eq('ma_phieu', maPhieu)
+          .maybeSingle();
+        if (headerCheckError) return res.status(500).json({ error: headerCheckError.message || 'Không thể kiểm tra phiếu.' });
+        if (existingHeader) return res.status(409).json({ error: 'Phiếu đã được lập; không thể lưu thêm mã ở bước Lưu đợt.' });
+      }
+
+      if (!detailOnly) {
       const { error: headerError } = await supabaseKho.from(headerTable).upsert(
         { ma_phieu: maPhieu, ngay, gio, nhan_su: nhanSu },
         { onConflict: 'ma_phieu' }
@@ -11805,6 +11852,7 @@ export function createApp() {
         return res.status(500).json({ error: `Không thể tạo phiếu ${loaiPhieu}. ${headerError.message}` });
       }
 
+      }
       const lineData = {
         ma_sp: loaiPhieu === 'xuat' || loai === 'san_pham' ? maSpTon : maSpFull,
         ma_sp_quet: maSpFull,
@@ -11822,6 +11870,10 @@ export function createApp() {
       if (lineError) {
         console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} insert error:`, lineError);
         return res.status(500).json({ error: `Không thể ghi ${lineTable}. ${lineError.message}` });
+      }
+
+      if (detailOnly) {
+        return res.status(201).json({ success: true, loai_phieu: loaiPhieu, ma_phieu: maPhieu, line: lineRow, source: SUPABASE_KHO_DB_LABEL });
       }
 
       const { data: stockRow } = await supabaseKho

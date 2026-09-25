@@ -101,10 +101,7 @@ create table if not exists public.xuat_kho (
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint fk_xuat_kho_ma_phieu
-    foreign key (ma_phieu) references public.phieu_xuat (ma_phieu)
-    on update cascade on delete restrict
+  updated_at timestamptz not null default now()
 );
 
 alter table public.xuat_kho add column if not exists ma_sp_quet text;
@@ -134,10 +131,7 @@ create table if not exists public.nhap_kho (
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint fk_nhap_kho_ma_phieu
-    foreign key (ma_phieu) references public.phieu_nhap (ma_phieu)
-    on update cascade on delete restrict
+  updated_at timestamptz not null default now()
 );
 
 alter table public.nhap_kho add column if not exists ma_sp_quet text;

@@ -1957,6 +1957,7 @@ export function WarehouseSlipPanel({
     linesRef.current = emptyLines;
     setLines(emptyLines);
     scannedFullCodesByPrefixRef.current.clear();
+    setScannedSavedAtByCode({});
   };
 
   // Tổng SL trên modal: tổng số lượng đã quét trong phiên — mã cùng gốc khác hậu tố lô/serial
@@ -2036,12 +2037,35 @@ export function WarehouseSlipPanel({
     return true;
   };
 
-  const removeScannedProduct = (fullCode: string) => {
+  const removeScannedProduct = async (fullCode: string) => {
     const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
     const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
     if (!codes) return;
-    if (!codes.delete(normalizeMaterialCodeKey(fullCode))) return;
+    const fullCodeKey = normalizeMaterialCodeKey(fullCode);
+    if (!codes.has(fullCodeKey)) return;
+
+    if (scannedSavedAtByCode[fullCode]) {
+      setIsSaving(true);
+      try {
+        const params = new URLSearchParams({ loai_phieu: slipType, ma_phieu: ensureKhoScanMaPhieu(), ma_sp_quet: fullCode });
+        const res = await fetch(`/api/kho/chi-tiet?${params.toString()}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(readApiErrorMessage(res, data, `Không thể xóa mã ${fullCode} khỏi đợt.`));
+      } catch (error: any) {
+        setFormError(showSaveFailure(error, 'Không thể xóa mã khỏi đợt.'));
+        setIsSaving(false);
+        return;
+      }
+      setIsSaving(false);
+    }
+
+    codes.delete(fullCodeKey);
     if (!codes.size) scannedFullCodesByPrefixRef.current.delete(prefixKey);
+    setScannedSavedAtByCode(current => {
+      const next = { ...current };
+      delete next[fullCode];
+      return next;
+    });
 
     const current = linesRef.current;
     const lineIndex = current.findIndex(line => normalizeMaterialCodeKey(line.code) === prefixKey && line.isScanned);
@@ -2879,6 +2903,7 @@ export function WarehouseSlipPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          chi_tiet_only: true,
           loai_phieu: slipType,
           ma_sp: detail.fullCode,
           ma_phieu: maPhieu,
@@ -2894,6 +2919,24 @@ export function WarehouseSlipPanel({
       const savedAt = String(data?.line?.created_at || '');
       existingByCode.set(codeKey, savedAt);
       if (savedAt) setScannedSavedAtByCode(current => ({ ...current, [detail.fullCode]: savedAt }));
+    }
+  };
+
+  const handleSaveScannedProductBatch = async () => {
+    if (!(editSlipCode ? canEdit : canCreate)) {
+      setFormError('Bạn không có quyền lưu mã quét vào kho này.');
+      return;
+    }
+    setIsSaving(true);
+    setFormError('');
+    setActionMessage('');
+    try {
+      await saveScannedProductBatch();
+      setActionMessage(`Đã lưu ${scannedProductDetails.length} mã vào ${slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho'}. Phiếu chưa được lập.`);
+    } catch (error: any) {
+      setFormError(showSaveFailure(error, 'Không thể lưu đợt mã đã quét.'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -2920,6 +2963,18 @@ export function WarehouseSlipPanel({
     }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const scannedCodeKeys = new Set(
+      [...scannedFullCodesByPrefixRef.current.values()]
+        .flatMap(codes => [...codes.values()])
+        .map(normalizeMaterialCodeKey)
+    );
+    if (showProductExportTabs && scannedProductDetails.some(detail =>
+      scannedCodeKeys.has(normalizeMaterialCodeKey(detail.fullCode)) && !detail.savedAt
+    )) {
+      setFormError('Bấm Lưu đợt để lưu toàn bộ mã đã quét trước khi lập phiếu.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -2969,8 +3024,7 @@ export function WarehouseSlipPanel({
     };
 
     try {
-      if (showProductExportTabs) await saveScannedProductBatch();
-      if (scannedItemCount > 0 && !isXuatTreoFlow) {
+      if (showProductExportTabs || (scannedItemCount > 0 && !isXuatTreoFlow)) {
         const headerRes = await fetch('/api/kho/phieu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3083,6 +3137,7 @@ export function WarehouseSlipPanel({
       setProductionOrderCodes([]);
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
+      setScannedSavedAtByCode({});
       const nextSlipCode = generateWarehouseSlipPreviewCode(printSlipType);
       setNewSlipCode(nextSlipCode);
       khoScanMaPhieuRef.current = nextSlipCode;
@@ -4053,7 +4108,7 @@ export function WarehouseSlipPanel({
               {(editSlipCode ? canEdit : canCreate) ? (
                 <button
                   type="button"
-                  onClick={() => void handleSave(false)}
+                  onClick={() => void handleSaveScannedProductBatch()}
                   disabled={isSaving || scannedItemCount === 0}
                   className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
                 >

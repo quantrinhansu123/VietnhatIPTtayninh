@@ -30,3 +30,10 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 
 - Tồn `kho.ma_sp` gộp theo tiền tố trước `_`; `nhap_kho`/`xuat_kho` lưu mã gốc trong `ma_sp` và QR đầy đủ trong `ma_sp_quet` cho phiếu thành phẩm.
 - Chưa cấu hình `SUPABASE_KHO_*` → API trả 503; `/api/health` báo `databases.kho.connected=false`.
+
+## Lưu phiếu thành phẩm hai bước
+
+- **Lưu đợt** gọi `POST /api/kho/quet` với `chi_tiet_only=true`: chỉ ghi dòng vào `nhap_kho` hoặc `xuat_kho`, không tạo header `phieu_nhap` / `phieu_xuat` và không cập nhật bảng `kho`.
+- **Lưu phiếu** mới upsert header qua `POST /api/kho/phieu`; FE yêu cầu lưu hết mã đã quét trước khi lập phiếu.
+- Dòng đã lưu trong đợt nhưng chưa có header có thể xóa riêng qua `DELETE /api/kho/chi-tiet`.
+- DB kho cần chạy `supabase-kho-stage-lines.sql` một lần để bỏ FK từ bảng dòng sang header, cho phép lưu đợt trước khi lập phiếu.

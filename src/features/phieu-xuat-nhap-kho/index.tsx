@@ -4232,8 +4232,8 @@ export function WarehouseSlipPanel({
             <div className="border-b border-zinc-100 p-3 text-sm font-black text-zinc-900">
               Danh sách sản phẩm đã quét <span className="ml-1 rounded-full bg-zinc-100 px-2 py-1 text-xs">{productDetailTotal} mã</span>
             </div>
-            <div className="w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
-              <table className="w-max min-w-full table-auto whitespace-nowrap text-left text-[10px] sm:text-xs">
+            <div className="scrollbar-hidden w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
+              <table className="w-max min-w-full table-auto whitespace-nowrap text-left text-xs sm:text-sm">
                 <thead className="bg-[#ef1b2d] text-white">
                   <tr>
                     <th className="px-3 py-2">STT</th>

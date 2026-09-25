@@ -93,21 +93,24 @@ function sleep(ms: number) {
   });
 }
 
-/** Phát tiếng "tích" ngắn khi quét thành công — không cần file audio, dùng thẳng Web Audio API. */
-function playScanBeep(ctx: AudioContext | null) {
+/** Phát tiếng báo quét bằng Web Audio API; count là số tiếng cần phát. */
+function playScanBeep(ctx: AudioContext | null, count = 1) {
   if (!ctx) return;
   try {
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.type = 'square';
-    oscillator.frequency.value = 1800;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.13);
+    for (let i = 0; i < count; i += 1) {
+      const startAt = ctx.currentTime + i * 0.18;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'square';
+      oscillator.frequency.value = 1800;
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.12);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.13);
+    }
   } catch {
     // Bỏ qua nếu trình duyệt chặn audio.
   }
@@ -366,6 +369,7 @@ export default function ProductQrScanner({
   const commitScanResult = async (raw: string) => {
     const code = parseQrProductCode(raw);
     if (!code) {
+      playScanBeep(audioCtxRef.current);
       setFeedback({ type: 'error', text: 'Mã QR / mã vạch không hợp lệ.' });
       setFeedbackPulse(prev => prev + 1);
       return false;
@@ -379,6 +383,7 @@ export default function ProductQrScanner({
     try {
       scanResult = await onScanRef.current(raw);
     } catch {
+      playScanBeep(audioCtxRef.current);
       setFeedbackPulse(prev => prev + 1);
       setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
@@ -386,17 +391,19 @@ export default function ProductQrScanner({
     setFeedbackPulse(prev => prev + 1);
 
     if (scanResult === false) {
+      playScanBeep(audioCtxRef.current);
       setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
     }
 
     if (scanResult === 'duplicate') {
+      playScanBeep(audioCtxRef.current);
       setScannedItems(prev => bumpScannedItem(prev, fullCode, false));
       setFeedback({ type: 'duplicate', text: `Mã đã quét — bỏ qua: ${fullCode}` });
       return true;
     }
 
-    playScanBeep(audioCtxRef.current);
+    playScanBeep(audioCtxRef.current, 2);
     setScannedItems(prev => bumpScannedItem(prev, fullCode, true));
     setSessionScannedCount(current => current + 1);
     setFeedback({ type: 'success', text: `Đã ghi nhận: ${fullCode}` });

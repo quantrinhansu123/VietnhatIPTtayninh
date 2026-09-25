@@ -3889,7 +3889,7 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
     .map((item): ProductionOrderRow | null => {
       if (!item || typeof item !== 'object') return null;
       const record = item as Record<string, unknown>;
-      const code = pickText(record, ['ma_lenh_sx', 'ma', 'code', 'so_lenh'], '');
+      const code = pickText(record, ['ma_lenh_sx', 'ma', 'code', 'so_lenh'], '').toUpperCase();
       const name = pickText(record, ['ten_lenh_sx', 'ten', 'name', 'tieu_de'], '');
       const productCode = pickText(record, ['ma_hang', 'ma_sp', 'product_code'], '');
       const productName = pickText(record, ['ten_hang', 'ten_sp', 'product_name'], '');
@@ -5296,6 +5296,7 @@ export function AddProductionOrderModal({
   const [catalogProducts, setCatalogProducts] = useState<ProductRow[]>([]);
   const [showAutofillOrders, setShowAutofillOrders] = useState(false);
   const [autofillSearch, setAutofillSearch] = useState('');
+  const [autofillDate, setAutofillDate] = useState('');
   const [selectedAutofillOrderCodes, setSelectedAutofillOrderCodes] = useState<string[]>([]);
   const [selectedAutofillProductKeys, setSelectedAutofillProductKeys] = useState<string[]>([]);
   const [showAddLine, setShowAddLine] = useState(false);
@@ -5478,9 +5479,16 @@ export function AddProductionOrderModal({
     [selectedStaffRoles]
   );
 
+  const autofillOrders = useMemo(
+    () => autofillDate
+      ? orders.filter(order => parseProductionOrderFilterDate(order.orderDate || '') === autofillDate)
+      : orders,
+    [orders, autofillDate]
+  );
+
   const autofillOrderOptions = useMemo(() => {
     const normalized = autofillSearch.trim().toLowerCase();
-    return ordersForSelectedDate
+    return autofillOrders
       .filter(order => getOrderProductLines(order).length > 0)
       .filter(order => {
         if (!normalized) return true;
@@ -5488,8 +5496,16 @@ export function AddProductionOrderModal({
           .toLowerCase()
           .includes(normalized);
       })
-      .sort((a, b) => a.orderCode.localeCompare(b.orderCode, 'vi'));
-  }, [autofillSearch, ordersForSelectedDate]);
+      .sort((a, b) => {
+        const aCreated = Date.parse(a.createdAt);
+        const bCreated = Date.parse(b.createdAt);
+        if (Number.isFinite(aCreated) && Number.isFinite(bCreated) && aCreated !== bCreated) {
+          return bCreated - aCreated;
+        }
+        if (Number.isFinite(bCreated) !== Number.isFinite(aCreated)) return Number.isFinite(bCreated) ? 1 : -1;
+        return b.orderCode.localeCompare(a.orderCode, 'vi', { numeric: true });
+      });
+  }, [autofillSearch, autofillOrders]);
 
   const allAutofillOrdersSelected =
     autofillOrderOptions.length > 0 &&
@@ -5497,7 +5513,7 @@ export function AddProductionOrderModal({
 
   const autofillProductCandidates = useMemo(() => {
     return selectedAutofillOrderCodes.flatMap(orderRef =>
-      listProductOptionsForOrder(ordersForSelectedDate, productionOrders, catalogProducts, orderRef)
+      listProductOptionsForOrder(autofillOrders, productionOrders, catalogProducts, orderRef)
         .filter(product => product.orderQty > 0 && product.remainingQty > 0)
         .map(product => ({
           key: autofillProductKey(orderRef, product.code),
@@ -5508,7 +5524,7 @@ export function AddProductionOrderModal({
           remainingQty: product.remainingQty
         }))
     );
-  }, [selectedAutofillOrderCodes, ordersForSelectedDate, productionOrders, catalogProducts]);
+  }, [selectedAutofillOrderCodes, autofillOrders, productionOrders, catalogProducts]);
 
   const toggleAutofillOrderCode = (orderCode: string) => {
     setSelectedAutofillOrderCodes(prev => {
@@ -5954,7 +5970,13 @@ export function AddProductionOrderModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAutofillOrders(true)}
+                  onClick={() => {
+                    setAutofillDate('');
+                    setAutofillSearch('');
+                    setSelectedAutofillOrderCodes([]);
+                    setSelectedAutofillProductKeys([]);
+                    setShowAutofillOrders(true);
+                  }}
                   disabled={isLoadingLookups}
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-3 text-[11px] font-extrabold text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -6248,9 +6270,7 @@ export function AddProductionOrderModal({
               <div>
                 <h4 className="text-sm font-black uppercase tracking-wider text-zinc-950">Tự điền từ đơn hàng</h4>
                 <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                  {form.startDate
-                    ? `Chọn đơn hàng cùng ngày ${formatDateDdMmYyyy(form.startDate)}, sau đó tick sản phẩm cần lập lệnh SX.`
-                    : 'Chọn ngày lệnh SX trước để lọc đơn hàng cùng ngày.'}
+                  Chọn đơn hàng ở bất kỳ ngày nào; có thể lọc theo ngày, sau đó tick sản phẩm cần lập lệnh SX.
                 </p>
               </div>
               <button
@@ -6263,15 +6283,27 @@ export function AddProductionOrderModal({
             </div>
 
             <div className="shrink-0 border-b border-zinc-100 p-4">
-              <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
-                <Search className="h-4 w-4 text-zinc-400" />
-                <input
-                  value={autofillSearch}
-                  onChange={event => setAutofillSearch(event.target.value)}
-                  placeholder="Tìm mã đơn, khách hàng, mã hàng..."
-                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_15rem]">
+                <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
+                  <Search className="h-4 w-4 text-zinc-400" />
+                  <input
+                    value={autofillSearch}
+                    onChange={event => setAutofillSearch(event.target.value)}
+                    placeholder="Tìm mã đơn, khách hàng, mã hàng..."
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+                  />
+                </label>
+                <DateInput
+                  aria-label="Lọc đơn hàng theo ngày"
+                  value={autofillDate}
+                  onChange={date => {
+                    setAutofillDate(date);
+                    setSelectedAutofillOrderCodes([]);
+                    setSelectedAutofillProductKeys([]);
+                  }}
+                  className="h-11 rounded-xl border border-zinc-200 bg-white px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
                 />
-              </label>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -6289,9 +6321,11 @@ export function AddProductionOrderModal({
                 )}
                 {autofillOrderOptions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 px-4 py-8 text-center text-sm font-bold text-zinc-400">
-                    {form.startDate
-                      ? `Không có đơn hàng phù hợp cho ngày ${formatDateDdMmYyyy(form.startDate)}.`
-                      : 'Chọn ngày lệnh SX để xem đơn hàng cùng ngày.'}
+                    {autofillDate
+                      ? `Không có đơn hàng có sản phẩm cho ngày ${formatDateDdMmYyyy(autofillDate)}.`
+                      : autofillSearch.trim()
+                        ? 'Không tìm thấy đơn hàng phù hợp.'
+                        : 'Chưa có đơn hàng có sản phẩm.'}
                   </div>
                 ) : (
                   <div className="space-y-2">

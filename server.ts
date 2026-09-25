@@ -7029,7 +7029,7 @@ function pickRowField(row: Record<string, unknown>, keys: string[], fallback = '
 }
 
 function makeProductionOrderCode(orderCode: string, suffix = '') {
-  const base = (orderCode || 'DH').replace(/\s+/g, '-');
+  const base = (orderCode || 'DH').replace(/\s+/g, '-').toUpperCase();
   return `LSX-${base}${suffix}`.slice(0, 80);
 }
 
@@ -7219,7 +7219,7 @@ function parseProductionOrderBody(
   const orderRef = pickRowField(source, ['ma_don_hang', 'orderRef', 'order_code'], '') || productOrderRefs.join(', ');
   const manualSeed = `MAN-${Date.now().toString(36).slice(-6).toUpperCase()}`;
   const codeInput = pickRowField(source, ['ma_lenh_sx', 'code'], '');
-  const code = codeInput || makeProductionOrderCode(orderRef || manualSeed);
+  const code = (codeInput || makeProductionOrderCode(orderRef || manualSeed)).toUpperCase();
   const name = pickRowField(source, ['ten_lenh_sx', 'name'], '');
   const startDateTime = pickRowField(source, ['ngay_gio_bat_dau', 'startDateTime'], '');
   const endDateTime = pickRowField(source, ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'], '');

@@ -281,7 +281,7 @@ export function DateInput({
 
   return (
     <>
-      <span ref={wrapperRef} className={wrapperClassName}>
+      <span ref={wrapperRef} className={`${wrapperClassName} min-w-0`}>
         <input
           id={id}
           name={name}
@@ -299,7 +299,7 @@ export function DateInput({
           onKeyDown={event => {
             if (event.key === 'Enter') event.currentTarget.blur();
           }}
-          className={className}
+          className={`box-border w-full min-w-0 ${className}`}
         />
         <span className="pointer-events-none absolute inset-0">
           <button

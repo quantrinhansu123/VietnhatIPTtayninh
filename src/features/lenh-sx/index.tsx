@@ -588,12 +588,15 @@ export function ProductionOrdersPanel({
     setLoadError('');
 
     try {
-      const { rows: productionRows, orders: orderRows } = await fetchProductionOrderRows();
+      const result = await fetchProductionOrderRows();
+      const { rows: productionRows, orders: orderRows } = result;
       setOrders(orderRows);
       setRows(productionRows);
+      return result;
     } catch (error: any) {
       setRows([]);
       setLoadError(error.message || 'Không thể tải lệnh sản xuất từ Supabase.');
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -645,7 +648,10 @@ export function ProductionOrdersPanel({
       const res = await fetch(`/api/lenh-sx/${row.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Không thể xóa lệnh sản xuất.');
-      await loadProductionOrders();
+      const refreshed = await loadProductionOrders();
+      if (refreshed.rows.some(item => item.id === row.id)) {
+        throw new Error('Lệnh vẫn còn trong dữ liệu; chưa khôi phục được số lượng đơn hàng. Hãy thử xóa lại.');
+      }
       setActionMessage(data.warning || 'Đã xóa lệnh sản xuất.');
     } catch (error: any) {
       setActionMessage(error.message || 'Không thể xóa lệnh sản xuất.');

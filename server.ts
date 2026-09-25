@@ -2768,37 +2768,46 @@ async function loadKiemKhoDotSourceRows(
 }> {
   const tenKho = String(options.tenKho ?? '').trim();
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.trunc(options.limit!)) : 5000;
+  // ponytail: cap history reads; move grouping into Postgres if the 20k-row ceiling becomes a problem.
+  const pageSize = 1000;
+  const loadRows = async (withConfirm: boolean) => {
+    const rows: Array<{
+      dot_kiem_kho?: unknown;
+      ten_kho?: unknown;
+      ngay_gio_kiem_kho?: unknown;
+      thoi_gian_xac_nhan?: unknown;
+    }> = [];
+    for (let from = 0; from < limit; from += pageSize) {
+      let query = db
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .select(withConfirm
+          ? 'dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan'
+          : 'dot_kiem_kho, ten_kho, ngay_gio_kiem_kho')
+        .not('dot_kiem_kho', 'is', null)
+        .order('ngay_gio_kiem_kho', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, Math.min(from + pageSize, limit) - 1);
+      if (tenKho) query = query.eq('ten_kho', tenKho);
 
-  let withConfirm = db
-    .from(SUPABASE_KIEM_KHO_TABLE)
-    .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan')
-    .not('dot_kiem_kho', 'is', null)
-    .order('ngay_gio_kiem_kho', { ascending: true })
-    .limit(limit);
-  if (tenKho) withConfirm = withConfirm.eq('ten_kho', tenKho);
+      const { data, error } = await query;
+      if (error) return { rows: [], error };
+      const page = (Array.isArray(data) ? data : []) as typeof rows;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return { rows, error: null };
+  };
 
-  const first = await withConfirm;
+  const first = await loadRows(true);
   if (!first.error) {
-    return {
-      rows: Array.isArray(first.data) ? first.data : [],
-      hasConfirmColumn: true,
-      error: null
-    };
+    return { rows: first.rows, hasConfirmColumn: true, error: null };
   }
 
   if (!isMissingKiemKhoConfirmColumnError(first.error)) {
     return { rows: [], hasConfirmColumn: true, error: first.error };
   }
 
-  let withoutConfirm = db
-    .from(SUPABASE_KIEM_KHO_TABLE)
-    .select('dot_kiem_kho, ten_kho, ngay_gio_kiem_kho')
-    .not('dot_kiem_kho', 'is', null)
-    .order('ngay_gio_kiem_kho', { ascending: true })
-    .limit(limit);
-  if (tenKho) withoutConfirm = withoutConfirm.eq('ten_kho', tenKho);
-
-  const second = await withoutConfirm;
+  const second = await loadRows(false);
   if (second.error) {
     return { rows: [], hasConfirmColumn: false, error: second.error };
   }
@@ -2808,7 +2817,7 @@ async function loadKiemKhoDotSourceRows(
   );
 
   return {
-    rows: Array.isArray(second.data) ? second.data : [],
+    rows: second.rows,
     hasConfirmColumn: false,
     error: null
   };
@@ -14190,6 +14199,9 @@ export function createApp() {
 
     const limitRaw = Number(req.query.limit ?? 200);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 200;
+    const offsetRaw = Number(req.query.offset);
+    const paginated = req.query.offset !== undefined && Number.isFinite(offsetRaw) && offsetRaw >= 0;
+    const offset = paginated ? Math.trunc(offsetRaw) : 0;
     const tenKho = String(req.query.tenKho ?? req.query.ten_kho ?? '').trim();
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
     const maSp = String(req.query.maSp ?? req.query.ma_sp ?? '').trim();
@@ -14200,10 +14212,11 @@ export function createApp() {
     try {
       let query = db
         .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('*')
+        .select('*', paginated ? { count: 'exact' } : undefined)
         .order('created_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false })
-        .limit(limit);
+        .order('id', { ascending: false });
+
+      query = paginated ? query.range(offset, offset + limit - 1) : query.limit(limit);
 
       if (tenKho) query = query.eq('ten_kho', tenKho);
       if (dotKiemKho) query = query.eq('dot_kiem_kho', dotKiemKho);
@@ -14218,7 +14231,7 @@ export function createApp() {
       if (from) query = query.gte('ngay_gio_kiem_kho', `${from}T00:00:00`);
       if (to) query = query.lte('ngay_gio_kiem_kho', `${to}T23:59:59.999`);
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không đọc được bảng kiem_kho.',
@@ -14229,7 +14242,7 @@ export function createApp() {
       const records = Array.isArray(data) ? data : [];
       return res.json({
         records,
-        total: records.length,
+        total: paginated ? count ?? 0 : records.length,
         source: 'supabase',
         db: dbLabel,
         table: SUPABASE_KIEM_KHO_TABLE

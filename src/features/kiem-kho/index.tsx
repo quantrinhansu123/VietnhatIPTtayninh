@@ -25,7 +25,8 @@ import {
   TableHeadCell,
   TableBody,
   TableRow,
-  TableEmptyRow
+  TableEmptyRow,
+  TablePagination
 } from '../../components/shared/table';
 
 type CatalogProduct = {
@@ -296,6 +297,9 @@ export function KiemKhoPanel({
   const [loadingAllBatches, setLoadingAllBatches] = useState(false);
   const [selectedDot, setSelectedDot] = useState('');
   const [dotDetailLines, setDotDetailLines] = useState<KiemKhoDetailRow[]>([]);
+  const [dotDetailTotal, setDotDetailTotal] = useState(0);
+  const [dotDetailPage, setDotDetailPage] = useState(1);
+  const [dotDetailPageSize, setDotDetailPageSize] = useState(50);
   const [loadingDotDetail, setLoadingDotDetail] = useState(false);
   const [confirmingDot, setConfirmingDot] = useState(false);
   const [deletingDetailId, setDeletingDetailId] = useState<string | null>(null);
@@ -437,24 +441,28 @@ export function KiemKhoPanel({
     }
   }, []);
 
-  const loadDotDetail = useCallback(async (dot: string) => {
+  const loadDotDetail = useCallback(async (dot: string, page = dotDetailPage, pageSize = dotDetailPageSize) => {
     if (!dot) {
       setDotDetailLines([]);
+      setDotDetailTotal(0);
       return;
     }
     setLoadingDotDetail(true);
     try {
-      const res = await fetch(`/api/kiem-kho?dotKiemKho=${encodeURIComponent(dot)}&limit=2000`);
+      const offset = (page - 1) * pageSize;
+      const res = await fetch(`/api/kiem-kho?dotKiemKho=${encodeURIComponent(dot)}&limit=${pageSize}&offset=${offset}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh sách sản phẩm của đợt.'));
       setDotDetailLines(Array.isArray(data?.records) ? data.records : []);
+      setDotDetailTotal(Number(data?.total) || 0);
     } catch (err: any) {
       setDotDetailLines([]);
+      setDotDetailTotal(0);
       showAppToast(err?.message || 'Không tải được danh sách sản phẩm của đợt.', 'error');
     } finally {
       setLoadingDotDetail(false);
     }
-  }, []);
+  }, [dotDetailPage, dotDetailPageSize]);
 
   useEffect(() => {
     if (view === 'danh-sach' || view === 'tong-hop') {
@@ -470,8 +478,12 @@ export function KiemKhoPanel({
   }, [selectedKho]);
 
   useEffect(() => {
+    setDotDetailPage(1);
+  }, [selectedDot]);
+
+  useEffect(() => {
     if (view === 'danh-sach') void loadDotDetail(selectedDot);
-  }, [view, selectedDot, loadDotDetail]);
+  }, [view, selectedDot, dotDetailPage, dotDetailPageSize, loadDotDetail]);
 
   const selectedDotGroup = useMemo(
     () => allBatches.find(b => b.dot_kiem_kho === selectedDot) ?? null,
@@ -492,9 +504,15 @@ export function KiemKhoPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không xóa được sản phẩm khỏi đợt kiểm kho.'));
 
-      setDotDetailLines(current => current.filter(item => String(item.id) !== id));
+      const nextTotal = Math.max(0, dotDetailTotal - 1);
+      const nextPage = Math.min(dotDetailPage, Math.max(1, Math.ceil(nextTotal / dotDetailPageSize)));
+      setDotDetailPage(nextPage);
       showAppToast(`Đã xóa mã "${productCode}" khỏi đợt kiểm kho.`, 'success');
-      await Promise.all([loadAllBatches(selectedKho), loadOpenBatches(selectedKho)]);
+      await Promise.all([
+        loadDotDetail(selectedDot, nextPage, dotDetailPageSize),
+        loadAllBatches(selectedKho),
+        loadOpenBatches(selectedKho)
+      ]);
     } catch (err: any) {
       showAppToast(err?.message || 'Không xóa được sản phẩm khỏi đợt kiểm kho.', 'error');
     } finally {
@@ -865,6 +883,9 @@ export function KiemKhoPanel({
       setLines([]);
       linesRef.current = [];
       setDotKiemKho(finalDotKiemKho);
+      setSelectedDot(finalDotKiemKho);
+      setSelectedSummaryDot(finalDotKiemKho);
+      setSummaryDotTouched(true);
       setMessage(resultMessage);
       showAppToast(resultMessage, 'success');
       await loadOpenBatches(selectedKho);
@@ -1540,11 +1561,24 @@ export function KiemKhoPanel({
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
           <div>
             <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm đã quét</h2>
-            <p className="text-[11px] font-semibold text-zinc-500">{dotDetailLines.length} mã SP</p>
+            <p className="text-[11px] font-semibold text-zinc-500">{dotDetailTotal} mã SP</p>
           </div>
         </div>
 
-        <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[480px]">
+        <TableShell
+          minWidthClassName="min-w-[900px]"
+          maxHeightClassName="max-h-[480px]"
+          footer={dotDetailTotal > 0 ? (
+            <TablePagination
+              totalRecords={dotDetailTotal}
+              currentPage={dotDetailPage}
+              totalPages={Math.max(1, Math.ceil(dotDetailTotal / dotDetailPageSize))}
+              pageSize={dotDetailPageSize}
+              onPageChange={setDotDetailPage}
+              onPageSizeChange={size => { setDotDetailPageSize(size); setDotDetailPage(1); }}
+            />
+          ) : null}
+        >
           <TableHead>
             <TableHeadCell>STT</TableHeadCell>
             <TableHeadCell>Mã {khoAbbr} gốc</TableHeadCell>
@@ -1564,7 +1598,7 @@ export function KiemKhoPanel({
               return (
                 <React.Fragment key={String(line.id)}>
                   <TableRow>
-                    <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
+                    <td className="px-4 py-3 font-bold text-zinc-500">{(dotDetailPage - 1) * dotDetailPageSize + index + 1}</td>
                     <td className="px-4 py-3 font-mono font-bold text-zinc-800">{line.ma_nvl || '—'}</td>
                     {!hideMaQuet ? (
                       <td className="px-4 py-3 font-mono font-bold text-zinc-900">{line.ma_sp || '—'}</td>

@@ -34,6 +34,7 @@ create table if not exists public.phieu_xuat (
   ca text,
   may text,
   ghi_chu text,
+  status text not null default 'da_chot',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint uq_phieu_xuat_ma_phieu unique (ma_phieu)
@@ -65,6 +66,7 @@ create table if not exists public.phieu_nhap (
   ca text,
   may text,
   ghi_chu text,
+  status text not null default 'da_chot',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint uq_phieu_nhap_ma_phieu unique (ma_phieu)
@@ -84,10 +86,12 @@ alter table public.phieu_xuat add column if not exists kho text;
 alter table public.phieu_xuat add column if not exists ca text;
 alter table public.phieu_xuat add column if not exists may text;
 alter table public.phieu_xuat add column if not exists ghi_chu text;
+alter table public.phieu_xuat add column if not exists status text not null default 'da_chot';
 alter table public.phieu_nhap add column if not exists kho text;
 alter table public.phieu_nhap add column if not exists ca text;
 alter table public.phieu_nhap add column if not exists may text;
 alter table public.phieu_nhap add column if not exists ghi_chu text;
+alter table public.phieu_nhap add column if not exists status text not null default 'da_chot';
 
 -- -----------------------------------------------------------------------------
 -- 3) Dòng xuất kho

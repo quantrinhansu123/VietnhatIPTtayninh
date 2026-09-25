@@ -11513,11 +11513,13 @@ export function createApp() {
     try {
       const { data: header, error: headerError } = await supabaseKho
         .from(headerTable)
-        .select('ma_phieu')
+        .select('ma_phieu, status')
         .eq('ma_phieu', maPhieu)
         .maybeSingle();
       if (headerError) return res.status(500).json({ error: headerError.message || 'Không thể kiểm tra phiếu.' });
-      if (header) return res.status(409).json({ error: 'Phiếu đã được lập; không thể xóa riêng mã khỏi đợt.' });
+      if (header && header.status !== 'chua_chot') {
+        return res.status(409).json({ error: 'Phiếu đã chốt; không thể xóa riêng mã khỏi đợt.' });
+      }
 
       const { data, error } = await supabaseKho
         .from(lineTable)
@@ -11568,7 +11570,7 @@ export function createApp() {
       for (let offset = 0; ; offset += pageSize) {
         let query = supabaseKho
           .from(headerTable)
-          .select('id, ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu')
+          .select('id, ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
           .order('ngay', { ascending: false })
           .order('ma_phieu', { ascending: false });
         if (slipCode) query = query.eq('ma_phieu', slipCode);
@@ -11616,6 +11618,7 @@ export function createApp() {
               may: header.may || '',
               nhan_su: header.nhan_su || '',
               ghi_chu: header.ghi_chu || '',
+              status: header.status || 'da_chot',
               ma_sp: product ? line.ma_sp : null,
               ma_npl: product ? null : line.ma_sp,
               ten_sp: product ? line.ten_sp : null,
@@ -11649,6 +11652,7 @@ export function createApp() {
           may: header.may || '',
           nhan_su: header.nhan_su || '',
           ghi_chu: header.ghi_chu || '',
+          status: header.status || 'da_chot',
           so_luong: 0,
           don_vi: '-',
           don_gia: 0,
@@ -11661,6 +11665,28 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải lịch sử xuất nhập kho.' });
     }
+  });
+
+  app.get('/api/kho/phieu', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).` });
+    }
+    const slipType = String(req.query.loai_phieu ?? '').trim().toLowerCase();
+    const warehouse = String(req.query.kho ?? '').trim();
+    if (!['nhap', 'xuat'].includes(slipType) || !warehouse) {
+      return res.status(400).json({ error: 'Cần loai_phieu (nhap|xuat) và kho.' });
+    }
+    const table = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const { data, error } = await supabaseKho
+      .from(table)
+      .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
+      .eq('kho', warehouse)
+      .eq('status', 'chua_chot')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return res.status(500).json({ error: `Không tải được phiếu chưa chốt. ${error.message}` });
+    return res.json({ records: data || [], total: data?.length || 0 });
   });
 
   app.post('/api/kho/phieu', async (req, res) => {
@@ -11678,23 +11704,27 @@ export function createApp() {
         return res.status(400).json({ error: 'Cần loai_phieu (nhap|xuat) và ma_phieu.' });
       }
 
+      const status = String(body.status ?? '').trim().toLowerCase();
+      if (status && !['chua_chot', 'da_chot'].includes(status)) {
+        return res.status(400).json({ error: 'status chỉ nhận chua_chot hoặc da_chot.' });
+      }
+
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const optionalText = (value: unknown) => String(value ?? '').trim() || null;
+      const headerPayload: Record<string, unknown> = {
+        ma_phieu: maPhieu,
+        ngay: optionalText(body.ngay) || undefined,
+        nhan_su: optionalText(body.nhan_su ?? body.nhanSu),
+        kho: optionalText(body.kho),
+        ca: optionalText(body.ca),
+        may: optionalText(body.may),
+        ghi_chu: optionalText(body.ghi_chu ?? body.ghiChu)
+      };
+      if (status) headerPayload.status = status;
       const { data, error } = await supabaseKho
         .from(headerTable)
-        .upsert(
-          {
-            ma_phieu: maPhieu,
-            ngay: optionalText(body.ngay) || undefined,
-            nhan_su: optionalText(body.nhan_su ?? body.nhanSu),
-            kho: optionalText(body.kho),
-            ca: optionalText(body.ca),
-            may: optionalText(body.may),
-            ghi_chu: optionalText(body.ghi_chu ?? body.ghiChu)
-          },
-          { onConflict: 'ma_phieu' }
-        )
-        .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu')
+        .upsert(headerPayload, { onConflict: 'ma_phieu' })
+        .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
         .single();
       if (error) {
         console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} metadata upsert error:`, error);
@@ -11772,6 +11802,34 @@ export function createApp() {
     }
   });
 
+  app.post('/api/kho/kiem-tra-ma-quet', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `DB kho chưa cấu hình (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+    const slipType = String(req.body?.loai_phieu ?? '').trim().toLowerCase();
+    const codes = Array.isArray(req.body?.ma_sp_quet)
+      ? [...new Set(req.body.ma_sp_quet.map((code: unknown) => String(code ?? '').trim()).filter(Boolean))]
+      : [];
+    if (!['nhap', 'xuat'].includes(slipType) || !codes.length) {
+      return res.status(400).json({ error: 'Cần loai_phieu và danh sách ma_sp_quet.' });
+    }
+
+    const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+    const duplicates = new Set<string>();
+    for (let offset = 0; offset < codes.length; offset += 100) {
+      const { data, error } = await supabaseKho
+        .from(lineTable)
+        .select('ma_sp_quet')
+        .in('ma_sp_quet', codes.slice(offset, offset + 100));
+      if (error) return res.status(500).json({ error: error.message || 'Không thể kiểm tra mã QR trùng.' });
+      for (const row of data || []) {
+        const code = String(row.ma_sp_quet ?? '').trim();
+        if (code) duplicates.add(code);
+      }
+    }
+    return res.json({ duplicateCodes: [...duplicates] });
+  });
+
   app.post('/api/kho/quet', async (req, res) => {
     if (!supabaseKho) {
       return res.status(503).json({
@@ -11835,11 +11893,23 @@ export function createApp() {
       if (detailOnly) {
         const { data: existingHeader, error: headerCheckError } = await supabaseKho
           .from(headerTable)
-          .select('ma_phieu')
+          .select('ma_phieu, status')
           .eq('ma_phieu', maPhieu)
           .maybeSingle();
         if (headerCheckError) return res.status(500).json({ error: headerCheckError.message || 'Không thể kiểm tra phiếu.' });
-        if (existingHeader) return res.status(409).json({ error: 'Phiếu đã được lập; không thể lưu thêm mã ở bước Lưu đợt.' });
+        if (existingHeader && existingHeader.status !== 'chua_chot') {
+          return res.status(409).json({ error: 'Phiếu đã chốt; không thể lưu thêm mã ở bước Lưu đợt.' });
+        }
+        const { data: duplicateLine, error: duplicateError } = await supabaseKho
+          .from(lineTable)
+          .select('id')
+          .eq('ma_sp_quet', maSpFull)
+          .limit(1)
+          .maybeSingle();
+        if (duplicateError) return res.status(500).json({ error: duplicateError.message || 'Không thể kiểm tra mã QR trùng.' });
+        if (duplicateLine) {
+          return res.status(409).json({ duplicate: true, error: `Mã QR ${maSpFull} đã tồn tại trong phiếu ${loaiPhieu}.` });
+        }
       }
 
       if (!detailOnly) {

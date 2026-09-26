@@ -12,6 +12,7 @@
 |--------|------|------|
 | GET | `/api/phieu-xuat-nhap-kho` | Danh sách phiếu; lọc `loai`, `loai_kho`, `ma_sp` (khớp cả bản không dấu cách) |
 | GET | `/api/kho/lich-su` | Trang `/lich-su-xuat-nhap-kho` ghép header và chi tiết từ DB kho mới theo `ma_phieu` |
+| GET / PATCH / DELETE | `/api/kho/chi-tiet` | Đọc mã QR đã quét, sửa tên/ĐVT cho nhóm cùng mã TP gốc khi sửa phiếu nhập thành phẩm, hoặc xóa mã trong phiếu nháp |
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | Nhật ký theo SP — dùng tab Nhập kho / Xuất kho trong Xem sản phẩm |
 | GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
 | GET | `/api/phieu-xuat-nhap-kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
@@ -31,7 +32,7 @@
 
 **Tự động điền:** Nút **Tự động điền theo lệnh SX** trên form phiếu — lọc lệnh SX theo **Ngày phiếu + Ca**, chọn các lệnh khớp, điền máy / lý do / ghi chú và dòng hàng (`san_pham` = SP trên lệnh; `nvl` = NVL định mức BOM theo SP × SL lệnh). Nút **Điền ĐM · KG cân thực tế** (xuất NVL) — cùng danh sách NVL theo BOM, nhưng **kg nhựa %** lấy từ tổng **Nhựa thực tế** trên `/can-tu-dong` (ngày · ca · máy); NVL chỉ có kg/SP (vd BDT) lấy `khoi_luong_kg × số lần cân`.
 
-Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Màn `/lich-su-xuat-nhap-kho` chia 2 tab **Xuất kho** / **Nhập kho** (lọc `loai`), dropdown **Chọn kho** giữ các loại kho. Bảng **Chi tiết từng dòng** và modal xem phiếu xếp **ĐVT kg lên đầu** (`sortWarehouseLinesKgFirst`). Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
+Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Màn `/lich-su-xuat-nhap-kho` chia 2 tab **Xuất kho** / **Nhập kho** (lọc `loai`), dropdown **Chọn kho** giữ các loại kho; danh sách phiếu hiển thị giờ lưu theo `created_at` của header, đổi sang giờ Việt Nam. Với kho thành phẩm (`san_pham`), danh sách lịch sử ẩn Ca và Máy trên cả desktop và mobile. Bảng phụ **Chi tiết từng dòng** đã bỏ; modal xem phiếu vẫn xếp **ĐVT kg lên đầu** (`sortWarehouseLinesKgFirst`). Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Báo cáo hàng hỏng xuất hiện ở hàng chờ trên `/phieu-xuat-nhap-kho`; bấm **Kiểm tra** để điền phiếu và chỉ phát sinh tồn kho khi bấm **Lưu & in**.
 
 **Loại phiếu** trên form có 3 lựa chọn: **Nhập kho** · **Xuất kho treo** · **Xuất kho**.
 - **Xuất kho treo** là form chờ lấy dữ liệu từ **Báo cáo hàng hỏng chờ xuất kho**, không phải một trạng thái phiếu đã lưu. Bấm **Kiểm tra** để điền báo cáo xuống form; bấm **Lưu phiếu xuất kho treo** sẽ lưu ngay `treo=false` thành phiếu xuất chính thức, cập nhật tồn kho, lịch sử và mở mẫu in.
@@ -50,7 +51,7 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 - **`warehouse-slip-thanh-pham`** ("Phiếu xuất nhập kho - Thành phẩm"): `san_pham`.
 - 2 dòng này thay cho dòng `warehouse-slip` cũ trong `STAFF_MENU_VIEW_TREE` (`src/features/nhan-su/menuViews.ts`, nhóm `factory-kho` và `facility-management`) — hiện trong ma trận Phân quyền tại `/cai-dat`.
 - `src/app/tabAccess.ts` → `hubHasAllowedChild()` cho phép vào hai route dùng chung nếu có 1 trong 2 quyền con; quyền cũ `warehouse-slip` không được suy rộng thành cả hai quyền mới.
-- `src/features/phieu-xuat-nhap-kho/index.tsx` → `useWarehouseSlipAccess()` + `pickWarehouseSlipAccess(access, kind)` chọn đúng bộ quyền theo `warehouseKind` (form tạo/sửa) hoặc `warehouseTab` (Lịch sử xuất nhập) đang thao tác.
+- `src/features/phieu-xuat-nhap-kho/index.tsx` → `useWarehouseSlipAccess()` + `pickWarehouseSlipAccess(access, kind)` chọn đúng bộ quyền theo `warehouseKind` (form tạo/sửa) hoặc `warehouseTab` (Lịch sử xuất nhập) đang thao tác; chỉ phiếu nhập có thể sửa, phiếu xuất bị khóa ở giao diện và API. Khi sửa phiếu nhập thành phẩm, tab **Thực hiện** hiển thị các QR đã lưu để sửa tên/ĐVT (áp dụng cho cùng mã TP gốc) và vẫn cho quét bổ sung.
 - Dropdown **Tên kho**, các tab lịch sử và Thêm/Sửa/Xóa chỉ hiện đúng nhóm kho được cấp; các handler kiểm tra quyền lại trước khi gọi API.
 - Migration `scripts/migrate-warehouse-slip-permissions.mjs`: quyền xem cũ chuyển sang xem hai nhóm; riêng `Thủ kho vật tư, kế toán sản xuất` chỉ nhận quyền Vật tư và `Thủ kho thành phẩm` chỉ nhận quyền Thành phẩm. Chỉ hai vai trò này nhận Thêm/Sửa/Xóa.
 - Tài khoản vận hành đã gán trực tiếp qua `nhan_su.vi_tri_gan`: `NV003-3` → Vật tư, `NV006-4` → Thành phẩm. Đã kiểm thử đăng nhập thực tế ngày 2026-08-12; mỗi tài khoản chỉ thấy dropdown và tab lịch sử thuộc kho phụ trách.

@@ -149,6 +149,7 @@ export interface WarehouseMovementRow {
   note: string;
   createdBy: string;
   createdAt: string;
+  slipCreatedAt?: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
@@ -272,6 +273,7 @@ type SavedProductScanRow = {
   ma_sp: string;
   ma_sp_quet?: string | null;
   ten_sp?: string | null;
+  don_vi?: string | null;
   so_luong?: number | null;
   created_at?: string | null;
 };
@@ -919,6 +921,19 @@ export function createWarehouseLineDraftFromPrefill(
   };
 }
 
+const warehouseHistoryTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23'
+});
+
+function formatWarehouseSlipSavedTime(value: string) {
+  const date = new Date(value);
+  return value && Number.isFinite(date.getTime()) ? warehouseHistoryTimeFormatter.format(date) : '—';
+}
+
 export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow[] {
   const list = data && typeof data === 'object' && Array.isArray((data as { movements?: unknown }).movements)
     ? (data as { movements: unknown[] }).movements
@@ -1009,6 +1024,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         note: String(record.ghi_chu ?? record.note ?? '').trim(),
         createdBy: String(record.nguoi_lap ?? record.nhan_su ?? record.createdBy ?? '').trim(),
         createdAt: String(record.created_at ?? record.createdAt ?? '').trim(),
+        slipCreatedAt: String(record.created_at_phieu ?? record.slipCreatedAt ?? '').trim() || undefined,
         sourceInboundLineId: String(record.id_dong_nhap_nguon ?? record.sourceInboundLineId ?? '').trim() || undefined,
         sourceInboundSlipCode:
           String(record.ma_phieu_nhap_nguon ?? record.sourceInboundSlipCode ?? '').trim() || undefined,
@@ -1513,36 +1529,43 @@ export function WarehouseSlipPanel({
       const draft = JSON.parse(rawDraft) as Partial<WarehouseSlipPrefillDraft>;
       if (!draft || !Array.isArray(draft.lines) || draft.lines.length === 0) return;
       if (!draft.createdAt || Date.now() - draft.createdAt > WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS) return;
+      const editingCode = String(draft.editSlipCode || '').trim();
+      const draftSlipType = draft.slipType === 'nhap' ? 'nhap' : 'xuat';
+      if (editingCode && draftSlipType === 'xuat') {
+        setFormError('Phiếu xuất kho không thể sửa.');
+        return;
+      }
 
-      {
-        const draftName = String(draft.warehouseName || '').trim();
-        const draftKind: WarehouseKind =
-          draft.warehouseKind === 'san_pham' ||
-          draft.warehouseKind === 'tai_che' ||
-          draft.warehouseKind === 'hang_hong' ||
-          draft.warehouseKind === 'hang_hoa' ||
-          draft.warehouseKind === 'cong_cu_dung_cu' ||
-          draft.warehouseKind === 'gia_cong'
-            ? draft.warehouseKind
-            : draft.warehouseKind === 'nvl'
-              ? 'nvl'
-              : inferWarehouseKindFromName(draftName);
-        const resolvedKind = draftName ? inferWarehouseKindFromName(draftName) : draftKind;
-        const draftAccess = pickWarehouseSlipAccess(warehouseAccess, resolvedKind);
-        const editingCode = String(draft.editSlipCode || '').trim();
-        if (!(editingCode ? draftAccess.canEdit : draftAccess.canCreate)) {
-          setFormError(
-            editingCode
-              ? 'Bạn không có quyền sửa phiếu thuộc kho này.'
-              : 'Bạn không có quyền lập phiếu thuộc kho này.'
-          );
-          return;
-        }
-        setWarehouseName(draftName);
-        setWarehouseKind(resolvedKind);
+      const draftName = String(draft.warehouseName || '').trim();
+      const draftKind: WarehouseKind =
+        draft.warehouseKind === 'san_pham' ||
+        draft.warehouseKind === 'tai_che' ||
+        draft.warehouseKind === 'hang_hong' ||
+        draft.warehouseKind === 'hang_hoa' ||
+        draft.warehouseKind === 'cong_cu_dung_cu' ||
+        draft.warehouseKind === 'gia_cong'
+          ? draft.warehouseKind
+          : draft.warehouseKind === 'nvl'
+            ? 'nvl'
+            : inferWarehouseKindFromName(draftName);
+      const resolvedKind = draftName ? inferWarehouseKindFromName(draftName) : draftKind;
+      const draftAccess = pickWarehouseSlipAccess(warehouseAccess, resolvedKind);
+      if (!(editingCode ? draftAccess.canEdit : draftAccess.canCreate)) {
+        setFormError(
+          editingCode
+            ? 'Bạn không có quyền sửa phiếu thuộc kho này.'
+            : 'Bạn không có quyền lập phiếu thuộc kho này.'
+        );
+        return;
+      }
+      setWarehouseName(draftName);
+      setWarehouseKind(resolvedKind);
+      if (editingCode && draftSlipType === 'nhap' && resolvedKind === 'san_pham') {
+        setProductExportView('thuc-hien');
+        setProductLineView('summary');
       }
       clearSavedPrint();
-      setSlipType(draft.slipType === 'nhap' ? 'nhap' : 'xuat');
+      setSlipType(draftSlipType);
       setIsXuatTreoMode(false);
       if (draft.slipDate) setSlipDate(draft.slipDate);
       setReason(stripProductionOrderCodesFromReason(draft.reason || ''));
@@ -1560,9 +1583,8 @@ export function WarehouseSlipPanel({
       setDeliverer(draft.deliverer || draft.recipient || '');
       setWarehouseLocation(draft.warehouseLocation || 'HCM');
       const draftLines = draft.lines.map(createWarehouseLineDraftFromPrefill);
-      setLines(draft.slipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
+      setLines(draftSlipType === 'nhap' ? draftLines : sortWarehouseLinesKgFirst(draftLines));
       // Catalog Tổng kg có thể chưa kịp load — xếp lại theo khối lượng khi weightCatalog sẵn sàng.
-      const editingCode = String(draft.editSlipCode || '').trim();
       if (editingCode) {
         setEditSlipCode(editingCode);
         setActionMessage(`Đang sửa phiếu ${editingCode}. Chỉnh sửa và bấm cập nhật để lưu.`);
@@ -1852,6 +1874,9 @@ export function WarehouseSlipPanel({
   const [scannedSavedAtByCode, setScannedSavedAtByCode] = useState<Record<string, string>>({});
   const [savedProductScanRows, setSavedProductScanRows] = useState<SavedProductScanRow[] | null>(null);
   const [savedProductScanTotal, setSavedProductScanTotal] = useState(0);
+  const [editingSavedProductScanId, setEditingSavedProductScanId] = useState<string | null>(null);
+  const [savedProductScanDraft, setSavedProductScanDraft] = useState({ name: '', unit: '' });
+  const [isLoadingExistingProductScans, setIsLoadingExistingProductScans] = useState(false);
   const [savedProductScanPage, setSavedProductScanPage] = useState(1);
   const [savedProductScanPageSize, setSavedProductScanPageSize] = useState(50);
   const [loadingSavedProductScans, setLoadingSavedProductScans] = useState(false);
@@ -2095,6 +2120,10 @@ export function WarehouseSlipPanel({
 
   /** Quét chỉ cập nhật phiếu nháp; mã QR sẽ được ghi vào DB kho khi bấm Lưu đợt. */
   const addLineFromScan = async (raw: string): Promise<boolean | 'duplicate'> => {
+    if (editSlipCode && warehouseKind === 'san_pham' && slipType === 'nhap' && isLoadingExistingProductScans) {
+      setFormError('Đang tải mã QR cũ của phiếu, vui lòng đợi rồi quét tiếp.');
+      return false;
+    }
     const fullCode = String(raw ?? '').trim();
     if (!fullCode) return false;
     const current = linesRef.current;
@@ -2213,7 +2242,62 @@ export function WarehouseSlipPanel({
   // Các loại phiếu xuất khác không có luồng này.
   const showOrderFields = isNvlExport;
   const showProductExportTabs = warehouseKind === 'san_pham' && !isXuatTreoMode;
+  const isEditingProductInbound = Boolean(editSlipCode) && warehouseKind === 'san_pham' && slipType === 'nhap';
   const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
+
+  useEffect(() => {
+    if (!isEditingProductInbound || !editSlipCode) {
+      setIsLoadingExistingProductScans(false);
+      return;
+    }
+    let cancelled = false;
+    const loadExistingScans = async () => {
+      setIsLoadingExistingProductScans(true);
+      try {
+        const records: SavedProductScanRow[] = [];
+        setSavedProductScanRows(null);
+        for (let offset = 0; ; offset += 100) {
+          const params = new URLSearchParams({
+            loai_phieu: 'nhap',
+            ma_phieu: editSlipCode,
+            limit: '100',
+            offset: String(offset)
+          });
+          const response = await fetch(`/api/kho/chi-tiet?${params.toString()}`);
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(readApiErrorMessage(response, data, 'Không tải được mã QR đã quét.'));
+          const page = Array.isArray(data?.records) ? data.records as SavedProductScanRow[] : [];
+          records.push(...page);
+          if (offset + page.length >= (Number(data?.total) || 0) || !page.length) break;
+        }
+
+        if (cancelled) return;
+        setSavedProductScanRows(records);
+        setSavedProductScanTotal(records.length);
+        const codesByPrefix = new Map<string, Map<string, string>>();
+        const savedAtByCode: Record<string, string> = {};
+        for (const row of records) {
+          const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
+          const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(String(row.ma_sp || fullCode)));
+          const fullCodeKey = normalizeMaterialCodeKey(fullCode);
+          if (!fullCode || !prefixKey || !fullCodeKey) continue;
+          let codes = codesByPrefix.get(prefixKey);
+          if (!codes) codesByPrefix.set(prefixKey, (codes = new Map()));
+          codes.set(fullCodeKey, fullCode);
+          savedAtByCode[fullCode] = String(row.created_at || '');
+        }
+        scannedFullCodesByPrefixRef.current = codesByPrefix;
+        setSavedProductBatchCodes(new Set([...codesByPrefix.values()].flatMap(codes => [...codes.keys()])));
+        setScannedSavedAtByCode(savedAtByCode);
+      } catch (error: unknown) {
+        if (!cancelled) setFormError(error instanceof Error ? error.message : 'Không tải được mã QR đã quét.');
+      } finally {
+        if (!cancelled) setIsLoadingExistingProductScans(false);
+      }
+    };
+    void loadExistingScans();
+    return () => { cancelled = true; };
+  }, [isEditingProductInbound, editSlipCode]);
 
   useEffect(() => {
     if (!showProductExportTabs || !warehouseName || editSlipCode) return;
@@ -2274,7 +2358,7 @@ export function WarehouseSlipPanel({
   }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, savedProductScanPage, savedProductScanPageSize, scannedSavedAtByCode]);
 
   useEffect(() => {
-    if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode) return;
+    if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode || isEditingProductInbound) return;
     let cancelled = false;
     setLoadingProductSummary(true);
     setProductSummaryError('');
@@ -2292,10 +2376,10 @@ export function WarehouseSlipPanel({
       })
       .finally(() => { if (!cancelled) setLoadingProductSummary(false); });
     return () => { cancelled = true; };
-  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode]);
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode, isEditingProductInbound]);
 
   useEffect(() => {
-    if (!showProductExportTabs || productExportView !== 'lap-phieu' || loadingProductSummary || productSummaryError) return;
+    if (!showProductExportTabs || productExportView !== 'lap-phieu' || isEditingProductInbound || loadingProductSummary || productSummaryError) return;
     setLines(savedProductSummary.map(row => {
       const code = String(row.ma_sp || '').trim();
       const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(code));
@@ -2308,7 +2392,7 @@ export function WarehouseSlipPanel({
         documentQuantity: String(row.so_luong || 0)
       };
     }));
-  }, [showProductExportTabs, productExportView, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions]);
+  }, [showProductExportTabs, productExportView, isEditingProductInbound, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions]);
 
   const savedProductDetails = savedProductScanRows?.map(row => {
     const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
@@ -2321,7 +2405,7 @@ export function WarehouseSlipPanel({
       baseCode,
       fullCode,
       name: String(row.ten_sp || item?.name || line?.name || ''),
-      unit: item?.unit || line?.unit || '',
+      unit: String(row.don_vi || item?.unit || line?.unit || ''),
       savedAt: String(row.created_at || '')
     };
   }) ?? null;
@@ -2330,6 +2414,23 @@ export function WarehouseSlipPanel({
     savedProductScanPage * savedProductScanPageSize
   );
   const productDetailTotal = savedProductDetails ? savedProductScanTotal : scannedProductDetails.length;
+  const editableSavedProductRows = (isEditingProductInbound ? savedProductScanRows ?? [] : [])
+    .slice((savedProductScanPage - 1) * savedProductScanPageSize, savedProductScanPage * savedProductScanPageSize)
+    .map(row => {
+      const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
+      const baseCode = warehouseCodePrefix(String(row.ma_sp || fullCode));
+      const codeKey = normalizeMaterialCodeKey(baseCode);
+      const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
+      const line = lines.find(candidate => normalizeMaterialCodeKey(candidate.code) === codeKey);
+      return {
+        row,
+        id: String(row.id),
+        fullCode,
+        baseCode,
+        name: String(row.ten_sp || item?.name || line?.name || ''),
+        unit: String(row.don_vi || item?.unit || line?.unit || '')
+      };
+    });
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -3115,7 +3216,55 @@ export function WarehouseSlipPanel({
     }
   };
 
+  const handleSaveExistingProductScan = async (row: SavedProductScanRow) => {
+    if (!editSlipCode || !isEditingProductInbound || !canEdit) {
+      setFormError('Bạn không có quyền sửa mã đã quét trong phiếu này.');
+      return;
+    }
+    const id = String(row.id);
+    const name = savedProductScanDraft.name.trim();
+    const unit = savedProductScanDraft.unit.trim();
+    setIsSaving(true);
+    setFormError('');
+    try {
+      const response = await fetch('/api/kho/chi-tiet', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loai_phieu: 'nhap',
+          ma_phieu: editSlipCode,
+          id,
+          ten_sp: name,
+          don_vi: unit
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(readApiErrorMessage(response, data, 'Không thể cập nhật mã đã quét.'));
+
+      const baseCodeKey = normalizeMaterialCodeKey(row.ma_sp);
+      setSavedProductScanRows(current => current?.map(item =>
+        normalizeMaterialCodeKey(item.ma_sp) === baseCodeKey
+          ? { ...item, ten_sp: name || null, don_vi: unit || null }
+          : item
+      ) ?? null);
+      setLines(current => current.map(line =>
+        normalizeMaterialCodeKey(line.code) === baseCodeKey ? { ...line, name, unit } : line
+      ));
+      setEditingSavedProductScanId(null);
+      setActionMessage(`Đã cập nhật thông tin sản phẩm ${row.ma_sp} trong phiếu nhập.`);
+    } catch (error: unknown) {
+      setFormError(showSaveFailure(error, 'Không thể cập nhật mã đã quét.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSave = async (autoPrint = false) => {
+    if (editSlipCode && slipType === 'xuat') {
+      setFormError(showSaveFailure('Phiếu xuất kho không thể sửa.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!(editSlipCode ? canEdit : canCreate)) {
       setFormError(
         showSaveFailure(
@@ -3924,7 +4073,11 @@ export function WarehouseSlipPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                {showProductExportTabs && productExportView === 'lap-phieu' ? 'Tổng hợp sản phẩm đã quét' : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}`}
+                {isEditingProductInbound
+                  ? 'Chỉnh sửa sản phẩm trong phiếu nhập'
+                  : showProductExportTabs && productExportView === 'lap-phieu'
+                    ? 'Tổng hợp sản phẩm đã quét'
+                    : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}`}
               </p>
             </div>
             {warehouseKind === 'san_pham' && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
@@ -3990,7 +4143,7 @@ export function WarehouseSlipPanel({
             ) : null}
           </div>
 
-          {showProductExportTabs && productExportView === 'lap-phieu' ? (
+          {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? (
             <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
               <table className="w-full min-w-[620px] border-separate border-spacing-0 text-left text-xs">
                 <thead>
@@ -4325,6 +4478,17 @@ export function WarehouseSlipPanel({
           <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-black text-zinc-900">Thông tin phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'}</h2>
+              {editSlipCode && canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSave(false)}
+                  disabled={isSaving}
+                  className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-[#ef1b2d] bg-white px-4 text-sm font-bold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
+                >
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSaving ? 'Đang cập nhật...' : 'Cập nhật phiếu'}
+                </button>
+              ) : null}
               {(editSlipCode ? canEdit : canCreate) ? (
                 <button
                   type="button"
@@ -4421,6 +4585,63 @@ export function WarehouseSlipPanel({
                   : 'Quét mã QR để xem danh sách sản phẩm trong đợt. Mã chỉ được lưu vào kho khi bấm Lưu đợt.'}
               </div>
             )}
+            {isEditingProductInbound ? (
+              <div className="space-y-3 border-t border-zinc-100 p-3">
+                <div>
+                  <h3 className="text-sm font-black text-zinc-900">Mã QR đã lưu trong phiếu ({savedProductScanTotal})</h3>
+                  <p className="mt-1 text-xs font-medium text-zinc-500">Sửa tên hoặc đơn vị rồi bấm Lưu. Thay đổi áp dụng cho mọi mã cùng mã TP gốc; bấm Cập nhật phiếu sau khi sửa xong.</p>
+                </div>
+                {isLoadingExistingProductScans ? (
+                  <p className="flex items-center justify-center gap-2 py-4 text-xs font-semibold text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải mã đã quét…</p>
+                ) : editableSavedProductRows.length ? (
+                  <div className="space-y-2">
+                    {editableSavedProductRows.map(({ row, id, fullCode, baseCode, name, unit }, index) => {
+                      const isEditingRow = editingSavedProductScanId === id;
+                      const fieldClass = 'min-h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800';
+                      return (
+                        <article key={id} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black uppercase tracking-wider text-zinc-400">Mã đã lưu #{(savedProductScanPage - 1) * savedProductScanPageSize + index + 1}</p>
+                              <p className="break-all font-mono text-xs font-bold text-zinc-800">{fullCode}</p>
+                            </div>
+                            {isEditingRow ? (
+                              <div className="flex shrink-0 gap-1.5">
+                                <button type="button" onClick={() => void handleSaveExistingProductScan(row)} disabled={isSaving} className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#ef1b2d] px-2.5 text-xs font-bold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" /> Lưu</button>
+                                <button type="button" onClick={() => setEditingSavedProductScanId(null)} disabled={isSaving} className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-bold text-zinc-600 disabled:opacity-50"><X className="h-3.5 w-3.5" /> Hủy</button>
+                              </div>
+                            ) : canEdit ? (
+                              <button type="button" onClick={() => { setEditingSavedProductScanId(id); setSavedProductScanDraft({ name, unit }); }} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-bold text-zinc-700 hover:border-[#ef1b2d] hover:text-[#ef1b2d]"><Pencil className="h-3.5 w-3.5" /> Sửa</button>
+                            ) : null}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="space-y-1 text-[11px] font-bold text-zinc-500">Mã TP gốc<div className={`${fieldClass} flex items-center break-all bg-zinc-100`}>{baseCode}</div></label>
+                            <label className="space-y-1 text-[11px] font-bold text-zinc-500">Đơn vị tính
+                              {isEditingRow ? <input value={savedProductScanDraft.unit} onChange={event => setSavedProductScanDraft(current => ({ ...current, unit: event.target.value }))} className={fieldClass} /> : <div className={fieldClass}>{unit || '—'}</div>}
+                            </label>
+                            <label className="col-span-2 space-y-1 text-[11px] font-bold text-zinc-500">Tên sản phẩm
+                              {isEditingRow ? <input value={savedProductScanDraft.name} onChange={event => setSavedProductScanDraft(current => ({ ...current, name: event.target.value }))} className={fieldClass} /> : <div className={`${fieldClass} truncate`}>{name || '—'}</div>}
+                            </label>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="py-3 text-center text-xs font-semibold text-zinc-500">{savedProductScanRows === null ? 'Chưa tải được danh sách mã đã quét.' : 'Phiếu chưa có mã QR đã lưu.'}</p>
+                )}
+                {savedProductScanTotal > 0 ? (
+                  <TablePagination
+                    totalRecords={savedProductScanTotal}
+                    currentPage={savedProductScanPage}
+                    totalPages={Math.max(1, Math.ceil(savedProductScanTotal / savedProductScanPageSize))}
+                    pageSize={savedProductScanPageSize}
+                    onPageChange={setSavedProductScanPage}
+                    onPageSizeChange={size => { setSavedProductScanPageSize(size); setSavedProductScanPage(1); }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </section>
         </>
       ) : null}
@@ -4742,6 +4963,7 @@ export function WarehouseHistoryPanel({
     loadMovements();
   }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate]);
 
+  const isFinishedGoodsHistory = warehouseTab === 'san_pham';
   const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(filterShift) || Boolean(searchText);
 
   const resetFilters = () => {
@@ -4803,7 +5025,7 @@ export function WarehouseHistoryPanel({
         slipCode,
         rows,
         header: rows[0],
-        createdAt: rows.reduce(
+        createdAt: rows.find(row => row.slipCreatedAt)?.slipCreatedAt || rows.reduce(
           (latest, row) => row.createdAt.localeCompare(latest) > 0 ? row.createdAt : latest,
           ''
         ),
@@ -4832,28 +5054,6 @@ export function WarehouseHistoryPanel({
       }))
       .sort((a, b) => b.slipDate.localeCompare(a.slipDate));
   }, [slipGroups]);
-
-  const sortedMovementLines = useMemo(
-    () =>
-      [...filteredMovements].sort((a, b) => {
-        const aKg = isWarehouseKgUnit(a.unit);
-        const bKg = isWarehouseKgUnit(b.unit);
-        if (aKg !== bKg) return aKg ? -1 : 1;
-
-        const aWeight = resolveWarehouseRowWeightKg(a);
-        const bWeight = resolveWarehouseRowWeightKg(b);
-        const aVal = aWeight !== null && Number.isFinite(aWeight) && aWeight > 0 ? aWeight : -1;
-        const bVal = bWeight !== null && Number.isFinite(bWeight) && bWeight > 0 ? bWeight : -1;
-        if (aVal !== bVal) return bVal - aVal;
-
-        const byCreated = b.createdAt.localeCompare(a.createdAt);
-        if (byCreated !== 0) return byCreated;
-        const bySlip = (b.slipCode || '').localeCompare(a.slipCode || '', 'vi');
-        if (bySlip !== 0) return bySlip;
-        return (a.itemCode || '').localeCompare(b.itemCode || '', 'vi');
-      }),
-    [filteredMovements, weightCatalogMaterials, weightCatalogProducts]
-  );
 
   const selectableSlips = useMemo(
     () => slipGroups.filter(group => group.slipCode && group.rows.some(row => row.id)),
@@ -5110,6 +5310,10 @@ export function WarehouseHistoryPanel({
       return;
     }
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
+    if (rows.some(row => row.slipType === 'xuat')) {
+      setError('Phiếu xuất kho không thể sửa.');
+      return;
+    }
     if (rows.some(row => row.daIn)) {
       setError('Phiếu đã in, không thể sửa nữa.');
       return;
@@ -5326,35 +5530,37 @@ export function WarehouseHistoryPanel({
       )}
 
       {isLoading ? (
-        <TableShell minWidthClassName="min-w-[900px]">
+        <TableShell minWidthClassName={isFinishedGoodsHistory ? 'min-w-[700px]' : 'min-w-[900px]'}>
           <TableHead>
             <TableHeadCell className="w-10" align="center">
               {' '}
             </TableHeadCell>
             <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Ca</TableHeadCell>
-            <TableHeadCell>Máy</TableHeadCell>
+            <TableHeadCell>{selectedType === 'xuat' ? 'Giờ xuất' : 'Giờ nhập'}</TableHeadCell>
+            {!isFinishedGoodsHistory ? <TableHeadCell>Ca</TableHeadCell> : null}
+            {!isFinishedGoodsHistory ? <TableHeadCell>Máy</TableHeadCell> : null}
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={6}>Đang tải Supabase...</TableEmptyRow>
+            <TableEmptyRow colSpan={isFinishedGoodsHistory ? 5 : 7}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
       ) : slipDateGroups.length === 0 ? (
-        <TableShell minWidthClassName="min-w-[900px]">
+        <TableShell minWidthClassName={isFinishedGoodsHistory ? 'min-w-[700px]' : 'min-w-[900px]'}>
           <TableHead>
             <TableHeadCell className="w-10" align="center">
               {' '}
             </TableHeadCell>
             <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Ca</TableHeadCell>
-            <TableHeadCell>Máy</TableHeadCell>
+            <TableHeadCell>{selectedType === 'xuat' ? 'Giờ xuất' : 'Giờ nhập'}</TableHeadCell>
+            {!isFinishedGoodsHistory ? <TableHeadCell>Ca</TableHeadCell> : null}
+            {!isFinishedGoodsHistory ? <TableHeadCell>Máy</TableHeadCell> : null}
             <TableHeadCell>Người lập</TableHeadCell>
             <TableHeadCell align="center">Thao tác</TableHeadCell>
           </TableHead>
           <TableBody>
-            <TableEmptyRow colSpan={6}>
+            <TableEmptyRow colSpan={isFinishedGoodsHistory ? 5 : 7}>
               Chưa có phiếu {warehouseSlipTypeLabel(selectedType).toLowerCase()} tại {warehouseKindLabel(warehouseTab)}.
             </TableEmptyRow>
           </TableBody>
@@ -5413,14 +5619,16 @@ export function WarehouseHistoryPanel({
                             {group.slipCode || '-'}
                           </button>
                           <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                            Ca: {header.shift || '-'} · {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
+                            {!isFinishedGoodsHistory ? <>Ca: {header.shift || '-'} · </> : null}
+                            {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
                           </p>
                           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                            <div><dt className="font-bold text-zinc-400">Máy</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.machine || '-'}</dd></div>
+                            <div><dt className="font-bold text-zinc-400">{selectedType === 'xuat' ? 'Giờ xuất' : 'Giờ nhập'}</dt><dd className="mt-0.5 font-mono font-bold tabular-nums text-zinc-700" title="Thời điểm lưu phiếu theo giờ Việt Nam">{formatWarehouseSlipSavedTime(group.createdAt)}</dd></div>
+                            {!isFinishedGoodsHistory ? <div><dt className="font-bold text-zinc-400">Máy</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.machine || '-'}</dd></div> : null}
                             <div><dt className="font-bold text-zinc-400">Người lập</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.createdBy || '-'}</dd></div>
                           </dl>
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                            {canEdit && !header.daIn ? (
+                            {canEdit && header.slipType !== 'xuat' && !header.daIn ? (
                               <button type="button" onClick={() => handleEditSlip(group.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
                             ) : null}
                             <button type="button" onClick={() => handlePrintSlipByCode(group.slipCode, true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-[#ef1b2d]"><Printer className="h-3.5 w-3.5" />In</button>
@@ -5438,7 +5646,7 @@ export function WarehouseHistoryPanel({
               </div>
 
               <div className="hidden md:block">
-              <TableShell minWidthClassName="min-w-[820px]">
+              <TableShell minWidthClassName={isFinishedGoodsHistory ? 'min-w-[700px]' : 'min-w-[900px]'}>
                 <TableHead>
                   <TableHeadCell className="w-10" align="center">
                     <input
@@ -5451,8 +5659,9 @@ export function WarehouseHistoryPanel({
                     />
                   </TableHeadCell>
                   <TableHeadCell>Mã phiếu</TableHeadCell>
-                  <TableHeadCell>Ca</TableHeadCell>
-                  <TableHeadCell>Máy</TableHeadCell>
+                  <TableHeadCell title="Thời điểm lưu phiếu theo giờ Việt Nam">{selectedType === 'xuat' ? 'Giờ xuất' : 'Giờ nhập'}</TableHeadCell>
+                  {!isFinishedGoodsHistory ? <TableHeadCell>Ca</TableHeadCell> : null}
+                  {!isFinishedGoodsHistory ? <TableHeadCell>Máy</TableHeadCell> : null}
                   <TableHeadCell>Người lập</TableHeadCell>
                   <TableHeadCell align="center">Thao tác</TableHeadCell>
                 </TableHead>
@@ -5489,13 +5698,16 @@ export function WarehouseHistoryPanel({
                               {lineCount} dòng · {formatWarehouseMoney(group.totalAmount)} đ
                             </p>
                           </td>
-                          <td className="px-4 py-3 font-semibold text-zinc-700">{header.shift || '-'}</td>
-                          <td className="px-4 py-3 font-semibold text-zinc-700">{header.machine || '-'}</td>
+                          <td className="px-4 py-3 font-mono text-xs font-bold tabular-nums text-zinc-700" title="Thời điểm lưu phiếu theo giờ Việt Nam">
+                            {formatWarehouseSlipSavedTime(group.createdAt)}
+                          </td>
+                          {!isFinishedGoodsHistory ? <td className="px-4 py-3 font-semibold text-zinc-700">{header.shift || '-'}</td> : null}
+                          {!isFinishedGoodsHistory ? <td className="px-4 py-3 font-semibold text-zinc-700">{header.machine || '-'}</td> : null}
                           <td className="px-4 py-3 font-semibold text-zinc-600">{header.createdBy || '-'}</td>
                           <td className="px-4 py-3">
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
                             <div className="flex items-center justify-center gap-1">
-                              {canEdit && !header.daIn ? (
+                              {canEdit && header.slipType !== 'xuat' && !header.daIn ? (
                                 <button
                                   type="button"
                                   onClick={() => handleEditSlip(group.slipCode)}
@@ -5543,110 +5755,6 @@ export function WarehouseHistoryPanel({
         </div>
       )}
 
-      <div className="hidden space-y-2 md:block">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết từng dòng</h3>
-            <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-              {warehouseSlipTypeLabel(selectedType)} · cuộn để xem{' '}
-              {warehouseTab === 'san_pham'
-                ? 'từng dòng SP'
-                : warehouseTab === 'hang_hong'
-                  ? 'từng dòng hàng hỏng'
-                : warehouseTab === 'hang_hoa'
-                  ? 'từng dòng hàng hóa'
-                : warehouseTab === 'cong_cu_dung_cu'
-                  ? 'từng dòng công cụ dụng cụ'
-                : warehouseTab === 'gia_cong'
-                  ? 'từng dòng hàng gia công'
-                : warehouseTab === 'tai_che'
-                  ? 'từng dòng NVL tái chế'
-                  : 'từng dòng NVL'}{' '}
-              · {sortedMovementLines.length} dòng
-            </p>
-          </div>
-        </div>
-
-        <TableShell minWidthClassName="min-w-[1180px]" maxHeightClassName="max-h-[min(70vh,720px)]">
-          <TableHead>
-            <TableHeadCell>Mã phiếu</TableHeadCell>
-            <TableHeadCell>Trạng thái</TableHeadCell>
-            <TableHeadCell>Ngày</TableHeadCell>
-            <TableHeadCell>Ca</TableHeadCell>
-            <TableHeadCell>Máy</TableHeadCell>
-            <TableHeadCell>{warehouseItemCodeLabel(warehouseTab)}</TableHeadCell>
-            <TableHeadCell>{warehouseItemNameLabel(warehouseTab)}</TableHeadCell>
-            <TableHeadCell className="text-right">SL</TableHeadCell>
-            <TableHeadCell>ĐVT</TableHeadCell>
-            <TableHeadCell className="text-right">Trọng lượng</TableHeadCell>
-            <TableHeadCell className="text-right">Thành tiền</TableHeadCell>
-          </TableHead>
-          <TableBody>
-            {isLoading ? (
-              <TableEmptyRow colSpan={11}>Đang tải dữ liệu...</TableEmptyRow>
-            ) : sortedMovementLines.length === 0 ? (
-              <TableEmptyRow colSpan={11}>
-                Chưa có dòng {warehouseSlipTypeLabel(selectedType).toLowerCase()}{' '}
-                {warehouseTab === 'san_pham'
-                  ? 'sản phẩm'
-                  : warehouseTab === 'hang_hong'
-                    ? 'hàng hỏng'
-                  : warehouseTab === 'hang_hoa'
-                    ? 'hàng hóa'
-                  : warehouseTab === 'cong_cu_dung_cu'
-                    ? 'công cụ dụng cụ'
-                  : warehouseTab === 'gia_cong'
-                    ? 'hàng gia công'
-                  : warehouseTab === 'tai_che'
-                    ? 'NVL tái chế'
-                    : 'NVL'}
-                .
-              </TableEmptyRow>
-            ) : (
-              sortedMovementLines.map((row, index) => (
-                <React.Fragment key={row.id || `${row.slipCode}-${row.itemCode}-${index}`}>
-                  <TableRow>
-                    <td className="px-3 py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => openSlipDetail(row.slipCode)}
-                        className="font-black text-[#ef1b2d] transition hover:text-[#b30d1c]"
-                        title="Xem phiếu"
-                      >
-                        {row.slipCode || '—'}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${row.status === 'chua_chot' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                        {row.status === 'chua_chot' ? 'Chưa chốt' : 'Đã chốt'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-xs font-semibold text-zinc-700">
-                      {row.slipDate || '—'}
-                    </td>
-                    <td className="px-3 py-2.5 font-semibold text-zinc-600">{row.shift || '—'}</td>
-                    <td className="px-3 py-2.5 font-semibold text-zinc-600">{row.machine || '—'}</td>
-                    <td className="px-3 py-2.5 font-bold text-zinc-900">{row.itemCode || '—'}</td>
-                    <td className="max-w-[200px] truncate px-3 py-2.5 font-semibold text-zinc-700" title={row.itemName || undefined}>
-                      {row.itemName || '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-zinc-800">
-                      {formatNumber(row.quantity, 2)}
-                    </td>
-                    <td className="px-3 py-2.5 font-semibold text-zinc-600">{row.unit || '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-800">
-                      {formatWarehouseWeightKg(resolveWarehouseRowWeightKg(row))}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-zinc-900">
-                      {formatWarehouseMoney(row.lineAmount)} đ
-                    </td>
-                  </TableRow>
-                </React.Fragment>
-              ))
-            )}
-          </TableBody>
-        </TableShell>
-      </div>
       </>
       )}
 
@@ -5680,7 +5788,7 @@ export function WarehouseHistoryPanel({
               </div>
               {isStandalone ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEdit && !viewingRows[0]?.daIn ? (
+                  {canEdit && viewingRows[0]?.slipType !== 'xuat' && !viewingRows[0]?.daIn ? (
                     <button
                       type="button"
                       onClick={() => handleEditSlip(viewingSlipCode!)}
@@ -5813,7 +5921,7 @@ export function WarehouseHistoryPanel({
                 {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}
               </div>
               <div className={`flex-wrap items-center gap-2 ${isStandalone ? 'hidden' : 'flex'}`}>
-                {canEdit && !viewingRows[0]?.daIn ? (
+                {canEdit && viewingRows[0]?.slipType !== 'xuat' && !viewingRows[0]?.daIn ? (
                   <button
                     type="button"
                     onClick={() => handleEditSlip(viewingSlipCode!)}

@@ -19891,7 +19891,7 @@ export function createApp() {
         .select('da_in')
         .eq('id', id)
         .maybeSingle();
-      if (existingReport?.da_in) {
+      if (existingReport?.da_in && req.body?.allowPrinted !== true) {
         return res.status(409).json({ error: 'Báo cáo đã in, không thể sửa nữa.' });
       }
 
@@ -19902,7 +19902,7 @@ export function createApp() {
 
       const { data, error } = await supabase
         .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
-        .update(parsed.record)
+        .update({ ...parsed.record, da_in: false })
         .eq('id', id)
         .select('*')
         .single();

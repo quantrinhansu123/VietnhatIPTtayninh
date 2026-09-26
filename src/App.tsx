@@ -207,6 +207,7 @@ export default function App() {
   }, []);
 
   const [acceptanceEditReport, setAcceptanceEditReport] = useState<AcceptanceReport | null>(null);
+  const [acceptanceEditReportGroup, setAcceptanceEditReportGroup] = useState<AcceptanceReport[] | null>(null);
   const [acceptanceCreatePrefill, setAcceptanceCreatePrefill] = useState<AcceptanceReportCreatePrefill | null>(null);
   const [acceptanceShowForm, setAcceptanceShowForm] = useState(false);
   const [mixingReportMachinePrefill, setMixingReportMachinePrefill] = useState<{
@@ -903,13 +904,22 @@ export default function App() {
                   onBack={() => goBack('factory-qc')}
                   onCreate={prefill => {
                     setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(null);
                     setAcceptanceCreatePrefill(prefill ?? null);
                     setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}
                   onEdit={report => {
                     setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReportGroup(null);
                     setAcceptanceEditReport(report);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                  onEditGroup={reports => {
+                    setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(reports);
                     setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}
@@ -1265,7 +1275,7 @@ export default function App() {
             ) : activeTab === 'acceptance-report' ? (
               <motion.div
                 key={
-                  acceptanceShowForm || acceptanceEditReport || acceptanceCreatePrefill
+                  acceptanceShowForm || acceptanceEditReport || acceptanceEditReportGroup || acceptanceCreatePrefill
                     ? 'acceptance-report-form'
                     : 'acceptance-report-list-main'
                 }
@@ -1274,20 +1284,24 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                {acceptanceShowForm || acceptanceEditReport || acceptanceCreatePrefill ? (
+                {acceptanceShowForm || acceptanceEditReport || acceptanceEditReportGroup || acceptanceCreatePrefill ? (
                   <AcceptanceReportForm
                     onBack={() => {
                       setAcceptanceShowForm(false);
                       setAcceptanceEditReport(null);
+                      setAcceptanceEditReportGroup(null);
                       setAcceptanceCreatePrefill(null);
                     }}
                     onOpenList={() => {
                       setAcceptanceShowForm(false);
                       setAcceptanceEditReport(null);
+                      setAcceptanceEditReportGroup(null);
                       setAcceptanceCreatePrefill(null);
                     }}
                     editReport={acceptanceEditReport}
                     onEditConsumed={() => setAcceptanceEditReport(null)}
+                    editReportGroup={acceptanceEditReportGroup}
+                    onEditGroupConsumed={() => setAcceptanceEditReportGroup(null)}
                     createPrefill={acceptanceCreatePrefill}
                     onCreatePrefillConsumed={() => setAcceptanceCreatePrefill(null)}
                   />
@@ -1296,12 +1310,20 @@ export default function App() {
                     onBack={() => goBack('report-forms')}
                     onCreate={prefill => {
                       setAcceptanceEditReport(null);
+                      setAcceptanceEditReportGroup(null);
                       setAcceptanceCreatePrefill(prefill ?? null);
                       setAcceptanceShowForm(true);
                     }}
                     onEdit={report => {
                       setAcceptanceCreatePrefill(null);
+                      setAcceptanceEditReportGroup(null);
                       setAcceptanceEditReport(report);
+                      setAcceptanceShowForm(true);
+                    }}
+                    onEditGroup={reports => {
+                      setAcceptanceCreatePrefill(null);
+                      setAcceptanceEditReport(null);
+                      setAcceptanceEditReportGroup(reports);
                       setAcceptanceShowForm(true);
                     }}
                   />
@@ -1627,7 +1649,15 @@ export default function App() {
                   }}
                   onEditAcceptanceReport={report => {
                     setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReportGroup(null);
                     setAcceptanceEditReport(report);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                  onEditAcceptanceReportGroup={reports => {
+                    setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(reports);
                     setAcceptanceShowForm(true);
                     navigateToTab('acceptance-report');
                   }}

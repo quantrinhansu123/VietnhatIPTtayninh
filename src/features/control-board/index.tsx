@@ -169,6 +169,7 @@ export function ControlBoardPanel({
   onEditWeighing,
   onEditMachineNvlReport,
   onEditAcceptanceReport,
+  onEditAcceptanceReportGroup,
   mode = 'full'
 }: {
   onNavigate: (tab: AppTab) => void;
@@ -176,6 +177,7 @@ export function ControlBoardPanel({
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
   onEditMachineNvlReport?: (report: MachineNvlSavedReport) => void;
   onEditAcceptanceReport?: (report: AcceptanceReport) => void;
+  onEditAcceptanceReportGroup?: (reports: AcceptanceReport[]) => void;
   /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (mọi máy; sản lượng = cột Trọng lượng nhựa `can_tu_dong` / `/can-tu-dong`). */
   mode?: 'full' | 'report-only' | 'report-only-auto';
 }) {
@@ -1659,6 +1661,7 @@ export function ControlBoardPanel({
           }
           onEditMachineNvlReport={onEditMachineNvlReport}
           onEditAcceptanceReport={onEditAcceptanceReport}
+          onEditAcceptanceReportGroup={onEditAcceptanceReportGroup}
         />
       ) : null}
 

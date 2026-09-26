@@ -11,6 +11,7 @@ import {
   buildAcceptanceFilmKgByProductCode,
   AcceptanceReportSlipStack
 } from './AcceptanceReportPrintSheet';
+import type { AcceptanceScreenSlip } from './AcceptanceReportPrintSheet';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import { normalizeReportFromApi } from './AcceptanceReportForm';
 import {
@@ -437,11 +438,13 @@ export default function AcceptanceReportListView({
   onBack,
   onCreate,
   onEdit,
+  onEditGroup,
   initialFilters
 }: {
   onBack: () => void;
   onCreate: (prefill?: { ngay: string; ca: string }) => void;
   onEdit: (report: AcceptanceReport) => void;
+  onEditGroup?: (reports: AcceptanceReport[]) => void;
   initialFilters?: {
     dateFrom?: string;
     dateTo?: string;
@@ -740,7 +743,7 @@ export default function AcceptanceReportListView({
     }
     const ids = reportsWithNames.filter(report => !report.da_in).map(report => report.id);
     if (ids.length > 0) {
-      if (!window.confirm('In phiếu sẽ khóa việc sửa các báo cáo này. Bạn có chắc chắn muốn in?')) {
+      if (!window.confirm('Phiếu sau khi in cần xác nhận riêng nếu muốn sửa và phải in lại sau khi lưu. Bạn có chắc chắn muốn in?')) {
         return;
       }
       setReports(prev => prev.map(report => (ids.includes(report.id) ? { ...report, da_in: true } : report)));
@@ -1085,6 +1088,34 @@ export default function AcceptanceReportListView({
     );
   };
 
+  const renderSlipActions = (slip: AcceptanceScreenSlip) => {
+    if (!onEditGroup || !canEdit) return null;
+    const groupReports = reports.filter(
+      report => [report.ngay, report.ca, report.ma_may || report.ten_may, report.lan].join('|') === slip.key
+    );
+    if (groupReports.length === 0) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (
+            groupReports.some(report => report.da_in) &&
+            !window.confirm('Phiếu đã in. Sửa sẽ bỏ trạng thái đã in và cần in lại sau khi lưu. Tiếp tục?')
+          ) {
+            return;
+          }
+          onEditGroup(groupReports);
+        }}
+        className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
+        title="Sửa toàn bộ báo cáo"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        Sửa báo cáo
+      </button>
+    );
+  };
+
   return (
     <div className="space-y-4 pb-24">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -1198,6 +1229,7 @@ export default function AcceptanceReportListView({
               emptyText="Chưa có báo cáo phù hợp với bộ lọc."
               filmKgByProductCode={filmKgByProductCode}
               renderLineActions={renderLineActions}
+              renderSlipActions={renderSlipActions}
             />
           )}
         </div>

@@ -620,12 +620,14 @@ export function AcceptanceReportSlipStack({
   slips,
   emptyText = 'Chưa có báo cáo.',
   filmKgByProductCode,
-  renderLineActions
+  renderLineActions,
+  renderSlipActions
 }: {
   slips: AcceptanceScreenSlip[];
   emptyText?: string;
   filmKgByProductCode?: Map<string, number>;
   renderLineActions?: (line: AcceptanceReportSource & { ten_sp?: string }) => React.ReactNode;
+  renderSlipActions?: (slip: AcceptanceScreenSlip) => React.ReactNode;
 }) {
   if (slips.length === 0) {
     return (
@@ -662,9 +664,12 @@ export function AcceptanceReportSlipStack({
                     : ''}
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-800">
-                {lineCount} dòng
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {renderSlipActions?.(slip)}
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-800">
+                  {lineCount} dòng
+                </span>
+              </div>
             </div>
 
             <AcceptanceScreenLinesTable

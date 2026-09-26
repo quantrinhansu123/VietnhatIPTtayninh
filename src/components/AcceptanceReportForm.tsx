@@ -403,7 +403,8 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     don_vi_trong_luong: String(record.don_vi_trong_luong ?? 'Kg'),
     hinh_anh: String(record.hinh_anh ?? ''),
     hinh_anh_public_id: String(record.hinh_anh_public_id ?? ''),
-    created_at: String(record.created_at ?? '')
+    created_at: String(record.created_at ?? ''),
+    da_in: Boolean(record.da_in)
   };
 }
 
@@ -480,14 +481,18 @@ export default function AcceptanceReportForm({
   onBack,
   onOpenList,
   editReport,
+  editReportGroup,
   onEditConsumed,
+  onEditGroupConsumed,
   createPrefill,
   onCreatePrefillConsumed
 }: {
   onBack: () => void;
   onOpenList?: () => void;
   editReport?: AcceptanceReport | null;
+  editReportGroup?: AcceptanceReport[] | null;
   onEditConsumed?: () => void;
+  onEditGroupConsumed?: () => void;
   createPrefill?: AcceptanceReportCreatePrefill | null;
   onCreatePrefillConsumed?: () => void;
 }) {
@@ -504,6 +509,7 @@ export default function AcceptanceReportForm({
   sectionsRef.current = sections;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<MaterialType | null>(null);
+  const [editingGroupIds, setEditingGroupIds] = useState<string[] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingType, setUploadingType] = useState<MaterialType | null>(null);
   const [error, setError] = useState('');
@@ -582,11 +588,18 @@ export default function AcceptanceReportForm({
   }, [editReport, machines, onEditConsumed]);
 
   useEffect(() => {
+    if (!editReportGroup?.length || machines.length === 0) return;
+    startEditGroup(editReportGroup);
+    onEditGroupConsumed?.();
+  }, [editReportGroup, machines, onEditGroupConsumed]);
+
+  useEffect(() => {
     if (!createPrefill) return;
     setHeader(newHeaderState({ ngay: createPrefill.ngay, ca: createPrefill.ca }));
     setSections(newSectionsState());
     setEditingId(null);
     setEditingType(null);
+    setEditingGroupIds(null);
     setError('');
     setMessage('');
     onCreatePrefillConsumed?.();
@@ -745,25 +758,25 @@ export default function AcceptanceReportForm({
 
   const handleDateChange = (ngay: string) => {
     setHeader(prev => ({ ...prev, ngay, ca: '', ma_may: '', ten_may: '', machineRef: '', teamId: '' }));
-    setSections(newSectionsState());
+    if (!editingId) setSections(newSectionsState());
   };
 
   const handleShiftChange = (ca: string) => {
     setHeader(prev => ({ ...prev, ca }));
-    setSections(newSectionsState());
+    if (!editingId) setSections(newSectionsState());
   };
 
   const handleTeamChange = (teamId: string) => {
     const team = machines.find(machine => machine.id === teamId);
     if (!team) {
       setHeader(prev => ({ ...prev, teamId: '', machineRef: '', ma_may: '', ten_may: '' }));
-      setSections(newSectionsState());
+      if (!editingId) setSections(newSectionsState());
       return;
     }
 
     const machineRef = team.name || team.code;
     setHeader(prev => ({ ...prev, teamId: team.id, machineRef, ma_may: team.code, ten_may: team.name }));
-    setSections(newSectionsState());
+    if (!editingId) setSections(newSectionsState());
   };
 
   const handleLineProductChange = (type: MaterialType, lineId: string, mat_hang: string) => {
@@ -968,6 +981,7 @@ export default function AcceptanceReportForm({
   const resetAll = () => {
     setEditingId(null);
     setEditingType(null);
+    setEditingGroupIds(null);
     setHeader(newHeaderState());
     setSections(newSectionsState());
     setMessage('');
@@ -985,6 +999,7 @@ export default function AcceptanceReportForm({
 
     setEditingId(report.id);
     setEditingType(type);
+    setEditingGroupIds(null);
     setHeader({
       ngay: report.ngay || todayIso(),
       ca: report.ca,
@@ -1013,6 +1028,55 @@ export default function AcceptanceReportForm({
         imagePreview: report.hinh_anh
       }
     }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startEditGroup = (reports: AcceptanceReport[]) => {
+    const first = reports[0];
+    if (!first) return;
+    const linked =
+      machines.find(machine => machine.code === first.ma_may) ??
+      machines.find(machine => machine.name === first.ten_may) ??
+      machines.find(machine => machine.code === first.ten_may || machine.name === first.ma_may) ??
+      null;
+    const nextSections = newSectionsState();
+    for (const type of MATERIAL_TYPES) {
+      const typeReports = reports.filter(report =>
+        (isMaterialType(report.loai_vat_tu) ? report.loai_vat_tu : 'Thành phẩm') === type
+      );
+      if (typeReports.length === 0) continue;
+      const imageReport = typeReports.find(report => report.hinh_anh) ?? typeReports[0];
+      nextSections[type] = {
+        lines: typeReports.map(report => ({
+          id: report.id,
+          mat_hang: report.mat_hang,
+          don_vi: report.don_vi,
+          so_luong: report.so_luong === null ? '' : String(report.so_luong),
+          trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
+          don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
+        })),
+        hinh_anh: imageReport.hinh_anh,
+        hinh_anh_public_id: imageReport.hinh_anh_public_id || '',
+        imagePreview: imageReport.hinh_anh
+      };
+    }
+
+    setEditingId(first.id);
+    setEditingType(null);
+    setEditingGroupIds(reports.map(report => report.id));
+    setHeader({
+      ngay: first.ngay || todayIso(),
+      ca: first.ca,
+      lan: first.lan || '1',
+      gio: first.gio || nowTimeValue(),
+      ma_may: first.ma_may,
+      ten_may: first.ten_may,
+      machineRef: first.ten_may || first.ma_may,
+      teamId: linked?.id ?? ''
+    });
+    setSections(nextSections);
+    setError('');
+    setMessage('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1107,6 +1171,106 @@ export default function AcceptanceReportForm({
       resetAll();
     } catch (err: any) {
       setError(showSaveFailure(err, 'Không thể lưu báo cáo sản lượng.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateGroup = async () => {
+    const groupIds = editingGroupIds;
+    if (!groupIds) return;
+    const headerError = validateHeader();
+    if (headerError) {
+      setError(showSaveFailure(headerError));
+      return;
+    }
+
+    const filledTypes = MATERIAL_TYPES.filter(type => sections[type].lines.some(line => !isBlankProductLine(line)));
+    if (filledTypes.length === 0) {
+      setError(showSaveFailure('Vui lòng giữ lại ít nhất một dòng trong báo cáo.'));
+      return;
+    }
+
+    const preparedByType = new Map<MaterialType, PreparedLine[]>();
+    for (const type of filledTypes) {
+      const prepared = validateSectionLines(type, sections[type]);
+      if (typeof prepared === 'string') {
+        setError(showSaveFailure(prepared));
+        return;
+      }
+      preparedByType.set(type, prepared);
+    }
+
+    setIsSaving(true);
+    setError('');
+    setMessage('');
+    const createdIds: string[] = [];
+    const retainedIds = new Set<string>();
+    let writesComplete = false;
+    try {
+      const resolvedImages = new Map<MaterialType, { hinh_anh: string; hinh_anh_public_id: string }>();
+      for (const type of filledTypes) {
+        const resolved = await resolveImageForSave(sections[type]);
+        if (resolved) resolvedImages.set(type, resolved);
+      }
+
+      // ponytail: use existing per-row endpoints; a DB transaction is the upgrade if atomic group edits become necessary.
+      for (const type of filledTypes) {
+        const image = resolvedImages.get(type) ?? { hinh_anh: '', hinh_anh_public_id: '' };
+        for (const line of preparedByType.get(type) ?? []) {
+          const existing = groupIds.includes(line.id);
+          const res = await fetch(
+            existing
+              ? `/api/bao-cao-nghiem-thu/${encodeURIComponent(line.id)}`
+              : '/api/bao-cao-nghiem-thu',
+            {
+              method: existing ? 'PATCH' : 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ngay: header.ngay,
+                ca: header.ca,
+                lan: header.lan,
+                gio: header.gio,
+                ma_may: header.ma_may,
+                ten_may: header.ten_may,
+                allowPrinted: true,
+                loai_vat_tu: type,
+                hinh_anh: image.hinh_anh || null,
+                hinh_anh_public_id: image.hinh_anh_public_id || null,
+                mat_hang: line.mat_hang,
+                don_vi: line.don_vi,
+                so_luong: line.soLuong,
+                trong_luong: line.trongLuong,
+                don_vi_trong_luong: line.don_vi_trong_luong || 'Kg'
+              })
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể cập nhật báo cáo sản lượng.'));
+          if (existing) retainedIds.add(line.id);
+          else if (data.report?.id) createdIds.push(String(data.report.id));
+        }
+      }
+
+      writesComplete = true;
+      for (const id of createdIds) retainedIds.add(id);
+      for (const id of groupIds.filter(id => !retainedIds.has(id))) {
+        const res = await fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Không thể xóa dòng đã bỏ khỏi báo cáo.');
+      }
+
+      const okMsg = `Đã cập nhật toàn bộ báo cáo (${retainedIds.size} dòng).`;
+      setMessage(okMsg);
+      showAppToast(okMsg);
+      resetAll();
+    } catch (err: any) {
+      if (!writesComplete) {
+        await Promise.all(
+          createdIds.map(id => fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined))
+        );
+      }
+      setError(showSaveFailure(err, 'Không thể cập nhật toàn bộ báo cáo sản lượng.'));
     } finally {
       setIsSaving(false);
     }
@@ -1279,14 +1443,19 @@ export default function AcceptanceReportForm({
     }
   };
 
-  const visibleTypes = editingId && editingType ? [editingType] : MATERIAL_TYPES;
+  const isIndividualEdit = Boolean(editingId && editingType && !editingGroupIds);
+  const visibleTypes = isIndividualEdit && editingType ? [editingType] : MATERIAL_TYPES;
 
   return (
     <div className="space-y-3 pb-1 sm:space-y-4">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
           <h2 className="min-w-0 flex-1 text-sm font-black text-zinc-950 sm:text-base">
-            {editingId ? `Sửa phiếu ${MATERIAL_TYPE_TITLE_LABELS[editingType || 'Thành phẩm']}` : 'Báo cáo sản lượng'}
+            {editingGroupIds
+              ? 'Sửa toàn bộ báo cáo sản lượng'
+              : editingId
+                ? `Sửa phiếu ${MATERIAL_TYPE_TITLE_LABELS[editingType || 'Thành phẩm']}`
+                : 'Báo cáo sản lượng'}
           </h2>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {!editingId && (
@@ -1310,6 +1479,27 @@ export default function AcceptanceReportForm({
                 Lưu báo cáo
               </button>
             )}
+            {editingGroupIds ? (
+              <>
+                <button
+                  type="button"
+                  onClick={resetAll}
+                  disabled={isSaving || Boolean(uploadingType)}
+                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleUpdateGroup()}
+                  disabled={isSaving || Boolean(uploadingType)}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 sm:h-10 sm:px-4 sm:text-xs"
+                >
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Lưu cả báo cáo
+                </button>
+              </>
+            ) : null}
             {onOpenList && (
               <button
                 type="button"
@@ -1430,7 +1620,7 @@ export default function AcceptanceReportForm({
                 horizontalScroll
                 onAdd={() => addProductLine(type)}
                 addLabel="Thêm dòng"
-                hideAddButton={Boolean(editingId)}
+                hideAddButton={isIndividualEdit}
                 addButtonClassName="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
                 mobileHeader={
                   <div className={`grid ${productLineGridClass} items-end gap-2 border-b border-zinc-200/80 pb-1.5`}>
@@ -1576,7 +1766,7 @@ export default function AcceptanceReportForm({
                         />
                       </div>
                       <div className="flex min-w-0 items-center justify-center">
-                        {!editingId && section.lines.length > 1 ? (
+                        {!isIndividualEdit && section.lines.length > 1 ? (
                           <button
                             type="button"
                             onClick={() => removeProductLine(type, line.id)}
@@ -1638,7 +1828,7 @@ export default function AcceptanceReportForm({
               </div>
             </div>
 
-            {editingId ? (
+            {isIndividualEdit ? (
               <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-100 bg-white px-3 py-3 sm:px-4">
                 <button type="button" onClick={resetAll} className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-700">
                   Hủy

@@ -51,6 +51,7 @@ type Props = {
   allowedTabs?: AppTab[];
   onEditMachineNvlReport?: (report: MachineNvlSavedReport) => void;
   onEditAcceptanceReport?: (report: AcceptanceReport) => void;
+  onEditAcceptanceReportGroup?: (reports: AcceptanceReport[]) => void;
 };
 
 function shortTabLabel(item: MenuCardConfig) {
@@ -84,7 +85,8 @@ export default function ReportListsHubModal({
   filterSummary,
   allowedTabs,
   onEditMachineNvlReport,
-  onEditAcceptanceReport
+  onEditAcceptanceReport,
+  onEditAcceptanceReportGroup
 }: Props) {
   const menuItems = useMemo(() => {
     if (!allowedTabs || allowedTabs.length === 0) return REPORT_LIST_MENU_ITEMS;
@@ -440,6 +442,14 @@ export default function ReportListsHubModal({
                 if (onEditAcceptanceReport) onEditAcceptanceReport(report);
                 else onNavigate('acceptance-report');
               }}
+              onEditGroup={
+                onEditAcceptanceReportGroup
+                  ? reports => {
+                      onClose();
+                      onEditAcceptanceReportGroup(reports);
+                    }
+                  : undefined
+              }
             />
           ) : null}
           {activeTab === 'warehouse-history' ? (

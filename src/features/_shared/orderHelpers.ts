@@ -129,13 +129,19 @@ export function normalizeCustomerOptions(data: unknown): CustomerOption[] {
     .filter((item): item is CustomerOption => Boolean(item));
 }
 
-export function normalizeOrderProducts(data: unknown): OrderProductOption[] {
-  return normalizeProducts(data).map(product => ({
-    code: product.code,
-    name: product.name,
-    unit: product.unit === '-' ? '' : product.unit,
-    newCode: product.newCode
-  }));
+export function normalizeOrderProducts(data: unknown, warehouse = ''): OrderProductOption[] {
+  return normalizeProducts(data)
+    .filter(product =>
+      !warehouse ||
+      (normalizeLookupText(product.warehouse) === normalizeLookupText(warehouse) &&
+        !product.code.trim().toUpperCase().startsWith('MT-'))
+    )
+    .map(product => ({
+      code: product.code,
+      name: product.name,
+      unit: product.unit === '-' ? '' : product.unit,
+      newCode: product.newCode
+    }));
 }
 
 export function findOrderProductByCode(products: OrderProductOption[], code: string) {

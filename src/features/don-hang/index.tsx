@@ -527,6 +527,7 @@ export function OrdersPanel({
     const loadLookups = async () => {
       setIsLoadingLookups(true);
       setLookupError('');
+      setProductOptions([]);
 
       try {
         const [staffRes, customerRes, productRes] = await Promise.all([
@@ -553,7 +554,7 @@ export function OrdersPanel({
           const nextStaff = normalizeHcmBusinessStaffOptions(staffData);
           setStaffOptions(nextStaff);
           setCustomerOptions(normalizeCustomerOptions(customerData));
-          setProductOptions(normalizeOrderProducts(productData));
+          setProductOptions(normalizeOrderProducts(productData, formMode === 'add' ? 'Kho thành phẩm' : ''));
           if (formMode === 'add' && currentUser?.name) {
             setOrderForm(prev => ({
               ...prev,

@@ -92,6 +92,7 @@ export function OrderFormModal({
     const loadLookups = async () => {
       setIsLoadingLookups(true);
       setLookupError('');
+      setProductOptions([]);
 
       try {
         const [staffRes, customerRes, productRes] = await Promise.all([
@@ -112,7 +113,7 @@ export function OrderFormModal({
           const nextStaff = normalizeHcmBusinessStaffOptions(staffData);
           setStaffOptions(nextStaff);
           setCustomerOptions(normalizeCustomerOptions(customerData));
-          setProductOptions(normalizeOrderProducts(productData));
+          setProductOptions(normalizeOrderProducts(productData, mode === 'add' ? 'Kho thành phẩm' : ''));
           if (mode === 'add' && currentUser?.name) {
             setOrderForm(prev => ({
               ...prev,

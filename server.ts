@@ -11535,71 +11535,6 @@ export function createApp() {
     }
   });
 
-  app.patch('/api/kho/chi-tiet', async (req, res) => {
-    if (!supabaseKho) {
-      return res.status(503).json({ error: `DB kho chưa cấu hình (${SUPABASE_KHO_DB_LABEL}).` });
-    }
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const slipType = String(body.loai_phieu ?? '').trim().toLowerCase();
-    const maPhieu = String(body.ma_phieu ?? '').trim();
-    const rowId = String(body.id ?? '').trim();
-    const tenSp = String(body.ten_sp ?? '').trim();
-    const donVi = String(body.don_vi ?? '').trim();
-    if (slipType !== 'nhap' || !maPhieu || !rowId) {
-      return res.status(400).json({ error: 'Cần loai_phieu=nhap, ma_phieu và id mã đã quét.' });
-    }
-    if (tenSp.length > 250 || donVi.length > 50) {
-      return res.status(400).json({ error: 'Tên sản phẩm tối đa 250 ký tự; đơn vị tính tối đa 50 ký tự.' });
-    }
-
-    try {
-      const { data: header, error: headerError } = await supabaseKho
-        .from('phieu_nhap')
-        .select('ma_phieu, status')
-        .eq('ma_phieu', maPhieu)
-        .maybeSingle();
-      if (headerError) return res.status(500).json({ error: headerError.message || 'Không thể kiểm tra phiếu nhập.' });
-      if (!header) return res.status(404).json({ error: 'Không tìm thấy phiếu nhập.' });
-
-      const { data: target, error: targetError } = await supabaseKho
-        .from('nhap_kho')
-        .select('id, ma_sp, loai')
-        .eq('id', rowId)
-        .eq('ma_phieu', maPhieu)
-        .eq('loai', 'san_pham')
-        .maybeSingle();
-      if (targetError) return res.status(500).json({ error: targetError.message || 'Không thể tải mã QR cần sửa.' });
-      if (!target) return res.status(404).json({ error: 'Không tìm thấy mã QR đã quét trong phiếu nhập.' });
-
-      if (header.status !== 'chua_chot') {
-        const { data: printedLine, error: printedError } = await supabaseWarehouse
-          .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
-          .select('id')
-          .eq('ma_phieu', maPhieu)
-          .eq('da_in', true)
-          .limit(1)
-          .maybeSingle();
-        if (printedError) return res.status(500).json({ error: printedError.message || 'Không thể kiểm tra trạng thái in phiếu.' });
-        if (printedLine) return res.status(409).json({ error: 'Phiếu đã in, không thể sửa mã đã quét.' });
-      }
-
-      let update = supabaseKho
-        .from('nhap_kho')
-        .update({ ten_sp: tenSp || null, don_vi: donVi || null })
-        .eq('ma_phieu', maPhieu)
-        .eq('loai', 'san_pham');
-      update = target.ma_sp
-        ? update.eq('ma_sp', target.ma_sp)
-        : update.eq('id', rowId);
-      const { data, error } = await update.select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, so_luong, ma_phieu, created_at');
-      if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật mã đã quét.' });
-      if (!data?.length) return res.status(404).json({ error: 'Không tìm thấy mã đã quét để cập nhật.' });
-      return res.json({ success: true, updatedCount: data.length, records: data });
-    } catch (err: any) {
-      return res.status(500).json({ error: err?.message || 'Lỗi khi cập nhật mã đã quét.' });
-    }
-  });
-
   app.get('/api/kho/lich-su', async (req, res) => {
     if (!supabaseKho) {
       return res.status(503).json({
@@ -11813,14 +11748,18 @@ export function createApp() {
     }
     const slipCode = String(req.params.slipCode || '').trim();
     if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+    const draftOnly = String(req.query.draft || '').trim().toLowerCase() === 'true';
 
     try {
       let slipType: 'nhap' | 'xuat' | null = null;
       for (const type of ['nhap', 'xuat'] as const) {
         const table = type === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
-        const { data, error } = await supabaseKho.from(table).select('ma_phieu').eq('ma_phieu', slipCode).maybeSingle();
+        const { data, error } = await supabaseKho.from(table).select('ma_phieu, status').eq('ma_phieu', slipCode).maybeSingle();
         if (error) return res.status(500).json({ error: `Không tải được phiếu. ${error.message}` });
-        if (data) slipType = type;
+        if (data) {
+          if (draftOnly && data.status !== 'chua_chot') return res.status(409).json({ error: 'Chỉ được xóa phiếu chưa chốt.' });
+          slipType = type;
+        }
       }
       if (!slipType) return res.status(404).json({ error: 'Không tìm thấy phiếu cần xóa.' });
 
@@ -11832,34 +11771,36 @@ export function createApp() {
         .eq('ma_phieu', slipCode);
       if (linesError) return res.status(500).json({ error: `Không tải được chi tiết phiếu. ${linesError.message}` });
 
-      const stockDeltas = new Map<string, number>();
-      for (const line of lines || []) {
-        const fullCode = String(line.ma_sp || '').trim();
-        const separatorIdx = Math.min(...['_', '+'].map(separator => {
-          const index = fullCode.indexOf(separator);
-          return index > 0 ? index : Number.POSITIVE_INFINITY;
-        }));
-        const code = Number.isFinite(separatorIdx) ? fullCode.slice(0, separatorIdx).trim() : fullCode;
-        if (code) stockDeltas.set(code, (stockDeltas.get(code) || 0) + (Number(line.so_luong) || 0));
-      }
       const { error: lineDeleteError } = await supabaseKho.from(lineTable).delete().eq('ma_phieu', slipCode);
       if (lineDeleteError) return res.status(500).json({ error: `Không thể xóa chi tiết phiếu. ${lineDeleteError.message}` });
 
-      for (const [code, quantity] of stockDeltas) {
-        const { data: stock, error: stockReadError } = await supabaseKho
-          .from('kho')
-          .select('id, ton_dau, nhap, xuat')
-          .eq('ma_sp', code)
-          .maybeSingle();
-        if (stockReadError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockReadError.message}` });
-        if (!stock) continue;
-        const nhap = Math.max(0, (Number(stock.nhap) || 0) - (slipType === 'nhap' ? quantity : 0));
-        const xuat = Math.max(0, (Number(stock.xuat) || 0) - (slipType === 'xuat' ? quantity : 0));
-        const { error: stockUpdateError } = await supabaseKho
-          .from('kho')
-          .update({ nhap, xuat, ton_cuoi: (Number(stock.ton_dau) || 0) + nhap - xuat })
-          .eq('id', stock.id);
-        if (stockUpdateError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockUpdateError.message}` });
+      if (!draftOnly) {
+        const stockDeltas = new Map<string, number>();
+        for (const line of lines || []) {
+          const fullCode = String(line.ma_sp || '').trim();
+          const separatorIdx = Math.min(...['_', '+'].map(separator => {
+            const index = fullCode.indexOf(separator);
+            return index > 0 ? index : Number.POSITIVE_INFINITY;
+          }));
+          const code = Number.isFinite(separatorIdx) ? fullCode.slice(0, separatorIdx).trim() : fullCode;
+          if (code) stockDeltas.set(code, (stockDeltas.get(code) || 0) + (Number(line.so_luong) || 0));
+        }
+        for (const [code, quantity] of stockDeltas) {
+          const { data: stock, error: stockReadError } = await supabaseKho
+            .from('kho')
+            .select('id, ton_dau, nhap, xuat')
+            .eq('ma_sp', code)
+            .maybeSingle();
+          if (stockReadError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockReadError.message}` });
+          if (!stock) continue;
+          const nhap = Math.max(0, (Number(stock.nhap) || 0) - (slipType === 'nhap' ? quantity : 0));
+          const xuat = Math.max(0, (Number(stock.xuat) || 0) - (slipType === 'xuat' ? quantity : 0));
+          const { error: stockUpdateError } = await supabaseKho
+            .from('kho')
+            .update({ nhap, xuat, ton_cuoi: (Number(stock.ton_dau) || 0) + nhap - xuat })
+            .eq('id', stock.id);
+          if (stockUpdateError) return res.status(500).json({ error: `Không thể cập nhật tồn kho. ${stockUpdateError.message}` });
+        }
       }
 
       const { error: headerDeleteError } = await supabaseKho.from(headerTable).delete().eq('ma_phieu', slipCode);
@@ -11996,7 +11937,17 @@ export function createApp() {
           return res.status(500).json({ error: headerReadError.message || 'Không thể kiểm tra phiếu kho.' });
         }
         if (existingHeader && existingHeader.status !== 'chua_chot') {
-          return res.status(409).json({ error: 'Phiếu đã chốt; không thể lưu thêm mã ở bước Lưu đợt.' });
+          if (loaiPhieu !== 'nhap' || existingHeader.status !== 'da_chot') {
+            return res.status(409).json({ error: 'Phiếu đã chốt; không thể lưu thêm mã ở bước Lưu đợt.' });
+          }
+          const { data: movements, error: movementError } = await supabaseWarehouse
+            .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
+            .select('loai_phieu, loai_kho, da_in')
+            .eq('ma_phieu', maPhieu);
+          if (movementError) return res.status(500).json({ error: movementError.message || 'Không thể kiểm tra phiếu nhập thành phẩm.' });
+          if (!movements?.length || movements.some(row => row.loai_phieu !== 'nhap' || row.loai_kho !== 'san_pham' || row.da_in)) {
+            return res.status(409).json({ error: 'Chỉ có thể bổ sung mã cho phiếu nhập thành phẩm chưa in.' });
+          }
         }
 
         if (existingHeader) {
@@ -12004,7 +11955,7 @@ export function createApp() {
             .from(headerTable)
             .update(headerFields)
             .eq('ma_phieu', maPhieu)
-            .eq('status', 'chua_chot')
+            .eq('status', existingHeader.status)
             .select('ma_phieu, ngay, nhan_su, kho, ghi_chu, status, created_at')
             .maybeSingle();
           if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật phiếu kho.' });

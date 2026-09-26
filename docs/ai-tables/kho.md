@@ -15,7 +15,7 @@
 | GET | `/api/kho/phieu?loai_phieu=nhap|xuat&kho=...` | Danh sách tối đa 20 phiếu chưa chốt mới nhất theo kho |
 | GET | `/api/kho/lich-su` | Ghép header `phieu_nhap`/`phieu_xuat` với dòng `nhap_kho`/`xuat_kho` theo `ma_phieu` cho trang lịch sử |
 | POST | `/api/kho/kiem-tra-ma-quet` | Kiểm tra QR đã có trong bảng chi tiết cùng chiều nhập/xuất trước khi lưu đợt |
-| POST | `/api/kho/quet-dot` | Lưu cả đợt QR thành phẩm bằng một lệnh insert nhiều dòng, kèm ĐVT; kiểm tra phiếu nháp và mã trùng |
+| POST | `/api/kho/quet-dot` | Lưu cả đợt QR thành phẩm bằng một lệnh insert nhiều dòng, kèm ĐVT; kiểm tra mã trùng và cho bổ sung phiếu nhập thành phẩm đã chốt nhưng chưa in |
 | POST | `/api/kho/quet` | Mỗi lần quét máy → insert 1 dòng `nhap_kho` hoặc `xuat_kho` (`so_luong=1`), upsert header `phieu_nhap`/`phieu_xuat`, cập nhật tồn `kho`; cả hai bảng dòng lưu `ma_sp` gốc, `ma_sp_quet` đầy đủ, `ten_sp`, `don_vi` |
 | POST | `/api/kho/phieu` | Tạo/cập nhật header `phieu_nhap`/`phieu_xuat`, gồm `status` (`chua_chot`/`da_chot`) |
 | DELETE | `/api/kho/phieu/:ma_phieu` | Xóa dòng và header của phiếu trong hai bảng chi tiết/header tương ứng |
@@ -36,7 +36,7 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 
 ## Lưu phiếu thành phẩm hai bước
 
-- **Lưu đợt** gửi cả danh sách QR qua `/api/kho/quet-dot`; API ghi nhiều dòng cùng lúc vào `nhap_kho`/`xuat_kho` và tạo/cập nhật header `phieu_nhap`/`phieu_xuat` với `status='chua_chot'`.
+- **Lưu đợt** gửi cả danh sách QR qua `/api/kho/quet-dot`; API ghi nhiều dòng cùng lúc vào `nhap_kho`/`xuat_kho` và tạo/cập nhật header. Phiếu nhập thành phẩm đã chốt vẫn nhận mã bổ sung nếu phiếu chưa in.
 - Khi mở lại trang nhập/xuất thành phẩm, FE tự chọn phiếu `chua_chot` mới nhất theo kho; có thể đổi phiếu hoặc chọn **+ Tạo phiếu**.
 - **Lưu phiếu** lập chứng từ chính thức rồi chuyển header sang `status='da_chot'`.
 - DB kho cần chạy `supabase-kho-stage-lines.sql` một lần để bỏ FK từ bảng dòng sang header, cho phép lưu đợt trước khi lập phiếu.

@@ -170,7 +170,7 @@ export function OrderFormModal({
       setFormError('Vui lòng chọn ngày tạo.');
       return;
     }
-    if (!orderForm.customer.trim()) {
+    if (orderForm.orderType !== 'Đơn sản xuất' && !orderForm.customer.trim()) {
       setFormError('Vui lòng chọn khách hàng từ danh mục.');
       return;
     }
@@ -335,7 +335,9 @@ export function OrderFormModal({
               />
             </label>
             <label className="space-y-1.5">
-              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Khách hàng *</span>
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                Khách hàng{orderForm.orderType === 'Đơn sản xuất' ? '' : ' *'}
+              </span>
               <SimpleSelect
                 value={orderForm.customer}
                 onChange={customer => setOrderForm(prev => ({ ...prev, customer }))}

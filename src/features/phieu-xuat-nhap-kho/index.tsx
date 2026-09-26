@@ -3393,6 +3393,34 @@ export function WarehouseSlipPanel({
       if (!savedSlipCode) {
         throw new Error('Máy chủ chưa xác nhận mã phiếu đã lưu. Phiếu sẽ không được in.');
       }
+      if (warehouseKind === 'nvl' || warehouseKind === 'hang_hong') {
+        const khoResponse = await fetch('/api/kho/phieu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loai_phieu: printSlipType,
+            ma_phieu: savedSlipCode,
+            ngay: slipDate,
+            nhan_su: createdBy.trim() || loginName,
+            kho: warehouseName.trim(),
+            ca: shiftLabelForSave,
+            may: showWarehouseShiftAndMachine ? machine.trim() : '',
+            ghi_chu: note.trim(),
+            status: 'da_chot',
+            loai: warehouseKind,
+            items: payloadItems.map(item => ({
+              ma_sp: item.code,
+              ten_sp: item.name,
+              don_vi: item.unit,
+              so_luong: item.quantity
+            }))
+          })
+        });
+        const khoData = await khoResponse.json().catch(() => ({}));
+        if (!khoResponse.ok) {
+          throw new Error(readApiErrorMessage(khoResponse, khoData, 'Không thể lưu chi tiết nhập tay vào DB kho.'));
+        }
+      }
       if (showProductExportTabs) {
         const statusResponse = await fetch('/api/kho/phieu', {
           method: 'POST',

@@ -200,11 +200,29 @@ export function sumMixingRounds(phoiTron: MixingPhoiTron) {
 
 /** Tổng KL định mức cả phiếu — lấy KL mẻ các lần (mỗi dòng NVL dùng chung cấu hình mẻ). */
 export function sumReportNormTotal(chi_tiet: MixingReportLine[]) {
-  for (const line of chi_tiet) {
-    const total = sumMixingRounds(line.lan_su_dung);
-    if (total > 0) return total;
+  const roundCount = Math.max(1, ...chi_tiet.map(line => visibleRoundCount(line.lan_su_dung)));
+  return roundNormWeight(
+    MIXING_ROUND_KEYS.slice(0, roundCount).reduce((total, key) => {
+      const batchWeight = chi_tiet
+        .map(line => getRoundBatchWeight(line.lan_su_dung, key))
+        .find((weight): weight is number => weight !== null);
+      return total + (batchWeight ?? chi_tiet.reduce((sum, line) => sum + sumLineRoundNormQuantity(line, key), 0));
+    }, 0)
+  );
+}
+
+/** KL thực tế; nếu chưa nhập thì dùng định mức cả phiếu một lần, không lặp KL mẻ theo từng NVL. */
+export function sumReportActualUsage(chi_tiet: MixingReportLine[]) {
+  if (!chi_tiet.some(line => hasMixingActualWeights(line.lan_su_dung))) {
+    return sumReportNormTotal(chi_tiet);
   }
-  return 0;
+
+  return roundNormWeight(
+    chi_tiet.reduce((sum, line) => {
+      const hasActual = hasMixingActualWeights(line.lan_su_dung);
+      return sum + (hasActual ? sumMixingRoundsActual(line.lan_su_dung) : sumLineNormQuantity(line));
+    }, 0)
+  );
 }
 
 export function sumMixingRoundsActual(phoiTron: MixingPhoiTron) {

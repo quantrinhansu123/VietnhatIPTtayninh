@@ -11712,7 +11712,36 @@ export function createApp() {
         return res.status(400).json({ error: 'status chỉ nhận chua_chot hoặc da_chot.' });
       }
 
+      const hasItems = Object.prototype.hasOwnProperty.call(body, 'items');
+      const manualKind = String(body.loai ?? body.loai_kho ?? '').trim().toLowerCase();
+      const manualItems: Array<{ code: string; name: string | null; unit: string | null; quantity: number }> = [];
+      if (hasItems) {
+        if (manualKind !== 'nvl' && manualKind !== 'hang_hong') {
+          return res.status(400).json({ error: 'Chỉ nhận dòng nhập tay NVL hoặc hàng hỏng.' });
+        }
+        if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 2000) {
+          return res.status(400).json({ error: 'Cần từ 1 đến 2000 dòng nhập tay.' });
+        }
+        for (const raw of body.items) {
+          const item: Record<string, unknown> = raw && typeof raw === 'object'
+            ? raw as Record<string, unknown>
+            : {};
+          const code = String(item.ma_sp ?? item.code ?? '').trim();
+          const quantity = Number(item.so_luong ?? item.quantity);
+          if (!code || !Number.isFinite(quantity) || quantity <= 0) {
+            return res.status(400).json({ error: 'Mỗi dòng cần mã và số lượng lớn hơn 0.' });
+          }
+          manualItems.push({
+            code,
+            name: String(item.ten_sp ?? item.name ?? '').trim() || null,
+            unit: String(item.don_vi ?? item.unit ?? '').trim() || null,
+            quantity
+          });
+        }
+      }
+
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
       const optionalText = (value: unknown) => String(value ?? '').trim() || null;
       const headerPayload: Record<string, unknown> = {
         ma_phieu: maPhieu,
@@ -11733,6 +11762,107 @@ export function createApp() {
         console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} metadata upsert error:`, error);
         return res.status(500).json({ error: `Không thể lưu thông tin phiếu. ${error.message}` });
       }
+
+      if (hasItems) {
+        const previousLines: Array<{ ma_sp?: string | null; so_luong?: number | string | null }> = [];
+        if (manualKind === 'nvl') {
+          for (let offset = 0; ; offset += 500) {
+            const { data: rows, error } = await supabaseKho
+              .from(lineTable)
+              .select('ma_sp, so_luong')
+              .eq('ma_phieu', maPhieu)
+              .eq('loai', manualKind)
+              .is('ma_sp_quet', null)
+              .range(offset, offset + 499);
+            if (error) return res.status(500).json({ error: `Không thể tải các dòng nhập tay cũ. ${error.message}` });
+            previousLines.push(...(rows || []));
+            if (!rows || rows.length < 500) break;
+          }
+        }
+
+        const { error: deleteError } = await supabaseKho
+          .from(lineTable)
+          .delete()
+          .eq('ma_phieu', maPhieu)
+          .eq('loai', manualKind)
+          .is('ma_sp_quet', null);
+        if (deleteError) return res.status(500).json({ error: `Không thể cập nhật dòng nhập tay cũ. ${deleteError.message}` });
+
+        const { error: insertError } = await supabaseKho.from(lineTable).insert(
+          manualItems.map(item => ({
+            ma_sp: item.code,
+            ten_sp: item.name,
+            don_vi: item.unit,
+            loai: manualKind,
+            so_luong: item.quantity,
+            ma_phieu: maPhieu
+          }))
+        );
+        if (insertError) return res.status(500).json({ error: `Không thể lưu dòng nhập tay vào ${lineTable}. ${insertError.message}` });
+
+        if (manualKind === 'nvl') {
+          // ponytail: REST writes aren't atomic; use one SQL RPC if slip details and stock must commit together.
+          const codes = [...new Set([
+            ...previousLines.map(row => String(row.ma_sp ?? '').trim()),
+            ...manualItems.map(item => item.code)
+          ].filter(Boolean))];
+          const totals = new Map<string, { nhap: number; xuat: number }>(
+            codes.map(code => [code, { nhap: 0, xuat: 0 }] as const)
+          );
+          for (const [type, table] of [['nhap', 'nhap_kho'], ['xuat', 'xuat_kho']] as const) {
+            for (let codeOffset = 0; codeOffset < codes.length; codeOffset += 100) {
+              const batch = codes.slice(codeOffset, codeOffset + 100);
+              for (let offset = 0; ; offset += 500) {
+                const { data: rows, error: rowsError } = await supabaseKho
+                  .from(table)
+                  .select('ma_sp, so_luong')
+                  .eq('loai', 'nvl')
+                  .in('ma_sp', batch)
+                  .range(offset, offset + 499);
+                if (rowsError) return res.status(500).json({ error: `Không thể tính tồn NVL từ ${table}. ${rowsError.message}` });
+                for (const row of rows || []) {
+                  const total = totals.get(String(row.ma_sp ?? '').trim());
+                  if (total) total[type] += Number(row.so_luong) || 0;
+                }
+                if (!rows || rows.length < 500) break;
+              }
+            }
+          }
+
+          const stockByCode = new Map<string, any>();
+          for (let offset = 0; offset < codes.length; offset += 100) {
+            const { data: stocks, error: stockReadError } = await supabaseKho
+              .from('kho')
+              .select('id, ma_sp, ton_dau, ton_toi_thieu, ten_sp')
+              .in('ma_sp', codes.slice(offset, offset + 100));
+            if (stockReadError) return res.status(500).json({ error: `Không thể tải tồn NVL. ${stockReadError.message}` });
+            for (const stock of stocks || []) stockByCode.set(String(stock.ma_sp ?? '').trim(), stock);
+          }
+          const nameByCode = new Map<string, string>();
+          for (const item of manualItems) if (item.name) nameByCode.set(item.code, item.name);
+          for (const code of codes) {
+            const total = totals.get(code)!;
+            const stock = stockByCode.get(code);
+            if (!stock && total.nhap === 0 && total.xuat === 0) continue;
+            const tonDau = Number(stock?.ton_dau) || 0;
+            const stockPayload = {
+              ma_sp: code,
+              ton_dau: tonDau,
+              nhap: total.nhap,
+              xuat: total.xuat,
+              ton_cuoi: tonDau + total.nhap - total.xuat,
+              ton_toi_thieu: Number(stock?.ton_toi_thieu) || 0,
+              loai: 'nvl',
+              ten_sp: nameByCode.get(code) || stock?.ten_sp || null
+            };
+            const stockWrite = stock?.id
+              ? await supabaseKho.from('kho').update(stockPayload).eq('id', stock.id)
+              : await supabaseKho.from('kho').insert(stockPayload);
+            if (stockWrite.error) return res.status(500).json({ error: `Không thể cập nhật tồn NVL. ${stockWrite.error.message}` });
+          }
+        }
+      }
+
       return res.json({ success: true, header: data, source: SUPABASE_KHO_DB_LABEL });
     } catch (err: any) {
       console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/phieu error:`, err);
@@ -11767,7 +11897,7 @@ export function createApp() {
       const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
       const { data: lines, error: linesError } = await supabaseKho
         .from(lineTable)
-        .select('id, ma_sp, so_luong')
+        .select('id, ma_sp, ma_sp_quet, loai, so_luong')
         .eq('ma_phieu', slipCode);
       if (linesError) return res.status(500).json({ error: `Không tải được chi tiết phiếu. ${linesError.message}` });
 
@@ -11778,6 +11908,12 @@ export function createApp() {
         const stockDeltas = new Map<string, number>();
         for (const line of lines || []) {
           const fullCode = String(line.ma_sp || '').trim();
+          if (!line.ma_sp_quet) {
+            if (line.loai === 'nvl' && fullCode) {
+              stockDeltas.set(fullCode, (stockDeltas.get(fullCode) || 0) + (Number(line.so_luong) || 0));
+            }
+            continue;
+          }
           const separatorIdx = Math.min(...['_', '+'].map(separator => {
             const index = fullCode.indexOf(separator);
             return index > 0 ? index : Number.POSITIVE_INFINITY;

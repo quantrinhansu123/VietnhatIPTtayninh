@@ -56,9 +56,8 @@ import {
   removeMaterialFromRound,
   setRoundBatchWeightOnLines,
   sumMixingRounds,
-  sumMixingRoundsActual,
+  sumReportActualUsage,
   sumRoundQuantity,
-  hasMixingActualWeights,
   updateMaterialActualWeightInRound,
   upsertMaterialInRound
 } from '../lib/mixingReportModel';
@@ -1244,17 +1243,7 @@ export default function MixingReportForm({
   }, [expandedLineCount, form.chi_tiet.length]);
 
   const computedActualUsage = useMemo(
-    () =>
-      round2(
-        computedLines.reduce((sum, line) => {
-          const actual = sumMixingRoundsActual(line.lan_su_dung);
-          const hasActual = hasMixingActualWeights(line.lan_su_dung);
-          const lineTotal = hasActual
-            ? actual
-            : line.tong_nhua_tron ?? sumMixingRounds(line.lan_su_dung);
-          return sum + lineTotal;
-        }, 0)
-      ),
+    () => round2(sumReportActualUsage(computedLines)),
     [computedLines]
   );
 
@@ -2035,16 +2024,7 @@ export default function MixingReportForm({
           : line
       );
 
-      const thucTeSuDung = round2(
-        linesToSave.reduce((sum, line) => {
-          const actual = sumMixingRoundsActual(line.lan_su_dung);
-          const hasActual = hasMixingActualWeights(line.lan_su_dung);
-          const lineTotal = hasActual
-            ? actual
-            : line.tong_nhua_tron ?? sumMixingRounds(line.lan_su_dung);
-          return sum + lineTotal;
-        }, 0)
-      );
+      const thucTeSuDung = round2(sumReportActualUsage(linesToSave));
 
       const payload = {
         ca: resolvedCa,

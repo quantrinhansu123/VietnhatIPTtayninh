@@ -11485,7 +11485,7 @@ export function createApp() {
     try {
       const { data, error, count } = await supabaseKho
         .from(lineTable)
-        .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at', { count: 'exact' })
+        .select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu, created_at', { count: 'exact' })
         .eq('ma_phieu', maPhieu)
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
@@ -11593,7 +11593,7 @@ export function createApp() {
         for (let offset = 0; ; offset += pageSize) {
           const { data, error } = await supabaseKho
             .from(lineTable)
-            .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at')
+            .select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu, created_at')
             .in('ma_phieu', codeBatch)
             .order('created_at', { ascending: false })
             .order('id', { ascending: false })
@@ -11625,7 +11625,7 @@ export function createApp() {
               ten_npl: product ? null : line.ten_sp,
               ma_sp_quet: line.ma_sp_quet || '',
               so_luong: Number(line.so_luong) || 0,
-              don_vi: '-',
+              don_vi: line.don_vi || '-',
               don_gia: 0,
               thanh_tien: 0,
               created_at: line.created_at,
@@ -11830,6 +11830,181 @@ export function createApp() {
     return res.json({ duplicateCodes: [...duplicates] });
   });
 
+  app.post('/api/kho/quet-dot', async (req, res) => {
+    const khoDb = supabaseKho;
+    if (!khoDb) {
+      return res.status(503).json({ error: `DB kho chưa cấu hình (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const loaiPhieu = String(body.loai_phieu ?? '').trim().toLowerCase();
+      const maPhieu = String(body.ma_phieu ?? '').trim();
+      const itemsByCode = new Map<string, { fullCode: string; tenSp: string; donVi: string }>();
+      const rawItems = Array.isArray(body.items) ? body.items : [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const fullCode = String((raw as any).ma_sp_quet ?? (raw as any).ma_sp ?? '').trim();
+        if (!fullCode) continue;
+        const key = fullCode.replace(/\s+/g, '').toUpperCase();
+        if (!itemsByCode.has(key)) {
+          itemsByCode.set(key, {
+            fullCode,
+            tenSp: String((raw as any).ten_sp ?? '').trim(),
+            donVi: String((raw as any).don_vi ?? (raw as any).unit ?? '').trim()
+          });
+        }
+      }
+      const items = [...itemsByCode.values()];
+      if (!['nhap', 'xuat'].includes(loaiPhieu) || !maPhieu || !items.length) {
+        return res.status(400).json({ error: 'Cần loai_phieu, ma_phieu và danh sách mã QR hợp lệ.' });
+      }
+      if (items.length > 2000) {
+        return res.status(413).json({ error: 'Mỗi đợt chỉ hỗ trợ tối đa 2000 mã QR.' });
+      }
+
+      const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+      const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+      const headerFields = {
+        ngay: String(body.ngay ?? '').trim() || undefined,
+        nhan_su: String(body.nhan_su ?? '').trim() || null,
+        kho: String(body.kho ?? '').trim() || null,
+        ghi_chu: String(body.ghi_chu ?? '').trim() || null
+      };
+      const savedByCode = new Map<string, { ma_sp_quet: string; created_at: string }>();
+      const duplicateCodes = new Set<string>();
+
+      const loadExisting = async (codes: string[]) => {
+        const existing = new Map<string, { ma_phieu: string; created_at: string }>();
+        for (let offset = 0; offset < codes.length; offset += 100) {
+          const { data, error } = await khoDb
+            .from(lineTable)
+            .select('ma_sp_quet, ma_phieu, created_at')
+            .eq('loai', 'san_pham')
+            .in('ma_sp_quet', codes.slice(offset, offset + 100));
+          if (error) throw new Error(error.message || 'Không thể kiểm tra mã QR đã lưu.');
+          for (const row of data || []) {
+            const code = String(row.ma_sp_quet ?? '').trim();
+            if (!code) continue;
+            const previous = existing.get(code);
+            if (!previous || row.ma_phieu === maPhieu) {
+              existing.set(code, {
+                ma_phieu: String(row.ma_phieu || ''),
+                created_at: String(row.created_at || '')
+              });
+            }
+          }
+        }
+        return existing;
+      };
+
+      const classifyExisting = (candidateItems: typeof items, existing: Map<string, { ma_phieu: string; created_at: string }>) => {
+        for (const item of candidateItems) {
+          const row = existing.get(item.fullCode);
+          if (!row) continue;
+          if (row.ma_phieu === maPhieu) {
+            savedByCode.set(item.fullCode, {
+              ma_sp_quet: item.fullCode,
+              created_at: row.created_at || new Date().toISOString()
+            });
+          } else {
+            duplicateCodes.add(item.fullCode);
+          }
+        }
+        return candidateItems.filter(item => !existing.has(item.fullCode));
+      };
+
+      const initialExisting = await loadExisting(items.map(item => item.fullCode));
+      let pendingItems = classifyExisting(items, initialExisting);
+      let header: any = null;
+
+      if (pendingItems.length || savedByCode.size) {
+        const { data: existingHeader, error: headerReadError } = await khoDb
+          .from(headerTable)
+          .select('ma_phieu, ngay, nhan_su, kho, ghi_chu, status, created_at')
+          .eq('ma_phieu', maPhieu)
+          .maybeSingle();
+        if (headerReadError) {
+          return res.status(500).json({ error: headerReadError.message || 'Không thể kiểm tra phiếu kho.' });
+        }
+        if (existingHeader && existingHeader.status !== 'chua_chot') {
+          return res.status(409).json({ error: 'Phiếu đã chốt; không thể lưu thêm mã ở bước Lưu đợt.' });
+        }
+
+        if (existingHeader) {
+          const { data, error } = await khoDb
+            .from(headerTable)
+            .update(headerFields)
+            .eq('ma_phieu', maPhieu)
+            .eq('status', 'chua_chot')
+            .select('ma_phieu, ngay, nhan_su, kho, ghi_chu, status, created_at')
+            .maybeSingle();
+          if (error) return res.status(500).json({ error: error.message || 'Không thể cập nhật phiếu kho.' });
+          if (!data) return res.status(409).json({ error: 'Phiếu vừa được chốt; không thể lưu thêm mã.' });
+          header = data;
+        } else if (pendingItems.length) {
+          const { data, error } = await khoDb
+            .from(headerTable)
+            .insert({ ma_phieu: maPhieu, ...headerFields, status: 'chua_chot' })
+            .select('ma_phieu, ngay, nhan_su, kho, ghi_chu, status, created_at')
+            .single();
+          if (error) {
+            console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} batch header insert error:`, error);
+            return res.status(500).json({ error: `Không thể tạo phiếu chưa chốt. ${error.message}` });
+          }
+          header = data;
+        }
+      }
+
+      for (let attempt = 0; pendingItems.length; attempt += 1) {
+        const rows = pendingItems.map(item => {
+          const separators = ['_', '+'].map(separator => {
+            const index = item.fullCode.indexOf(separator);
+            return index > 0 ? index : Number.POSITIVE_INFINITY;
+          });
+          const separatorIndex = Math.min(...separators);
+          return {
+            ma_sp: Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode,
+            ma_sp_quet: item.fullCode,
+            ten_sp: item.tenSp || null,
+            don_vi: item.donVi || null,
+            loai: 'san_pham',
+            so_luong: 1,
+            ma_phieu: maPhieu
+          };
+        });
+        const { error } = await khoDb.from(lineTable).insert(rows);
+        if (!error) {
+          const savedAt = new Date().toISOString();
+          for (const item of pendingItems) {
+            savedByCode.set(item.fullCode, { ma_sp_quet: item.fullCode, created_at: savedAt });
+          }
+          pendingItems = [];
+          break;
+        }
+
+        if (error.code !== '23505' || attempt >= 2) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} batch insert error:`, error);
+          return res.status(500).json({ error: `Không thể ghi đợt mã QR. ${error.message}` });
+        }
+
+        const racedExisting = await loadExisting(pendingItems.map(item => item.fullCode));
+        pendingItems = classifyExisting(pendingItems, racedExisting);
+      }
+
+      return res.status(201).json({
+        success: true,
+        header,
+        saved: [...savedByCode.values()],
+        duplicateCodes: [...duplicateCodes],
+        source: SUPABASE_KHO_DB_LABEL
+      });
+    } catch (err: any) {
+      console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/quet-dot error:`, err);
+      return res.status(500).json({ error: err?.message || 'Lỗi khi lưu đợt mã QR.' });
+    }
+  });
+
   app.post('/api/kho/quet', async (req, res) => {
     if (!supabaseKho) {
       return res.status(503).json({
@@ -11851,6 +12026,7 @@ export function createApp() {
       const maSpFull = String(body.ma_sp ?? body.maSp ?? body.code ?? '').trim();
       const loai = String(body.loai ?? body.loai_kho ?? body.warehouseKind ?? '').trim() || null;
       const tenSp = String(body.ten_sp ?? body.tenSp ?? body.name ?? '').trim() || null;
+      const donVi = String(body.don_vi ?? body.unit ?? '').trim() || null;
       const nhanSu = String(body.nhan_su ?? body.nhanSu ?? body.createdBy ?? '').trim() || null;
       const soLuongRaw = Number(body.so_luong ?? body.soLuong ?? body.quantity ?? 1);
       const soLuong = Number.isFinite(soLuongRaw) && soLuongRaw > 0 ? soLuongRaw : 1;
@@ -11927,6 +12103,7 @@ export function createApp() {
         ma_sp: loaiPhieu === 'xuat' || loai === 'san_pham' ? maSpTon : maSpFull,
         ma_sp_quet: maSpFull,
         ten_sp: tenSp,
+        don_vi: donVi,
         loai,
         so_luong: soLuong,
         ma_phieu: maPhieu
@@ -11934,7 +12111,7 @@ export function createApp() {
       const { data: lineRow, error: lineError } = await supabaseKho
         .from(lineTable)
         .insert(lineData)
-        .select('id, ma_sp, ma_sp_quet, ten_sp, loai, so_luong, ma_phieu, created_at')
+        .select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu, created_at')
         .single();
 
       if (lineError) {

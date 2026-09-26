@@ -2004,6 +2004,7 @@ export function WarehouseSlipPanel({
   const syncScanToKhoDb = (payload: {
     fullCode: string;
     name: string;
+    unit: string;
     maPhieu: string;
     loaiPhieu: 'nhap' | 'xuat';
     loai: string;
@@ -2023,6 +2024,7 @@ export function WarehouseSlipPanel({
               ma_phieu: payload.maPhieu || khoScanMaPhieuRef.current,
               loai: payload.loai,
               ten_sp: payload.name || '',
+              don_vi: payload.unit || '',
               nhan_su: payload.nhanSu,
               ngay: payload.ngay,
               so_luong: 1
@@ -2142,6 +2144,7 @@ export function WarehouseSlipPanel({
       syncScanToKhoDb({
         fullCode,
         name: patch.name || '',
+        unit: patch.unit || '',
         maPhieu: ensureKhoScanMaPhieu(),
         loaiPhieu: slipType === 'xuat' ? 'xuat' : 'nhap',
         loai: warehouseKind,
@@ -3018,70 +3021,6 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const saveScannedProductBatch = async () => {
-    if (warehouseKind !== 'san_pham') return { savedCodes: [], duplicateCodes: [] };
-    const scannedCodes = new Set(
-      [...scannedFullCodesByPrefixRef.current.values()].flatMap(codes => [...codes.values()])
-        .map(code => normalizeMaterialCodeKey(code))
-    );
-    const scans = scannedProductDetails.filter(detail => scannedCodes.has(normalizeMaterialCodeKey(detail.fullCode)));
-    if (!scans.length) return { savedCodes: [], duplicateCodes: [] };
-
-    const maPhieu = ensureKhoScanMaPhieu();
-    const existingByCode = new Map<string, string>();
-    for (let offset = 0; ; offset += 100) {
-      const params = new URLSearchParams({ loai_phieu: slipType, ma_phieu: maPhieu, limit: '100', offset: String(offset) });
-      const res = await fetch(`/api/kho/chi-tiet?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể kiểm tra mã đã lưu trong đợt.'));
-      const records = Array.isArray(data?.records) ? data.records : [];
-      records.forEach((row: SavedProductScanRow) => {
-        const code = String(row.ma_sp_quet || row.ma_sp || '').trim();
-        if (code) existingByCode.set(normalizeMaterialCodeKey(code), String(row.created_at || ''));
-      });
-      if (offset + records.length >= (Number(data?.total) || 0) || records.length === 0) break;
-    }
-
-    const savedCodes: string[] = [];
-    const duplicateCodes: string[] = [];
-    for (const detail of scans) {
-      const codeKey = normalizeMaterialCodeKey(detail.fullCode);
-      const existingAt = existingByCode.get(codeKey);
-      if (existingByCode.has(codeKey)) {
-        if (existingAt) setScannedSavedAtByCode(current => ({ ...current, [detail.fullCode]: existingAt }));
-        savedCodes.push(detail.fullCode);
-        continue;
-      }
-
-      const res = await fetch('/api/kho/quet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chi_tiet_only: true,
-          loai_phieu: slipType,
-          ma_sp: detail.fullCode,
-          ma_phieu: maPhieu,
-          loai: warehouseKind,
-          ten_sp: detail.name,
-          nhan_su: createdBy.trim() || loginName,
-          ngay: slipDate,
-          so_luong: 1
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 409 && data?.duplicate) {
-        duplicateCodes.push(detail.fullCode);
-        continue;
-      }
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, `Không thể lưu mã ${detail.fullCode} vào phiếu kho.`));
-      const savedAt = String(data?.line?.created_at || '');
-      existingByCode.set(codeKey, savedAt);
-      savedCodes.push(detail.fullCode);
-      if (savedAt) setScannedSavedAtByCode(current => ({ ...current, [detail.fullCode]: savedAt }));
-    }
-    return { savedCodes, duplicateCodes };
-  };
-
   const discardDuplicateScannedProducts = (fullCodes: string[]) => {
     const duplicateKeys = new Set(fullCodes.map(normalizeMaterialCodeKey));
     const removedByPrefix = new Map<string, number>();
@@ -3114,29 +3053,15 @@ export function WarehouseSlipPanel({
     setFormError('');
     setActionMessage('');
     try {
-      const candidates = [...new Set(pendingScannedProductDetails.map(detail => detail.fullCode))];
+      const candidates = [...new Map(
+        pendingScannedProductDetails.map(detail => [
+          normalizeMaterialCodeKey(detail.fullCode),
+          { fullCode: detail.fullCode, name: detail.name, unit: detail.unit }
+        ] as const)
+      ).values()];
       if (!candidates.length) return;
-      const checkResponse = await fetch('/api/kho/kiem-tra-ma-quet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loai_phieu: slipType, ma_sp_quet: candidates })
-      });
-      const checkData = await checkResponse.json().catch(() => ({}));
-      if (!checkResponse.ok) {
-        throw new Error(readApiErrorMessage(checkResponse, checkData, 'Không thể kiểm tra mã QR đã tồn tại.'));
-      }
-      const duplicateKeys = new Set(
-        (Array.isArray(checkData?.duplicateCodes) ? checkData.duplicateCodes : []).map(normalizeMaterialCodeKey)
-      );
-      const duplicateCodes = candidates.filter(code => duplicateKeys.has(normalizeMaterialCodeKey(code)));
-      if (duplicateCodes.length) {
-        discardDuplicateScannedProducts(duplicateCodes);
-        showAppToast(`Bỏ qua ${duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`, 'error');
-      }
-      const batchCodes = candidates.filter(code => !duplicateKeys.has(normalizeMaterialCodeKey(code)));
-      if (!batchCodes.length) return;
       const maPhieu = ensureKhoScanMaPhieu();
-      const headerResponse = await fetch('/api/kho/phieu', {
+      const response = await fetch('/api/kho/quet-dot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3146,27 +3071,42 @@ export function WarehouseSlipPanel({
           nhan_su: createdBy.trim() || loginName,
           kho: warehouseName.trim(),
           ghi_chu: note.trim(),
-          status: 'chua_chot'
+          items: candidates.map(item => ({ ma_sp_quet: item.fullCode, ten_sp: item.name, don_vi: item.unit }))
         })
       });
-      const headerData = await headerResponse.json().catch(() => ({}));
-      if (!headerResponse.ok) {
-        throw new Error(readApiErrorMessage(headerResponse, headerData, 'Không thể tạo phiếu chưa chốt.'));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(readApiErrorMessage(response, data, 'Không thể lưu đợt mã đã quét.'));
       }
-      const saveResult = await saveScannedProductBatch();
-      if (saveResult.duplicateCodes.length) {
-        discardDuplicateScannedProducts(saveResult.duplicateCodes);
-        showAppToast(`Bỏ qua ${saveResult.duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`, 'error');
+      const savedRows = Array.isArray(data?.saved) ? data.saved : [];
+      const savedCodes = savedRows.map((row: { ma_sp_quet?: unknown }) => String(row.ma_sp_quet || '').trim()).filter(Boolean);
+      const duplicateCodes = Array.isArray(data?.duplicateCodes)
+        ? data.duplicateCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
+        : [];
+      if (duplicateCodes.length) {
+        discardDuplicateScannedProducts(duplicateCodes);
+        showAppToast(`Bỏ qua ${duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`, 'error');
       }
-      setSelectedProductSlipCode(maPhieu);
-      setOpenProductSlips(current => [
-        headerData.header as OpenProductSlip,
-        ...current.filter(slip => slip.ma_phieu !== maPhieu)
-      ]);
-      setSavedProductBatchCodes(current => new Set([...current, ...saveResult.savedCodes.map(normalizeMaterialCodeKey)]));
-      if (saveResult.savedCodes.length) {
-        const duplicatesSkipped = duplicateCodes.length + saveResult.duplicateCodes.length;
-        setActionMessage(`Đã lưu ${saveResult.savedCodes.length} sản phẩm${duplicatesSkipped ? `; bỏ qua ${duplicatesSkipped} mã đã tồn tại` : ''}.`);
+      if (data?.header?.ma_phieu) {
+        setSelectedProductSlipCode(maPhieu);
+        setOpenProductSlips(current => [
+          data.header as OpenProductSlip,
+          ...current.filter(slip => slip.ma_phieu !== maPhieu)
+        ]);
+      }
+      if (savedCodes.length) {
+        const savedAt = new Date().toISOString();
+        setScannedSavedAtByCode(current => ({
+          ...current,
+          ...Object.fromEntries(savedRows
+            .map((row: { ma_sp_quet?: unknown; created_at?: unknown }): [string, string] => [
+              String(row.ma_sp_quet || '').trim(),
+              String(row.created_at || savedAt)
+            ])
+            .filter(([code]) => Boolean(code)))
+        }));
+        setSavedProductBatchCodes(current => new Set([...current, ...savedCodes.map(normalizeMaterialCodeKey)]));
+        setActionMessage(`Đã lưu ${savedCodes.length} sản phẩm${duplicateCodes.length ? `; bỏ qua ${duplicateCodes.length} mã đã tồn tại` : ''}.`);
       }
     } catch (error: any) {
       setFormError(showSaveFailure(error, 'Không thể lưu đợt mã đã quét.'));
@@ -4940,8 +4880,38 @@ export function WarehouseHistoryPanel({
 
   const viewingRows = useMemo(() => {
     if (!viewingSlipCode) return [];
+    const rows = filteredMovements.filter(row => row.slipCode === viewingSlipCode);
+    if (rows[0]?.warehouseKind === 'san_pham') {
+      const byProduct = new Map<string, WarehouseMovementRow>();
+      const productUnitByCode = new Map(
+        weightCatalogProducts.map(product => [normalizeMaterialCodeKey(product.code), product.unit] as const)
+      );
+      const groupedRows: WarehouseMovementRow[] = [];
+      for (const row of rows) {
+        const itemCode = warehouseCodePrefix(row.itemCode);
+        const key = normalizeMaterialCodeKey(itemCode);
+        const catalogUnit = productUnitByCode.get(key);
+        const unit = row.unit && row.unit !== '-' ? row.unit : catalogUnit || '-';
+        const existing = key ? byProduct.get(key) : undefined;
+        if (existing) {
+          if ((!existing.unit || existing.unit === '-') && unit !== '-') existing.unit = unit;
+          existing.quantity += row.quantity;
+          existing.lineAmount += row.lineAmount;
+          if (existing.documentQuantity !== undefined || row.documentQuantity !== undefined) {
+            existing.documentQuantity = (existing.documentQuantity || 0) + (row.documentQuantity || 0);
+          }
+          if (existing.quantity > 0) existing.unitPrice = existing.lineAmount / existing.quantity;
+          continue;
+        }
+
+        const grouped = { ...row, itemCode, unit };
+        groupedRows.push(grouped);
+        if (key) byProduct.set(key, grouped);
+      }
+      return sortWarehouseLinesKgFirst(groupedRows, { getWeightKg: resolveWarehouseRowWeightKg });
+    }
     return sortWarehouseLinesKgFirst(
-      filteredMovements.filter(row => row.slipCode === viewingSlipCode),
+      rows,
       { getWeightKg: resolveWarehouseRowWeightKg }
     );
   }, [viewingSlipCode, filteredMovements, weightCatalogMaterials, weightCatalogProducts]);

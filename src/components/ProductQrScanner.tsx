@@ -297,6 +297,9 @@ export default function ProductQrScanner({
   const [cameraEnabled, setCameraEnabled] = useState(loadCameraPreference);
   const useCamera = !hardwareOnly && cameraEnabled;
   const displayedScannedCount = Math.max(0, Math.trunc(scannedCount ?? sessionScannedCount));
+  const playFeedbackBeep = (count = 1) => {
+    if (!hardwareOnly) playScanBeep(audioCtxRef.current, count);
+  };
 
   const clearAutoSubmitTimer = () => {
     if (autoSubmitTimerRef.current !== null) {
@@ -369,7 +372,7 @@ export default function ProductQrScanner({
   const commitScanResult = async (raw: string) => {
     const code = parseQrProductCode(raw);
     if (!code) {
-      playScanBeep(audioCtxRef.current);
+      playFeedbackBeep();
       setFeedback({ type: 'error', text: 'Mã QR / mã vạch không hợp lệ.' });
       setFeedbackPulse(prev => prev + 1);
       return false;
@@ -383,7 +386,7 @@ export default function ProductQrScanner({
     try {
       scanResult = await onScanRef.current(raw);
     } catch {
-      playScanBeep(audioCtxRef.current);
+      playFeedbackBeep();
       setFeedbackPulse(prev => prev + 1);
       setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
@@ -391,19 +394,18 @@ export default function ProductQrScanner({
     setFeedbackPulse(prev => prev + 1);
 
     if (scanResult === false) {
-      playScanBeep(audioCtxRef.current);
+      playFeedbackBeep();
       setFeedback({ type: 'error', text: `Không ghi nhận được mã: ${fullCode}` });
       return false;
     }
 
     if (scanResult === 'duplicate') {
-      playScanBeep(audioCtxRef.current);
       setScannedItems(prev => bumpScannedItem(prev, fullCode, false));
       setFeedback({ type: 'duplicate', text: `Mã đã quét — bỏ qua: ${fullCode}` });
       return true;
     }
 
-    playScanBeep(audioCtxRef.current, 2);
+    playFeedbackBeep(2);
     setScannedItems(prev => bumpScannedItem(prev, fullCode, true));
     setSessionScannedCount(current => current + 1);
     setFeedback({ type: 'success', text: `Đã ghi nhận: ${fullCode}` });

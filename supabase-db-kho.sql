@@ -101,6 +101,7 @@ create table if not exists public.xuat_kho (
   ma_sp text not null,
   ma_sp_quet text,
   ten_sp text,
+  don_vi text,
   loai text,
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
@@ -110,15 +111,20 @@ create table if not exists public.xuat_kho (
 
 alter table public.xuat_kho add column if not exists ma_sp_quet text;
 alter table public.xuat_kho add column if not exists ten_sp text;
+alter table public.xuat_kho add column if not exists don_vi text;
 
 create index if not exists idx_xuat_kho_ma_sp on public.xuat_kho (ma_sp);
 create index if not exists idx_xuat_kho_ma_phieu on public.xuat_kho (ma_phieu);
 create index if not exists idx_xuat_kho_loai on public.xuat_kho (loai);
+create unique index if not exists uq_xuat_kho_qr_san_pham
+  on public.xuat_kho (ma_sp_quet)
+  where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
 
 comment on table public.xuat_kho is 'Dong xuat kho theo ma SP / ma phieu.';
 comment on column public.xuat_kho.ma_sp is 'Ma san pham goc.';
 comment on column public.xuat_kho.ma_sp_quet is 'Ma QR day du da quet, gom ca tien to va hau to.';
 comment on column public.xuat_kho.ten_sp is 'Ten thanh pham duoc quet.';
+comment on column public.xuat_kho.don_vi is 'Don vi tinh cua san pham tai thoi diem nhap/xuat.';
 comment on column public.xuat_kho.loai is 'Loai hang (NVL, thanh pham, ...).';
 comment on column public.xuat_kho.so_luong is 'So luong xuat.';
 comment on column public.xuat_kho.ma_phieu is 'Ma phieu xuat — tham chieu phieu_xuat.ma_phieu.';
@@ -131,6 +137,7 @@ create table if not exists public.nhap_kho (
   ma_sp text not null,
   ma_sp_quet text,
   ten_sp text,
+  don_vi text,
   loai text,
   so_luong numeric(18, 4) not null default 0,
   ma_phieu text not null,
@@ -140,15 +147,20 @@ create table if not exists public.nhap_kho (
 
 alter table public.nhap_kho add column if not exists ma_sp_quet text;
 alter table public.nhap_kho add column if not exists ten_sp text;
+alter table public.nhap_kho add column if not exists don_vi text;
 
 create index if not exists idx_nhap_kho_ma_sp on public.nhap_kho (ma_sp);
 create index if not exists idx_nhap_kho_ma_phieu on public.nhap_kho (ma_phieu);
 create index if not exists idx_nhap_kho_loai on public.nhap_kho (loai);
+create unique index if not exists uq_nhap_kho_qr_san_pham
+  on public.nhap_kho (ma_sp_quet)
+  where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
 
 comment on table public.nhap_kho is 'Dong nhap kho theo ma SP / ma phieu.';
 comment on column public.nhap_kho.ma_sp is 'Ma san pham / NVL.';
 comment on column public.nhap_kho.ma_sp_quet is 'Ma QR day du da quet, gom ca tien to va hau to.';
 comment on column public.nhap_kho.ten_sp is 'Ten san pham duoc quet.';
+comment on column public.nhap_kho.don_vi is 'Don vi tinh cua san pham tai thoi diem nhap/xuat.';
 comment on column public.nhap_kho.loai is 'Loai hang (NVL, thanh pham, ...).';
 comment on column public.nhap_kho.so_luong is 'So luong nhap.';
 comment on column public.nhap_kho.ma_phieu is 'Ma phieu nhap — tham chieu phieu_nhap.ma_phieu.';

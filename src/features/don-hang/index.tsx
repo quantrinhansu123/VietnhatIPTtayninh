@@ -54,7 +54,7 @@ import {
 export type { OrderProductLine, OrderRow };
 
 const orderProductGridClass =
-  'grid-cols-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_5rem_5rem_minmax(0,1.1fr)_2.5rem]';
+  'grid-cols-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_5rem_5rem_minmax(0,1.1fr)_6rem_2.5rem]';
 export {
   parseOrderProductsFromRecord,
   summarizeOrderProducts,
@@ -472,6 +472,9 @@ export function OrdersPanel({
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
   const [productOptions, setProductOptions] = useState<OrderProductOption[]>([]);
+  const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({});
+  const [loadingStockByProduct, setLoadingStockByProduct] = useState<Record<string, boolean>>({});
+  const [stockErrorByProduct, setStockErrorByProduct] = useState<Record<string, boolean>>({});
   const [isLoadingLookups, setIsLoadingLookups] = useState(false);
 
   const openOrderDetail = (order: OrderRow) => {
@@ -625,6 +628,45 @@ export function OrdersPanel({
       a.localeCompare(b, 'vi')
     );
   }, [orders, productOptions]);
+
+  const selectedStockCodes = JSON.stringify([...new Set(orderForm.productLines
+    .map(line => findOrderProductByCode(productOptions, line.productCode)?.code || line.productCode.trim())
+    .filter(Boolean))]);
+
+  useEffect(() => {
+    if (!formMode) return;
+    const codes = JSON.parse(selectedStockCodes) as string[];
+    if (!codes.length) return;
+    let cancelled = false;
+
+    const refreshStock = async (showLoading = false) => {
+      if (showLoading) {
+        setLoadingStockByProduct(prev => ({ ...prev, ...Object.fromEntries(codes.map(code => [code, true])) }));
+      }
+      await Promise.all(codes.map(async code => {
+        try {
+          const params = new URLSearchParams({ ma_sp_goc: code });
+          const res = await fetch(`/api/chi-tiet-san-pham/ton-kho?${params.toString()}`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Không tải được tồn kho.');
+          if (cancelled) return;
+          setStockByProduct(prev => ({ ...prev, [code]: Number(data.so_luong) || 0 }));
+          setStockErrorByProduct(prev => ({ ...prev, [code]: false }));
+        } catch {
+          if (!cancelled) setStockErrorByProduct(prev => ({ ...prev, [code]: true }));
+        } finally {
+          if (!cancelled) setLoadingStockByProduct(prev => ({ ...prev, [code]: false }));
+        }
+      }));
+    };
+
+    void refreshStock(true);
+    const interval = window.setInterval(() => void refreshStock(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [formMode, selectedStockCodes]);
 
   const handlePrintOrder = async (order: OrderRow) => {
     if (!order.daIn) {
@@ -968,11 +1010,13 @@ export function OrdersPanel({
                   { key: 'unit', label: 'ĐVT' },
                   { key: 'qty', label: 'SL', required: true },
                   { key: 'note', label: 'Ghi chú' },
+                  { key: 'stock', label: 'Còn trong kho' },
                   { key: 'actions', label: '' }
                 ]}
               >
                 {orderForm.productLines.map(line => {
                   const matchedLineProduct = findOrderProductByCode(productOptions, line.productCode);
+                  const stockCode = matchedLineProduct?.code || line.productCode.trim();
                   return (
                     <RepeatableLineRow key={line.key} gridTemplateClass={orderProductGridClass}>
                       <div className="col-span-2 min-w-0 md:col-span-1">
@@ -1037,6 +1081,20 @@ export function OrdersPanel({
                           className={`${orderFieldClass} bg-white`}
                           placeholder="Ghi chú dòng"
                         />
+                      </div>
+                      <div className="col-span-1 min-w-0">
+                        <div
+                          className={`${orderFieldClass} flex items-center bg-zinc-50 text-zinc-700`}
+                          title={stockErrorByProduct[stockCode] ? 'Không thể cập nhật tồn kho hiện tại.' : undefined}
+                        >
+                          {stockByProduct[stockCode] !== undefined
+                            ? stockByProduct[stockCode].toLocaleString('vi-VN')
+                            : loadingStockByProduct[stockCode]
+                              ? 'Đang tải…'
+                              : stockErrorByProduct[stockCode]
+                                ? 'Lỗi tải'
+                                : '—'}
+                        </div>
                       </div>
                       {orderForm.productLines.length > 1 ? (
                         <button

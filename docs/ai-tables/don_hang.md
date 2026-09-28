@@ -35,6 +35,7 @@ Tạo lệnh SX: `POST /api/lenh-sx/from-don-hang/:id`
 - **Nhân viên**: chọn từ `/api/nhan-su` — chi nhánh **HCM**, Phòng kinh doanh + Quản đốc — hoặc **nhập tay** (`allowCustomValue`). Form thêm mới **tự điền** theo `authUser.name` (khớp tên trong danh sách HCM nếu có).
 - Modal dùng chung: `src/features/don-hang/OrderFormModal.tsx` — mở từ trang Đơn hàng và từ **Thêm lệnh SX** (nút **Thêm đơn mới**).
 - **Ghi chú từng dòng SP**: lưu trong jsonb `san_pham[].ghi_chu` (không cần cột DB mới). Form + danh sách + phiếu in đọc/ghi field này.
+- **Tồn kho theo dòng**: form thêm/sửa trong `OrdersPanel` hiển thị số QR `trong_kho` từ `chi_tiet_san_pham` và tự làm mới khi form còn mở.
 
 ### Liên kết lệnh SX
 

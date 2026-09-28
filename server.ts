@@ -17093,7 +17093,7 @@ export function createApp() {
         loadAllTonKhoRows((from, to) => {
           let query = supabase!
             .from('bien_dong_chi_tiet_san_pham')
-            .select('id, ma_sp_goc, loai_bien_dong, la_dieu_chinh, ngay_phieu, kho')
+            .select('id, ma_sp_goc, ma_sp_qr, loai_bien_dong, la_dieu_chinh, ma_phieu, ngay_phieu, kho, ca')
             .order('ngay_phieu', { ascending: true })
             .order('id', { ascending: true });
           if (tenKho) query = query.eq('kho', tenKho);
@@ -17155,6 +17155,8 @@ export function createApp() {
       const futureImportsByProduct = new Map<string, number>();
       const futureExportsByProduct = new Map<string, number>();
       const futureAdjustmentsByProduct = new Map<string, number>();
+      const nhapRecords: Array<Record<string, unknown>> = [];
+      const xuatRecords: Array<Record<string, unknown>> = [];
       for (const row of snapshotRows) {
         const code = String(row.ma_sp_goc ?? '').trim();
         if (!code) continue;
@@ -17188,8 +17190,38 @@ export function createApp() {
           else if (laDieuChinh && type === 'xuat') total.dieu_chinh_trong_ky -= 1;
           else if (type === 'nhap') total.nhap_trong_ky += 1;
           else if (type === 'xuat') total.xuat_trong_ky += 1;
+
+          if (type === 'nhap' || type === 'xuat') {
+            const product = productsByCode.get(code);
+            const movement = {
+              id: String(row.id ?? `${type}-${code}-${date}-${row.ma_sp_qr ?? ''}`),
+              ma_sp_goc: code,
+              ma_sp_qr: String(row.ma_sp_qr ?? '').trim(),
+              ten: String(product?.ten_sp ?? '').trim() || code,
+              don_vi: String(product?.don_vi ?? '').trim() || null,
+              ma_phieu: String(row.ma_phieu ?? '').trim() || null,
+              ngay_phieu: date,
+              kho: String(row.kho ?? '').trim(),
+              ca: String(row.ca ?? '').trim() || null,
+              la_dieu_chinh: laDieuChinh,
+              so_luong: 1
+            };
+            if (type === 'nhap') nhapRecords.push(movement);
+            else xuatRecords.push(movement);
+          }
         }
       }
+
+      nhapRecords.sort((a, b) =>
+        String(b.ngay_phieu).localeCompare(String(a.ngay_phieu)) ||
+        String(a.ma_sp_goc).localeCompare(String(b.ma_sp_goc), 'vi') ||
+        String(a.ma_sp_qr).localeCompare(String(b.ma_sp_qr), 'vi')
+      );
+      xuatRecords.sort((a, b) =>
+        String(b.ngay_phieu).localeCompare(String(a.ngay_phieu)) ||
+        String(a.ma_sp_goc).localeCompare(String(b.ma_sp_goc), 'vi') ||
+        String(a.ma_sp_qr).localeCompare(String(b.ma_sp_qr), 'vi')
+      );
 
       const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
       const useCurrentSnapshot = (!denNgay || denNgay >= today) && (!tuNgay || tuNgay <= today);
@@ -17215,6 +17247,8 @@ export function createApp() {
       return res.json({
         chi_tiet_records: chiTietRecords,
         tong_hop_records: tongHopRecords,
+        nhap_records: nhapRecords,
+        xuat_records: xuatRecords,
         source: 'chi_tiet_san_pham+bien_dong_chi_tiet_san_pham'
       });
     } catch (err: any) {

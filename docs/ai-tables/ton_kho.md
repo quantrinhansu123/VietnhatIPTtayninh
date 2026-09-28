@@ -10,7 +10,7 @@
 
 | Method | Path | Nội dung |
 |---|---|---|
-| GET | `/api/ton-kho-qr-data` | Trả danh sách QR đang trong kho từ snapshot và số đầu kỳ/nhập/xuất/điều chỉnh/cuối kỳ từ sổ biến động QR |
+| GET | `/api/ton-kho-qr-data` | Trả danh sách QR đang trong kho, bảng tổng hợp kỳ, và danh sách dòng nhập/xuất trong kỳ từ sổ biến động QR |
 | GET | `/api/ton-kho/chi-tiet` | API tồn kho cũ, không còn được feature `/ton-kho` gọi |
 | GET | `/api/ton-kho/tong-hop` | API tồn kho dùng chung, hiện vẫn được `/kho-hang` gọi |
 
@@ -18,7 +18,7 @@
 
 | File | Nội dung |
 |---|---|
-| `src/features/ton-kho/index.tsx` | Mặc định mở Bảng tổng hợp; danh sách chi tiết đọc từng QR đang trong kho từ `chi_tiet_san_pham`, tổng hợp tồn đầu/nhập/xuất/điều chỉnh/tồn cuối từ `bien_dong_chi_tiet_san_pham` |
+| `src/features/ton-kho/index.tsx` | 3 tab chính: **Kiểm tồn** · **Xuất kho** · **Nhập kho**. Tab Kiểm tồn có 2 chế độ Chi tiết / Tổng hợp. Xuất/Nhập liệt kê từng QR biến động trong kỳ |
 | `src/App.tsx` | Shell routing, import `TonKhoPanel` |
 | `src/app/menus.tsx` | Menu và tiêu đề tab |
 

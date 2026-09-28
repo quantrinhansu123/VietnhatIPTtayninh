@@ -46,7 +46,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `kho_nvl` | `/kho-hang` (cũ: `/kho-nvl`) | [kho_nvl.md](./kho_nvl.md) |
 | `ma_qr_nvl` | `/kho-hang` (QR đã cấp của NVL) | [kho_nvl.md](./kho_nvl.md) |
 | `kho` *(DB kho mới)* | `/phieu-xuat-nhap-kho` (quét máy) | [kho.md](./kho.md) |
-| `phieu_xuat_nhap_kho` | `/phieu-xuat-nhap-kho` | [phieu_xuat_nhap_kho.md](./phieu_xuat_nhap_kho.md) |
+| `phieu_kho` | `/phieu-xuat-nhap-kho` | [phieu_xuat_nhap_kho.md](./phieu_xuat_nhap_kho.md) |
 | `ton_kho` *(tổng hợp)* | `/ton-kho` | [ton_kho.md](./ton_kho.md) |
 | `don_hang` | `/don-hang` | [don_hang.md](./don_hang.md) |
 | `khach_hang` | `/khach-hang` | [khach_hang.md](./khach_hang.md) |

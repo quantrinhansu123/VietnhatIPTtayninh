@@ -16,7 +16,7 @@
 --
 -- Lưu ý phân tách DB:
 --   • Tính tồn kho sổ cái (/ton-kho, /kho-hang) nằm trên DB he-thong
---     (kho_nvl + san_pham + phieu_xuat_nhap_kho + RPC supabase-ton-kho-rpc.sql).
+--     (kho_nvl + san_pham + nhap_kho/xuat_kho + RPC supabase-ton-kho-rpc.sql).
 --   • Kiểm kho (/kiem-kho) thường nằm DB riêng SUPABASE_KIEM_KHO_* —
 --     xem supabase-kiem-kho.sql + supabase-kiem-kho-tong-hop.sql.
 -- =============================================================================

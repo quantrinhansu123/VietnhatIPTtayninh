@@ -59,7 +59,8 @@ const weigh =
 const TEXT_TARGETS = [
   { table: 'kho_nvl', id: 'id', cols: ['ma_npl'] },
   { table: 'import_sp', id: 'id', cols: ['ma_nvl'] },
-  { table: 'phieu_xuat_nhap_kho', id: 'id', cols: ['ma_npl'] },
+  { table: 'nhap_kho', id: 'id', cols: ['ma_sp'] },
+  { table: 'xuat_kho', id: 'id', cols: ['ma_sp'] },
   { table: 'kiem_kho', id: 'id', cols: ['ma_nvl'] },
   { table: 'kiem_kho_tong_hop', id: 'id', cols: ['ma_nvl'] },
   { table: 'bao_cao_hang_hong', id: 'id', cols: ['ma_vat_tu'] },

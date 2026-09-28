@@ -1,26 +1,26 @@
-# phieu_xuat_nhap_kho
+# Phiếu xuất nhập kho
 
 | | |
 |---|---|
-| **Bảng** | Lịch sử kho mới: `phieu_nhap`, `phieu_xuat`, `nhap_kho`, `xuat_kho`; các phiếu cũ vẫn nằm trong `phieu_xuat_nhap_kho` |
+| **Bảng** | Header: `phieu_nhap`, `phieu_xuat`; dòng sản phẩm: `nhap_kho`, `xuat_kho` |
 | **Tab** | `warehouse-slip`, `warehouse-history` |
-| **SQL** | `supabase-phieu-xuat-nhap-kho.sql` + migrate `supabase-phieu-xuat-nhap-kho-*.sql` (căn cứ báo cáo: `supabase-phieu-xuat-nhap-kho-can-cu-bao-cao.sql`; QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; QR NVL: `supabase-ma-qr-nvl.sql`; máy: `supabase-phieu-xuat-nhap-kho-may.sql`; treo: `supabase-phieu-xuat-nhap-kho-treo.sql`; ảnh thực tế: `supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql`; bỏ ảnh số bao: `supabase-phieu-xuat-nhap-kho-xoa-anh-so-bao-thuc-te.sql`) |
+| **SQL** | `supabase-db-kho.sql` (header + dòng); QR thành phẩm: `supabase-phieu-nhap-san-pham-ma-chi-tiet.sql`; QR NVL: `supabase-ma-qr-nvl.sql` |
 
 ## API (`server.ts`)
 
 | Method | Path | Dòng |
 |--------|------|------|
-| GET | `/api/phieu-xuat-nhap-kho` | Danh sách phiếu; lọc `loai`, `loai_kho`, `ma_sp` (khớp cả bản không dấu cách) |
+| GET | `/api/kho/luu-phieu` | Danh sách phiếu; lọc `loai`, `loai_kho`, `ma_sp` |
 | GET | `/api/kho/lich-su` | Trang `/lich-su-xuat-nhap-kho` ghép header và chi tiết từ DB kho mới theo `ma_phieu` |
 | GET / DELETE | `/api/kho/chi-tiet` | Đọc danh sách mã QR đã quét hoặc xóa mã trong phiếu nháp |
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | Nhật ký theo SP — dùng tab Nhập kho / Xuất kho trong Xem sản phẩm |
-| GET | `/api/phieu-xuat-nhap-kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
-| GET | `/api/phieu-xuat-nhap-kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
+| GET | `/api/kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
+| GET | `/api/kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
 | GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng chung cho tab Nhập kho lẫn tab Xuất kho treo) |
-| POST | `/api/phieu-xuat-nhap-kho` | ~5263 (body có thể kèm `treo: true` khi lưu phiếu xuất kho treo) |
-| POST | `/api/phieu-xuat-nhap-kho/:slipCode/xac-nhan-treo` | Endpoint tương thích cho phiếu treo cũ; giao diện mới không còn tạo phiếu chờ xác nhận |
-| PUT | `/api/phieu-xuat-nhap-kho/:slipCode` | ~5377 |
-| DELETE | slip / id | ~5495+ |
+| POST | `/api/kho/luu-phieu` | Lưu header + dòng trên DB kho mới; body có thể kèm `treo: true` |
+| POST | `/api/kho/phieu/:slipCode/xac-nhan-treo` | Chốt phiếu xuất treo |
+| PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu nhập chưa in |
+| DELETE | `/api/kho/phieu/:slipCode` hoặc `/api/kho/dong/:id` | Xóa phiếu hoặc một dòng |
 
 ## Frontend
 
@@ -60,9 +60,9 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 - Phiếu **Nhập** tự lưu các phiếu đang quét vào trình duyệt (gồm cả mã tem đầy đủ để tiếp tục chống quét trùng). Người dùng có thể chọn lại **Phiếu đang quét**, bấm **Lưu tạm phiếu**, xóa phiếu tạm hoặc **In tạm phiếu**. Không có nút tạo phiếu mới thủ công; chỉ sau khi **Lưu & in phiếu nhập kho** thành công, form mới được làm trống để lập phiếu tiếp theo. Bản lưu/in tạm không gọi API, không ghi lịch sử và không cập nhật tồn kho.
 - Modal quét máy/QR: mỗi lần quét thành công **ghi thẳng** 1 dòng vào DB kho mới (`nhap_kho`/`xuat_kho` qua `POST /api/kho/quet`, `so_luong=1`) — **không** cộng dồn SL trên dòng đã có. Tem serial trùng tuyệt đối → bỏ qua. Xem [kho.md](./kho.md).
 - Phiếu **Xuất** có **SL CT** (`so_luong_chung_tu`) và **SL THỰC** (`so_luong`). Tồn kho và thành tiền vẫn tính theo `so_luong`.
-- Form **Xuất kho** có **Chụp ảnh số cân thực tế** — upload Cloudinary (`/api/cloudinary/upload`, folder `phieu_xuat_nhap_kho`), lưu URL vào `link_anh_can_thuc_te` trên mỗi dòng `phieu_xuat_nhap_kho` (cùng giá trị header phiếu). Xem ảnh trong modal Chi tiết phiếu (Lịch sử) qua `WeighingImagePreviewModal`.
+- Form **Xuất kho** có **Chụp ảnh số cân thực tế** — upload Cloudinary (`/api/cloudinary/upload`), lưu URL vào `link_anh_can_thuc_te` trên mỗi dòng `xuat_kho`. Xem ảnh trong modal Chi tiết phiếu (Lịch sử) qua `WeighingImagePreviewModal`.
 - Dòng NVL **thêm thủ công** hiển thị trường ảnh số cân ở giữa; dòng được **quét mã** đặt cờ `isScanned` và không yêu cầu/hiển thị trường ảnh này.
-- Phiếu **Nhập kho thành phẩm** nhận mã gốc + số lượng nguyên. API dùng thuật toán serial cũ để sinh từng mã đầy đủ, rồi RPC `tao_phieu_nhap_san_pham_voi_ma_chi_tiet` đăng ký mã và ghi mỗi serial thành một dòng phiếu số lượng 1 trong cùng transaction.
+- Phiếu **Nhập kho thành phẩm** nhận mã gốc + số lượng nguyên. API sinh từng mã đầy đủ, ghi mỗi serial thành một dòng `nhap_kho` số lượng 1 và đồng bộ mã QR sau khi chốt phiếu.
 - Sau khi lưu, UI lần lượt mở file phiếu nhập và file tem QR. Có thể in lại đúng bộ tem tại **Lịch sử xuất nhập kho → Kho sản phẩm → Xem chi tiết → In mã QR**.
 
 

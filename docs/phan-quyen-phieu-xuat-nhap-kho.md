@@ -10,8 +10,7 @@
 
 **Đã làm, đúng yêu cầu.**
 
-- `supabase-bao-cao-hang-hong-tu-dong-nhap-kho.sql`: thêm kho **"Kho hàng hỏng"** vào `quan_ly_kho` (idempotent), thêm cột `phieu_xuat_nhap_kho.id_bao_cao_hang_hong` (khóa liên kết 1‑1, có unique index), và trigger `bao_cao_hang_hong_tu_dong_nhap_kho` chạy sau **insert/update/delete** trên `bao_cao_hang_hong`:
-  - Insert/update báo cáo → upsert đúng 1 dòng phiếu **nhập** vào `phieu_xuat_nhap_kho` (`loai_kho='hang_hong'`, `loai_phieu='nhap'`), map loại hàng hỏng → mã/tên NVL, số lượng, đơn vị.
+- `supabase-bao-cao-hang-hong-tu-dong-nhap-kho.sql`: dọn trigger cũ; dữ liệu chỉ được ghi khi thủ kho kiểm tra và lưu vào `phieu_nhap`/`nhap_kho`.
   - Báo cáo cũ không có số lượng (chỉ ghi chú) → không sinh dòng tồn kho rác.
   - Xóa báo cáo → xóa đúng dòng phiếu đã sinh.
 - Frontend: thêm `WarehouseKind = 'hang_hong'`, tab riêng **"Kho hàng hỏng"** trong Lịch sử xuất nhập kho, menu card riêng (`damaged-goods-warehouse` → `/kho-hang-hong`), filter API `khoFilter === 'hang_hong'` (server.ts), nhãn in phiếu.
@@ -81,4 +80,4 @@ Quyền **Xem/Thêm/Sửa/Xóa** đều tách theo loại kho. Hai route `/phieu
 
 - Migration quyền đã chạy trên DB chính ngày 2026-08-12 và có thể chạy lại an toàn. Script mặc định là dry-run; chỉ ghi khi truyền `--apply`.
 - Việc gộp 4 kho mới (hàng hỏng/hàng hóa/công cụ dụng cụ/gia công) vào nhóm Vật tư là quyết định nghiệp vụ đã chốt cùng người yêu cầu — nếu sau này có người phụ trách riêng cho 1 trong 4 kho này, chỉ cần thêm 1 tab quyền mới tương tự (`warehouse-slip-<kho>`) và sửa `warehouseKindPermissionTab()` map đúng kho đó, không cần đổi kiến trúc.
-- Phân quyền hiện tại (toàn hệ thống, không riêng việc này) chỉ enforce ở client. Nếu sau này cần chặn cứng ở API (ví dụ nhân viên gọi thẳng `POST /api/phieu-xuat-nhap-kho` với `loai_kho=san_pham` dù không có quyền), sẽ cần thêm 1 lớp middleware đọc quyền theo user ở `server.ts` — đây là thay đổi lớn hơn nhiều, ảnh hưởng mọi route, nên tách thành việc riêng nếu được yêu cầu.
+- Phân quyền hiện tại (toàn hệ thống, không riêng việc này) chỉ enforce ở client. Nếu sau này cần chặn cứng ở API, cần thêm một lớp middleware đọc quyền theo user ở `server.ts`.

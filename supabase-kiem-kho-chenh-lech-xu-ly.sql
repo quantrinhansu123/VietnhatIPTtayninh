@@ -95,6 +95,6 @@ comment on column public.kiem_kho_chenh_lech_xu_ly.dot_kiem_kho is 'Dot kiem kho
 comment on column public.kiem_kho_chenh_lech_xu_ly.ma_sp is 'Ma san pham nguyen ban, giu day du hau to lo/serial neu co.';
 comment on column public.kiem_kho_chenh_lech_xu_ly.loai_phieu is 'nhap hoac xuat — loai phieu dieu chinh da tao.';
 comment on column public.kiem_kho_chenh_lech_xu_ly.so_luong_dieu_chinh is 'So luong da dieu chinh (tri tuyet doi cua chenh lech tai thoi diem xu ly).';
-comment on column public.kiem_kho_chenh_lech_xu_ly.ma_phieu_dieu_chinh is 'Ma phieu tao o public.phieu_xuat_nhap_kho (DB chinh).';
+comment on column public.kiem_kho_chenh_lech_xu_ly.ma_phieu_dieu_chinh is 'Ma phieu tao o public.phieu_nhap/phieu_xuat.';
 comment on column public.kiem_kho_chenh_lech_xu_ly.nguoi_xu_ly is 'Nguoi bam tao phieu dieu chinh.';
 comment on column public.kiem_kho_chenh_lech_xu_ly.xu_ly_luc is 'Thoi diem tao phieu dieu chinh.';

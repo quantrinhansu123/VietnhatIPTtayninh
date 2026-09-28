@@ -1806,7 +1806,7 @@ export function WarehouseSlipPanel({
         ma_npl: materialCode,
         ngay: String(dateIso || new Date().toISOString().slice(0, 10)).slice(0, 10)
       });
-      const res = await fetch(`/api/phieu-xuat-nhap-kho/gia-tb-nhap?${params.toString()}`, {
+      const res = await fetch(`/api/kho/gia-tb-nhap?${params.toString()}`, {
         signal: abortController.signal
       });
       const data = await res.json().catch(() => ({}));
@@ -3348,29 +3348,8 @@ export function WarehouseSlipPanel({
     };
 
     try {
-      if (showProductExportTabs || (scannedItemCount > 0 && !isXuatTreoFlow)) {
-        const headerRes = await fetch('/api/kho/phieu', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            loai_phieu: printSlipType,
-            ma_phieu: editSlipCode || khoScanMaPhieuRef.current || newSlipCode,
-            ngay: slipDate,
-            nhan_su: createdBy.trim() || loginName,
-            kho: warehouseName.trim(),
-            ca: shiftLabelForSave,
-            may: showWarehouseShiftAndMachine ? machine.trim() : '',
-            ghi_chu: note.trim(),
-            status: showProductExportTabs ? 'chua_chot' : editSlipCode ? 'da_chot' : 'chua_chot'
-          })
-        });
-        const headerData = await headerRes.json().catch(() => ({}));
-        if (!headerRes.ok) {
-          throw new Error(readApiErrorMessage(headerRes, headerData, 'Không thể lưu thông tin phiếu vào DB kho.'));
-        }
-      }
       const res = await fetch(
-        isEditing ? `/api/phieu-xuat-nhap-kho/${encodeURIComponent(editSlipCode!)}` : '/api/phieu-xuat-nhap-kho',
+        isEditing ? `/api/kho/luu-phieu/${encodeURIComponent(editSlipCode!)}` : '/api/kho/luu-phieu',
         {
           method: isEditing ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3392,34 +3371,6 @@ export function WarehouseSlipPanel({
       const savedSlipCode = String(data.slipCode || editSlipCode || '').trim();
       if (!savedSlipCode) {
         throw new Error('Máy chủ chưa xác nhận mã phiếu đã lưu. Phiếu sẽ không được in.');
-      }
-      if (warehouseKind === 'nvl' || warehouseKind === 'hang_hong') {
-        const khoResponse = await fetch('/api/kho/phieu', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            loai_phieu: printSlipType,
-            ma_phieu: savedSlipCode,
-            ngay: slipDate,
-            nhan_su: createdBy.trim() || loginName,
-            kho: warehouseName.trim(),
-            ca: shiftLabelForSave,
-            may: showWarehouseShiftAndMachine ? machine.trim() : '',
-            ghi_chu: note.trim(),
-            status: 'da_chot',
-            loai: warehouseKind,
-            items: payloadItems.map(item => ({
-              ma_sp: item.code,
-              ten_sp: item.name,
-              don_vi: item.unit,
-              so_luong: item.quantity
-            }))
-          })
-        });
-        const khoData = await khoResponse.json().catch(() => ({}));
-        if (!khoResponse.ok) {
-          throw new Error(readApiErrorMessage(khoResponse, khoData, 'Không thể lưu chi tiết nhập tay vào DB kho.'));
-        }
       }
       if (showProductExportTabs) {
         const statusResponse = await fetch('/api/kho/phieu', {
@@ -5171,7 +5122,7 @@ export function WarehouseHistoryPanel({
     if (codes.length === 0) return;
     setMovements(prev => prev.map(row => (codes.includes(row.slipCode) ? { ...row, daIn: true } : row)));
     codes.forEach(code => {
-      fetch(`/api/phieu-xuat-nhap-kho/${encodeURIComponent(code)}/danh-dau-da-in`, { method: 'POST' }).catch(() => {});
+      fetch(`/api/kho/phieu/${encodeURIComponent(code)}/danh-dau-da-in`, { method: 'POST' }).catch(() => {});
     });
   };
 
@@ -5234,7 +5185,7 @@ export function WarehouseHistoryPanel({
     setHistoryQrError('');
     try {
       const response = await fetch(
-        `/api/phieu-xuat-nhap-kho/${encodeURIComponent(viewingSlipCode)}/ma-qr`
+        `/api/kho/phieu/${encodeURIComponent(viewingSlipCode)}/ma-qr`
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Không thể tải mã QR của phiếu nhập.');

@@ -390,8 +390,8 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/can-tu-dong?from=${encodedDate}&to=${encodedDate}&dateBy=ngay&images=0&limit=10000`),
       // Phiếu in tổng hợp lấy lại danh mục hiện tại để định mức không bị giữ từ cache màn hình.
       fetchJson('/api/san-pham?format=table'),
-      fetchJson(`/api/phieu-xuat-nhap-kho?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
-      fetchJson(`/api/phieu-xuat-nhap-kho?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
+      fetchJson(`/api/kho/lich-su?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
+      fetchJson(`/api/kho/lich-su?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
       fetchJson('/api/kho-nvl'),
       fetchJson(`/api/bb-bao-cao-tinh-toan?khoa_on_dinh=${encodeURIComponent(totalReportKey)}`),
       fetchJson(`/api/bb-giai-trinh?dateFrom=${encodedDate}&dateTo=${encodedDate}`)

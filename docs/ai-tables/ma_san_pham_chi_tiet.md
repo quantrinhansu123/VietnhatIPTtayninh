@@ -13,8 +13,8 @@
 |---|---|---|
 | GET | `/api/san-pham/:id/ma-chi-tiet` | Danh sách mã đầy đủ của sản phẩm |
 | POST | `/api/ma-san-pham/danh-dau-in` | Tăng số lần in các mã đã chọn |
-| GET | `/api/phieu-xuat-nhap-kho/:slipCode/ma-qr` | Danh sách QR được sinh bởi một phiếu nhập |
-| POST | `/api/phieu-xuat-nhap-kho` | Phiếu nhập thành phẩm sinh serial + mã + tồn kho trong một transaction |
+| GET | `/api/kho/phieu/:slipCode/ma-qr` | Danh sách QR được sinh bởi một phiếu nhập |
+| POST | `/api/kho/luu-phieu` | Phiếu nhập thành phẩm lưu header + dòng QR trên DB kho mới |
 
 ## Frontend
 
@@ -22,6 +22,6 @@
 
 ## Quy tắc tồn kho
 
-- Mỗi mã đầy đủ có một dòng nhập kho số lượng 1 trong `phieu_xuat_nhap_kho`.
+- Mỗi mã đầy đủ có một dòng nhập kho số lượng 1 trong `nhap_kho`.
 - Chi tiết tồn kho giữ nguyên hậu tố; tổng hợp gom theo tiền tố trước `_`.
 - Thêm/sửa/xóa phiếu kho thành phẩm sẽ đồng bộ `trang_thai` của mã thành `trong_kho` hoặc `da_xuat`.

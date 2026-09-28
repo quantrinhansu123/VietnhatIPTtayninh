@@ -582,7 +582,7 @@ export function MaterialViewModal({
         const params = new URLSearchParams();
         params.set('loai_kho', 'nvl');
         params.set('ma_npl', material.code);
-        const res = await fetch(`/api/phieu-xuat-nhap-kho?${params.toString()}`);
+        const res = await fetch(`/api/kho/lich-su?${params.toString()}`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Không thể tải lịch sử xuất nhập.');
         setMovements(parseMaterialMovements(data));

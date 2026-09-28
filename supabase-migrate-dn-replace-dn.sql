@@ -13,7 +13,8 @@ begin
   foreach stmt in array array[
     'update public.kho_nvl set ma_npl = replace(ma_npl, ''ĐN'', ''DN'') where ma_npl like ''%ĐN%''',
     'update public.import_sp set ma_nvl = replace(ma_nvl, ''ĐN'', ''DN'') where ma_nvl like ''%ĐN%''',
-    'update public.phieu_xuat_nhap_kho set ma_npl = replace(ma_npl, ''ĐN'', ''DN'') where ma_npl like ''%ĐN%''',
+    'update public.nhap_kho set ma_sp = replace(ma_sp, ''ĐN'', ''DN'') where ma_sp like ''%ĐN%''',
+    'update public.xuat_kho set ma_sp = replace(ma_sp, ''ĐN'', ''DN'') where ma_sp like ''%ĐN%''',
     'update public.kiem_kho set ma_nvl = replace(ma_nvl, ''ĐN'', ''DN'') where ma_nvl like ''%ĐN%''',
     'update public.kiem_kho_tong_hop set ma_nvl = replace(ma_nvl, ''ĐN'', ''DN'') where ma_nvl like ''%ĐN%''',
     'update public.bao_cao_hang_hong set ma_vat_tu = replace(ma_vat_tu, ''ĐN'', ''DN'') where ma_vat_tu like ''%ĐN%''',

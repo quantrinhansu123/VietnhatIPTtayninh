@@ -87,11 +87,19 @@ alter table public.phieu_xuat add column if not exists ca text;
 alter table public.phieu_xuat add column if not exists may text;
 alter table public.phieu_xuat add column if not exists ghi_chu text;
 alter table public.phieu_xuat add column if not exists status text not null default 'da_chot';
+alter table public.phieu_xuat add column if not exists ly_do text;
+alter table public.phieu_xuat add column if not exists nguoi_lap text;
+alter table public.phieu_xuat add column if not exists da_in boolean not null default false;
+alter table public.phieu_xuat add column if not exists treo boolean not null default false;
 alter table public.phieu_nhap add column if not exists kho text;
 alter table public.phieu_nhap add column if not exists ca text;
 alter table public.phieu_nhap add column if not exists may text;
 alter table public.phieu_nhap add column if not exists ghi_chu text;
 alter table public.phieu_nhap add column if not exists status text not null default 'da_chot';
+alter table public.phieu_nhap add column if not exists ly_do text;
+alter table public.phieu_nhap add column if not exists nguoi_lap text;
+alter table public.phieu_nhap add column if not exists da_in boolean not null default false;
+alter table public.phieu_nhap add column if not exists treo boolean not null default false;
 
 -- -----------------------------------------------------------------------------
 -- 3) Dòng xuất kho
@@ -112,6 +120,19 @@ create table if not exists public.xuat_kho (
 alter table public.xuat_kho add column if not exists ma_sp_quet text;
 alter table public.xuat_kho add column if not exists ten_sp text;
 alter table public.xuat_kho add column if not exists don_vi text;
+alter table public.xuat_kho add column if not exists so_luong_chung_tu numeric(18, 4);
+alter table public.xuat_kho add column if not exists don_gia numeric(18, 4) not null default 0;
+alter table public.xuat_kho add column if not exists thanh_tien numeric(18, 4) not null default 0;
+alter table public.xuat_kho add column if not exists ly_do text;
+alter table public.xuat_kho add column if not exists can_cu_bao_cao text;
+alter table public.xuat_kho add column if not exists id_dong_nhap_nguon uuid;
+alter table public.xuat_kho add column if not exists ma_phieu_nhap_nguon text;
+alter table public.xuat_kho add column if not exists link_anh_can_thuc_te text;
+alter table public.xuat_kho add column if not exists link_anh_can_thuc_te_public_id text;
+alter table public.xuat_kho add column if not exists link_anh_bao_thuc_te text;
+alter table public.xuat_kho add column if not exists link_anh_bao_thuc_te_public_id text;
+alter table public.xuat_kho add column if not exists id_bao_cao_nghiem_thu uuid;
+alter table public.xuat_kho add column if not exists id_bao_cao_hang_hong uuid;
 
 create index if not exists idx_xuat_kho_ma_sp on public.xuat_kho (ma_sp);
 create index if not exists idx_xuat_kho_ma_phieu on public.xuat_kho (ma_phieu);
@@ -151,6 +172,19 @@ create table if not exists public.nhap_kho (
 alter table public.nhap_kho add column if not exists ma_sp_quet text;
 alter table public.nhap_kho add column if not exists ten_sp text;
 alter table public.nhap_kho add column if not exists don_vi text;
+alter table public.nhap_kho add column if not exists so_luong_chung_tu numeric(18, 4);
+alter table public.nhap_kho add column if not exists don_gia numeric(18, 4) not null default 0;
+alter table public.nhap_kho add column if not exists thanh_tien numeric(18, 4) not null default 0;
+alter table public.nhap_kho add column if not exists ly_do text;
+alter table public.nhap_kho add column if not exists can_cu_bao_cao text;
+alter table public.nhap_kho add column if not exists id_dong_nhap_nguon uuid;
+alter table public.nhap_kho add column if not exists ma_phieu_nhap_nguon text;
+alter table public.nhap_kho add column if not exists link_anh_can_thuc_te text;
+alter table public.nhap_kho add column if not exists link_anh_can_thuc_te_public_id text;
+alter table public.nhap_kho add column if not exists link_anh_bao_thuc_te text;
+alter table public.nhap_kho add column if not exists link_anh_bao_thuc_te_public_id text;
+alter table public.nhap_kho add column if not exists id_bao_cao_nghiem_thu uuid;
+alter table public.nhap_kho add column if not exists id_bao_cao_hang_hong uuid;
 
 create index if not exists idx_nhap_kho_ma_sp on public.nhap_kho (ma_sp);
 create index if not exists idx_nhap_kho_ma_phieu on public.nhap_kho (ma_phieu);

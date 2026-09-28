@@ -1,4 +1,4 @@
--- DEPRECATED: Ảnh số cân/bao thực tế thuộc bảng phieu_xuat_nhap_kho — dùng supabase-phieu-xuat-nhap-kho-anh-thuc-te.sql
+-- Ảnh số cân/bao thực tế của phiếu xuất được lưu trên xuat_kho.
 -- Ảnh chụp số cân thực tế / số bao thực tế (Cloudinary URL lưu trên kho_nvl — không dùng nữa)
 -- Chạy trong Supabase SQL Editor
 

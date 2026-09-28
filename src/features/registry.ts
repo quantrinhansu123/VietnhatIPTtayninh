@@ -17,7 +17,7 @@ export type TableId =
   | 'ma_san_pham_chi_tiet'
   | 'danh_sach_may'
   | 'kho_nvl'
-  | 'phieu_xuat_nhap_kho'
+  | 'phieu_kho'
   | 'ton_kho'
   | 'don_hang'
   | 'khach_hang'
@@ -194,7 +194,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     table: 'ma_san_pham_chi_tiet',
     label: 'Mã QR/serial chi tiết của sản phẩm',
     sql: ['supabase-san-pham-ma-chi-tiet.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
-    apiPrefix: '/api/phieu-xuat-nhap-kho/:slipCode/ma-qr | /api/ma-san-pham/danh-dau-in',
+    apiPrefix: '/api/kho/phieu/:slipCode/ma-qr | /api/ma-san-pham/danh-dau-in',
     serverLines: 'API sinh mã khi nhập thành phẩm + đồng bộ phiếu xuất nhập kho',
     appTab: 'warehouse-history',
     appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
@@ -227,12 +227,12 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/utils/materialCatalogExcel.ts'
     ]
   },
-  phieu_xuat_nhap_kho: {
-    table: 'phieu_xuat_nhap_kho',
+  phieu_kho: {
+    table: 'phieu_kho',
     label: 'Phiếu xuất nhập kho',
-    sql: ['supabase-phieu-xuat-nhap-kho.sql', 'supabase-phieu-xuat-nhap-kho-*.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
-    apiPrefix: '/api/phieu-xuat-nhap-kho',
-    serverLines: '4786–5118',
+    sql: ['supabase-db-kho.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
+    apiPrefix: '/api/kho',
+    serverLines: 'API /api/kho/* trong server.ts',
     appTab: 'warehouse-slip | warehouse-history',
     appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx',
     components: ['src/components/WarehouseSlipPrintModal.tsx', 'src/components/ProductQrPrintModal.tsx'],

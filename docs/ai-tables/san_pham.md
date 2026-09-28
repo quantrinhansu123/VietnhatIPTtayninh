@@ -61,7 +61,7 @@ Xóa SP: `DELETE /api/san-pham` gọi RPC `xoa_san_pham_hang_loat` (hoặc FK `O
 - Nút **In mã QR** tại `/kho-hang` gọi RPC `cap_ma_qr_hang_hoa` để lưu mã vào `ma_qr_hang_hoa` trước khi xem trước/in.
 - Dạng mã: `MãSP_` + hậu tố random **11 ký tự** từ `A-Z` và `0-9`; hậu tố luôn có cả chữ và số. `UNIQUE(ma_qr)` chống trùng khi nhiều người in cùng lúc.
 - Bấm in cập nhật `so_lan_in` và `ngay_in_gan_nhat`.
-- Trong **Xem sản phẩm** có tab **Mã QR đã cấp**: xem mã, trạng thái, ngày cấp, lịch sử in và chọn mã để in lại.
+- Trong **Xem sản phẩm** có tab **Mã QR đã cấp**: xem mã, trạng thái, ngày cấp và lịch sử in.
 
 ### Excel danh mục SP
 

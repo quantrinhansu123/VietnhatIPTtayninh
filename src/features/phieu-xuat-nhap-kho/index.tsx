@@ -3361,7 +3361,7 @@ export function WarehouseSlipPanel({
             ca: shiftLabelForSave,
             may: showWarehouseShiftAndMachine ? machine.trim() : '',
             ghi_chu: note.trim(),
-            status: editSlipCode ? 'da_chot' : 'chua_chot'
+            status: showProductExportTabs ? 'chua_chot' : editSlipCode ? 'da_chot' : 'chua_chot'
           })
         });
         const headerData = await headerRes.json().catch(() => ({}));
@@ -3434,7 +3434,9 @@ export function WarehouseSlipPanel({
             ca: shiftLabelForSave,
             may: showWarehouseShiftAndMachine ? machine.trim() : '',
             ghi_chu: note.trim(),
-            status: 'da_chot'
+            status: 'da_chot',
+            ...(printSlipType === 'nhap' ? { dong_bo_chi_tiet_san_pham: true } : {}),
+            ...(printSlipType === 'xuat' ? { danh_dau_chi_tiet_san_pham_da_xuat: true } : {})
           })
         });
         const statusData = await statusResponse.json().catch(() => ({}));

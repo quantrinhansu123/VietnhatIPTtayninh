@@ -442,11 +442,24 @@ export function XuLyChenhLechPanel({
       const params = new URLSearchParams();
       params.set('dotKiemKho', dot);
       params.set('limit', '500');
+      params.set('offset', '0');
       if (kho !== 'all') params.set('tenKho', kho);
       const res = await fetch(`/api/kiem-kho?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh sách chi tiết đã kiểm kê.'));
-      setDetailLines(normalizeDetailLines(data));
+      const allRecords = Array.isArray((data as any)?.records) ? [...(data as any).records] : [];
+      const total = Number((data as any)?.total) || allRecords.length;
+      for (let offset = allRecords.length; offset < total; offset += 500) {
+        const pageParams = new URLSearchParams(params);
+        pageParams.set('offset', String(offset));
+        const pageRes = await fetch(`/api/kiem-kho?${pageParams.toString()}`);
+        const pageData = await pageRes.json().catch(() => ({}));
+        if (!pageRes.ok) throw new Error(readApiErrorMessage(pageRes, pageData, 'Không tải được danh sách chi tiết đã kiểm kê.'));
+        const pageRecords = Array.isArray((pageData as any)?.records) ? (pageData as any).records : [];
+        if (!pageRecords.length) break;
+        allRecords.push(...pageRecords);
+      }
+      setDetailLines(normalizeDetailLines({ records: allRecords }));
     } catch (err: any) {
       setDetailLines([]);
       const text = err?.message || 'Không tải được danh sách chi tiết đã kiểm kê.';
@@ -492,6 +505,16 @@ export function XuLyChenhLechPanel({
     const isSameWarehouse = (scannedWarehouse: string | null, systemWarehouse: string | null) =>
       !scannedWarehouse || !systemWarehouse || scannedWarehouse === systemWarehouse;
     const rows: ReconciliationRow[] = [];
+    const scannedByCode = new Map<string, KiemKhoDetailRow[]>();
+    const scannedByPrefix = new Map<string, KiemKhoDetailRow[]>();
+    for (const line of detailLines) {
+      const byCode = scannedByCode.get(line.ma_sp) || [];
+      byCode.push(line);
+      scannedByCode.set(line.ma_sp, byCode);
+      const byPrefix = scannedByPrefix.get(line.ma_nvl) || [];
+      byPrefix.push(line);
+      scannedByPrefix.set(line.ma_nvl, byPrefix);
+    }
 
     for (const systemLine of heThongChiTiet) {
       if (systemLine.ton_cuoi_ky <= 0) continue;
@@ -500,15 +523,15 @@ export function XuLyChenhLechPanel({
       // Khi đợt kiểm đã quét các mã lô/serial cùng tiền tố, không hiển thị mã gốc
       // thành một sản phẩm chưa kiểm riêng biệt bên cạnh các mã hậu tố đó.
       const isBaseCatalogLine = systemLine.ma === systemLine.ma_goc;
-      const hasScannedSuffixForBase = detailLines.some(
+      const hasScannedSuffixForBase = isBaseCatalogLine && Boolean(scannedByPrefix.get(systemLine.ma_goc)?.some(
         line =>
           line.ma_nvl === systemLine.ma_goc &&
           line.ma_sp !== line.ma_nvl &&
           isSameWarehouse(line.ten_kho, systemLine.ten_kho)
-      );
+      ));
       if (isBaseCatalogLine && hasScannedSuffixForBase) continue;
 
-      const scannedLine = detailLines.find(
+      const scannedLine = (scannedByCode.get(systemLine.ma) || []).find(
         line => line.ma_sp === systemLine.ma && isSameWarehouse(line.ten_kho, systemLine.ten_kho)
       );
       rows.push({
@@ -768,6 +791,7 @@ export function XuLyChenhLechPanel({
             body: JSON.stringify({
               loaiPhieu: group.loaiPhieu,
               loaiKho: group.loaiKho,
+              laDieuChinh: true,
               ngayPhieu: adjustmentDate,
               tenKho: group.tenKhoNhom,
               lyDo: `Điều chỉnh tồn kho sau kiểm kê - đợt ${selectedDot}`,
@@ -998,7 +1022,9 @@ export function XuLyChenhLechPanel({
             <TableBody>
               {filteredReconciliation.map(row => (
                 <TableRow key={row.key}>
-                  <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-sky-700">{row.ma_hang}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-sky-700">
+                    {row.co_he_thong ? row.ma_hang : '_'}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-violet-700">
                     {row.ma_da_kiem || '—'}
                   </td>

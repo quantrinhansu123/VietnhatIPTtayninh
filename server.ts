@@ -6629,6 +6629,151 @@ function generateWarehouseSlipCode(loaiPhieu: 'nhap' | 'xuat') {
   return `${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
 }
 
+async function syncProductDetailsFromWarehouseSlip(
+  maPhieu: string,
+  kho: string,
+  loaiPhieu: 'nhap' | 'xuat'
+) {
+  if (!supabase || !supabaseKho) throw new Error('DB kho hoặc DB sản phẩm chưa được cấu hình.');
+  const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+  const { data: slipHeader, error: headerError } = await supabaseKho
+    .from(headerTable)
+    .select('ngay, kho, ca')
+    .eq('ma_phieu', maPhieu)
+    .maybeSingle();
+  if (headerError) throw new Error(`Không thể đọc thông tin phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'}. ${headerError.message}`);
+
+  const warehouseName = String(slipHeader?.kho ?? kho ?? '').trim();
+  const slipDate = String(slipHeader?.ngay ?? '').slice(0, 10);
+  const shift = String(slipHeader?.ca ?? '').trim() || null;
+  if (!warehouseName) throw new Error(`Thiếu kho của phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'} thành phẩm.`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(slipDate)) throw new Error('Phiếu thành phẩm thiếu ngày phiếu hợp lệ.');
+
+  const detailByQr = new Map<string, { ma_sp_goc: string; ma_sp_qr: string }>();
+  const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+  const batchSize = 1000;
+  const addRows = (rows: Array<{ ma_sp?: string | null; ma_sp_quet?: string | null }> | null) => {
+    for (const row of rows || []) {
+      const maSpQr = String(row.ma_sp_quet ?? '').trim();
+      const maSpGoc = String(row.ma_sp ?? '').trim();
+      if (!maSpQr) continue;
+      if (!maSpGoc) throw new Error(`Mã QR ${maSpQr} thiếu mã sản phẩm gốc.`);
+      detailByQr.set(maSpQr, { ma_sp_goc: maSpGoc, ma_sp_qr: maSpQr });
+    }
+  };
+  for (let offset = 0; ; offset += batchSize) {
+    const { data: rows, error } = await supabaseKho
+      .from(lineTable)
+      .select('ma_sp, ma_sp_quet')
+      .eq('ma_phieu', maPhieu)
+      .eq('loai', 'san_pham')
+      .not('ma_sp_quet', 'is', null)
+      .neq('ma_sp_quet', '')
+      .order('ma_sp_quet', { ascending: true })
+      .range(offset, offset + batchSize - 1);
+    if (error) throw new Error(`Không thể đọc mã QR của phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'}. ${error.message}`);
+    addRows(rows);
+    if (!rows || rows.length < batchSize) break;
+  }
+
+  const details = [...detailByQr.values()];
+  if (details.length === 0) {
+    throw new Error(`Phiếu ${maPhieu} không có mã QR thành phẩm để đồng bộ.`);
+  }
+  const { data: affectedRows, error } = await supabase.rpc('sync_chi_tiet_san_pham', {
+    p_loai_phieu: loaiPhieu,
+    p_ma_phieu: maPhieu,
+    p_ngay_phieu: slipDate,
+    p_kho: warehouseName,
+    p_ca: shift,
+    p_items: details
+  });
+  if (error) throw new Error(`Không thể ghi lịch sử và cập nhật chi_tiet_san_pham trong transaction. ${error.message}`);
+  return Number(affectedRows) || 0;
+}
+
+async function stageProductAdjustmentSlipInKhoDb(
+  parsed: {
+    loaiPhieu: 'nhap' | 'xuat';
+    ngayPhieu: string;
+    lyDo: string | null;
+    ghiChu: string | null;
+    nguoiLap: string | null;
+    ca: string | null;
+    may: string | null;
+    tenKho: string | null;
+    items: WarehouseSlipLineInput[];
+  },
+  maPhieu: string
+): Promise<{ commit: () => Promise<void>; rollback: () => Promise<void> }> {
+  if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
+  const kho = String(parsed.tenKho || '').trim();
+  if (!kho) throw new Error('Phiếu điều chỉnh cần có kho cụ thể.');
+
+  const headerTable = parsed.loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
+  const lineTable = parsed.loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+  const { data: existingHeader, error: existingError } = await supabaseKho
+    .from(headerTable)
+    .select('ma_phieu')
+    .eq('ma_phieu', maPhieu)
+    .maybeSingle();
+  if (existingError) throw new Error(`Không kiểm tra được mã phiếu ${maPhieu}. ${existingError.message}`);
+  if (existingHeader) throw new Error(`Mã phiếu ${maPhieu} đã tồn tại trong ${headerTable}.`);
+
+  const { error: headerError } = await supabaseKho.from(headerTable).insert({
+    ma_phieu: maPhieu,
+    ngay: parsed.ngayPhieu,
+    nhan_su: parsed.nguoiLap || 'Hệ thống',
+    kho,
+    ca: parsed.ca || '',
+    may: parsed.may || '',
+    ghi_chu: [parsed.lyDo, parsed.ghiChu].filter(Boolean).join(' · '),
+    status: 'chua_chot'
+  });
+  if (headerError) throw new Error(`Không tạo được header ${headerTable}. ${headerError.message}`);
+
+  const cleanup = async () => {
+    const { error: linesError } = await supabaseKho!.from(lineTable).delete().eq('ma_phieu', maPhieu);
+    const { error: rollbackHeaderError } = await supabaseKho!.from(headerTable).delete().eq('ma_phieu', maPhieu);
+    if (linesError || rollbackHeaderError) {
+      throw new Error(linesError?.message || rollbackHeaderError?.message || 'Không dọn được phiếu kho chưa chốt.');
+    }
+  };
+
+  try {
+    const lines = parsed.items.map(item => ({
+      ma_sp: item.code.trim().split('_', 1)[0].trim(),
+      ma_sp_quet: item.code.trim(),
+      ten_sp: item.name,
+      don_vi: item.unit || '',
+      loai: 'san_pham',
+      so_luong: item.quantity,
+      ma_phieu: maPhieu
+    }));
+    for (let offset = 0; offset < lines.length; offset += 500) {
+      const { error: linesError } = await supabaseKho.from(lineTable).insert(lines.slice(offset, offset + 500));
+      if (linesError) throw new Error(`Không lưu được mã QR vào ${lineTable}. ${linesError.message}`);
+    }
+  } catch (error) {
+    try {
+      await cleanup();
+    } catch (cleanupError: any) {
+      console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] adjustment slip rollback error:`, cleanupError);
+    }
+    throw error;
+  }
+
+  return {
+    commit: async () => {
+      const { error } = await supabaseKho!.from(headerTable)
+        .update({ status: 'da_chot' })
+        .eq('ma_phieu', maPhieu);
+      if (error) throw new Error(`Không chốt được phiếu ${maPhieu} trong ${headerTable}. ${error.message}`);
+    },
+    rollback: cleanup
+  };
+}
+
 async function syncMaterialInventoryFromMovements(maNpl: string) {
   if (!supabase) return;
   const code = String(maNpl || '').trim();
@@ -11712,6 +11857,22 @@ export function createApp() {
         return res.status(400).json({ error: 'status chỉ nhận chua_chot hoặc da_chot.' });
       }
 
+      const syncProductDetails = body.dong_bo_chi_tiet_san_pham === true;
+      if (syncProductDetails && (loaiPhieu !== 'nhap' || status !== 'da_chot')) {
+        return res.status(400).json({ error: 'Chỉ đồng bộ chi tiết sản phẩm khi chốt phiếu nhập.' });
+      }
+      const markProductDetailsExported = body.danh_dau_chi_tiet_san_pham_da_xuat === true;
+      if (markProductDetailsExported && (loaiPhieu !== 'xuat' || status !== 'da_chot')) {
+        return res.status(400).json({ error: 'Chỉ cập nhật chi tiết sản phẩm thành đã xuất khi chốt phiếu xuất.' });
+      }
+      if ((syncProductDetails || markProductDetailsExported) && !supabase) {
+        return res.status(503).json({ error: 'DB sản phẩm chưa được cấu hình để lưu mã QR chi tiết.' });
+      }
+      const warehouseName = String(body.kho ?? '').trim();
+      if ((syncProductDetails || markProductDetailsExported) && !warehouseName) {
+        return res.status(400).json({ error: `Thiếu kho của phiếu ${markProductDetailsExported ? 'xuất' : 'nhập'} thành phẩm.` });
+      }
+
       const hasItems = Object.prototype.hasOwnProperty.call(body, 'items');
       const manualKind = String(body.loai ?? body.loai_kho ?? '').trim().toLowerCase();
       const manualItems: Array<{ code: string; name: string | null; unit: string | null; quantity: number }> = [];
@@ -11752,8 +11913,9 @@ export function createApp() {
         may: optionalText(body.may),
         ghi_chu: optionalText(body.ghi_chu ?? body.ghiChu)
       };
-      if (status) headerPayload.status = status;
-      const { data, error } = await supabaseKho
+      const syncProductDetailsToCommit = syncProductDetails || markProductDetailsExported;
+      if (status) headerPayload.status = syncProductDetailsToCommit ? 'chua_chot' : status;
+      const { data: savedHeader, error } = await supabaseKho
         .from(headerTable)
         .upsert(headerPayload, { onConflict: 'ma_phieu' })
         .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
@@ -11863,7 +12025,30 @@ export function createApp() {
         }
       }
 
-      return res.json({ success: true, header: data, source: SUPABASE_KHO_DB_LABEL });
+      let productDetailsSynced = 0;
+      let header = savedHeader;
+      if (syncProductDetailsToCommit) {
+        try {
+          productDetailsSynced = await syncProductDetailsFromWarehouseSlip(maPhieu, warehouseName, loaiPhieu as 'nhap' | 'xuat');
+        } catch (syncError: any) {
+          console.error(`[SUPABASE:${SUPABASE_MAIN_DB_LABEL}] chi_tiet_san_pham ${loaiPhieu} sync error:`, syncError);
+          return res.status(500).json({ error: `Phiếu đã lưu nhưng ${syncError?.message || 'không thể đồng bộ trạng thái mã QR.'}` });
+        }
+
+        const { data: finalizedHeader, error: finalizeError } = await supabaseKho
+          .from(headerTable)
+          .update({ status: 'da_chot' })
+          .eq('ma_phieu', maPhieu)
+          .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
+          .single();
+        if (finalizeError) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} finalize error:`, finalizeError);
+          return res.status(500).json({ error: `Mã chi tiết đã đồng bộ nhưng không thể chốt phiếu. ${finalizeError.message}` });
+        }
+        header = finalizedHeader;
+      }
+
+      return res.json({ success: true, header, chi_tiet_san_pham_synced: productDetailsSynced, source: SUPABASE_KHO_DB_LABEL });
     } catch (err: any) {
       console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/phieu error:`, err);
       return res.status(500).json({ error: err?.message || 'Lỗi khi lưu thông tin phiếu kho.' });
@@ -12021,22 +12206,27 @@ export function createApp() {
 
       const loadExisting = async (codes: string[]) => {
         const existing = new Map<string, { ma_phieu: string; created_at: string }>();
-        for (let offset = 0; offset < codes.length; offset += 100) {
-          const { data, error } = await khoDb
-            .from(lineTable)
-            .select('ma_sp_quet, ma_phieu, created_at')
-            .eq('loai', 'san_pham')
-            .in('ma_sp_quet', codes.slice(offset, offset + 100));
-          if (error) throw new Error(error.message || 'Không thể kiểm tra mã QR đã lưu.');
-          for (const row of data || []) {
-            const code = String(row.ma_sp_quet ?? '').trim();
-            if (!code) continue;
-            const previous = existing.get(code);
-            if (!previous || row.ma_phieu === maPhieu) {
-              existing.set(code, {
-                ma_phieu: String(row.ma_phieu || ''),
-                created_at: String(row.created_at || '')
-              });
+        for (let offset = 0; offset < codes.length; offset += 400) {
+          const lookupCount = Math.min(4, Math.ceil((codes.length - offset) / 100));
+          const results = await Promise.all(Array.from({ length: lookupCount }, (_, index) =>
+            khoDb
+              .from(lineTable)
+              .select('ma_sp_quet, ma_phieu, created_at')
+              .eq('loai', 'san_pham')
+              .in('ma_sp_quet', codes.slice(offset + index * 100, offset + (index + 1) * 100))
+          ));
+          for (const { data, error } of results) {
+            if (error) throw new Error(error.message || 'Không thể kiểm tra mã QR đã lưu.');
+            for (const row of data || []) {
+              const code = String(row.ma_sp_quet ?? '').trim();
+              if (!code) continue;
+              const previous = existing.get(code);
+              if (!previous || row.ma_phieu === maPhieu) {
+                existing.set(code, {
+                  ma_phieu: String(row.ma_phieu || ''),
+                  created_at: String(row.created_at || '')
+                });
+              }
             }
           }
         }
@@ -12542,6 +12732,23 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
+      const requestBody = req.body as Record<string, unknown>;
+      const laDieuChinh = requestBody?.la_dieu_chinh === true || requestBody?.laDieuChinh === true;
+      if (laDieuChinh) {
+        const qrCodes = new Set<string>();
+        if (parsed.loaiKho !== 'san_pham' || !parsed.tenKho) {
+          return res.status(400).json({ error: 'Phiếu điều chỉnh QR cần là kho thành phẩm và có kho cụ thể.' });
+        }
+        if (parsed.items.some(item => {
+          const code = item.code.trim();
+          if (!code.includes('_') || item.quantity !== 1 || qrCodes.has(code)) return true;
+          qrCodes.add(code);
+          return false;
+        })) {
+          return res.status(400).json({ error: 'Mỗi dòng điều chỉnh phải là một mã QR đầy đủ, duy nhất và có số lượng bằng 1.' });
+        }
+      }
+
       if (parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl') {
         const lotError = await validateNvlExportLots(parsed.items);
         if (lotError) {
@@ -12629,14 +12836,58 @@ export function createApp() {
 
       const records = buildWarehouseSlipInsertRecords(parsed, maPhieu);
 
+      let stagedAdjustmentSlip: { commit: () => Promise<void>; rollback: () => Promise<void> } | null = null;
+      if (laDieuChinh) {
+        try {
+          stagedAdjustmentSlip = await stageProductAdjustmentSlipInKhoDb(parsed, maPhieu);
+        } catch (stageError: any) {
+          return res.status(500).json({
+            error: `Không thể tạo phiếu điều chỉnh trong DB kho. ${stageError?.message || 'Lỗi không xác định.'}`,
+            slipCode: maPhieu
+          });
+        }
+      }
+
+      const rollbackStagedAdjustmentSlip = async () => {
+        if (!stagedAdjustmentSlip) return;
+        try {
+          await stagedAdjustmentSlip.rollback();
+        } catch (rollbackError: any) {
+          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] adjustment slip rollback error:`, rollbackError);
+        }
+      };
+
       const { data, error } = await supabaseWarehouse
         .from(SUPABASE_WAREHOUSE_MOVEMENTS_TABLE)
         .insert(records)
         .select('*');
 
       if (error) {
+        await rollbackStagedAdjustmentSlip();
         console.error('Supabase phieu_xuat_nhap_kho insert error:', error);
         return res.status(500).json({ error: warehouseSlipWriteErrorMessage(error) });
+      }
+
+      if (laDieuChinh) {
+        const { error: syncError } = await supabase.rpc('sync_chi_tiet_san_pham', {
+          p_loai_phieu: parsed.loaiPhieu,
+          p_ma_phieu: maPhieu,
+          p_ngay_phieu: parsed.ngayPhieu,
+          p_kho: parsed.tenKho,
+          p_ca: parsed.ca,
+          p_items: parsed.items.map(item => ({
+            ma_sp_goc: extractTonKhoPrefix(item.code),
+            ma_sp_qr: item.code.trim()
+          })),
+          p_la_dieu_chinh: true
+        });
+        if (syncError) {
+          await rollbackStagedAdjustmentSlip();
+          return res.status(500).json({
+            error: `Phiếu ${maPhieu} đã lưu nhưng chưa đồng bộ được mã QR vào sổ tồn kho. Hãy chạy supabase-chi-tiet-san-pham-dieu-chinh.sql. ${syncError.message}`,
+            slipCode: maPhieu
+          });
+        }
       }
 
       if (parsed.loaiKho === 'nvl') {
@@ -12647,10 +12898,22 @@ export function createApp() {
         await Promise.all(productCodes.map(code => syncProductDetailCodeFromMovements(code)));
       }
 
+      if (stagedAdjustmentSlip) {
+        try {
+          await stagedAdjustmentSlip.commit();
+        } catch (commitError: any) {
+          return res.status(500).json({
+            error: `Phiếu ${maPhieu} đã cập nhật sổ QR nhưng chưa chốt được lịch sử trong DB kho. ${commitError?.message || ''}`,
+            slipCode: maPhieu
+          });
+        }
+      }
+
       return res.status(201).json({
         success: true,
         slipCode: maPhieu,
         movements: data || [],
+        warehouseHistorySaved: Boolean(stagedAdjustmentSlip),
         qrCodes: goodsQrCodes?.codes || [],
         qrQuantity: goodsQrCodes?.quantity || 0
       });
@@ -16276,91 +16539,175 @@ export function createApp() {
         return res.status(503).json({ error: 'Supabase (DB chính) chưa được cấu hình.' });
       }
 
-      let dotRows: Array<Record<string, unknown>> = [];
-      {
-        const first = await kiemKhoResolved.client
-          .from(SUPABASE_KIEM_KHO_TABLE)
-          .select('dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
-          .eq('dot_kiem_kho', dotKiemKho);
-        if (first.error && isMissingKiemKhoConfirmColumnError(first.error)) {
-          const second = await kiemKhoResolved.client
+      const loadDotRows = async (includeConfirmTime: boolean) => {
+        const rows: Array<Record<string, unknown>> = [];
+        const pageSize = 1000;
+        for (let from = 0; ; from += pageSize) {
+          let query = kiemKhoResolved.client
             .from(SUPABASE_KIEM_KHO_TABLE)
-            .select('dot_kiem_kho, ngay_gio_kiem_kho, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
-            .eq('dot_kiem_kho', dotKiemKho);
-          if (second.error) {
-            return res.status(500).json({
-              error: second.error.message || 'Không tải được thông tin đợt kiểm kho.',
-              db: kiemKhoResolved.label
-            });
-          }
-          dotRows = (second.data || []) as Array<Record<string, unknown>>;
-        } else if (first.error) {
-          return res.status(500).json({
-            error: first.error.message || 'Không tải được thông tin đợt kiểm kho.',
-            db: kiemKhoResolved.label
-          });
-        } else {
-          dotRows = (first.data || []) as Array<Record<string, unknown>>;
+            .select(includeConfirmTime
+              ? 'dot_kiem_kho, ngay_gio_kiem_kho, thoi_gian_xac_nhan, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho'
+              : 'dot_kiem_kho, ngay_gio_kiem_kho, ma_nvl, ma_sp, ten_sp, loai_sp, ten_kho')
+            .eq('dot_kiem_kho', dotKiemKho)
+            .order('ngay_gio_kiem_kho', { ascending: true })
+            .order('id', { ascending: true });
+          const { data, error } = await query.range(from, from + pageSize - 1);
+          if (error) return { rows, error };
+          const page = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+          rows.push(...page);
+          if (page.length < pageSize) return { rows, error: null };
         }
+      };
+      let dotResult = await loadDotRows(true);
+      if (dotResult.error && isMissingKiemKhoConfirmColumnError(dotResult.error)) {
+        dotResult = await loadDotRows(false);
       }
-      const dotGroup = computeKiemKhoDotGroups(dotRows)[0];
+      if (dotResult.error) {
+        return res.status(500).json({
+          error: dotResult.error.message || 'Không tải được thông tin đợt kiểm kho.',
+          db: kiemKhoResolved.label
+        });
+      }
+      const allDotRows = dotResult.rows;
+      const dotGroup = computeKiemKhoDotGroups(allDotRows)[0];
       if (!dotGroup) {
         return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
       }
+      const dotRows = tenKho
+        ? allDotRows.filter(row => String(row.ten_kho ?? '').trim() === tenKho)
+        : allDotRows;
+      const confirmTime = dotGroup.da_xac_nhan && dotGroup.thoi_gian_xac_nhan
+        ? Date.parse(String(dotGroup.thoi_gian_xac_nhan))
+        : Date.now();
+      const cutoff = Number.isFinite(confirmTime) ? confirmTime : Date.now();
 
-      let tongHopRows: Array<{ ma_nvl: string; ten_sp: string | null; loai_sp: string | null; tong_so_luong: number }> = [];
-      if (dotGroup.da_xac_nhan) {
-        const { data, error } = await kiemKhoResolved.client
-          .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
-          .select('ma_nvl, ten_sp, loai_sp, tong_so_luong')
-          .eq('dot_kiem_kho', dotKiemKho);
-        if (error) {
-          return res.status(500).json({
-            error: error.message || 'Không tải được bảng tổng hợp kiểm kho.',
-            db: kiemKhoResolved.label
-          });
+      const [snapshotRows, movementRows, productRows] = await Promise.all([
+        loadAllTonKhoRows((from, to) => supabase!
+          .from('chi_tiet_san_pham')
+          .select('ma_sp_goc, ma_sp_qr, kho, trang_thai, created_at, updated_at')
+          .order('ma_sp_qr', { ascending: true })
+          .range(from, to)),
+        loadAllTonKhoRows((from, to) => supabase!
+          .from('bien_dong_chi_tiet_san_pham')
+          .select('id, ma_sp_goc, ma_sp_qr, loai_bien_dong, kho, created_at')
+          .order('ma_sp_qr', { ascending: true })
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to)),
+        loadAllTonKhoRows((from, to) => supabase!
+          .from(SUPABASE_PRODUCTS_TABLE)
+          .select('ma_sp, ten_sp, don_vi')
+          .range(from, to))
+      ]);
+
+      // Rebuild stock from each QR's last movement before the selected batch's confirmation time.
+      const historyByQr = new Map<string, Array<Record<string, unknown>>>();
+      for (const movement of movementRows) {
+        const qr = String(movement.ma_sp_qr ?? '').trim();
+        if (!qr) continue;
+        const history = historyByQr.get(qr) || [];
+        history.push(movement);
+        historyByQr.set(qr, history);
+      }
+      const snapshotByQr = new Map(snapshotRows.map(row => [String(row.ma_sp_qr ?? '').trim(), row] as const));
+      const productByCode = new Map(productRows.map(row => [String(row.ma_sp ?? '').trim(), row] as const));
+      const allQr = new Set([...snapshotByQr.keys(), ...historyByQr.keys()]);
+      const heThongChiTiet: Array<{
+        ma: string; ma_goc: string; ten: string; loai_kho: 'san_pham';
+        don_vi: string | null; ten_kho: string | null; ton_cuoi_ky: number;
+      }> = [];
+
+      for (const qr of allQr) {
+        if (!qr) continue;
+        const snapshot = snapshotByQr.get(qr);
+        const history = historyByQr.get(qr) || [];
+        const validHistory = history.filter(row => Number.isFinite(Date.parse(String(row.created_at ?? ''))));
+        let stock = false;
+        let warehouse: string | null = null;
+        let productCode = '';
+
+        if (validHistory.length) {
+          const lastBefore = [...validHistory].reverse().find(row => Date.parse(String(row.created_at)) <= cutoff);
+          const firstAfter = validHistory.find(row => Date.parse(String(row.created_at)) > cutoff);
+          // Without a prior event, a later export proves it was in stock; a later import proves it was not yet in stock.
+          const movement = lastBefore || firstAfter;
+          const type = String(movement?.loai_bien_dong ?? '').trim();
+          stock = lastBefore ? type !== 'xuat' : type === 'xuat';
+          warehouse = String(movement?.kho ?? '').trim() || null;
+          productCode = String(movement?.ma_sp_goc ?? '').trim();
+        } else {
+          const createdAt = Date.parse(String(snapshot?.created_at ?? ''));
+          const updatedAt = Date.parse(String(snapshot?.updated_at ?? ''));
+          const status = String(snapshot?.trang_thai ?? '').trim();
+          stock = status === 'trong_kho'
+            ? Number.isFinite(createdAt) && createdAt <= cutoff
+            : status === 'da_xuat'
+              && Number.isFinite(createdAt) && createdAt <= cutoff
+              && Number.isFinite(updatedAt) && updatedAt > cutoff;
+          warehouse = String(snapshot?.kho ?? '').trim() || null;
+          productCode = String(snapshot?.ma_sp_goc ?? '').trim();
         }
-        tongHopRows = data || [];
-      } else {
-        const { data, error } = await kiemKhoResolved.client.rpc('kiem_kho_gop_theo_ma_nvl', {
-          p_dot: dotKiemKho
+
+        if (!stock || (tenKho && warehouse !== tenKho)) continue;
+        productCode ||= String(snapshot?.ma_sp_goc ?? '').trim() || extractTonKhoPrefix(qr) || qr;
+        const product = productByCode.get(productCode);
+        heThongChiTiet.push({
+          ma: qr,
+          ma_goc: productCode,
+          ten: String(product?.ten_sp ?? '').trim() || qr,
+          loai_kho: 'san_pham',
+          don_vi: String(product?.don_vi ?? '').trim() || null,
+          ten_kho: warehouse,
+          ton_cuoi_ky: 1
         });
-        if (error) {
-          return res.status(500).json({
-            error: error.message || 'Không gộp được số lượng kiểm kê (đợt chưa chốt).',
-            db: kiemKhoResolved.label
-          });
-        }
-        tongHopRows = data || [];
       }
-
-      // Tồn hệ thống được xem tại thời điểm chốt đợt (hoặc hôm nay nếu chưa chốt).
-      const denNgay =
-        dotGroup.da_xac_nhan && dotGroup.thoi_gian_xac_nhan
-          ? String(dotGroup.thoi_gian_xac_nhan).slice(0, 10)
-          : new Date().toISOString().slice(0, 10);
-      const tuNgay = dotGroup.ngay_bat_dau ? String(dotGroup.ngay_bat_dau).slice(0, 10) : null;
-
-      // Trang xử lý chênh lệch này chỉ áp dụng cho thành phẩm.
-      const spResult = await loadTonKhoGop('san_pham', tenKho, tuNgay, denNgay);
-      if (spResult.error) {
-        return res.status(500).json({ error: spResult.error.message || 'Không tải được tồn kho thành phẩm.' });
-      }
-      const spRowsRaw = Array.isArray(spResult.data) ? (spResult.data as TonKhoGopRow[]) : [];
-      const spRows = groupTonKhoRowsByPrefix(spRowsRaw);
-      const spMap = new Map(spRows.map(row => [row.ma, row]));
-
-      // Chi tiết chưa gộp theo tiền tố (từng lô/hậu tố riêng) — dùng để giải thích một
-      // con số chênh lệch đã gộp (VD "97") gồm những lô/kho cụ thể nào bên hệ thống.
-      const heThongChiTiet = spRowsRaw.map(row => ({
+      heThongChiTiet.sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
+      const spRowsRaw: TonKhoGopRow[] = heThongChiTiet.map(row => ({
         ma: row.ma,
-        ma_goc: extractTonKhoPrefix(row.ma) || row.ma,
+        ma_goc: row.ma_goc,
         ten: row.ten,
-        loai_kho: 'san_pham' as const,
         don_vi: row.don_vi,
         ten_kho: row.ten_kho,
+        ton_dau_ky: 0,
+        nhap_trong_ky: 0,
+        xuat_trong_ky: 0,
         ton_cuoi_ky: row.ton_cuoi_ky
       }));
+      const spRowsByCode = new Map<string, TonKhoGopRow>();
+      for (const product of productRows) {
+        const code = String(product.ma_sp ?? '').trim();
+        if (!code) continue;
+        spRowsByCode.set(code, {
+          ma: code,
+          ten: String(product.ten_sp ?? '').trim() || code,
+          don_vi: String(product.don_vi ?? '').trim() || null,
+          ten_kho: null,
+          ton_dau_ky: 0,
+          nhap_trong_ky: 0,
+          xuat_trong_ky: 0,
+          ton_cuoi_ky: 0
+        });
+      }
+      for (const row of heThongChiTiet) {
+        const code = row.ma_goc || extractTonKhoPrefix(row.ma) || row.ma;
+        const total = spRowsByCode.get(code);
+        if (total) {
+          total.ton_cuoi_ky += row.ton_cuoi_ky;
+        } else {
+          spRowsByCode.set(code, {
+            ma: code,
+            ten: row.ten,
+            don_vi: row.don_vi,
+            ten_kho: row.ten_kho,
+            ton_dau_ky: 0,
+            nhap_trong_ky: 0,
+            xuat_trong_ky: 0,
+            ton_cuoi_ky: row.ton_cuoi_ky
+          });
+        }
+      }
+      const spRows = Array.from(spRowsByCode.values());
+      const spMap = new Map(spRows.map(row => [row.ma, row]));
 
       const xuLyMap = new Map<string, { ma_phieu_dieu_chinh: string; loai_phieu: string | null }>();
       const xuLyResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);
@@ -16387,28 +16734,28 @@ export function createApp() {
       // Các dòng hệ thống đã được groupTonKhoRowsByPrefix() nên những mã khác hậu tố
       // nhưng cùng tiền tố được cộng về đúng một mã gốc trước khi tính chênh lệch.
       const kiemKeByMa = new Map<string, any>();
-      for (const row of tongHopRows || []) {
-        const maDayDu = String((row as any).ma_nvl ?? '').trim();
-        const ma = extractTonKhoPrefix(maDayDu) || maDayDu;
+      for (const row of dotRows) {
+        const maDayDu = String(row.ma_sp ?? '').trim();
+        const scannedCode = String(row.ma_nvl ?? '').trim();
+        const ma = extractTonKhoPrefix(scannedCode) || extractTonKhoPrefix(maDayDu) || maDayDu;
         if (!ma) continue;
         const existing = kiemKeByMa.get(ma);
         if (existing) {
-          existing.tong_so_luong += Number((row as any).tong_so_luong) || 0;
+          existing.tong_so_luong += 1;
         } else {
           kiemKeByMa.set(ma, {
-            ...row,
             ma_nvl: ma,
-            tong_so_luong: Number((row as any).tong_so_luong) || 0
+            ten_sp: String(row.ten_sp ?? '').trim() || ma,
+            loai_sp: String(row.loai_sp ?? '').trim() || null,
+            ten_kho: String(row.ten_kho ?? '').trim() || null,
+            tong_so_luong: 1
           });
         }
       }
 
-      // Tính chênh lệch theo từng mã sản phẩm nguyên bản. Bảng tổng hợp phía dưới
-      // vẫn gom theo tiền tố, nhưng trạng thái xử lý của một nhóm chỉ hoàn tất khi
-      // mọi mã nguyên bản đang lệch trong nhóm đều đã có lịch sử tạo phiếu.
       const kiemKeTheoMaDayDu = new Map<string, number>();
-      for (const row of dotRows || []) {
-        const maDayDu = String((row as any).ma_sp ?? '').trim();
+      for (const row of dotRows) {
+        const maDayDu = String(row.ma_sp ?? '').trim();
         if (!maDayDu) continue;
         kiemKeTheoMaDayDu.set(maDayDu, (kiemKeTheoMaDayDu.get(maDayDu) || 0) + 1);
       }
@@ -16472,7 +16819,7 @@ export function createApp() {
             loai_sp: kiemKeRow?.loai_sp || null,
             loai_kho: loaiKho,
             don_vi: matched?.don_vi || null,
-            ten_kho: matched?.ten_kho || null,
+            ten_kho: matched?.ten_kho || kiemKeRow?.ten_kho || null,
             ton_thuc_te: tonThucTe,
             ton_he_thong: tonHeThong,
             chenh_lech: chenhLech,
@@ -16754,6 +17101,7 @@ export function createApp() {
     ton_dau_ky: number;
     nhap_trong_ky: number;
     xuat_trong_ky: number;
+    dieu_chinh_trong_ky?: number;
     ton_cuoi_ky: number;
   };
 
@@ -17007,6 +17355,160 @@ export function createApp() {
       : fallbackData;
     return { data, error: null };
   }
+
+  app.get('/api/ton-kho-qr-data', async (req, res) => {
+    if (!supabase) return res.json({ chi_tiet_records: [], tong_hop_records: [], source: 'local' });
+
+    try {
+      const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim();
+      const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
+      const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      if (tuNgay && denNgay && tuNgay > denNgay) {
+        return res.status(400).json({ error: 'Ngày đầu kỳ phải nhỏ hơn hoặc bằng ngày kết thúc.' });
+      }
+
+      const [snapshotRows, movementRows, productRows] = await Promise.all([
+        loadAllTonKhoRows((from, to) => {
+          let query = supabase!
+            .from('chi_tiet_san_pham')
+            .select('ma_sp_goc, ma_sp_qr, kho, trang_thai, so_luong')
+            .eq('trang_thai', 'trong_kho')
+            .order('ma_sp_qr', { ascending: true });
+          if (tenKho) query = query.eq('kho', tenKho);
+          return query.range(from, to);
+        }),
+        loadAllTonKhoRows((from, to) => {
+          let query = supabase!
+            .from('bien_dong_chi_tiet_san_pham')
+            .select('id, ma_sp_goc, loai_bien_dong, la_dieu_chinh, ngay_phieu, kho')
+            .order('ngay_phieu', { ascending: true })
+            .order('id', { ascending: true });
+          if (tenKho) query = query.eq('kho', tenKho);
+          return query.range(from, to);
+        }),
+        loadAllTonKhoRows((from, to) =>
+          supabase!
+            .from(SUPABASE_PRODUCTS_TABLE)
+            .select('ma_sp, ten_sp, don_vi')
+            .order('ma_sp', { ascending: true })
+            .range(from, to)
+        )
+      ]);
+
+      const productsByCode = new Map<string, Record<string, unknown>>();
+      for (const product of productRows) {
+        const code = String(product.ma_sp ?? '').trim();
+        if (code) productsByCode.set(code, product);
+      }
+      const chiTietRecords = snapshotRows
+        .map(row => {
+          const code = String(row.ma_sp_goc ?? '').trim();
+          const product = productsByCode.get(code);
+          return {
+            ma_sp_goc: code,
+            ma_sp_qr: String(row.ma_sp_qr ?? '').trim(),
+            ten: String(product?.ten_sp ?? '').trim() || code,
+            loai_sp: 'Thành phẩm',
+            don_vi: String(product?.don_vi ?? '').trim() || null,
+            ten_kho: String(row.kho ?? '').trim(),
+            so_luong: Number(row.so_luong) || 0
+          };
+        })
+        .filter(row => row.ma_sp_goc && row.ma_sp_qr)
+        .sort((a, b) => a.ma_sp_goc.localeCompare(b.ma_sp_goc, 'vi') || a.ma_sp_qr.localeCompare(b.ma_sp_qr, 'vi'));
+
+      const totals = new Map<string, TonKhoGopRow>();
+      const ensureTotal = (code: string) => {
+        let row = totals.get(code);
+        if (!row) {
+          const product = productsByCode.get(code);
+          row = {
+            ma: code,
+            ten: String(product?.ten_sp ?? '').trim() || code,
+            don_vi: String(product?.don_vi ?? '').trim() || null,
+            ten_kho: tenKho || null,
+            ton_dau_ky: 0,
+            nhap_trong_ky: 0,
+            xuat_trong_ky: 0,
+            dieu_chinh_trong_ky: 0,
+            ton_cuoi_ky: 0
+          };
+          totals.set(code, row);
+        }
+        return row;
+      };
+
+      const currentStockByProduct = new Map<string, number>();
+      const futureImportsByProduct = new Map<string, number>();
+      const futureExportsByProduct = new Map<string, number>();
+      const futureAdjustmentsByProduct = new Map<string, number>();
+      for (const row of snapshotRows) {
+        const code = String(row.ma_sp_goc ?? '').trim();
+        if (!code) continue;
+        currentStockByProduct.set(code, (currentStockByProduct.get(code) ?? 0) + (Number(row.so_luong) || 0));
+        ensureTotal(code);
+      }
+
+      for (const row of movementRows) {
+        const code = String(row.ma_sp_goc ?? '').trim();
+        const date = String(row.ngay_phieu ?? '').slice(0, 10);
+        const type = String(row.loai_bien_dong ?? '').trim();
+        const laDieuChinh = row.la_dieu_chinh === true;
+        if (!code || !date) continue;
+
+        const total = ensureTotal(code);
+        if (denNgay && date > denNgay) {
+          if (laDieuChinh && type === 'nhap') futureAdjustmentsByProduct.set(code, (futureAdjustmentsByProduct.get(code) ?? 0) + 1);
+          else if (laDieuChinh && type === 'xuat') futureAdjustmentsByProduct.set(code, (futureAdjustmentsByProduct.get(code) ?? 0) - 1);
+          else if (type === 'nhap') futureImportsByProduct.set(code, (futureImportsByProduct.get(code) ?? 0) + 1);
+          else if (type === 'xuat') futureExportsByProduct.set(code, (futureExportsByProduct.get(code) ?? 0) + 1);
+          continue;
+        }
+        const beforePeriod = Boolean(tuNgay && date < tuNgay);
+        if (type === 'ton_dau') {
+          if (!tuNgay || date <= tuNgay) total.ton_dau_ky += 1;
+        } else if (beforePeriod) {
+          if (type === 'nhap') total.ton_dau_ky += 1;
+          if (type === 'xuat') total.ton_dau_ky -= 1;
+        } else if ((!tuNgay || date >= tuNgay) && (!denNgay || date <= denNgay)) {
+          if (laDieuChinh && type === 'nhap') total.dieu_chinh_trong_ky += 1;
+          else if (laDieuChinh && type === 'xuat') total.dieu_chinh_trong_ky -= 1;
+          else if (type === 'nhap') total.nhap_trong_ky += 1;
+          else if (type === 'xuat') total.xuat_trong_ky += 1;
+        }
+      }
+
+      const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+      const useCurrentSnapshot = (!denNgay || denNgay >= today) && (!tuNgay || tuNgay <= today);
+      const tongHopRecords = Array.from(totals.values())
+        .map(row => {
+          if (useCurrentSnapshot) {
+            row.ton_cuoi_ky = currentStockByProduct.get(row.ma) ?? 0;
+            // Snapshot hiện tại là số tồn chuẩn; suy ngược tồn đầu theo nhập, xuất và điều chỉnh.
+            row.ton_dau_ky = row.ton_cuoi_ky - row.nhap_trong_ky + row.xuat_trong_ky - row.dieu_chinh_trong_ky;
+          } else {
+            // Với kỳ đã qua, lùi snapshot theo mọi biến động sau ngày kết thúc.
+            row.ton_cuoi_ky = (currentStockByProduct.get(row.ma) ?? 0)
+              - (futureImportsByProduct.get(row.ma) ?? 0)
+              + (futureExportsByProduct.get(row.ma) ?? 0)
+              - (futureAdjustmentsByProduct.get(row.ma) ?? 0);
+            row.ton_dau_ky = row.ton_cuoi_ky - row.nhap_trong_ky + row.xuat_trong_ky - row.dieu_chinh_trong_ky;
+          }
+          return row;
+        })
+        .filter(row => row.ton_cuoi_ky > 0 || row.nhap_trong_ky > 0 || row.xuat_trong_ky > 0 || row.dieu_chinh_trong_ky !== 0)
+        .sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
+
+      return res.json({
+        chi_tiet_records: chiTietRecords,
+        tong_hop_records: tongHopRecords,
+        source: 'chi_tiet_san_pham+bien_dong_chi_tiet_san_pham'
+      });
+    } catch (err: any) {
+      console.error('Supabase QR inventory query error:', err);
+      return res.status(500).json({ error: err?.message || 'Không thể tải tồn kho từ sổ mã QR.' });
+    }
+  });
 
   app.get('/api/ton-kho/chi-tiet', async (req, res) => {
     if (!supabase) {

@@ -552,7 +552,6 @@ export function MaterialViewModal({
   onClose,
   onEdit,
   onDelete,
-  onPrintIssuedQrCodes,
   canEditQrCodes = false,
   isDeleting
 }: {
@@ -560,7 +559,6 @@ export function MaterialViewModal({
   onClose: () => void;
   onEdit?: (material: MaterialRow) => void;
   onDelete?: (material: MaterialRow) => void;
-  onPrintIssuedQrCodes?: (codes: MaterialIssuedQrCode[]) => Promise<void>;
   canEditQrCodes?: boolean;
   isDeleting: boolean;
 }) {
@@ -571,8 +569,6 @@ export function MaterialViewModal({
   const [issuedQrCodes, setIssuedQrCodes] = useState<MaterialIssuedQrCode[]>([]);
   const [isLoadingIssuedQrCodes, setIsLoadingIssuedQrCodes] = useState(false);
   const [issuedQrCodesError, setIssuedQrCodesError] = useState('');
-  const [selectedIssuedQrIds, setSelectedIssuedQrIds] = useState<Set<string>>(() => new Set());
-  const [isPrintingIssuedQrCodes, setIsPrintingIssuedQrCodes] = useState(false);
   const [issuedQrStatusFilter, setIssuedQrStatusFilter] = useState<'all' | 'dang_dung' | 'da_huy'>('all');
   const [updatingIssuedQrId, setUpdatingIssuedQrId] = useState('');
 
@@ -628,8 +624,6 @@ export function MaterialViewModal({
           created_at: String(record.created_at ?? '')
         }));
         setIssuedQrCodes(normalized);
-        const availableIds = new Set(normalized.map(record => record.id));
-        setSelectedIssuedQrIds(previous => new Set([...previous].filter(id => availableIds.has(id))));
       })
       .catch(error => {
         if (error?.name !== 'AbortError') {
@@ -645,35 +639,6 @@ export function MaterialViewModal({
   const filteredIssuedQrCodes = issuedQrCodes.filter(code =>
     issuedQrStatusFilter === 'all' || code.trang_thai === issuedQrStatusFilter
   );
-  const printableIssuedQrCodes = filteredIssuedQrCodes.filter(code => code.trang_thai !== 'da_huy');
-  const selectedIssuedQrCodes = filteredIssuedQrCodes.filter(
-    code => code.trang_thai !== 'da_huy' && selectedIssuedQrIds.has(code.id)
-  );
-  const allIssuedQrCodesSelected = printableIssuedQrCodes.length > 0
-    && printableIssuedQrCodes.every(code => selectedIssuedQrIds.has(code.id));
-
-  const toggleAllIssuedQrCodes = () => {
-    setSelectedIssuedQrIds(previous => {
-      const next = new Set(previous);
-      if (allIssuedQrCodesSelected) printableIssuedQrCodes.forEach(code => next.delete(code.id));
-      else printableIssuedQrCodes.forEach(code => next.add(code.id));
-      return next;
-    });
-  };
-
-  const handlePrintSelectedIssuedQrCodes = async () => {
-    if (!onPrintIssuedQrCodes || selectedIssuedQrCodes.length === 0) return;
-    setIsPrintingIssuedQrCodes(true);
-    setIssuedQrCodesError('');
-    try {
-      await onPrintIssuedQrCodes(selectedIssuedQrCodes);
-    } catch (error: any) {
-      setIssuedQrCodesError(error?.message || 'Không thể in lại các mã QR đã chọn.');
-    } finally {
-      setIsPrintingIssuedQrCodes(false);
-    }
-  };
-
   const handleUpdateIssuedQrStatus = async (code: MaterialIssuedQrCode, trangThai: 'dang_dung' | 'da_huy') => {
     if (code.trang_thai === trangThai) return;
     setUpdatingIssuedQrId(code.id);
@@ -687,13 +652,6 @@ export function MaterialViewModal({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Không thể cập nhật trạng thái QR.');
       setIssuedQrCodes(previous => previous.map(item => item.id === code.id ? { ...item, trang_thai: trangThai } : item));
-      if (trangThai === 'da_huy') {
-        setSelectedIssuedQrIds(previous => {
-          const next = new Set(previous);
-          next.delete(code.id);
-          return next;
-        });
-      }
     } catch (error: any) {
       setIssuedQrCodesError(error?.message || 'Không thể cập nhật trạng thái QR.');
     } finally {
@@ -864,7 +822,7 @@ export function MaterialViewModal({
                 <div>
                   <p className="text-sm font-black text-zinc-950">Danh sách QR đã cấp</p>
                   <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                    Mỗi mã được lưu duy nhất trong CSDL; chọn mã để in lại mà không sinh mã mới.
+                    Mã QR được lưu duy nhất trong CSDL; trạng thái và số lần in được theo dõi tại đây.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -872,7 +830,6 @@ export function MaterialViewModal({
                     value={issuedQrStatusFilter}
                     onChange={event => {
                       setIssuedQrStatusFilter(event.target.value as 'all' | 'dang_dung' | 'da_huy');
-                      setSelectedIssuedQrIds(new Set());
                     }}
                     className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 outline-none focus:border-[#ef1b2d]"
                     aria-label="Lọc trạng thái QR"
@@ -882,21 +839,8 @@ export function MaterialViewModal({
                     <option value="da_huy">Đã hủy</option>
                   </select>
                   <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-[#ef1b2d]">
-                    {selectedIssuedQrCodes.length > 0
-                      ? `Đã chọn ${selectedIssuedQrCodes.length}/${printableIssuedQrCodes.length}`
-                      : `${filteredIssuedQrCodes.length} mã`}
+                    {filteredIssuedQrCodes.length} mã
                   </span>
-                  {onPrintIssuedQrCodes ? (
-                    <button
-                      type="button"
-                      onClick={() => void handlePrintSelectedIssuedQrCodes()}
-                      disabled={selectedIssuedQrCodes.length === 0 || isPrintingIssuedQrCodes}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isPrintingIssuedQrCodes ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                      {isPrintingIssuedQrCodes ? 'Đang chuẩn bị...' : 'In lại mã đã chọn'}
-                    </button>
-                  ) : null}
                 </div>
               </div>
 
@@ -912,16 +856,6 @@ export function MaterialViewModal({
                 maxHeightClassName="min-h-0 flex-1"
               >
                 <TableHead>
-                  <TableHeadCell align="center" className="w-12">
-                    <input
-                      type="checkbox"
-                      checked={allIssuedQrCodesSelected}
-                      onChange={toggleAllIssuedQrCodes}
-                      disabled={printableIssuedQrCodes.length === 0}
-                      aria-label="Chọn tất cả QR đã cấp"
-                      className="h-4 w-4 cursor-pointer accent-[#ef1b2d] disabled:cursor-not-allowed"
-                    />
-                  </TableHeadCell>
                   <TableHeadCell>STT</TableHeadCell>
                   <TableHeadCell>Mã QR đầy đủ</TableHeadCell>
                   <TableHeadCell>Trạng thái</TableHeadCell>
@@ -933,21 +867,6 @@ export function MaterialViewModal({
                 <TableBody>
                   {filteredIssuedQrCodes.map((code, index) => (
                     <TableRow key={code.id || code.ma_qr}>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedIssuedQrIds.has(code.id)}
-                          disabled={code.trang_thai === 'da_huy'}
-                          onChange={() => setSelectedIssuedQrIds(previous => {
-                            const next = new Set(previous);
-                            if (next.has(code.id)) next.delete(code.id);
-                            else next.add(code.id);
-                            return next;
-                          })}
-                          aria-label={`Chọn in ${code.ma_qr}`}
-                          className="h-4 w-4 cursor-pointer accent-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40"
-                        />
-                      </td>
                       <td className="px-4 py-3 font-bold text-zinc-500">{index + 1}</td>
                       <td className="px-4 py-3 font-mono font-black text-zinc-950">{code.ma_qr}</td>
                       <td className="px-4 py-3">
@@ -976,9 +895,9 @@ export function MaterialViewModal({
                     </TableRow>
                   ))}
                   {!isLoadingIssuedQrCodes && filteredIssuedQrCodes.length === 0 ? (
-                    <TableEmptyRow colSpan={8}>{issuedQrCodes.length === 0 ? 'NVL này chưa có mã QR đã cấp.' : 'Không có mã QR theo trạng thái đã chọn.'}</TableEmptyRow>
+                    <TableEmptyRow colSpan={7}>{issuedQrCodes.length === 0 ? 'NVL này chưa có mã QR đã cấp.' : 'Không có mã QR theo trạng thái đã chọn.'}</TableEmptyRow>
                   ) : null}
-                  {isLoadingIssuedQrCodes ? <TableEmptyRow colSpan={8}>Đang tải danh sách QR đã cấp...</TableEmptyRow> : null}
+                  {isLoadingIssuedQrCodes ? <TableEmptyRow colSpan={7}>Đang tải danh sách QR đã cấp...</TableEmptyRow> : null}
                 </TableBody>
               </TableShell>
             </div>
@@ -1099,19 +1018,6 @@ export function MaterialsInventoryPanel({
     } finally {
       setIsLoadingMaterials(false);
     }
-  };
-
-  const handlePrintIssuedQrCodes = async (codes: MaterialIssuedQrCode[]) => {
-    if (!viewingMaterial || codes.length === 0) return;
-    setMaterialQrPrintLabels(codes.map((code, index) => ({
-      key: `${viewingMaterial.code}-${code.id || index}`,
-      payload: code.ma_qr,
-      productCode: code.ma_npl_goc || viewingMaterial.code,
-      productName: code.ten_npl || viewingMaterial.name,
-      itemLabel: 'Tên NVL',
-      unit: viewingMaterial.unit !== '-' ? viewingMaterial.unit : undefined
-    })));
-    setMaterialQrPrintOpen(true);
   };
 
   useEffect(() => {
@@ -1785,7 +1691,6 @@ export function MaterialsInventoryPanel({
           }}
           onEdit={canEdit ? openEditForm : undefined}
           onDelete={canDelete ? handleDeleteMaterial : undefined}
-          onPrintIssuedQrCodes={handlePrintIssuedQrCodes}
           canEditQrCodes={canEdit}
           isDeleting={deletingMaterialId === viewingMaterial.id}
         />

@@ -119,6 +119,9 @@ create index if not exists idx_xuat_kho_loai on public.xuat_kho (loai);
 create unique index if not exists uq_xuat_kho_qr_san_pham
   on public.xuat_kho (ma_sp_quet)
   where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
+create index if not exists idx_xuat_kho_phieu_qr_san_pham
+  on public.xuat_kho (ma_phieu, ma_sp_quet)
+  where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
 
 comment on table public.xuat_kho is 'Dong xuat kho theo ma SP / ma phieu.';
 comment on column public.xuat_kho.ma_sp is 'Ma san pham goc.';
@@ -154,6 +157,9 @@ create index if not exists idx_nhap_kho_ma_phieu on public.nhap_kho (ma_phieu);
 create index if not exists idx_nhap_kho_loai on public.nhap_kho (loai);
 create unique index if not exists uq_nhap_kho_qr_san_pham
   on public.nhap_kho (ma_sp_quet)
+  where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
+create index if not exists idx_nhap_kho_phieu_qr_san_pham
+  on public.nhap_kho (ma_phieu, ma_sp_quet)
   where loai = 'san_pham' and ma_sp_quet is not null and ma_sp_quet <> '';
 
 comment on table public.nhap_kho is 'Dong nhap kho theo ma SP / ma phieu.';

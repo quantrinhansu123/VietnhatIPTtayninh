@@ -15,7 +15,7 @@
 |--------|------|------|
 | GET | `/api/kho-nvl` | ~8090 |
 | GET | `/api/kho-nvl/ma-qr?ma_npl=...&ten_kho=...` | Danh sách QR NVL đã cấp |
-| POST | `/api/ma-qr-nvl/danh-dau-in` | Ghi lịch sử in lại QR NVL |
+| POST | `/api/ma-qr-nvl/danh-dau-in` | Ghi nhận lượt in QR NVL đã cấp |
 | PATCH | `/api/ma-qr-nvl/:id/trang-thai` | Đổi trạng thái QR NVL |
 | POST | `/api/kho-nvl` | ~8118 |
 | POST | `/api/kho-nvl/fill-total-kg` | ~8146 |

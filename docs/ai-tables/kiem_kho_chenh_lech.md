@@ -5,37 +5,22 @@
 | **Bảng** | `kiem_kho_chenh_lech_xu_ly` |
 | **Tab** | `kiem-kho-chenh-lech` → `/xu-ly-chenh-lech` |
 | **DB** | Riêng — label `kiem-kho` (project `grlcgkzotqishzxwpddc`), cùng chỗ với `kiem_kho`/`kiem_kho_tong_hop` |
-| **SQL** | `supabase-kiem-kho-chenh-lech-xu-ly.sql` |
+| **SQL** | `supabase-kiem-kho-chenh-lech-xu-ly.sql`; cập nhật sổ QR bằng `supabase-chi-tiet-san-pham-dieu-chinh.sql` trên DB chính |
 
 ## Mục đích
 
 Đối chiếu số lượng đã kiểm kê của 1 đợt kiểm kho ([kiem_kho](./kiem_kho.md)) với tồn cuối kỳ sổ sách ([ton_kho](./ton_kho.md)), rồi cho phép tạo phiếu nhập/xuất điều chỉnh tồn kho cho phần chênh lệch. 3 tab:
 
-- **Danh sách chi tiết chênh lệch** — 1 dòng/**lượt kiểm** thực tế trong đợt đang chọn (nguồn: `GET /api/kiem-kho?dotKiemKho=...`, không gộp theo mã, không gộp thêm danh mục tồn kho hệ thống). Cột **Mã hàng trong kho** và **Mã đã kiểm** đều giữ mã chi tiết đầy đủ, gồm tiền tố và hậu tố lô/serial; chỉ tab tổng hợp mới rút về mã gốc. Cột "Có trên hệ thống" = ✓/✗ tra theo đúng mã đầy đủ; cột "Có trên kiểm kê" cho biết mã đó đã xuất hiện trong đợt quét hay chưa.
-- **Bảng tổng hợp chênh lệch** — gộp theo `ma_nvl`, **chỉ trong phạm vi các mã đã kiểm kê trong đợt đang chọn** (không tự thêm mã nào khác từ danh mục hệ thống — mã hệ thống chưa từng được quét trong đợt sẽ KHÔNG xuất hiện ở đây, vì nó không thuộc phạm vi đợt kiểm kê): đây là nơi thực sự so sánh tồn kiểm kê với tồn hệ thống và tính chênh lệch (gọi `GET /api/kiem-kho/chenh-lech`). Có stat tile tổng số mã khớp/thừa/thiếu/không xác định.
-- **Phiếu Nhập/Xuất điều chỉnh tồn kho** — liệt kê theo **mã sản phẩm nguyên bản** (giữ đầy đủ hậu tố lô/serial), là hợp của mã còn tồn trên hệ thống và mã đã kiểm trong đợt. Tab này không gộp theo tiền tố; chỉ bảng tổng hợp mới gộp mã. Quy tắc lập phiếu cho từng mã nguyên bản:
-  - Chỉ hiển thị mã thực sự có chênh lệch và cần lập phiếu; mã khớp (`chênh lệch = 0`, `loai_phieu = null`) bị ẩn riêng tại tab này.
-  - Kiểm kê ít hơn hệ thống (`trang_thai: 'thieu'`) → phiếu **Xuất** phần chênh lệch.
-  - Kiểm kê nhiều hơn hệ thống (`trang_thai: 'thua'`) → phiếu **Nhập** phần chênh lệch.
-  - Có trên kiểm kê nhưng không khớp được danh mục hệ thống (`trang_thai: 'khong_xac_dinh'`) → vẫn phải lập phiếu **Nhập** cho toàn bộ số lượng đã kiểm kê; do không suy luận được là NVL hay thành phẩm, người dùng chọn tay loại kho cho từng mã (mặc định NVL) trước khi tạo phiếu.
-  - Các mã đã chọn được gộp theo (loại phiếu, kho vật lý) để tạo phiếu, nhưng từng dòng hàng trong `phieu_xuat_nhap_kho` luôn lưu `ma_sp` nguyên bản. Loại phiếu (`nhap`/`xuat`) và số lượng là hai trường riêng. Ngày lập phiếu do người dùng chọn ở ô "Thời gian lập phiếu" của tab này (mặc định hôm nay); lý do phiếu ghi rõ đợt kiểm kho.
-
-  ### Ghi tồn kho ở đâu
-  Tạo phiếu **không** ghi đè trực tiếp cột `ton_dau_ky` trên `kho_nvl`/`san_pham`. Nó ghi thêm 1 dòng vào **ledger** `phieu_xuat_nhap_kho` (giống hệt việc tự tay lập phiếu nhập/xuất bình thường) — `ton_cuoi_ky` hiển thị ở trang Tồn kho được **tính lại** từ `ton_dau_ky + nhập trong kỳ − xuất trong kỳ`, nên tự động khớp đúng sau khi phiếu điều chỉnh được tạo. Phiếu này cũng hiện bình thường ở trang Lịch sử xuất nhập kho — không có cơ chế "âm thầm sửa số" nào khác.
-
-### Trạng thái "Không xác định"
-
-Mã kiểm kê (`kiem_kho.ma_nvl`) đôi khi lệch tiền tố so với danh mục tồn kho — VD kiểm kê ghi `MT-L30cm` (từ mã QR) trong khi `kho_nvl.ma_npl` chỉ lưu `L30cm`. Khi không khớp được cả 2 danh mục (NVL lẫn thành phẩm), route **không được** mặc định tồn hệ thống = 0 (sẽ ra chênh lệch giả) — trả `ton_he_thong: null`, `chenh_lech: null`, `trang_thai: 'khong_xac_dinh'`. Các mã này không tính vào số liệu thừa/thiếu và không xuất hiện ở tab "Phiếu điều chỉnh" (không có `loai_kho` nên không biết gọi RPC tồn kho nào) — cần đối chiếu lại quy ước đặt mã giữa kiểm kê và danh mục trước.
-
+- **Danh sách chi tiết chênh lệch**: hiển thị hợp của các mã QR còn trong kho tại thời điểm chốt và các mã đã quét trong đợt; so khớp nguyên mã đầy đủ (cả tiền tố và hậu tố lô/serial). Tab tổng hợp mới gom theo tiền tố.
 ## Vì sao không JOIN SQL
 
-`kiem_kho`/`kiem_kho_tong_hop` và `kho_nvl`/`san_pham`/`phieu_xuat_nhap_kho` nằm trên **2 Supabase project khác nhau** (xem `docs/ai-tables/kiem_kho.md` mục DB). Route `GET /api/kiem-kho/chenh-lech` gọi cả 2 nguồn rồi đối chiếu theo `ma_nvl` ở tầng Node (`server.ts`), tái dùng nguyên các hàm đã có:
+`kiem_kho` và các bảng kho thành phẩm nằm trên hai Supabase project khác nhau; API đọc cả hai nguồn rồi đối chiếu tại Node.
 
-- `loadTonKhoGop('nvl'|'san_pham', tenKho, tuNgay, denNgay)` — gọi RPC `ton_kho_nvl_gop`/`ton_kho_san_pham_gop`.
-- `groupTonKhoRowsByPrefix()` — gộp các dòng lô/hậu tố về mã gốc.
-- Số kiểm kê: đọc `kiem_kho_tong_hop` nếu đợt đã chốt, hoặc gọi RPC `kiem_kho_gop_theo_ma_nvl` nếu chưa chốt (giống route `/api/kiem-kho-tong-hop` và `/api/kiem-kho/dot-tong-hop-live`).
+- `GET /api/kiem-kho/chenh-lech` tải toàn bộ dòng kiểm kê theo trang; tab chi tiết tải đủ các trang của `/api/kiem-kho` (500 dòng/trang), không cắt ở 500 mã.
+- Tồn hệ thống thành phẩm được dựng theo từng `ma_sp_qr` từ `chi_tiet_san_pham` và `bien_dong_chi_tiet_san_pham`; dùng `created_at` để lấy trạng thái đúng tại `thoi_gian_xac_nhan` của đợt đã chốt. Nếu mã chưa có lịch sử biến động thì dựa vào `created_at`/`updated_at` của snapshot.
+- Tab chi tiết so khớp nguyên mã QR đầy đủ giữa tồn tại thời điểm chốt và các dòng đã quét. Tab tổng hợp đếm kiểm kê theo `ma_nvl` (tiền tố sản phẩm) và cộng tồn hệ thống theo `ma_sp_goc`.
 
-`ton_he_thong` lấy tại ngày chốt đợt (nếu đã chốt) hoặc ngày hiện tại (nếu chưa chốt). `loai_kho` của mỗi dòng được suy ra bằng cách khớp `ma_nvl` vào danh mục NVL trước, rồi danh mục thành phẩm — không khớp được ở cả hai thì `loai_kho: null` (không tạo được phiếu điều chỉnh cho dòng này).
+`ton_he_thong` là số QR còn trong kho tại đúng thời điểm chốt đợt (hoặc thời điểm hiện tại nếu đợt chưa chốt). `loai_kho` là `san_pham` khi tiền tố khớp danh mục thành phẩm; nếu không khớp thì `null` và không tạo được phiếu điều chỉnh cho dòng này.
 
 ## Bảng `kiem_kho_chenh_lech_xu_ly`
 
@@ -47,6 +32,7 @@ Không phải "trạng thái" tính toán được — chỉ là **lịch sử c
 |---|---|---|
 | GET | `/api/kiem-kho/chenh-lech` | Query `dotKiemKho` (bắt buộc), `tenKho` (tuỳ chọn). Trả bảng tổng hợp `records[]`, tồn nguyên bản `he_thong_chi_tiet[]` và lịch sử theo mã nguyên bản `xu_ly_chi_tiet[]`. Record tổng hợp có thêm `trang_thai_xu_ly`: `chua_xu_ly`, `dang_xu_ly`, `da_xu_ly` hoặc `khong_can_xu_ly`. |
 | POST | `/api/kiem-kho/chenh-lech-xu-ly` | Body `{ dot_kiem_kho, ma_sp, loai_phieu, so_luong_dieu_chinh, ma_phieu_dieu_chinh, ghi_chu?, nguoi_xu_ly? }` — `ma_sp` là mã nguyên bản; insert 1 dòng lịch sử sau khi tạo phiếu kho thành công. |
+| POST | `/api/phieu-xuat-nhap-kho` | Phiếu điều chỉnh gửi `laDieuChinh: true`; tạo header `phieu_nhap`/`phieu_xuat` và từng dòng QR trong `nhap_kho`/`xuat_kho` trên DB kho; đồng thời ghi sổ QR và cập nhật snapshot qua RPC transaction trên DB chính. |
 
 ## Frontend
 

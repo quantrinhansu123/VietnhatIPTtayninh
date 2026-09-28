@@ -242,13 +242,11 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     table: 'ton_kho',
     label: 'Tồn kho tổng hợp',
     sql: [
-      'supabase-kho-nvl-ten-kho.sql',
-      'supabase-san-pham-ten-kho.sql',
-      'supabase-phieu-xuat-nhap-kho-ten-kho.sql',
-      'supabase-ton-kho-rpc.sql'
+      'supabase-chi-tiet-san-pham.sql',
+      'supabase-bien-dong-chi-tiet-san-pham.sql'
     ],
-    apiPrefix: '/api/ton-kho',
-    serverLines: 'GET /api/ton-kho/chi-tiet + GET /api/ton-kho/tong-hop',
+    apiPrefix: '/api/ton-kho-qr-data',
+    serverLines: 'GET /api/ton-kho-qr-data',
     appTab: 'ton-kho',
     appLines: 'src/features/ton-kho/index.tsx',
     components: ['src/components/shared/table/FilterCombobox.tsx'],

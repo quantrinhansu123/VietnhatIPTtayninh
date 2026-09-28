@@ -75,7 +75,8 @@ import { ControlBoardPanel } from './features/control-board';
 import { HumanResourcesPanel } from './features/nhan-su';
 import { VehiclesPanel } from './features/danh-sach-xe';
 import { CanTuDongPanel } from './features/can-tu-dong';
-import { CanTuDongPilotPanel, CanKiemKhoPilotPanel } from './features/can-tu-dong/pilot';
+import { CanTuDongEntryForm } from './features/can-tu-dong/entry-form';
+import { CanKiemKhoPilotPanel } from './features/can-tu-dong/pilot';
 import { KiemKhoPanel } from './features/kiem-kho';
 import { DoiSoatPanel } from './features/doi-soat';
 import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
@@ -1137,7 +1138,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <CanTuDongPilotPanel />
+                <CanTuDongEntryForm onClose={() => goBack('report-lists')} />
               </motion.div>
             ) : resolvedTab === 'can-kiem-kho' ? (
               <motion.div

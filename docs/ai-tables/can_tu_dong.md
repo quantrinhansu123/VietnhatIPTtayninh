@@ -44,6 +44,7 @@
 | Path | Ghi chú |
 |------|---------|
 | `GET /api/cloudinary/proxy?url=` | Proxy ảnh `res.cloudinary.com/.../image/upload/` (tránh ERR_CERT_VERIFIER_CHANGED trên Chrome) |
+| `POST /api/can-tu-dong` | Form **Trạm cân AI / Trạm cân QR** — insert 1 dòng. `qr_code` tự ghi `QR lỗi đọc sau`. Ảnh Cloudinary `core_image_*` / `product_image_*`. Không ghi số cân; điền sau trên `/can-tu-dong` |
 | `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày. **`images=0`** bỏ ký URL ảnh (dùng khi Tính toán) |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
@@ -58,9 +59,10 @@
 | File | Nội dung |
 |------|----------|
 | `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · **Đồng bộ theo Mã SP** (tiền tố QR) · Excel · In |
+| `src/features/can-tu-dong/entry-form.tsx` | Form **Trạm cân AI** (`/phieu-bao-cao`) và **Trạm cân QR** (`/tram-can-qr`) — ghi thêm dòng vào `can_tu_dong`, không mở trạm ngoài |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |
-| `src/features/can-tu-dong/pilot.tsx` | UI `/tram-can-qr` · `/can-kiem-kho` |
+| `src/features/can-tu-dong/pilot.tsx` | `/can-kiem-kho` vẫn nhúng trạm ngoài. `/tram-can-qr` dùng form `entry-form.tsx` |
 | `src/utils/canTuDongWeights.ts` | `parseCanTuDongQrProductCode` = tiền tố trước `_`/`+`; công thức bì/nhựa + tổng cột |
 | `src/components/BbCanTuDongSanLuongPanel.tsx` | Panel từng phiếu cân AI — giữ cho `/can-tu-dong`; **không** còn dùng trên `/phan-tich-tu-dong` |
 | `src/components/BbCanTuDongTongHopPanel.tsx` | Tab **Dữ liệu cân thực tế** trên `/phan-tich-tu-dong`: đọc `can_tu_dong_tong_hop` (Số cuộn thực tế + Tổng trọng lượng thực tế), không load từng phiếu |

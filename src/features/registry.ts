@@ -96,10 +96,10 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     label: 'Cân tự động',
     sql: [],
     apiPrefix: '/api/can-tu-dong',
-    serverLines: 'GET /api/can-tu-dong + POST /api/can-tu-dong/bulk-delete (client supabaseWeighing)',
+    serverLines: 'GET/POST /api/can-tu-dong + POST /api/can-tu-dong/bulk-delete (client supabaseWeighing)',
     appTab: 'can-tu-dong',
     appLines: 'src/features/can-tu-dong/index.tsx',
-    components: ['src/components/WeighingImagePreviewModal.tsx'],
+    components: ['src/features/can-tu-dong/entry-form.tsx', 'src/components/WeighingImagePreviewModal.tsx'],
     utils: ['src/utils/canTuDongWeights.ts', 'src/utils/canTuDongExcel.ts']
   },
   can_tu_dong_tong_hop: {

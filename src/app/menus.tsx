@@ -61,7 +61,7 @@ import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
 import { pathFromTab } from '../routes';
 import MachineDowntimeIcon from '../components/icons/MachineDowntimeIcon';
-import { CAN_TU_DONG_PILOT_URL } from '../features/can-tu-dong/pilot';
+import { CanTuDongEntryForm } from '../features/can-tu-dong/entry-form';
 
 export type MenuCardConfig = {
   title: string;
@@ -73,6 +73,8 @@ export type MenuCardConfig = {
   disabled?: boolean;
   /** Mở nội dung nhúng trong modal thay vì điều hướng sang tab khác. */
   modalUrl?: string;
+  /** Form nhập tay, không mở trạm cân ngoài. */
+  entryForm?: 'can-tu-dong';
 };
 
 export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
@@ -174,11 +176,11 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Trạm cân AI',
-    desc: 'Mở liên kết trạm cân AI để nhập dữ liệu cân.',
+    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
     icon: Scale,
     icon3d: robot3d,
-    tab: 'can-tu-dong-pilot',
-    modalUrl: CAN_TU_DONG_PILOT_URL
+    tab: 'can-tu-dong',
+    entryForm: 'can-tu-dong'
   },
   {
     title: 'Cân kiểm kho',
@@ -323,7 +325,7 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Trạm cân QR',
-    desc: 'Mở tram cân QR pilot ngay trong app (không mở tab mới).',
+    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong-pilot'
@@ -597,7 +599,7 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
   },
   {
     title: 'Trạm cân QR',
-    desc: 'Mở tram cân QR pilot ngay trong app (không mở tab mới).',
+    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong-pilot'
@@ -735,7 +737,7 @@ export function MenuCardGrid({
             key={item.title}
             type="button"
             aria-disabled={disabled}
-            onClick={() => !disabled && (item.modalUrl ? setModalItem(item) : onNavigate(item.tab))}
+            onClick={() => !disabled && (item.modalUrl || item.entryForm ? setModalItem(item) : onNavigate(item.tab))}
             className={`group relative min-h-[80px] overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 md:p-4 text-left transition hover:border-brand-200 hover:shadow-elevated focus-visible:ring-2 focus-visible:ring-brand-500/25 ${
               disabled ? 'cursor-not-allowed' : 'active:scale-[0.99]'
             }`}
@@ -761,7 +763,9 @@ export function MenuCardGrid({
         );
       })}
     </section>
-    {modalItem?.modalUrl ? (
+    {modalItem?.entryForm === 'can-tu-dong' ? (
+      <CanTuDongEntryForm variant="modal" title="Trạm cân AI" onClose={() => setModalItem(null)} />
+    ) : modalItem?.modalUrl ? (
       <div className="fixed inset-0 z-[100] bg-white" role="dialog" aria-modal="true">
         <div className="flex h-dvh w-screen flex-col overflow-hidden bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">

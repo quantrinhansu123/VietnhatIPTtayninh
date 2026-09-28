@@ -14653,6 +14653,68 @@ export function createApp() {
     }
   });
 
+  app.post('/api/can-tu-dong', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({ error: 'Chưa cấu hình DB cân tự động.' });
+    }
+    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+    const coreImageUrl = String(body.core_image_url ?? '').trim();
+    const productImageUrl = String(body.product_image_url ?? '').trim();
+    if (!coreImageUrl && !productImageUrl) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một ảnh cân.' });
+    }
+    const ngay = String(body.ngay ?? body.work_date ?? '').trim();
+    const ca = String(body.ca ?? '').trim();
+    const lenhSx = String(body.lenh_sx ?? body.ma_lenh_sx ?? '').trim();
+    const may = String(body.may ?? body.machine ?? '').trim();
+    const metadata = mergeCanTuDongNgayLenhSxMetadata(
+      {},
+      { ngay: ngay || null, lenhSx: lenhSx || null, ca: ca || null, may: may || null }
+    );
+    const nowIso = new Date().toISOString();
+    const corePublicId = String(body.core_image_public_id ?? '').trim();
+    const productPublicId = String(body.product_image_public_id ?? '').trim();
+    const payload: Record<string, unknown> = {
+      event_id: crypto.randomUUID(),
+      qr_code: 'QR lỗi đọc sau',
+      unit: String(body.unit ?? '').trim() || 'kg',
+      captured_at: nowIso,
+      confirmed_at: nowIso,
+      image_path: corePublicId || productPublicId || 'manual/nhap-tay',
+      weight_source: 'nhap-tay',
+      qr_source: 'nhap-tay',
+      weight_kind: 'gross',
+      status: 'confirmed',
+      error_status: 'ok',
+      error_reason: '',
+      metadata
+    };
+    if (coreImageUrl) {
+      payload.core_image_url = coreImageUrl;
+      if (corePublicId) payload.core_image_public_id = corePublicId;
+    }
+    if (productImageUrl) {
+      payload.product_image_url = productImageUrl;
+      if (productPublicId) payload.product_image_public_id = productPublicId;
+    }
+    const deviceId = String(body.device_id ?? '').trim();
+    if (deviceId) payload.device_id = deviceId;
+    try {
+      const { data, error } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .insert(payload)
+        .select('*')
+        .maybeSingle();
+      if (error) {
+        console.error('Supabase can_tu_dong insert error:', error);
+        return res.status(500).json({ error: error.message || 'Không thể ghi dòng cân tự động.' });
+      }
+      return res.status(201).json({ success: true, record: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi ghi dòng cân tự động.' });
+    }
+  });
+
   app.put('/api/can-tu-dong/:id', async (req, res) => {
     if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
       return res.status(503).json({ error: 'Chưa cấu hình DB cân tự động.' });

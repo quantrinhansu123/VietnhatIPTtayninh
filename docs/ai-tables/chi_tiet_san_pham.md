@@ -10,6 +10,7 @@
 | **Mục đích** | Lưu từng mã QR thành phẩm theo mã sản phẩm gốc, kho và trạng thái; nhập đặt trạng thái `trong_kho`, xuất đặt trạng thái `da_xuat`. |
 | **Khóa liên kết** | `ma_sp_goc` → `san_pham.ma_sp`; `ma_sp_qr` là khóa chính duy nhất. |
 | **API** | `POST /api/kho/phieu` sau khi lưu phiếu thành công ghi từng QR vào `bien_dong_chi_tiet_san_pham` và đồng bộ snapshot nhập/xuất trong `chi_tiet_san_pham`. Phiếu điều chỉnh từ `/xu-ly-chenh-lech` cũng ghi biến động có cờ `la_dieu_chinh`. `POST /api/kho/quet-dot` chỉ lưu đợt QR vào DB kho. |
+| **Tồn hiện tại** | `GET /api/chi-tiet-san-pham/ton-kho?ma_sp_goc=...` đếm QR có trạng thái `trong_kho`; form đơn hàng tự làm mới số đếm khi đang mở. |
 | **Feature** | `src/features/phieu-xuat-nhap-kho/index.tsx` gửi yêu cầu cập nhật chi tiết sau khi lưu phiếu thành công. |
 
 `so_luong` trong snapshot mặc định và giới hạn bằng `1`, vì một dòng biểu diễn một mã QR. Bảng biến động cũng lưu một dòng cho mỗi QR trong mỗi phiếu; phiếu khác cùng ngày/ca vẫn là sự kiện riêng nhờ `ma_phieu`. RPC dùng một transaction để ghi lịch sử và cập nhật snapshot; xuất cập nhật `trang_thai='da_xuat'` và `updated_at`.

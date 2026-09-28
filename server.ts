@@ -17069,6 +17069,25 @@ export function createApp() {
     return { data, error: null };
   }
 
+  app.get('/api/chi-tiet-san-pham/ton-kho', async (req, res) => {
+    const maSpGoc = String(req.query.ma_sp_goc ?? '').trim();
+    if (!maSpGoc) return res.status(400).json({ error: 'Thiếu mã sản phẩm.' });
+    if (!supabase) return res.status(503).json({ error: 'Chưa kết nối cơ sở dữ liệu sản phẩm.' });
+
+    try {
+      const { count, error } = await supabase
+        .from('chi_tiet_san_pham')
+        .select('ma_sp_qr', { count: 'exact', head: true })
+        .eq('ma_sp_goc', maSpGoc)
+        .eq('trang_thai', 'trong_kho');
+      if (error) throw error;
+      return res.json({ ma_sp_goc: maSpGoc, so_luong: count ?? 0 });
+    } catch (err: any) {
+      console.error('Product stock count query error:', err);
+      return res.status(500).json({ error: err?.message || 'Không thể tải tồn kho sản phẩm.' });
+    }
+  });
+
   app.get('/api/ton-kho-qr-data', async (req, res) => {
     if (!supabase) return res.json({ chi_tiet_records: [], tong_hop_records: [], source: 'local' });
 

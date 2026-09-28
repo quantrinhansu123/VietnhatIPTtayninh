@@ -32,12 +32,12 @@
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
-UI danh sách có cột tick chọn + nút **Xóa đã chọn** (bulk `DELETE /api/kho-nvl` body `{ ids }`). Không hiển thị các cột Tồn đầu / Nhập / Xuất / Tồn cuối; thay bằng một cột **Tổng SL** lấy từ `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Form thêm và sửa không hiển thị Tồn đầu kỳ / Nhập trong kỳ / Xuất trong kỳ; các cột DB cũ vẫn được giữ để tương thích dữ liệu và nghiệp vụ tồn kho. Ảnh số cân / số bao thực tế thuộc **phiếu xuất kho** (`phieu_xuat_nhap_kho`), không lưu trên `kho_nvl`.
+UI danh sách có cột tick chọn + nút **Xóa đã chọn** (bulk `DELETE /api/kho-nvl` body `{ ids }`). Không hiển thị các cột Tồn đầu / Nhập / Xuất / Tồn cuối; thay bằng một cột **Tổng SL** lấy từ `ton_cuoi_ky` đã tính theo phiếu kho đến ngày đang chọn. Form thêm và sửa không hiển thị Tồn đầu kỳ / Nhập trong kỳ / Xuất trong kỳ; các cột DB cũ vẫn được giữ để tương thích dữ liệu và nghiệp vụ tồn kho. Ảnh số cân / số bao thực tế thuộc **phiếu xuất kho** (`xuat_kho`), không lưu trên `kho_nvl`.
 
 
 ## Liên kết
 
-Phiếu xuất nhập (`phieu_xuat_nhap_kho`) cập nhật tồn kho NVL.
+Phiếu xuất nhập (`phieu_nhap`/`phieu_xuat` và `nhap_kho`/`xuat_kho`) cập nhật tồn kho NVL.
 
 ### Excel danh mục NVL
 

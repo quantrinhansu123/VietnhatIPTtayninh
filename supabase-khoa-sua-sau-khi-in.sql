@@ -6,7 +6,8 @@ declare
   t text;
 begin
   foreach t in array array[
-    'phieu_xuat_nhap_kho',
+    'phieu_nhap',
+    'phieu_xuat',
     'phieu_can_dinh_ki',
     'bao_cao_hang_hong',
     'lenh_sx',

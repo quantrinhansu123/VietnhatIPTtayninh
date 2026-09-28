@@ -1695,7 +1695,7 @@ export function ProductViewModal({
     setDeletingWarehouseSlipId(row.id);
     setWarehouseSlipError('');
     try {
-      const res = await fetch(`/api/phieu-xuat-nhap-kho/${encodeURIComponent(row.id)}`, {
+      const res = await fetch(`/api/kho/dong/${encodeURIComponent(row.id)}`, {
         method: 'DELETE'
       });
       const data = await res.json().catch(() => ({}));
@@ -2427,7 +2427,7 @@ export function ProductViewModal({
                     {tab === 'xuat-kho' ? 'Nhật ký xuất kho' : 'Nhật ký nhập kho'}
                   </p>
                   <p className="mt-0.5 text-xs font-semibold text-zinc-500">
-                    Theo mã SP {product.code} · bảng phieu_xuat_nhap_kho
+                    Theo mã SP {product.code} · bảng phieu_nhap/phieu_xuat
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

@@ -10,7 +10,7 @@ const TABLE_FRONTEND = {
   san_pham: ['src/features/san-pham/index.tsx', 'src/features/san-pham/types.ts', 'src/features/san-pham/productFieldClass.ts'],
   danh_sach_may: ['src/features/danh-sach-may/index.tsx'],
   kho_nvl: ['src/features/kho-nvl/index.tsx'],
-  phieu_xuat_nhap_kho: ['src/features/phieu-xuat-nhap-kho/index.tsx'],
+  phieu_kho: ['src/features/phieu-xuat-nhap-kho/index.tsx'],
   don_hang: ['src/features/don-hang/index.tsx', 'src/features/_shared/orderHelpers.ts'],
   khach_hang: ['src/features/khach-hang/index.tsx'],
   lenh_sx: ['src/features/lenh-sx/index.tsx'],

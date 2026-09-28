@@ -18,12 +18,16 @@ function round(value) {
 }
 
 try {
-  const { data: movements, error: movementError } = await supabase
-    .from('phieu_xuat_nhap_kho')
-    .select('ma_npl, loai_phieu, so_luong')
-    .or('loai_kho.eq.nvl,loai_kho.is.null');
-
-  if (movementError) throw new Error(movementError.message);
+  const [{ data: inbound, error: inboundError }, { data: outbound, error: outboundError }] = await Promise.all([
+    supabase.from('nhap_kho').select('ma_sp, so_luong').eq('loai', 'nvl'),
+    supabase.from('xuat_kho').select('ma_sp, so_luong').eq('loai', 'nvl')
+  ]);
+  if (inboundError) throw new Error(inboundError.message);
+  if (outboundError) throw new Error(outboundError.message);
+  const movements = [
+    ...(inbound || []).map(row => ({ ma_npl: row.ma_sp, loai_phieu: 'nhap', so_luong: row.so_luong })),
+    ...(outbound || []).map(row => ({ ma_npl: row.ma_sp, loai_phieu: 'xuat', so_luong: row.so_luong }))
+  ];
 
   const totals = new Map();
   for (const row of movements || []) {

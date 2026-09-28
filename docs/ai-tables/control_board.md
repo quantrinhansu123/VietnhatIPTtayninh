@@ -47,6 +47,6 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 
 ## Bảng liên quan
 
-`bao_cao_nghiem_thu`, `phieu_can_dinh_ki`, `kho_nvl`, `phieu_xuat_nhap_kho`, `ke_hoach_san_xuat`, `lenh_sx`, `nhan_su`, `don_hang`, `san_pham`, `danh_sach_may`
+`bao_cao_nghiem_thu`, `phieu_can_dinh_ki`, `kho_nvl`, `phieu_nhap`/`phieu_xuat`, `ke_hoach_san_xuat`, `lenh_sx`, `nhan_su`, `don_hang`, `san_pham`, `danh_sach_may`
 
 Khi sửa bảng điều khiển: đọc manifest từng bảng con trước.

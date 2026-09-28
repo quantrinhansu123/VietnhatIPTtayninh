@@ -785,7 +785,7 @@ export function XuLyChenhLechPanel({
     try {
       for (const group of groups.values()) {
         try {
-          const res = await fetch('/api/phieu-xuat-nhap-kho', {
+          const res = await fetch('/api/kho/luu-phieu', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -13,7 +13,7 @@
 | GET | `/api/san-pham` | 3507 |
 | POST | `/api/san-pham` | 3564 |
 | GET | `/api/san-pham/:id/ma-chi-tiet` | danh sách mã QR/serial đã lưu |
-| GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | nhật ký nhập/xuất từ `phieu_xuat_nhap_kho` theo mã SP |
+| GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | nhật ký nhập/xuất từ `nhap_kho`/`xuat_kho` theo mã SP |
 | PATCH | `/api/san-pham` | bulk đổi `ten_kho` theo `ids` (ưu tiên bộ lọc UI) hoặc theo `nhom_vthh` |
 | PATCH | `/api/san-pham/:id` | 3629 |
 | POST | `/api/ma-qr-hang-hoa/cap-moi` | Cấp/lưu QR duy nhất khi in từ danh mục Kho hàng hóa |
@@ -35,7 +35,7 @@
 
 UI danh sách sản phẩm có **hai chế độ**:
 
-- Modal **Xem sản phẩm**: tab Thông tin · Thành phần · **Nhập kho** · **Xuất kho** (hai tab sau lấy dòng từ `phieu_xuat_nhap_kho` theo mã SP). Bảng **Tồn kho** trên tab Thông tin: **Tồn đầu kỳ** = `tong_so_luong` từ Bảng tổng hợp Kiểm kho (`GET /api/kiem-kho/ton-dau-ky`); **Nhập/Xuất trong kỳ** = tổng `so_luong` toàn bộ phiếu ở tab Nhập kho / Xuất kho; Tồn cuối = đầu + nhập − xuất.
+- Modal **Xem sản phẩm**: tab Thông tin · Thành phần · **Nhập kho** · **Xuất kho** (hai tab sau lấy dòng từ `nhap_kho`/`xuat_kho` theo mã SP). Bảng **Tồn kho** trên tab Thông tin: **Tồn đầu kỳ** = `tong_so_luong` từ Bảng tổng hợp Kiểm kho (`GET /api/kiem-kho/ton-dau-ky`); **Nhập/Xuất trong kỳ** = tổng `so_luong` toàn bộ phiếu ở tab Nhập kho / Xuất kho; Tồn cuối = đầu + nhập − xuất.
 - **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT / Kho; thống kê Sản phẩm · Nhóm VTHH · Đơn vị. Nút **Đổi kho theo bộ lọc** mở chọn tên kho rồi cập nhật `ten_kho` cho các SP đang hiện theo bộ lọc.
 - **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị. Bộ lọc **Kho** (dropdown từ `quan_ly_kho`) — cột **Kho** trên bảng luôn hiện đúng kho đang chọn.
 
@@ -50,7 +50,7 @@ UI danh sách sản phẩm có **hai chế độ**:
 
 ## Mã sản phẩm chi tiết
 
-Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Việc sinh/lưu serial QR đã chuyển sang **Phiếu nhập kho thành phẩm**; xem manifest `phieu_xuat_nhap_kho.md` và `ma_san_pham_chi_tiet.md`.
+Trang Sản phẩm chỉ quản lý danh mục mã gốc và định mức. Việc sinh/lưu serial QR đã chuyển sang **Phiếu nhập kho thành phẩm**; xem manifest phiếu kho và `ma_san_pham_chi_tiet.md`.
 
 Xóa SP: `DELETE /api/san-pham` gọi RPC `xoa_san_pham_hang_loat` (hoặc FK `ON DELETE CASCADE`). Chạy `supabase-ma-san-pham-chi-tiet-delete.sql` nếu chưa.
 

@@ -8,7 +8,7 @@
 
 ## Vai trò
 
-Snapshot **riêng** cho tab xuất kho trên báo cáo BB — **không** thay `phieu_xuat_nhap_kho` (nguồn live vẫn đọc phiếu XK).
+Snapshot **riêng** cho tab xuất kho trên báo cáo BB — nguồn live đọc `phieu_xuat`/`xuat_kho`.
 
 Ghi khi bấm **Tính toán** (cùng khóa `khoa_on_dinh` với `bb_bao_cao_tinh_toan` / `bc_lsx`).
 
@@ -43,4 +43,4 @@ Hoặc paste `supabase-du-lieu-xuat-kho.sql` vào Supabase SQL Editor.
 
 ## Liên quan
 
-`phieu_xuat_nhap_kho`, `lenh_sx`, `san_pham`, `kho_nvl`, `bc_lsx`, `bb_bao_cao_tinh_toan`, `control_board`
+`phieu_xuat`, `xuat_kho`, `lenh_sx`, `san_pham`, `kho_nvl`, `bc_lsx`, `bb_bao_cao_tinh_toan`, `control_board`

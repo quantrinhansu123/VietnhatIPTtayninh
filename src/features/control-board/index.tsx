@@ -334,7 +334,7 @@ export function ControlBoardPanel({
         fetch(withQuery('/api/phieu-can-dinh-ki', { from: summaryFrom, to: summaryTo })),
         fetch(withQuery('/api/bao-cao-hang-hong', { from: summaryFrom, to: summaryTo })),
         fetch(withQuery('/api/bao-cao-may-nvl-ton?limit=300', { tu_ngay: summaryFrom, den_ngay: summaryTo })),
-        fetch(withQuery('/api/phieu-xuat-nhap-kho', { from: summaryFrom, to: summaryTo }))
+        fetch(withQuery('/api/kho/lich-su', { from: summaryFrom, to: summaryTo }))
       ]);
 
       const orderData = await orderRes.json().catch(() => ({}));
@@ -455,7 +455,7 @@ export function ControlBoardPanel({
       const [materialRes, productRes, warehouseMovementRes] = await Promise.all([
         fetch('/api/kho-nvl'),
         fetch('/api/san-pham?format=table'),
-        fetch(withQuery('/api/phieu-xuat-nhap-kho', { from: summaryFrom, to: summaryTo }))
+        fetch(withQuery('/api/kho/lich-su', { from: summaryFrom, to: summaryTo }))
       ]);
       const materialData = await materialRes.json().catch(() => ({}));
       const productData = await productRes.json().catch(() => ({}));

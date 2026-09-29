@@ -2145,6 +2145,96 @@ function vehicleWriteError(error: { code?: string; message?: string }, table: st
   return `Không thể lưu dữ liệu vào ${table}. ${error.message || ''}`.trim();
 }
 
+function shippingOrderWriteError(error: { code?: string; message?: string }, table: string) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${table} chưa tồn tại. Hãy chạy file supabase-lenh-xuat-hang.sql trong Supabase SQL Editor.`;
+  }
+  if (isMissingColumnError(error)) {
+    const detail = String(error.message || '').trim();
+    return `Bảng ${table} đang thiếu cột (thường là bsx / so_km). Hãy chạy file supabase-lenh-xuat-hang-bsx.sql trên đúng project he-thong (bfnsopyvgvhaegqijpum), rồi Settings → API → Reload schema. Chi tiết: ${detail}`.trim();
+  }
+  if (error.code === '23505') {
+    return 'Mã lệnh xuất hàng đã tồn tại.';
+  }
+  return `Không thể lưu lệnh xuất hàng vào ${table}. ${error.message || ''}`.trim();
+}
+
+const SHIPPING_ORDER_OPTIONAL_COLUMNS = ['bsx', 'so_km'] as const;
+
+function stripShippingOrderOptionalColumns(
+  record: Record<string, unknown>,
+  error: { message?: string } | null
+) {
+  const message = String(error?.message || '');
+  const next = { ...record };
+  let stripped = false;
+  for (const column of SHIPPING_ORDER_OPTIONAL_COLUMNS) {
+    if (!(column in next)) continue;
+    if (new RegExp(`\\b${column}\\b`, 'i').test(message) || /schema cache|does not exist|PGRST204/i.test(message)) {
+      delete next[column];
+      stripped = true;
+    }
+  }
+  // Nếu lỗi không chỉ rõ tên cột nhưng là missing-column, vẫn thử bỏ bsx/so_km.
+  if (!stripped && isMissingColumnError(error)) {
+    for (const column of SHIPPING_ORDER_OPTIONAL_COLUMNS) {
+      if (column in next) {
+        delete next[column];
+        stripped = true;
+      }
+    }
+  }
+  return stripped ? next : null;
+}
+
+async function writeShippingOrderRecord(params: {
+  mode: 'insert' | 'update';
+  id?: string;
+  record: Record<string, unknown>;
+}) {
+  if (!supabase) {
+    return { error: { message: 'Supabase chưa được cấu hình.' } as { code?: string; message?: string }, data: null, warning: '' };
+  }
+
+  const run = async (record: Record<string, unknown>) => {
+    if (params.mode === 'insert') {
+      return supabase.from(SUPABASE_SHIPPING_ORDERS_TABLE).insert(record).select('*').single();
+    }
+    return supabase
+      .from(SUPABASE_SHIPPING_ORDERS_TABLE)
+      .update(record)
+      .eq('id', params.id)
+      .select('*')
+      .single();
+  };
+
+  let result = await run(params.record);
+  if (!result.error) {
+    return { error: null, data: result.data, warning: '' };
+  }
+
+  if (!isMissingColumnError(result.error)) {
+    return { error: result.error, data: null, warning: '' };
+  }
+
+  const stripped = stripShippingOrderOptionalColumns(params.record, result.error);
+  if (!stripped) {
+    return { error: result.error, data: null, warning: '' };
+  }
+
+  result = await run(stripped);
+  if (result.error) {
+    return { error: result.error, data: null, warning: '' };
+  }
+
+  return {
+    error: null,
+    data: result.data,
+    warning:
+      'Đã lưu lệnh xuất nhưng DB chưa có cột bsx/so_km nên BSX và Số Km chưa được lưu. Chạy supabase-lenh-xuat-hang-bsx.sql trên project he-thong (bfnsopyvgvhaegqijpum) rồi Reload schema.'
+  };
+}
+
 function customerWriteError(error: { code?: string; message?: string }, table: string) {
   if (isMissingTableError(error)) {
     return `Bảng ${table} chưa tồn tại. Hãy chạy file supabase-khach-hang.sql trong Supabase SQL Editor.`;
@@ -2561,6 +2651,14 @@ function parseShippingOrderBody(
       ten_khach_hang: customerName,
       dia_chi_giao: pickRowField(source, ['dia_chi_giao', 'dia_chi', 'address'], '') || null,
       so_dien_thoai: pickRowField(source, ['so_dien_thoai', 'dien_thoai', 'phone'], '') || null,
+      bsx: (() => {
+        const plate = pickRowField(source, ['bsx', 'bien_so_xe', 'plateNumber'], '').trim().toUpperCase();
+        return plate || null;
+      })(),
+      so_km: (() => {
+        const km = parseDriverReconciliationNumber(source.so_km ?? source.soKm ?? source.kilometers);
+        return km > 0 ? km : null;
+      })(),
       nhan_vien: pickRowField(source, ['nhan_vien', 'staff'], '') || null,
       trang_thai: pickRowField(source, ['trang_thai', 'status'], 'Chờ xuất') || 'Chờ xuất',
       ghi_chu: pickRowField(source, ['ghi_chu', 'notes', 'note'], '') || null,
@@ -11356,15 +11454,14 @@ export function createApp() {
     try {
       const parsed = parseShippingOrderBody(req.body);
       if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-      const { data, error } = await supabase
-        .from(SUPABASE_SHIPPING_ORDERS_TABLE)
-        .insert(parsed.record)
-        .select('*')
-        .single();
+      const { data, error, warning } = await writeShippingOrderRecord({
+        mode: 'insert',
+        record: parsed.record
+      });
       if (error) {
-        return res.status(500).json({ error: vehicleWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
+        return res.status(500).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
       }
-      return res.status(201).json({ success: true, order: data });
+      return res.status(201).json({ success: true, order: data, warning: warning || undefined });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi thêm lệnh xuất hàng.' });
     }
@@ -11378,16 +11475,15 @@ export function createApp() {
     try {
       const parsed = parseShippingOrderBody(req.body);
       if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-      const { data, error } = await supabase
-        .from(SUPABASE_SHIPPING_ORDERS_TABLE)
-        .update(parsed.record)
-        .eq('id', id)
-        .select('*')
-        .single();
+      const { data, error, warning } = await writeShippingOrderRecord({
+        mode: 'update',
+        id,
+        record: parsed.record
+      });
       if (error) {
-        return res.status(500).json({ error: vehicleWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
+        return res.status(500).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
       }
-      return res.json({ success: true, order: data });
+      return res.json({ success: true, order: data, warning: warning || undefined });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật lệnh xuất hàng.' });
     }
@@ -11401,7 +11497,7 @@ export function createApp() {
     try {
       const { error } = await supabase.from(SUPABASE_SHIPPING_ORDERS_TABLE).delete().eq('id', id);
       if (error) {
-        return res.status(500).json({ error: vehicleWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
+        return res.status(500).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
       }
       return res.json({ success: true });
     } catch (err: any) {

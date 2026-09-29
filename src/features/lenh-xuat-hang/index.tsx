@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus, Save, Trash2, Truck } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber } from '../../utils';
-import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
+import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
+import { ShippingDeliveryPrintSheet } from '../../components/ShippingDeliveryPrintSheet';
+import {
+  waitForPrintImagesReady,
+  enableLandscapePrintPage,
+  disableLandscapePrintPage
+} from '../../utils/printReady';
 import { pickText } from '../_shared/recordHelpers';
 import {
   findOrderProductByCode,
@@ -45,6 +52,8 @@ export type ShippingOrder = {
   ten_khach_hang: string;
   dia_chi_giao: string;
   so_dien_thoai: string;
+  bsx: string;
+  so_km: number | null;
   nhan_vien: string;
   trang_thai: string;
   ghi_chu: string;
@@ -56,13 +65,23 @@ type CustomerDetail = {
   name: string;
   code: string;
   dia_chi: string;
+  dia_chi_moi: string;
   so_dien_thoai: string;
+};
+
+type VehicleOption = {
+  id: string;
+  plate: string;
+  label: string;
 };
 
 const STATUS_OPTIONS = ['Chờ xuất', 'Đang giao', 'Đã giao', 'Hủy'] as const;
 
+const compactFieldClass =
+  'h-9 w-full rounded-lg border border-zinc-200 px-2.5 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+
 const lineGridClass =
-  'grid-cols-2 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.3fr)_5.5rem_6rem_7.5rem_8rem_2.5rem]';
+  'grid-cols-2 md:grid-cols-[minmax(9rem,1.1fr)_minmax(12rem,1.6fr)_5.5rem_6rem_7.5rem_8rem_2.5rem]';
 
 function todayIso() {
   const now = new Date();
@@ -132,12 +151,42 @@ function normalizeShippingOrders(data: unknown): ShippingOrder[] {
       ten_khach_hang: pickText(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], ''),
       dia_chi_giao: pickText(row, ['dia_chi_giao', 'dia_chi', 'address'], ''),
       so_dien_thoai: pickText(row, ['so_dien_thoai', 'dien_thoai', 'phone'], ''),
+      bsx: pickText(row, ['bsx', 'bien_so_xe'], '').toUpperCase(),
+      so_km: (() => {
+        const km = Number(row.so_km ?? row.soKm ?? 0);
+        return Number.isFinite(km) && km > 0 ? km : null;
+      })(),
       nhan_vien: pickText(row, ['nhan_vien', 'staff'], ''),
       trang_thai: pickText(row, ['trang_thai', 'status'], 'Chờ xuất'),
       ghi_chu: pickText(row, ['ghi_chu', 'note'], ''),
       chi_tiet: parseLines(row.chi_tiet)
     }))
     .filter(row => row.id || row.ma_lenh);
+}
+
+function normalizeVehicles(data: unknown): VehicleOption[] {
+  if (!data || typeof data !== 'object') return [];
+  const vehicles = (data as { vehicles?: unknown }).vehicles;
+  if (!Array.isArray(vehicles)) return [];
+  const byPlate = new Map<string, VehicleOption>();
+  for (const item of vehicles) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const plate = pickText(record, ['bien_so_xe', 'bsx', 'plateNumber'], '').toUpperCase();
+    if (!plate) continue;
+    const status = pickText(record, ['trang_thai', 'status'], 'Đang sử dụng');
+    // Ưu tiên xe đang sử dụng; vẫn giữ xe khác nếu chưa có biển đó
+    if (byPlate.has(plate) && status !== 'Đang sử dụng') continue;
+    const kind = pickText(record, ['loai_xe', 'vehicle_type'], '');
+    const driver = pickText(record, ['tai_xe_phu_trach', 'tai_xe'], '');
+    const parts = [plate, kind, driver].filter(Boolean);
+    byPlate.set(plate, {
+      id: String(record.id ?? plate),
+      plate,
+      label: parts.join(' · ')
+    });
+  }
+  return [...byPlate.values()].sort((a, b) => a.plate.localeCompare(b.plate, 'vi'));
 }
 
 function normalizeCustomerDetails(data: unknown): CustomerDetail[] {
@@ -156,6 +205,7 @@ function normalizeCustomerDetails(data: unknown): CustomerDetail[] {
         name: name || code,
         code,
         dia_chi: pickText(record, ['dia_chi', 'dia_chi_giao', 'address', 'dia_chi_giao_hang'], ''),
+        dia_chi_moi: pickText(record, ['dia_chi_moi', 'new_address', 'newAddress'], ''),
         so_dien_thoai: pickText(record, ['so_dien_thoai', 'dien_thoai', 'phone', 'sdt'], '')
       };
     })
@@ -184,6 +234,8 @@ function emptyForm(code = '', staffName = ''): Omit<ShippingOrder, 'id'> {
     ten_khach_hang: '',
     dia_chi_giao: '',
     so_dien_thoai: '',
+    bsx: '',
+    so_km: null,
     nhan_vien: staffName,
     trang_thai: 'Chờ xuất',
     ghi_chu: '',
@@ -209,6 +261,7 @@ export function ShippingOrdersPanel({
   const [orders, setOrders] = useState<ShippingOrder[]>([]);
   const [customers, setCustomers] = useState<CustomerDetail[]>([]);
   const [products, setProducts] = useState<OrderProductOption[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -217,24 +270,35 @@ export function ShippingOrdersPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<Omit<ShippingOrder, 'id'>>(emptyForm('', currentUser?.name || ''));
-
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOrders, setPreviewOrders] = useState<ShippingOrder[]>([]);
+  const [printGeneralNote, setPrintGeneralNote] = useState('');
+  const [printingOrders, setPrintingOrders] = useState<ShippingOrder[]>([]);
+  const [pendingPrint, setPendingPrint] = useState(false);
   const loadAll = async () => {
     setIsLoading(true);
     setError('');
     try {
-      const [orderRes, customerRes, productRes] = await Promise.all([
+      const [orderRes, customerRes, productRes, vehicleRes] = await Promise.all([
         fetch('/api/lenh-xuat-hang'),
         fetch('/api/khach-hang'),
-        fetch('/api/san-pham?format=table')
+        fetch('/api/san-pham?format=table'),
+        fetch('/api/danh-sach-xe')
       ]);
       const orderData = await orderRes.json().catch(() => ({}));
       const customerData = await customerRes.json().catch(() => ({}));
       const productData = await productRes.json().catch(() => ({}));
+      const vehicleData = await vehicleRes.json().catch(() => ({}));
       if (!orderRes.ok) throw new Error(orderData.error || 'Không thể tải lệnh xuất hàng.');
       if (!customerRes.ok) throw new Error(customerData.error || 'Không thể tải khách hàng.');
+      if (!vehicleRes.ok) {
+        console.warn('Không tải được danh sách xe:', vehicleData.error || vehicleRes.status);
+      }
       setOrders(normalizeShippingOrders(orderData));
       setCustomers(normalizeCustomerDetails(customerData));
       setProducts(normalizeOrderProducts(productData));
+      setVehicles(normalizeVehicles(vehicleData));
     } catch (loadError: unknown) {
       setOrders([]);
       setError(showSaveFailure(loadError, 'Không thể tải dữ liệu lệnh xuất hàng.'));
@@ -260,12 +324,96 @@ export function ShippingOrdersPanel({
       const matchesStatus = selectedStatus === 'all' || order.trang_thai === selectedStatus;
       const matchesSearch =
         !q ||
-        `${order.ma_lenh} ${order.ten_khach_hang} ${order.ma_khach_hang} ${order.dia_chi_giao} ${order.trang_thai}`
+        `${order.ma_lenh} ${order.ten_khach_hang} ${order.ma_khach_hang} ${order.bsx} ${order.dia_chi_giao} ${order.trang_thai}`
           .toLowerCase()
           .includes(q);
       return matchesStatus && matchesSearch;
     });
   }, [orders, searchText, selectedStatus]);
+
+  const visibleIds = useMemo(
+    () => filteredOrders.map(order => order.id).filter(Boolean),
+    [filteredOrders]
+  );
+  const selectedVisibleIds = useMemo(
+    () => visibleIds.filter(id => selectedIds.includes(id)),
+    [visibleIds, selectedIds]
+  );
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => orders.some(order => order.id === id)));
+  }, [orders]);
+
+  const toggleRowSelected = (orderId: string) => {
+    if (!orderId) return;
+    setSelectedIds(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedIds(prev => prev.filter(id => !visibleIds.includes(id)));
+      return;
+    }
+    setSelectedIds(prev => [...new Set([...prev, ...visibleIds])]);
+  };
+
+  const handlePrintSelected = () => {
+    const rowsToPrint = filteredOrders.filter(order => selectedIds.includes(order.id));
+    if (rowsToPrint.length === 0) {
+      showAppToast('Chọn ít nhất một lệnh xuất hàng để in.');
+      return;
+    }
+    setPreviewOrders(rowsToPrint);
+    setPreviewOpen(true);
+  };
+
+  const closePrintPreview = () => {
+    if (pendingPrint) return;
+    setPreviewOpen(false);
+    setPreviewOrders([]);
+  };
+
+  const confirmPrintFromPreview = () => {
+    if (previewOrders.length === 0) return;
+    setPrintingOrders(previewOrders);
+    setPendingPrint(true);
+  };
+
+  useEffect(() => {
+    if (!pendingPrint || printingOrders.length === 0) return;
+    let cancelled = false;
+    document.body.classList.add('shipping-delivery-print-active');
+    enableLandscapePrintPage('shipping-delivery-print-page-landscape');
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        try {
+          window.print();
+        } finally {
+          setPendingPrint(false);
+          disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+        }
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('shipping-delivery-print-active');
+      disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+    };
+  }, [pendingPrint, printingOrders]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove('shipping-delivery-print-active');
+      disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+      setPrintingOrders([]);
+      setPendingPrint(false);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
 
   const openCreate = () => {
     if (!canCreate) return;
@@ -285,6 +433,8 @@ export function ShippingOrdersPanel({
       ten_khach_hang: order.ten_khach_hang,
       dia_chi_giao: order.dia_chi_giao,
       so_dien_thoai: order.so_dien_thoai,
+      bsx: order.bsx || '',
+      so_km: order.so_km,
       nhan_vien: order.nhan_vien,
       trang_thai: order.trang_thai || 'Chờ xuất',
       ghi_chu: order.ghi_chu,
@@ -303,12 +453,15 @@ export function ShippingOrdersPanel({
     const customer =
       customers.find(item => item.name === customerName || item.code === customerName || item.id === customerName) ||
       null;
+    const deliveryAddress = customer
+      ? customer.dia_chi_moi?.trim() || customer.dia_chi.trim() || ''
+      : '';
     setForm(prev => ({
       ...prev,
       ma_khach_hang: customer?.code || '',
       ten_khach_hang: customer?.name || customerName,
-      dia_chi_giao: customer?.dia_chi || prev.dia_chi_giao,
-      so_dien_thoai: customer?.so_dien_thoai || prev.so_dien_thoai
+      dia_chi_giao: customer ? deliveryAddress : prev.dia_chi_giao,
+      so_dien_thoai: customer ? customer.so_dien_thoai || '' : prev.so_dien_thoai
     }));
   };
 
@@ -385,7 +538,11 @@ export function ShippingOrdersPanel({
       if (!res.ok) {
         throw new Error(readApiErrorMessage(res, data, 'Không thể lưu lệnh xuất hàng.'));
       }
-      showAppToast(editingId ? 'Đã cập nhật lệnh xuất hàng.' : 'Đã tạo lệnh xuất hàng.');
+      if (typeof data.warning === 'string' && data.warning.trim()) {
+        showAppToast(data.warning.trim());
+      } else {
+        showAppToast(editingId ? 'Đã cập nhật lệnh xuất hàng.' : 'Đã tạo lệnh xuất hàng.');
+      }
       setFormOpen(false);
       setEditingId(null);
       await loadAll();
@@ -424,16 +581,32 @@ export function ShippingOrdersPanel({
             </p>
           </div>
         </div>
-        {canCreate ? (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={openCreate}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
+            onClick={handlePrintSelected}
+            disabled={selectedVisibleIds.length === 0}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title={
+              selectedVisibleIds.length > 0
+                ? `In ${selectedVisibleIds.length} biên bản giao xe đã chọn`
+                : 'Tick chọn lệnh xuất hàng rồi bấm in'
+            }
           >
-            <Plus className="h-4 w-4" />
-            Thêm lệnh xuất
+            <Printer className="h-4 w-4" />
+            In biên bản{selectedVisibleIds.length > 0 ? ` (${selectedVisibleIds.length})` : ''}
           </button>
-        ) : null}
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-xs font-extrabold text-white hover:bg-brand-600"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm lệnh xuất
+            </button>
+          ) : null}
+        </div>
       </section>
 
       <TableToolbar
@@ -445,7 +618,7 @@ export function ShippingOrdersPanel({
         <TableSearchInput
           value={searchText}
           onChange={setSearchText}
-          placeholder="Tìm mã lệnh, khách hàng, địa chỉ..."
+          placeholder="Tìm mã lệnh, BSX, khách hàng, địa chỉ..."
           disabled={isLoading}
         />
 
@@ -460,11 +633,24 @@ export function ShippingOrdersPanel({
       </TableToolbar>
 
       <TableShell
-        minWidthClassName="min-w-[920px]"
+        minWidthClassName="min-w-[1000px]"
       >
         <TableHead>
+          <TableHeadCell align="center">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              disabled={visibleIds.length === 0}
+              className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
+              title="Chọn tất cả trên trang"
+              aria-label="Chọn tất cả lệnh xuất hàng"
+            />
+          </TableHeadCell>
           <TableHeadCell>Mã lệnh</TableHeadCell>
           <TableHeadCell>Ngày xuất</TableHeadCell>
+          <TableHeadCell>BSX</TableHeadCell>
+          <TableHeadCell align="right">Số Km</TableHeadCell>
           <TableHeadCell>Khách hàng</TableHeadCell>
           <TableHeadCell>Địa chỉ giao</TableHeadCell>
           <TableHeadCell align="center">SL SP</TableHeadCell>
@@ -474,12 +660,29 @@ export function ShippingOrdersPanel({
         <TableBody>
           {filteredOrders.map(order => {
             const qty = order.chi_tiet.reduce((sum, line) => sum + (line.so_luong || 0), 0);
+            const isSelected = Boolean(order.id) && selectedIds.includes(order.id);
             return (
               <React.Fragment key={order.id || order.ma_lenh}>
                 <TableRow>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleRowSelected(order.id)}
+                      disabled={!order.id}
+                      className="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500"
+                      aria-label={`Chọn in ${order.ma_lenh || 'lệnh xuất'}`}
+                    />
+                  </td>
                   <td className="px-4 py-3 font-mono font-black text-sky-800">{order.ma_lenh || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                     {formatDateVi(order.ngay_xuat)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-brand-700">
+                    {order.bsx || '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-semibold text-zinc-800">
+                    {order.so_km != null && order.so_km > 0 ? formatNumber(order.so_km, 1) : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-bold text-zinc-900">{order.ten_khach_hang || '—'}</div>
@@ -526,52 +729,155 @@ export function ShippingOrdersPanel({
           })}
 
           {!isLoading && filteredOrders.length === 0 && (
-            <TableEmptyRow colSpan={7}>Chưa có lệnh xuất hàng.</TableEmptyRow>
+            <TableEmptyRow colSpan={10}>Chưa có lệnh xuất hàng.</TableEmptyRow>
           )}
         </TableBody>
       </TableShell>
 
+      {previewOpen && previewOrders.length > 0
+        ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-stretch justify-center bg-slate-950/55 p-0 sm:items-center sm:p-3">
+              <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[98vw] flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-[96dvh] sm:max-h-[96dvh] sm:rounded-2xl xl:max-w-[1500px]">
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                      Xem trước · Biên bản giao xe
+                    </h3>
+                    <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                      {previewOrders.length} lệnh đã chọn · 1 trang A4 ngang
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={confirmPrintFromPreview}
+                      disabled={pendingPrint}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                      In / Xuất PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closePrintPreview}
+                      disabled={pendingPrint}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-b border-slate-200 px-3 py-2.5">
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      Ghi chú chung
+                    </span>
+                    <textarea
+                      value={printGeneralNote}
+                      onChange={event => setPrintGeneralNote(event.target.value)}
+                      rows={3}
+                      placeholder="Gõ ghi chú chung — sẽ hiện ở cuối mẫu in..."
+                      className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                    />
+                  </label>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
+                  <div className="bb-gx-print-preview-wrap mx-auto max-w-[1480px]">
+                    <ShippingDeliveryPrintSheet orders={previewOrders} generalNote={printGeneralNote} />
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {printingOrders.length > 0
+        ? createPortal(
+            <ShippingDeliveryPrintSheet orders={printingOrders} generalNote={printGeneralNote} />,
+            document.body
+          )
+        : null}
+
       {formOpen ? (
-        <div className="fixed inset-0 z-[75] flex items-end justify-center bg-slate-950/50 sm:items-center sm:p-4">
-          <div className="flex h-[96dvh] max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:rounded-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div className="fixed inset-0 z-[75] flex items-stretch justify-center bg-slate-950/50 p-0 sm:items-center sm:p-2 md:p-3">
+          <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[98vw] flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-[96dvh] sm:max-h-[96dvh] sm:max-w-[96vw] sm:rounded-2xl xl:max-w-[1600px]">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-3 py-2">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
                   {editingId ? 'Sửa lệnh xuất hàng' : 'Thêm lệnh xuất hàng'}
                 </h3>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                  Khách hàng lấy từ danh mục /khach-hang
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600"
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600"
               >
                 Đóng
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1.5">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
+              <div className="shrink-0 grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Mã lệnh</span>
-                  <input value={form.ma_lenh} readOnly className={`${orderFieldClass} bg-slate-50`} />
+                  <input value={form.ma_lenh} readOnly className={`${compactFieldClass} bg-slate-50`} />
                 </label>
-                <label className="block space-y-1.5">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ngày xuất *</span>
                   <input
                     type="date"
                     value={form.ngay_xuat}
                     onChange={event => setForm(prev => ({ ...prev, ngay_xuat: event.target.value }))}
-                    className={orderFieldClass}
+                    className={compactFieldClass}
                   />
                 </label>
-                <label className="block space-y-1.5 sm:col-span-2">
+                <label className="block space-y-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">BSX</span>
+                  <SearchableSelect
+                    value={form.bsx}
+                    options={vehicles}
+                    isLoading={isLoading}
+                    onChange={value => setForm(prev => ({ ...prev, bsx: value.toUpperCase() }))}
+                    placeholder={
+                      isLoading
+                        ? 'Đang tải xe...'
+                        : vehicles.length === 0
+                          ? 'Chưa có xe'
+                          : 'Chọn biển số'
+                    }
+                    getValue={item => (item as VehicleOption).plate}
+                    getLabel={item => (item as VehicleOption).plate}
+                    getSearchText={item => (item as VehicleOption).label}
+                    displaySelectedAsValue
+                    inputClassName={compactFieldClass}
+                  />
+                </label>
+                <label className="block space-y-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Số Km</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={form.so_km ?? ''}
+                    onChange={event => {
+                      const raw = event.target.value;
+                      setForm(prev => ({
+                        ...prev,
+                        so_km: raw.trim() === '' ? null : Number(raw) || 0
+                      }));
+                    }}
+                    className={`${compactFieldClass} text-right`}
+                    placeholder="0"
+                  />
+                </label>
+                <label className="block space-y-0.5 sm:col-span-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Khách hàng *
                   </span>
-                  <SimpleSelect
+                  <SearchableSelect
                     value={form.ten_khach_hang}
                     options={customers}
                     onChange={selectCustomer}
@@ -581,69 +887,78 @@ export function ShippingOrdersPanel({
                       const customer = item as CustomerDetail;
                       return customer.code ? `${customer.code} · ${customer.name}` : customer.name;
                     }}
+                    getSearchText={item => {
+                      const customer = item as CustomerDetail;
+                      return `${customer.code} ${customer.name} ${customer.so_dien_thoai}`;
+                    }}
+                    inputClassName={compactFieldClass}
                   />
                 </label>
-                <label className="block space-y-1.5 sm:col-span-2">
+                <label className="block space-y-0.5 sm:col-span-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Địa chỉ giao
                   </span>
                   <input
                     value={form.dia_chi_giao}
                     onChange={event => setForm(prev => ({ ...prev, dia_chi_giao: event.target.value }))}
-                    className={orderFieldClass}
+                    className={compactFieldClass}
                     placeholder="Địa chỉ giao hàng"
+                    title={form.dia_chi_giao}
                   />
                 </label>
-                <label className="block space-y-1.5">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Số điện thoại
                   </span>
                   <input
                     value={form.so_dien_thoai}
                     onChange={event => setForm(prev => ({ ...prev, so_dien_thoai: event.target.value }))}
-                    className={orderFieldClass}
+                    className={compactFieldClass}
                     placeholder="SĐT liên hệ"
                   />
                 </label>
-                <label className="block space-y-1.5">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Trạng thái
                   </span>
-                  <SimpleSelect
+                  <SearchableSelect
                     value={form.trang_thai}
                     options={[...STATUS_OPTIONS]}
                     onChange={status => setForm(prev => ({ ...prev, trang_thai: status }))}
-                    placeholder="Chọn trạng thái"
+                    placeholder="Trạng thái"
                     getValue={item => String(item)}
                     getLabel={item => String(item)}
+                    inputClassName={compactFieldClass}
                   />
                 </label>
-                <label className="block space-y-1.5">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Nhân viên
                   </span>
                   <input
                     value={form.nhan_vien}
                     onChange={event => setForm(prev => ({ ...prev, nhan_vien: event.target.value }))}
-                    className={orderFieldClass}
-                    placeholder="Người lập / phụ trách"
+                    className={compactFieldClass}
+                    placeholder="Người lập"
                   />
                 </label>
-                <label className="block space-y-1.5">
+                <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ghi chú</span>
                   <input
                     value={form.ghi_chu}
                     onChange={event => setForm(prev => ({ ...prev, ghi_chu: event.target.value }))}
-                    className={orderFieldClass}
+                    className={compactFieldClass}
                     placeholder="Ghi chú thêm"
                   />
                 </label>
               </div>
 
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
               <RepeatableLinesBlock
                 title="Chi tiết hàng xuất"
                 required
                 showColumnHeaders
+                horizontalScroll
                 gridTemplateClass={lineGridClass}
                 onAdd={() => setForm(prev => ({ ...prev, chi_tiet: [...prev.chi_tiet, createLine()] }))}
                 columns={[
@@ -666,6 +981,8 @@ export function ShippingOrdersPanel({
                           options={products}
                           onChange={value => selectProduct(line.id, value)}
                           placeholder="Gõ để tìm mã SP"
+                          displaySelectedAsValue
+                          dropdownMinWidth={420}
                           getValue={item => (item as OrderProductOption).code}
                           getLabel={item => {
                             const product = item as OrderProductOption;
@@ -750,9 +1067,10 @@ export function ShippingOrdersPanel({
                   );
                 })}
               </RepeatableLinesBlock>
+              </div>
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-4 py-3">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-3 py-2">
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}

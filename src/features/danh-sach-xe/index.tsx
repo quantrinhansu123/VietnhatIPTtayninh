@@ -25,6 +25,7 @@ import {
   X
 } from 'lucide-react';
 import { BackButton } from '../../components/layout/NavButtons';
+import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { normalizeHrBranches } from '../_shared/hr';
 import {
   cloudinaryPreviewUrl,
@@ -1488,18 +1489,19 @@ function VehicleModal({
       {error && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Loại xe *">
-          <select
+          <SearchableSelect
             value={form.loai_xe}
-            onChange={event => setForm(prev => ({ ...prev, loai_xe: event.target.value }))}
-            className={inputClass}
-          >
-            <option value="">Chọn loại xe</option>
-            {loaiXeSuggestions.map(type => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+            options={loaiXeSuggestions}
+            allowCustomValue
+            onChange={value => setForm(prev => ({ ...prev, loai_xe: value }))}
+            placeholder="Chọn hoặc gõ loại xe mới"
+            getValue={item => String(item)}
+            getLabel={item => String(item)}
+            inputClassName={inputClass}
+          />
+          <p className="mt-1 text-[11px] font-semibold text-slate-500">
+            Có thể chọn loại có sẵn hoặc nhập loại xe mới.
+          </p>
         </Field>
         <Field label="Biển số xe (BSX) *">
           <input value={form.bien_so_xe} onChange={event => setForm(prev => ({ ...prev, bien_so_xe: event.target.value.toUpperCase() }))} className={`${inputClass} font-mono`} placeholder="VD: 51D-251.05" />

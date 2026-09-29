@@ -15,6 +15,12 @@ create table if not exists public.lenh_xuat_hang (
   chi_tiet jsonb not null default '[]'::jsonb
 );
 
+alter table public.lenh_xuat_hang
+  add column if not exists bsx text;
+
+alter table public.lenh_xuat_hang
+  add column if not exists so_km numeric(18, 2);
+
 create unique index if not exists lenh_xuat_hang_ma_lenh_uidx
   on public.lenh_xuat_hang (ma_lenh);
 
@@ -23,6 +29,9 @@ create index if not exists lenh_xuat_hang_ngay_idx
 
 create index if not exists lenh_xuat_hang_khach_idx
   on public.lenh_xuat_hang (ten_khach_hang);
+
+create index if not exists lenh_xuat_hang_bsx_idx
+  on public.lenh_xuat_hang (bsx);
 
 alter table public.lenh_xuat_hang enable row level security;
 

@@ -33,7 +33,7 @@ import {
 } from './index';
 
 const orderProductGridClass =
-  'grid-cols-2 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_5rem_5rem_minmax(0,1.1fr)_2.5rem]';
+  'grid-cols-2 md:grid-cols-[minmax(7rem,0.9fr)_minmax(12rem,2.4fr)_5rem_5rem_minmax(0,0.9fr)_2.5rem]';
 
 export function OrderFormModal({
   open,
@@ -391,7 +391,11 @@ export function OrderFormModal({
               {orderForm.productLines.map(line => {
                 const matchedLineProduct = findOrderProductByCode(productOptions, line.productCode);
                 return (
-                  <RepeatableLineRow key={line.key} gridTemplateClass={orderProductGridClass}>
+                  <RepeatableLineRow
+                    key={line.key}
+                    gridTemplateClass={orderProductGridClass}
+                    className="!items-start"
+                  >
                     <div className="col-span-2 min-w-0 md:col-span-1">
                       <SearchableSelect
                         value={line.productCode}
@@ -401,7 +405,8 @@ export function OrderFormModal({
                         isLoading={isLoadingLookups}
                         inputClassName={orderFieldClass}
                         openUpward
-                        matchDropdownWidth
+                        dropdownMinWidth={420}
+                        displaySelectedAsValue
                         getValue={item => (item as OrderProductOption).code}
                         getSearchText={item => {
                           const product = item as OrderProductOption;
@@ -417,12 +422,14 @@ export function OrderFormModal({
                       />
                     </div>
                     <div className="col-span-2 min-w-0 md:col-span-1">
-                      <input
+                      <textarea
                         value={matchedLineProduct ? matchedLineProduct.name : line.productName}
                         readOnly={Boolean(matchedLineProduct)}
+                        rows={2}
                         onChange={e => updateProductLine(line.key, { productName: e.target.value })}
-                        className={`${orderFieldClass} ${matchedLineProduct ? 'bg-zinc-50 text-zinc-800' : 'bg-white'}`}
+                        className={`${orderFieldClass} h-auto min-h-11 resize-y py-2.5 leading-snug ${matchedLineProduct ? 'bg-zinc-50 text-zinc-800' : 'bg-white'}`}
                         placeholder={matchedLineProduct ? '' : 'Tự động theo mã SP'}
+                        title={matchedLineProduct ? matchedLineProduct.name : line.productName}
                       />
                     </div>
                     <div className="col-span-1 min-w-0">

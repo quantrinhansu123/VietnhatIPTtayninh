@@ -121,22 +121,16 @@ try {
   const qrHistory = await api(`/api/kho/phieu/${qrBatch}/ma-qr`);
   assert.equal(qrHistory.records.length, 2);
 
-  addCreated(qrOutboundBatch);
   const qrOutboundCodes = [
     `TP-${suffix}_PREFIX_OUT_${suffix}`,
     `TP-${suffix}+PREFIX_OUT_${suffix}`
   ];
-  await api('/api/kho/quet-dot', 'POST', {
+  const rejectedOutbound = await apiRaw('/api/kho/quet-dot', 'POST', {
     loai_phieu: 'xuat', ma_phieu: qrOutboundBatch, ngay: '2099-12-31', nhan_su: 'Codex test',
     kho: 'Kho test routing', items: qrOutboundCodes.map(ma_sp_quet => ({ ma_sp_quet, ten_sp: 'Thanh pham QR test', don_vi: 'cai' }))
   });
-  const qrOutboundLines = await dbRows('xuat_kho', `ma_phieu=eq.${qrOutboundBatch}&select=ma_sp,ma_sp_quet,loai,so_luong`);
-  assert.equal(qrOutboundLines.length, 2);
-  assert.ok(qrOutboundLines.every(row => row.loai === 'san_pham' && Number(row.so_luong) === 1));
-  assert.deepEqual(qrOutboundLines.map(row => row.ma_sp_quet).sort(), qrOutboundCodes.sort());
-  assert.ok(qrOutboundLines.every(row => row.ma_sp === `TP-${suffix}`), 'mã gốc phải tách khỏi mã QR đầy đủ');
-  const qrOutboundHistory = await api(`/api/kho/phieu/${qrOutboundBatch}/ma-qr`);
-  assert.deepEqual(qrOutboundHistory.records.map(row => row.ma_sp_day_du).sort(), qrOutboundCodes.sort());
+  assert.equal(rejectedOutbound.response.status, 409);
+  assert.deepEqual(rejectedOutbound.data?.unavailableCodes?.sort(), qrOutboundCodes.sort());
 
   const price = await api('/api/kho/gia-tb-nhap?ma_npl=TEST-KHO-NVL&thang=2099-12');
   assert.equal(typeof price.don_gia, 'number');
@@ -156,7 +150,7 @@ try {
   assert.equal(hangingAfterDelete.length, 0);
   assert.equal(qrAfter.length, 0);
   assert.equal(qrOutboundAfter.length, 0);
-  console.log(JSON.stringify({ ok: true, tested: ['save', 'update', 'history', 'remap-shift', 'print', 'treo', 'qr-batch-in', 'qr-batch-out-full-code', 'qr-history', 'price', 'lots', 'delete-line', 'delete-slip'], created: [...created] }));
+  console.log(JSON.stringify({ ok: true, tested: ['save', 'update', 'history', 'remap-shift', 'print', 'treo', 'qr-batch-in', 'qr-batch-out-requires-inbound', 'qr-history', 'price', 'lots', 'delete-line', 'delete-slip'], created: [...created] }));
 } finally {
   for (const code of created) {
     try { await api(`/api/kho/phieu/${code}`, 'DELETE'); } catch {}

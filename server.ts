@@ -14030,8 +14030,15 @@ export function createApp() {
     const db = supabaseWeighing;
     const dbLabel = SUPABASE_WEIGHING_DB_LABEL;
 
+    const fetchAll =
+      ['1', 'true', 'yes', 'all'].includes(String(req.query.all ?? '').trim().toLowerCase()) ||
+      String(req.query.limit ?? '').trim().toLowerCase() === 'all';
     const limitRaw = Number(req.query.limit ?? 200);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 10000) : 200;
+    const limit = fetchAll
+      ? Number.POSITIVE_INFINITY
+      : Number.isFinite(limitRaw)
+        ? Math.min(Math.max(Math.trunc(limitRaw), 1), 100000)
+        : 200;
     const deviceId = String(req.query.deviceId ?? req.query.device_id ?? '').trim();
     const status = String(req.query.status ?? '').trim();
     const qrCode = String(req.query.qrCode ?? req.query.qr_code ?? '').trim();
@@ -14045,37 +14052,48 @@ export function createApp() {
     );
 
     try {
-      let query = db
-        .from(SUPABASE_CAN_TU_DONG_TABLE)
-        .select('*')
-        // Dữ liệu cân tự động dùng captured_at làm thời điểm bản ghi được tạo/thu nhận.
-        .order('captured_at', { ascending: false, nullsFirst: false })
-        .order('id', { ascending: false })
-        .limit(limit);
-
-      if (deviceId) query = query.eq('device_id', deviceId);
-      if (status) query = query.eq('status', status);
-      if (qrCode) query = query.eq('qr_code', qrCode);
-      // Mặc định lọc captured_at. `dateBy=ngay` vẫn cắt captured_at ±3 ngày để không quét 10k dòng,
-      // rồi lọc cột Ngày (SOURCE_DATE) sau khi map.
+      // PostgREST mặc định max_rows ≈ 1000 — phải .range() theo trang để lấy đủ bảng.
+      const PAGE_SIZE = 1000;
+      const rows: Record<string, unknown>[] = [];
       const capturedFrom = from ? (filterByNgay ? shiftCanTuDongIsoDateByDays(from, -3) : from) : '';
       const capturedTo = to ? (filterByNgay ? shiftCanTuDongIsoDateByDays(to, 3) : to) : '';
-      if (capturedFrom) query = query.gte('captured_at', `${capturedFrom}T00:00:00+07:00`);
-      if (capturedTo) query = query.lte('captured_at', `${capturedTo}T23:59:59.999+07:00`);
 
-      const { data, error } = await query;
-      if (error) {
-        return res.status(500).json({
-          error: error.message || 'Không đọc được bảng can_tu_dong.',
-          db: dbLabel
-        });
+      for (let pageFrom = 0; ; pageFrom += PAGE_SIZE) {
+        if (!fetchAll && rows.length >= limit) break;
+        const pageTo = fetchAll
+          ? pageFrom + PAGE_SIZE - 1
+          : Math.min(pageFrom + PAGE_SIZE, limit) - 1;
+        if (pageTo < pageFrom) break;
+
+        let query = db
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .select('*')
+          .order('captured_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false })
+          .range(pageFrom, pageTo);
+
+        if (deviceId) query = query.eq('device_id', deviceId);
+        if (status) query = query.eq('status', status);
+        if (qrCode) query = query.eq('qr_code', qrCode);
+        if (capturedFrom) query = query.gte('captured_at', `${capturedFrom}T00:00:00+07:00`);
+        if (capturedTo) query = query.lte('captured_at', `${capturedTo}T23:59:59.999+07:00`);
+
+        const { data, error } = await query;
+        if (error) {
+          return res.status(500).json({
+            error: error.message || 'Không đọc được bảng can_tu_dong.',
+            db: dbLabel
+          });
+        }
+        const page = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+        rows.push(...page);
+        if (page.length < PAGE_SIZE) break;
       }
 
-      const rows = Array.isArray(data) ? data : [];
       const matchedRows =
         filterByNgay && (from || to)
           ? rows.filter(row => {
-              const ngay = resolveCanTuDongNgayColumn(row as Record<string, unknown>);
+              const ngay = resolveCanTuDongNgayColumn(row);
               if (!ngay) return false;
               if (from && ngay < from) return false;
               if (to && ngay > to) return false;

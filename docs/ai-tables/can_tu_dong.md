@@ -45,7 +45,7 @@
 |------|---------|
 | `GET /api/cloudinary/proxy?url=` | Proxy ảnh `res.cloudinary.com/.../image/upload/` (tránh ERR_CERT_VERIFIER_CHANGED trên Chrome) |
 | `POST /api/can-tu-dong` | Form **Trạm cân AI / Trạm cân QR** — insert 1 dòng. `qr_code` tự ghi `QR lỗi đọc sau`. Ảnh Cloudinary `core_image_*` / `product_image_*`. Không ghi số cân; điền sau trên `/can-tu-dong` |
-| `GET /api/can-tu-dong` | `core_preview_url` ← `core_image_*`; `product_preview_url`/`preview_url` ← `product_image_*`; bổ sung `ngay`/`can_loi`/`can_san_pham`/`khoi_luong_thuc`/`ca`/`lenh_sx`. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày. **`images=0`** bỏ ký URL ảnh (dùng khi Tính toán) |
+| `GET /api/can-tu-dong` | `all=1` phân trang `.range` (vượt max_rows PostgREST ~1000) lấy hết bảng. `images=0` bỏ ký URL ảnh (dùng khi list lớn / Tính toán). `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
 | `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`). UI nút **Chọn Ca · điền hàng loạt** mở modal chọn ca rồi gửi id các dòng **đang hiện theo bộ lọc** |

@@ -180,8 +180,6 @@ const AUTO_FILL_LENH_SX = 'LSX-DH056';
 const AUTO_FILL_CA = '12C2';
 const AUTO_FILL_MAY = 'Máy Bao Bì';
 const AUTO_FILL_CHUNK = 80;
-/** Tải full danh sách (không lọc ngày). */
-const CAN_TU_DONG_FETCH_LIMIT = '10000';
 
 async function postCanTuDongBulkAutofill(
   ids: Array<string | number>,
@@ -514,7 +512,8 @@ export function CanTuDongPanel({
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ limit: CAN_TU_DONG_FETCH_LIMIT });
+      // all=1: phân trang server lấy hết; images=0: dùng URL Cloudinary sẵn trên dòng (không ký từng ảnh).
+      const params = new URLSearchParams({ all: '1', images: '0' });
       const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));

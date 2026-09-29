@@ -385,18 +385,30 @@ const warehouseMobileLineColsClass =
   'min-w-[26rem] grid-cols-[minmax(5.5rem,1fr)_minmax(5.5rem,1.1fr)_minmax(3.5rem,0.65fr)_minmax(4rem,0.85fr)]';
 
 const warehouseNhapLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_5.5rem_5.5rem_4.5rem_5.75rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(7rem,0.95fr)_minmax(7rem,1.15fr)_3.25rem_4.5rem_6.25rem_5.5rem_4.5rem_5.75rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
 
-const warehouseLineMobileHiddenClass = 'hidden md:block';
+const warehouseNhapFullMobileLineGridClass =
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
+
+const warehouseXuatFullMobileLineGridClass =
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
+
+const warehouseNhapFullMobileHeaderGridClass =
+  'mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
+
+const warehouseXuatFullMobileHeaderGridClass =
+  'mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
+
+const warehouseDefaultLineMobileHiddenClass = 'hidden md:block';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) {
@@ -587,11 +599,15 @@ export function warehouseKindLabel(kind: WarehouseKind) {
 }
 
 export function warehouseItemCodeLabel(kind: WarehouseKind) {
-  return kind === 'san_pham' ? 'Mã TP' : 'Mã NVL';
+  if (kind === 'san_pham') return 'Mã TP';
+  if (kind === 'hang_hong') return 'Mã hàng hỏng';
+  return 'Mã NVL';
 }
 
 export function warehouseItemNameLabel(kind: WarehouseKind) {
-  return kind === 'san_pham' ? 'Tên TP' : 'Tên NVL';
+  if (kind === 'san_pham') return 'Tên TP';
+  if (kind === 'hang_hong') return 'Tên hàng hỏng';
+  return 'Tên NVL';
 }
 
 export function computeWarehouseLineAmount(quantityText: string, unitPriceText: string): number {
@@ -637,7 +653,7 @@ export function parseWarehouseSlipPayloadItems(
     includeDocumentQuantity?: boolean;
   }
 ): { error: string } | { items: WarehouseSlipPayloadItem[] } {
-  const itemLabel = warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL';
+  const itemLabel = warehouseKind === 'san_pham' ? 'sản phẩm' : warehouseKind === 'hang_hong' ? 'hàng hỏng' : 'NVL';
   const codeLabel = warehouseItemCodeLabel(warehouseKind);
   const allowMissingUnitPrice = options?.allowMissingUnitPrice ?? false;
   const requireInboundLot = options?.requireInboundLot ?? false;
@@ -1360,7 +1376,26 @@ export function WarehouseSlipPanel({
   const selectedWarehouseName = warehouseName.trim();
   const showNvlShiftAndMachine = Boolean(selectedWarehouseName) && warehouseKind === 'nvl' && slipType === 'xuat';
   const showWarehouseShiftAndMachine =
-    showNvlShiftAndMachine || (Boolean(selectedWarehouseName) && warehouseKind === 'san_pham' && slipType === 'nhap');
+    showNvlShiftAndMachine ||
+    (Boolean(selectedWarehouseName) && (warehouseKind === 'san_pham' || warehouseKind === 'hang_hong') && slipType === 'nhap');
+  const showAllWarehouseColumnsOnMobile = warehouseKind === 'nvl' || warehouseKind === 'hang_hong';
+  const warehouseLineMobileHiddenClass = showAllWarehouseColumnsOnMobile ? '' : warehouseDefaultLineMobileHiddenClass;
+  const warehouseLineGridClass =
+    slipType === 'xuat'
+      ? showAllWarehouseColumnsOnMobile
+        ? warehouseXuatFullMobileLineGridClass
+        : warehouseXuatLineGridClass
+      : showAllWarehouseColumnsOnMobile
+        ? warehouseNhapFullMobileLineGridClass
+        : warehouseNhapLineGridClass;
+  const warehouseHeaderGridClass =
+    slipType === 'xuat'
+      ? showAllWarehouseColumnsOnMobile
+        ? warehouseXuatFullMobileHeaderGridClass
+        : warehouseXuatHeaderGridClass
+      : showAllWarehouseColumnsOnMobile
+        ? warehouseNhapFullMobileHeaderGridClass
+        : warehouseNhapHeaderGridClass;
   const showFullWarehouseSlipFields = slipType === 'nhap' || warehouseKind === 'san_pham';
   const productionReportLoai: 'thanh_pham' | 'gia_cong' | 'sp_loi' | 'sp_rac' | null = !selectedWarehouseName
     ? null
@@ -1749,7 +1784,8 @@ export function WarehouseSlipPanel({
     }
     const showShiftAndMachineForNextWarehouse =
       Boolean(nextName) &&
-      ((nextKind === 'nvl' && slipType === 'xuat') || (nextKind === 'san_pham' && slipType === 'nhap'));
+      ((nextKind === 'nvl' && slipType === 'xuat') ||
+        ((nextKind === 'san_pham' || nextKind === 'hang_hong') && slipType === 'nhap'));
     if (!showShiftAndMachineForNextWarehouse) {
       setSelectedShifts([]);
       setMachine('');
@@ -2297,6 +2333,7 @@ export function WarehouseSlipPanel({
   const isMaterialWarehouse = warehouseKind === 'nvl' || warehouseKind === 'tai_che';
   const isNvlExport = isMaterialWarehouse && slipType === 'xuat';
   const isNvlInbound = isMaterialWarehouse && slipType === 'nhap';
+  const showQrScanButtons = warehouseKind !== 'nvl' && warehouseKind !== 'hang_hong';
   // Phiếu xuất kho NVL dùng lệnh SX để tự lập các dòng theo định mức BOM.
   // Các loại phiếu xuất khác không có luồng này.
   const showOrderFields = isNvlExport;
@@ -3951,7 +3988,7 @@ export function WarehouseSlipPanel({
                 }`}
               />
             </button>
-            {(editSlipCode ? canEdit : canCreate) ? (
+            {(editSlipCode ? canEdit : canCreate) && showQrScanButtons ? (
               <button
                 type="button"
                 onClick={() => {
@@ -4044,7 +4081,7 @@ export function WarehouseSlipPanel({
                 )
               : null}
             </div>
-          ) : (editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
+          ) : (editSlipCode ? canEdit : canCreate) && showQrScanButtons && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
             <div className="relative col-span-2 block min-w-0">
               <button
                 type="button"
@@ -4072,7 +4109,7 @@ export function WarehouseSlipPanel({
                   ? 'Chỉnh sửa sản phẩm trong phiếu nhập'
                   : showProductExportTabs && productExportView === 'lap-phieu'
                     ? 'Tổng hợp sản phẩm đã quét'
-                    : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : 'NVL'}`}
+                    : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : warehouseKind === 'hang_hong' ? 'hàng hỏng' : 'NVL'}`}
               </p>
             </div>
             {warehouseKind === 'san_pham' && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
@@ -4093,7 +4130,7 @@ export function WarehouseSlipPanel({
                 ))}
               </div>
             ) : null}
-            {(editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
+            {(editSlipCode ? canEdit : canCreate) && showQrScanButtons && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
               <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                 <button
                   type="button"
@@ -4204,11 +4241,11 @@ export function WarehouseSlipPanel({
           ) : (
           <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
             <div
-              className={slipType === 'xuat' ? warehouseXuatHeaderGridClass : warehouseNhapHeaderGridClass}
+              className={warehouseHeaderGridClass}
             >
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-center`}>STT</span>
               <span className={warehouseLineHeaderClass}>
-                <span className="md:hidden">{warehouseKind === 'san_pham' ? 'Mã TP *' : 'Mã NVL *'}</span>
+                <span className="md:hidden">{warehouseItemCodeLabel(warehouseKind)} *</span>
                 <span className="hidden md:inline">{warehouseItemCodeLabel(warehouseKind)} *</span>
               </span>
               <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
@@ -4217,16 +4254,24 @@ export function WarehouseSlipPanel({
                 <>
                   <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>SL CT</span>
                   <span className={warehouseLineHeaderClass}>
-                    <span className="md:hidden">Số lượng *</span>
-                    <span className="hidden md:inline">SL THỰC *</span>
+                    {showAllWarehouseColumnsOnMobile ? 'SL THỰC *' : (
+                      <>
+                        <span className="md:hidden">Số lượng *</span>
+                        <span className="hidden md:inline">SL THỰC *</span>
+                      </>
+                    )}
                   </span>
                 </>
               ) : (
                 <span className={warehouseLineHeaderClass}>Số lượng *</span>
               )}
               <span className={warehouseLineHeaderClass}>
-                <span className="md:hidden">Trọng lượng</span>
-                <span className="hidden md:inline">Quy đổi kg</span>
+                {showAllWarehouseColumnsOnMobile ? 'Quy đổi kg' : (
+                  <>
+                    <span className="md:hidden">Trọng lượng</span>
+                    <span className="hidden md:inline">Quy đổi kg</span>
+                  </>
+                )}
               </span>
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>Giá</span>
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-right`}>Thành tiền</span>
@@ -4236,8 +4281,8 @@ export function WarehouseSlipPanel({
             <div>
               {lines.map((line, index) => (
                 <React.Fragment key={line.key}>
-                  <div className={slipType === 'xuat' ? warehouseXuatLineGridClass : warehouseNhapLineGridClass}>
-                  <div className={`hidden min-w-0 items-center justify-center text-xs font-bold text-zinc-500 md:flex`}>
+                  <div className={warehouseLineGridClass}>
+                  <div className={`${showAllWarehouseColumnsOnMobile ? 'flex' : 'hidden md:flex'} min-w-0 items-center justify-center text-xs font-bold text-zinc-500`}>
                     {index + 1}
                   </div>
                   <div className="min-w-0">
@@ -4352,7 +4397,7 @@ export function WarehouseSlipPanel({
                     <button
                       type="button"
                       onClick={() => setLines(current => current.filter(item => item.key !== line.key))}
-                      className={`hidden h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 md:flex`}
+                      className={`${showAllWarehouseColumnsOnMobile ? 'flex' : 'hidden md:flex'} h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600`}
                       title="Xóa dòng"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

@@ -120,6 +120,7 @@ export default function ProductQrPrintModal({
   const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState('');
   const autoPrintKeyRef = useRef('');
+  const isPrintingRef = useRef(false);
   const labelKey = useMemo(() => labels.map(label => label.payload).join('|'), [labels]);
 
   useEffect(() => {
@@ -172,8 +173,10 @@ export default function ProductQrPrintModal({
       enablePortraitQrPrintPage();
       document.body.classList.add('product-qr-print-active');
       await waitForPrintImagesReady();
+      isPrintingRef.current = true;
       window.print();
     } catch (reason: unknown) {
+      isPrintingRef.current = false;
       setError(reason instanceof Error ? reason.message : 'Không thể in mã QR.');
     } finally {
       document.body.classList.remove('product-qr-print-active');
@@ -181,6 +184,17 @@ export default function ProductQrPrintModal({
       setIsPreparing(false);
     }
   };
+
+  useEffect(() => {
+    if (!open) return;
+    const handleAfterPrint = () => {
+      if (!isPrintingRef.current) return;
+      isPrintingRef.current = false;
+      onClose();
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open || !autoPrint || isPreparing || Object.keys(images).length !== labels.length || !labelKey) return;

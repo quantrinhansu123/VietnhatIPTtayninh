@@ -125,6 +125,7 @@ const SUPABASE_CUSTOMER_PAYMENTS_TABLE =
 const SUPABASE_ORDERS_TABLE = process.env.SUPABASE_ORDERS_TABLE || 'don_hang';
 const SUPABASE_CUSTOMERS_TABLE = process.env.SUPABASE_CUSTOMERS_TABLE || 'khach_hang';
 const SUPABASE_SHIPPING_ORDERS_TABLE = process.env.SUPABASE_SHIPPING_ORDERS_TABLE || 'lenh_xuat_hang';
+const SUPABASE_GIAO_HANG_TABLE = process.env.SUPABASE_GIAO_HANG_TABLE || 'giao_hang';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'cai_dat_thoi_gian';
 const SUPABASE_PRODUCTION_ORDERS_TABLE = process.env.SUPABASE_PRODUCTION_ORDERS_TABLE || 'lenh_sx';
 const SUPABASE_PRODUCTION_ORDER_LINES_TABLE =
@@ -414,6 +415,7 @@ if (useSupabase) {
     orders: SUPABASE_ORDERS_TABLE,
     customers: SUPABASE_CUSTOMERS_TABLE,
     shippingOrders: SUPABASE_SHIPPING_ORDERS_TABLE,
+    giaoHang: SUPABASE_GIAO_HANG_TABLE,
     settings: SUPABASE_SETTINGS_TABLE,
     productionOrders: SUPABASE_PRODUCTION_ORDERS_TABLE,
     productionOrderLines: SUPABASE_PRODUCTION_ORDER_LINES_TABLE,
@@ -2397,6 +2399,107 @@ function parseVehicleDeliveryRequestBody(
       km_luy_ke: Math.max(0, Number(source.km_luy_ke) || 0)
     }
   };
+}
+
+function giaoHangWriteError(error: { code?: string; message?: string }, table: string) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${table} chưa tồn tại. Hãy chạy file supabase-giao-hang.sql trong Supabase SQL Editor.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${table} đang thiếu cột. Hãy chạy lại file supabase-giao-hang.sql. ${error.message || ''}`.trim();
+  }
+  return `Không thể lưu dữ liệu vào ${table}. ${error.message || ''}`.trim();
+}
+
+function parseGiaoHangLine(
+  source: Record<string, unknown>,
+  defaults?: { ngay?: string; bsx?: string; so_phieu?: string }
+): { error: string } | { record: Record<string, unknown> } {
+  const ngay =
+    pickRowField(source, ['ngay', 'ngay_giao', 'date'], '') || defaults?.ngay || '';
+  const bsx = (pickRowField(source, ['bsx', 'bien_so_xe', 'plateNumber'], '') || defaults?.bsx || '')
+    .trim()
+    .toUpperCase();
+  const soPhieu =
+    pickRowField(source, ['so_phieu', 'so-phieu', 'ma_phieu', 'code'], '') || defaults?.so_phieu || '';
+  const maSp = pickRowField(source, ['ma_san_pham', 'ma_sp', 'code'], '');
+  const tenSp = pickRowField(source, ['ten_san_pham', 'ten_sp', 'name'], '');
+  const sl = Math.max(0, parseDriverReconciliationNumber(source.sl ?? source.so_luong ?? source.quantity));
+  const giaBan = Math.max(
+    0,
+    parseDriverReconciliationNumber(source.gia_ban ?? source.don_gia ?? source.unit_price)
+  );
+  const tongGiaTriRaw = parseDriverReconciliationNumber(
+    source.tong_gia_tri ?? source.tong_tien ?? source.total_amount
+  );
+  const tongGiaTri = tongGiaTriRaw > 0 ? tongGiaTriRaw : sl * giaBan;
+  const ttRaw = source.tt ?? source.thu_tu ?? source.stt;
+  const tt =
+    ttRaw === null || ttRaw === undefined || String(ttRaw).trim() === ''
+      ? null
+      : Math.max(0, Math.trunc(Number(ttRaw) || 0));
+
+  if (!ngay || Number.isNaN(Date.parse(ngay))) return { error: 'Ngày giao không hợp lệ.' };
+  if (!soPhieu) return { error: 'Vui lòng nhập số phiếu.' };
+  if (!maSp && !tenSp) return { error: 'Mỗi dòng cần có mã sản phẩm hoặc tên sản phẩm.' };
+  if (!(sl > 0)) return { error: `Số lượng phải lớn hơn 0 (${maSp || tenSp}).` };
+
+  return {
+    record: {
+      ngay: ngay.slice(0, 10),
+      bsx: bsx || null,
+      so_phieu: soPhieu,
+      tt,
+      ma_kh: pickRowField(source, ['ma_kh', 'ma_khach_hang', 'customer_code'], '') || null,
+      dia_chi: pickRowField(source, ['dia_chi', 'dia_chi_giao', 'address'], '') || null,
+      sdt_kh: pickRowField(source, ['sdt_kh', 'so_dien_thoai', 'dien_thoai', 'phone'], '') || null,
+      nvql: pickRowField(source, ['nvql', 'nhan_vien', 'staff'], '') || null,
+      ma_san_pham: maSp || null,
+      ten_san_pham: tenSp || null,
+      sl,
+      gia_ban: giaBan,
+      thanh_toan: pickRowField(source, ['thanh_toan', 'payment'], '') || null,
+      tong_gia_tri: tongGiaTri,
+      ghi_chu: pickRowField(source, ['ghi_chu', 'note', 'notes'], '') || null,
+      updated_at: new Date().toISOString()
+    }
+  };
+}
+
+function parseGiaoHangBody(
+  body: unknown
+): { error: string } | { records: Record<string, unknown>[] } {
+  const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const defaults = {
+    ngay: pickRowField(source, ['ngay', 'ngay_giao', 'date'], ''),
+    bsx: pickRowField(source, ['bsx', 'bien_so_xe', 'plateNumber'], ''),
+    so_phieu: pickRowField(source, ['so_phieu', 'so-phieu', 'ma_phieu', 'code'], '')
+  };
+
+  const rawLines = Array.isArray(source.lines)
+    ? source.lines
+    : Array.isArray(source.chi_tiet)
+      ? source.chi_tiet
+      : null;
+
+  if (rawLines) {
+    if (rawLines.length === 0) return { error: 'Vui lòng thêm ít nhất một dòng giao hàng.' };
+    const records: Record<string, unknown>[] = [];
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const row = rawLines[index];
+      if (!row || typeof row !== 'object') continue;
+      const parsed = parseGiaoHangLine(row as Record<string, unknown>, defaults);
+      if ('error' in parsed) return parsed;
+      if (parsed.record.tt == null) parsed.record.tt = index + 1;
+      records.push(parsed.record);
+    }
+    if (records.length === 0) return { error: 'Vui lòng thêm ít nhất một dòng giao hàng.' };
+    return { records };
+  }
+
+  const parsed = parseGiaoHangLine(source, defaults);
+  if ('error' in parsed) return parsed;
+  return { records: [parsed.record] };
 }
 
 function parseShippingOrderBody(
@@ -11303,6 +11406,98 @@ export function createApp() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa lệnh xuất hàng.' });
+    }
+  });
+
+  app.get('/api/giao-hang', async (_req, res) => {
+    if (!supabase) {
+      return res.json({ rows: [], total: 0, source: 'local' });
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from(SUPABASE_GIAO_HANG_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false, nullsFirst: false })
+        .order('so_phieu', { ascending: false, nullsFirst: false })
+        .order('tt', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: false });
+
+      if (error) {
+        return respondSupabaseReadError(res, error, SUPABASE_GIAO_HANG_TABLE, {
+          rows: [],
+          total: 0
+        });
+      }
+
+      return res.json({
+        rows: data || [],
+        total: data?.length || 0,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phiếu giao hàng.' });
+    }
+  });
+
+  app.post('/api/giao-hang', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+
+    try {
+      const parsed = parseGiaoHangBody(req.body);
+      if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+      const { data, error } = await supabase
+        .from(SUPABASE_GIAO_HANG_TABLE)
+        .insert(parsed.records)
+        .select('*');
+      if (error) {
+        return res.status(500).json({ error: giaoHangWriteError(error, SUPABASE_GIAO_HANG_TABLE) });
+      }
+      return res.status(201).json({ success: true, rows: data || [], row: data?.[0] || null });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi thêm phiếu giao hàng.' });
+    }
+  });
+
+  app.put('/api/giao-hang/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID dòng giao hàng.' });
+
+    try {
+      const parsed = parseGiaoHangBody(req.body);
+      if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+      if (parsed.records.length !== 1) {
+        return res.status(400).json({ error: 'Cập nhật chỉ hỗ trợ một dòng giao hàng.' });
+      }
+      const { data, error } = await supabase
+        .from(SUPABASE_GIAO_HANG_TABLE)
+        .update(parsed.records[0])
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) {
+        return res.status(500).json({ error: giaoHangWriteError(error, SUPABASE_GIAO_HANG_TABLE) });
+      }
+      return res.json({ success: true, row: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật phiếu giao hàng.' });
+    }
+  });
+
+  app.delete('/api/giao-hang/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID dòng giao hàng.' });
+
+    try {
+      const { error } = await supabase.from(SUPABASE_GIAO_HANG_TABLE).delete().eq('id', id);
+      if (error) {
+        return res.status(500).json({ error: giaoHangWriteError(error, SUPABASE_GIAO_HANG_TABLE) });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa phiếu giao hàng.' });
     }
   });
 

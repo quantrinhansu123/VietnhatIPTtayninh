@@ -483,6 +483,13 @@ export const BUSINESS_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'shipping-orders'
   },
   {
+    title: 'Giao hàng',
+    desc: 'Phiếu giao hàng theo ngày, biển số xe, số phiếu và chi tiết sản phẩm.',
+    icon: Package,
+    icon3d: articulatedLorry3d,
+    tab: 'giao-hang'
+  },
+  {
     title: 'Báo cáo kinh doanh',
     desc: 'Báo cáo tổng hợp kinh doanh.',
     icon: BarChart3,
@@ -963,6 +970,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Khách hàng', tab: 'customers' },
       { label: 'Đơn đặt hàng', tab: 'orders' },
       { label: 'Lệnh giao / xuất hàng', tab: 'shipping-orders' },
+      { label: 'Giao hàng', tab: 'giao-hang' },
       { label: 'Báo cáo kinh doanh', tab: 'business', disabled: true }
     ]
   },
@@ -1082,6 +1090,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'orders-detail': { group: 'Kinh doanh', sub: 'Chi tiết đơn hàng' },
   'customers': { group: 'Kinh doanh', sub: 'Khách hàng' },
   'shipping-orders': { group: 'Kinh doanh', sub: 'Lệnh giao / xuất hàng' },
+  'giao-hang': { group: 'Kinh doanh', sub: 'Giao hàng' },
   'production-orders': { group: 'Quản Đốc', sub: 'Lệnh sản xuất' },
   'production-order-detail': { group: 'Quản Đốc', sub: 'Chi tiết lệnh sản xuất' },
   'factory-quan-doc': { group: 'Trang chủ', sub: 'Quản Đốc' },

@@ -279,9 +279,20 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     label: 'Lệnh xuất hàng',
     sql: ['supabase-lenh-xuat-hang.sql'],
     apiPrefix: '/api/lenh-xuat-hang',
-    serverLines: '5705–5790',
+    serverLines: '11221–11307',
     appTab: 'shipping-orders',
     appLines: 'src/features/lenh-xuat-hang/index.tsx',
+    components: [],
+    utils: []
+  },
+  giao_hang: {
+    table: 'giao_hang',
+    label: 'Giao hàng',
+    sql: ['supabase-giao-hang.sql'],
+    apiPrefix: '/api/giao-hang',
+    serverLines: '11412–11510',
+    appTab: 'giao-hang',
+    appLines: 'src/features/giao-hang/index.tsx',
     components: [],
     utils: []
   },

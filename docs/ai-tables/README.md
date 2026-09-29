@@ -51,6 +51,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `don_hang` | `/don-hang` | [don_hang.md](./don_hang.md) |
 | `khach_hang` | `/khach-hang` | [khach_hang.md](./khach_hang.md) |
 | `lenh_xuat_hang` | `/lenh-xuat-hang` | [lenh_xuat_hang.md](./lenh_xuat_hang.md) |
+| `giao_hang` | `/giao-hang` | [giao_hang.md](./giao_hang.md) |
 | `lenh_sx` | `/lenh-san-xuat` | [lenh_sx.md](./lenh_sx.md) |
 | `bc_lsx` | `/phan-tich-tu-dong` · tab Lệnh SX | [bc_lsx.md](./bc_lsx.md) |
 | `du_lieu_xuat_kho` | `/phan-tich-tu-dong` · tab Dữ liệu xuất kho | [du_lieu_xuat_kho.md](./du_lieu_xuat_kho.md) |

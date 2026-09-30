@@ -53,13 +53,13 @@
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
 | `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu? }` — đổi metadata `nhap_kho_trang_thai` thành `Đã nhập kho`, ghi `nhap_kho_luc`, `nhap_kho_boi` và `nhap_kho_ma_phieu`. UI chọn phiếu nhập chưa chốt đúng ngày (kho thành phẩm) hoặc tạo mới, rồi ghi QR qua `POST /api/kho/quet-dot` (`phieu_nhap` / `nhap_kho`) trước khi đánh dấu |
-| `POST /api/can-tu-dong/:id/duplicate` | Nhân bản y nguyên 1 dòng (QR, cân, metadata, ảnh, ngày, ca, …). UI: nút **Nhân bản** trên cột Thao tác |
+| `POST /api/can-tu-dong/:id/duplicate` | Nhân bản y nguyên 1 dòng. UI cột Thao tác đã bỏ nút **Nhân bản** |
 
 ## Frontend
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · **Đồng bộ theo Mã SP** (tiền tố QR) · Excel · In |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · Excel · **In** · **In đã nhập kho** (popup gõ mã phiếu để chọn, không chọn sẵn). **Xem phiếu** tách từng đợt theo lần bấm Nhập kho (`nhap_kho.created_at`). In bằng `WarehouseSlipPrintModal` |
 | `src/features/can-tu-dong/entry-form.tsx` | Form **Trạm cân AI** (`/phieu-bao-cao`) và **Trạm cân QR** (`/tram-can-qr`) — ghi thêm dòng vào `can_tu_dong`, không mở trạm ngoài |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |

@@ -12,7 +12,7 @@
 | Method | Path | Nội dung |
 |--------|------|----------|
 | GET | `/api/kho/chi-tiet?loai_phieu=nhap|xuat&ma_phieu=...&limit=50&offset=0` | Phân trang chi tiết `nhap_kho`/`xuat_kho`; `summary=true` trả tổng hợp theo mã gốc. Đọc theo từng đoạn `.range()` để vượt giới hạn mặc định 1.000 dòng của Supabase |
-| GET | `/api/kho/phieu?loai_phieu=nhap|xuat&kho=...&ngay=` | Phiếu chưa chốt theo kho. `ngay` (YYYY-MM-DD) lọc đúng ngày phiếu |
+| GET | `/api/kho/phieu?loai_phieu=nhap|xuat&kho=...&ngay=&status=` | Mặc định phiếu `chua_chot`. `ngay` lọc đúng ngày. `status=all` lấy cả chưa chốt và đã chốt |
 | GET | `/api/kho/lich-su` | Ghép header `phieu_nhap`/`phieu_xuat` với dòng `nhap_kho`/`xuat_kho` theo `ma_phieu` cho trang lịch sử |
 | POST | `/api/kho/kiem-tra-ma-quet` | Kiểm tra QR trùng trong cùng chiều. Trả `duplicateCodes` và `matches` (`ma_sp_quet`, `ma_phieu`). Phiếu xuất còn kiểm tra mã đang `trong_kho` |
 | POST | `/api/kho/quet-dot` | Lưu cả đợt QR thành phẩm bằng một lệnh insert nhiều dòng, kèm ĐVT; kiểm tra mã trùng; cho bổ sung phiếu nhập đã chốt nhưng chưa in |

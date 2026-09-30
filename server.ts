@@ -12285,6 +12285,7 @@ export function createApp() {
     const slipType = String(req.query.loai_phieu ?? '').trim().toLowerCase();
     const warehouse = String(req.query.kho ?? '').trim();
     const ngay = String(req.query.ngay ?? '').trim();
+    const status = String(req.query.status ?? 'chua_chot').trim().toLowerCase();
     if (!['nhap', 'xuat'].includes(slipType) || !warehouse) {
       return res.status(400).json({ error: 'Cần loai_phieu (nhap|xuat) và kho.' });
     }
@@ -12293,8 +12294,8 @@ export function createApp() {
     let slipQuery = supabaseKho
       .from(table)
       .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
-      .eq('kho', warehouse)
-      .eq('status', 'chua_chot');
+      .eq('kho', warehouse);
+    if (status !== 'all') slipQuery = slipQuery.eq('status', status === 'da_chot' ? 'da_chot' : 'chua_chot');
     if (ngay) slipQuery = slipQuery.eq('ngay', ngay);
     const { data, error } = await slipQuery
       .order('created_at', { ascending: false })

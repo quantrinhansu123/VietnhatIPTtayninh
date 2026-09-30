@@ -13,6 +13,7 @@ import {
   Scale,
   Sparkles,
   Trash2,
+  Warehouse,
   X
 } from 'lucide-react';
 import WeighingImagePreviewModal, {
@@ -392,6 +393,30 @@ function statusClass(status?: string | null) {
   return 'bg-zinc-50 text-zinc-600 border-zinc-200';
 }
 
+const NHAP_KHO_CHO = 'Chờ nhập kho';
+const NHAP_KHO_DA = 'Đã nhập kho';
+
+function readNhapKho(row: CanTuDongRecord) {
+  const meta =
+    row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const status = String(meta.nhap_kho_trang_thai || '').trim() || NHAP_KHO_CHO;
+  return {
+    status,
+    at: String(meta.nhap_kho_luc || '').trim(),
+    by: String(meta.nhap_kho_boi || '').trim(),
+    waiting: status !== NHAP_KHO_DA
+  };
+}
+
+function formatNhapKhoTime(value: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+}
+
 function resolveProductImageUrl(row: CanTuDongRecord) {
   return String(row.product_preview_url || row.preview_url || row.product_image_url || '').trim();
 }
@@ -443,9 +468,11 @@ function normalizeQrKey(qr?: string | null): string {
 }
 
 export function CanTuDongPanel({
-  onBack
+  onBack,
+  currentUser
 }: {
   onBack: () => void;
+  currentUser?: { id: string; name: string } | null;
   initialFilters?: {
     dateFrom?: string;
     dateTo?: string;
@@ -507,6 +534,9 @@ export function CanTuDongPanel({
   const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>([]);
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
+  const [showNhapKhoModal, setShowNhapKhoModal] = useState(false);
+  const [nhapKhoSoCuon, setNhapKhoSoCuon] = useState('');
+  const [isNhapKho, setIsNhapKho] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -1336,6 +1366,70 @@ export function CanTuDongPanel({
     }
   };
 
+  const waitingNhapKho = useMemo(
+    () =>
+      records
+        .filter(row => readNhapKho(row).waiting && String(row.qr_code || '').trim())
+        .slice()
+        .sort((a, b) => {
+          const ta = Date.parse(String(a.captured_at || '')) || 0;
+          const tb = Date.parse(String(b.captured_at || '')) || 0;
+          return ta - tb;
+        }),
+    [records]
+  );
+  const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
+  const nhapKhoPreview = nhapKhoCount > 0 ? waitingNhapKho.slice(0, nhapKhoCount) : [];
+
+  const handleConfirmNhapKho = async () => {
+    if (nhapKhoPreview.length === 0) {
+      showAppToast('Nhập số cuộn để hiện mã QR chờ nhập kho.', 'error');
+      return;
+    }
+    const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
+    setIsNhapKho(true);
+    try {
+      const res = await fetch('/api/can-tu-dong/nhap-kho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: nhapKhoPreview.map(row => row.id),
+          nguoi
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không nhập kho được.'));
+      const luc = String(data.nhap_kho_luc || new Date().toISOString());
+      const boi = String(data.nhap_kho_boi || nguoi);
+      const idSet = new Set(nhapKhoPreview.map(row => rowIdKey(row.id)));
+      setRecords(prev =>
+        prev.map(row => {
+          if (!idSet.has(rowIdKey(row.id))) return row;
+          const meta =
+            row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+              ? { ...(row.metadata as Record<string, unknown>) }
+              : {};
+          return {
+            ...row,
+            metadata: {
+              ...meta,
+              nhap_kho_trang_thai: NHAP_KHO_DA,
+              nhap_kho_luc: luc,
+              nhap_kho_boi: boi
+            }
+          };
+        })
+      );
+      showAppToast(`Đã nhập kho ${formatNumber(Number(data.updated) || nhapKhoPreview.length, 0)} cuộn.`);
+      setShowNhapKhoModal(false);
+      setNhapKhoSoCuon('');
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không nhập kho được.', 'error');
+    } finally {
+      setIsNhapKho(false);
+    }
+  };
+
   return (
     <div className="w-full max-w-none space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1364,6 +1458,19 @@ export function CanTuDongPanel({
           >
             {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
             {isSettingCa ? 'Đang sửa Ca...' : 'Sửa Ca theo bộ lọc'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setNhapKhoSoCuon('');
+              setShowNhapKhoModal(true);
+            }}
+            disabled={loading || isNhapKho}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+            title="Nhập số cuộn rồi chọn các mã QR đang Chờ nhập kho"
+          >
+            <Warehouse className="h-4 w-4" />
+            Nhập kho
           </button>
           <button
             type="button"
@@ -1959,18 +2066,21 @@ export function CanTuDongPanel({
             Trọng lượng màng
           </TableHeadCell>
           <TableHeadCell>Trạng thái</TableHeadCell>
+          <TableHeadCell className="whitespace-nowrap" title="Chờ nhập kho / Đã nhập kho">
+            Nhập kho
+          </TableHeadCell>
           <TableHeadCell>Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={24}>
+            <TableEmptyRow colSpan={25}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={24}>
+            <TableEmptyRow colSpan={25}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -2198,6 +2308,30 @@ export function CanTuDongPanel({
                       {row.status || '—'}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const nhap = readNhapKho(row);
+                      return (
+                        <div className="min-w-[9rem]">
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                              nhap.waiting
+                                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            }`}
+                          >
+                            {nhap.status}
+                          </span>
+                          {!nhap.waiting ? (
+                            <div className="mt-1 text-[10px] font-semibold leading-4 text-zinc-500">
+                              {formatNhapKhoTime(nhap.at)}
+                              {nhap.by ? ` · ${nhap.by}` : ''}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <button
@@ -2236,6 +2370,105 @@ export function CanTuDongPanel({
           )}
         </TableBody>
       </TableShell>
+
+      {showNhapKhoModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-nhap-kho-title"
+        >
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-nhap-kho-title" className="text-base font-black text-zinc-950">
+                  Nhập kho
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Điền số cuộn · hệ thống liệt kê mã QR đang {NHAP_KHO_CHO} ({formatNumber(waitingNhapKho.length, 0)} cuộn)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNhapKhoModal(false)}
+                disabled={isNhapKho}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 overflow-y-auto p-4">
+              <label className="block space-y-1">
+                <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Số cuộn</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={nhapKhoSoCuon}
+                  onChange={event => setNhapKhoSoCuon(event.target.value)}
+                  placeholder="Nhập số cuộn cần nhập kho"
+                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
+                />
+              </label>
+              {nhapKhoCount > waitingNhapKho.length ? (
+                <p className="text-xs font-semibold text-amber-700">
+                  Chỉ còn {formatNumber(waitingNhapKho.length, 0)} cuộn chờ nhập kho.
+                </p>
+              ) : null}
+              <div className="overflow-hidden rounded-xl border border-zinc-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-zinc-50 text-[11px] font-black uppercase text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2">TT</th>
+                      <th className="px-3 py-2">Mã QR</th>
+                      <th className="px-3 py-2">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nhapKhoPreview.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-6 text-center font-semibold text-zinc-400">
+                          {nhapKhoCount > 0 ? 'Không còn mã QR chờ nhập kho.' : 'Nhập số cuộn để hiện danh sách mã QR.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      nhapKhoPreview.map((row, index) => (
+                        <tr key={rowIdKey(row.id)} className="border-t border-zinc-100">
+                          <td className="px-3 py-2 font-bold text-zinc-500">{index + 1}</td>
+                          <td className="px-3 py-2 font-mono font-bold text-zinc-900">{row.qr_code}</td>
+                          <td className="px-3 py-2 font-bold text-amber-800">{NHAP_KHO_CHO}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] font-semibold text-zinc-500">
+                Người bấm: {currentUser?.name || 'Không rõ'} · thời điểm được ghi khi xác nhận.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowNhapKhoModal(false)}
+                disabled={isNhapKho}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmNhapKho()}
+                disabled={isNhapKho || nhapKhoPreview.length === 0}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
+                Nhập kho ({formatNumber(nhapKhoPreview.length, 0)})
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showBulkNgayModal ? (
         <div

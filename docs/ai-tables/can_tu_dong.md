@@ -52,6 +52,7 @@
 | `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong`: tick dòng → nút **Sửa ngày** mở modal rồi gửi id các dòng **đã chọn** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
+| `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi }` — đổi metadata `nhap_kho_trang_thai` thành `Đã nhập kho`, ghi `nhap_kho_luc` và `nhap_kho_boi`. Dòng chưa có trạng thái coi là `Chờ nhập kho` |
 | `POST /api/can-tu-dong/:id/duplicate` | Nhân bản y nguyên 1 dòng (QR, cân, metadata, ảnh, ngày, ca, …). UI: nút **Nhân bản** trên cột Thao tác |
 
 ## Frontend

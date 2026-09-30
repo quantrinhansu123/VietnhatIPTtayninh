@@ -5,7 +5,13 @@ import { pickText } from '../_shared/recordHelpers';
 import { normalizeHrBranches } from '../_shared/hr';
 import { orderFieldClass } from '../_shared/orderHelpers';
 import { showAppToast, showSaveFailure, readApiErrorMessage } from '../../lib/appToast';
-import { downloadCustomerExcel, downloadCustomerExcelTemplate, parseCustomerExcel } from '../../utils/customerExcel';
+import {
+  downloadCustomerExcel,
+  downloadCustomerExcelTemplate,
+  downloadCustomerPhoneExcelTemplate,
+  parseCustomerExcel,
+  parseCustomerPhoneExcel
+} from '../../utils/customerExcel';
 import {
   FilterCombobox,
   TableToolbar,
@@ -245,6 +251,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
   const [addressLookupMessage, setAddressLookupMessage] = useState('');
   const [backfillingAddressIds, setBackfillingAddressIds] = useState<Set<string>>(() => new Set());
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const phoneExcelInputRef = useRef<HTMLInputElement>(null);
   const addressLookupSequenceRef = useRef(0);
   const addressBackfillRunRef = useRef(0);
 
@@ -678,6 +685,90 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const handlePhoneExcelImport = async (file?: File | null) => {
+    if (!canEdit || !file) return;
+
+    setIsImporting(true);
+    setError('');
+    try {
+      const rows = await parseCustomerPhoneExcel(file);
+      if (rows.length === 0) throw new Error('File Excel không có dòng SĐT.');
+
+      const byCode = new Map<string, CustomerOption>(
+        customers
+          .map(item => [item.code.trim().toUpperCase(), item] as const)
+          .filter(([code]) => Boolean(code))
+      );
+
+      let updated = 0;
+      const failures: string[] = [];
+      const seenFileCodes = new Set<string>();
+
+      for (const row of rows) {
+        const code = row.code.trim();
+        if (!code) {
+          failures.push(`dòng ${row.rowNumber}: thiếu Mã KH`);
+          continue;
+        }
+        const codeKey = code.toUpperCase();
+        if (seenFileCodes.has(codeKey)) {
+          failures.push(`dòng ${row.rowNumber}: mã ${code} trùng trong file`);
+          continue;
+        }
+        seenFileCodes.add(codeKey);
+
+        const existing = byCode.get(codeKey);
+        if (!existing) {
+          failures.push(`dòng ${row.rowNumber}: không có mã ${code}`);
+          continue;
+        }
+
+        const payload = {
+          ma_khach_hang: existing.code,
+          ten_khach_hang: existing.name,
+          dia_chi: existing.address,
+          dia_chi_moi: existing.newAddress,
+          cong_no: existing.debt,
+          ma_so_thue: existing.taxCode,
+          so_dien_thoai: normalizePhoneList(row.phone),
+          dt_di_dong_nlh: existing.mobilePhoneNlh,
+          la_doi_tuong_noi_bo: existing.isInternal,
+          don_vi_quan_ly: existing.managingUnit,
+          ghi_chu: existing.note
+        };
+
+        const res = await fetch(`/api/khach-hang/${encodeURIComponent(existing.code || existing.id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          failures.push(`dòng ${row.rowNumber}: ${readApiErrorMessage(res, data, 'Không lưu được')}`);
+          continue;
+        }
+        updated += 1;
+      }
+
+      if (updated > 0) await loadCustomers();
+
+      const summary = [
+        updated ? `Đã cập nhật SĐT ${updated} khách hàng.` : 'Không cập nhật được SĐT nào.',
+        failures.length ? `${failures.length} dòng lỗi (${failures.slice(0, 3).join('; ')}).` : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      if (updated > 0) showAppToast(summary);
+      else setError(summary);
+    } catch (importError: unknown) {
+      setError(showSaveFailure(importError, 'Không thể đọc file SĐT.'));
+    } finally {
+      setIsImporting(false);
+      if (phoneExcelInputRef.current) phoneExcelInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-none space-y-4">
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm lg:flex lg:items-center lg:justify-end lg:gap-3">
@@ -702,6 +793,39 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
             <Download className="h-4 w-4" />
             Xuất Excel
           </button>
+          <button
+            type="button"
+            onClick={() =>
+              downloadCustomerPhoneExcelTemplate(
+                customers.map(customer => ({ code: customer.code, phone: customer.phone }))
+              )
+            }
+            disabled={isImporting || isLoading}
+            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-4 text-sm font-black text-sky-800 transition hover:bg-sky-100 disabled:opacity-50"
+            title="Tải mẫu 2 cột Mã KH và SĐT (dạng chữ, không bị Excel cắt số)"
+          >
+            <Download className="h-4 w-4" />
+            Tải mẫu SĐT
+          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => phoneExcelInputRef.current?.click()}
+              disabled={isImporting || isLoading}
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-sky-300 bg-white px-4 text-sm font-black text-sky-800 transition hover:bg-sky-50 disabled:opacity-50"
+              title="Tải file Mã KH + SĐT lên, khớp theo mã khách hàng"
+            >
+              {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              {isImporting ? 'Đang nhập...' : 'Tải SĐT lên'}
+            </button>
+          ) : null}
+          <input
+            ref={phoneExcelInputRef}
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            className="hidden"
+            onChange={event => void handlePhoneExcelImport(event.target.files?.[0])}
+          />
           {canCreate || canEdit ? (
             <button
               type="button"

@@ -6243,7 +6243,7 @@ input[type="number"] {
 
 .bb-gx-top {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1.2fr;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   gap: 10px;
   align-items: center;
   padding-bottom: 8px;
@@ -6252,26 +6252,30 @@ input[type="number"] {
 
 .bb-gx-brand {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .bb-gx-logo {
-  width: 170px;
-  height: 75px;
+  width: 108px;
+  height: 52px;
+  flex: 0 0 auto;
   object-fit: contain;
 }
 
 .bb-gx-brand-text {
   border-left: 1px solid #c9cdd2;
-  padding-left: 12px;
-  line-height: 1.35;
+  padding-left: 8px;
+  line-height: 1.2;
+  min-width: 0;
 }
 
 .bb-gx-company {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #2a2a2a;
+  white-space: nowrap;
 }
 
 .bb-gx-vn {

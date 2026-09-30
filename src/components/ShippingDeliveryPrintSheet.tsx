@@ -16,33 +16,12 @@ function formatDateVi(value: string) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-function dayOfYear(isoDate: string): number {
-  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return 0;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  const start = new Date(year, 0, 0);
-  return Math.floor((date.getTime() - start.getTime()) / 86_400_000);
-}
-
-function formatSlipNumber(order: ShippingOrder) {
-  const day = dayOfYear(order.ngay_xuat);
-  const code = String(order.ma_lenh || '').trim().toUpperCase();
-  if (day > 0 && code) return `${day} - ${code}`;
-  return code || '—';
-}
-
 function formatCombinedSlipNumbers(orders: ShippingOrder[]) {
   if (orders.length === 0) return '—';
-  const days = [...new Set(orders.map(order => dayOfYear(order.ngay_xuat)).filter(day => day > 0))];
   const codes = orders
     .map(order => String(order.ma_lenh || '').trim().toUpperCase())
     .filter(Boolean);
-  if (codes.length === 0) return '—';
-  if (days.length === 1) return `${days[0]} - ${codes.join(', ')}`;
-  return orders.map(formatSlipNumber).join(', ');
+  return codes.length > 0 ? codes.join(', ') : '—';
 }
 
 function uniqueJoined(values: string[], fallback = '—') {

@@ -1128,7 +1128,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <CanTuDongPanel onBack={() => goBack('report-lists')} />
+                <CanTuDongPanel onBack={() => goBack('report-lists')} currentUser={authUser} />
               </motion.div>
             ) : resolvedTab === 'can-tu-dong-pilot' ? (
               <motion.div

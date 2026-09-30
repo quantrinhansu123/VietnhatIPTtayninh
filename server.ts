@@ -11,7 +11,7 @@ import type { ProductionReport } from './src/types';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const DB_FILE_PATH = process.env.VERCEL
   ? path.join('/tmp', 'reports-db.json')
@@ -15169,6 +15169,95 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi đổi Ngày cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  app.post('/api/can-tu-dong/nhap-kho', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Chưa có mã QR để nhập kho.' });
+      }
+      const nguoi = String(body.nguoi ?? body.nhap_kho_boi ?? '').trim() || 'Không rõ';
+      const luc = new Date().toISOString();
+
+      const { data: existingRows, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('id, metadata')
+        .in('id', ids);
+
+      if (readError) {
+        return res.status(500).json({
+          error: readError.message || 'Không đọc được dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const rows = Array.isArray(existingRows) ? existingRows : [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy mã QR đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        if (String(currentMetadata.nhap_kho_trang_thai || '').trim() === 'Đã nhập kho') continue;
+        const metadata = {
+          ...currentMetadata,
+          nhap_kho_trang_thai: 'Đã nhập kho',
+          nhap_kho_luc: luc,
+          nhap_kho_boi: nguoi
+        };
+        const { error: updateError } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .update({ metadata })
+          .eq('id', record.id);
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể cập nhật nhập kho.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        updated += 1;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: ids.length,
+        nhap_kho_luc: luc,
+        nhap_kho_boi: nguoi,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi nhập kho cân tự động.',
         db: SUPABASE_WEIGHING_DB_LABEL
       });
     }

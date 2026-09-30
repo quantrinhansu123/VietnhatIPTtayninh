@@ -175,6 +175,73 @@ export function downloadCustomerExcelTemplate() {
   XLSX.writeFile(workbook, 'mau-nhap-khach-hang.xlsx');
 }
 
+export type CustomerPhoneExcelRow = {
+  code: string;
+  phone: string;
+  rowNumber: number;
+};
+
+const PHONE_ONLY_CODE_HEADERS = ['ma kh', 'ma khach hang', 'ma_khach_hang', 'ma_kh', 'code'];
+const PHONE_ONLY_HEADERS = ['sdt', 'so dien thoai', 'so_dien_thoai', 'dien thoai', 'phone'];
+
+function setLongTextCell(sheet: XLSX.WorkSheet, address: string, value: string) {
+  sheet[address] = { t: 's', v: value, z: '@' };
+}
+
+/** Mẫu 2 cột: Mã KH + SĐT (ô dạng text để Excel không cắt số dài). */
+export function downloadCustomerPhoneExcelTemplate(rows: Array<{ code: string; phone: string }>) {
+  const header = ['Mã KH', 'SĐT'];
+  const body = rows
+    .filter(row => String(row.code || '').trim())
+    .map(row => [String(row.code || '').trim(), String(row.phone || '').trim()]);
+  const blankRows = 30;
+  const matrix: string[][] = [header, ...body];
+  for (let i = 0; i < blankRows; i += 1) matrix.push(['', '']);
+
+  const worksheet = XLSX.utils.aoa_to_sheet(matrix);
+  const lastRow = matrix.length;
+  for (let rowIndex = 0; rowIndex < lastRow; rowIndex += 1) {
+    const excelRow = rowIndex + 1;
+    setLongTextCell(worksheet, `A${excelRow}`, matrix[rowIndex][0] ?? '');
+    setLongTextCell(worksheet, `B${excelRow}`, matrix[rowIndex][1] ?? '');
+  }
+  worksheet['!ref'] = `A1:B${lastRow}`;
+  worksheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'SDT');
+  XLSX.writeFile(workbook, 'mau-sdt-khach-hang.xlsx');
+}
+
+export async function parseCustomerPhoneExcel(file: File): Promise<CustomerPhoneExcelRow[]> {
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellText: true, cellDates: false });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return [];
+
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: '',
+    raw: false
+  }) as unknown[][];
+  if (matrix.length === 0) return [];
+
+  const headers = matrix[0].map(normalizeHeader);
+  const codeIndex = findColumn(headers, PHONE_ONLY_CODE_HEADERS);
+  const phoneIndex = findColumn(headers, PHONE_ONLY_HEADERS);
+  if (codeIndex < 0 || phoneIndex < 0) {
+    throw new Error('File cần đúng 2 cột "Mã KH" và "SĐT". Hãy tải mẫu rồi điền lại.');
+  }
+
+  return matrix
+    .slice(1)
+    .map((row, index) => ({
+      code: cellToText(row[codeIndex]),
+      phone: cellToText(row[phoneIndex]),
+      rowNumber: index + 2
+    }))
+    .filter(row => row.code || row.phone);
+}
+
 export function downloadCustomerExcel(customers: CustomerExcelExportRow[]) {
   const rows = customers.map(customer => ({
     'Mã khách hàng': customer.code,

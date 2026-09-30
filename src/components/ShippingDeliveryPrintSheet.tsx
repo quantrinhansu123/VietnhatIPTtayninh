@@ -7,7 +7,6 @@ type PrintRow = {
   key: string;
   order: ShippingOrder;
   line: ShippingOrderLine | null;
-  showNote: boolean;
 };
 
 function formatDateVi(value: string) {
@@ -68,8 +67,7 @@ function buildPrintRows(orders: ShippingOrder[]): PrintRow[] {
       rows.push({
         key: `${order.id || order.ma_lenh}-${line?.id || index}`,
         order,
-        line,
-        showNote: index === 0
+        line
       });
     });
   }
@@ -88,6 +86,19 @@ function buildMaKhRowSpans(rows: PrintRow[]): number[] {
     i = j;
   }
   return spans;
+}
+
+/** Gộp ghi chú các lệnh cùng Mã KH, bỏ trùng. */
+function mergedGroupNotes(rows: PrintRow[], start: number, span: number) {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (let i = start; i < start + span; i += 1) {
+    const text = String(rows[i]?.order.ghi_chu || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    parts.push(text);
+  }
+  return parts.join('\n');
 }
 
 function paymentLabel(order: ShippingOrder, line: ShippingOrderLine | null) {
@@ -207,9 +218,9 @@ export function ShippingDeliveryPrintSheet({
             </thead>
             <tbody>
               {rows.map((row, index) => {
-                const { order, line, showNote } = row;
-                const note = showNote ? String(order.ghi_chu || '').trim() : '';
+                const { order, line } = row;
                 const maKhSpan = maKhSpans[index];
+                const note = maKhSpan > 0 ? mergedGroupNotes(rows, index, maKhSpan) : '';
                 return (
                   <tr key={row.key}>
                     <td>{index + 1}</td>
@@ -218,9 +229,11 @@ export function ShippingDeliveryPrintSheet({
                         <b>{order.ma_khach_hang || '—'}</b>
                       </td>
                     ) : null}
-                    <td className="bb-gx-left">
-                      <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
-                    </td>
+                    {maKhSpan > 0 ? (
+                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-merge-cell">
+                        <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
+                      </td>
+                    ) : null}
                     <td>{order.so_dien_thoai || '—'}</td>
                     <td>
                       <b>{order.nhan_vien || '—'}</b>
@@ -239,7 +252,11 @@ export function ShippingDeliveryPrintSheet({
                       <b>{paymentLabel(order, line)}</b>
                     </td>
                     <td className="bb-gx-money">{line ? formatMoney(line.tong_tien || 0) : '—'}</td>
-                    <td className="bb-gx-note">{note}</td>
+                    {maKhSpan > 0 ? (
+                      <td rowSpan={maKhSpan} className="bb-gx-note bb-gx-merge-cell">
+                        {note}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}

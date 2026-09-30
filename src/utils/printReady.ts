@@ -55,13 +55,13 @@ export function disablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID)
 
 const LANDSCAPE_PRINT_PAGE_STYLE_ID = 'app-print-page-landscape-override';
 
-/** Inject @page A4 ngang — dùng cho phiếu bảng rộng (QT-16-BM02). */
+/** Inject @page A5 ngang — dùng cho biên bản giao xe. */
 export function enableLandscapePrintPage(styleId = LANDSCAPE_PRINT_PAGE_STYLE_ID) {
   document.getElementById(styleId)?.remove();
   const style = document.createElement('style');
   style.id = styleId;
   style.media = 'print';
-  style.textContent = '@page { size: 297mm 210mm; margin: 5mm; }';
+  style.textContent = '@page { size: A5 landscape; margin: 5mm; }';
   document.head.appendChild(style);
 }
 

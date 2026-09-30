@@ -88,6 +88,29 @@ function buildMaKhRowSpans(rows: PrintRow[]): number[] {
   return spans;
 }
 
+function buildGroupedRowSpans(
+  rows: PrintRow[],
+  getValue: (order: ShippingOrder) => string
+): number[] {
+  const spans = rows.map(() => 0);
+  let i = 0;
+  while (i < rows.length) {
+    const customerKey = customerMergeKey(rows[i].order);
+    const value = String(getValue(rows[i].order) || '').trim();
+    let j = i + 1;
+    while (
+      j < rows.length &&
+      customerMergeKey(rows[j].order) === customerKey &&
+      String(getValue(rows[j].order) || '').trim() === value
+    ) {
+      j += 1;
+    }
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+}
+
 /** Gộp ghi chú các lệnh cùng Mã KH, bỏ trùng. */
 function mergedGroupNotes(rows: PrintRow[], start: number, span: number) {
   const seen = new Set<string>();
@@ -119,6 +142,8 @@ export function ShippingDeliveryPrintSheet({
 
   const rows = buildPrintRows(orders);
   const maKhSpans = buildMaKhRowSpans(rows);
+  const phoneSpans = buildGroupedRowSpans(rows, order => order.so_dien_thoai);
+  const managerSpans = buildGroupedRowSpans(rows, order => order.nhan_vien);
 
   const totalValue = orders.reduce(
     (sum, order) => sum + order.chi_tiet.reduce((lineSum, line) => lineSum + (Number(line.tong_tien) || 0), 0),
@@ -182,9 +207,9 @@ export function ShippingDeliveryPrintSheet({
               <col style={{ width: '3%' }} />
               <col style={{ width: '6%' }} />
               <col style={{ width: '11%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '6%' }} />
               <col style={{ width: '10%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '7%' }} />
               <col style={{ width: '18%' }} />
               <col style={{ width: '5%' }} />
               <col style={{ width: '7%' }} />
@@ -220,6 +245,8 @@ export function ShippingDeliveryPrintSheet({
               {rows.map((row, index) => {
                 const { order, line } = row;
                 const maKhSpan = maKhSpans[index];
+                const phoneSpan = phoneSpans[index];
+                const managerSpan = managerSpans[index];
                 const note = maKhSpan > 0 ? mergedGroupNotes(rows, index, maKhSpan) : '';
                 return (
                   <tr key={row.key}>
@@ -234,10 +261,16 @@ export function ShippingDeliveryPrintSheet({
                         <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
                       </td>
                     ) : null}
-                    <td>{order.so_dien_thoai || '—'}</td>
-                    <td>
-                      <b>{order.nhan_vien || '—'}</b>
-                    </td>
+                    {phoneSpan > 0 ? (
+                      <td rowSpan={phoneSpan} className="bb-gx-merge-cell">
+                        {order.so_dien_thoai || '—'}
+                      </td>
+                    ) : null}
+                    {managerSpan > 0 ? (
+                      <td rowSpan={managerSpan} className="bb-gx-merge-cell">
+                        <b>{order.nhan_vien || '—'}</b>
+                      </td>
+                    ) : null}
                     <td>
                       <b>{line?.ma_sp || '—'}</b>
                     </td>

@@ -6243,7 +6243,10 @@ input[type="number"] {
 
 .bb-gx-top {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas:
+    'brand meta'
+    'title title';
   gap: 10px;
   align-items: center;
   padding-bottom: 8px;
@@ -6251,6 +6254,7 @@ input[type="number"] {
 }
 
 .bb-gx-brand {
+  grid-area: brand;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -6286,14 +6290,16 @@ input[type="number"] {
 }
 
 .bb-gx-title {
+  grid-area: title;
   text-align: center;
 }
 
 .bb-gx-title h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   letter-spacing: 0.4px;
   color: #171717;
+  white-space: nowrap;
 }
 
 .bb-gx-rule {
@@ -6306,9 +6312,11 @@ input[type="number"] {
 .bb-gx-sub {
   font-size: 13px;
   color: #3d3d3d;
+  white-space: nowrap;
 }
 
 .bb-gx-meta {
+  grid-area: meta;
   display: grid;
   gap: 6px;
 }
@@ -6385,6 +6393,8 @@ input[type="number"] {
   vertical-align: middle;
   text-align: center;
   font-size: 10px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bb-gx-table th {
@@ -6536,8 +6546,8 @@ input[type="number"] {
 
 @media print {
   @page bb-gx-print-page {
-    size: 297mm 210mm;
-    margin: 6mm;
+    size: A4 portrait;
+    margin: 8mm;
   }
 
   body.shipping-delivery-print-active #root {

@@ -8,8 +8,8 @@ import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/Repeat
 import { ShippingDeliveryPrintSheet } from '../../components/ShippingDeliveryPrintSheet';
 import {
   waitForPrintImagesReady,
-  enableLandscapePrintPage,
-  disableLandscapePrintPage
+  enablePortraitPrintPage,
+  disablePortraitPrintPage
 } from '../../utils/printReady';
 import { pickText } from '../_shared/recordHelpers';
 import {
@@ -409,7 +409,7 @@ export function ShippingOrdersPanel({
     if (!pendingPrint || printingOrders.length === 0) return;
     let cancelled = false;
     document.body.classList.add('shipping-delivery-print-active');
-    enableLandscapePrintPage('shipping-delivery-print-page-landscape');
+    enablePortraitPrintPage('shipping-delivery-print-page-portrait');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -417,7 +417,7 @@ export function ShippingOrdersPanel({
           window.print();
         } finally {
           setPendingPrint(false);
-          disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+          disablePortraitPrintPage('shipping-delivery-print-page-portrait');
         }
       });
     }, 150);
@@ -425,14 +425,14 @@ export function ShippingOrdersPanel({
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('shipping-delivery-print-active');
-      disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+      disablePortraitPrintPage('shipping-delivery-print-page-portrait');
     };
   }, [pendingPrint, printingOrders]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('shipping-delivery-print-active');
-      disableLandscapePrintPage('shipping-delivery-print-page-landscape');
+      disablePortraitPrintPage('shipping-delivery-print-page-portrait');
       setPrintingOrders([]);
       setPendingPrint(false);
     };
@@ -773,7 +773,7 @@ export function ShippingOrdersPanel({
                       Xem trước · Biên bản giao xe
                     </h3>
                     <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                      {previewOrders.length} lệnh đã chọn · 1 trang A4 ngang
+                      {previewOrders.length} lệnh đã chọn · 1 trang A4 dọc
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

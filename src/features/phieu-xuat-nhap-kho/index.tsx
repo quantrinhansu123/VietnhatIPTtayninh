@@ -1218,14 +1218,56 @@ export function normalizeWarehouseProductionOrders(data: unknown): WarehouseProd
     .filter((order): order is WarehouseProductionOrderOption => Boolean(order));
 }
 
+function normalizeWarehouseMachineText(value: string) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function splitWarehouseMachineValues(value: string) {
+  return String(value || '')
+    .split(/[,;|/]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+export function warehouseMachineMatchesFilter(
+  machineFilter: string,
+  orderMachine: string,
+  machineOptions: Array<{ code?: string; name?: string; label?: string }> = []
+) {
+  const selectedMachines = splitWarehouseMachineValues(machineFilter);
+  if (selectedMachines.length === 0) return true;
+
+  const selectedAliases = new Set(
+    selectedMachines.flatMap(selected => {
+      const option = machineOptions.find(item =>
+        [item.label, item.code, item.name].some(value => normalizeWarehouseMachineText(value || '') === normalizeWarehouseMachineText(selected))
+      );
+      return [
+        selected,
+        option?.label,
+        option?.code,
+        option?.name,
+        ...selected.split(/\s+-\s+/)
+      ]
+        .filter(Boolean)
+        .map(value => normalizeWarehouseMachineText(String(value)));
+    })
+  );
+
+  return selectedAliases.has(normalizeWarehouseMachineText(orderMachine));
+}
+
 export function filterWarehouseProductionOrdersByDateShift(
   orders: WarehouseProductionOrderOption[],
   dateIso: string,
-  shifts: string[]
+  shifts: string[],
+  machineFilter = '',
+  machineOptions: Array<{ code?: string; name?: string; label?: string }> = []
 ) {
   const ngay = String(dateIso || '').trim().slice(0, 10);
   return orders.filter(order => {
     if (ngay && order.startDate && order.startDate !== ngay) return false;
+    if (machineFilter && !warehouseMachineMatchesFilter(machineFilter, order.machine, machineOptions)) return false;
     if (shifts.length === 0) return true;
     return shifts.some(
       shift => shiftNamesMatch(shift, order.shift) || shift === order.shift || !order.shift
@@ -2880,16 +2922,19 @@ export function WarehouseSlipPanel({
     const matchedOrders = filterWarehouseProductionOrdersByDateShift(
       productionOrders,
       slipDate,
-      selectedShifts
+      selectedShifts,
+      machine,
+      machineSelectOptions
     );
     if (matchedOrders.length === 0) {
       const sameDate = productionOrders.filter(order => order.startDate === slipDate.trim().slice(0, 10));
+      const machineHint = machine.trim() ? `, máy ${machine.trim()}` : '';
       setFormError(
         selectedShifts.length > 0
           ? sameDate.length > 0
-            ? `Có ${sameDate.length} lệnh SX ngày ${slipDate} nhưng không khớp ca đã chọn.`
-            : `Không có lệnh SX khớp ngày ${slipDate} và ca đã chọn.`
-          : `Không có lệnh SX khớp ngày ${slipDate}.`
+            ? `Có ${sameDate.length} lệnh SX ngày ${slipDate} nhưng không khớp ca/máy đã chọn${machineHint}.`
+            : `Không có lệnh SX khớp ngày ${slipDate}, ca đã chọn${machineHint}.`
+          : `Không có lệnh SX khớp ngày ${slipDate}${machineHint}.`
       );
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -2898,7 +2943,7 @@ export function WarehouseSlipPanel({
     const hasExistingLines = lines.some(line => line.code.trim() || line.name.trim() || line.quantity.trim());
     if (hasExistingLines) {
       const ok = window.confirm(
-        `Tìm thấy ${matchedOrders.length} lệnh SX theo ngày/ca.\nĐiền lại sẽ thay danh sách dòng hiện tại. Tiếp tục?`
+        `Tìm thấy ${matchedOrders.length} lệnh SX theo ngày/ca/máy.\nĐiền lại sẽ thay danh sách dòng hiện tại. Tiếp tục?`
       );
       if (!ok) return;
     }
@@ -2941,7 +2986,7 @@ export function WarehouseSlipPanel({
       }
 
       const lineCount = await fillLinesFromMatchedOrders(matchedOrders);
-      const msg = `Đã tự động điền ${lineCount} dòng từ ${matchedOrders.length} lệnh SX theo ngày/ca.`;
+      const msg = `Đã tự động điền ${lineCount} dòng từ ${matchedOrders.length} lệnh SX theo ngày/ca/máy.`;
       setActionMessage(msg);
       showAppToast(msg);
     } catch (error: any) {
@@ -2977,13 +3022,15 @@ export function WarehouseSlipPanel({
     const matchedOrders = filterWarehouseProductionOrdersByDateShift(
       productionOrders,
       slipDate,
-      selectedShifts
+      selectedShifts,
+      machine,
+      machineSelectOptions
     );
     if (matchedOrders.length === 0) {
       setFormError(
         `Không có lệnh SX khớp ngày ${slipDate}${
           selectedShifts.length > 0 ? ` và ca đã chọn` : ''
-        } — cần lệnh SX để lấy danh sách NVL định mức.`
+        }${machine.trim() ? ` và máy ${machine.trim()}` : ''} — cần lệnh SX để lấy danh sách NVL định mức.`
       );
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -3051,7 +3098,9 @@ export function WarehouseSlipPanel({
     const byDateShift = filterWarehouseProductionOrdersByDateShift(
       productionOrders,
       slipDate,
-      selectedShifts
+      selectedShifts,
+      machine,
+      machineSelectOptions
     );
     const query = productionOrderSearch.trim().toLowerCase();
     if (!query) return byDateShift;
@@ -3059,7 +3108,7 @@ export function WarehouseSlipPanel({
       const hay = `${order.orderCode} ${order.shift} ${order.machine} ${order.startDate}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [productionOrders, productionOrderSearch, slipDate, selectedShifts]);
+  }, [machine, machineSelectOptions, productionOrders, productionOrderSearch, slipDate, selectedShifts]);
 
   const productionOrderLabel = formatWarehouseProductionOrderSelection(productionOrderCodes);
 

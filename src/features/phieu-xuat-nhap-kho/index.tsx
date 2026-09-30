@@ -169,6 +169,8 @@ export interface WarehouseSlipLineDraft {
   unitPrice: string;
   quotaQuantity?: string;
   suggestedQuantity?: string;
+  /** Kg cho một đơn vị của dòng BOM, dùng khi kho NVL chưa có cột Tổng kg. */
+  weightKgPerUnit?: number | null;
   lineNote?: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
@@ -932,6 +934,7 @@ export function createWarehouseLineDraftFromPrefill(
     | 'unitPrice'
     | 'quotaQuantity'
     | 'suggestedQuantity'
+    | 'weightKgPerUnit'
     | 'lineNote'
     | 'sourceInboundLineId'
     | 'sourceInboundSlipCode'
@@ -952,6 +955,7 @@ export function createWarehouseLineDraftFromPrefill(
     unitPrice: line.unitPrice || '',
     quotaQuantity: line.quotaQuantity || '',
     suggestedQuantity: line.suggestedQuantity || '',
+    weightKgPerUnit: line.weightKgPerUnit ?? null,
     lineNote: line.lineNote || '',
     sourceInboundLineId: line.sourceInboundLineId || '',
     sourceInboundSlipCode: line.sourceInboundSlipCode || '',
@@ -2651,7 +2655,7 @@ export function WarehouseSlipPanel({
     const catalog = await loadProductionOrderProductCatalog();
     const materialMap = new Map<
       string,
-      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number }
+      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number; weightKg: number }
     >();
 
     for (const order of matchedOrders) {
@@ -2670,6 +2674,7 @@ export function WarehouseSlipPanel({
           if (existing) {
             existing.quantity += material.proposedQuantity;
             existing.quotaQuantity += material.proposedQuantity;
+            existing.weightKg += material.weightKg ?? 0;
             if (!existing.name && material.name) existing.name = material.name;
             if (!existing.unit && material.unit) existing.unit = material.unit;
           } else {
@@ -2678,7 +2683,8 @@ export function WarehouseSlipPanel({
               name: material.name || material.code,
               unit: material.unit || 'kg',
               quantity: material.proposedQuantity,
-              quotaQuantity: material.proposedQuantity
+              quotaQuantity: material.proposedQuantity,
+              weightKg: material.weightKg ?? 0
             });
           }
         }
@@ -2713,6 +2719,8 @@ export function WarehouseSlipPanel({
             documentQuantity: String(line.quantity),
             quotaQuantity: String(line.quotaQuantity),
             suggestedQuantity: String(line.quantity),
+            weightKgPerUnit:
+              line.weightKg > 0 && line.quantity > 0 ? line.weightKg / line.quantity : null,
             unitPrice: ''
           })
         )
@@ -2795,7 +2803,7 @@ export function WarehouseSlipPanel({
     const catalog = await loadProductionOrderProductCatalog();
     const materialMap = new Map<
       string,
-      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number }
+      { code: string; name: string; unit: string; quantity: number; quotaQuantity: number; weightKg: number }
     >();
 
     const productCodesFromOrders = new Set(
@@ -2821,6 +2829,7 @@ export function WarehouseSlipPanel({
         if (existing) {
           existing.quantity += material.proposedQuantity;
           existing.quotaQuantity += material.proposedQuantity;
+          existing.weightKg += material.weightKg ?? 0;
           if (!existing.name && material.name) existing.name = material.name;
           if (!existing.unit && material.unit) existing.unit = material.unit;
         } else {
@@ -2829,7 +2838,8 @@ export function WarehouseSlipPanel({
             name: material.name || material.code,
             unit: material.unit || 'kg',
             quantity: material.proposedQuantity,
-            quotaQuantity: material.proposedQuantity
+            quotaQuantity: material.proposedQuantity,
+            weightKg: material.weightKg ?? 0
           });
         }
       }
@@ -2859,13 +2869,15 @@ export function WarehouseSlipPanel({
             if (existing) {
               existing.quantity += material.proposedQuantity;
               existing.quotaQuantity += material.proposedQuantity;
+              existing.weightKg += material.weightKg ?? 0;
             } else {
               materialMap.set(mKey, {
                 code: material.code,
                 name: material.name || material.code,
                 unit: material.unit || 'kg',
                 quantity: material.proposedQuantity,
-                quotaQuantity: material.proposedQuantity
+                quotaQuantity: material.proposedQuantity,
+                weightKg: material.weightKg ?? 0
               });
             }
           }
@@ -2894,6 +2906,8 @@ export function WarehouseSlipPanel({
             documentQuantity: String(line.quantity),
             quotaQuantity: String(line.quotaQuantity),
             suggestedQuantity: String(line.quantity),
+            weightKgPerUnit:
+              line.weightKg > 0 && line.quantity > 0 ? line.weightKg / line.quantity : null,
             unitPrice: ''
           })
         )
@@ -3144,9 +3158,19 @@ export function WarehouseSlipPanel({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [productionOrderPickerOpen]);
 
-  const resolveLineWeightKg = (line: WarehouseSlipLineDraft) =>
-    convertWarehouseQuantityToKg({
-      quantity: parsePercentInput(line.quantity),
+  const resolveLineWeightKg = (line: WarehouseSlipLineDraft) => {
+    const quantity = parsePercentInput(line.quantity);
+    if (
+      Number.isFinite(quantity) &&
+      quantity > 0 &&
+      !isWarehouseWeightKgUnit(line.unit) &&
+      Number.isFinite(line.weightKgPerUnit) &&
+      (line.weightKgPerUnit ?? 0) > 0
+    ) {
+      return quantity * (line.weightKgPerUnit as number);
+    }
+    return convertWarehouseQuantityToKg({
+      quantity,
       unit: line.unit,
       itemCode: line.code,
       warehouseKind: warehouseKind === 'san_pham' ? 'san_pham' : 'nvl',
@@ -3155,6 +3179,7 @@ export function WarehouseSlipPanel({
       // ĐVT ≠ kg: chỉ nhân Tổng kg trong danh mục kho NVL (không suy từ tên).
       preferTongKgOnly: true
     });
+  };
 
   /** Xếp xuất kho: ĐVT kg lên đầu, rồi theo quy đổi kg giảm dần. */
   const reorderExportLinesKgFirst = (list: WarehouseSlipLineDraft[]) =>

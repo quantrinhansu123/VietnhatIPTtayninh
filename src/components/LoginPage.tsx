@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, User2 } from 'lucide-react';
 import { normalizeHrBranches } from '../features/_shared/hr';
 import {
+  isPrimaryAdminUsername,
   PRIMARY_ADMIN_USERNAME
 } from '../features/nhan-su/menuViews';
 import { parsePermissionSettings, resolveLoginPermissions } from '../features/cai-dat-thoi-gian/permissionKeys';
@@ -81,7 +82,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
         /* ignore */
       }
 
-      if (user === FALLBACK_ADMIN.username && pass === FALLBACK_ADMIN.password) {
+      if (isPrimaryAdminUsername(user) && pass === FALLBACK_ADMIN.password) {
         onLogin(grantResolvedAccess({
           id: 'admin',
           name: FALLBACK_ADMIN.name,

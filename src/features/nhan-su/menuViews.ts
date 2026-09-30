@@ -14,7 +14,12 @@ export type StaffViewGroup = {
 export type StaffViewPermissions = StaffViewGroup[];
 
 /** Tài khoản quản trị hệ thống luôn có toàn quyền, không phụ thuộc cấu hình menu theo nhân sự. */
-export const PRIMARY_ADMIN_USERNAME = 'itvietnhattn2026@gmail.com';
+export const PRIMARY_ADMIN_USERNAME = 'itvietnhat2026@gmail.com';
+/** Alias cũ (thừa chữ n) vẫn đăng nhập được. */
+const PRIMARY_ADMIN_USERNAME_ALIASES = new Set([
+  PRIMARY_ADMIN_USERNAME,
+  'itvietnhattn2026@gmail.com'
+]);
 
 /** Cây menu cha / con dùng cấp quyền (đồng bộ cấu trúc menu app) */
 export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
@@ -244,12 +249,16 @@ function normalizeAccessIdentity(value: string | null | undefined): string {
     .toLowerCase();
 }
 
+export function isPrimaryAdminUsername(username?: string | null): boolean {
+  return PRIMARY_ADMIN_USERNAME_ALIASES.has(normalizeAccessIdentity(username));
+}
+
 /** Tài khoản quản trị hoặc vai trò quản trị được xem toàn bộ menu. */
 export function hasFullMenuAccess(
   role: string | null | undefined,
   username?: string | null
 ): boolean {
-  if (normalizeAccessIdentity(username) === PRIMARY_ADMIN_USERNAME) return true;
+  if (isPrimaryAdminUsername(username)) return true;
 
   const normalizedRole = normalizeAccessIdentity(role);
   return [

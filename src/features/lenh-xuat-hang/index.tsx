@@ -42,6 +42,7 @@ export type ShippingOrderLine = {
   so_luong: number;
   don_gia: number;
   tong_tien: number;
+  thanh_toan: string;
 };
 
 export type ShippingOrder = {
@@ -54,6 +55,7 @@ export type ShippingOrder = {
   so_dien_thoai: string;
   bsx: string;
   so_km: number | null;
+  thanh_toan: string;
   nhan_vien: string;
   trang_thai: string;
   ghi_chu: string;
@@ -76,6 +78,7 @@ type VehicleOption = {
 };
 
 const STATUS_OPTIONS = ['Chờ xuất', 'Đang giao', 'Đã giao', 'Hủy'] as const;
+const PAYMENT_OPTIONS = ['Tiền mặt', 'CK'] as const;
 
 const compactFieldClass =
   'h-9 w-full rounded-lg border border-zinc-200 px-2.5 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
@@ -108,7 +111,8 @@ function createLine(partial?: Partial<ShippingOrderLine>): ShippingOrderLine {
     don_vi: partial?.don_vi || '',
     so_luong: soLuong,
     don_gia: donGia,
-    tong_tien: tongTien
+    tong_tien: tongTien,
+    thanh_toan: partial?.thanh_toan || ''
   };
 }
 
@@ -131,7 +135,8 @@ function parseLines(value: unknown): ShippingOrderLine[] {
         don_vi: pickText(row, ['don_vi', 'unit'], ''),
         so_luong: Number(row.so_luong ?? row.quantity ?? 0),
         don_gia: Number(row.don_gia ?? row.unit_price ?? 0),
-        tong_tien: Number(row.tong_tien ?? row.total_amount ?? row.thanh_tien ?? 0)
+        tong_tien: Number(row.tong_tien ?? row.total_amount ?? row.thanh_tien ?? 0),
+        thanh_toan: pickText(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '')
       })
     );
 }
@@ -143,7 +148,13 @@ function normalizeShippingOrders(data: unknown): ShippingOrder[] {
   if (!Array.isArray(rows)) return [];
   return rows
     .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
-    .map(row => ({
+    .map(row => {
+      const chiTiet = parseLines(row.chi_tiet);
+      const thanhToan =
+        pickText(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') ||
+        chiTiet.find(line => line.thanh_toan.trim())?.thanh_toan ||
+        '';
+      return {
       id: String(row.id ?? '').trim(),
       ma_lenh: pickText(row, ['ma_lenh', 'code'], ''),
       ngay_xuat: pickText(row, ['ngay_xuat', 'ship_date'], todayIso()).slice(0, 10),
@@ -156,11 +167,18 @@ function normalizeShippingOrders(data: unknown): ShippingOrder[] {
         const km = Number(row.so_km ?? row.soKm ?? 0);
         return Number.isFinite(km) && km > 0 ? km : null;
       })(),
+      thanh_toan: thanhToan,
       nhan_vien: pickText(row, ['nhan_vien', 'staff'], ''),
       trang_thai: pickText(row, ['trang_thai', 'status'], 'Chờ xuất'),
       ghi_chu: pickText(row, ['ghi_chu', 'note'], ''),
-      chi_tiet: parseLines(row.chi_tiet)
-    }))
+      chi_tiet: chiTiet.map(line =>
+        createLine({
+          ...line,
+          thanh_toan: line.thanh_toan || thanhToan
+        })
+      )
+    };
+    })
     .filter(row => row.id || row.ma_lenh);
 }
 
@@ -236,6 +254,7 @@ function emptyForm(code = '', staffName = ''): Omit<ShippingOrder, 'id'> {
     so_dien_thoai: '',
     bsx: '',
     so_km: null,
+    thanh_toan: '',
     nhan_vien: staffName,
     trang_thai: 'Chờ xuất',
     ghi_chu: '',
@@ -274,6 +293,7 @@ export function ShippingOrdersPanel({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewOrders, setPreviewOrders] = useState<ShippingOrder[]>([]);
   const [printGeneralNote, setPrintGeneralNote] = useState('');
+  const [printTotalKm, setPrintTotalKm] = useState('');
   const [printingOrders, setPrintingOrders] = useState<ShippingOrder[]>([]);
   const [pendingPrint, setPendingPrint] = useState(false);
   const loadAll = async () => {
@@ -364,6 +384,11 @@ export function ShippingOrdersPanel({
       showAppToast('Chọn ít nhất một lệnh xuất hàng để in.');
       return;
     }
+    const kmSum = rowsToPrint.reduce(
+      (sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0),
+      0
+    );
+    setPrintTotalKm(kmSum > 0 ? String(kmSum) : '');
     setPreviewOrders(rowsToPrint);
     setPreviewOpen(true);
   };
@@ -435,6 +460,7 @@ export function ShippingOrdersPanel({
       so_dien_thoai: order.so_dien_thoai,
       bsx: order.bsx || '',
       so_km: order.so_km,
+      thanh_toan: order.thanh_toan || '',
       nhan_vien: order.nhan_vien,
       trang_thai: order.trang_thai || 'Chờ xuất',
       ghi_chu: order.ghi_chu,
@@ -514,16 +540,19 @@ export function ShippingOrdersPanel({
     setIsSaving(true);
     setError('');
     try {
+      const payment = form.thanh_toan.trim();
       const payload = {
         ...form,
         ma_lenh: form.ma_lenh.trim() || generateNextShippingCode(orders.map(order => order.ma_lenh)),
+        thanh_toan: payment,
         chi_tiet: lines.map(line => ({
           ma_sp: line.ma_sp.trim(),
           ten_sp: line.ten_sp.trim(),
           don_vi: line.don_vi.trim(),
           so_luong: line.so_luong,
           don_gia: line.don_gia,
-          tong_tien: line.tong_tien
+          tong_tien: line.tong_tien,
+          thanh_toan: payment || line.thanh_toan.trim()
         }))
       };
       const res = await fetch(
@@ -768,24 +797,41 @@ export function ShippingOrdersPanel({
                   </div>
                 </div>
 
-                <div className="shrink-0 border-b border-slate-200 px-3 py-2.5">
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                      Ghi chú chung
-                    </span>
-                    <textarea
-                      value={printGeneralNote}
-                      onChange={event => setPrintGeneralNote(event.target.value)}
-                      rows={3}
-                      placeholder="Gõ ghi chú chung — sẽ hiện ở cuối mẫu in..."
-                      className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
-                    />
-                  </label>
+                <div className="shrink-0 border-b border-slate-200 px-3 py-2.5 space-y-2.5">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        TỔNG CỘNG (KM)
+                      </span>
+                      <input
+                        value={printTotalKm}
+                        onChange={event => setPrintTotalKm(event.target.value)}
+                        placeholder="Điền tay số km, vd: 50"
+                        className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 sm:col-span-1">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        Ghi chú chung
+                      </span>
+                      <textarea
+                        value={printGeneralNote}
+                        onChange={event => setPrintGeneralNote(event.target.value)}
+                        rows={2}
+                        placeholder="Gõ ghi chú chung — sẽ hiện ở cuối mẫu in..."
+                        className="w-full resize-y rounded-lg border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
                   <div className="bb-gx-print-preview-wrap mx-auto max-w-[1480px]">
-                    <ShippingDeliveryPrintSheet orders={previewOrders} generalNote={printGeneralNote} />
+                    <ShippingDeliveryPrintSheet
+                      orders={previewOrders}
+                      generalNote={printGeneralNote}
+                      totalKmText={printTotalKm}
+                    />
                   </div>
                 </div>
               </div>
@@ -796,7 +842,11 @@ export function ShippingOrdersPanel({
 
       {printingOrders.length > 0
         ? createPortal(
-            <ShippingDeliveryPrintSheet orders={printingOrders} generalNote={printGeneralNote} />,
+            <ShippingDeliveryPrintSheet
+              orders={printingOrders}
+              generalNote={printGeneralNote}
+              totalKmText={printTotalKm}
+            />,
             document.body
           )
         : null}
@@ -871,6 +921,20 @@ export function ShippingOrdersPanel({
                     }}
                     className={`${compactFieldClass} text-right`}
                     placeholder="0"
+                  />
+                </label>
+                <label className="block space-y-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Thanh toán
+                  </span>
+                  <SearchableSelect
+                    value={form.thanh_toan}
+                    options={[...PAYMENT_OPTIONS]}
+                    onChange={value => setForm(prev => ({ ...prev, thanh_toan: value }))}
+                    placeholder="Tiền mặt / CK"
+                    getValue={item => String(item)}
+                    getLabel={item => String(item)}
+                    inputClassName={compactFieldClass}
                   />
                 </label>
                 <label className="block space-y-0.5 sm:col-span-2">

@@ -50,6 +50,13 @@ function uniqueJoined(values: string[], fallback = '—') {
   return items.length > 0 ? items.join(', ') : fallback;
 }
 
+function customerMergeKey(order: ShippingOrder) {
+  const code = String(order.ma_khach_hang || '').trim().toUpperCase();
+  if (code) return `code:${code}`;
+  // Không có mã KH → không gộp với lệnh khác
+  return `solo:${order.id || order.ma_lenh || Math.random()}`;
+}
+
 function AddressCell({ name, address }: { name: string; address: string }) {
   const lines = String(address || '')
     .split(/\r?\n/)
@@ -72,7 +79,11 @@ function AddressCell({ name, address }: { name: string; address: string }) {
 
 function buildPrintRows(orders: ShippingOrder[]): PrintRow[] {
   const rows: PrintRow[] = [];
-  for (const order of orders) {
+  // Gom cùng Mã KH liền nhau để rowspan hoạt động
+  const sorted = [...orders].sort((a, b) =>
+    customerMergeKey(a).localeCompare(customerMergeKey(b), 'vi')
+  );
+  for (const order of sorted) {
     const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [null];
     lines.forEach((line, index) => {
       rows.push({
@@ -86,21 +97,55 @@ function buildPrintRows(orders: ShippingOrder[]): PrintRow[] {
   return rows;
 }
 
+/** rowspan cột Mã KH khi các dòng liền nhau cùng mã KH */
+function buildMaKhRowSpans(rows: PrintRow[]): number[] {
+  const spans = rows.map(() => 0);
+  let i = 0;
+  while (i < rows.length) {
+    const key = customerMergeKey(rows[i].order);
+    let j = i + 1;
+    while (j < rows.length && customerMergeKey(rows[j].order) === key) j += 1;
+    spans[i] = j - i;
+    i = j;
+  }
+  return spans;
+}
+
+function paymentLabel(order: ShippingOrder, line: ShippingOrderLine | null) {
+  return String(line?.thanh_toan || order.thanh_toan || '').trim() || '—';
+}
+
 export function ShippingDeliveryPrintSheet({
   orders,
-  generalNote = ''
+  generalNote = '',
+  totalKmText
 }: {
   orders: ShippingOrder[];
   generalNote?: string;
+  /** Điền tay từ popup xem trước; nếu undefined thì lấy tổng so_km */
+  totalKmText?: string;
 }) {
   if (!orders.length) return null;
 
   const rows = buildPrintRows(orders);
+  const maKhSpans = buildMaKhRowSpans(rows);
+
   const totalValue = orders.reduce(
     (sum, order) => sum + order.chi_tiet.reduce((lineSum, line) => lineSum + (Number(line.tong_tien) || 0), 0),
     0
   );
-  const totalKm = orders.reduce((sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0), 0);
+  const autoKm = orders.reduce(
+    (sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0),
+    0
+  );
+  const kmDisplay = (() => {
+    if (typeof totalKmText === 'string') {
+      const trimmed = totalKmText.trim();
+      if (!trimmed) return '—';
+      return /km/i.test(trimmed) ? trimmed : `${trimmed} KM`;
+    }
+    return autoKm > 0 ? `${formatNumber(autoKm, 1)} KM` : '—';
+  })();
   const shipDate = uniqueJoined(orders.map(order => formatDateVi(order.ngay_xuat)));
   const slipNo = formatCombinedSlipNumbers(orders);
   const plates = uniqueJoined(orders.map(order => order.bsx));
@@ -185,12 +230,15 @@ export function ShippingDeliveryPrintSheet({
               {rows.map((row, index) => {
                 const { order, line, showNote } = row;
                 const note = showNote ? String(order.ghi_chu || '').trim() : '';
+                const maKhSpan = maKhSpans[index];
                 return (
                   <tr key={row.key}>
                     <td>{index + 1}</td>
-                    <td>
-                      <b>{order.ma_khach_hang || '—'}</b>
-                    </td>
+                    {maKhSpan > 0 ? (
+                      <td rowSpan={maKhSpan} className="bb-gx-merge-cell">
+                        <b>{order.ma_khach_hang || '—'}</b>
+                      </td>
+                    ) : null}
                     <td className="bb-gx-left">
                       <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
                     </td>
@@ -208,7 +256,9 @@ export function ShippingDeliveryPrintSheet({
                       {line ? formatNumber(line.so_luong || 0, 2) : '—'}
                     </td>
                     <td className="bb-gx-money">{line ? formatMoney(line.don_gia || 0) : '—'}</td>
-                    <td>—</td>
+                    <td>
+                      <b>{paymentLabel(order, line)}</b>
+                    </td>
                     <td className="bb-gx-money">{line ? formatMoney(line.tong_tien || 0) : '—'}</td>
                     <td className="bb-gx-note">{note}</td>
                   </tr>
@@ -219,7 +269,7 @@ export function ShippingDeliveryPrintSheet({
 
           <div className="bb-gx-summary">
             <div className="bb-gx-distance">
-              TỔNG CỘNG: <strong>{totalKm > 0 ? `${formatNumber(totalKm, 1)} KM` : '—'}</strong>
+              TỔNG CỘNG: <strong>{kmDisplay}</strong>
             </div>
             <div className="bb-gx-total">
               <span>TỔNG GIÁ TRỊ:</span>

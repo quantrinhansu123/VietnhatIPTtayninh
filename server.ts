@@ -2629,7 +2629,8 @@ function parseShippingOrderBody(
         parseDriverReconciliationNumber(
           row.tong_tien ?? row.total_amount ?? row.thanh_tien
         )
-      )
+      ),
+      thanh_toan: pickRowField(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') || null
     }))
     .map(row => ({
       ...row,

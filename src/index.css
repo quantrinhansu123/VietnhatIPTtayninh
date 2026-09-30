@@ -6388,8 +6388,9 @@ input[type="number"] {
   font-weight: 800;
 }
 
-.bb-gx-left {
-  text-align: left !important;
+.bb-gx-merge-cell {
+  vertical-align: middle !important;
+  font-weight: 800;
 }
 
 .bb-gx-customer-name {

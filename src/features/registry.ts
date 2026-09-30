@@ -287,12 +287,12 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   },
   giao_hang: {
     table: 'giao_hang',
-    label: 'Giao hàng',
+    label: 'Giao hàng (đã ẩn UI)',
     sql: ['supabase-giao-hang.sql'],
     apiPrefix: '/api/giao-hang',
     serverLines: '11412–11510',
-    appTab: 'giao-hang',
-    appLines: 'src/features/giao-hang/index.tsx',
+    appTab: '',
+    appLines: 'src/features/giao-hang/index.tsx (không còn route /giao-hang)',
     components: [],
     utils: []
   },

@@ -12284,16 +12284,19 @@ export function createApp() {
     }
     const slipType = String(req.query.loai_phieu ?? '').trim().toLowerCase();
     const warehouse = String(req.query.kho ?? '').trim();
+    const ngay = String(req.query.ngay ?? '').trim();
     if (!['nhap', 'xuat'].includes(slipType) || !warehouse) {
       return res.status(400).json({ error: 'Cần loai_phieu (nhap|xuat) và kho.' });
     }
     const table = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const { data, error } = await supabaseKho
+    let slipQuery = supabaseKho
       .from(table)
       .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
       .eq('kho', warehouse)
-      .eq('status', 'chua_chot')
+      .eq('status', 'chua_chot');
+    if (ngay) slipQuery = slipQuery.eq('ngay', ngay);
+    const { data, error } = await slipQuery
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) return res.status(500).json({ error: `Không tải được phiếu chưa chốt. ${error.message}` });
@@ -12618,15 +12621,18 @@ export function createApp() {
 
     const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
     const duplicates = new Set<string>();
+    const matches: Array<{ ma_sp_quet: string; ma_phieu: string }> = [];
     for (let offset = 0; offset < codes.length; offset += 100) {
       const { data, error } = await supabaseKho
         .from(lineTable)
-        .select('ma_sp_quet')
+        .select('ma_sp_quet, ma_phieu')
         .in('ma_sp_quet', codes.slice(offset, offset + 100));
       if (error) return res.status(500).json({ error: error.message || 'Không thể kiểm tra mã QR trùng.' });
       for (const row of data || []) {
         const code = String(row.ma_sp_quet ?? '').trim();
-        if (code) duplicates.add(code);
+        if (!code) continue;
+        duplicates.add(code);
+        matches.push({ ma_sp_quet: code, ma_phieu: String(row.ma_phieu ?? '').trim() });
       }
     }
     let unavailableCodes: string[] = [];
@@ -12640,7 +12646,7 @@ export function createApp() {
         return res.status(500).json({ error: error?.message || 'Không thể kiểm tra tồn kho mã QR.' });
       }
     }
-    return res.json({ duplicateCodes: [...duplicates], unavailableCodes });
+    return res.json({ duplicateCodes: [...duplicates], matches, unavailableCodes });
   });
 
   app.post('/api/kho/quet-dot', async (req, res) => {
@@ -15202,6 +15208,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Chưa có mã QR để nhập kho.' });
       }
       const nguoi = String(body.nguoi ?? body.nhap_kho_boi ?? '').trim() || 'Không rõ';
+      const maPhieu = String(body.ma_phieu ?? body.nhap_kho_ma_phieu ?? '').trim();
       const luc = new Date().toISOString();
 
       const { data: existingRows, error: readError } = await supabaseWeighing
@@ -15226,12 +15233,13 @@ export function createApp() {
         const record = row as Record<string, unknown>;
         const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
         if (String(currentMetadata.nhap_kho_trang_thai || '').trim() === 'Đã nhập kho') continue;
-        const metadata = {
+        const metadata: Record<string, unknown> = {
           ...currentMetadata,
           nhap_kho_trang_thai: 'Đã nhập kho',
           nhap_kho_luc: luc,
           nhap_kho_boi: nguoi
         };
+        if (maPhieu) metadata.nhap_kho_ma_phieu = maPhieu;
         const { error: updateError } = await supabaseWeighing
           .from(SUPABASE_CAN_TU_DONG_TABLE)
           .update({ metadata })

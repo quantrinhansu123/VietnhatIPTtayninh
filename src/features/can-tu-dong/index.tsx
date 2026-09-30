@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays,
@@ -469,7 +469,8 @@ function normalizeQrKey(qr?: string | null): string {
 
 export function CanTuDongPanel({
   onBack,
-  currentUser
+  currentUser,
+  initialFilters
 }: {
   onBack: () => void;
   currentUser?: { id: string; name: string } | null;
@@ -504,11 +505,13 @@ export function CanTuDongPanel({
   const [maSpFilter, setMaSpFilter] = useState('all');
   /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
   const [maSpQuery, setMaSpQuery] = useState('');
-  /** Lọc cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân. */
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  /** Lọc cột Ngày (SOURCE_DATE / work_date) — mặc định hôm nay để không tải cả bảng. */
+  const [fromDate, setFromDate] = useState(
+    () => initialFilters?.dateFrom?.trim() || localIsoDateToday()
+  );
+  const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || localIsoDateToday());
   /** Lọc cột Ca (`all` = tất cả). */
-  const [caFilter, setCaFilter] = useState('all');
+  const [caFilter, setCaFilter] = useState(() => initialFilters?.shift?.trim() || 'all');
   /** Lọc Lệnh SX (`all` = tất cả). */
   const [lenhSxFilter, setLenhSxFilter] = useState('all');
   /** Chỉ hiện dòng có mã QR trùng trong phạm vi bộ lọc ngày/ca/Mã SP. */
@@ -538,35 +541,47 @@ export function CanTuDongPanel({
   const [nhapKhoSoCuon, setNhapKhoSoCuon] = useState('');
   const [isNhapKho, setIsNhapKho] = useState(false);
 
-  const loadRecords = async () => {
+  const loadSeqRef = useRef(0);
+  const loadRecords = async (range?: { from?: string; to?: string }) => {
+    const seq = ++loadSeqRef.current;
+    let from = String(range?.from ?? fromDate).trim();
+    let to = String(range?.to ?? toDate).trim();
+    if (!from && !to) {
+      from = localIsoDateToday();
+      to = from;
+    }
     setLoading(true);
     setError('');
     try {
-      // all=1: phân trang server lấy hết; images=0: dùng URL Cloudinary sẵn trên dòng (không ký từng ảnh).
-      const params = new URLSearchParams({ all: '1', images: '0' });
+      // dateBy=ngay: chỉ lấy cột Ngày trong khoảng, không kéo cả bảng. images=0: không ký từng ảnh.
+      const params = new URLSearchParams({ all: '1', images: '0', dateBy: 'ngay' });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
       const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(readApiErrorMessage(res, errorData, 'Không tải được cân tự động.'));
       }
       const payload = await res.json();
+      if (seq !== loadSeqRef.current) return;
       setRecords(Array.isArray(payload?.records) ? payload.records : []);
       setSelectedIds(new Set());
     } catch (err: any) {
+      if (seq !== loadSeqRef.current) return;
       const message = err?.message || 'Không tải được cân tự động.';
       setError(message);
       setRecords([]);
       setSelectedIds(new Set());
       showAppToast(message, 'error');
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ load lần đầu; lọc bằng nút Tải lại
-  }, []);
+    void loadRecords({ from: fromDate, to: toDate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tải lại khi đổi khoảng Ngày
+  }, [fromDate, toDate]);
 
   const applyProductCatalog = (products: ReturnType<typeof normalizeProducts>) => {
     const nameMap = new Map<string, string>();
@@ -1330,8 +1345,8 @@ export function CanTuDongPanel({
   const clearFilters = () => {
     setMaSpFilter('all');
     setMaSpQuery('');
-    setFromDate('');
-    setToDate('');
+    setFromDate(localIsoDateToday());
+    setToDate(localIsoDateToday());
     setCaFilter('all');
     setLenhSxFilter('all');
     setOnlyDuplicateQr(false);

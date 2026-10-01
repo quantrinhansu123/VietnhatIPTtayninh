@@ -1324,6 +1324,11 @@ export function WarehouseSlipPanel({
   const [newSlipCode, setNewSlipCode] = useState(() => generateWarehouseSlipPreviewCode(slipType));
   const [openProductSlips, setOpenProductSlips] = useState<OpenProductSlip[]>([]);
   const [selectedProductSlipCode, setSelectedProductSlipCode] = useState('');
+  const [machineImportOpen, setMachineImportOpen] = useState(false);
+  const [machineImportRows, setMachineImportRows] = useState<Array<{ id: string; ma_sp: string; ma_sp_quet: string; ten_sp: string; don_vi: string; so_luong: number }>>([]);
+  const [machineImportLoading, setMachineImportLoading] = useState(false);
+  const [machineImportSaving, setMachineImportSaving] = useState(false);
+  const [machineImportNonce, setMachineImportNonce] = useState(0);
   const [isLoadingProductSlips, setIsLoadingProductSlips] = useState(false);
   const [isDeletingProductSlip, setIsDeletingProductSlip] = useState(false);
   /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
@@ -2130,6 +2135,68 @@ export function WarehouseSlipPanel({
       .finally(() => setIsLoadingProductSlips(false));
   };
 
+  const handleOpenMachineImport = async () => {
+    const maPhieu = selectedProductSlipCode.trim();
+    if (!maPhieu) {
+      setFormError('Chọn phiếu nhập trước khi nhập từ máy.');
+      return;
+    }
+    setMachineImportOpen(true);
+    setMachineImportLoading(true);
+    setMachineImportRows([]);
+    setFormError('');
+    try {
+      const res = await fetch(`/api/kho-cho?ma_phieu=${encodeURIComponent(maPhieu)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được mã từ máy.'));
+      const rows = (Array.isArray(data?.records) ? data.records : []).map((row: Record<string, unknown>) => ({
+        id: String(row.id || ''),
+        ma_sp: String(row.ma_sp || '').trim(),
+        ma_sp_quet: String(row.ma_sp_quet || '').trim(),
+        ten_sp: String(row.ten_sp || '').trim(),
+        don_vi: String(row.don_vi || '').trim(),
+        so_luong: Number(row.so_luong) || 1
+      })).filter((row: { ma_sp_quet: string }) => row.ma_sp_quet);
+      setMachineImportRows(rows);
+    } catch (error: unknown) {
+      setMachineImportOpen(false);
+      setFormError(error instanceof Error ? error.message : 'Không tải được mã từ máy.');
+    } finally {
+      setMachineImportLoading(false);
+    }
+  };
+
+  const handleConfirmMachineImport = async () => {
+    const maPhieu = selectedProductSlipCode.trim();
+    if (!maPhieu || machineImportRows.length === 0) return;
+    setMachineImportSaving(true);
+    setFormError('');
+    try {
+      const res = await fetch('/api/kho-cho/xac-nhan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ma_phieu: maPhieu })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không xác nhận nhập kho được.'));
+      const saved = Number(data.saved) || 0;
+      const blocked = Array.isArray(data.blocked) ? data.blocked.length : 0;
+      setActionMessage(
+        blocked
+          ? `Đã ghi ${saved} mã vào nhap_kho. ${blocked} mã đã có trên phiếu khác nên giữ lại trong kho chờ.`
+          : `Đã ghi ${saved} mã từ máy vào nhap_kho của phiếu ${maPhieu}.`
+      );
+      setMachineImportOpen(false);
+      setMachineImportRows([]);
+      setProductExportView('chi-tiet');
+      setMachineImportNonce(value => value + 1);
+    } catch (error: unknown) {
+      setFormError(error instanceof Error ? error.message : 'Không xác nhận nhập kho được.');
+    } finally {
+      setMachineImportSaving(false);
+    }
+  };
+
   const handleDeleteSelectedProductSlip = async () => {
     const slipCode = selectedProductSlipCode.trim();
     const slip = openProductSlips.find(item => item.ma_phieu === slipCode);
@@ -2498,7 +2565,7 @@ export function WarehouseSlipPanel({
         if (!cancelled) setLoadingSavedProductScans(false);
       });
     return () => { cancelled = true; };
-  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, savedProductScanPage, savedProductScanPageSize, scannedSavedAtByCode]);
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, savedProductScanPage, savedProductScanPageSize, scannedSavedAtByCode, machineImportNonce]);
 
   useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode || isEditingProductInbound) return;
@@ -3806,6 +3873,74 @@ export function WarehouseSlipPanel({
                   autoFlip
                 />
               </label>
+            ) : null}
+            {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
+              <button
+                type="button"
+                onClick={() => void handleOpenMachineImport()}
+                disabled={machineImportLoading || isSaving}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+              >
+                {machineImportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanBarcode className="h-4 w-4" />}
+                Nhập từ máy
+              </button>
+            ) : null}
+            {machineImportOpen ? (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
+                <div className="flex h-[min(90vh,40rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                  <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3">
+                    <div>
+                      <h3 className="text-base font-black text-zinc-950">Nhập từ máy</h3>
+                      <p className="text-xs font-semibold text-zinc-500">Phiếu {selectedProductSlipCode} · {machineImportRows.length} mã trong kho chờ</p>
+                    </div>
+                    <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                    {machineImportLoading ? (
+                      <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải mã từ máy...</p>
+                    ) : machineImportRows.length === 0 ? (
+                      <p className="text-sm font-semibold text-zinc-500">Phiếu này chưa có mã từ máy.</p>
+                    ) : (
+                      <table className="w-full text-left text-sm">
+                        <thead className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                          <tr>
+                            <th className="py-2 pr-3">Mã quét</th>
+                            <th className="py-2 pr-3">Mã SP</th>
+                            <th className="py-2 pr-3">Tên</th>
+                            <th className="py-2 pr-3">ĐVT</th>
+                            <th className="py-2 text-right">SL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {machineImportRows.map(row => (
+                            <tr key={row.id || row.ma_sp_quet} className="border-t border-zinc-100">
+                              <td className="py-2 pr-3 font-mono text-xs font-bold text-zinc-950">{row.ma_sp_quet}</td>
+                              <td className="py-2 pr-3 font-mono text-xs">{row.ma_sp || '—'}</td>
+                              <td className="py-2 pr-3">{row.ten_sp || '—'}</td>
+                              <td className="py-2 pr-3">{row.don_vi || 'Cuộn'}</td>
+                              <td className="py-2 text-right font-bold">{formatNumber(row.so_luong, 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+                    <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60">Hủy</button>
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirmMachineImport()}
+                      disabled={machineImportSaving || machineImportLoading || machineImportRows.length === 0}
+                      className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-60"
+                    >
+                      {machineImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Xác nhận nhập kho
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : null}
           </div>
         </div>

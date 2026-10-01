@@ -8,6 +8,7 @@ export type TableId =
   | 'can_tu_dong'
   | 'can_tu_dong_tong_hop'
   | 'kiem_kho'
+  | 'kho_cho'
   | 'kiem_kho_chenh_lech'
   | 'doi_soat'
   | 'quan_ly_kho'
@@ -112,6 +113,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/components/BbCanTuDongTongHopPanel.tsx',
     components: ['src/components/BbCanTuDongTongHopPanel.tsx', 'src/components/ControlBoardBbMachineReportTable.tsx'],
     utils: ['src/utils/canTuDongTongHop.ts']
+  },
+  kho_cho: {
+    table: 'kho_cho',
+    label: 'Kho chờ nhập từ cân',
+    sql: ['supabase-kho-cho.sql'],
+    apiPrefix: '/api/kho-cho',
+    serverLines: 'POST /api/kho-cho (client supabaseKiemKho, project grlcgkzotqishzxwpddc)',
+    appTab: 'can-tu-dong',
+    appLines: 'src/features/can-tu-dong/index.tsx',
+    components: [],
+    utils: []
   },
   kiem_kho: {
     table: 'kiem_kho',

@@ -52,7 +52,8 @@
 | `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong`: tick dòng → nút **Sửa ngày** mở modal rồi gửi id các dòng **đã chọn** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
-| `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu? }` — đổi metadata `nhap_kho_trang_thai` thành `Đã nhập kho`, ghi `nhap_kho_luc`, `nhap_kho_boi` và `nhap_kho_ma_phieu`. UI chọn phiếu nhập chưa chốt đúng ngày (kho thành phẩm) hoặc tạo mới, rồi ghi QR qua `POST /api/kho/quet-dot` (`phieu_nhap` / `nhap_kho`) trước khi đánh dấu |
+| `POST /api/kho-cho` | Body `{ items, ma_phieu }` — nút **Nhập kho** ghi QR vào `kho_cho` (cùng cột `nhap_kho`, `ma_phieu` là phiếu đang chọn). Không ghi `nhap_kho` |
+| `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu?, trang_thai? }` — `trang_thai` là `Đã nhập kho` hoặc `Chờ nhập kho`. Nút **Đổi** trên từng dòng đổi qua lại hai trạng thái. Sau khi ghi `kho_cho`, popup Nhập kho vẫn đánh dấu `Đã nhập kho` |
 | `POST /api/can-tu-dong/:id/duplicate` | Nhân bản y nguyên 1 dòng. UI cột Thao tác đã bỏ nút **Nhân bản** |
 
 ## Frontend

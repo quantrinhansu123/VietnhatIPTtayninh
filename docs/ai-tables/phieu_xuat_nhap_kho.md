@@ -26,7 +26,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính |
+| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho` |
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 

@@ -87,6 +87,18 @@ const SUPABASE_KIEM_KHO_TONG_HOP_TABLE =
   process.env.SUPABASE_KIEM_KHO_TONG_HOP_TABLE || 'kiem_kho_tong_hop';
 const SUPABASE_KIEM_KHO_CHENH_LECH_TABLE =
   process.env.SUPABASE_KIEM_KHO_CHENH_LECH_TABLE || 'kiem_kho_chenh_lech_xu_ly';
+/** Hàng chờ nhập kho từ cân — project grlcgkzotqishzxwpddc, không dùng DB kiểm kho đang nối. */
+const SUPABASE_KHO_CHO_URL =
+  process.env.SUPABASE_KHO_CHO_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_KHO_CHO_URL ||
+  'https://grlcgkzotqishzxwpddc.supabase.co';
+const SUPABASE_KHO_CHO_SERVICE_KEY = process.env.SUPABASE_KHO_CHO_SERVICE_KEY || '';
+const SUPABASE_KHO_CHO_KEY =
+  SUPABASE_KHO_CHO_SERVICE_KEY ||
+  process.env.SUPABASE_KHO_CHO_KEY ||
+  process.env.SUPABASE_KHO_CHO_PUBLISHABLE_KEY ||
+  '';
+const SUPABASE_KHO_CHO_TABLE = process.env.SUPABASE_KHO_CHO_TABLE || 'kho_cho';
 const SUPABASE_QUAN_LY_KHO_TABLE = process.env.SUPABASE_QUAN_LY_KHO_TABLE || 'quan_ly_kho';
 const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE || 'bao_cao_hang_hong';
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
@@ -376,6 +388,12 @@ const supabaseKiemKho =
         global: { fetch: fetchWithTimeoutAndRetry }
       })
     : null;
+const supabaseKhoCho =
+  SUPABASE_KHO_CHO_URL && SUPABASE_KHO_CHO_KEY
+    ? createClient(SUPABASE_KHO_CHO_URL, SUPABASE_KHO_CHO_KEY, {
+        global: { fetch: fetchWithTimeoutAndRetry }
+      })
+    : null;
 /** Client riêng — API `/api/bao-cao-may-nvl-ton` (kiểm tồn đầu/cuối ca). */
 const supabaseTon =
   SUPABASE_TON_URL && SUPABASE_TON_KEY
@@ -462,6 +480,14 @@ if (supabaseKiemKho) {
     kiemKhoTongHop: SUPABASE_KIEM_KHO_TONG_HOP_TABLE,
     key: usingKiemKhoServiceKey ? 'service_role' : 'anon/publishable'
   });
+}
+if (supabaseKhoCho) {
+  console.log('[SUPABASE:kho-cho] Connected to', SUPABASE_KHO_CHO_URL, {
+    table: SUPABASE_KHO_CHO_TABLE,
+    key: SUPABASE_KHO_CHO_SERVICE_KEY ? 'service_role' : 'anon/publishable'
+  });
+} else {
+  console.log('[SUPABASE:kho-cho] Chưa có SUPABASE_KHO_CHO_SERVICE_KEY — chưa ghi được bảng kho_cho trên', SUPABASE_KHO_CHO_URL);
 }
 if (supabaseTon) {
   console.log(`[SUPABASE:${SUPABASE_TON_DB_LABEL}] Connected to`, SUPABASE_TON_URL, {
@@ -2827,6 +2853,11 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
 function isImmutableOrGeneratedColumnError(error: { code?: string; message?: string } | null) {
   if (!error) return false;
   return /generated column|can only be updated to DEFAULT|immutable/i.test(error.message || '');
+}
+
+function khoChoMissingTableMessage() {
+  const ref = String(SUPABASE_KHO_CHO_URL || '').match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] || 'grlcgkzotqishzxwpddc';
+  return `Bảng kho_cho chưa có trên project ${ref}. Chạy supabase-kho-cho.sql ở project đó.`;
 }
 
 function isMissingTableError(error: { code?: string; message?: string } | null) {
@@ -7376,6 +7407,53 @@ async function ensureWarehouseSlipNumericColumns() {
   }
 }
 
+async function ensureKhoChoTable() {
+  if (!String(SUPABASE_KIEM_KHO_URL || '').includes('grlcgkzotqishzxwpddc')) return;
+  const password = process.env.SUPABASE_KIEM_KHO_DB_PASSWORD?.trim();
+  const customUrl = process.env.SUPABASE_KIEM_KHO_DB_URL?.trim();
+  if (!password && !customUrl) return;
+
+  const sqlPath = path.join(process.cwd(), 'supabase-kho-cho.sql');
+  if (!fs.existsSync(sqlPath)) return;
+  const sql = fs.readFileSync(sqlPath, 'utf8');
+  const ref = 'grlcgkzotqishzxwpddc';
+  const candidates = [
+    customUrl,
+    password
+      ? `postgresql://postgres:${encodeURIComponent(password)}@db.${ref}.supabase.co:5432/postgres`
+      : '',
+    password
+      ? `postgresql://postgres.${ref}:${encodeURIComponent(password)}@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres`
+      : ''
+  ].filter((value): value is string => Boolean(value));
+
+  try {
+    const pg = await import('pg');
+    for (const connectionString of candidates) {
+      const client = new pg.default.Client({
+        connectionString,
+        ssl: { rejectUnauthorized: false }
+      });
+      try {
+        await client.connect();
+        await client.query(sql);
+        console.log('[kho-cho] Đã tạo bảng kho_cho trên DB kiểm kho.');
+        await client.end();
+        return;
+      } catch {
+        try {
+          await client.end();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    console.warn('[kho-cho] Chưa tạo được bảng kho_cho. Chạy supabase-kho-cho.sql trên project kiểm kho.');
+  } catch {
+    console.warn('[kho-cho] Chưa tạo được bảng kho_cho. Chạy supabase-kho-cho.sql trên project kiểm kho.');
+  }
+}
+
 function parseOrderQuantity(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -8459,6 +8537,7 @@ async function startServer() {
     );
     getReportsFromDb();
     void ensureWarehouseSlipNumericColumns();
+    void ensureKhoChoTable();
     void ensureSupabaseClockAligned();
   });
 }
@@ -15181,6 +15260,217 @@ export function createApp() {
     }
   });
 
+  app.get('/api/kho-cho', async (req, res) => {
+    if (!supabaseKhoCho) {
+      return res.status(503).json({
+        error: 'Chưa có khóa API cho project grlcgkzotqishzxwpddc. Thêm SUPABASE_KHO_CHO_SERVICE_KEY vào .env rồi chạy lại server.'
+      });
+    }
+    const maPhieu = String(req.query.ma_phieu ?? req.query.maPhieu ?? '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+    const { data, error } = await supabaseKhoCho
+      .from(SUPABASE_KHO_CHO_TABLE)
+      .select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu, created_at')
+      .eq('ma_phieu', maPhieu)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingTableError(error)) return res.status(503).json({ error: khoChoMissingTableMessage() });
+      return res.status(500).json({ error: error.message || 'Không tải được mã từ máy.' });
+    }
+    return res.json({ records: data || [], total: data?.length || 0 });
+  });
+
+  app.post('/api/kho-cho/xac-nhan', async (req, res) => {
+    if (!supabaseKhoCho) {
+      return res.status(503).json({
+        error: 'Chưa có khóa API cho project grlcgkzotqishzxwpddc. Thêm SUPABASE_KHO_CHO_SERVICE_KEY vào .env rồi chạy lại server.'
+      });
+    }
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+    const maPhieu = String(body.ma_phieu ?? '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+
+    try {
+      const { data, error } = await supabaseKhoCho
+        .from(SUPABASE_KHO_CHO_TABLE)
+        .select('id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu')
+        .eq('ma_phieu', maPhieu);
+      if (error) throw error;
+      const source = (data || []).filter(row => String(row.ma_sp_quet || '').trim());
+      if (!source.length) return res.status(400).json({ error: 'Phiếu này chưa có mã từ máy.' });
+
+      const codes = source.map(row => String(row.ma_sp_quet).trim());
+      const existing = new Map<string, string>();
+      for (let offset = 0; offset < codes.length; offset += 100) {
+        const { data: found, error: foundError } = await supabaseKho
+          .from('nhap_kho')
+          .select('ma_sp_quet, ma_phieu')
+          .in('ma_sp_quet', codes.slice(offset, offset + 100));
+        if (foundError) throw new Error(foundError.message || 'Không kiểm tra được nhap_kho.');
+        for (const row of found || []) {
+          const code = String(row.ma_sp_quet || '').trim();
+          if (code) existing.set(code.replace(/\s+/g, '').toUpperCase(), String(row.ma_phieu || ''));
+        }
+      }
+
+      const pending = source.filter(row => !existing.has(String(row.ma_sp_quet).replace(/\s+/g, '').toUpperCase()));
+      const blocked = source.filter(row => {
+        const owner = existing.get(String(row.ma_sp_quet).replace(/\s+/g, '').toUpperCase());
+        return owner && owner !== maPhieu;
+      });
+      if (pending.length) {
+        const rows = pending.map(row => ({
+          ma_sp: String(row.ma_sp || '').trim() || String(row.ma_sp_quet).trim(),
+          ma_sp_quet: String(row.ma_sp_quet).trim(),
+          ten_sp: row.ten_sp || null,
+          don_vi: row.don_vi || null,
+          loai: String(row.loai || '').trim() || 'san_pham',
+          so_luong: Number(row.so_luong) || 1,
+          ma_phieu: maPhieu
+        }));
+        const { error: insertError } = await supabaseKho.from('nhap_kho').insert(rows);
+        if (insertError) {
+          return res.status(500).json({ error: insertError.message || 'Không ghi được vào nhap_kho.' });
+        }
+      }
+
+      const removable = source
+        .filter(row => !blocked.some(item => item.id === row.id))
+        .map(row => String(row.ma_sp_quet).trim());
+      if (removable.length) {
+        const { error: deleteError } = await supabaseKhoCho
+          .from(SUPABASE_KHO_CHO_TABLE)
+          .delete()
+          .eq('ma_phieu', maPhieu)
+          .in('ma_sp_quet', removable);
+        if (deleteError) {
+          return res.status(500).json({ error: deleteError.message || 'Đã ghi nhap_kho nhưng chưa xóa được kho chờ.' });
+        }
+      }
+
+      return res.json({
+        success: true,
+        saved: pending.length,
+        already: source.length - pending.length - blocked.length,
+        blocked: blocked.map(row => String(row.ma_sp_quet).trim())
+      });
+    } catch (err: any) {
+      if (isMissingTableError(err)) return res.status(503).json({ error: khoChoMissingTableMessage() });
+      return res.status(500).json({ error: err?.message || 'Không xác nhận nhập kho được.' });
+    }
+  });
+
+  app.post('/api/kho-cho', async (req, res) => {
+    if (!supabaseKhoCho) {
+      return res.status(503).json({
+        error: 'Chưa có khóa API cho project grlcgkzotqishzxwpddc. Thêm SUPABASE_KHO_CHO_SERVICE_KEY vào .env rồi chạy lại server.'
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const maPhieu = String(body.ma_phieu ?? '').trim();
+      if (!maPhieu) {
+        return res.status(400).json({ error: 'Chọn phiếu nhập trước khi ghi kho chờ.' });
+      }
+      const itemsByCode = new Map<string, { fullCode: string; tenSp: string; donVi: string }>();
+      const rawItems = Array.isArray(body.items) ? body.items : [];
+      for (const raw of rawItems) {
+        if (!raw || typeof raw !== 'object') continue;
+        const record = raw as Record<string, unknown>;
+        const fullCode = String(record.ma_sp_quet ?? record.ma_sp ?? '').trim();
+        if (!fullCode) continue;
+        const key = fullCode.replace(/\s+/g, '').toUpperCase();
+        if (!itemsByCode.has(key)) {
+          itemsByCode.set(key, {
+            fullCode,
+            tenSp: String(record.ten_sp ?? '').trim(),
+            donVi: String(record.don_vi ?? '').trim()
+          });
+        }
+      }
+      const items = [...itemsByCode.values()];
+      if (!items.length) {
+        return res.status(400).json({ error: 'Cần danh sách mã QR hợp lệ.' });
+      }
+
+      const loadCho = async (codes: string[]) => {
+        const found = new Set<string>();
+        for (let offset = 0; offset < codes.length; offset += 100) {
+          const { data, error } = await supabaseKhoCho
+            .from(SUPABASE_KHO_CHO_TABLE)
+            .select('ma_sp_quet')
+            .in('ma_sp_quet', codes.slice(offset, offset + 100));
+          if (error) throw error;
+          for (const row of data || []) {
+            const code = String(row.ma_sp_quet ?? '').trim();
+            if (code) found.add(code.replace(/\s+/g, '').toUpperCase());
+          }
+        }
+        return found;
+      };
+      const codes = items.map(item => item.fullCode);
+      const inCho = await loadCho(codes);
+      const duplicateCodes: string[] = [];
+      const pending = items.filter(item => {
+        const key = item.fullCode.replace(/\s+/g, '').toUpperCase();
+        if (inCho.has(key)) {
+          duplicateCodes.push(item.fullCode);
+          return false;
+        }
+        return true;
+      });
+
+      const savedAt = new Date().toISOString();
+      if (pending.length) {
+        const rows = pending.map(item => {
+          const separators = ['_', '+'].map(separator => {
+            const index = item.fullCode.indexOf(separator);
+            return index > 0 ? index : Number.POSITIVE_INFINITY;
+          });
+          const separatorIndex = Math.min(...separators);
+          return {
+            ma_sp: Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode,
+            ma_sp_quet: item.fullCode,
+            ten_sp: item.tenSp || null,
+            don_vi: item.donVi || null,
+            loai: 'san_pham',
+            so_luong: 1,
+            ma_phieu: maPhieu
+          };
+        });
+        const { error } = await supabaseKhoCho.from(SUPABASE_KHO_CHO_TABLE).insert(rows);
+        if (!error) console.log(`[kho-cho] Đã ghi ${rows.length} mã vào ${SUPABASE_KHO_CHO_URL}`);
+        if (error) {
+          if (isMissingTableError(error)) {
+            return res.status(503).json({
+              error: khoChoMissingTableMessage()
+            });
+          }
+          return res.status(500).json({ error: error.message || 'Không ghi được mã vào kho chờ.' });
+        }
+      }
+
+      return res.status(201).json({
+        success: true,
+        saved: pending.map(item => ({ ma_sp_quet: item.fullCode, created_at: savedAt })),
+        duplicateCodes,
+        table: SUPABASE_KHO_CHO_TABLE,
+        db: 'kho-cho'
+      });
+    } catch (err: any) {
+      if (isMissingTableError(err)) {
+        return res.status(503).json({
+          error: khoChoMissingTableMessage()
+        });
+      }
+      return res.status(500).json({ error: err?.message || 'Lỗi khi ghi kho chờ.' });
+    }
+  });
+
   app.post('/api/can-tu-dong/nhap-kho', async (req, res) => {
     if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
       return res.status(503).json({
@@ -15210,6 +15500,8 @@ export function createApp() {
       }
       const nguoi = String(body.nguoi ?? body.nhap_kho_boi ?? '').trim() || 'Không rõ';
       const maPhieu = String(body.ma_phieu ?? body.nhap_kho_ma_phieu ?? '').trim();
+      const requestedStatus = String(body.trang_thai ?? '').trim();
+      const nextStatus = requestedStatus === 'Chờ nhập kho' ? 'Chờ nhập kho' : 'Đã nhập kho';
       const luc = new Date().toISOString();
 
       const { data: existingRows, error: readError } = await supabaseWeighing
@@ -15233,14 +15525,17 @@ export function createApp() {
       for (const row of rows) {
         const record = row as Record<string, unknown>;
         const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
-        if (String(currentMetadata.nhap_kho_trang_thai || '').trim() === 'Đã nhập kho') continue;
+        const currentStatus = String(currentMetadata.nhap_kho_trang_thai || '').trim() || 'Chờ nhập kho';
+        if (currentStatus === nextStatus) continue;
         const metadata: Record<string, unknown> = {
           ...currentMetadata,
-          nhap_kho_trang_thai: 'Đã nhập kho',
-          nhap_kho_luc: luc,
-          nhap_kho_boi: nguoi
+          nhap_kho_trang_thai: nextStatus
         };
-        if (maPhieu) metadata.nhap_kho_ma_phieu = maPhieu;
+        if (nextStatus === 'Đã nhập kho') {
+          metadata.nhap_kho_luc = luc;
+          metadata.nhap_kho_boi = nguoi;
+          if (maPhieu) metadata.nhap_kho_ma_phieu = maPhieu;
+        }
         const { error: updateError } = await supabaseWeighing
           .from(SUPABASE_CAN_TU_DONG_TABLE)
           .update({ metadata })
@@ -15259,6 +15554,7 @@ export function createApp() {
         success: true,
         updated,
         requested: ids.length,
+        nhap_kho_trang_thai: nextStatus,
         nhap_kho_luc: luc,
         nhap_kho_boi: nguoi,
         db: SUPABASE_WEIGHING_DB_LABEL,

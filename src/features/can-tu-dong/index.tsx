@@ -543,6 +543,7 @@ export function CanTuDongPanel({
   const [showNhapKhoModal, setShowNhapKhoModal] = useState(false);
   const [nhapKhoSoCuon, setNhapKhoSoCuon] = useState('');
   const [isNhapKho, setIsNhapKho] = useState(false);
+  const [togglingNhapKhoId, setTogglingNhapKhoId] = useState('');
   const [isCheckingNhapKho, setIsCheckingNhapKho] = useState(false);
   const [isSyncingNhapKhoStatus, setIsSyncingNhapKhoStatus] = useState(false);
   const [showPrintPhieuModal, setShowPrintPhieuModal] = useState(false);
@@ -560,6 +561,7 @@ export function CanTuDongPanel({
   const [nhapKhoChecked, setNhapKhoChecked] = useState(false);
   const [nhapKhoWarehouses, setNhapKhoWarehouses] = useState<string[]>([]);
   const [nhapKhoKho, setNhapKhoKho] = useState('');
+  const [nhapKhoSlipDate, setNhapKhoSlipDate] = useState(() => localIsoDateToday());
   const [nhapKhoSlips, setNhapKhoSlips] = useState<NhapKhoSlipOption[]>([]);
   const [nhapKhoPhieu, setNhapKhoPhieu] = useState(NHAP_KHO_NEW_SLIP);
   const [loadingNhapKhoSlips, setLoadingNhapKhoSlips] = useState(false);
@@ -1612,33 +1614,41 @@ export function CanTuDongPanel({
   );
   const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
   const nhapKhoPreview = nhapKhoCount > 0 ? waitingNhapKho.slice(0, nhapKhoCount) : [];
-  const nhapKhoNgay = fromDate || localIsoDateToday();
 
-  const loadNhapKhoSlips = async (khoName: string, ngay: string) => {
-    const kho = khoName.trim();
-    if (!kho) {
+  const loadNhapKhoSlips = async (khoNames: string[], ngay: string) => {
+    const names = [...new Set(khoNames.map(name => name.trim()).filter(Boolean))];
+    if (names.length === 0) {
       setNhapKhoSlips([]);
       setNhapKhoPhieu(NHAP_KHO_NEW_SLIP);
       return;
     }
     setLoadingNhapKhoSlips(true);
     try {
-      const params = new URLSearchParams({
-        loai_phieu: 'nhap',
-        kho,
-        ngay,
-        limit: '50'
-      });
-      const res = await fetch(`/api/kho/phieu?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu nhập.'));
-      const slips = (Array.isArray(data?.records) ? data.records : [])
-        .map((row: { ma_phieu?: unknown; ngay?: unknown; kho?: unknown }) => ({
+      const lists = await Promise.all(
+        names.map(async kho => {
+          const params = new URLSearchParams({
+            loai_phieu: 'nhap',
+            kho,
+            ngay,
+            status: 'all',
+            limit: '100'
+          });
+          const res = await fetch(`/api/kho/phieu?${params.toString()}`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu nhập.'));
+          return (Array.isArray(data?.records) ? data.records : []) as NhapKhoSlipOption[];
+        })
+      );
+      const slips = lists
+        .flat()
+        .map(row => ({
           ma_phieu: String(row.ma_phieu || '').trim(),
           ngay: String(row.ngay || '').trim(),
-          kho: String(row.kho || '').trim()
+          kho: String(row.kho || '').trim(),
+          status: String(row.status || '').trim()
         }))
-        .filter((row: NhapKhoSlipOption) => row.ma_phieu);
+        .filter(row => row.ma_phieu)
+        .sort((a, b) => b.ma_phieu.localeCompare(a.ma_phieu, 'en'));
       setNhapKhoSlips(slips);
       setNhapKhoPhieu(slips[0]?.ma_phieu || NHAP_KHO_NEW_SLIP);
     } catch (err: unknown) {
@@ -1653,7 +1663,7 @@ export function CanTuDongPanel({
   useEffect(() => {
     if (!showNhapKhoModal) return;
     let cancelled = false;
-    const ngay = fromDate || localIsoDateToday();
+    const ngay = nhapKhoSlipDate || localIsoDateToday();
     void (async () => {
       setLoadingNhapKhoSlips(true);
       try {
@@ -1671,7 +1681,7 @@ export function CanTuDongPanel({
         setNhapKhoWarehouses(names);
         const kho = names.includes(nhapKhoKho) ? nhapKhoKho : names[0] || '';
         setNhapKhoKho(kho);
-        await loadNhapKhoSlips(kho, ngay);
+        await loadNhapKhoSlips(names.length ? names : [kho], ngay);
       } catch (err: unknown) {
         if (cancelled) return;
         setNhapKhoWarehouses([]);
@@ -1685,9 +1695,9 @@ export function CanTuDongPanel({
     return () => {
       cancelled = true;
     };
-    // Chỉ tải khi mở popup hoặc đổi ngày lọc.
+    // Tải phiếu khi mở popup hoặc đổi ngày phiếu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showNhapKhoModal, fromDate]);
+  }, [showNhapKhoModal, nhapKhoSlipDate]);
 
   const handleCheckNhapKho = async () => {
     const rows = nhapKhoPreview.length > 0 ? nhapKhoPreview : waitingNhapKho;
@@ -1844,7 +1854,8 @@ export function CanTuDongPanel({
         return {
           ma_sp_quet: fullCode,
           ten_sp: key ? productNameByCode.get(key) || '' : '',
-          don_vi: unit
+          don_vi: unit,
+          can_tu_dong_id: row.id
         };
       });
     setIsNhapKho(true);
@@ -1855,20 +1866,19 @@ export function CanTuDongPanel({
       while (savedRows.length < nhapKhoCount && cursor < waitingNhapKho.length) {
         const batch = waitingNhapKho.slice(cursor, cursor + (nhapKhoCount - savedRows.length));
         cursor += batch.length;
-        const batchRes = await fetch('/api/kho/quet-dot', {
+        const batchRes = await fetch('/api/kho-cho', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            loai_phieu: 'nhap',
             ma_phieu: maPhieu,
-            ngay: nhapKhoNgay,
+            ngay: nhapKhoSlipDate,
             nhan_su: nguoi,
             kho,
             items: toWarehouseItems(batch)
           })
         });
         const batchData = await batchRes.json().catch(() => ({}));
-        if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào phiếu nhập.'));
+        if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào kho chờ.'));
         const savedCodes = new Set(
           (Array.isArray(batchData?.saved) ? batchData.saved : [])
             .map((row: { ma_sp_quet?: unknown }) => String(row.ma_sp_quet || '').trim().toUpperCase())
@@ -1882,15 +1892,15 @@ export function CanTuDongPanel({
           ...batch.filter(row => savedCodes.has(String(row.qr_code || '').trim().toUpperCase()))
         );
         if (savedCodes.size === 0 && duplicates.length === 0) {
-          throw new Error('Không ghi được mã QR vào phiếu nhập.');
+          throw new Error('Không ghi được mã QR vào kho chờ.');
         }
       }
       const duplicateCount = skippedCodes.length;
       if (savedRows.length === 0) {
         throw new Error(
           duplicateCount
-            ? `Không ghi được mã mới. ${duplicateCount} mã QR đã có trên phiếu nhập khác.`
-            : 'Không ghi được mã QR vào phiếu nhập.'
+            ? `Không ghi được mã mới. ${duplicateCount} mã QR đã có trong kho chờ.`
+            : 'Không ghi được mã QR vào kho chờ.'
         );
       }
 
@@ -1904,7 +1914,7 @@ export function CanTuDongPanel({
         })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Đã ghi phiếu nhập nhưng chưa đổi trạng thái cân.'));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Đã ghi kho chờ nhưng chưa đổi trạng thái cân.'));
       const luc = String(data.nhap_kho_luc || new Date().toISOString());
       const boi = String(data.nhap_kho_boi || nguoi);
       const idSet = new Set(savedRows.map(row => rowIdKey(row.id)));
@@ -1930,8 +1940,8 @@ export function CanTuDongPanel({
       const savedCount = formatNumber(Number(data.updated) || savedRows.length, 0);
       showAppToast(
         duplicateCount
-          ? `Đã ghi ${savedCount} mã QR vào phiếu ${maPhieu}. Bỏ qua ${duplicateCount} mã đã có trên phiếu khác.`
-          : `Đã ghi ${savedCount} mã QR vào phiếu nhập ${maPhieu}.`
+          ? `Đã ghi ${savedCount} mã QR vào kho chờ ${maPhieu}. Bỏ qua ${duplicateCount} mã đã có trong kho chờ.`
+          : `Đã ghi ${savedCount} mã QR vào kho chờ ${maPhieu}. Chưa vào nhap_kho.`
       );
       setShowNhapKhoModal(false);
       setNhapKhoSoCuon('');
@@ -1939,6 +1949,46 @@ export function CanTuDongPanel({
       showAppToast(err instanceof Error ? err.message : 'Không nhập kho được.', 'error');
     } finally {
       setIsNhapKho(false);
+    }
+  };
+
+  const handleToggleNhapKhoRow = async (row: CanTuDongRecord) => {
+    const current = readNhapKho(row);
+    const next = current.waiting ? NHAP_KHO_DA : NHAP_KHO_CHO;
+    const key = rowIdKey(row.id);
+    setTogglingNhapKhoId(key);
+    try {
+      const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
+      const res = await fetch('/api/can-tu-dong/nhap-kho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [row.id], nguoi, trang_thai: next })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không đổi được trạng thái nhập kho.'));
+      const luc = String(data.nhap_kho_luc || new Date().toISOString());
+      const boi = String(data.nhap_kho_boi || nguoi);
+      setRecords(prev =>
+        prev.map(item => {
+          if (rowIdKey(item.id) !== key) return item;
+          const meta =
+            item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+              ? { ...(item.metadata as Record<string, unknown>) }
+              : {};
+          return {
+            ...item,
+            metadata: {
+              ...meta,
+              nhap_kho_trang_thai: next,
+              ...(next === NHAP_KHO_DA ? { nhap_kho_luc: luc, nhap_kho_boi: boi } : {})
+            }
+          };
+        })
+      );
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không đổi được trạng thái nhập kho.', 'error');
+    } finally {
+      setTogglingNhapKhoId('');
     }
   };
 
@@ -1972,11 +2022,12 @@ export function CanTuDongPanel({
               setNhapKhoSoCuon('');
               setNhapKhoHits(new Map());
               setNhapKhoChecked(false);
+              setNhapKhoSlipDate(fromDate || localIsoDateToday());
               setShowNhapKhoModal(true);
             }}
             disabled={loading || isNhapKho}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Nhập số cuộn rồi chọn các mã QR đang Chờ nhập kho"
+            title="Ghi mã QR đang Chờ nhập kho vào bảng kho chờ, chưa vào nhap_kho"
           >
             <Warehouse className="h-4 w-4" />
             Nhập kho
@@ -2807,15 +2858,26 @@ export function CanTuDongPanel({
                       const nhap = readNhapKho(row);
                       return (
                         <div className="min-w-[9rem]">
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${
-                              nhap.waiting
-                                ? 'border-amber-200 bg-amber-50 text-amber-800'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            }`}
-                          >
-                            {nhap.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                                nhap.waiting
+                                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              }`}
+                            >
+                              {nhap.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleNhapKhoRow(row)}
+                              disabled={togglingNhapKhoId === rowIdKey(row.id)}
+                              title={nhap.waiting ? 'Chuyển sang Đã nhập kho' : 'Chuyển sang Chờ nhập kho'}
+                              className="inline-flex h-7 items-center rounded-lg border border-zinc-200 bg-white px-2 text-[10px] font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                            >
+                              {togglingNhapKhoId === rowIdKey(row.id) ? '...' : 'Đổi'}
+                            </button>
+                          </div>
                           {!nhap.waiting ? (
                             <div className="mt-1 text-[10px] font-semibold leading-4 text-zinc-500">
                               {formatNhapKhoTime(nhap.at)}
@@ -2860,14 +2922,9 @@ export function CanTuDongPanel({
         >
           <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
-              <div>
-                <h3 id="can-tu-dong-nhap-kho-title" className="text-base font-black text-zinc-950">
-                  Nhập kho
-                </h3>
-                <p className="text-xs font-semibold text-zinc-500">
-                  Theo bộ lọc đang chọn · ngày {formatIsoDateVi(nhapKhoNgay)} · {formatNumber(waitingNhapKho.length, 0)} cuộn {NHAP_KHO_CHO} gần nhất
-                </p>
-              </div>
+              <h3 id="can-tu-dong-nhap-kho-title" className="text-base font-black text-zinc-950">
+                Nhập kho
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowNhapKhoModal(false)}
@@ -2887,7 +2944,6 @@ export function CanTuDongPanel({
                     onChange={event => {
                       const next = event.target.value;
                       setNhapKhoKho(next);
-                      void loadNhapKhoSlips(next, nhapKhoNgay);
                     }}
                     className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
                   >
@@ -2901,9 +2957,15 @@ export function CanTuDongPanel({
                   Kho: <span className="font-black text-zinc-900">{nhapKhoKho || 'Chưa có kho thành phẩm'}</span>
                 </p>
               )}
+              <TableDateFilter
+                label="Ngày phiếu"
+                value={nhapKhoSlipDate}
+                onChange={value => setNhapKhoSlipDate(value || localIsoDateToday())}
+                className="w-full"
+              />
               <label className="block space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                  Phiếu nhập ngày {formatIsoDateVi(nhapKhoNgay)}
+                  Phiếu nhập ngày {formatIsoDateVi(nhapKhoSlipDate)}
                 </span>
                 <select
                   value={nhapKhoPhieu}
@@ -2913,7 +2975,8 @@ export function CanTuDongPanel({
                 >
                   {nhapKhoSlips.map(slip => (
                     <option key={slip.ma_phieu} value={slip.ma_phieu}>
-                      {slip.ma_phieu} · Chưa chốt
+                      {slip.ma_phieu}
+                      {slip.status === 'da_chot' ? ' · Đã chốt' : ' · Chưa chốt'}
                     </option>
                   ))}
                   <option value={NHAP_KHO_NEW_SLIP}>+ Tạo phiếu nhập mới</option>
@@ -2922,7 +2985,7 @@ export function CanTuDongPanel({
                   <p className="text-[11px] font-semibold text-zinc-500">Đang tải phiếu nhập...</p>
                 ) : nhapKhoSlips.length === 0 ? (
                   <p className="text-[11px] font-semibold text-amber-700">
-                    Ngày này chưa có phiếu nhập chưa chốt. Chọn tạo phiếu mới.
+                    Ngày này chưa có phiếu nhập. Chọn tạo phiếu mới.
                   </p>
                 ) : null}
               </label>

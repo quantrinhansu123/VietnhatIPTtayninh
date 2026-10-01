@@ -128,6 +128,25 @@ function paymentLabel(order: ShippingOrder, line: ShippingOrderLine | null) {
   return String(line?.thanh_toan || order.thanh_toan || '').trim() || '—';
 }
 
+/** NVQL trên phiếu chỉ hiện tên gọi: chữ cuối của họ tên. */
+function staffShortName(value: string) {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : '—';
+}
+
+const ORDERS_PER_PAGE = 3;
+
+function chunkOrders(orders: ShippingOrder[], size: number) {
+  const pages: ShippingOrder[][] = [];
+  for (let index = 0; index < orders.length; index += size) {
+    pages.push(orders.slice(index, index + size));
+  }
+  return pages;
+}
+
 export function ShippingDeliveryPrintSheet({
   orders,
   generalNote = '',
@@ -140,105 +159,104 @@ export function ShippingDeliveryPrintSheet({
 }) {
   if (!orders.length) return null;
 
-  const rows = buildPrintRows(orders);
-  const maKhSpans = buildMaKhRowSpans(rows);
-  const phoneSpans = buildGroupedRowSpans(rows, order => order.so_dien_thoai);
-  const managerSpans = buildGroupedRowSpans(rows, order => order.nhan_vien);
-
-  const totalValue = orders.reduce(
-    (sum, order) => sum + order.chi_tiet.reduce((lineSum, line) => lineSum + (Number(line.tong_tien) || 0), 0),
-    0
-  );
-  const autoKm = orders.reduce(
-    (sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0),
-    0
-  );
+  const noteText = String(generalNote || '').trim();
+  const pages = chunkOrders(orders, ORDERS_PER_PAGE);
   const kmDisplay = (() => {
     if (typeof totalKmText === 'string') {
       const trimmed = totalKmText.trim();
       if (!trimmed) return '—';
       return /km/i.test(trimmed) ? trimmed : `${trimmed} KM`;
     }
+    const autoKm = orders.reduce(
+      (sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0),
+      0
+    );
     return autoKm > 0 ? `${formatNumber(autoKm, 1)} KM` : '—';
   })();
-  const shipDate = uniqueJoined(orders.map(order => formatDateVi(order.ngay_xuat)));
-  const slipNo = formatCombinedSlipNumbers(orders);
-  const plates = uniqueJoined(orders.map(order => order.bsx));
-  const noteText = String(generalNote || '').trim();
 
   return (
     <div className="bb-gx-print-batch" aria-hidden>
-      <div className="bb-gx-print-page">
+      {pages.map((pageOrders, pageIndex) => {
+        const rows = buildPrintRows(pageOrders);
+        const maKhSpans = buildMaKhRowSpans(rows);
+        const phoneSpans = buildGroupedRowSpans(rows, order => order.so_dien_thoai);
+        const managerSpans = buildGroupedRowSpans(rows, order => order.nhan_vien);
+        const groupNumbers = rows.map(() => 0);
+        let nextGroup = 0;
+        maKhSpans.forEach((span, index) => {
+          if (span > 0) {
+            nextGroup += 1;
+            groupNumbers[index] = nextGroup;
+          }
+        });
+        const totalValue = pageOrders.reduce(
+          (sum, order) => sum + order.chi_tiet.reduce((lineSum, line) => lineSum + (Number(line.tong_tien) || 0), 0),
+          0
+        );
+        const shipDate = uniqueJoined(pageOrders.map(order => formatDateVi(order.ngay_xuat)));
+        const slipNo = formatCombinedSlipNumbers(pageOrders);
+        const plates = uniqueJoined(pageOrders.map(order => order.bsx));
+        return (
+      <div className="bb-gx-print-page" key={`bb-gx-page-${pageIndex}`}>
         <div className="bb-gx-sheet">
-          <section className="bb-gx-top">
-            <div className="bb-gx-brand">
-              <img src={vietNhatLogoUrl} alt="Việt Nhật IPT" className="bb-gx-logo" />
-              <div className="bb-gx-brand-text">
-                <div className="bb-gx-company">CÔNG TY CỔ PHẦN VẬT LIỆU CÁCH NHIỆT</div>
-                <div className="bb-gx-vn">VIỆT NHẬT</div>
-              </div>
-            </div>
-
-            <div className="bb-gx-title">
-              <h1>BIÊN BẢN GIAO XE</h1>
-              <div className="bb-gx-rule" />
-              <div className="bb-gx-sub">PHIẾU XUẤT HÀNG - GIAO HÀNG</div>
-            </div>
-
-            <div className="bb-gx-meta">
-              <div className="bb-gx-meta-row">
-                <div className="bb-gx-meta-label">Ngày giao hàng</div>
-                <div className="bb-gx-meta-value">{shipDate}</div>
-              </div>
-              <div className="bb-gx-meta-row">
-                <div className="bb-gx-meta-label">Số phiếu</div>
-                <div className="bb-gx-meta-value">{slipNo}</div>
-              </div>
-            </div>
-          </section>
-
-          <div className="bb-gx-vehicle">
-            <div className="bb-gx-vehicle-label">BIỂN SỐ XE</div>
-            <div className="bb-gx-vehicle-value">{plates}</div>
-          </div>
-
           <table className="bb-gx-table">
             <colgroup>
-              <col style={{ width: '3%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '6%' }} />
+              <col style={{ width: '4%' }} />
               <col style={{ width: '7%' }} />
-              <col style={{ width: '18%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '20%' }} />
               <col style={{ width: '5%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '6%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
+              <tr>
+                <td colSpan={12} className="bb-gx-head-cell">
+                  <section className="bb-gx-top">
+                    <div className="bb-gx-brand">
+                      <img src={vietNhatLogoUrl} alt="Việt Nhật IPT" className="bb-gx-logo" />
+                      <div className="bb-gx-brand-text">
+                        <div className="bb-gx-company">CÔNG TY CỔ PHẦN VẬT LIỆU CÁCH NHIỆT VIỆT NHẬT</div>
+                        <h1 className="bb-gx-title">BIÊN BẢN GIAO XE</h1>
+                        <div className="bb-gx-sub">PHIẾU XUẤT HÀNG - GIAO HÀNG</div>
+                      </div>
+                    </div>
+
+                    <div className="bb-gx-meta">
+                      <div className="bb-gx-meta-row">
+                        <div className="bb-gx-meta-label">Ngày giao hàng</div>
+                        <div className="bb-gx-meta-value bb-gx-meta-strong">{shipDate}</div>
+                      </div>
+                      <div className="bb-gx-meta-row">
+                        <div className="bb-gx-meta-label">Số phiếu</div>
+                        <div className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</div>
+                      </div>
+                      <div className="bb-gx-plate">
+                        <div className="bb-gx-plate-label">BIỂN SỐ XE</div>
+                        <div className="bb-gx-plate-value">{plates}</div>
+                      </div>
+                    </div>
+                  </section>
+                </td>
+              </tr>
               <tr>
                 <th>TT</th>
                 <th>Mã KH</th>
                 <th>Địa chỉ</th>
                 <th>SĐT KH</th>
                 <th>NVQL</th>
-                <th>Mã sản phẩm</th>
-                <th>Tên sản phẩm</th>
+                <th className="bb-gx-code">Mã sản phẩm</th>
+                <th className="bb-gx-emphasis">Tên sản phẩm</th>
                 <th>SL</th>
-                <th>
-                  Giá bán
-                  <br />
-                  (VNĐ)
-                </th>
+                <th>Giá bán</th>
                 <th>Thanh toán</th>
-                <th>
-                  TỔNG GIÁ TRỊ
-                  <br />
-                  (VNĐ)
-                </th>
-                <th>Ghi chú</th>
+                <th>Tổng giá trị</th>
+                <th className="bb-gx-emphasis">Ghi chú</th>
               </tr>
             </thead>
             <tbody>
@@ -250,14 +268,18 @@ export function ShippingDeliveryPrintSheet({
                 const note = maKhSpan > 0 ? mergedGroupNotes(rows, index, maKhSpan) : '';
                 return (
                   <tr key={row.key}>
-                    <td>{index + 1}</td>
+                    {maKhSpan > 0 ? (
+                      <td rowSpan={maKhSpan} className="bb-gx-merge-cell">
+                        {groupNumbers[index]}
+                      </td>
+                    ) : null}
                     {maKhSpan > 0 ? (
                       <td rowSpan={maKhSpan} className="bb-gx-merge-cell">
                         <b>{order.ma_khach_hang || '—'}</b>
                       </td>
                     ) : null}
                     {maKhSpan > 0 ? (
-                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-merge-cell">
+                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-address bb-gx-merge-cell">
                         <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
                       </td>
                     ) : null}
@@ -268,13 +290,13 @@ export function ShippingDeliveryPrintSheet({
                     ) : null}
                     {managerSpan > 0 ? (
                       <td rowSpan={managerSpan} className="bb-gx-merge-cell">
-                        <b>{order.nhan_vien || '—'}</b>
+                        <b>{staffShortName(order.nhan_vien)}</b>
                       </td>
                     ) : null}
-                    <td>
+                    <td className="bb-gx-code">
                       <b>{line?.ma_sp || '—'}</b>
                     </td>
-                    <td className="bb-gx-left">
+                    <td className="bb-gx-left bb-gx-emphasis">
                       <div className="bb-gx-product-name">{line?.ten_sp || '—'}</div>
                     </td>
                     <td className="bb-gx-qty">
@@ -286,7 +308,7 @@ export function ShippingDeliveryPrintSheet({
                     </td>
                     <td className="bb-gx-money">{line ? formatMoney(line.tong_tien || 0) : '—'}</td>
                     {maKhSpan > 0 ? (
-                      <td rowSpan={maKhSpan} className="bb-gx-note bb-gx-merge-cell">
+                      <td rowSpan={maKhSpan} className="bb-gx-note bb-gx-emphasis bb-gx-merge-cell">
                         {note}
                       </td>
                     ) : null}
@@ -294,17 +316,16 @@ export function ShippingDeliveryPrintSheet({
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={10} className="bb-gx-distance">
+                  TỔNG CỘNG: <strong>{kmDisplay}</strong>
+                </td>
+                <td className="bb-gx-money bb-gx-amount">{formatMoney(totalValue)}</td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
-
-          <div className="bb-gx-summary">
-            <div className="bb-gx-distance">
-              TỔNG CỘNG: <strong>{kmDisplay}</strong>
-            </div>
-            <div className="bb-gx-total">
-              <span>TỔNG GIÁ TRỊ:</span>
-              <span className="bb-gx-amount">{formatMoney(totalValue)}</span>
-            </div>
-          </div>
 
           <section className="bb-gx-signatures">
             {['ĐIỀU XE', 'KẾ TOÁN', 'THỦ KHO', 'LÁI XE', 'BẢO VỆ'].map(label => (
@@ -321,6 +342,8 @@ export function ShippingDeliveryPrintSheet({
           </section>
         </div>
       </div>
+        );
+      })}
     </div>
   );
 }

@@ -409,7 +409,7 @@ export function ShippingOrdersPanel({
     if (!pendingPrint || printingOrders.length === 0) return;
     let cancelled = false;
     document.body.classList.add('shipping-delivery-print-active');
-    enablePortraitPrintPage('shipping-delivery-print-page-portrait');
+    enablePortraitPrintPage('shipping-delivery-print-page-a4', 4);
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
@@ -417,7 +417,7 @@ export function ShippingOrdersPanel({
           window.print();
         } finally {
           setPendingPrint(false);
-          disablePortraitPrintPage('shipping-delivery-print-page-portrait');
+          disablePortraitPrintPage('shipping-delivery-print-page-a4');
         }
       });
     }, 150);
@@ -425,14 +425,14 @@ export function ShippingOrdersPanel({
       cancelled = true;
       window.clearTimeout(timer);
       document.body.classList.remove('shipping-delivery-print-active');
-      disablePortraitPrintPage('shipping-delivery-print-page-portrait');
+      disablePortraitPrintPage('shipping-delivery-print-page-a4');
     };
   }, [pendingPrint, printingOrders]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('shipping-delivery-print-active');
-      disablePortraitPrintPage('shipping-delivery-print-page-portrait');
+      disablePortraitPrintPage('shipping-delivery-print-page-a4');
       setPrintingOrders([]);
       setPendingPrint(false);
     };
@@ -765,15 +765,15 @@ export function ShippingOrdersPanel({
 
       {previewOpen && previewOrders.length > 0
         ? createPortal(
-            <div className="fixed inset-0 z-[90] flex items-stretch justify-center bg-slate-950/55 p-0 sm:items-center sm:p-3">
-              <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[98vw] flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-[96dvh] sm:max-h-[96dvh] sm:rounded-2xl xl:max-w-[1500px]">
+            <div className="fixed inset-0 z-[90] flex bg-slate-950/55">
+              <div className="flex h-[100dvh] w-screen max-w-none flex-col overflow-hidden bg-white">
                 <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5">
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
                       Xem trước · Biên bản giao xe
                     </h3>
                     <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                      {previewOrders.length} lệnh đã chọn · 1 trang A4 dọc
+                      {previewOrders.length} lệnh đã chọn · 3 lệnh/trang · A4 dọc
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -826,7 +826,7 @@ export function ShippingOrdersPanel({
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
-                  <div className="bb-gx-print-preview-wrap mx-auto max-w-[1480px]">
+                  <div className="bb-gx-print-preview-wrap w-full max-w-none">
                     <ShippingDeliveryPrintSheet
                       orders={previewOrders}
                       generalNote={printGeneralNote}

@@ -40,12 +40,13 @@ const PORTRAIT_PRINT_PAGE_STYLE_ID = 'app-print-page-portrait-override';
 /**
  * Chrome hay giữ @page landscape toàn cục — inject @page A4 dọc trước khi in.
  */
-export function enablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID) {
+export function enablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID, marginMm = 8) {
   document.getElementById(styleId)?.remove();
   const style = document.createElement('style');
   style.id = styleId;
   style.media = 'print';
-  style.textContent = '@page { size: 210mm 297mm; margin: 8mm; }';
+  const margin = Number.isFinite(marginMm) ? marginMm : 8;
+  style.textContent = `@page { size: 210mm 297mm; margin: ${margin}mm; }`;
   document.head.appendChild(style);
 }
 
@@ -55,13 +56,13 @@ export function disablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID)
 
 const LANDSCAPE_PRINT_PAGE_STYLE_ID = 'app-print-page-landscape-override';
 
-/** Inject @page A5 ngang — dùng cho biên bản giao xe. */
+/** Inject @page A4 ngang (297×210mm) — dùng cho biên bản giao xe. */
 export function enableLandscapePrintPage(styleId = LANDSCAPE_PRINT_PAGE_STYLE_ID) {
   document.getElementById(styleId)?.remove();
   const style = document.createElement('style');
   style.id = styleId;
   style.media = 'print';
-  style.textContent = '@page { size: A5 landscape; margin: 5mm; }';
+  style.textContent = '@page { size: 297mm 210mm; margin: 6mm; }';
   document.head.appendChild(style);
 }
 

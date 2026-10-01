@@ -890,14 +890,9 @@ export function ShippingOrdersPanel({
                     value={form.bsx}
                     options={vehicles}
                     isLoading={isLoading}
+                    allowCustomValue
                     onChange={value => setForm(prev => ({ ...prev, bsx: value.toUpperCase() }))}
-                    placeholder={
-                      isLoading
-                        ? 'Đang tải xe...'
-                        : vehicles.length === 0
-                          ? 'Chưa có xe'
-                          : 'Chọn biển số'
-                    }
+                    placeholder={isLoading ? 'Đang tải xe...' : 'Chọn hoặc gõ biển số mới'}
                     getValue={item => (item as VehicleOption).plate}
                     getLabel={item => (item as VehicleOption).plate}
                     getSearchText={item => (item as VehicleOption).label}

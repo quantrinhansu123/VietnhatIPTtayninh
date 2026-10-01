@@ -9,5 +9,5 @@
 **Menu:** Kinh doanh → Lệnh xuất hàng (`src/app/menus.tsx`)
 
 Khách hàng dropdown: `GET /api/khach-hang` (`khach_hang`)  
-BSX dropdown: `GET /api/danh-sach-xe` (`danh_sach_xe`) — cột `bsx`  
+BSX: sổ xuống từ `GET /api/danh-sach-xe` (`danh_sach_xe.bsx`), gõ biển số mới rồi chọn **Thêm** để ghi vào lệnh (không tạo xe trong danh sách xe)  
 Số Km: cột `so_km`

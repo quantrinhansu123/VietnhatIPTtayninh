@@ -2656,7 +2656,11 @@ function parseShippingOrderBody(
           row.tong_tien ?? row.total_amount ?? row.thanh_tien
         )
       ),
-      thanh_toan: pickRowField(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') || null
+      thanh_toan: pickRowField(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') || null,
+      ma_khach_hang: pickRowField(row, ['ma_khach_hang', 'customer_code'], '') || null,
+      ten_khach_hang: pickRowField(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], '') || null,
+      dia_chi_giao: pickRowField(row, ['dia_chi_giao', 'dia_chi', 'address'], '') || null,
+      so_dien_thoai: pickRowField(row, ['so_dien_thoai', 'dien_thoai', 'phone'], '') || null
     }))
     .map(row => ({
       ...row,

@@ -55,18 +55,34 @@ function AddressCell({ name, address }: { name: string; address: string }) {
   );
 }
 
+function orderViewForLine(order: ShippingOrder, line: ShippingOrderLine | null): ShippingOrder {
+  if (!line) return order;
+  const code = String(line.ma_khach_hang || '').trim();
+  const name = String(line.ten_khach_hang || '').trim();
+  if (!code && !name) return order;
+  return {
+    ...order,
+    ma_khach_hang: code || order.ma_khach_hang,
+    ten_khach_hang: name || order.ten_khach_hang,
+    dia_chi_giao: String(line.dia_chi_giao || '').trim() || order.dia_chi_giao,
+    so_dien_thoai: String(line.so_dien_thoai || '').trim() || order.so_dien_thoai
+  };
+}
+
 function buildPrintRows(orders: ShippingOrder[]): PrintRow[] {
   const rows: PrintRow[] = [];
-  // Gom cùng Mã KH liền nhau để rowspan hoạt động
   const sorted = [...orders].sort((a, b) =>
     customerMergeKey(a).localeCompare(customerMergeKey(b), 'vi')
   );
   for (const order of sorted) {
     const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [null];
-    lines.forEach((line, index) => {
+    const keyed = lines
+      .map(line => ({ line, view: orderViewForLine(order, line) }))
+      .sort((a, b) => customerMergeKey(a.view).localeCompare(customerMergeKey(b.view), 'vi'));
+    keyed.forEach(({ line, view }, index) => {
       rows.push({
         key: `${order.id || order.ma_lenh}-${line?.id || index}`,
-        order,
+        order: view,
         line
       });
     });

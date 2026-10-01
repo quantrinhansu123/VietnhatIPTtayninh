@@ -43,6 +43,23 @@ export type ShippingOrderLine = {
   don_gia: number;
   tong_tien: number;
   thanh_toan: string;
+  ma_khach_hang?: string;
+  ten_khach_hang?: string;
+  dia_chi_giao?: string;
+  so_dien_thoai?: string;
+};
+
+type ShippingCustomerGroup = {
+  id: string;
+  ma_khach_hang: string;
+  ten_khach_hang: string;
+  dia_chi_giao: string;
+  so_dien_thoai: string;
+  chi_tiet: ShippingOrderLine[];
+};
+
+type ShippingOrderFormState = Omit<ShippingOrder, 'id'> & {
+  khach: ShippingCustomerGroup[];
 };
 
 export type ShippingOrder = {
@@ -112,8 +129,52 @@ function createLine(partial?: Partial<ShippingOrderLine>): ShippingOrderLine {
     so_luong: soLuong,
     don_gia: donGia,
     tong_tien: tongTien,
-    thanh_toan: partial?.thanh_toan || ''
+    thanh_toan: partial?.thanh_toan || '',
+    ma_khach_hang: partial?.ma_khach_hang || '',
+    ten_khach_hang: partial?.ten_khach_hang || '',
+    dia_chi_giao: partial?.dia_chi_giao || '',
+    so_dien_thoai: partial?.so_dien_thoai || ''
   };
+}
+
+function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): ShippingCustomerGroup {
+  const lines = partial?.chi_tiet?.length ? partial.chi_tiet.map(line => createLine(line)) : [createLine()];
+  return {
+    id: partial?.id || `kh-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    ma_khach_hang: partial?.ma_khach_hang || '',
+    ten_khach_hang: partial?.ten_khach_hang || '',
+    dia_chi_giao: partial?.dia_chi_giao || '',
+    so_dien_thoai: partial?.so_dien_thoai || '',
+    chi_tiet: lines
+  };
+}
+
+function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'chi_tiet'>): ShippingCustomerGroup[] {
+  const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [createLine()];
+  const groups: ShippingCustomerGroup[] = [];
+  for (const line of lines) {
+    const code = String(line.ma_khach_hang || order.ma_khach_hang || '').trim();
+    const name = String(line.ten_khach_hang || order.ten_khach_hang || '').trim();
+    const address = String(line.dia_chi_giao || order.dia_chi_giao || '').trim();
+    const phone = String(line.so_dien_thoai || order.so_dien_thoai || '').trim();
+    const key = `${code}|${name}|${address}|${phone}`;
+    let group = groups.find(
+      item => `${item.ma_khach_hang}|${item.ten_khach_hang}|${item.dia_chi_giao}|${item.so_dien_thoai}` === key
+    );
+    if (!group) {
+      group = createCustomerGroup({
+        ma_khach_hang: code,
+        ten_khach_hang: name,
+        dia_chi_giao: address,
+        so_dien_thoai: phone,
+        chi_tiet: []
+      });
+      group.chi_tiet = [];
+      groups.push(group);
+    }
+    group.chi_tiet.push(createLine(line));
+  }
+  return groups.map(group => (group.chi_tiet.length > 0 ? group : { ...group, chi_tiet: [createLine()] }));
 }
 
 function parseLines(value: unknown): ShippingOrderLine[] {
@@ -136,7 +197,11 @@ function parseLines(value: unknown): ShippingOrderLine[] {
         so_luong: Number(row.so_luong ?? row.quantity ?? 0),
         don_gia: Number(row.don_gia ?? row.unit_price ?? 0),
         tong_tien: Number(row.tong_tien ?? row.total_amount ?? row.thanh_tien ?? 0),
-        thanh_toan: pickText(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '')
+        thanh_toan: pickText(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], ''),
+        ma_khach_hang: pickText(row, ['ma_khach_hang', 'customer_code'], ''),
+        ten_khach_hang: pickText(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], ''),
+        dia_chi_giao: pickText(row, ['dia_chi_giao', 'dia_chi', 'address'], ''),
+        so_dien_thoai: pickText(row, ['so_dien_thoai', 'dien_thoai', 'phone'], '')
       })
     );
 }
@@ -244,7 +309,8 @@ function generateNextShippingCode(existingCodes: Iterable<string>) {
   return `LXH${String(next).padStart(width, '0')}`;
 }
 
-function emptyForm(code = '', staffName = ''): Omit<ShippingOrder, 'id'> {
+function emptyForm(code = '', staffName = ''): ShippingOrderFormState {
+  const khach = [createCustomerGroup()];
   return {
     ma_lenh: code,
     ngay_xuat: todayIso(),
@@ -258,7 +324,8 @@ function emptyForm(code = '', staffName = ''): Omit<ShippingOrder, 'id'> {
     nhan_vien: staffName,
     trang_thai: 'Chờ xuất',
     ghi_chu: '',
-    chi_tiet: [createLine()]
+    chi_tiet: khach[0].chi_tiet,
+    khach
   };
 }
 
@@ -288,7 +355,7 @@ export function ShippingOrdersPanel({
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<Omit<ShippingOrder, 'id'>>(emptyForm('', currentUser?.name || ''));
+  const [form, setForm] = useState<ShippingOrderFormState>(emptyForm('', currentUser?.name || ''));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewOrders, setPreviewOrders] = useState<ShippingOrder[]>([]);
@@ -451,6 +518,7 @@ export function ShippingOrdersPanel({
   const openEdit = (order: ShippingOrder) => {
     if (!canEdit) return;
     setEditingId(order.id);
+    const khach = groupsFromOrder(order);
     setForm({
       ma_lenh: order.ma_lenh,
       ngay_xuat: order.ngay_xuat,
@@ -464,7 +532,8 @@ export function ShippingOrdersPanel({
       nhan_vien: order.nhan_vien,
       trang_thai: order.trang_thai || 'Chờ xuất',
       ghi_chu: order.ghi_chu,
-      chi_tiet: order.chi_tiet.length > 0 ? order.chi_tiet.map(line => createLine(line)) : [createLine()]
+      chi_tiet: khach.flatMap(group => group.chi_tiet),
+      khach
     });
     setFormOpen(true);
     setError('');
@@ -475,7 +544,7 @@ export function ShippingOrdersPanel({
     setForm(prev => ({ ...prev, nhan_vien: currentUser.name.trim() }));
   }, [currentUser?.name, editingId, form.nhan_vien, formOpen]);
 
-  const selectCustomer = (customerName: string) => {
+  const selectCustomer = (groupId: string, customerName: string) => {
     const customer =
       customers.find(item => item.name === customerName || item.code === customerName || item.id === customerName) ||
       null;
@@ -484,28 +553,41 @@ export function ShippingOrdersPanel({
       : '';
     setForm(prev => ({
       ...prev,
-      ma_khach_hang: customer?.code || '',
-      ten_khach_hang: customer?.name || customerName,
-      dia_chi_giao: customer ? deliveryAddress : prev.dia_chi_giao,
-      so_dien_thoai: customer ? customer.so_dien_thoai || '' : prev.so_dien_thoai
+      khach: prev.khach.map(group =>
+        group.id === groupId
+          ? {
+              ...group,
+              ma_khach_hang: customer?.code || '',
+              ten_khach_hang: customer?.name || customerName,
+              dia_chi_giao: customer ? deliveryAddress : group.dia_chi_giao,
+              so_dien_thoai: customer ? customer.so_dien_thoai || '' : group.so_dien_thoai
+            }
+          : group
+      )
     }));
   };
 
-  const updateLine = (lineId: string, patch: Partial<ShippingOrderLine>) => {
+  const updateLine = (groupId: string, lineId: string, patch: Partial<ShippingOrderLine>) => {
     setForm(prev => ({
       ...prev,
-      chi_tiet: prev.chi_tiet.map(line => {
-        if (line.id !== lineId) return line;
-        const next = { ...line, ...patch };
-        next.tong_tien = (next.so_luong || 0) * (next.don_gia || 0);
-        return next;
+      khach: prev.khach.map(group => {
+        if (group.id !== groupId) return group;
+        return {
+          ...group,
+          chi_tiet: group.chi_tiet.map(line => {
+            if (line.id !== lineId) return line;
+            const next = { ...line, ...patch };
+            next.tong_tien = (next.so_luong || 0) * (next.don_gia || 0);
+            return next;
+          })
+        };
       })
     }));
   };
 
-  const selectProduct = (lineId: string, code: string) => {
+  const selectProduct = (groupId: string, lineId: string, code: string) => {
     const found = findOrderProductByCode(products, code);
-    updateLine(lineId, {
+    updateLine(groupId, lineId, {
       ma_sp: code,
       ten_sp: found?.name || '',
       don_vi: found?.unit || ''
@@ -513,22 +595,36 @@ export function ShippingOrdersPanel({
   };
 
   const handleSave = async () => {
-    if (!form.ten_khach_hang.trim()) {
-      setError(showSaveFailure('Vui lòng chọn khách hàng.'));
+    const unnamedWithGoods = form.khach.find(
+      group =>
+        !group.ten_khach_hang.trim() &&
+        group.chi_tiet.some(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0)
+    );
+    if (unnamedWithGoods) {
+      setError(showSaveFailure('Mỗi nhóm mặt hàng cần chọn khách hàng.'));
+      return;
+    }
+    const groups = form.khach.filter(group => group.ten_khach_hang.trim());
+    if (groups.length === 0) {
+      setError(showSaveFailure('Vui lòng chọn ít nhất một khách hàng.'));
       return;
     }
     if (!form.ngay_xuat.trim()) {
       setError(showSaveFailure('Vui lòng chọn ngày xuất.'));
       return;
     }
-    const lines = form.chi_tiet.filter(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0);
+    const lines = groups.flatMap(group =>
+      group.chi_tiet
+        .filter(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0)
+        .map(line => ({ line, group }))
+    );
     if (lines.length === 0) {
-      setError(showSaveFailure('Vui lòng thêm ít nhất một dòng hàng xuất.'));
+      setError(showSaveFailure('Vui lòng thêm ít nhất một mặt hàng.'));
       return;
     }
-    for (const line of lines) {
+    for (const { line, group } of lines) {
       if (!line.ma_sp.trim() && !line.ten_sp.trim()) {
-        setError(showSaveFailure('Mỗi dòng cần có mã SP hoặc tên SP.'));
+        setError(showSaveFailure(`Mỗi mặt hàng của ${group.ten_khach_hang} cần có mã SP hoặc tên SP.`));
         return;
       }
       if (!(line.so_luong > 0)) {
@@ -541,18 +637,28 @@ export function ShippingOrdersPanel({
     setError('');
     try {
       const payment = form.thanh_toan.trim();
+      const names = [...new Set(groups.map(group => group.ten_khach_hang.trim()).filter(Boolean))];
+      const codes = [...new Set(groups.map(group => group.ma_khach_hang.trim()).filter(Boolean))];
       const payload = {
         ...form,
         ma_lenh: form.ma_lenh.trim() || generateNextShippingCode(orders.map(order => order.ma_lenh)),
+        ma_khach_hang: codes.join(', '),
+        ten_khach_hang: names.join(', '),
+        dia_chi_giao: groups.map(group => group.dia_chi_giao.trim()).filter(Boolean).join('\n'),
+        so_dien_thoai: groups.map(group => group.so_dien_thoai.trim()).filter(Boolean).join(', '),
         thanh_toan: payment,
-        chi_tiet: lines.map(line => ({
+        chi_tiet: lines.map(({ line, group }) => ({
           ma_sp: line.ma_sp.trim(),
           ten_sp: line.ten_sp.trim(),
           don_vi: line.don_vi.trim(),
           so_luong: line.so_luong,
           don_gia: line.don_gia,
           tong_tien: line.tong_tien,
-          thanh_toan: payment || line.thanh_toan.trim()
+          thanh_toan: payment || line.thanh_toan.trim(),
+          ma_khach_hang: group.ma_khach_hang.trim(),
+          ten_khach_hang: group.ten_khach_hang.trim(),
+          dia_chi_giao: group.dia_chi_giao.trim(),
+          so_dien_thoai: group.so_dien_thoai.trim()
         }))
       };
       const res = await fetch(
@@ -932,50 +1038,6 @@ export function ShippingOrdersPanel({
                     inputClassName={compactFieldClass}
                   />
                 </label>
-                <label className="block space-y-0.5 sm:col-span-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Khách hàng *
-                  </span>
-                  <SearchableSelect
-                    value={form.ten_khach_hang}
-                    options={customers}
-                    onChange={selectCustomer}
-                    placeholder="Chọn khách hàng"
-                    getValue={item => (item as CustomerDetail).name}
-                    getLabel={item => {
-                      const customer = item as CustomerDetail;
-                      return customer.code ? `${customer.code} · ${customer.name}` : customer.name;
-                    }}
-                    getSearchText={item => {
-                      const customer = item as CustomerDetail;
-                      return `${customer.code} ${customer.name} ${customer.so_dien_thoai}`;
-                    }}
-                    inputClassName={compactFieldClass}
-                  />
-                </label>
-                <label className="block space-y-0.5 sm:col-span-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Địa chỉ giao
-                  </span>
-                  <input
-                    value={form.dia_chi_giao}
-                    onChange={event => setForm(prev => ({ ...prev, dia_chi_giao: event.target.value }))}
-                    className={compactFieldClass}
-                    placeholder="Địa chỉ giao hàng"
-                    title={form.dia_chi_giao}
-                  />
-                </label>
-                <label className="block space-y-0.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Số điện thoại
-                  </span>
-                  <input
-                    value={form.so_dien_thoai}
-                    onChange={event => setForm(prev => ({ ...prev, so_dien_thoai: event.target.value }))}
-                    className={compactFieldClass}
-                    placeholder="SĐT liên hệ"
-                  />
-                </label>
                 <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Trạng thái
@@ -1012,120 +1074,215 @@ export function ShippingOrdersPanel({
                 </label>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <RepeatableLinesBlock
-                title="Chi tiết hàng xuất"
-                required
-                showColumnHeaders
-                horizontalScroll
-                gridTemplateClass={lineGridClass}
-                onAdd={() => setForm(prev => ({ ...prev, chi_tiet: [...prev.chi_tiet, createLine()] }))}
-                columns={[
-                  { key: 'code', label: 'Mã SP', required: true },
-                  { key: 'name', label: 'Tên SP' },
-                  { key: 'unit', label: 'ĐVT' },
-                  { key: 'qty', label: 'SL', required: true },
-                  { key: 'price', label: 'Đơn giá' },
-                  { key: 'amount', label: 'Tổng tiền' },
-                  { key: 'actions', label: '' }
-                ]}
-              >
-                {form.chi_tiet.map(line => {
-                  const matched = findOrderProductByCode(products, line.ma_sp);
-                  return (
-                    <RepeatableLineRow key={line.id} gridTemplateClass={lineGridClass}>
-                      <div className="col-span-2 min-w-0 md:col-span-1">
-                        <SearchableSelect
-                          value={line.ma_sp}
-                          options={products}
-                          onChange={value => selectProduct(line.id, value)}
-                          placeholder="Gõ để tìm mã SP"
-                          displaySelectedAsValue
-                          dropdownMinWidth={420}
-                          getValue={item => (item as OrderProductOption).code}
-                          getLabel={item => {
-                            const product = item as OrderProductOption;
-                            return `${product.code} · ${product.name}`;
-                          }}
-                          getSearchText={item => {
-                            const product = item as OrderProductOption;
-                            return `${product.code} ${product.newCode} ${product.name}`;
-                          }}
-                          inputClassName={orderFieldClass}
-                        />
-                      </div>
-                      <div className="col-span-2 min-w-0 md:col-span-1">
-                        <input
-                          value={line.ten_sp}
-                          readOnly={Boolean(matched)}
-                          onChange={event => updateLine(line.id, { ten_sp: event.target.value })}
-                          className={`${orderFieldClass} ${matched ? 'bg-slate-50' : ''}`}
-                          placeholder="Tên SP"
-                        />
-                      </div>
-                      <div className="col-span-1 min-w-0">
-                        <input
-                          value={line.don_vi}
-                          onChange={event => updateLine(line.id, { don_vi: event.target.value })}
-                          className={orderFieldClass}
-                          placeholder="ĐVT"
-                        />
-                      </div>
-                      <div className="col-span-1 min-w-0">
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={line.so_luong || ''}
-                          onChange={event =>
-                            updateLine(line.id, { so_luong: Number(event.target.value) || 0 })
-                          }
-                          className={`${orderFieldClass} text-right`}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="col-span-1 min-w-0">
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={line.don_gia || ''}
-                          onChange={event =>
-                            updateLine(line.id, { don_gia: Number(event.target.value) || 0 })
-                          }
-                          className={`${orderFieldClass} text-right`}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="col-span-1 min-w-0">
-                        <input
-                          value={line.tong_tien > 0 ? formatNumber(line.tong_tien, 0) : ''}
-                          readOnly
-                          className={`${orderFieldClass} bg-slate-50 text-right`}
-                          placeholder="0"
-                        />
-                      </div>
-                      {form.chi_tiet.length > 1 ? (
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden">
+                {form.khach.map((group, groupIndex) => (
+                  <section key={group.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-black uppercase tracking-wide text-slate-700">
+                        Khách {groupIndex + 1}
+                      </h4>
+                      {form.khach.length > 1 ? (
                         <button
                           type="button"
                           onClick={() =>
+                            setForm(prev => ({ ...prev, khach: prev.khach.filter(item => item.id !== group.id) }))
+                          }
+                          className="rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-50"
+                        >
+                          Xóa khách
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="mb-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <label className="block space-y-0.5 sm:col-span-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Khách hàng *
+                        </span>
+                        <SearchableSelect
+                          value={group.ten_khach_hang}
+                          options={customers}
+                          onChange={value => selectCustomer(group.id, value)}
+                          placeholder="Chọn khách"
+                          getValue={item => (item as CustomerDetail).name}
+                          getLabel={item => {
+                            const customer = item as CustomerDetail;
+                            return customer.code ? `${customer.code} · ${customer.name}` : customer.name;
+                          }}
+                          getSearchText={item => {
+                            const customer = item as CustomerDetail;
+                            return `${customer.code} ${customer.name} ${customer.so_dien_thoai}`;
+                          }}
+                          inputClassName={compactFieldClass}
+                        />
+                      </label>
+                      <label className="block space-y-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Địa chỉ</span>
+                        <input
+                          value={group.dia_chi_giao}
+                          onChange={event =>
                             setForm(prev => ({
                               ...prev,
-                              chi_tiet: prev.chi_tiet.filter(item => item.id !== line.id)
+                              khach: prev.khach.map(item =>
+                                item.id === group.id ? { ...item, dia_chi_giao: event.target.value } : item
+                              )
                             }))
                           }
-                          title="Xóa dòng"
-                          className="col-span-2 flex h-10 w-full items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 md:col-span-1 md:w-10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <div className="hidden md:block" />
-                      )}
-                    </RepeatableLineRow>
-                  );
-                })}
-              </RepeatableLinesBlock>
+                          className={compactFieldClass}
+                          placeholder="Địa chỉ giao"
+                        />
+                      </label>
+                      <label className="block space-y-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">SĐT</span>
+                        <input
+                          value={group.so_dien_thoai}
+                          onChange={event =>
+                            setForm(prev => ({
+                              ...prev,
+                              khach: prev.khach.map(item =>
+                                item.id === group.id ? { ...item, so_dien_thoai: event.target.value } : item
+                              )
+                            }))
+                          }
+                          className={compactFieldClass}
+                          placeholder="Số điện thoại"
+                        />
+                      </label>
+                    </div>
+                    <RepeatableLinesBlock
+                      title="Mặt hàng"
+                      required
+                      showColumnHeaders
+                      horizontalScroll
+                      gridTemplateClass={lineGridClass}
+                      addLabel="Thêm mặt hàng"
+                      onAdd={() =>
+                        setForm(prev => ({
+                          ...prev,
+                          khach: prev.khach.map(item =>
+                            item.id === group.id ? { ...item, chi_tiet: [...item.chi_tiet, createLine()] } : item
+                          )
+                        }))
+                      }
+                      columns={[
+                        { key: 'code', label: 'Mã SP', required: true },
+                        { key: 'name', label: 'Tên SP' },
+                        { key: 'unit', label: 'ĐVT' },
+                        { key: 'qty', label: 'SL', required: true },
+                        { key: 'price', label: 'Đơn giá' },
+                        { key: 'amount', label: 'Tổng tiền' },
+                        { key: 'actions', label: '' }
+                      ]}
+                    >
+                      {group.chi_tiet.map(line => {
+                        const matched = findOrderProductByCode(products, line.ma_sp);
+                        return (
+                          <RepeatableLineRow key={line.id} gridTemplateClass={lineGridClass}>
+                            <div className="col-span-2 min-w-0 md:col-span-1">
+                              <SearchableSelect
+                                value={line.ma_sp}
+                                options={products}
+                                onChange={value => selectProduct(group.id, line.id, value)}
+                                placeholder="Gõ để tìm mã SP"
+                                displaySelectedAsValue
+                                dropdownMinWidth={420}
+                                getValue={item => (item as OrderProductOption).code}
+                                getLabel={item => {
+                                  const product = item as OrderProductOption;
+                                  return `${product.code} · ${product.name}`;
+                                }}
+                                getSearchText={item => {
+                                  const product = item as OrderProductOption;
+                                  return `${product.code} ${product.newCode} ${product.name}`;
+                                }}
+                                inputClassName={orderFieldClass}
+                              />
+                            </div>
+                            <div className="col-span-2 min-w-0 md:col-span-1">
+                              <input
+                                value={line.ten_sp}
+                                readOnly={Boolean(matched)}
+                                onChange={event => updateLine(group.id, line.id, { ten_sp: event.target.value })}
+                                className={`${orderFieldClass} ${matched ? 'bg-slate-50' : ''}`}
+                                placeholder="Tên SP"
+                              />
+                            </div>
+                            <div className="col-span-1 min-w-0">
+                              <input
+                                value={line.don_vi}
+                                onChange={event => updateLine(group.id, line.id, { don_vi: event.target.value })}
+                                className={orderFieldClass}
+                                placeholder="ĐVT"
+                              />
+                            </div>
+                            <div className="col-span-1 min-w-0">
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={line.so_luong || ''}
+                                onChange={event =>
+                                  updateLine(group.id, line.id, { so_luong: Number(event.target.value) || 0 })
+                                }
+                                className={`${orderFieldClass} text-right`}
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="col-span-1 min-w-0">
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={line.don_gia || ''}
+                                onChange={event =>
+                                  updateLine(group.id, line.id, { don_gia: Number(event.target.value) || 0 })
+                                }
+                                className={`${orderFieldClass} text-right`}
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="col-span-1 min-w-0">
+                              <input
+                                value={line.tong_tien > 0 ? formatNumber(line.tong_tien, 0) : ''}
+                                readOnly
+                                className={`${orderFieldClass} bg-slate-50 text-right`}
+                                placeholder="0"
+                              />
+                            </div>
+                            {group.chi_tiet.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setForm(prev => ({
+                                    ...prev,
+                                    khach: prev.khach.map(item =>
+                                      item.id === group.id
+                                        ? { ...item, chi_tiet: item.chi_tiet.filter(row => row.id !== line.id) }
+                                        : item
+                                    )
+                                  }))
+                                }
+                                title="Xóa mặt hàng"
+                                className="col-span-2 flex h-10 w-full items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 md:col-span-1 md:w-10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <div className="hidden md:block" />
+                            )}
+                          </RepeatableLineRow>
+                        );
+                      })}
+                    </RepeatableLinesBlock>
+                  </section>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, khach: [...prev.khach, createCustomerGroup()] }))}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 text-xs font-extrabold text-slate-700 hover:bg-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Thêm khách
+                </button>
               </div>
             </div>
 

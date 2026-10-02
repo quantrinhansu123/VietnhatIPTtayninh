@@ -252,9 +252,9 @@ export function ShippingDeliveryPrintSheet({
                         <div className="bb-gx-meta-label">Số phiếu</div>
                         <div className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</div>
                       </div>
-                      <div className="bb-gx-plate">
-                        <div className="bb-gx-plate-label">BIỂN SỐ XE</div>
-                        <div className="bb-gx-plate-value">{plates}</div>
+                      <div className="bb-gx-meta-row">
+                        <div className="bb-gx-meta-label">BIỂN SỐ XE</div>
+                        <div className="bb-gx-meta-value bb-gx-plate-value">{plates}</div>
                       </div>
                     </div>
                   </section>

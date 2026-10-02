@@ -6242,7 +6242,9 @@ input[type="number"] {
 
 .bb-gx-print-preview-wrap .bb-gx-meta-label,
 .bb-gx-print-preview-wrap .bb-gx-plate-label {
-  font-size: 16px;
+  font-size: 28px !important;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-meta-value {
@@ -6254,7 +6256,7 @@ input[type="number"] {
   line-height: 1 !important;
   padding: 4px 10px !important;
   color: #d71920 !important;
-  background: #ffe14a !important;
+  background: #ffff00 !important;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-plate-value {
@@ -6388,46 +6390,53 @@ input[type="number"] {
 
 .bb-gx-meta {
   display: grid;
-  gap: 3px;
+  grid-template-columns: max-content max-content;
   justify-items: stretch;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
+  border-top: 1px solid #222;
+  border-left: 1px solid #222;
 }
 
 .bb-gx-meta-row {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: stretch;
-  border: 1px solid #222;
-  overflow: visible;
-  min-height: 18px;
+  display: contents;
 }
 
 .bb-gx-meta-label {
   display: flex;
   align-items: center;
-  padding: 2px 6px;
+  justify-content: flex-start;
+  min-width: max-content;
+  padding: 4px 10px;
   font-weight: 700;
   color: #111;
   background: #fff;
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: 18px;
+  line-height: 1.1;
+  text-align: left;
   white-space: nowrap;
+  border-right: 1px solid #222;
+  border-bottom: 1px solid #222;
 }
 
 .bb-gx-meta-value {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
-  padding: 2px 6px;
+  padding: 2px 8px;
   text-align: center;
-  background: #fff59a;
+  background: #ffff00;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.2;
   color: #111;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  border-right: 1px solid #222;
+  border-bottom: 1px solid #222;
 }
 
 .bb-gx-meta-value.bb-gx-meta-strong {
@@ -6436,7 +6445,7 @@ input[type="number"] {
   line-height: 1;
   padding: 4px 10px;
   color: #d71920;
-  background: #ffe14a;
+  background: #ffff00;
 }
 
 .bb-gx-plate {
@@ -6730,9 +6739,29 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-sub,
-  body.shipping-delivery-print-active .bb-gx-meta-label,
   body.shipping-delivery-print-active .bb-gx-plate-label {
     font-size: 8pt !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-label {
+    font-size: 14pt !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta,
+  body.shipping-delivery-print-active .bb-gx-meta-row,
+  body.shipping-delivery-print-active .bb-gx-meta-value {
+    width: max-content !important;
+    max-width: 100% !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta {
+    grid-template-columns: max-content max-content !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-label {
+    white-space: nowrap !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-meta-value,
@@ -6750,7 +6779,7 @@ input[type="number"] {
     line-height: 1 !important;
     padding: 1mm 2mm !important;
     color: #d71920 !important;
-    background: #ffe14a !important;
+    background: #ffff00 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table {

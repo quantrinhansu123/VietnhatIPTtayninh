@@ -12,6 +12,7 @@ import {
   disablePortraitPrintPage
 } from '../../utils/printReady';
 import { pickText } from '../_shared/recordHelpers';
+import { parseOrderProductsFromRecord } from '../_shared/orderRecordHelpers';
 import {
   findOrderProductByCode,
   normalizeOrderProducts,
@@ -88,6 +89,14 @@ type CustomerDetail = {
   so_dien_thoai: string;
 };
 
+type SalesOrderPick = {
+  id: string;
+  code: string;
+  date: string;
+  customer: string;
+  products: { code: string; name: string; unit: string; qty: number }[];
+};
+
 type VehicleOption = {
   id: string;
   plate: string;
@@ -149,6 +158,43 @@ function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): Shipping
   };
 }
 
+function parseOrderQty(value: string) {
+  const raw = String(value || '').trim().replace(/\s/g, '').replace(',', '.');
+  const amount = Number(raw);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function normalizeSalesOrders(data: unknown): SalesOrderPick[] {
+  if (!data || typeof data !== 'object') return [];
+  const orders = (data as { orders?: unknown }).orders;
+  if (!Array.isArray(orders)) return [];
+  return orders.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const code = pickText(record, ['ma_don_hang', 'order_code', 'code'], '');
+    const customer = pickText(record, ['khach_hang', 'customer'], '');
+    const rawDate =
+      pickText(record, ['ngay_don_hang', 'ngay_dat_hang', 'order_date', 'ngay'], '') ||
+      (record.created_at == null ? '' : String(record.created_at));
+    const iso = rawDate.match(/^(\d{4}-\d{2}-\d{2})/);
+    let date = iso?.[1] || '';
+    if (!date && rawDate) {
+      const parsed = new Date(rawDate);
+      if (!Number.isNaN(parsed.getTime())) date = parsed.toISOString().slice(0, 10);
+    }
+    const products = parseOrderProductsFromRecord(record)
+      .map(line => ({
+        code: line.productCode.trim(),
+        name: line.productName.trim(),
+        unit: line.unit === '—' ? '' : line.unit.trim(),
+        qty: parseOrderQty(line.quantity)
+      }))
+      .filter(line => line.code || line.name);
+    if (!code && products.length === 0) return [];
+    return [{ id: String(record.id ?? '').trim() || code, code: code || '—', date, customer, products }];
+  });
+}
+
 function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'chi_tiet'>): ShippingCustomerGroup[] {
   const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [createLine()];
   const groups: ShippingCustomerGroup[] = [];
@@ -206,7 +252,7 @@ function parseLines(value: unknown): ShippingOrderLine[] {
     );
 }
 
-function normalizeShippingOrders(data: unknown): ShippingOrder[] {
+export function normalizeShippingOrders(data: unknown): ShippingOrder[] {
   if (!data || typeof data !== 'object') return [];
   const rows = (data as { orders?: unknown; rows?: unknown }).orders
     ?? (data as { rows?: unknown }).rows;
@@ -355,6 +401,12 @@ export function ShippingOrdersPanel({
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [fillOpen, setFillOpen] = useState(false);
+  const [fillDate, setFillDate] = useState(todayIso());
+  const [fillOrders, setFillOrders] = useState<SalesOrderPick[]>([]);
+  const [fillLoading, setFillLoading] = useState(false);
+  const [fillSelected, setFillSelected] = useState<string[]>([]);
+  const [fillError, setFillError] = useState('');
   const [form, setForm] = useState<ShippingOrderFormState>(emptyForm('', currentUser?.name || ''));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -543,6 +595,84 @@ export function ShippingOrdersPanel({
     if (!formOpen || editingId || form.nhan_vien.trim() || !currentUser?.name?.trim()) return;
     setForm(prev => ({ ...prev, nhan_vien: currentUser.name.trim() }));
   }, [currentUser?.name, editingId, form.nhan_vien, formOpen]);
+
+  const openFillFromOrders = () => {
+    setFillDate(form.ngay_xuat || todayIso());
+    setFillSelected([]);
+    setFillError('');
+    setFillOpen(true);
+    setFillLoading(true);
+    void fetch('/api/don-hang')
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(readApiErrorMessage(response, data, 'Không tải được đơn hàng.'));
+        setFillOrders(normalizeSalesOrders(data));
+      })
+      .catch((loadError: unknown) => {
+        setFillError(loadError instanceof Error ? loadError.message : 'Không tải được đơn hàng.');
+      })
+      .finally(() => setFillLoading(false));
+  };
+
+  const fillOrdersOnDate = fillOrders.filter(order => order.date === fillDate && order.customer.trim() && order.customer !== '-');
+
+  const applyOrdersToForm = () => {
+    const picked = fillOrdersOnDate.filter(order => fillSelected.includes(order.id));
+    if (picked.length === 0) {
+      setFillError('Chọn ít nhất một đơn hàng.');
+      return;
+    }
+    const buckets = new Map<string, ShippingCustomerGroup>();
+    for (const order of picked) {
+      const customerName = order.customer.trim();
+      const key = customerName.toLocaleLowerCase('vi');
+      let group = buckets.get(key);
+      if (!group) {
+        const catalog =
+          customers.find(item => item.name.trim().toLocaleLowerCase('vi') === key) ||
+          customers.find(item => item.code.trim().toLocaleLowerCase('vi') === key) ||
+          null;
+        group = createCustomerGroup({
+          ma_khach_hang: catalog?.code || '',
+          ten_khach_hang: catalog?.name || customerName,
+          dia_chi_giao: catalog ? catalog.dia_chi_moi?.trim() || catalog.dia_chi.trim() : '',
+          so_dien_thoai: catalog?.so_dien_thoai || '',
+          chi_tiet: []
+        });
+        group.chi_tiet = [];
+        buckets.set(key, group);
+      }
+      for (const product of order.products) {
+        const found = group.chi_tiet.find(
+          line => line.ma_sp === product.code && line.ten_sp === product.name
+        );
+        if (found) {
+          found.so_luong += product.qty;
+          found.tong_tien = found.so_luong * found.don_gia;
+          continue;
+        }
+        const catalogProduct = findOrderProductByCode(products, product.code);
+        group.chi_tiet.push(
+          createLine({
+            ma_sp: product.code,
+            ten_sp: catalogProduct?.name || product.name,
+            don_vi: product.unit || catalogProduct?.unit || '',
+            so_luong: product.qty
+          })
+        );
+      }
+    }
+    const khach = [...buckets.values()].map(group =>
+      group.chi_tiet.length > 0 ? group : { ...group, chi_tiet: [createLine()] }
+    );
+    if (khach.length === 0) {
+      setFillError('Các đơn đã chọn chưa có khách hàng.');
+      return;
+    }
+    setForm(prev => ({ ...prev, khach, chi_tiet: khach.flatMap(group => group.chi_tiet) }));
+    setFillOpen(false);
+    showAppToast(`Đã điền ${khach.length} khách từ ${picked.length} đơn hàng.`);
+  };
 
   const selectCustomer = (groupId: string, customerName: string) => {
     const customer =
@@ -1074,6 +1204,16 @@ export function ShippingOrdersPanel({
                 </label>
               </div>
 
+              <div className="flex shrink-0 justify-end">
+                <button
+                  type="button"
+                  onClick={openFillFromOrders}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-xs font-extrabold text-white hover:bg-[#d41626]"
+                >
+                  Điền từ đơn hàng
+                </button>
+              </div>
+
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden">
                 {form.khach.map((group, groupIndex) => (
                   <section key={group.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
@@ -1155,6 +1295,7 @@ export function ShippingOrdersPanel({
                       horizontalScroll
                       gridTemplateClass={lineGridClass}
                       addLabel="Thêm mặt hàng"
+                      addButtonClassName="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#d41626]"
                       onAdd={() =>
                         setForm(prev => ({
                           ...prev,
@@ -1278,7 +1419,7 @@ export function ShippingOrdersPanel({
                 <button
                   type="button"
                   onClick={() => setForm(prev => ({ ...prev, khach: [...prev.khach, createCustomerGroup()] }))}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 text-xs font-extrabold text-slate-700 hover:bg-white"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-xs font-extrabold text-white hover:bg-[#d41626]"
                 >
                   <Plus className="h-4 w-4" />
                   Thêm khách
@@ -1306,6 +1447,114 @@ export function ShippingOrdersPanel({
               </button>
             </div>
           </div>
+          {fillOpen ? (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-3">
+              <div className="flex max-h-[min(80dvh,640px)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Điền từ đơn hàng</h3>
+                  <button
+                    type="button"
+                    onClick={() => setFillOpen(false)}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600"
+                  >
+                    Đóng
+                  </button>
+                </div>
+                <div className="space-y-3 px-4 py-3">
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ngày đơn hàng</span>
+                    <input
+                      type="date"
+                      value={fillDate}
+                      onChange={event => {
+                        setFillDate(event.target.value);
+                        setFillSelected([]);
+                        setFillError('');
+                      }}
+                      className={compactFieldClass}
+                    />
+                  </label>
+                  {fillError ? <p className="text-xs font-bold text-rose-600">{fillError}</p> : null}
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
+                  {fillLoading ? (
+                    <div className="flex items-center gap-2 py-6 text-sm font-semibold text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang tải đơn hàng...
+                    </div>
+                  ) : fillOrdersOnDate.length === 0 ? (
+                    <p className="py-6 text-sm font-semibold text-slate-500">Ngày này chưa có đơn hàng.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={
+                            fillOrdersOnDate.length > 0 &&
+                            fillOrdersOnDate.every(order => fillSelected.includes(order.id))
+                          }
+                          onChange={event =>
+                            setFillSelected(event.target.checked ? fillOrdersOnDate.map(order => order.id) : [])
+                          }
+                        />
+                        Chọn tất cả ({fillOrdersOnDate.length})
+                      </label>
+                      {fillOrdersOnDate.map(order => {
+                        const summary = order.products
+                          .map(product => {
+                            const label = product.name || product.code;
+                            return product.qty > 0 ? `${label} × ${formatNumber(product.qty)}` : label;
+                          })
+                          .join(', ');
+                        return (
+                          <label
+                            key={order.id}
+                            className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={fillSelected.includes(order.id)}
+                              onChange={event =>
+                                setFillSelected(prev =>
+                                  event.target.checked ? [...prev, order.id] : prev.filter(id => id !== order.id)
+                                )
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-extrabold text-slate-900">
+                                {order.code} · {order.customer}
+                              </span>
+                              <span className="block text-xs font-semibold text-slate-500">
+                                {summary || 'Chưa có sản phẩm'}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setFillOpen(false)}
+                    className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700"
+                  >
+                    Huỷ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyOrdersToForm}
+                    disabled={fillLoading || fillSelected.length === 0}
+                    className="h-10 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white disabled:opacity-50"
+                  >
+                    Điền vào lệnh
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

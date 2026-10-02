@@ -6395,27 +6395,20 @@ input[type="number"] {
 }
 
 .bb-gx-meta {
-  display: grid;
-  grid-template-columns: max-content max-content;
   justify-self: end;
-  justify-items: stretch;
   width: max-content;
   max-width: 100%;
   margin-left: auto;
-  min-width: 0;
-  border-top: 1px solid #222;
-  border-left: 1px solid #222;
+  border-collapse: collapse;
+  border-spacing: 0;
 }
 
-.bb-gx-meta-row {
-  display: contents;
+.bb-gx-meta-label,
+.bb-gx-meta-value {
+  border: 1px solid #222;
 }
 
 .bb-gx-meta-label {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-width: max-content;
   padding: 2px 8px;
   font-weight: 700;
   color: #111;
@@ -6424,17 +6417,10 @@ input[type="number"] {
   line-height: 1.1;
   text-align: left;
   white-space: nowrap;
-  border-right: 1px solid #222;
-  border-bottom: 1px solid #222;
+  vertical-align: middle;
 }
 
 .bb-gx-meta-value {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  justify-self: stretch;
-  width: auto;
-  min-width: 0;
   padding: 2px 8px;
   text-align: center;
   background: #ffff00;
@@ -6443,8 +6429,7 @@ input[type="number"] {
   line-height: 1.2;
   color: #111;
   white-space: nowrap;
-  border-right: 1px solid #222;
-  border-bottom: 1px solid #222;
+  vertical-align: middle;
 }
 
 .bb-gx-meta-value.bb-gx-meta-strong {
@@ -6529,11 +6514,11 @@ input[type="number"] {
 
 .bb-gx-table th.bb-gx-code,
 .bb-gx-table td.bb-gx-code {
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: keep-all;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-size: 14px;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .bb-gx-address,
@@ -6796,14 +6781,16 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-meta {
+    display: table !important;
     width: max-content !important;
     max-width: 100% !important;
+    margin-left: auto !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-meta-value {
     width: auto !important;
-    max-width: none !important;
-    justify-self: stretch !important;
     box-sizing: border-box !important;
   }
 
@@ -6813,21 +6800,9 @@ input[type="number"] {
     justify-content: space-between !important;
   }
 
-  body.shipping-delivery-print-active .bb-gx-meta {
-    grid-template-columns: max-content max-content !important;
-    justify-self: end !important;
-    margin-left: auto !important;
-  }
-
-  body.shipping-delivery-print-active .bb-gx-meta {
-    border-top: 1px solid #222 !important;
-    border-left: 1px solid #222 !important;
-  }
-
   body.shipping-delivery-print-active .bb-gx-meta-label,
   body.shipping-delivery-print-active .bb-gx-meta-value {
-    border-right: 1px solid #222 !important;
-    border-bottom: 1px solid #222 !important;
+    border: 1px solid #222 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-meta-label {
@@ -6874,17 +6849,31 @@ input[type="number"] {
     font-size: 10pt !important;
   }
 
-  body.shipping-delivery-print-active .bb-gx-table th.bb-gx-total,
+  body.shipping-delivery-print-active .bb-gx-table th.bb-gx-total {
+    display: table-cell !important;
+    white-space: normal !important;
+    line-height: 1.05 !important;
+    padding: 1px !important;
+  }
+
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-total {
     display: table-cell !important;
     white-space: nowrap !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
+    padding: 1px 1px !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-address,
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-address .bb-gx-customer-name {
     font-size: 7pt !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-table th.bb-gx-pay {
+    white-space: normal !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    line-height: 1.05 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table th.bb-gx-code {
@@ -6896,10 +6885,11 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-code {
-    font-size: 10pt !important;
-    white-space: nowrap !important;
-    overflow-wrap: normal !important;
-    word-break: keep-all !important;
+    font-size: 11pt !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table th.bb-gx-emphasis,

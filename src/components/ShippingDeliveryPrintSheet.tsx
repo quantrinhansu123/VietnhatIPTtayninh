@@ -1,4 +1,3 @@
-import React from 'react';
 import { formatMoney, formatNumber } from '../utils';
 import { vietNhatLogoUrl } from './layout/constants';
 import type { ShippingOrder, ShippingOrderLine } from '../features/lenh-xuat-hang';
@@ -33,26 +32,6 @@ function customerMergeKey(order: ShippingOrder) {
   if (code) return `code:${code}`;
   // Không có mã KH → không gộp với lệnh khác
   return `solo:${order.id || order.ma_lenh || Math.random()}`;
-}
-
-function AddressCell({ name, address }: { name: string; address: string }) {
-  const lines = String(address || '')
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
-  return (
-    <>
-      {name ? <div className="bb-gx-customer-name">{name}</div> : null}
-      {lines.length > 0
-        ? lines.map((line, index) => (
-            <React.Fragment key={`${line}-${index}`}>
-              {line}
-              {index < lines.length - 1 ? <br /> : null}
-            </React.Fragment>
-          ))
-        : null}
-    </>
-  );
 }
 
 function orderViewForLine(order: ShippingOrder, line: ShippingOrderLine | null): ShippingOrder {
@@ -218,18 +197,18 @@ export function ShippingDeliveryPrintSheet({
         <div className="bb-gx-sheet">
           <table className="bb-gx-table">
             <colgroup>
-              <col style={{ width: '4%' }} />
+              <col style={{ width: '3.5%' }} />
               <col style={{ width: '7%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '5.5%' }} />
-              <col style={{ width: '4%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '19%' }} />
-              <col style={{ width: '5%' }} />
+              <col style={{ width: '8%' }} />
               <col style={{ width: '6%' }} />
-              <col style={{ width: '5%' }} />
-              <col style={{ width: '11.5%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '6.5%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '4.5%' }} />
+              <col style={{ width: '6.5%' }} />
+              <col style={{ width: '5.5%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '24.5%' }} />
             </colgroup>
             <thead>
               <tr>
@@ -244,27 +223,33 @@ export function ShippingDeliveryPrintSheet({
                       </div>
                     </div>
 
-                    <div className="bb-gx-meta">
-                      <div className="bb-gx-meta-row">
-                        <div className="bb-gx-meta-label">Ngày giao hàng</div>
-                        <div className="bb-gx-meta-value bb-gx-meta-strong">{shipDate}</div>
-                      </div>
-                      <div className="bb-gx-meta-row">
-                        <div className="bb-gx-meta-label">Số phiếu</div>
-                        <div className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</div>
-                      </div>
-                      <div className="bb-gx-meta-row">
-                        <div className="bb-gx-meta-label">BIỂN SỐ XE</div>
-                        <div className="bb-gx-meta-value bb-gx-plate-value">{plates}</div>
-                      </div>
-                    </div>
+                    <table className="bb-gx-meta">
+                      <tbody>
+                        <tr>
+                          <td className="bb-gx-meta-label">Ngày giao hàng</td>
+                          <td className="bb-gx-meta-value bb-gx-meta-strong">{shipDate}</td>
+                        </tr>
+                        <tr>
+                          <td className="bb-gx-meta-label">Số phiếu</td>
+                          <td className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</td>
+                        </tr>
+                        <tr>
+                          <td className="bb-gx-meta-label">BIỂN SỐ XE</td>
+                          <td className="bb-gx-meta-value bb-gx-plate-value">{plates}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </section>
                 </td>
               </tr>
               <tr>
                 <th>TT</th>
                 <th>Mã KH</th>
-                <th>Địa chỉ</th>
+                <th>
+                  Tên
+                  <br />
+                  khách
+                </th>
                 <th className="bb-gx-phone">SĐT KH</th>
                 <th className="bb-gx-staff">NVQL</th>
                 <th className="bb-gx-code">
@@ -275,8 +260,16 @@ export function ShippingDeliveryPrintSheet({
                 <th className="bb-gx-emphasis">Tên sản phẩm</th>
                 <th>SL</th>
                 <th>Giá bán</th>
-                <th>Thanh toán</th>
-                <th className="bb-gx-total">Tổng giá trị</th>
+                <th className="bb-gx-pay">
+                  Thanh
+                  <br />
+                  toán
+                </th>
+                <th className="bb-gx-total">
+                  Tổng
+                  <br />
+                  giá trị
+                </th>
                 <th className="bb-gx-emphasis">Ghi chú</th>
               </tr>
             </thead>
@@ -300,8 +293,8 @@ export function ShippingDeliveryPrintSheet({
                       </td>
                     ) : null}
                     {maKhSpan > 0 ? (
-                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-address bb-gx-merge-cell">
-                        <AddressCell name={order.ten_khach_hang} address={order.dia_chi_giao} />
+                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-customer bb-gx-merge-cell">
+                        {order.ten_khach_hang || '—'}
                       </td>
                     ) : null}
                     {phoneSpan > 0 ? (

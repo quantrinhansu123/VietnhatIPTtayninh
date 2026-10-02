@@ -6876,7 +6876,7 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-qty {
-    font-size: 16pt !important;
+    font-size: 13pt !important;
     line-height: 1 !important;
     padding: 0 !important;
     text-align: center !important;
@@ -6885,7 +6885,7 @@ input[type="number"] {
 
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-money,
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-amount {
-    font-size: 12pt !important;
+    font-size: 11pt !important;
     line-height: 1 !important;
     padding: 0 0.4mm !important;
     text-align: center !important;

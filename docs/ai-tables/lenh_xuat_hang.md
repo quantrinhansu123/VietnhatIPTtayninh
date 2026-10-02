@@ -11,4 +11,5 @@
 Một lệnh có nhiều khách (`khach` trên form). Mỗi khách chọn nhiều mặt hàng. Nút **Điền từ đơn hàng** lấy đơn theo ngày từ `GET /api/don-hang`, tick đơn rồi đổ khách và SP vào form. Khách + địa chỉ + SĐT + ghi chú lưu trong từng dòng `chi_tiet` (mỗi khách một ghi chú). Dropdown khách: `GET /api/khach-hang`  
 BSX: sổ xuống từ `GET /api/danh-sach-xe` (`danh_sach_xe.bsx`), gõ biển số mới rồi chọn **Thêm** để ghi vào lệnh (không tạo xe trong danh sách xe)  
 Số Km: cột `so_km`  
-In biên bản giao xe: A4 dọc, xem trước 3 lệnh/trang, tiêu đề lặp khi sang trang (`ShippingDeliveryPrintSheet`)
+In biên bản giao xe: A4 dọc, xem trước 3 lệnh/trang, tiêu đề lặp khi sang trang (`ShippingDeliveryPrintSheet`)  
+Danh sách lọc theo khoảng **Từ ngày** / **Đến ngày** trên `ngay_xuat`.

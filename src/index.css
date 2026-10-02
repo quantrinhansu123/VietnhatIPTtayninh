@@ -6224,8 +6224,8 @@ input[type="number"] {
 }
 
 .bb-gx-print-preview-wrap .bb-gx-logo {
-  width: 234px;
-  height: 114px;
+  width: 468px;
+  height: 228px;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-company {
@@ -6233,7 +6233,7 @@ input[type="number"] {
 }
 
 .bb-gx-print-preview-wrap .bb-gx-title {
-  font-size: 28px;
+  font-size: 44px;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-sub {
@@ -6242,7 +6242,7 @@ input[type="number"] {
 
 .bb-gx-print-preview-wrap .bb-gx-meta-label,
 .bb-gx-print-preview-wrap .bb-gx-plate-label {
-  font-size: 28px !important;
+  font-size: 16px !important;
   justify-content: flex-start;
   text-align: left;
 }
@@ -6252,16 +6252,16 @@ input[type="number"] {
 }
 
 .bb-gx-print-preview-wrap .bb-gx-meta-strong {
-  font-size: 48px !important;
-  line-height: 1 !important;
-  padding: 4px 10px !important;
+  font-size: 22px !important;
+  line-height: 1.05 !important;
+  padding: 2px 8px !important;
   color: #d71920 !important;
   background: #ffff00 !important;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-plate-value {
-  font-size: 48px !important;
-  line-height: 1 !important;
+  font-size: 22px !important;
+  line-height: 1.05 !important;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-table th,
@@ -6272,7 +6272,7 @@ input[type="number"] {
 
 .bb-gx-print-preview-wrap .bb-gx-table th.bb-gx-code,
 .bb-gx-print-preview-wrap .bb-gx-table td.bb-gx-code {
-  font-size: 17px;
+  font-size: 22px !important;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-customer-name,
@@ -6301,7 +6301,7 @@ input[type="number"] {
 }
 
 .bb-gx-print-preview-wrap .bb-gx-sign {
-  min-height: 72px;
+  min-height: 128px;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-print-page + .bb-gx-print-page {
@@ -6349,17 +6349,19 @@ input[type="number"] {
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
   min-width: 0;
 }
 
 .bb-gx-logo {
-  width: 72px;
-  height: 36px;
+  width: 144px;
+  height: 72px;
   flex: 0 0 auto;
   object-fit: contain;
 }
 
 .bb-gx-brand-text {
+  flex: 1 1 auto;
   border-left: 1px solid #c9cdd2;
   padding-left: 8px;
   line-height: 1.2;
@@ -6375,11 +6377,12 @@ input[type="number"] {
 
 .bb-gx-title {
   margin: 1px 0 0;
-  font-size: 18px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: 0.2px;
   line-height: 1.1;
   color: #171717;
+  text-align: center;
 }
 
 .bb-gx-sub {
@@ -6388,6 +6391,7 @@ input[type="number"] {
   font-weight: 700;
   line-height: 1.15;
   color: #3d3d3d;
+  text-align: center;
 }
 
 .bb-gx-meta {
@@ -6412,11 +6416,11 @@ input[type="number"] {
   align-items: center;
   justify-content: flex-start;
   min-width: max-content;
-  padding: 4px 10px;
+  padding: 2px 8px;
   font-weight: 700;
   color: #111;
   background: #fff;
-  font-size: 18px;
+  font-size: 13px;
   line-height: 1.1;
   text-align: left;
   white-space: nowrap;
@@ -6428,8 +6432,8 @@ input[type="number"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: max-content;
-  max-width: 100%;
+  justify-self: stretch;
+  width: auto;
   min-width: 0;
   padding: 2px 8px;
   text-align: center;
@@ -6444,10 +6448,10 @@ input[type="number"] {
 }
 
 .bb-gx-meta-value.bb-gx-meta-strong {
-  font-size: 28px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1;
-  padding: 4px 10px;
+  line-height: 1.05;
+  padding: 2px 8px;
   color: #d71920;
   background: #ffff00;
 }
@@ -6467,9 +6471,9 @@ input[type="number"] {
 }
 
 .bb-gx-plate-value {
-  font-size: 28px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.05;
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -6528,7 +6532,7 @@ input[type="number"] {
   white-space: nowrap;
   overflow-wrap: normal;
   word-break: keep-all;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.1;
 }
 
@@ -6596,15 +6600,11 @@ input[type="number"] {
   font-size: 16px;
 }
 
-.bb-gx-total {
-  border-left: 1px solid #222;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.bb-gx-table th.bb-gx-total,
+.bb-gx-table td.bb-gx-total {
+  display: table-cell;
+  text-align: center;
   font-weight: 700;
-  font-size: 10px;
-  line-height: 1.15;
-  gap: 6px;
 }
 
 .bb-gx-amount {
@@ -6623,7 +6623,7 @@ input[type="number"] {
 
 .bb-gx-sign {
   border: 1px solid #222;
-  min-height: 52px;
+  min-height: 96px;
   position: relative;
   overflow: hidden;
 }
@@ -6695,6 +6695,9 @@ input[type="number"] {
   body.shipping-delivery-print-active .bb-gx-print-batch,
   body.shipping-delivery-print-active .bb-gx-print-batch * {
     visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-print-batch {
@@ -6735,16 +6738,22 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-logo {
-    width: 22mm !important;
-    height: 11mm !important;
+    width: 44mm !important;
+    height: 22mm !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-company {
     font-size: 9pt !important;
   }
 
+  body.shipping-delivery-print-active .bb-gx-brand,
+  body.shipping-delivery-print-active .bb-gx-brand-text {
+    width: 100% !important;
+  }
+
   body.shipping-delivery-print-active .bb-gx-title {
-    font-size: 13pt !important;
+    font-size: 20pt !important;
+    text-align: center !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-sub,
@@ -6752,17 +6761,50 @@ input[type="number"] {
     font-size: 8pt !important;
   }
 
+  body.shipping-delivery-print-active .bb-gx-sub {
+    text-align: center !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-value,
+  body.shipping-delivery-print-active .bb-gx-meta-strong,
+  body.shipping-delivery-print-active .bb-gx-plate-value {
+    background: #ffff00 !important;
+    color: #d71920 !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-note {
+    background: #fff59a !important;
+    color: #d71920 !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-qty,
+  body.shipping-delivery-print-active .bb-gx-amount,
+  body.shipping-delivery-print-active .bb-gx-distance strong {
+    color: #d71920 !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-general-note-head {
+    background: #d71920 !important;
+    color: #fff !important;
+  }
+
   body.shipping-delivery-print-active .bb-gx-meta-label {
-    font-size: 14pt !important;
+    font-size: 9pt !important;
+    padding: 0.4mm 1.5mm !important;
     justify-content: flex-start !important;
     text-align: left !important;
   }
 
-  body.shipping-delivery-print-active .bb-gx-meta,
-  body.shipping-delivery-print-active .bb-gx-meta-row,
-  body.shipping-delivery-print-active .bb-gx-meta-value {
+  body.shipping-delivery-print-active .bb-gx-meta {
     width: max-content !important;
     max-width: 100% !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-value {
+    width: auto !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+    box-sizing: border-box !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-top {
@@ -6777,6 +6819,17 @@ input[type="number"] {
     margin-left: auto !important;
   }
 
+  body.shipping-delivery-print-active .bb-gx-meta {
+    border-top: 1px solid #222 !important;
+    border-left: 1px solid #222 !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-label,
+  body.shipping-delivery-print-active .bb-gx-meta-value {
+    border-right: 1px solid #222 !important;
+    border-bottom: 1px solid #222 !important;
+  }
+
   body.shipping-delivery-print-active .bb-gx-meta-label {
     white-space: nowrap !important;
   }
@@ -6787,14 +6840,14 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-plate-value {
-    font-size: 24pt !important;
-    line-height: 1 !important;
+    font-size: 13pt !important;
+    line-height: 1.05 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-meta-strong {
-    font-size: 24pt !important;
-    line-height: 1 !important;
-    padding: 1mm 2mm !important;
+    font-size: 13pt !important;
+    line-height: 1.05 !important;
+    padding: 0.4mm 1.6mm !important;
     color: #d71920 !important;
     background: #ffff00 !important;
   }
@@ -6823,16 +6876,30 @@ input[type="number"] {
 
   body.shipping-delivery-print-active .bb-gx-table th.bb-gx-total,
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-total {
+    display: table-cell !important;
     white-space: nowrap !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
   }
 
-  body.shipping-delivery-print-active .bb-gx-table th.bb-gx-code,
-  body.shipping-delivery-print-active .bb-gx-table td.bb-gx-code,
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-address,
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-address .bb-gx-customer-name {
     font-size: 7pt !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-table th.bb-gx-code {
+    font-size: 10pt !important;
+    white-space: normal !important;
+    line-height: 1.05 !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-table td.bb-gx-code {
+    font-size: 10pt !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table th.bb-gx-emphasis,
@@ -6843,7 +6910,7 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-sign {
-    min-height: 16mm !important;
+    min-height: 32mm !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-print-page {

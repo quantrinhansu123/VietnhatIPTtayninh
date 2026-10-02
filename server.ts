@@ -11,6 +11,9 @@ import type { ProductionReport } from './src/types';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 
+/** Cổng khi chạy thêm một kênh. Đọc trước dotenv để file .env không ghi đè. */
+const ALT_PORT = process.env.ALT_PORT;
+
 dotenv.config({ override: true });
 
 const DB_FILE_PATH = process.env.VERCEL
@@ -8523,7 +8526,7 @@ function isBundledAssetPath(urlPath: string) {
 async function startServer() {
   const app = createApp();
   const server = http.createServer(app);
-  const PORT = Number(process.env.PORT) || 3001;
+  const PORT = Number(ALT_PORT || process.env.PORT) || 3001;
   const distPath = path.join(process.cwd(), 'dist');
 
   if (process.env.NODE_ENV !== 'production') {

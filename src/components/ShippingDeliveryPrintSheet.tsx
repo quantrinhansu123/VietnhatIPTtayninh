@@ -267,7 +267,11 @@ export function ShippingDeliveryPrintSheet({
                 <th>Địa chỉ</th>
                 <th className="bb-gx-phone">SĐT KH</th>
                 <th className="bb-gx-staff">NVQL</th>
-                <th className="bb-gx-code">Mã sản phẩm</th>
+                <th className="bb-gx-code">
+                  Mã
+                  <br />
+                  sản phẩm
+                </th>
                 <th className="bb-gx-emphasis">Tên sản phẩm</th>
                 <th>SL</th>
                 <th>Giá bán</th>

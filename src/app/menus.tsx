@@ -11,7 +11,7 @@ import shield3d from '@iconify-icons/fluent-emoji/shield';
 import worker3d from '@iconify-icons/fluent-emoji/factory-worker';
 import warehouse3d from '@iconify-icons/fluent-emoji/package';
 import inventory3d from '@iconify-icons/fluent-emoji/card-file-box';
-import warehouseSlip3d from '@iconify-icons/fluent-emoji/inbox-tray';
+import warehouseSlip3d from '@iconify-icons/fluent-emoji/outbox-tray';
 import warehouseHistory3d from '@iconify-icons/fluent-emoji/open-file-folder';
 import facility3d from '@iconify-icons/fluent-emoji/office-building';
 import reportEntry3d from '@iconify-icons/fluent-emoji/memo';
@@ -49,7 +49,7 @@ import openBook3d from '@iconify-icons/fluent-emoji/open-book';
 import bustSingle3d from '@iconify-icons/fluent-emoji/bust-in-silhouette';
 import toolbox3d from '@iconify-icons/fluent-emoji/toolbox';
 import calendarPlain3d from '@iconify-icons/fluent-emoji/calendar';
-import ledger3d from '@iconify-icons/fluent-emoji/ledger';
+import ledger3d from '@iconify-icons/fluent-emoji/page-facing-up';
 import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings, Receipt,

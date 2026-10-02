@@ -24,6 +24,7 @@ import {
   FilterCombobox,
   TableToolbar,
   TableSearchInput,
+  TableDateFilter,
   TableShell,
   TableHead,
   TableHeadCell,
@@ -421,6 +422,8 @@ export function ShippingOrdersPanel({
   const [products, setProducts] = useState<OrderProductOption[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -476,25 +479,31 @@ export function ShippingOrdersPanel({
     void loadAll();
   }, []);
 
-  const hasActiveFilters = selectedStatus !== 'all' || Boolean(searchText);
+  const hasActiveFilters = selectedStatus !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
 
   const resetFilters = () => {
     setSelectedStatus('all');
     setSearchText('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   const filteredOrders = useMemo(() => {
     const q = searchText.trim().toLowerCase();
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
     return orders.filter(order => {
+      const shipDate = String(order.ngay_xuat || '').slice(0, 10);
+      const matchesDate = (!from || (shipDate && shipDate >= from)) && (!to || (shipDate && shipDate <= to));
       const matchesStatus = selectedStatus === 'all' || order.trang_thai === selectedStatus;
       const matchesSearch =
         !q ||
         `${order.ma_lenh} ${order.ten_khach_hang} ${order.ma_khach_hang} ${order.bsx} ${order.dia_chi_giao} ${order.trang_thai}`
           .toLowerCase()
           .includes(q);
-      return matchesStatus && matchesSearch;
+      return matchesDate && matchesStatus && matchesSearch;
     });
-  }, [orders, searchText, selectedStatus]);
+  }, [orders, searchText, selectedStatus, dateFrom, dateTo]);
 
   const visibleIds = useMemo(
     () => filteredOrders.map(order => order.id).filter(Boolean),
@@ -914,6 +923,9 @@ export function ShippingOrdersPanel({
           placeholder="Tìm mã lệnh, BSX, khách hàng, địa chỉ..."
           disabled={isLoading}
         />
+
+        <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
+        <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
 
         <FilterCombobox
           label="Trạng thái"

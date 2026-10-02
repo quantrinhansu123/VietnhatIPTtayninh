@@ -221,14 +221,14 @@ export function ShippingDeliveryPrintSheet({
               <col style={{ width: '4%' }} />
               <col style={{ width: '7%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '6%' }} />
+              <col style={{ width: '5.5%' }} />
+              <col style={{ width: '4%' }} />
               <col style={{ width: '9%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: '19%' }} />
               <col style={{ width: '5%' }} />
               <col style={{ width: '6%' }} />
               <col style={{ width: '5%' }} />
-              <col style={{ width: '6%' }} />
+              <col style={{ width: '11.5%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
@@ -265,14 +265,14 @@ export function ShippingDeliveryPrintSheet({
                 <th>TT</th>
                 <th>Mã KH</th>
                 <th>Địa chỉ</th>
-                <th>SĐT KH</th>
-                <th>NVQL</th>
+                <th className="bb-gx-phone">SĐT KH</th>
+                <th className="bb-gx-staff">NVQL</th>
                 <th className="bb-gx-code">Mã sản phẩm</th>
                 <th className="bb-gx-emphasis">Tên sản phẩm</th>
                 <th>SL</th>
                 <th>Giá bán</th>
                 <th>Thanh toán</th>
-                <th>Tổng giá trị</th>
+                <th className="bb-gx-total">Tổng giá trị</th>
                 <th className="bb-gx-emphasis">Ghi chú</th>
               </tr>
             </thead>
@@ -301,12 +301,12 @@ export function ShippingDeliveryPrintSheet({
                       </td>
                     ) : null}
                     {phoneSpan > 0 ? (
-                      <td rowSpan={phoneSpan} className="bb-gx-merge-cell">
+                      <td rowSpan={phoneSpan} className="bb-gx-phone bb-gx-merge-cell">
                         {order.so_dien_thoai || '—'}
                       </td>
                     ) : null}
                     {managerSpan > 0 ? (
-                      <td rowSpan={managerSpan} className="bb-gx-merge-cell">
+                      <td rowSpan={managerSpan} className="bb-gx-staff bb-gx-merge-cell">
                         <b>{staffShortName(order.nhan_vien)}</b>
                       </td>
                     ) : null}
@@ -323,7 +323,7 @@ export function ShippingDeliveryPrintSheet({
                     <td>
                       <b>{paymentLabel(order, line)}</b>
                     </td>
-                    <td className="bb-gx-money">{line ? formatMoney(line.tong_tien || 0) : '—'}</td>
+                    <td className="bb-gx-money bb-gx-total">{line ? formatMoney(line.tong_tien || 0) : '—'}</td>
                     {maKhSpan > 0 ? (
                       <td rowSpan={maKhSpan} className="bb-gx-note bb-gx-emphasis bb-gx-merge-cell">
                         {note}
@@ -338,7 +338,7 @@ export function ShippingDeliveryPrintSheet({
                 <td colSpan={10} className="bb-gx-distance">
                   TỔNG CỘNG: <strong>{kmDisplay}</strong>
                 </td>
-                <td className="bb-gx-money bb-gx-amount">{formatMoney(totalValue)}</td>
+                <td className="bb-gx-money bb-gx-amount bb-gx-total">{formatMoney(totalValue)}</td>
                 <td />
               </tr>
             </tfoot>

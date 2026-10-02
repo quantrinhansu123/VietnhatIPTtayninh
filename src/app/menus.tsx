@@ -52,7 +52,7 @@ import calendarPlain3d from '@iconify-icons/fluent-emoji/calendar';
 import ledger3d from '@iconify-icons/fluent-emoji/ledger';
 import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
-  ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings,
+  ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
   ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode
   , X
@@ -481,6 +481,13 @@ export const BUSINESS_MENU_ITEMS: MenuCardConfig[] = [
     icon: Truck,
     icon3d: articulatedLorry3d,
     tab: 'shipping-orders'
+  },
+  {
+    title: 'Phiếu bán hàng',
+    desc: 'Lập phiếu bán và lấy khách hàng, mặt hàng từ lệnh xuất hàng.',
+    icon: Receipt,
+    icon3d: receipt3d,
+    tab: 'sales-invoices'
   },
   {
     title: 'Báo cáo kinh doanh',
@@ -963,6 +970,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Khách hàng', tab: 'customers' },
       { label: 'Đơn đặt hàng', tab: 'orders' },
       { label: 'Lệnh giao / xuất hàng', tab: 'shipping-orders' },
+      { label: 'Phiếu bán hàng', tab: 'sales-invoices' },
       { label: 'Báo cáo kinh doanh', tab: 'business', disabled: true }
     ]
   },
@@ -1082,6 +1090,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'orders-detail': { group: 'Kinh doanh', sub: 'Chi tiết đơn hàng' },
   'customers': { group: 'Kinh doanh', sub: 'Khách hàng' },
   'shipping-orders': { group: 'Kinh doanh', sub: 'Lệnh giao / xuất hàng' },
+  'sales-invoices': { group: 'Kinh doanh', sub: 'Phiếu bán hàng' },
   'production-orders': { group: 'Quản Đốc', sub: 'Lệnh sản xuất' },
   'production-order-detail': { group: 'Quản Đốc', sub: 'Chi tiết lệnh sản xuất' },
   'factory-quan-doc': { group: 'Trang chủ', sub: 'Quản Đốc' },

@@ -66,6 +66,7 @@ import { InventoryCatalogPanel } from './features/kho-hang';
 import { WarehouseSlipPanel, WarehouseHistoryPanel } from './features/phieu-xuat-nhap-kho';
 import { CustomersPanel } from './features/khach-hang';
 import { ShippingOrdersPanel } from './features/lenh-xuat-hang';
+import { SalesInvoicesPanel } from './features/phieu-ban-hang';
 import { OrdersPanel, OrderDetailPage } from './features/don-hang';
 import { ProductionOrdersPanel, ProductionOrderDetailPage } from './features/lenh-sx';
 import { ProductionPlanHistoryPanel } from './features/ke-hoach-san-xuat';
@@ -1567,6 +1568,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <ShippingOrdersPanel onBack={() => goBack('business')} currentUser={authUser} />
+              </motion.div>
+            ) : activeTab === 'sales-invoices' ? (
+              <motion.div
+                key="sales-invoices"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <SalesInvoicesPanel onBack={() => goBack('business')} currentUser={authUser} />
               </motion.div>
             ) : activeTab === 'production-orders' ? (
               <motion.div

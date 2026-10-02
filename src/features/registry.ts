@@ -23,6 +23,7 @@ export type TableId =
   | 'don_hang'
   | 'khach_hang'
   | 'lenh_xuat_hang'
+  | 'phieu_ban_hang'
   | 'lenh_sx'
   | 'bc_lsx'
   | 'du_lieu_xuat_kho'
@@ -294,6 +295,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     serverLines: '11221–11307',
     appTab: 'shipping-orders',
     appLines: 'src/features/lenh-xuat-hang/index.tsx',
+    components: [],
+    utils: []
+  },
+  phieu_ban_hang: {
+    table: 'phieu_ban_hang',
+    label: 'Phiếu bán hàng',
+    sql: ['supabase-phieu-ban-hang.sql'],
+    apiPrefix: '/api/phieu-ban-hang',
+    serverLines: '11707–11791',
+    appTab: 'sales-invoices',
+    appLines: 'src/features/phieu-ban-hang/index.tsx',
     components: [],
     utils: []
   },

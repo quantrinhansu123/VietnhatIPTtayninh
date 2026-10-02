@@ -4,6 +4,7 @@ export { MaterialsInventoryPanel } from './kho-nvl';
 export { WarehouseSlipPanel, WarehouseHistoryPanel } from './phieu-xuat-nhap-kho';
 export { CustomersPanel } from './khach-hang';
 export { ShippingOrdersPanel } from './lenh-xuat-hang';
+export { SalesInvoicesPanel } from './phieu-ban-hang';
 export { OrdersPanel } from './don-hang';
 export { ProductionOrdersPanel } from './lenh-sx';
 export { ProductionPlanHistoryPanel } from './ke-hoach-san-xuat';

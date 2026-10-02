@@ -137,6 +137,7 @@ const SUPABASE_CUSTOMER_PAYMENTS_TABLE =
 const SUPABASE_ORDERS_TABLE = process.env.SUPABASE_ORDERS_TABLE || 'don_hang';
 const SUPABASE_CUSTOMERS_TABLE = process.env.SUPABASE_CUSTOMERS_TABLE || 'khach_hang';
 const SUPABASE_SHIPPING_ORDERS_TABLE = process.env.SUPABASE_SHIPPING_ORDERS_TABLE || 'lenh_xuat_hang';
+const SUPABASE_SALES_INVOICES_TABLE = process.env.SUPABASE_SALES_INVOICES_TABLE || 'phieu_ban_hang';
 const SUPABASE_GIAO_HANG_TABLE = process.env.SUPABASE_GIAO_HANG_TABLE || 'giao_hang';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'cai_dat_thoi_gian';
 const SUPABASE_PRODUCTION_ORDERS_TABLE = process.env.SUPABASE_PRODUCTION_ORDERS_TABLE || 'lenh_sx';
@@ -2692,6 +2693,85 @@ function parseShippingOrderBody(
       })(),
       nhan_vien: pickRowField(source, ['nhan_vien', 'staff'], '') || null,
       trang_thai: pickRowField(source, ['trang_thai', 'status'], 'Chờ xuất') || 'Chờ xuất',
+      ghi_chu: pickRowField(source, ['ghi_chu', 'notes', 'note'], '') || null,
+      chi_tiet: lines,
+      updated_at: new Date().toISOString()
+    }
+  };
+}
+
+function salesInvoiceWriteError(error: { code?: string; message?: string }, table: string) {
+  if (isMissingTableError(error)) {
+    return `Bảng ${table} chưa tồn tại. Hãy chạy file supabase-phieu-ban-hang.sql trong Supabase SQL Editor.`;
+  }
+  if (isMissingColumnError(error)) {
+    return `Bảng ${table} đang thiếu cột. Hãy chạy lại file supabase-phieu-ban-hang.sql. ${error.message || ''}`.trim();
+  }
+  if (error.code === '23505') {
+    return 'Mã phiếu bán hàng đã tồn tại.';
+  }
+  return `Không thể lưu phiếu bán hàng vào ${table}. ${error.message || ''}`.trim();
+}
+
+function parseSalesInvoiceBody(
+  body: unknown
+): { error: string } | { record: Record<string, unknown> } {
+  const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const code = pickRowField(source, ['ma_phieu', 'code'], '');
+  const saleDate = pickRowField(source, ['ngay_ban', 'sale_date', 'saleDate'], '');
+  const customerName = pickRowField(source, ['ten_khach_hang', 'customer_name', 'khach_hang'], '');
+  const rawLines = Array.isArray(source.chi_tiet)
+    ? source.chi_tiet
+    : typeof source.chi_tiet === 'string'
+      ? (() => {
+          try {
+            const parsed = JSON.parse(source.chi_tiet);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+
+  if (!code) return { error: 'Vui lòng nhập mã phiếu bán hàng.' };
+  if (!saleDate || Number.isNaN(Date.parse(saleDate))) return { error: 'Ngày bán không hợp lệ.' };
+  if (!customerName) return { error: 'Vui lòng chọn khách hàng.' };
+
+  const lines = rawLines
+    .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
+    .map(row => ({
+      ma_sp: pickRowField(row, ['ma_sp', 'ma_san_pham', 'code'], ''),
+      ten_sp: pickRowField(row, ['ten_sp', 'ten_san_pham', 'name'], ''),
+      don_vi: pickRowField(row, ['don_vi', 'unit'], ''),
+      so_luong: Math.max(0, parseDriverReconciliationNumber(row.so_luong ?? row.quantity)),
+      don_gia: Math.max(0, parseDriverReconciliationNumber(row.don_gia ?? row.unit_price)),
+      tong_tien: Math.max(0, parseDriverReconciliationNumber(row.tong_tien ?? row.total_amount ?? row.thanh_tien)),
+      ma_lenh_xuat: pickRowField(row, ['ma_lenh_xuat', 'shipping_code'], '') || null
+    }))
+    .map(row => ({
+      ...row,
+      tong_tien: row.tong_tien > 0 ? row.tong_tien : row.so_luong * row.don_gia
+    }))
+    .filter(row => row.ma_sp || row.ten_sp || row.so_luong > 0 || row.don_gia > 0);
+
+  if (lines.length === 0) return { error: 'Vui lòng thêm ít nhất một dòng hàng.' };
+  for (const line of lines) {
+    if (!line.ma_sp && !line.ten_sp) return { error: 'Mỗi dòng cần có mã SP hoặc tên SP.' };
+    if (!(line.so_luong > 0)) return { error: `Số lượng phải lớn hơn 0 (${line.ma_sp || line.ten_sp}).` };
+  }
+
+  return {
+    record: {
+      ma_phieu: code,
+      ngay_ban: saleDate.slice(0, 10),
+      ma_lenh_xuat: pickRowField(source, ['ma_lenh_xuat', 'shipping_code'], '') || null,
+      ma_khach_hang: pickRowField(source, ['ma_khach_hang', 'customer_code'], '') || null,
+      ten_khach_hang: customerName,
+      dia_chi: pickRowField(source, ['dia_chi', 'dia_chi_giao', 'address'], '') || null,
+      so_dien_thoai: pickRowField(source, ['so_dien_thoai', 'dien_thoai', 'phone'], '') || null,
+      thanh_toan: pickRowField(source, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') || null,
+      nhan_vien: pickRowField(source, ['nhan_vien', 'staff'], '') || null,
+      trang_thai: pickRowField(source, ['trang_thai', 'status'], 'Nháp') || 'Nháp',
       ghi_chu: pickRowField(source, ['ghi_chu', 'notes', 'note'], '') || null,
       chi_tiet: lines,
       updated_at: new Date().toISOString()
@@ -11621,6 +11701,94 @@ export function createApp() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa lệnh xuất hàng.' });
+    }
+  });
+
+  app.get('/api/phieu-ban-hang', async (_req, res) => {
+    if (!supabase) {
+      return res.json({ invoices: [], total: 0, source: 'local' });
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from(SUPABASE_SALES_INVOICES_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false });
+
+      if (error) {
+        return respondSupabaseReadError(res, error, SUPABASE_SALES_INVOICES_TABLE, {
+          invoices: [],
+          total: 0
+        });
+      }
+
+      return res.json({
+        invoices: data || [],
+        total: data?.length || 0,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải phiếu bán hàng.' });
+    }
+  });
+
+  app.post('/api/phieu-ban-hang', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+
+    try {
+      const parsed = parseSalesInvoiceBody(req.body);
+      if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+      const { data, error } = await supabase
+        .from(SUPABASE_SALES_INVOICES_TABLE)
+        .insert(parsed.record)
+        .select('*')
+        .single();
+      if (error) {
+        return res.status(500).json({ error: salesInvoiceWriteError(error, SUPABASE_SALES_INVOICES_TABLE) });
+      }
+      return res.status(201).json({ success: true, invoice: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi thêm phiếu bán hàng.' });
+    }
+  });
+
+  app.put('/api/phieu-ban-hang/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID phiếu bán hàng.' });
+
+    try {
+      const parsed = parseSalesInvoiceBody(req.body);
+      if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+      const { data, error } = await supabase
+        .from(SUPABASE_SALES_INVOICES_TABLE)
+        .update(parsed.record)
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) {
+        return res.status(500).json({ error: salesInvoiceWriteError(error, SUPABASE_SALES_INVOICES_TABLE) });
+      }
+      return res.json({ success: true, invoice: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật phiếu bán hàng.' });
+    }
+  });
+
+  app.delete('/api/phieu-ban-hang/:id', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID phiếu bán hàng.' });
+
+    try {
+      const { error } = await supabase.from(SUPABASE_SALES_INVOICES_TABLE).delete().eq('id', id);
+      if (error) {
+        return res.status(500).json({ error: salesInvoiceWriteError(error, SUPABASE_SALES_INVOICES_TABLE) });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi xóa phiếu bán hàng.' });
     }
   });
 

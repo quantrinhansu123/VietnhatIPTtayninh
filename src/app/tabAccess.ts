@@ -66,7 +66,9 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'shift-handover-list',
     'machine-run-log-list'
   ],
-  'production-reports': ['report-forms', 'report-lists']
+  'production-reports': ['report-forms', 'report-lists'],
+  /** Ai đã có menu Kinh doanh thì thấy Phiếu bán hàng, kể cả quyền lưu trước khi có tab này. */
+  business: ['sales-invoices']
 };
 
 export function resolveAccessTab(tab: AppTab | string): string {

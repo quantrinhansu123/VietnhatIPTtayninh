@@ -43,6 +43,6 @@ Phiếu xuất nhập (`phieu_nhap`/`phieu_xuat` và `nhap_kho`/`xuat_kho`) cậ
 
 - **Tải mẫu Excel** / **Tải Excel lên** — `src/utils/materialCatalogExcel.ts`
 - Cột khớp bảng + form: Mã NPL, Tên, ĐV, Tổng kg, Tồn đầu, Nhập, Xuất, Kg nhựa/túi/lõi, Khổ cuộn, Chiều dài ĐV
-- Ô trống vẫn đẩy lên (null); tạo mới cần Mã + Tên; cập nhật thiếu tên thì giữ tên cũ
+- Ô trống vẫn đẩy lên (null); thiếu tên thì dùng mã NPL; nhập từ `/kho-hang` gắn `ten_kho` của kho đang chọn. Mã chưa gán kho vẫn hiện trong kho đang xem
 - Upsert theo `ma_npl`
 - Mẫu 2 cột cũ tách riêng: **Mẫu cập nhật Tổng kg** / **Nhập Tổng kg**

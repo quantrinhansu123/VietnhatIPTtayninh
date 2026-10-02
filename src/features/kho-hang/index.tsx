@@ -289,13 +289,12 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           {balanceError}
         </p>
       ) : null}
-
       {kind === 'materials' ? (
         materialsAccess.canView ? (
           <MaterialsInventoryPanel
             onBack={onBack}
             warehouseFilter={selectedWarehouseName}
-            includeUnassigned={false}
+            includeUnassigned
             asOfDate={asOfDate}
             balanceRows={balanceRows}
             topControls={warehouseControls}
@@ -307,7 +306,7 @@ export function InventoryCatalogPanel({ onBack }: { onBack: () => void }) {
           hideQrColumn
           hideCategoryFilters
           warehouseFilter={selectedWarehouseName}
-          includeUnassigned={false}
+          includeUnassigned
           asOfDate={asOfDate}
           balanceRows={balanceRows}
           topControls={warehouseControls}

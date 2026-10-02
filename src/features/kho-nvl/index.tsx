@@ -1262,7 +1262,7 @@ export function MaterialsInventoryPanel({
         }
 
         const existing = byCode.get(normalizeMaterialCodeKey(code));
-        const name = row.name.trim() || existing?.name || '';
+        const name = row.name.trim() || existing?.name || code;
         if (!name || name === '-') {
           failures.push(`dòng ${row.rowNumber}: thiếu tên nguyên phụ liệu`);
           continue;
@@ -1270,7 +1270,8 @@ export function MaterialsInventoryPanel({
 
         const payload = {
           ...materialCatalogRowToPayload(row),
-          name
+          name,
+          ...(warehouseFilter.trim() ? { warehouse: warehouseFilter.trim() } : {})
         };
 
         if (payload.unit) {

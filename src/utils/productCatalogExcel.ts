@@ -26,10 +26,10 @@ export type ProductCatalogExcelRow = {
 };
 
 const HEADER_ALIASES: Record<keyof Omit<ProductCatalogExcelRow, 'rowNumber'>, string[]> = {
-  code: ['ma sp', 'ma_sp', 'ma san pham', 'code'],
+  code: ['ma sp', 'ma_sp', 'ma san pham', 'ma hang', 'ma vat tu', 'code'],
   amisCode: ['ma amis', 'ma_amis', 'amis'],
   newCode: ['ma moi', 'ma_sp_moi', 'ma sp moi'],
-  name: ['ten san pham', 'ten_sp', 'ten sp', 'name'],
+  name: ['ten san pham', 'ten_sp', 'ten sp', 'ten hang', 'ten vat tu', 'name'],
   nature: ['tinh chat', 'tinh_chat', 'nature'],
   group: ['nhom vthh', 'nhom_vthh', 'nhom', 'group'],
   unit: ['don vi tinh', 'don_vi', 'don vi', 'unit'],

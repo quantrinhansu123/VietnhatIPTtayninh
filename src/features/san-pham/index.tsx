@@ -3283,7 +3283,10 @@ export function ProductsPanel({
           continue;
         }
 
-        const payload = productCatalogRowToPayload(row);
+        const payload = {
+          ...productCatalogRowToPayload(row),
+          ...(warehouseFilter.trim() ? { warehouse: warehouseFilter.trim() } : {})
+        };
         const existing = code ? byCode.get(normalizeProductCodeKey(code)) : undefined;
 
         const res = existing

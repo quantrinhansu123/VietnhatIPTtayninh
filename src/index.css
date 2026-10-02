@@ -6229,7 +6229,8 @@ input[type="number"] {
 }
 
 .bb-gx-print-preview-wrap .bb-gx-company {
-  font-size: 18px;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 .bb-gx-print-preview-wrap .bb-gx-title {
@@ -6373,6 +6374,7 @@ input[type="number"] {
   font-weight: 700;
   color: #2a2a2a;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .bb-gx-title {
@@ -6728,7 +6730,10 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-company {
-    font-size: 9pt !important;
+    font-size: 8pt !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-brand,
@@ -6846,12 +6851,17 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-head-cell,
-  body.shipping-delivery-print-active .bb-gx-head-cell .bb-gx-company,
   body.shipping-delivery-print-active .bb-gx-head-cell .bb-gx-title,
   body.shipping-delivery-print-active .bb-gx-head-cell .bb-gx-sub {
     word-break: normal !important;
     overflow-wrap: normal !important;
     white-space: normal !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-head-cell .bb-gx-company {
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    white-space: nowrap !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-table td.bb-gx-meta-label {

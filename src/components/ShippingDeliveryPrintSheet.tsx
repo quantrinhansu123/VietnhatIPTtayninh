@@ -65,7 +65,8 @@ function orderViewForLine(order: ShippingOrder, line: ShippingOrderLine | null):
     ma_khach_hang: code || order.ma_khach_hang,
     ten_khach_hang: name || order.ten_khach_hang,
     dia_chi_giao: String(line.dia_chi_giao || '').trim() || order.dia_chi_giao,
-    so_dien_thoai: String(line.so_dien_thoai || '').trim() || order.so_dien_thoai
+    so_dien_thoai: String(line.so_dien_thoai || '').trim() || order.so_dien_thoai,
+    ghi_chu: line.ghi_chu != null ? String(line.ghi_chu).trim() : order.ghi_chu
   };
 }
 

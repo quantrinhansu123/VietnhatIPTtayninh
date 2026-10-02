@@ -2661,7 +2661,8 @@ function parseShippingOrderBody(
       ma_khach_hang: pickRowField(row, ['ma_khach_hang', 'customer_code'], '') || null,
       ten_khach_hang: pickRowField(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], '') || null,
       dia_chi_giao: pickRowField(row, ['dia_chi_giao', 'dia_chi', 'address'], '') || null,
-      so_dien_thoai: pickRowField(row, ['so_dien_thoai', 'dien_thoai', 'phone'], '') || null
+      so_dien_thoai: pickRowField(row, ['so_dien_thoai', 'dien_thoai', 'phone'], '') || null,
+      ghi_chu: pickRowField(row, ['ghi_chu', 'note'], '') || null
     }))
     .map(row => ({
       ...row,

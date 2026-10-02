@@ -74,6 +74,7 @@ type ShippingCustomerSlice = {
   ten_khach_hang: string;
   dia_chi_giao: string;
   so_dien_thoai: string;
+  ghi_chu: string;
   lines: ShippingOrderLine[];
 };
 
@@ -236,10 +237,12 @@ function customerSlices(order: ShippingOrder): ShippingCustomerSlice[] {
         ten_khach_hang: name,
         dia_chi_giao: address,
         so_dien_thoai: phone,
+        ghi_chu: '',
         lines: []
       };
       slices.push(slice);
     }
+    if (!slice.ghi_chu && line.ghi_chu != null) slice.ghi_chu = line.ghi_chu;
     slice.lines.push(line);
   }
   if (slices.length === 0 && (order.ten_khach_hang || order.ma_khach_hang)) {
@@ -249,9 +252,11 @@ function customerSlices(order: ShippingOrder): ShippingCustomerSlice[] {
       ten_khach_hang: order.ten_khach_hang,
       dia_chi_giao: order.dia_chi_giao,
       so_dien_thoai: order.so_dien_thoai,
+      ghi_chu: order.ghi_chu,
       lines: []
     });
   }
+  if (slices.length === 1 && !slices[0].ghi_chu.trim()) slices[0].ghi_chu = order.ghi_chu;
   return slices;
 }
 
@@ -440,6 +445,7 @@ export function SalesInvoicesPanel({
         ten_khach_hang: slice.ten_khach_hang,
         dia_chi: slice.dia_chi_giao,
         so_dien_thoai: slice.so_dien_thoai,
+        ghi_chu: !sameCustomer || !prev.ghi_chu.trim() ? slice.ghi_chu || prev.ghi_chu : prev.ghi_chu,
         thanh_toan: prev.thanh_toan || sourceOrder.thanh_toan,
         chi_tiet: nextLines.length > 0 ? nextLines : [createLine()]
       };

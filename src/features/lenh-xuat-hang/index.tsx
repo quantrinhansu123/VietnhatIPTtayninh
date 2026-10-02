@@ -48,6 +48,7 @@ export type ShippingOrderLine = {
   ten_khach_hang?: string;
   dia_chi_giao?: string;
   so_dien_thoai?: string;
+  ghi_chu?: string;
 };
 
 type ShippingCustomerGroup = {
@@ -56,6 +57,7 @@ type ShippingCustomerGroup = {
   ten_khach_hang: string;
   dia_chi_giao: string;
   so_dien_thoai: string;
+  ghi_chu: string;
   chi_tiet: ShippingOrderLine[];
 };
 
@@ -130,7 +132,7 @@ function createLine(partial?: Partial<ShippingOrderLine>): ShippingOrderLine {
   const soLuong = Number.isFinite(partial?.so_luong) ? Number(partial?.so_luong) : 0;
   const donGia = Number.isFinite(partial?.don_gia) ? Number(partial?.don_gia) : 0;
   const tongTien = Number.isFinite(partial?.tong_tien) ? Number(partial?.tong_tien) : soLuong * donGia;
-  return {
+  const line: ShippingOrderLine = {
     id: partial?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ma_sp: partial?.ma_sp || '',
     ten_sp: partial?.ten_sp || '',
@@ -144,6 +146,10 @@ function createLine(partial?: Partial<ShippingOrderLine>): ShippingOrderLine {
     dia_chi_giao: partial?.dia_chi_giao || '',
     so_dien_thoai: partial?.so_dien_thoai || ''
   };
+  if (partial && Object.prototype.hasOwnProperty.call(partial, 'ghi_chu')) {
+    line.ghi_chu = String(partial.ghi_chu ?? '');
+  }
+  return line;
 }
 
 function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): ShippingCustomerGroup {
@@ -154,6 +160,7 @@ function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): Shipping
     ten_khach_hang: partial?.ten_khach_hang || '',
     dia_chi_giao: partial?.dia_chi_giao || '',
     so_dien_thoai: partial?.so_dien_thoai || '',
+    ghi_chu: partial?.ghi_chu || '',
     chi_tiet: lines
   };
 }
@@ -195,7 +202,7 @@ function normalizeSalesOrders(data: unknown): SalesOrderPick[] {
   });
 }
 
-function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'chi_tiet'>): ShippingCustomerGroup[] {
+function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'ghi_chu' | 'chi_tiet'>): ShippingCustomerGroup[] {
   const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [createLine()];
   const groups: ShippingCustomerGroup[] = [];
   for (const line of lines) {
@@ -220,7 +227,25 @@ function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach
     }
     group.chi_tiet.push(createLine(line));
   }
-  return groups.map(group => (group.chi_tiet.length > 0 ? group : { ...group, chi_tiet: [createLine()] }));
+  const anyStoredNote = groups.some(group => group.chi_tiet.some(item => item.ghi_chu != null));
+  return groups.map(group => {
+    const stored = group.chi_tiet.find(item => item.ghi_chu != null);
+    const ghi_chu = anyStoredNote ? String(stored?.ghi_chu || '') : String(order.ghi_chu || '');
+    return group.chi_tiet.length > 0 ? { ...group, ghi_chu } : { ...group, ghi_chu, chi_tiet: [createLine()] };
+  });
+}
+
+function composeHeaderNote(groups: ShippingCustomerGroup[]) {
+  const noted = groups
+    .map(group => ({
+      name: group.ten_khach_hang.trim() || group.ma_khach_hang.trim(),
+      note: group.ghi_chu.trim()
+    }))
+    .filter(item => item.note);
+  if (noted.length === 0) return '';
+  const unique = [...new Set(noted.map(item => item.note))];
+  if (unique.length === 1) return unique[0];
+  return noted.map(item => `${item.name || 'Khách'}: ${item.note}`).join('\n');
 }
 
 function parseLines(value: unknown): ShippingOrderLine[] {
@@ -247,7 +272,8 @@ function parseLines(value: unknown): ShippingOrderLine[] {
         ma_khach_hang: pickText(row, ['ma_khach_hang', 'customer_code'], ''),
         ten_khach_hang: pickText(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], ''),
         dia_chi_giao: pickText(row, ['dia_chi_giao', 'dia_chi', 'address'], ''),
-        so_dien_thoai: pickText(row, ['so_dien_thoai', 'dien_thoai', 'phone'], '')
+        so_dien_thoai: pickText(row, ['so_dien_thoai', 'dien_thoai', 'phone'], ''),
+        ...('ghi_chu' in row || 'note' in row ? { ghi_chu: pickText(row, ['ghi_chu', 'note'], '') } : {})
       })
     );
 }
@@ -776,6 +802,7 @@ export function ShippingOrdersPanel({
         ten_khach_hang: names.join(', '),
         dia_chi_giao: groups.map(group => group.dia_chi_giao.trim()).filter(Boolean).join('\n'),
         so_dien_thoai: groups.map(group => group.so_dien_thoai.trim()).filter(Boolean).join(', '),
+        ghi_chu: composeHeaderNote(groups),
         thanh_toan: payment,
         chi_tiet: lines.map(({ line, group }) => ({
           ma_sp: line.ma_sp.trim(),
@@ -788,7 +815,8 @@ export function ShippingOrdersPanel({
           ma_khach_hang: group.ma_khach_hang.trim(),
           ten_khach_hang: group.ten_khach_hang.trim(),
           dia_chi_giao: group.dia_chi_giao.trim(),
-          so_dien_thoai: group.so_dien_thoai.trim()
+          so_dien_thoai: group.so_dien_thoai.trim(),
+          ghi_chu: group.ghi_chu.trim()
         }))
       };
       const res = await fetch(
@@ -1193,15 +1221,6 @@ export function ShippingOrdersPanel({
                     placeholder="Người lập"
                   />
                 </label>
-                <label className="block space-y-0.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ghi chú</span>
-                  <input
-                    value={form.ghi_chu}
-                    onChange={event => setForm(prev => ({ ...prev, ghi_chu: event.target.value }))}
-                    className={compactFieldClass}
-                    placeholder="Ghi chú thêm"
-                  />
-                </label>
               </div>
 
               <div className="flex shrink-0 justify-end">
@@ -1285,6 +1304,24 @@ export function ShippingOrdersPanel({
                           }
                           className={compactFieldClass}
                           placeholder="Số điện thoại"
+                        />
+                      </label>
+                      <label className="block space-y-0.5 sm:col-span-2 lg:col-span-4">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Ghi chú khách này
+                        </span>
+                        <input
+                          value={group.ghi_chu}
+                          onChange={event =>
+                            setForm(prev => ({
+                              ...prev,
+                              khach: prev.khach.map(item =>
+                                item.id === group.id ? { ...item, ghi_chu: event.target.value } : item
+                              )
+                            }))
+                          }
+                          className={compactFieldClass}
+                          placeholder="Ghi chú riêng cho khách này"
                         />
                       </label>
                     </div>

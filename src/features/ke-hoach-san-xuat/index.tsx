@@ -5284,6 +5284,9 @@ export function AddProductionOrderModal({
   seedOrder?: OrderRow | null;
 }) {
   const [form, setForm] = useState<ProductionOrderFormState>(emptyProductionOrderForm);
+  const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({});
+  const [stockErrorByProduct, setStockErrorByProduct] = useState<Record<string, boolean>>({});
+  const [loadingStockByProduct, setLoadingStockByProduct] = useState<Record<string, boolean>>({});
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -5311,6 +5314,9 @@ export function AddProductionOrderModal({
     if (!open) return;
 
     setForm(emptyProductionOrderForm());
+    setStockByProduct({});
+    setStockErrorByProduct({});
+    setLoadingStockByProduct({});
     setSelectedShifts([]);
     setFormError('');
     setShowAutofillOrders(false);
@@ -5390,6 +5396,45 @@ export function AddProductionOrderModal({
 
     loadLookups();
   }, [open, seedOrder]);
+
+  const selectedStockCodes = JSON.stringify(
+    [...new Set(form.entryLines.map(line => line.productCode.trim()).filter(Boolean))]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const codes = JSON.parse(selectedStockCodes) as string[];
+    if (codes.length === 0) return;
+    let cancelled = false;
+
+    const refreshStock = async (showLoading = false) => {
+      if (showLoading) {
+        setLoadingStockByProduct(prev => ({ ...prev, ...Object.fromEntries(codes.map(code => [code, true])) }));
+      }
+      await Promise.all(codes.map(async code => {
+        try {
+          const params = new URLSearchParams({ ma_sp_goc: code });
+          const res = await fetch(`/api/chi-tiet-san-pham/ton-kho?${params.toString()}`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Không tải được tồn kho.');
+          if (cancelled) return;
+          setStockByProduct(prev => ({ ...prev, [code]: Number(data.so_luong) || 0 }));
+          setStockErrorByProduct(prev => ({ ...prev, [code]: false }));
+        } catch {
+          if (!cancelled) setStockErrorByProduct(prev => ({ ...prev, [code]: true }));
+        } finally {
+          if (!cancelled) setLoadingStockByProduct(prev => ({ ...prev, [code]: false }));
+        }
+      }));
+    };
+
+    void refreshStock(true);
+    const interval = window.setInterval(() => void refreshStock(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [open, selectedStockCodes]);
 
   useEffect(() => {
     setSelectedAutofillOrderCodes([]);
@@ -5986,11 +6031,12 @@ export function AddProductionOrderModal({
               </>
             }
             columns={[
-              { key: 'order', label: 'Mã đơn', className: 'min-w-0 flex-[1.1]', required: true },
-              { key: 'code', label: 'Mã hàng', className: 'min-w-0 flex-[1.35]', required: true },
-              { key: 'name', label: 'Tên hàng', className: 'min-w-0 flex-[1.1]' },
+              { key: 'order', label: 'Mã đơn', className: 'min-w-0 flex-[0.75]', required: true },
+              { key: 'code', label: 'Mã hàng', className: 'min-w-0 flex-[1.1]', required: true },
+              { key: 'name', label: 'Tên hàng', className: 'min-w-0 flex-[1.8]' },
               { key: 'unit', label: 'ĐV', className: 'w-16 shrink-0 sm:w-20' },
               { key: 'qty', label: 'SL', className: 'w-20 shrink-0 sm:w-24', required: true },
+              { key: 'stock', label: 'Còn trong kho', className: 'w-28 shrink-0' },
               { key: 'actions', label: '', className: 'w-9 shrink-0' }
             ]}
           >
@@ -6008,10 +6054,11 @@ export function AddProductionOrderModal({
                 line.orderRef
               );
               const selectedProduct = productOptions.find(item => item.code === line.productCode);
+              const stockCode = selectedProduct?.code || line.productCode.trim();
 
               return (
                 <RepeatableLineRow key={line.key}>
-                  <div className="col-span-2 md:min-w-0 md:flex-[1.1]">
+                  <div className="col-span-2 md:min-w-0 md:flex-[0.75]">
                     <SearchableSelect
                       value={line.orderRef}
                       onChange={orderRef => handleEntryOrderChange(line.key, orderRef)}
@@ -6023,7 +6070,7 @@ export function AddProductionOrderModal({
                       getValue={item => String(item)}
                     />
                   </div>
-                  <div className="col-span-2 md:min-w-0 md:flex-[1.35]">
+                  <div className="col-span-2 md:min-w-0 md:flex-[1.1]">
                     <SearchableSelect
                       value={line.productCode}
                       onChange={productCode => handleEntryProductChange(line.key, line.orderRef, productCode)}
@@ -6045,7 +6092,7 @@ export function AddProductionOrderModal({
                       getValue={item => (item as (typeof productOptions)[number]).code}
                     />
                   </div>
-                  <div className="col-span-2 md:min-w-0 md:flex-[1.1]">
+                  <div className="col-span-2 md:min-w-0 md:flex-[1.8]">
                     <input
                       value={selectedProduct?.name || line.productName}
                       readOnly
@@ -6072,7 +6119,21 @@ export function AddProductionOrderModal({
                       placeholder="SL"
                     />
                   </div>
-                  {form.entryLines.length > 1 && (
+                  <div className="col-span-1 min-w-0 md:w-28 md:shrink-0">
+                    <div
+                      className={`${orderFieldClass} flex items-center bg-zinc-50 text-zinc-700`}
+                      title={stockErrorByProduct[stockCode] ? 'Không thể cập nhật tồn kho hiện tại.' : undefined}
+                    >
+                      {stockByProduct[stockCode] !== undefined
+                        ? stockByProduct[stockCode].toLocaleString('vi-VN')
+                        : loadingStockByProduct[stockCode]
+                          ? 'Đang tải…'
+                          : stockErrorByProduct[stockCode]
+                            ? 'Lỗi tải'
+                            : '—'}
+                    </div>
+                  </div>
+                  {form.entryLines.length > 1 ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -6087,6 +6148,8 @@ export function AddProductionOrderModal({
                       <Trash2 className="h-4 w-4" />
                       <span className="md:hidden">Xóa dòng này</span>
                     </button>
+                  ) : (
+                    <div aria-hidden="true" className="hidden md:block md:w-9 md:shrink-0" />
                   )}
                 </RepeatableLineRow>
               );

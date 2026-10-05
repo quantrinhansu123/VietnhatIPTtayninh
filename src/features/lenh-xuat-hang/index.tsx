@@ -58,6 +58,7 @@ type ShippingCustomerGroup = {
   ten_khach_hang: string;
   dia_chi_giao: string;
   so_dien_thoai: string;
+  thanh_toan: string;
   ghi_chu: string;
   chi_tiet: ShippingOrderLine[];
 };
@@ -161,6 +162,7 @@ function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): Shipping
     ten_khach_hang: partial?.ten_khach_hang || '',
     dia_chi_giao: partial?.dia_chi_giao || '',
     so_dien_thoai: partial?.so_dien_thoai || '',
+    thanh_toan: partial?.thanh_toan || '',
     ghi_chu: partial?.ghi_chu || '',
     chi_tiet: lines
   };
@@ -203,7 +205,7 @@ function normalizeSalesOrders(data: unknown): SalesOrderPick[] {
   });
 }
 
-function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'ghi_chu' | 'chi_tiet'>): ShippingCustomerGroup[] {
+function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'thanh_toan' | 'ghi_chu' | 'chi_tiet'>): ShippingCustomerGroup[] {
   const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [createLine()];
   const groups: ShippingCustomerGroup[] = [];
   for (const line of lines) {
@@ -232,7 +234,11 @@ function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach
   return groups.map(group => {
     const stored = group.chi_tiet.find(item => item.ghi_chu != null);
     const ghi_chu = anyStoredNote ? String(stored?.ghi_chu || '') : String(order.ghi_chu || '');
-    return group.chi_tiet.length > 0 ? { ...group, ghi_chu } : { ...group, ghi_chu, chi_tiet: [createLine()] };
+    const thanh_toan =
+      group.chi_tiet.find(item => item.thanh_toan.trim())?.thanh_toan.trim() ||
+      String(order.thanh_toan || '').trim();
+    const next = { ...group, ghi_chu, thanh_toan };
+    return next.chi_tiet.length > 0 ? next : { ...next, chi_tiet: [createLine()] };
   });
 }
 
@@ -802,7 +808,7 @@ export function ShippingOrdersPanel({
     setIsSaving(true);
     setError('');
     try {
-      const payment = form.thanh_toan.trim();
+      const payments = [...new Set(groups.map(group => group.thanh_toan.trim()).filter(Boolean))];
       const names = [...new Set(groups.map(group => group.ten_khach_hang.trim()).filter(Boolean))];
       const codes = [...new Set(groups.map(group => group.ma_khach_hang.trim()).filter(Boolean))];
       const payload = {
@@ -813,7 +819,7 @@ export function ShippingOrdersPanel({
         dia_chi_giao: groups.map(group => group.dia_chi_giao.trim()).filter(Boolean).join('\n'),
         so_dien_thoai: groups.map(group => group.so_dien_thoai.trim()).filter(Boolean).join(', '),
         ghi_chu: composeHeaderNote(groups),
-        thanh_toan: payment,
+        thanh_toan: payments.length === 1 ? payments[0] : '',
         chi_tiet: lines.map(({ line, group }) => ({
           ma_sp: line.ma_sp.trim(),
           ten_sp: line.ten_sp.trim(),
@@ -821,7 +827,7 @@ export function ShippingOrdersPanel({
           so_luong: line.so_luong,
           don_gia: line.don_gia,
           tong_tien: line.tong_tien,
-          thanh_toan: payment || line.thanh_toan.trim(),
+          thanh_toan: group.thanh_toan.trim(),
           ma_khach_hang: group.ma_khach_hang.trim(),
           ten_khach_hang: group.ten_khach_hang.trim(),
           dia_chi_giao: group.dia_chi_giao.trim(),
@@ -1273,20 +1279,6 @@ export function ShippingOrdersPanel({
                 </label>
                 <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Thanh toán
-                  </span>
-                  <SearchableSelect
-                    value={form.thanh_toan}
-                    options={[...PAYMENT_OPTIONS]}
-                    onChange={value => setForm(prev => ({ ...prev, thanh_toan: value }))}
-                    placeholder="Tiền mặt / CK"
-                    getValue={item => String(item)}
-                    getLabel={item => String(item)}
-                    inputClassName={compactFieldClass}
-                  />
-                </label>
-                <label className="block space-y-0.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Trạng thái
                   </span>
                   <SearchableSelect
@@ -1395,7 +1387,28 @@ export function ShippingOrdersPanel({
                           placeholder="Số điện thoại"
                         />
                       </label>
-                      <label className="block space-y-0.5 sm:col-span-2 lg:col-span-4">
+                      <label className="block space-y-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Thanh toán
+                        </span>
+                        <SearchableSelect
+                          value={group.thanh_toan}
+                          options={[...PAYMENT_OPTIONS]}
+                          onChange={value =>
+                            setForm(prev => ({
+                              ...prev,
+                              khach: prev.khach.map(item =>
+                                item.id === group.id ? { ...item, thanh_toan: value } : item
+                              )
+                            }))
+                          }
+                          placeholder="Tiền mặt / CK"
+                          getValue={item => String(item)}
+                          getLabel={item => String(item)}
+                          inputClassName={compactFieldClass}
+                        />
+                      </label>
+                      <label className="block space-y-0.5 sm:col-span-2 lg:col-span-3">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                           Ghi chú khách này
                         </span>

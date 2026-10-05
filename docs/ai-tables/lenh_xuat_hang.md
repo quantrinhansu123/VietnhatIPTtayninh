@@ -12,4 +12,6 @@ Một lệnh có nhiều khách (`khach` trên form). Mỗi khách chọn nhiề
 BSX: sổ xuống từ `GET /api/danh-sach-xe` (`danh_sach_xe.bsx`), gõ biển số mới rồi chọn **Thêm** để ghi vào lệnh (không tạo xe trong danh sách xe)  
 Số Km: cột `so_km`  
 In biên bản giao xe: A4 dọc, xem trước 3 lệnh/trang, tiêu đề lặp khi sang trang (`ShippingDeliveryPrintSheet`)  
-Danh sách lọc theo khoảng **Từ ngày** / **Đến ngày** trên `ngay_xuat`.
+Danh sách lọc theo khoảng **Từ ngày** / **Đến ngày** trên `ngay_xuat`.  
+Khi tạo mới bị trùng `ma_lenh` (người khác lưu trước), API tự lấy max STT dạng `LXH###` rồi lưu mã kế tiếp.  
+Nút **Sao chép** trên từng dòng tạo lệnh mới giống hệt, chỉ đổi `ma_lenh` theo max STT.

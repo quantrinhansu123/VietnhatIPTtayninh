@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
+import { Copy, Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber } from '../../utils';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
@@ -427,6 +427,7 @@ export function ShippingOrdersPanel({
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [copyingId, setCopyingId] = useState('');
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -855,6 +856,67 @@ export function ShippingOrdersPanel({
     }
   };
 
+  const handleCopy = async (order: ShippingOrder) => {
+    if (!canCreate || copyingId) return;
+    const lines = order.chi_tiet.filter(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0);
+    if (!order.ten_khach_hang.trim() || lines.length === 0) {
+      setError(showSaveFailure('Lệnh này chưa đủ dữ liệu để sao chép.'));
+      return;
+    }
+    const nextCode = generateNextShippingCode(orders.map(item => item.ma_lenh));
+    const rowKey = order.id || order.ma_lenh;
+    setCopyingId(rowKey);
+    setError('');
+    try {
+      const payload = {
+        ma_lenh: nextCode,
+        ngay_xuat: order.ngay_xuat,
+        ma_khach_hang: order.ma_khach_hang,
+        ten_khach_hang: order.ten_khach_hang,
+        dia_chi_giao: order.dia_chi_giao,
+        so_dien_thoai: order.so_dien_thoai,
+        bsx: order.bsx || '',
+        so_km: order.so_km,
+        thanh_toan: order.thanh_toan || '',
+        nhan_vien: order.nhan_vien,
+        trang_thai: order.trang_thai || 'Chờ xuất',
+        ghi_chu: order.ghi_chu,
+        chi_tiet: lines.map(line => ({
+          ma_sp: line.ma_sp.trim(),
+          ten_sp: line.ten_sp.trim(),
+          don_vi: line.don_vi.trim(),
+          so_luong: line.so_luong,
+          don_gia: line.don_gia,
+          tong_tien: line.tong_tien,
+          thanh_toan: line.thanh_toan.trim(),
+          ma_khach_hang: String(line.ma_khach_hang || '').trim(),
+          ten_khach_hang: String(line.ten_khach_hang || '').trim(),
+          dia_chi_giao: String(line.dia_chi_giao || '').trim(),
+          so_dien_thoai: String(line.so_dien_thoai || '').trim(),
+          ghi_chu: line.ghi_chu != null ? String(line.ghi_chu).trim() : ''
+        }))
+      };
+      const res = await fetch('/api/lenh-xuat-hang', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể sao chép lệnh xuất hàng.'));
+      const savedCode = String((data as { order?: { ma_lenh?: string } }).order?.ma_lenh || nextCode).trim();
+      if (typeof data.warning === 'string' && data.warning.trim()) {
+        showAppToast(data.warning.trim());
+      } else {
+        showAppToast(`Đã sao chép ${order.ma_lenh} thành ${savedCode}.`);
+      }
+      await loadAll();
+    } catch (copyError: unknown) {
+      setError(showSaveFailure(copyError, 'Không thể sao chép lệnh xuất hàng.'));
+    } finally {
+      setCopyingId('');
+    }
+  };
+
   const handleDelete = async (order: ShippingOrder) => {
     if (!order.id) return;
     if (!window.confirm(`Xóa lệnh xuất hàng ${order.ma_lenh}?`)) return;
@@ -1005,6 +1067,21 @@ export function ShippingOrdersPanel({
                   <td className="px-4 py-3 text-center">
                     <RowActionsMenu label={`Thao tác ${order.ma_lenh}`}>
                     <div className="inline-flex items-center justify-center gap-1.5">
+                      {canCreate ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleCopy(order)}
+                          disabled={Boolean(copyingId)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                          title="Sao chép"
+                        >
+                          {copyingId === (order.id || order.ma_lenh) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                       {canEdit ? (
                         <button
                           type="button"

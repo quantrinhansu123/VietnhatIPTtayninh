@@ -2217,6 +2217,40 @@ function stripShippingOrderOptionalColumns(
   return stripped ? next : null;
 }
 
+/** Cùng quy tắc với generateNextShippingCode ở màn lệnh xuất hàng: LXH + STT, lấy max rồi +1. */
+function nextShippingOrderCode(existingCodes: Iterable<string>) {
+  let max = 0;
+  for (const raw of existingCodes) {
+    const code = String(raw || '').trim().toUpperCase();
+    const match = code.match(/^LXH(\d+)$/);
+    if (!match) continue;
+    const num = Number(match[1]);
+    if (Number.isFinite(num) && num > max) max = num;
+  }
+  const next = max + 1;
+  const width = Math.max(3, String(next).length);
+  return `LXH${String(next).padStart(width, '0')}`;
+}
+
+async function listShippingOrderCodes() {
+  if (!supabase) return [] as string[];
+  const codes: string[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 50000; from += pageSize) {
+    const { data, error } = await supabase
+      .from(SUPABASE_SHIPPING_ORDERS_TABLE)
+      .select('ma_lenh')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = data || [];
+    for (const row of rows) {
+      codes.push(String((row as { ma_lenh?: string }).ma_lenh || ''));
+    }
+    if (rows.length < pageSize) break;
+  }
+  return codes;
+}
+
 async function writeShippingOrderRecord(params: {
   mode: 'insert' | 'update';
   id?: string;
@@ -2238,30 +2272,60 @@ async function writeShippingOrderRecord(params: {
       .single();
   };
 
-  let result = await run(params.record);
-  if (!result.error) {
-    return { error: null, data: result.data, warning: '' };
-  }
+  const optionalColumnWarning =
+    'Đã lưu lệnh xuất nhưng DB chưa có cột bsx/so_km nên BSX và Số Km chưa được lưu. Chạy supabase-lenh-xuat-hang-bsx.sql trên project he-thong (bfnsopyvgvhaegqijpum) rồi Reload schema.';
 
-  if (!isMissingColumnError(result.error)) {
-    return { error: result.error, data: null, warning: '' };
-  }
+  let record = { ...params.record };
+  const originalCode = String(record.ma_lenh || '').trim();
+  let codeBumped = false;
+  let columnWarning = '';
 
-  const stripped = stripShippingOrderOptionalColumns(params.record, result.error);
-  if (!stripped) {
-    return { error: result.error, data: null, warning: '' };
-  }
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    let result = await run(record);
+    if (result.error && isMissingColumnError(result.error)) {
+      const stripped = stripShippingOrderOptionalColumns(record, result.error);
+      if (stripped) {
+        record = stripped;
+        result = await run(record);
+        if (!result.error) columnWarning = optionalColumnWarning;
+      }
+    }
 
-  result = await run(stripped);
-  if (result.error) {
-    return { error: result.error, data: null, warning: '' };
+    if (!result.error) {
+      const bumpWarning = codeBumped
+        ? `Mã ${originalCode} đã được người khác lưu trước. Đã lưu thành mã ${String(record.ma_lenh)}.`
+        : '';
+      return {
+        error: null,
+        data: result.data,
+        warning: [bumpWarning, columnWarning].filter(Boolean).join(' ')
+      };
+    }
+
+    const duplicateCode = params.mode === 'insert' && result.error.code === '23505';
+    if (!duplicateCode) {
+      return { error: result.error, data: null, warning: '' };
+    }
+
+    try {
+      const codes = await listShippingOrderCodes();
+      let nextCode = nextShippingOrderCode(codes);
+      if (nextCode === String(record.ma_lenh || '').trim().toUpperCase()) {
+        const current = String(record.ma_lenh || '').trim().toUpperCase().match(/^LXH(\d+)$/);
+        const num = current ? Number(current[1]) + 1 : 1;
+        nextCode = `LXH${String(num).padStart(Math.max(3, String(num).length), '0')}`;
+      }
+      record = { ...record, ma_lenh: nextCode };
+      codeBumped = true;
+    } catch {
+      return { error: result.error, data: null, warning: '' };
+    }
   }
 
   return {
-    error: null,
-    data: result.data,
-    warning:
-      'Đã lưu lệnh xuất nhưng DB chưa có cột bsx/so_km nên BSX và Số Km chưa được lưu. Chạy supabase-lenh-xuat-hang-bsx.sql trên project he-thong (bfnsopyvgvhaegqijpum) rồi Reload schema.'
+    error: { code: '23505', message: 'Mã lệnh xuất hàng đã tồn tại.' },
+    data: null,
+    warning: ''
   };
 }
 

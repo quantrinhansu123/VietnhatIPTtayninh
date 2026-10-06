@@ -2725,6 +2725,7 @@ function parseShippingOrderBody(
         )
       ),
       thanh_toan: pickRowField(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], '') || null,
+      nhan_vien: pickRowField(row, ['nhan_vien', 'nguoi_phu_trach', 'nvql', 'staff'], '') || null,
       ma_khach_hang: pickRowField(row, ['ma_khach_hang', 'customer_code'], '') || null,
       ten_khach_hang: pickRowField(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], '') || null,
       dia_chi_giao: pickRowField(row, ['dia_chi_giao', 'dia_chi', 'address'], '') || null,

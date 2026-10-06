@@ -45,6 +45,7 @@ export type ShippingOrderLine = {
   don_gia: number;
   tong_tien: number;
   thanh_toan: string;
+  nhan_vien: string;
   ma_khach_hang?: string;
   ten_khach_hang?: string;
   dia_chi_giao?: string;
@@ -59,6 +60,7 @@ type ShippingCustomerGroup = {
   dia_chi_giao: string;
   so_dien_thoai: string;
   thanh_toan: string;
+  nhan_vien: string;
   ghi_chu: string;
   chi_tiet: ShippingOrderLine[];
 };
@@ -143,6 +145,7 @@ function createLine(partial?: Partial<ShippingOrderLine>): ShippingOrderLine {
     don_gia: donGia,
     tong_tien: tongTien,
     thanh_toan: partial?.thanh_toan || '',
+    nhan_vien: partial?.nhan_vien || '',
     ma_khach_hang: partial?.ma_khach_hang || '',
     ten_khach_hang: partial?.ten_khach_hang || '',
     dia_chi_giao: partial?.dia_chi_giao || '',
@@ -163,6 +166,7 @@ function createCustomerGroup(partial?: Partial<ShippingCustomerGroup>): Shipping
     dia_chi_giao: partial?.dia_chi_giao || '',
     so_dien_thoai: partial?.so_dien_thoai || '',
     thanh_toan: partial?.thanh_toan || '',
+    nhan_vien: partial?.nhan_vien || '',
     ghi_chu: partial?.ghi_chu || '',
     chi_tiet: lines
   };
@@ -205,7 +209,7 @@ function normalizeSalesOrders(data: unknown): SalesOrderPick[] {
   });
 }
 
-function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'thanh_toan' | 'ghi_chu' | 'chi_tiet'>): ShippingCustomerGroup[] {
+function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach_hang' | 'dia_chi_giao' | 'so_dien_thoai' | 'thanh_toan' | 'nhan_vien' | 'ghi_chu' | 'chi_tiet'>): ShippingCustomerGroup[] {
   const lines = order.chi_tiet.length > 0 ? order.chi_tiet : [createLine()];
   const groups: ShippingCustomerGroup[] = [];
   for (const line of lines) {
@@ -237,7 +241,10 @@ function groupsFromOrder(order: Pick<ShippingOrder, 'ma_khach_hang' | 'ten_khach
     const thanh_toan =
       group.chi_tiet.find(item => item.thanh_toan.trim())?.thanh_toan.trim() ||
       String(order.thanh_toan || '').trim();
-    const next = { ...group, ghi_chu, thanh_toan };
+    const nhan_vien =
+      group.chi_tiet.find(item => item.nhan_vien.trim())?.nhan_vien.trim() ||
+      String(order.nhan_vien || '').trim();
+    const next = { ...group, ghi_chu, thanh_toan, nhan_vien };
     return next.chi_tiet.length > 0 ? next : { ...next, chi_tiet: [createLine()] };
   });
 }
@@ -276,6 +283,7 @@ function parseLines(value: unknown): ShippingOrderLine[] {
         don_gia: Number(row.don_gia ?? row.unit_price ?? 0),
         tong_tien: Number(row.tong_tien ?? row.total_amount ?? row.thanh_tien ?? 0),
         thanh_toan: pickText(row, ['thanh_toan', 'hinh_thuc_tt', 'payment'], ''),
+        nhan_vien: pickText(row, ['nhan_vien', 'nguoi_phu_trach', 'nvql', 'staff'], ''),
         ma_khach_hang: pickText(row, ['ma_khach_hang', 'customer_code'], ''),
         ten_khach_hang: pickText(row, ['ten_khach_hang', 'customer_name', 'khach_hang'], ''),
         dia_chi_giao: pickText(row, ['dia_chi_giao', 'dia_chi', 'address'], ''),
@@ -389,7 +397,7 @@ function generateNextShippingCode(existingCodes: Iterable<string>) {
 }
 
 function emptyForm(code = '', staffName = ''): ShippingOrderFormState {
-  const khach = [createCustomerGroup()];
+  const khach = [createCustomerGroup({ nhan_vien: staffName })];
   return {
     ma_lenh: code,
     ngay_xuat: todayIso(),
@@ -634,9 +642,18 @@ export function ShippingOrdersPanel({
   };
 
   useEffect(() => {
-    if (!formOpen || editingId || form.nhan_vien.trim() || !currentUser?.name?.trim()) return;
-    setForm(prev => ({ ...prev, nhan_vien: currentUser.name.trim() }));
-  }, [currentUser?.name, editingId, form.nhan_vien, formOpen]);
+    if (!formOpen || editingId || !currentUser?.name?.trim()) return;
+    const staffName = currentUser.name.trim();
+    setForm(prev => {
+      if (!prev.khach.some(group => !group.nhan_vien.trim())) return prev;
+      return {
+        ...prev,
+        khach: prev.khach.map(group =>
+          group.nhan_vien.trim() ? group : { ...group, nhan_vien: staffName }
+        )
+      };
+    });
+  }, [currentUser?.name, editingId, formOpen]);
 
   const openFillFromOrders = () => {
     setFillDate(form.ngay_xuat || todayIso());
@@ -679,6 +696,7 @@ export function ShippingOrdersPanel({
           ten_khach_hang: catalog?.name || customerName,
           dia_chi_giao: catalog ? catalog.dia_chi_moi?.trim() || catalog.dia_chi.trim() : '',
           so_dien_thoai: catalog?.so_dien_thoai || '',
+          nhan_vien: currentUser?.name?.trim() || '',
           chi_tiet: []
         });
         group.chi_tiet = [];
@@ -809,6 +827,7 @@ export function ShippingOrdersPanel({
     setError('');
     try {
       const payments = [...new Set(groups.map(group => group.thanh_toan.trim()).filter(Boolean))];
+      const staff = [...new Set(groups.map(group => group.nhan_vien.trim()).filter(Boolean))];
       const names = [...new Set(groups.map(group => group.ten_khach_hang.trim()).filter(Boolean))];
       const codes = [...new Set(groups.map(group => group.ma_khach_hang.trim()).filter(Boolean))];
       const payload = {
@@ -820,6 +839,7 @@ export function ShippingOrdersPanel({
         so_dien_thoai: groups.map(group => group.so_dien_thoai.trim()).filter(Boolean).join(', '),
         ghi_chu: composeHeaderNote(groups),
         thanh_toan: payments.length === 1 ? payments[0] : '',
+        nhan_vien: staff.length === 1 ? staff[0] : staff.join(', '),
         chi_tiet: lines.map(({ line, group }) => ({
           ma_sp: line.ma_sp.trim(),
           ten_sp: line.ten_sp.trim(),
@@ -828,6 +848,7 @@ export function ShippingOrdersPanel({
           don_gia: line.don_gia,
           tong_tien: line.tong_tien,
           thanh_toan: group.thanh_toan.trim(),
+          nhan_vien: group.nhan_vien.trim(),
           ma_khach_hang: group.ma_khach_hang.trim(),
           ten_khach_hang: group.ten_khach_hang.trim(),
           dia_chi_giao: group.dia_chi_giao.trim(),
@@ -895,6 +916,7 @@ export function ShippingOrdersPanel({
           don_gia: line.don_gia,
           tong_tien: line.tong_tien,
           thanh_toan: line.thanh_toan.trim(),
+          nhan_vien: line.nhan_vien.trim() || order.nhan_vien,
           ma_khach_hang: String(line.ma_khach_hang || '').trim(),
           ten_khach_hang: String(line.ten_khach_hang || '').trim(),
           dia_chi_giao: String(line.dia_chi_giao || '').trim(),
@@ -1291,17 +1313,6 @@ export function ShippingOrdersPanel({
                     inputClassName={compactFieldClass}
                   />
                 </label>
-                <label className="block space-y-0.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    Nhân viên
-                  </span>
-                  <input
-                    value={form.nhan_vien}
-                    onChange={event => setForm(prev => ({ ...prev, nhan_vien: event.target.value }))}
-                    className={compactFieldClass}
-                    placeholder="Người lập"
-                  />
-                </label>
               </div>
 
               <div className="flex shrink-0 justify-end">
@@ -1408,7 +1419,25 @@ export function ShippingOrdersPanel({
                           inputClassName={compactFieldClass}
                         />
                       </label>
-                      <label className="block space-y-0.5 sm:col-span-2 lg:col-span-3">
+                      <label className="block space-y-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Người phụ trách
+                        </span>
+                        <input
+                          value={group.nhan_vien}
+                          onChange={event =>
+                            setForm(prev => ({
+                              ...prev,
+                              khach: prev.khach.map(item =>
+                                item.id === group.id ? { ...item, nhan_vien: event.target.value } : item
+                              )
+                            }))
+                          }
+                          className={compactFieldClass}
+                          placeholder="Người phụ trách khách này"
+                        />
+                      </label>
+                      <label className="block space-y-0.5 sm:col-span-2 lg:col-span-2">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                           Ghi chú khách này
                         </span>
@@ -1557,7 +1586,12 @@ export function ShippingOrdersPanel({
                 ))}
                 <button
                   type="button"
-                  onClick={() => setForm(prev => ({ ...prev, khach: [...prev.khach, createCustomerGroup()] }))}
+                  onClick={() =>
+                    setForm(prev => ({
+                      ...prev,
+                      khach: [...prev.khach, createCustomerGroup({ nhan_vien: currentUser?.name?.trim() || '' })]
+                    }))
+                  }
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-xs font-extrabold text-white hover:bg-[#d41626]"
                 >
                   <Plus className="h-4 w-4" />

@@ -36,15 +36,17 @@ function customerMergeKey(order: ShippingOrder) {
 
 function orderViewForLine(order: ShippingOrder, line: ShippingOrderLine | null): ShippingOrder {
   if (!line) return order;
+  const staff = String(line.nhan_vien || '').trim() || order.nhan_vien;
   const code = String(line.ma_khach_hang || '').trim();
   const name = String(line.ten_khach_hang || '').trim();
-  if (!code && !name) return order;
+  if (!code && !name) return { ...order, nhan_vien: staff };
   return {
     ...order,
     ma_khach_hang: code || order.ma_khach_hang,
     ten_khach_hang: name || order.ten_khach_hang,
     dia_chi_giao: String(line.dia_chi_giao || '').trim() || order.dia_chi_giao,
     so_dien_thoai: String(line.so_dien_thoai || '').trim() || order.so_dien_thoai,
+    nhan_vien: staff,
     ghi_chu: line.ghi_chu != null ? String(line.ghi_chu).trim() : order.ghi_chu
   };
 }

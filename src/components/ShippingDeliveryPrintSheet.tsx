@@ -199,7 +199,7 @@ export function ShippingDeliveryPrintSheet({
             <colgroup>
               <col style={{ width: '3.5%' }} />
               <col style={{ width: '7%' }} />
-              <col style={{ width: '8%' }} />
+              <col style={{ width: '16%' }} />
               <col style={{ width: '6%' }} />
               <col style={{ width: '4%' }} />
               <col style={{ width: '6.5%' }} />
@@ -208,7 +208,7 @@ export function ShippingDeliveryPrintSheet({
               <col style={{ width: '6.5%' }} />
               <col style={{ width: '5.5%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '24.5%' }} />
+              <col style={{ width: '16.5%' }} />
             </colgroup>
             <thead>
               <tr>
@@ -245,11 +245,7 @@ export function ShippingDeliveryPrintSheet({
               <tr>
                 <th>TT</th>
                 <th>Mã KH</th>
-                <th>
-                  Tên
-                  <br />
-                  khách
-                </th>
+                <th className="bb-gx-address">Tên-Địa chỉ</th>
                 <th className="bb-gx-phone">SĐT KH</th>
                 <th className="bb-gx-staff">NVQL</th>
                 <th className="bb-gx-code">
@@ -293,8 +289,11 @@ export function ShippingDeliveryPrintSheet({
                       </td>
                     ) : null}
                     {maKhSpan > 0 ? (
-                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-customer bb-gx-merge-cell">
-                        {order.ten_khach_hang || '—'}
+                      <td rowSpan={maKhSpan} className="bb-gx-left bb-gx-address bb-gx-merge-cell">
+                        <div className="bb-gx-customer-name">{order.ten_khach_hang || '—'}</div>
+                        {String(order.dia_chi_giao || '').trim() ? (
+                          <div>{order.dia_chi_giao}</div>
+                        ) : null}
                       </td>
                     ) : null}
                     {phoneSpan > 0 ? (

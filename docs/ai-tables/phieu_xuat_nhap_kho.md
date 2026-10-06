@@ -19,7 +19,7 @@
 | GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng chung cho tab Nhập kho lẫn tab Xuất kho treo) |
 | POST | `/api/kho/luu-phieu` | Lưu header + dòng trên DB kho mới; body có thể kèm `treo: true` |
 | POST | `/api/kho/phieu/:slipCode/xac-nhan-treo` | Chốt phiếu xuất treo |
-| PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu nhập chưa in |
+| PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu chưa in; phiếu xuất chỉ hỗ trợ NVL và hàng hỏng |
 | DELETE | `/api/kho/phieu/:slipCode` hoặc `/api/kho/dong/:id` | Xóa phiếu hoặc một dòng |
 
 ## Frontend
@@ -51,7 +51,7 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 - **`warehouse-slip-thanh-pham`** ("Phiếu xuất nhập kho - Thành phẩm"): `san_pham`.
 - 2 dòng này thay cho dòng `warehouse-slip` cũ trong `STAFF_MENU_VIEW_TREE` (`src/features/nhan-su/menuViews.ts`, nhóm `factory-kho` và `facility-management`) — hiện trong ma trận Phân quyền tại `/cai-dat`.
 - `src/app/tabAccess.ts` → `hubHasAllowedChild()` cho phép vào hai route dùng chung nếu có 1 trong 2 quyền con; quyền cũ `warehouse-slip` không được suy rộng thành cả hai quyền mới.
-- `src/features/phieu-xuat-nhap-kho/index.tsx` → `useWarehouseSlipAccess()` + `pickWarehouseSlipAccess(access, kind)` chọn đúng bộ quyền theo `warehouseKind` (form tạo/sửa) hoặc `warehouseTab` (Lịch sử xuất nhập) đang thao tác; chỉ phiếu nhập có thể sửa, phiếu xuất bị khóa ở giao diện và API. Khi sửa phiếu nhập thành phẩm, **Thực hiện** chỉ hiện mã quét mới; **Chi tiết** hiện từng QR đã lưu; **Lập phiếu** hiển thị và chỉnh sửa các dòng đã gộp theo mã TP gốc.
+- `src/features/phieu-xuat-nhap-kho/index.tsx` → `useWarehouseSlipAccess()` + `pickWarehouseSlipAccess(access, kind)` chọn đúng bộ quyền theo `warehouseKind` (form tạo/sửa) hoặc `warehouseTab` (Lịch sử xuất nhập) đang thao tác; phiếu chưa in được sửa, phiếu xuất chỉ hỗ trợ Kho NVL và Kho hàng hỏng. Bấm **In phiếu** sẽ khóa sửa phiếu. Khi sửa phiếu nhập thành phẩm, **Thực hiện** chỉ hiện mã quét mới; **Chi tiết** hiện từng QR đã lưu; **Lập phiếu** hiển thị và chỉnh sửa các dòng đã gộp theo mã TP gốc.
 - Dropdown **Tên kho**, các tab lịch sử và Thêm/Sửa/Xóa chỉ hiện đúng nhóm kho được cấp; các handler kiểm tra quyền lại trước khi gọi API.
 - Migration `scripts/migrate-warehouse-slip-permissions.mjs`: quyền xem cũ chuyển sang xem hai nhóm; riêng `Thủ kho vật tư, kế toán sản xuất` chỉ nhận quyền Vật tư và `Thủ kho thành phẩm` chỉ nhận quyền Thành phẩm. Chỉ hai vai trò này nhận Thêm/Sửa/Xóa.
 - Tài khoản vận hành đã gán trực tiếp qua `nhan_su.vi_tri_gan`: `NV003-3` → Vật tư, `NV006-4` → Thành phẩm. Đã kiểm thử đăng nhập thực tế ngày 2026-08-12; mỗi tài khoản chỉ thấy dropdown và tab lịch sử thuộc kho phụ trách.

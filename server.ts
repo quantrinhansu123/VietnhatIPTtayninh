@@ -12553,6 +12553,8 @@ export function createApp() {
               thanh_tien: Number(line.thanh_tien) || 0,
               id_dong_nhap_nguon: line.id_dong_nhap_nguon || null,
               ma_phieu_nhap_nguon: line.ma_phieu_nhap_nguon || null,
+              link_anh_can_thuc_te: line.link_anh_can_thuc_te || null,
+              link_anh_can_thuc_te_public_id: line.link_anh_can_thuc_te_public_id || null,
               id_bao_cao_nghiem_thu: line.id_bao_cao_nghiem_thu || null,
               id_bao_cao_hang_hong: line.id_bao_cao_hang_hong || null,
               created_at: line.created_at,
@@ -13473,7 +13475,18 @@ export function createApp() {
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
         const existing = await loadWarehouseMovementsFromKho({ maPhieu: slipCode });
         if (!existing.length) return res.status(404).json({ error: 'Khong tim thay phieu can cap nhat.' });
-        if (existing.some(row => row.loai_phieu === 'xuat' || row.da_in)) return res.status(409).json({ error: 'Phieu xuat hoac phieu da in khong the sua.' });
+        if (existing.some(row => row.da_in)) return res.status(409).json({ error: 'Phieu da in khong the sua.' });
+        const existingKind = String(existing[0].loai_kho || 'nvl');
+        if (existing.some(row => row.loai_phieu !== parsed.loaiPhieu || row.loai_kho !== parsed.loaiKho)) {
+          return res.status(409).json({ error: 'Loai phieu va kho khong the thay doi khi sua.' });
+        }
+        if (parsed.loaiPhieu === 'xuat' && existingKind !== 'nvl' && existingKind !== 'hang_hong') {
+          return res.status(409).json({ error: 'Chi cho phep sua phieu xuat kho NVL hoac hang hong.' });
+        }
+        if (parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl') {
+          const lotError = await validateNvlExportLots(parsed.items, slipCode);
+          if (lotError) return res.status(400).json(lotError);
+        }
         await saveWarehouseSlipToKho(parsed, slipCode, 'da_chot');
         const rows = await loadWarehouseMovementsFromKho({ loaiPhieu: parsed.loaiPhieu, maPhieu: slipCode });
         await syncCodes([...existing, ...rows]);

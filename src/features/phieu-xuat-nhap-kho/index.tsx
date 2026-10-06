@@ -111,6 +111,14 @@ export type WarehouseKind =
   | 'cong_cu_dung_cu'
   | 'gia_cong';
 
+function canEditWarehouseHistorySlip(
+  slipType: WarehouseSlipType,
+  warehouseKind: WarehouseKind,
+  daIn = false
+) {
+  return !daIn && (slipType === 'nhap' || warehouseKind === 'nvl' || warehouseKind === 'hang_hong');
+}
+
 const WAREHOUSE_HISTORY_TABS = [
   ['nvl', 'Kho NVL', Boxes],
   ['san_pham', 'Kho thành phẩm', Package],
@@ -156,6 +164,7 @@ export interface WarehouseMovementRow {
   acceptanceReportRowId?: string;
   treo?: boolean;
   actualWeightImageUrl?: string;
+  actualWeightImagePublicId?: string;
   daIn?: boolean;
 }
 
@@ -354,7 +363,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
         damagedReportRowId: row.damagedReportRowId || '',
         acceptanceReportRowId: row.acceptanceReportRowId || '',
         actualWeightImageUrl: row.actualWeightImageUrl || '',
-        actualWeightImagePublicId: ''
+        actualWeightImagePublicId: row.actualWeightImagePublicId || ''
       }));
 
   return {
@@ -1080,6 +1089,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
           String(record.id_bao_cao_nghiem_thu ?? record.acceptanceReportRowId ?? '').trim() || undefined,
         treo: record.treo === true,
         actualWeightImageUrl: String(record.link_anh_can_thuc_te ?? record.actualWeightImageUrl ?? '').trim() || undefined,
+        actualWeightImagePublicId: String(record.link_anh_can_thuc_te_public_id ?? record.actualWeightImagePublicId ?? '').trim() || undefined,
         daIn: record.da_in === true
       };
     })
@@ -1644,7 +1654,10 @@ export function WarehouseSlipPanel({
       if (!draft.createdAt || Date.now() - draft.createdAt > WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS) return;
       const editingCode = String(draft.editSlipCode || '').trim();
       const draftSlipType = draft.slipType === 'nhap' ? 'nhap' : 'xuat';
-      if (editingCode && draftSlipType === 'xuat') {
+      if (editingCode && !canEditWarehouseHistorySlip(
+        draftSlipType,
+        draft.warehouseKind || inferWarehouseKindFromName(String(draft.warehouseName || ''))
+      )) {
         setFormError('Phiếu xuất kho không thể sửa.');
         return;
       }
@@ -3305,12 +3318,20 @@ export function WarehouseSlipPanel({
   const productionOrderLabelForSave = showOrderFields ? productionOrderLabel : '';
   const savedReason = composeReasonWithProductionOrderCodes(reason, productionOrderCodesForSave);
 
-  const handlePrintSavedSlip = () => {
+  const handlePrintSavedSlip = async () => {
     if (!printSlip) {
       setFormError(showSaveFailure('Vui lòng lưu phiếu trước khi in.'));
       return;
     }
     setFormError('');
+    try {
+      const response = await fetch(`/api/kho/phieu/${encodeURIComponent(printSlip.slipCode)}/danh-dau-da-in`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Không thể khóa phiếu trước khi in.');
+    } catch (printError: any) {
+      setFormError(showSaveFailure(printError.message || 'Không thể khóa phiếu trước khi in.'));
+      return;
+    }
     setPrintAutoTrigger(true);
     setPrintModalOpen(true);
   };
@@ -3438,7 +3459,7 @@ export function WarehouseSlipPanel({
   };
 
   const handleSave = async (autoPrint = false) => {
-    if (editSlipCode && slipType === 'xuat') {
+    if (editSlipCode && !canEditWarehouseHistorySlip(slipType, warehouseKind)) {
       setFormError(showSaveFailure('Phiếu xuất kho không thể sửa.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -3482,9 +3503,9 @@ export function WarehouseSlipPanel({
     }
     const currentLines = linesRef.current;
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(currentLines) : currentLines;
-    const mergedLines = isNvlExport ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
+    const mergedLines = isNvlExport && !editSlipCode ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
     if (slipType === 'xuat') setLines(mergedLines);
-    const linesForSave = isNvlExport
+    const linesForSave = isNvlExport && !editSlipCode
       ? mergedLines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
       : orderedLines;
     const parsed = parseWarehouseSlipPayloadItems(linesForSave, warehouseKind, {
@@ -5373,23 +5394,30 @@ export function WarehouseHistoryPanel({
     };
   };
 
-  const markSlipsPrinted = (slipCodes: string[]) => {
+  const markSlipsPrinted = async (slipCodes: string[]) => {
     const codes = [...new Set(slipCodes.filter(Boolean))];
     if (codes.length === 0) return;
-    setMovements(prev => prev.map(row => (codes.includes(row.slipCode) ? { ...row, daIn: true } : row)));
-    codes.forEach(code => {
-      fetch(`/api/kho/phieu/${encodeURIComponent(code)}/danh-dau-da-in`, { method: 'POST' }).catch(() => {});
-    });
+    await Promise.all(codes.map(async code => {
+      const response = await fetch(`/api/kho/phieu/${encodeURIComponent(code)}/danh-dau-da-in`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Không thể khóa phiếu ${code} sau khi in.`);
+      setMovements(prev => prev.map(row => row.slipCode === code ? { ...row, daIn: true } : row));
+    }));
   };
 
-  const handlePrintSlipByCode = (slipCode: string, autoPrint = false) => {
+  const handlePrintSlipByCode = async (slipCode: string, autoPrint = false) => {
     if (autoPrint) {
       const alreadyPrinted = movements.some(row => row.slipCode === slipCode && row.daIn);
       if (!alreadyPrinted) {
         if (!window.confirm('In phiếu sẽ khóa việc sửa phiếu này. Bạn có chắc chắn muốn in?')) {
           return;
         }
-        markSlipsPrinted([slipCode]);
+        try {
+          await markSlipsPrinted([slipCode]);
+        } catch (printError: any) {
+          setError(printError.message || 'Không thể khóa phiếu trước khi in.');
+          return;
+        }
       }
     }
     const slip = buildHistoryPrintSlip(slipCode);
@@ -5399,7 +5427,7 @@ export function WarehouseHistoryPanel({
     setHistoryPrintOpen(true);
   };
 
-  const handlePrintSelectedSlips = (autoPrint = true) => {
+  const handlePrintSelectedSlips = async (autoPrint = true) => {
     const slips = slipGroups
       .filter(group => selectedSlipCodes.has(group.slipCode))
       .map(group => buildHistoryPrintSlip(group.slipCode))
@@ -5417,7 +5445,12 @@ export function WarehouseHistoryPanel({
         if (!window.confirm('In phiếu sẽ khóa việc sửa các phiếu này. Bạn có chắc chắn muốn in?')) {
           return;
         }
-        markSlipsPrinted(unprintedCodes);
+        try {
+          await markSlipsPrinted(unprintedCodes);
+        } catch (printError: any) {
+          setError(printError.message || 'Không thể khóa phiếu trước khi in.');
+          return;
+        }
       }
     }
 
@@ -5495,7 +5528,7 @@ export function WarehouseHistoryPanel({
       return;
     }
     const rows = filteredMovements.filter(row => row.slipCode === slipCode);
-    if (rows.some(row => row.slipType === 'xuat')) {
+    if (rows.length && !canEditWarehouseHistorySlip(rows[0].slipType, rows[0].warehouseKind)) {
       setError('Phiếu xuất kho không thể sửa.');
       return;
     }
@@ -5824,7 +5857,7 @@ export function WarehouseHistoryPanel({
                             <div><dt className="font-bold text-zinc-400">Người lập</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.createdBy || '-'}</dd></div>
                           </dl>
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                            {canEdit && header.slipType !== 'xuat' && !header.daIn ? (
+                            {canEdit && canEditWarehouseHistorySlip(header.slipType, group.rows[0]?.warehouseKind || warehouseTab, header.daIn) ? (
                               <button type="button" onClick={() => handleEditSlip(group.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
                             ) : null}
                             <button type="button" onClick={() => handlePrintSlipByCode(group.slipCode, true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-[#ef1b2d]"><Printer className="h-3.5 w-3.5" />In</button>
@@ -5903,7 +5936,7 @@ export function WarehouseHistoryPanel({
                           <td className="px-4 py-3">
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
                             <div className="flex items-center justify-center gap-1">
-                              {canEdit && header.slipType !== 'xuat' && !header.daIn ? (
+                              {canEdit && canEditWarehouseHistorySlip(header.slipType, group.rows[0]?.warehouseKind || warehouseTab, header.daIn) ? (
                                 <button
                                   type="button"
                                   onClick={() => handleEditSlip(group.slipCode)}
@@ -5984,7 +6017,7 @@ export function WarehouseHistoryPanel({
               </div>
               {isStandalone ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEdit && viewingRows[0]?.slipType !== 'xuat' && !viewingRows[0]?.daIn ? (
+                  {canEdit && canEditWarehouseHistorySlip(viewingRows[0].slipType, viewingRows[0].warehouseKind, viewingRows[0].daIn) ? (
                     <button
                       type="button"
                       onClick={() => handleEditSlip(viewingSlipCode!)}
@@ -6117,7 +6150,7 @@ export function WarehouseHistoryPanel({
                 {historyQrError ? <p className="mt-1 text-xs font-semibold text-rose-700">{historyQrError}</p> : null}
               </div>
               <div className={`flex-wrap items-center gap-2 ${isStandalone ? 'hidden' : 'flex'}`}>
-                {canEdit && viewingRows[0]?.slipType !== 'xuat' && !viewingRows[0]?.daIn ? (
+                {canEdit && canEditWarehouseHistorySlip(viewingRows[0].slipType, viewingRows[0].warehouseKind, viewingRows[0].daIn) ? (
                   <button
                     type="button"
                     onClick={() => handleEditSlip(viewingSlipCode!)}

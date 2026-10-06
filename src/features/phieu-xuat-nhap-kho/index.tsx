@@ -4339,20 +4339,22 @@ export function WarehouseSlipPanel({
                 ))}
               </div>
             ) : null}
-            {(editSlipCode ? canEdit : canCreate) && showQrScanButtons && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
+            {(editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
               <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScannerMode('camera');
-                    setQrScannerOpen(true);
-                  }}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
-                  title="Quét ĐT: mã trùng sẽ không được thêm"
-                >
-                  <ScanBarcode className="h-3.5 w-3.5" />
-                  Quét ĐT
-                </button>
+                {showQrScanButtons ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScannerMode('camera');
+                      setQrScannerOpen(true);
+                    }}
+                    className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+                    title="Quét ĐT: mã trùng sẽ không được thêm"
+                  >
+                    <ScanBarcode className="h-3.5 w-3.5" />
+                    Quét ĐT
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -4364,7 +4366,7 @@ export function WarehouseSlipPanel({
                   <Plus className="h-3.5 w-3.5" />
                   Thêm dòng
                 </button>
-                {slipType === 'xuat' && warehouseKind !== 'san_pham' ? (
+                {showQrScanButtons && slipType === 'xuat' && warehouseKind !== 'san_pham' ? (
                   <button
                     type="button"
                     onClick={handleRefreshWeightCatalog}

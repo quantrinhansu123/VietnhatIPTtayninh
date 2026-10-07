@@ -48,19 +48,19 @@
 | `GET /api/can-tu-dong` | `all=1` phân trang `.range` (vượt max_rows PostgREST ~1000). `images=0` bỏ ký URL ảnh. `from`+`to` mặc định lọc `captured_at`; **`dateBy=ngay`** lọc cột **Ngày** (`SOURCE_DATE`) và vẫn cắt `captured_at` ±3 ngày. UI `/can-tu-dong` mở sẵn **hôm nay** (`dateBy=ngay`) để không tải cả bảng |
 | `POST /api/can-tu-dong/bulk-delete` | Body `{ ids }` — xóa nhiều dòng |
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
-| `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca (mặc định `12C2`). UI nút **Chọn Ca · điền hàng loạt** mở modal chọn ca rồi gửi id các dòng **đang hiện theo bộ lọc** |
+| `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca. Trang `/can-tu-dong` không còn nút **Sửa Ca theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong`: tick dòng → nút **Sửa ngày** mở modal rồi gửi id các dòng **đã chọn** |
 | `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
-| `POST /api/kho-cho` | Body `{ items, ma_phieu }` — nút **Nhập kho** ghi QR vào `kho_cho` (cùng cột `nhap_kho`, `ma_phieu` là phiếu đang chọn). Không ghi `nhap_kho` |
-| `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu?, trang_thai? }` — `trang_thai` là `Đã nhập kho` hoặc `Chờ nhập kho`. Nút **Đổi** trên từng dòng đổi qua lại hai trạng thái. Sau khi ghi `kho_cho`, popup Nhập kho vẫn đánh dấu `Đã nhập kho` |
+| `POST /api/kho/quet-dot` | Nút **Nhập kho** bắt chọn **ca + máy**, luôn tạo phiếu nhập mới và ghi QR vào `nhap_kho`. Mỗi dòng ghi `ca`, `may`, `ngay`, `nguoi_thao_tac`, `trang_thai=Đang chờ` (cần chạy `supabase-nhap-kho-ca-may.sql`). Phiếu `phieu_nhap` vẫn `status=chua_chot`, và cùng mã phiếu hiện ở `/lich-su-xuat-nhap-kho` mục Kho thành phẩm, tab Nhập kho. Không ghi `kho_cho` |
+| `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu?, trang_thai? }` — `trang_thai` là `Đã nhập kho` hoặc `Chờ nhập kho`. Nút **Đổi** trên từng dòng đổi qua lại hai trạng thái. Sau khi ghi `nhap_kho`, popup Nhập kho đánh dấu dòng cân `Đã nhập kho` |
 | `POST /api/can-tu-dong/:id/duplicate` | Nhân bản y nguyên 1 dòng. UI cột Thao tác đã bỏ nút **Nhân bản** |
 
 ## Frontend
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** · Excel · **In** · **In đã nhập kho** (popup gõ mã phiếu để chọn, không chọn sẵn). **Xem phiếu** tách từng đợt theo lần bấm Nhập kho (`nhap_kho.created_at`). In bằng `WarehouseSlipPrintModal` |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** (ngày, ca, **máy**, lệnh SX, mã SP) · Excel · **In** · **In đã nhập kho** (popup gõ mã phiếu để chọn, không chọn sẵn). **Xem phiếu** tách từng đợt theo lần bấm Nhập kho (`nhap_kho.created_at`). In bằng `WarehouseSlipPrintModal` |
 | `src/features/can-tu-dong/entry-form.tsx` | Form **Trạm cân AI** (`/phieu-bao-cao`) và **Trạm cân QR** (`/tram-can-qr`) — ghi thêm dòng vào `can_tu_dong`, không mở trạm ngoài |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |

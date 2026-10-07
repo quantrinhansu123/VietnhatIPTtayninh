@@ -11,7 +11,7 @@
 | Method | Path | Dòng |
 |--------|------|------|
 | GET | `/api/kho/luu-phieu` | Danh sách phiếu; lọc `loai`, `loai_kho`, `ma_sp` |
-| GET | `/api/kho/lich-su` | Trang `/lich-su-xuat-nhap-kho` ghép header và chi tiết từ DB kho mới theo `ma_phieu` |
+| GET | `/api/kho/lich-su` | Trang `/lich-su-xuat-nhap-kho` ghép header và chi tiết từ DB kho mới theo `ma_phieu`. Trang gửi `status=all` để hiện cả phiếu `chua_chot` đã có dòng (phiếu nhập từ máy) |
 | GET / DELETE | `/api/kho/chi-tiet` | Đọc danh sách mã QR đã quét hoặc xóa mã trong phiếu nháp |
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | Nhật ký theo SP — dùng tab Nhập kho / Xuất kho trong Xem sản phẩm |
 | GET | `/api/kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |

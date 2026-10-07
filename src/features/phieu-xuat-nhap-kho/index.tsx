@@ -5113,6 +5113,7 @@ export function WarehouseHistoryPanel({
       } else {
         params.set('loai_kho', warehouseTab);
         params.set('loai', selectedType);
+        params.set('status', 'all');
         if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
         if (fromDate) params.set('from', fromDate);
         if (toDate) params.set('to', toDate);

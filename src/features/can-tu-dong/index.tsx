@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays,
-  Clock,
   Copy,
   Eye,
   FileSpreadsheet,
@@ -240,24 +239,6 @@ async function postCanTuDongBulkSetNgay(ids: Array<string | number>, ngay: strin
   return updated;
 }
 
-async function postCanTuDongBulkSetCa(ids: Array<string | number>, ca: string) {
-  let updated = 0;
-  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
-    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
-    const res = await fetch('/api/can-tu-dong/bulk-set-ca', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: chunk, ca })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || 'Không thể đổi Ca các dòng cân tự động.');
-    }
-    updated += Number(data.updated) || chunk.length;
-  }
-  return updated;
-}
-
 async function postCanTuDongBulkSetMaSp(ids: Array<string | number>, maSp: string) {
   let updated = 0;
   for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
@@ -395,7 +376,6 @@ function statusClass(status?: string | null) {
 
 const NHAP_KHO_CHO = 'Chờ nhập kho';
 const NHAP_KHO_DA = 'Đã nhập kho';
-const NHAP_KHO_NEW_SLIP = '__new__';
 
 function isFinishedGoodsWarehouseName(value: string) {
   const key = value
@@ -467,6 +447,15 @@ function lenhSxMatches(rowLenh: string, filter: string): boolean {
   return rowLenh.trim().toUpperCase() === filter.trim().toUpperCase();
 }
 
+function resolveRowMay(row: CanTuDongRecord): string {
+  return String(resolveCanTuDongMachine(row) ?? '').trim();
+}
+
+function mayMatches(rowMay: string, filter: string): boolean {
+  if (filter === 'all') return true;
+  return rowMay.trim().toLocaleLowerCase('vi') === filter.trim().toLocaleLowerCase('vi');
+}
+
 function normalizeQrKey(qr?: string | null): string {
   return String(qr ?? '').trim();
 }
@@ -491,13 +480,10 @@ export function CanTuDongPanel({
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isSettingNgay, setIsSettingNgay] = useState(false);
-  const [isSettingCa, setIsSettingCa] = useState(false);
   const [isSettingMaSp, setIsSettingMaSp] = useState(false);
   const [showBulkNgayModal, setShowBulkNgayModal] = useState(false);
   const [bulkNgayValue, setBulkNgayValue] = useState(() => localIsoDateToday());
   const [bulkNgayScope, setBulkNgayScope] = useState<'visible' | 'selected'>('selected');
-  const [showBulkCaModal, setShowBulkCaModal] = useState(false);
-  const [bulkCaValue, setBulkCaValue] = useState(AUTO_FILL_CA);
   const [showBulkMaSpModal, setShowBulkMaSpModal] = useState(false);
   /** `prefix` = đồng bộ từng dòng theo tiền tố QR; `pick` = điền một Mã SP đã chọn. */
   const [bulkMaSpMode, setBulkMaSpMode] = useState<'prefix' | 'pick'>('prefix');
@@ -515,6 +501,8 @@ export function CanTuDongPanel({
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || localIsoDateToday());
   /** Lọc cột Ca (`all` = tất cả). */
   const [caFilter, setCaFilter] = useState(() => initialFilters?.shift?.trim() || 'all');
+  /** Lọc cột Máy (`all` = tất cả). */
+  const [mayFilter, setMayFilter] = useState('all');
   /** Lọc Lệnh SX (`all` = tất cả). */
   const [lenhSxFilter, setLenhSxFilter] = useState('all');
   /** Chỉ hiện dòng có mã QR trùng trong phạm vi bộ lọc ngày/ca/Mã SP. */
@@ -545,7 +533,6 @@ export function CanTuDongPanel({
   const [isNhapKho, setIsNhapKho] = useState(false);
   const [togglingNhapKhoId, setTogglingNhapKhoId] = useState('');
   const [isCheckingNhapKho, setIsCheckingNhapKho] = useState(false);
-  const [isSyncingNhapKhoStatus, setIsSyncingNhapKhoStatus] = useState(false);
   const [showPrintPhieuModal, setShowPrintPhieuModal] = useState(false);
   const [printPhieuOptions, setPrintPhieuOptions] = useState<NhapKhoSlipOption[]>([]);
   const [printPhieuQuery, setPrintPhieuQuery] = useState('');
@@ -562,9 +549,9 @@ export function CanTuDongPanel({
   const [nhapKhoWarehouses, setNhapKhoWarehouses] = useState<string[]>([]);
   const [nhapKhoKho, setNhapKhoKho] = useState('');
   const [nhapKhoSlipDate, setNhapKhoSlipDate] = useState(() => localIsoDateToday());
-  const [nhapKhoSlips, setNhapKhoSlips] = useState<NhapKhoSlipOption[]>([]);
-  const [nhapKhoPhieu, setNhapKhoPhieu] = useState(NHAP_KHO_NEW_SLIP);
-  const [loadingNhapKhoSlips, setLoadingNhapKhoSlips] = useState(false);
+  const [nhapKhoCa, setNhapKhoCa] = useState('');
+  const [nhapKhoMay, setNhapKhoMay] = useState('');
+  const [loadingNhapKhoKho, setLoadingNhapKhoKho] = useState(false);
 
   const filteredPrintPhieu = useMemo(() => {
     const query = printPhieuQuery.trim().toLowerCase();
@@ -752,31 +739,38 @@ export function CanTuDongPanel({
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [recordsByDate]);
 
-  const bulkCaOptions = useMemo(() => {
-    const set = new Set<string>(caOptions);
-    if (AUTO_FILL_CA) set.add(AUTO_FILL_CA);
-    if (caFilter !== 'all' && caFilter.trim()) set.add(caFilter.trim());
-    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [caOptions, caFilter]);
-
   const recordsByCa = useMemo(() => {
     if (caFilter === 'all') return recordsByDate;
     return recordsByDate.filter(row => canTuDongShiftMatches(String(row.ca ?? ''), caFilter));
   }, [recordsByDate, caFilter]);
 
-  const lenhSxOptions = useMemo(() => {
+  const mayOptions = useMemo(() => {
     const set = new Set<string>();
     for (const row of recordsByCa) {
-      const lenhSx = resolveRowLenhSx(row);
-      if (lenhSx) set.add(lenhSx);
+      const may = resolveRowMay(row);
+      if (may) set.add(may);
     }
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [recordsByCa]);
 
+  const recordsByMay = useMemo(() => {
+    if (mayFilter === 'all') return recordsByCa;
+    return recordsByCa.filter(row => mayMatches(resolveRowMay(row), mayFilter));
+  }, [recordsByCa, mayFilter]);
+
+  const lenhSxOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of recordsByMay) {
+      const lenhSx = resolveRowLenhSx(row);
+      if (lenhSx) set.add(lenhSx);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [recordsByMay]);
+
   const recordsByLenhSx = useMemo(() => {
-    if (lenhSxFilter === 'all') return recordsByCa;
-    return recordsByCa.filter(row => lenhSxMatches(resolveRowLenhSx(row), lenhSxFilter));
-  }, [recordsByCa, lenhSxFilter]);
+    if (lenhSxFilter === 'all') return recordsByMay;
+    return recordsByMay.filter(row => lenhSxMatches(resolveRowLenhSx(row), lenhSxFilter));
+  }, [recordsByMay, lenhSxFilter]);
 
   const maSpOptions = useMemo(() => {
     const byKey = new Map<string, string>();
@@ -937,10 +931,11 @@ export function CanTuDongPanel({
 
   const hasDateFilters = Boolean(fromDate || toDate);
   const hasCaFilter = caFilter !== 'all';
+  const hasMayFilter = mayFilter !== 'all';
   const hasLenhSxFilter = lenhSxFilter !== 'all';
   const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
   const hasActiveFilters =
-    hasDateFilters || hasCaFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr;
+    hasDateFilters || hasCaFilter || hasMayFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr;
 
   /** Phân tích kém cân / hơn cân theo |%| chênh lệch nhựa ÷ Nhựa thực tế (ngưỡng 2%). */
   const phanTichCan = useMemo(() => {
@@ -1127,41 +1122,6 @@ export function CanTuDongPanel({
       );
     } finally {
       setIsSettingNgay(false);
-    }
-  };
-
-  const openBulkCaModal = () => {
-    if (visibleRecords.length === 0) {
-      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
-      return;
-    }
-    setBulkCaValue(caFilter !== 'all' && caFilter.trim() ? caFilter.trim() : AUTO_FILL_CA);
-    setShowBulkCaModal(true);
-  };
-
-  const handleBulkSetCaForVisible = async () => {
-    const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
-    if (ids.length === 0) {
-      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
-      return;
-    }
-    const ca = bulkCaValue.trim();
-    if (!ca) {
-      showAppToast('Chọn ca hợp lệ.', 'error');
-      return;
-    }
-
-    setIsSettingCa(true);
-    try {
-      const updated = await postCanTuDongBulkSetCa(ids, ca);
-      setCaFilter(ca);
-      showAppToast(`Đã điền Ca ${ca} cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`);
-      setShowBulkCaModal(false);
-      await loadRecords();
-    } catch (err: unknown) {
-      showAppToast(err instanceof Error ? err.message : 'Không thể điền Ca các dòng đang lọc.', 'error');
-    } finally {
-      setIsSettingCa(false);
     }
   };
 
@@ -1566,6 +1526,7 @@ export function CanTuDongPanel({
     setFromDate(localIsoDateToday());
     setToDate(localIsoDateToday());
     setCaFilter('all');
+    setMayFilter('all');
     setLenhSxFilter('all');
     setOnlyDuplicateQr(false);
   };
@@ -1599,73 +1560,51 @@ export function CanTuDongPanel({
     }
   };
 
-  const waitingNhapKho = useMemo(
-    () =>
-      visibleRecords
-        .filter(row => readNhapKho(row).waiting && String(row.qr_code || '').trim())
-        .slice()
-        .sort((a, b) => {
-          const ta = Date.parse(String(a.captured_at || '')) || 0;
-          const tb = Date.parse(String(b.captured_at || '')) || 0;
-          if (tb !== ta) return tb - ta;
-          return String(b.id).localeCompare(String(a.id), 'en', { numeric: true });
-        }),
-    [visibleRecords]
-  );
+  const nhapKhoCaOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of records) {
+      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+      const ca = String(row.ca ?? '').trim();
+      if (ca) set.add(ca);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [records, nhapKhoSlipDate]);
+
+  const nhapKhoMayOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of records) {
+      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+      if (nhapKhoCa && !canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) continue;
+      const may = resolveRowMay(row);
+      if (may) set.add(may);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [records, nhapKhoSlipDate, nhapKhoCa]);
+
+  const waitingNhapKho = useMemo(() => {
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) return [];
+    return records
+      .filter(row => {
+        if (!readNhapKho(row).waiting || !String(row.qr_code || '').trim()) return false;
+        if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) return false;
+        if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) return false;
+        return mayMatches(resolveRowMay(row), nhapKhoMay);
+      })
+      .sort((a, b) => {
+        const ta = Date.parse(String(a.captured_at || '')) || 0;
+        const tb = Date.parse(String(b.captured_at || '')) || 0;
+        if (tb !== ta) return tb - ta;
+        return String(b.id).localeCompare(String(a.id), 'en', { numeric: true });
+      });
+  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay]);
   const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
   const nhapKhoPreview = nhapKhoCount > 0 ? waitingNhapKho.slice(0, nhapKhoCount) : [];
-
-  const loadNhapKhoSlips = async (khoNames: string[], ngay: string) => {
-    const names = [...new Set(khoNames.map(name => name.trim()).filter(Boolean))];
-    if (names.length === 0) {
-      setNhapKhoSlips([]);
-      setNhapKhoPhieu(NHAP_KHO_NEW_SLIP);
-      return;
-    }
-    setLoadingNhapKhoSlips(true);
-    try {
-      const lists = await Promise.all(
-        names.map(async kho => {
-          const params = new URLSearchParams({
-            loai_phieu: 'nhap',
-            kho,
-            ngay,
-            status: 'all',
-            limit: '100'
-          });
-          const res = await fetch(`/api/kho/phieu?${params.toString()}`);
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu nhập.'));
-          return (Array.isArray(data?.records) ? data.records : []) as NhapKhoSlipOption[];
-        })
-      );
-      const slips = lists
-        .flat()
-        .map(row => ({
-          ma_phieu: String(row.ma_phieu || '').trim(),
-          ngay: String(row.ngay || '').trim(),
-          kho: String(row.kho || '').trim(),
-          status: String(row.status || '').trim()
-        }))
-        .filter(row => row.ma_phieu)
-        .sort((a, b) => b.ma_phieu.localeCompare(a.ma_phieu, 'en'));
-      setNhapKhoSlips(slips);
-      setNhapKhoPhieu(slips[0]?.ma_phieu || NHAP_KHO_NEW_SLIP);
-    } catch (err: unknown) {
-      setNhapKhoSlips([]);
-      setNhapKhoPhieu(NHAP_KHO_NEW_SLIP);
-      showAppToast(err instanceof Error ? err.message : 'Không tải được phiếu nhập.', 'error');
-    } finally {
-      setLoadingNhapKhoSlips(false);
-    }
-  };
 
   useEffect(() => {
     if (!showNhapKhoModal) return;
     let cancelled = false;
-    const ngay = nhapKhoSlipDate || localIsoDateToday();
     void (async () => {
-      setLoadingNhapKhoSlips(true);
+      setLoadingNhapKhoKho(true);
       try {
         const res = await fetch('/api/quan-ly-kho');
         const data = await res.json().catch(() => ({}));
@@ -1679,25 +1618,20 @@ export function CanTuDongPanel({
         ].sort((a, b) => a.localeCompare(b, 'vi'));
         if (cancelled) return;
         setNhapKhoWarehouses(names);
-        const kho = names.includes(nhapKhoKho) ? nhapKhoKho : names[0] || '';
-        setNhapKhoKho(kho);
-        await loadNhapKhoSlips(names.length ? names : [kho], ngay);
+        setNhapKhoKho(current => (names.includes(current) ? current : names[0] || ''));
       } catch (err: unknown) {
         if (cancelled) return;
         setNhapKhoWarehouses([]);
         setNhapKhoKho('');
-        setNhapKhoSlips([]);
-        setNhapKhoPhieu(NHAP_KHO_NEW_SLIP);
-        showAppToast(err instanceof Error ? err.message : 'Không tải được phiếu nhập.', 'error');
-        setLoadingNhapKhoSlips(false);
+        showAppToast(err instanceof Error ? err.message : 'Không tải được danh sách kho.', 'error');
+      } finally {
+        if (!cancelled) setLoadingNhapKhoKho(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-    // Tải phiếu khi mở popup hoặc đổi ngày phiếu.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showNhapKhoModal, nhapKhoSlipDate]);
+  }, [showNhapKhoModal]);
 
   const handleCheckNhapKho = async () => {
     const rows = nhapKhoPreview.length > 0 ? nhapKhoPreview : waitingNhapKho;
@@ -1739,99 +1673,6 @@ export function CanTuDongPanel({
     }
   };
 
-  const handleSyncNhapKhoStatus = async () => {
-    const rows = visibleRecords.filter(
-      row => readNhapKho(row).waiting && String(row.qr_code || '').trim()
-    );
-    if (rows.length === 0) {
-      showAppToast('Bộ lọc hiện tại không có dòng Chờ nhập kho.', 'error');
-      return;
-    }
-    const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
-    setIsSyncingNhapKhoStatus(true);
-    try {
-      const res = await fetch('/api/kho/kiem-tra-ma-quet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          loai_phieu: 'nhap',
-          ma_sp_quet: rows.map(row => String(row.qr_code || '').trim())
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không kiểm tra được mã QR trong nhập kho.'));
-      const phieuByCode = new Map<string, string>();
-      const matches = Array.isArray(data?.matches) ? data.matches : [];
-      for (const match of matches) {
-        const code = String(match?.ma_sp_quet || '').trim().toUpperCase();
-        const phieu = String(match?.ma_phieu || '').trim();
-        if (!code || phieuByCode.has(code)) continue;
-        phieuByCode.set(code, phieu);
-      }
-      const found = rows.filter(row => phieuByCode.has(String(row.qr_code || '').trim().toUpperCase()));
-      if (found.length === 0) {
-        showAppToast('Trong bộ lọc không có mã nào đã nằm trong nhap_kho.');
-        return;
-      }
-      const byPhieu = new Map<string, typeof found>();
-      for (const row of found) {
-        const phieu = phieuByCode.get(String(row.qr_code || '').trim().toUpperCase()) || '';
-        const group = byPhieu.get(phieu) || [];
-        group.push(row);
-        byPhieu.set(phieu, group);
-      }
-      let updated = 0;
-      let luc = new Date().toISOString();
-      for (const [maPhieu, group] of byPhieu) {
-        const statusRes = await fetch('/api/can-tu-dong/nhap-kho', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ids: group.map(row => row.id),
-            nguoi,
-            ...(maPhieu ? { ma_phieu: maPhieu } : {})
-          })
-        });
-        const statusData = await statusRes.json().catch(() => ({}));
-        if (!statusRes.ok) {
-          throw new Error(readApiErrorMessage(statusRes, statusData, 'Không đổi được trạng thái nhập kho.'));
-        }
-        updated += Number(statusData.updated) || group.length;
-        luc = String(statusData.nhap_kho_luc || luc);
-      }
-      const idToPhieu = new Map(
-        found.map(row => [rowIdKey(row.id), phieuByCode.get(String(row.qr_code || '').trim().toUpperCase()) || ''])
-      );
-      setRecords(prev =>
-        prev.map(row => {
-          const phieu = idToPhieu.get(rowIdKey(row.id));
-          if (phieu == null) return row;
-          const meta =
-            row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
-              ? { ...(row.metadata as Record<string, unknown>) }
-              : {};
-          return {
-            ...row,
-            metadata: {
-              ...meta,
-              nhap_kho_trang_thai: NHAP_KHO_DA,
-              nhap_kho_luc: luc,
-              nhap_kho_boi: nguoi,
-              ...(phieu ? { nhap_kho_ma_phieu: phieu } : {})
-            }
-          };
-        })
-      );
-      showAppToast(
-        `Đã đổi ${formatNumber(updated, 0)} dòng trong bộ lọc sang ${NHAP_KHO_DA}. ${formatNumber(rows.length - found.length, 0)} mã chưa có trong nhap_kho.`
-      );
-    } catch (err: unknown) {
-      showAppToast(err instanceof Error ? err.message : 'Không đổi được trạng thái nhập kho.', 'error');
-    } finally {
-      setIsSyncingNhapKhoStatus(false);
-    }
-  };
-
   const handleConfirmNhapKho = async () => {
     if (nhapKhoPreview.length === 0) {
       showAppToast('Nhập số cuộn để hiện mã QR chờ nhập kho.', 'error');
@@ -1842,10 +1683,12 @@ export function CanTuDongPanel({
       showAppToast('Chưa có kho thành phẩm để lập phiếu nhập.', 'error');
       return;
     }
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) {
+      showAppToast('Chọn cả ca và máy để lọc mã QR nhập kho.', 'error');
+      return;
+    }
     const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
-    const maPhieu = nhapKhoPhieu === NHAP_KHO_NEW_SLIP || !nhapKhoPhieu.trim()
-      ? newPhieuNhapCode()
-      : nhapKhoPhieu.trim();
+    const maPhieu = newPhieuNhapCode();
     const toWarehouseItems = (rows: CanTuDongRecord[]) =>
       rows.map(row => {
         const fullCode = String(row.qr_code || '').trim();
@@ -1866,19 +1709,27 @@ export function CanTuDongPanel({
       while (savedRows.length < nhapKhoCount && cursor < waitingNhapKho.length) {
         const batch = waitingNhapKho.slice(cursor, cursor + (nhapKhoCount - savedRows.length));
         cursor += batch.length;
-        const batchRes = await fetch('/api/kho-cho', {
+        const batchRes = await fetch('/api/kho/quet-dot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            loai_phieu: 'nhap',
             ma_phieu: maPhieu,
             ngay: nhapKhoSlipDate,
             nhan_su: nguoi,
+            nguoi_lap: nguoi,
             kho,
-            items: toWarehouseItems(batch)
+            ca: nhapKhoCa.trim(),
+            may: nhapKhoMay.trim(),
+            items: toWarehouseItems(batch).map(item => ({
+              ma_sp_quet: item.ma_sp_quet,
+              ten_sp: item.ten_sp,
+              don_vi: item.don_vi
+            }))
           })
         });
         const batchData = await batchRes.json().catch(() => ({}));
-        if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào kho chờ.'));
+        if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào nhap_kho.'));
         const savedCodes = new Set(
           (Array.isArray(batchData?.saved) ? batchData.saved : [])
             .map((row: { ma_sp_quet?: unknown }) => String(row.ma_sp_quet || '').trim().toUpperCase())
@@ -1892,15 +1743,15 @@ export function CanTuDongPanel({
           ...batch.filter(row => savedCodes.has(String(row.qr_code || '').trim().toUpperCase()))
         );
         if (savedCodes.size === 0 && duplicates.length === 0) {
-          throw new Error('Không ghi được mã QR vào kho chờ.');
+          throw new Error('Không ghi được mã QR vào nhap_kho.');
         }
       }
       const duplicateCount = skippedCodes.length;
       if (savedRows.length === 0) {
         throw new Error(
           duplicateCount
-            ? `Không ghi được mã mới. ${duplicateCount} mã QR đã có trong kho chờ.`
-            : 'Không ghi được mã QR vào kho chờ.'
+            ? `Không ghi được mã mới. ${duplicateCount} mã QR đã có trong nhap_kho.`
+            : 'Không ghi được mã QR vào nhap_kho.'
         );
       }
 
@@ -1914,7 +1765,7 @@ export function CanTuDongPanel({
         })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Đã ghi kho chờ nhưng chưa đổi trạng thái cân.'));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Đã ghi nhap_kho nhưng chưa đổi trạng thái cân.'));
       const luc = String(data.nhap_kho_luc || new Date().toISOString());
       const boi = String(data.nhap_kho_boi || nguoi);
       const idSet = new Set(savedRows.map(row => rowIdKey(row.id)));
@@ -1940,8 +1791,8 @@ export function CanTuDongPanel({
       const savedCount = formatNumber(Number(data.updated) || savedRows.length, 0);
       showAppToast(
         duplicateCount
-          ? `Đã ghi ${savedCount} mã QR vào kho chờ ${maPhieu}. Bỏ qua ${duplicateCount} mã đã có trong kho chờ.`
-          : `Đã ghi ${savedCount} mã QR vào kho chờ ${maPhieu}. Chưa vào nhap_kho.`
+          ? `Đã tạo phiếu chưa chốt ${maPhieu}, ghi ${savedCount} mã vào nhap_kho và lịch sử Kho thành phẩm. Bỏ qua ${duplicateCount} mã đã có.`
+          : `Đã tạo phiếu chưa chốt ${maPhieu}, ghi ${savedCount} mã vào nhap_kho và lịch sử Kho thành phẩm.`
       );
       setShowNhapKhoModal(false);
       setNhapKhoSoCuon('');
@@ -2006,41 +1857,21 @@ export function CanTuDongPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={openBulkCaModal}
-            disabled={
-              loading || isSettingCa || isSettingNgay || isSettingMaSp || isAutoFilling || isBulkDeleting || visibleRecords.length === 0
-            }
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 text-xs font-bold text-indigo-900 transition hover:bg-indigo-100 disabled:opacity-60"
-            title="Chọn ca rồi sửa cột Ca hàng loạt cho mọi dòng đang hiện (theo bộ lọc)"
-          >
-            {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-            {isSettingCa ? 'Đang sửa Ca...' : 'Sửa Ca theo bộ lọc'}
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setNhapKhoSoCuon('');
               setNhapKhoHits(new Map());
               setNhapKhoChecked(false);
               setNhapKhoSlipDate(fromDate || localIsoDateToday());
+              setNhapKhoCa(caFilter !== 'all' ? caFilter : '');
+              setNhapKhoMay(mayFilter !== 'all' ? mayFilter : '');
               setShowNhapKhoModal(true);
             }}
             disabled={loading || isNhapKho}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Ghi mã QR đang Chờ nhập kho vào bảng kho chờ, chưa vào nhap_kho"
+            title="Chọn ca và máy, tạo phiếu nhập mới chưa chốt và ghi QR vào nhap_kho"
           >
             <Warehouse className="h-4 w-4" />
             Nhập kho
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSyncNhapKhoStatus()}
-            disabled={loading || isNhapKho || isSyncingNhapKhoStatus || visibleRecords.length === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"
-            title="Trong bộ lọc đang chọn, mã nào đã có trong nhap_kho thì chuyển sang Đã nhập kho"
-          >
-            {isSyncingNhapKhoStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
-            {isSyncingNhapKhoStatus ? 'Đang đổi...' : 'Đổi trạng thái'}
           </button>
           <button
             type="button"
@@ -2097,6 +1928,14 @@ export function CanTuDongPanel({
           value={caFilter}
           onChange={setCaFilter}
           searchPlaceholder="Tìm ca..."
+          compact
+        />
+        <FilterCombobox
+          label="Máy"
+          options={mayOptions}
+          value={mayFilter}
+          onChange={setMayFilter}
+          searchPlaceholder="Tìm máy..."
           compact
         />
         <FilterCombobox
@@ -2345,6 +2184,7 @@ export function CanTuDongPanel({
               : diffFilter === 'all-diff'
                 ? 'So Nhựa thực tế với Nhựa định mức · tất cả chênh lệch (không lọc 2%)'
                 : 'Hiển thị toàn bộ dòng cân tự động'}
+            {mayFilter !== 'all' ? ` · Máy ${mayFilter}` : ''}
             {maSpFilter !== 'all' ? ` · Mã SP ${maSpFilter}` : ''}
             {maSpQuery.trim() ? ` · tìm «${maSpQuery.trim()}»` : ''}
             {fromDate || toDate
@@ -2511,7 +2351,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
             className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Bỏ chọn
@@ -2519,7 +2359,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openBulkNgayModalForSelected}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
             title="Sửa cột Ngày (SOURCE_DATE) cho các dòng đã tick"
           >
@@ -2529,7 +2369,7 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={() => void handleBulkDelete()}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingCa || isSettingMaSp}
+            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
             {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -2659,6 +2499,8 @@ export function CanTuDongPanel({
                   ? `Không có dòng nào trong khoảng ngày${fromDate ? ` từ ${formatIsoDateVi(fromDate)}` : ''}${toDate ? ` đến ${formatIsoDateVi(toDate)}` : ''}.`
                   : hasCaFilter && recordsByCa.length === 0
                     ? `Không có dòng nào với Ca ${caFilter}.`
+                    : hasMayFilter && recordsByMay.length === 0
+                      ? `Không có dòng nào với máy ${mayFilter}.`
                     : onlyDuplicateQr
                       ? 'Không có mã QR trùng trong bộ lọc hiện tại.'
                       : hasMaSpFilters && recordsByMaSp.length === 0
@@ -2940,11 +2782,8 @@ export function CanTuDongPanel({
                   <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Kho thành phẩm</span>
                   <select
                     value={nhapKhoKho}
-                    disabled={isNhapKho || loadingNhapKhoSlips}
-                    onChange={event => {
-                      const next = event.target.value;
-                      setNhapKhoKho(next);
-                    }}
+                    disabled={isNhapKho || loadingNhapKhoKho}
+                    onChange={event => setNhapKhoKho(event.target.value)}
                     className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
                   >
                     {nhapKhoWarehouses.map(name => (
@@ -2960,35 +2799,54 @@ export function CanTuDongPanel({
               <TableDateFilter
                 label="Ngày phiếu"
                 value={nhapKhoSlipDate}
-                onChange={value => setNhapKhoSlipDate(value || localIsoDateToday())}
+                onChange={value => {
+                  setNhapKhoSlipDate(value || localIsoDateToday());
+                  setNhapKhoCa('');
+                  setNhapKhoMay('');
+                  setNhapKhoChecked(false);
+                }}
                 className="w-full"
               />
-              <label className="block space-y-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                  Phiếu nhập ngày {formatIsoDateVi(nhapKhoSlipDate)}
-                </span>
-                <select
-                  value={nhapKhoPhieu}
-                  disabled={isNhapKho || loadingNhapKhoSlips || !nhapKhoKho}
-                  onChange={event => setNhapKhoPhieu(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
-                >
-                  {nhapKhoSlips.map(slip => (
-                    <option key={slip.ma_phieu} value={slip.ma_phieu}>
-                      {slip.ma_phieu}
-                      {slip.status === 'da_chot' ? ' · Đã chốt' : ' · Chưa chốt'}
-                    </option>
-                  ))}
-                  <option value={NHAP_KHO_NEW_SLIP}>+ Tạo phiếu nhập mới</option>
-                </select>
-                {loadingNhapKhoSlips ? (
-                  <p className="text-[11px] font-semibold text-zinc-500">Đang tải phiếu nhập...</p>
-                ) : nhapKhoSlips.length === 0 ? (
-                  <p className="text-[11px] font-semibold text-amber-700">
-                    Ngày này chưa có phiếu nhập. Chọn tạo phiếu mới.
-                  </p>
-                ) : null}
-              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
+                  <select
+                    value={nhapKhoCa}
+                    disabled={isNhapKho}
+                    onChange={event => {
+                      setNhapKhoCa(event.target.value);
+                      setNhapKhoMay('');
+                      setNhapKhoChecked(false);
+                    }}
+                    className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
+                  >
+                    <option value="">Chọn ca</option>
+                    {nhapKhoCaOptions.map(ca => (
+                      <option key={ca} value={ca}>{ca}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
+                  <select
+                    value={nhapKhoMay}
+                    disabled={isNhapKho || !nhapKhoCa}
+                    onChange={event => {
+                      setNhapKhoMay(event.target.value);
+                      setNhapKhoChecked(false);
+                    }}
+                    className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
+                  >
+                    <option value="">{nhapKhoCa ? 'Chọn máy' : 'Chọn ca trước'}</option>
+                    {nhapKhoMayOptions.map(may => (
+                      <option key={may} value={may}>{may}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="text-[11px] font-semibold text-zinc-500">
+                Mỗi lần xác nhận tạo phiếu nhập mới, trạng thái chưa chốt, ghi QR thẳng vào nhap_kho.
+              </p>
               <label className="block space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Số cuộn</span>
                 <input
@@ -3019,7 +2877,11 @@ export function CanTuDongPanel({
                     {nhapKhoPreview.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-3 py-6 text-center font-semibold text-zinc-400">
-                          {nhapKhoCount > 0 ? 'Không còn mã QR chờ nhập kho.' : 'Nhập số cuộn để hiện danh sách mã QR.'}
+                          {!nhapKhoCa || !nhapKhoMay
+                            ? 'Chọn cả ca và máy để lọc mã QR.'
+                            : nhapKhoCount > 0
+                              ? 'Không còn mã QR chờ nhập kho cho ca và máy này.'
+                              : 'Nhập số cuộn để hiện danh sách mã QR.'}
                         </td>
                       </tr>
                     ) : (
@@ -3071,7 +2933,7 @@ export function CanTuDongPanel({
               <button
                 type="button"
                 onClick={() => void handleConfirmNhapKho()}
-                disabled={isNhapKho || loadingNhapKhoSlips || nhapKhoPreview.length === 0 || !nhapKhoKho}
+                disabled={isNhapKho || loadingNhapKhoKho || !nhapKhoCa || !nhapKhoMay || nhapKhoPreview.length === 0 || !nhapKhoKho}
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
               >
                 {isNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
@@ -3138,71 +3000,6 @@ export function CanTuDongPanel({
                   : bulkNgayScope === 'selected'
                     ? `Sửa ${formatNumber(selectedCount, 0)} dòng`
                     : `Điền ${formatNumber(visibleRecords.length, 0)} dòng`}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {showBulkCaModal ? (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="can-tu-dong-bulk-ca-title"
-        >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
-              <div>
-                <h3 id="can-tu-dong-bulk-ca-title" className="text-base font-black text-zinc-950">
-                  Sửa Ca theo bộ lọc
-                </h3>
-                <p className="text-xs font-semibold text-zinc-500">
-                  Chọn ca trong sổ xuống · áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowBulkCaModal(false)}
-                disabled={isSettingCa}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-3 p-4">
-              <FilterCombobox
-                label="Ca điền"
-                options={bulkCaOptions}
-                value={bulkCaValue}
-                onChange={setBulkCaValue}
-                searchPlaceholder="Tìm ca..."
-                includeAll={false}
-              />
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900">
-                <p>
-                  Chỉ đổi cột <strong>Ca</strong> (SOURCE_SHIFT / metadata).
-                </p>
-                <p className="mt-1 text-indigo-800">Không đổi Ngày · Lệnh SX · Máy · ngày cân.</p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setShowBulkCaModal(false)}
-                disabled={isSettingCa}
-                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleBulkSetCaForVisible()}
-                disabled={isSettingCa || !bulkCaValue.trim()}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-xs font-extrabold text-white hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {isSettingCa ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                {isSettingCa ? 'Đang sửa...' : `Sửa ${formatNumber(visibleRecords.length, 0)} dòng`}
               </button>
             </div>
           </div>

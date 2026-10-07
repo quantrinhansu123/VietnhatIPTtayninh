@@ -12471,6 +12471,7 @@ export function createApp() {
       const warehouseName = String(req.query.ten_kho ?? req.query.warehouseName ?? '').trim();
       const fromDate = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
       const toDate = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+      const includeOpenSlips = String(req.query.status ?? '').trim().toLowerCase() === 'all';
       const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
       const inferKind = (value: unknown): WarehouseStorageType => {
@@ -12493,7 +12494,7 @@ export function createApp() {
           .order('ngay', { ascending: false })
           .order('ma_phieu', { ascending: false });
         if (slipCode) query = query.eq('ma_phieu', slipCode);
-        query = query.or('status.eq.da_chot,status.is.null');
+        if (!includeOpenSlips) query = query.or('status.eq.da_chot,status.is.null');
         if (warehouseName) query = query.eq('kho', warehouseName);
         if (fromDate) query = query.gte('ngay', fromDate);
         if (toDate) query = query.lte('ngay', toDate);
@@ -12569,6 +12570,8 @@ export function createApp() {
       for (const header of headers) {
         const code = String(header.ma_phieu);
         if (headersWithLines.has(code)) continue;
+        const headerStatus = String(header.status ?? '').trim();
+        if (includeOpenSlips && headerStatus === 'chua_chot') continue;
         const kind = inferKind(header.kho);
         if (kindFilter && kind !== kindFilter) continue;
         movements.push({
@@ -13024,12 +13027,18 @@ export function createApp() {
 
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
-      const headerFields = {
+      const headerFields: Record<string, string | null | undefined> = {
         ngay: String(body.ngay ?? '').trim() || undefined,
         nhan_su: String(body.nhan_su ?? '').trim() || null,
         kho: String(body.kho ?? '').trim() || null,
         ghi_chu: String(body.ghi_chu ?? '').trim() || null
       };
+      const slipCa = String(body.ca ?? '').trim();
+      const slipMay = String(body.may ?? '').trim();
+      const slipNguoiLap = String(body.nguoi_lap ?? body.nguoiLap ?? body.nhan_su ?? '').trim();
+      if (slipCa) headerFields.ca = slipCa;
+      if (slipMay) headerFields.may = slipMay;
+      if (slipNguoiLap) headerFields.nguoi_lap = slipNguoiLap;
       const savedByCode = new Map<string, { ma_sp_quet: string; created_at: string }>();
       const duplicateCodes = new Set<string>();
 
@@ -13140,7 +13149,16 @@ export function createApp() {
             don_vi: item.donVi || null,
             loai: 'san_pham',
             so_luong: 1,
-            ma_phieu: maPhieu
+            ma_phieu: maPhieu,
+            ...(lineTable === 'nhap_kho'
+              ? {
+                  ca: slipCa || null,
+                  may: slipMay || null,
+                  ngay: String(body.ngay ?? '').trim() || null,
+                  nguoi_thao_tac: slipNguoiLap || null,
+                  trang_thai: 'Đang chờ'
+                }
+              : {})
           };
         });
         const { error } = await khoDb.from(lineTable).insert(rows);
@@ -13276,7 +13294,16 @@ export function createApp() {
         don_vi: donVi,
         loai,
         so_luong: soLuong,
-        ma_phieu: maPhieu
+        ma_phieu: maPhieu,
+        ...(loaiPhieu === 'nhap'
+          ? {
+              ca: String(body.ca ?? '').trim() || null,
+              may: String(body.may ?? '').trim() || null,
+              ngay,
+              nguoi_thao_tac: nhanSu,
+              trang_thai: 'Đang chờ'
+            }
+          : {})
       };
       const { data: lineRow, error: lineError } = await supabaseKho
         .from(lineTable)

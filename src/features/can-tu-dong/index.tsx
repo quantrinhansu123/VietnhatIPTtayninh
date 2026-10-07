@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import {
   CalendarDays,
   Copy,
-  Eye,
   FileSpreadsheet,
   Link2,
   Loader2,
@@ -21,9 +20,6 @@ import {
   CanTuDongPrintBatch,
   type CanTuDongPrintData
 } from '../../components/CanTuDongPrintSheet';
-import WarehouseSlipPrintModal, {
-  type WarehouseSlipPrintData
-} from '../../components/WarehouseSlipPrintModal';
 import { formatNumber } from '../../utils';
 import { machineSlipCodeToken } from '../../utils/warehouseSlipCode';
 import { waitForPrintImagesReady } from '../../utils/printReady';
@@ -396,21 +392,6 @@ function newPhieuNhapCode(machineName: string) {
   return token ? `PN-${token}-${date}-${time}` : `PN-${date}-${time}`;
 }
 
-type NhapKhoSlipOption = {
-  ma_phieu: string;
-  ngay?: string;
-  kho?: string;
-  status?: string;
-  nhan_su?: string;
-  ghi_chu?: string;
-  ca?: string;
-  may?: string;
-};
-
-type PhieuDotLine = { code: string; name: string; unit: string; quantity: number };
-type PhieuDotView = { at: string; rollCount: number; lines: PhieuDotLine[] };
-type PhieuBatchView = { slip: NhapKhoSlipOption; dots: PhieuDotView[] };
-
 function readNhapKho(row: CanTuDongRecord) {
   const meta =
     row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
@@ -535,16 +516,6 @@ export function CanTuDongPanel({
   const [isNhapKho, setIsNhapKho] = useState(false);
   const [togglingNhapKhoId, setTogglingNhapKhoId] = useState('');
   const [isCheckingNhapKho, setIsCheckingNhapKho] = useState(false);
-  const [showPrintPhieuModal, setShowPrintPhieuModal] = useState(false);
-  const [printPhieuOptions, setPrintPhieuOptions] = useState<NhapKhoSlipOption[]>([]);
-  const [printPhieuQuery, setPrintPhieuQuery] = useState('');
-  const [selectedPrintPhieu, setSelectedPrintPhieu] = useState<Set<string>>(new Set());
-  const [loadingPrintPhieu, setLoadingPrintPhieu] = useState(false);
-  const [warehousePrintSlips, setWarehousePrintSlips] = useState<WarehouseSlipPrintData[]>([]);
-  const [warehousePrintOpen, setWarehousePrintOpen] = useState(false);
-  const [viewPhieuOpen, setViewPhieuOpen] = useState(false);
-  const [viewPhieuLoading, setViewPhieuLoading] = useState(false);
-  const [viewPhieuData, setViewPhieuData] = useState<PhieuBatchView[]>([]);
   /** Mã QR (in hoa) → các mã phiếu nhập đã có trong bảng nhap_kho. */
   const [nhapKhoHits, setNhapKhoHits] = useState<Map<string, string[]>>(new Map());
   const [nhapKhoChecked, setNhapKhoChecked] = useState(false);
@@ -555,12 +526,6 @@ export function CanTuDongPanel({
   const [nhapKhoMay, setNhapKhoMay] = useState('');
   const [nhapKhoMaSp, setNhapKhoMaSp] = useState('');
   const [loadingNhapKhoKho, setLoadingNhapKhoKho] = useState(false);
-
-  const filteredPrintPhieu = useMemo(() => {
-    const query = printPhieuQuery.trim().toLowerCase();
-    if (!query) return [];
-    return printPhieuOptions.filter(slip => slip.ma_phieu.toLowerCase().includes(query));
-  }, [printPhieuOptions, printPhieuQuery]);
 
   const loadSeqRef = useRef(0);
   const loadRecords = async (range?: { from?: string; to?: string }) => {
@@ -1301,207 +1266,6 @@ export function CanTuDongPanel({
     }
   };
 
-  const loadTodayPhieuNhap = async () => {
-    const ngay = localIsoDateToday();
-    setLoadingPrintPhieu(true);
-    setPrintPhieuQuery('');
-    setSelectedPrintPhieu(new Set());
-    try {
-      const khoRes = await fetch('/api/quan-ly-kho');
-      const khoData = await khoRes.json().catch(() => ({}));
-      if (!khoRes.ok) throw new Error(readApiErrorMessage(khoRes, khoData, 'Không tải được danh sách kho.'));
-      const warehouses = [
-        ...new Set(
-          (Array.isArray(khoData?.records) ? khoData.records : [])
-            .map((row: { ten_kho?: unknown }) => String(row.ten_kho || '').trim())
-            .filter((name: string) => name && isFinishedGoodsWarehouseName(name))
-        )
-      ];
-      const lists = await Promise.all(
-        warehouses.map(async kho => {
-          const params = new URLSearchParams({
-            loai_phieu: 'nhap',
-            kho,
-            ngay,
-            status: 'all',
-            limit: '100'
-          });
-          const res = await fetch(`/api/kho/phieu?${params.toString()}`);
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu nhập hôm nay.'));
-          return (Array.isArray(data?.records) ? data.records : []) as NhapKhoSlipOption[];
-        })
-      );
-      const slips = lists
-        .flat()
-        .map(row => ({
-          ma_phieu: String(row.ma_phieu || '').trim(),
-          ngay: String(row.ngay || '').trim(),
-          kho: String(row.kho || '').trim(),
-          status: String(row.status || '').trim(),
-          nhan_su: String(row.nhan_su || '').trim(),
-          ghi_chu: String(row.ghi_chu || '').trim(),
-          ca: String(row.ca || '').trim(),
-          may: String(row.may || '').trim()
-        }))
-        .filter(row => row.ma_phieu);
-      setPrintPhieuOptions(slips);
-      setSelectedPrintPhieu(new Set());
-    } catch (err: unknown) {
-      setPrintPhieuOptions([]);
-      showAppToast(err instanceof Error ? err.message : 'Không tải được phiếu nhập hôm nay.', 'error');
-    } finally {
-      setLoadingPrintPhieu(false);
-    }
-  };
-
-  const buildNhapKhoPrintSlip = async (slip: NhapKhoSlipOption): Promise<WarehouseSlipPrintData> => {
-    const grouped = new Map<string, { code: string; name: string; unit: string; quantity: number }>();
-    for (let offset = 0; ; offset += 100) {
-      const params = new URLSearchParams({
-        loai_phieu: 'nhap',
-        ma_phieu: slip.ma_phieu,
-        limit: '100',
-        offset: String(offset)
-      });
-      const res = await fetch(`/api/kho/chi-tiet?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, `Không tải được chi tiết phiếu ${slip.ma_phieu}.`));
-      const records = Array.isArray(data?.records) ? data.records : [];
-      for (const row of records) {
-        const code = String(row?.ma_sp || '').trim() || String(row?.ma_sp_quet || '').trim();
-        if (!code) continue;
-        const unit = String(row?.don_vi || '').trim() || 'Cuộn';
-        const key = `${code}|${unit}`;
-        const current = grouped.get(key) || {
-          code,
-          name: String(row?.ten_sp || '').trim(),
-          unit,
-          quantity: 0
-        };
-        current.quantity += Number(row?.so_luong) || 1;
-        if (!current.name && row?.ten_sp) current.name = String(row.ten_sp).trim();
-        grouped.set(key, current);
-      }
-      const total = Number(data?.total) || 0;
-      if (records.length === 0 || offset + records.length >= total) break;
-    }
-    return {
-      slipCode: slip.ma_phieu,
-      slipType: 'nhap',
-      warehouseKind: 'san_pham',
-      slipDate: slip.ngay || localIsoDateToday(),
-      reason: '',
-      note: slip.ghi_chu || '',
-      createdBy: slip.nhan_su || currentUser?.name || '',
-      shift: slip.ca || '',
-      machine: slip.may || '',
-      warehouseName: slip.kho || '',
-      totalAmount: 0,
-      lines: [...grouped.values()].map(line => ({
-        code: line.code,
-        name: line.name,
-        unit: line.unit,
-        quantity: line.quantity,
-        unitPrice: 0,
-        lineAmount: 0
-      }))
-    };
-  };
-
-  const handleOpenPrintPhieu = () => {
-    setShowPrintPhieuModal(true);
-    void loadTodayPhieuNhap();
-  };
-
-  const loadPhieuDots = async (slip: NhapKhoSlipOption): Promise<PhieuBatchView> => {
-    const rows: Array<{ code: string; name: string; unit: string; quantity: number; createdAt: string }> = [];
-    for (let offset = 0; ; offset += 100) {
-      const params = new URLSearchParams({
-        loai_phieu: 'nhap',
-        ma_phieu: slip.ma_phieu,
-        limit: '100',
-        offset: String(offset)
-      });
-      const res = await fetch(`/api/kho/chi-tiet?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, `Không tải được chi tiết phiếu ${slip.ma_phieu}.`));
-      const records = Array.isArray(data?.records) ? data.records : [];
-      for (const row of records) {
-        const code = String(row?.ma_sp || '').trim() || String(row?.ma_sp_quet || '').trim();
-        if (!code) continue;
-        rows.push({
-          code,
-          name: String(row?.ten_sp || '').trim(),
-          unit: String(row?.don_vi || '').trim() || 'Cuộn',
-          quantity: Number(row?.so_luong) || 1,
-          createdAt: String(row?.created_at || '').trim()
-        });
-      }
-      const total = Number(data?.total) || 0;
-      if (records.length === 0 || offset + records.length >= total) break;
-    }
-    const groups = new Map<string, { at: string; rollCount: number; lines: Map<string, PhieuDotLine> }>();
-    for (const row of rows) {
-      const parsed = new Date(row.createdAt);
-      const key = Number.isNaN(parsed.getTime()) ? row.createdAt || 'unknown' : String(Math.floor(parsed.getTime() / 1000));
-      const group = groups.get(key) || { at: row.createdAt, rollCount: 0, lines: new Map<string, PhieuDotLine>() };
-      group.rollCount += row.quantity;
-      const lineKey = `${row.code}|${row.unit}`;
-      const line = group.lines.get(lineKey) || { code: row.code, name: row.name, unit: row.unit, quantity: 0 };
-      line.quantity += row.quantity;
-      if (!line.name && row.name) line.name = row.name;
-      group.lines.set(lineKey, line);
-      groups.set(key, group);
-    }
-    const dots = [...groups.values()]
-      .sort((a, b) => a.at.localeCompare(b.at))
-      .map(group => ({
-        at: group.at,
-        rollCount: group.rollCount,
-        lines: [...group.lines.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }))
-      }));
-    return { slip, dots };
-  };
-
-  const handleViewSelectedPhieu = async () => {
-    const chosen = printPhieuOptions.filter(slip => selectedPrintPhieu.has(slip.ma_phieu));
-    if (chosen.length === 0) {
-      showAppToast('Chọn ít nhất một phiếu để xem.', 'error');
-      return;
-    }
-    setViewPhieuOpen(true);
-    setViewPhieuLoading(true);
-    setViewPhieuData([]);
-    try {
-      setViewPhieuData(await Promise.all(chosen.map(slip => loadPhieuDots(slip))));
-    } catch (err: unknown) {
-      setViewPhieuOpen(false);
-      showAppToast(err instanceof Error ? err.message : 'Không xem được phiếu nhập.', 'error');
-    } finally {
-      setViewPhieuLoading(false);
-    }
-  };
-
-  const handlePrintSelectedPhieu = async () => {
-    const chosen = printPhieuOptions.filter(slip => selectedPrintPhieu.has(slip.ma_phieu));
-    if (chosen.length === 0) {
-      showAppToast('Chọn ít nhất một phiếu nhập của hôm nay.', 'error');
-      return;
-    }
-    setLoadingPrintPhieu(true);
-    try {
-      const slips = await Promise.all(chosen.map(slip => buildNhapKhoPrintSlip(slip)));
-      setWarehousePrintSlips(slips);
-      setWarehousePrintOpen(true);
-      setShowPrintPhieuModal(false);
-    } catch (err: unknown) {
-      showAppToast(err instanceof Error ? err.message : 'Không tạo được mẫu in phiếu nhập.', 'error');
-    } finally {
-      setLoadingPrintPhieu(false);
-    }
-  };
-
   const handleDownloadExcel = () => {
     if (visibleRecords.length === 0) {
       showAppToast('Không có dữ liệu để tải Excel theo bộ lọc hiện tại.', 'error');
@@ -1913,16 +1677,6 @@ export function CanTuDongPanel({
           >
             {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
             In
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenPrintPhieu}
-            disabled={loading || loadingPrintPhieu}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-60"
-            title="Chọn phiếu nhập của hôm nay và in đúng mẫu phiếu nhập kho"
-          >
-            {pendingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            In đã nhập kho
           </button>
           <button
             type="button"
@@ -3270,198 +3024,6 @@ export function CanTuDongPanel({
           </div>
         </div>
       ) : null}
-
-      {showPrintPhieuModal ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
-          <div className="flex h-[min(92vh,52rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3">
-              <div>
-                <h3 className="text-base font-black text-zinc-950">In phiếu nhập kho</h3>
-                <p className="text-xs font-semibold text-zinc-500">
-                  Phiếu nhập ngày {formatIsoDateVi(localIsoDateToday())}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPrintPhieuModal(false)}
-                disabled={loadingPrintPhieu}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
-              {loadingPrintPhieu ? (
-                <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tải phiếu...
-                </p>
-              ) : printPhieuOptions.length === 0 ? (
-                <p className="text-sm font-semibold text-zinc-500">Hôm nay chưa có phiếu nhập thành phẩm.</p>
-              ) : (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={printPhieuQuery}
-                    onChange={event => setPrintPhieuQuery(event.target.value)}
-                    placeholder="Gõ mã phiếu để lọc và chọn"
-                    autoFocus
-                    className="h-12 w-full rounded-xl border border-zinc-300 px-4 text-base font-semibold text-zinc-950 outline-none focus:border-[#ef1b2d]"
-                  />
-                  {printPhieuQuery.trim() ? (
-                    filteredPrintPhieu.length === 0 ? (
-                      <p className="text-sm font-semibold text-zinc-500">Không có phiếu khớp.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {filteredPrintPhieu.map(slip => (
-                          <label key={slip.ma_phieu} className="flex items-center gap-3 rounded-xl border border-zinc-200 px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedPrintPhieu.has(slip.ma_phieu)}
-                              onChange={() => {
-                                setSelectedPrintPhieu(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(slip.ma_phieu)) next.delete(slip.ma_phieu);
-                                  else next.add(slip.ma_phieu);
-                                  return next;
-                                });
-                              }}
-                              className="h-4 w-4 accent-[#ef1b2d]"
-                            />
-                            <span>
-                              <span className="block font-mono text-base font-black text-zinc-950">{slip.ma_phieu}</span>
-                              <span className="text-xs font-semibold text-zinc-500">
-                                {slip.kho || 'Kho thành phẩm'}
-                                {slip.status === 'da_chot' ? ' · Đã chốt' : ' · Chưa chốt'}
-                              </span>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    <p className="text-sm font-semibold text-zinc-500">Gõ mã phiếu để hiện danh sách chọn.</p>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-100 bg-white px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setShowPrintPhieuModal(false)}
-                disabled={loadingPrintPhieu}
-                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleViewSelectedPhieu()}
-                disabled={loadingPrintPhieu || viewPhieuLoading || selectedPrintPhieu.size === 0}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 text-xs font-extrabold text-zinc-800 disabled:opacity-60"
-              >
-                {viewPhieuLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                Xem phiếu
-              </button>
-              <button
-                type="button"
-                onClick={() => void handlePrintSelectedPhieu()}
-                disabled={loadingPrintPhieu || selectedPrintPhieu.size === 0}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-60"
-              >
-                {loadingPrintPhieu ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                In phiếu ({formatNumber(selectedPrintPhieu.size, 0)})
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {viewPhieuOpen ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
-          <div className="flex h-[min(92vh,52rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-5 py-3">
-              <div>
-                <h3 className="text-base font-black text-zinc-950">Xem phiếu nhập kho</h3>
-                <p className="text-xs font-semibold text-zinc-500">Mỗi đợt là một lần bấm Nhập kho</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewPhieuOpen(false)}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
-              {viewPhieuLoading ? (
-                <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tải đợt nhập...
-                </p>
-              ) : viewPhieuData.length === 0 ? (
-                <p className="text-sm font-semibold text-zinc-500">Không có dữ liệu phiếu.</p>
-              ) : (
-                <div className="space-y-6">
-                  {viewPhieuData.map(view => (
-                    <section key={view.slip.ma_phieu} className="space-y-3">
-                      <div>
-                        <h4 className="font-mono text-base font-black text-zinc-950">{view.slip.ma_phieu}</h4>
-                        <p className="text-xs font-semibold text-zinc-500">
-                          {view.slip.kho || 'Kho thành phẩm'}
-                          {view.slip.status === 'da_chot' ? ' · Đã chốt' : ' · Chưa chốt'}
-                          {` · ${formatNumber(view.dots.length, 0)} đợt`}
-                        </p>
-                      </div>
-                      {view.dots.length === 0 ? (
-                        <p className="text-sm font-semibold text-zinc-500">Phiếu chưa có dòng nhập.</p>
-                      ) : (
-                        view.dots.map((dot, index) => (
-                          <div key={`${view.slip.ma_phieu}-${dot.at}-${index}`} className="overflow-hidden rounded-xl border border-zinc-200">
-                            <div className="flex items-center justify-between gap-3 bg-zinc-50 px-4 py-2">
-                              <p className="text-sm font-black text-zinc-900">Đợt {index + 1}</p>
-                              <p className="text-xs font-semibold text-zinc-500">
-                                {formatCapturedAtVi(dot.at)} · {formatNumber(dot.rollCount, 0)} cuộn
-                              </p>
-                            </div>
-                            <table className="w-full text-left text-sm">
-                              <thead className="border-b border-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                                <tr>
-                                  <th className="px-4 py-2">Mã SP</th>
-                                  <th className="px-4 py-2">Tên</th>
-                                  <th className="px-4 py-2">ĐVT</th>
-                                  <th className="px-4 py-2 text-right">Số lượng</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {dot.lines.map(line => (
-                                  <tr key={`${line.code}|${line.unit}`} className="border-b border-zinc-50 last:border-0">
-                                    <td className="px-4 py-2 font-mono font-bold text-zinc-950">{line.code}</td>
-                                    <td className="px-4 py-2 text-zinc-700">{line.name || '—'}</td>
-                                    <td className="px-4 py-2 text-zinc-600">{line.unit}</td>
-                                    <td className="px-4 py-2 text-right font-bold text-zinc-950">{formatNumber(line.quantity, 0)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ))
-                      )}
-                    </section>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <WarehouseSlipPrintModal
-        open={warehousePrintOpen}
-        slips={warehousePrintSlips}
-        onClose={() => {
-          setWarehousePrintOpen(false);
-          setWarehousePrintSlips([]);
-        }}
-      />
 
       {printData && typeof document !== 'undefined'
         ? createPortal(<CanTuDongPrintBatch data={printData} />, document.body)

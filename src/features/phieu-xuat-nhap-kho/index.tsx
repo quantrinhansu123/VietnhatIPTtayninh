@@ -1337,6 +1337,8 @@ export function WarehouseSlipPanel({
   const [productLineView, setProductLineView] = useState<'detail' | 'summary'>('detail');
   const [productExportView, setProductExportView] = useState<'thuc-hien' | 'lap-phieu'>('thuc-hien');
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
+  /** Toàn bộ danh mục SP — dùng điền tên khi mã không nằm trong danh sách chọn của kho. */
+  const [productCatalogByKey, setProductCatalogByKey] = useState<Map<string, MaterialOption>>(() => new Map());
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [avgInboundPriceByKey, setAvgInboundPriceByKey] = useState<Record<string, number>>({});
   const [avgPriceLoadingCode, setAvgPriceLoadingCode] = useState<string | null>(null);
@@ -1616,6 +1618,17 @@ export function WarehouseSlipPanel({
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || 'Không thể tải danh sách sản phẩm.');
           const products = normalizeProducts(data);
+          const catalog = new Map<string, MaterialOption>();
+          for (const product of products) {
+            const key = normalizeMaterialCodeKey(product.code);
+            if (!key || catalog.has(key)) continue;
+            catalog.set(key, {
+              code: product.code,
+              name: product.name,
+              unit: product.unit && product.unit !== '-' ? product.unit : ''
+            });
+          }
+          setProductCatalogByKey(catalog);
           // Chỉ hiển thị sản phẩm đúng nhóm của kho đang chọn.
           const selectableProducts =
             warehouseKind === 'hang_hoa'
@@ -1649,6 +1662,17 @@ export function WarehouseSlipPanel({
           // phẩm (VD "MT-MN043" vs "MT- MN043") — quy về đúng mã gốc để khớp giữa các kho.
           const productData = await spRes.json().catch(() => ({}));
           const products = spRes.ok ? normalizeProducts(productData) : [];
+          const catalog = new Map<string, MaterialOption>();
+          for (const product of products) {
+            const key = normalizeMaterialCodeKey(product.code);
+            if (!key || catalog.has(key)) continue;
+            catalog.set(key, {
+              code: product.code,
+              name: product.name,
+              unit: product.unit && product.unit !== '-' ? product.unit : ''
+            });
+          }
+          setProductCatalogByKey(catalog);
           const canonicalCodeByKey = new Map<string, string>();
           for (const product of products) {
             const key = normalizeMaterialCodeKey(product.code);
@@ -1827,7 +1851,9 @@ export function WarehouseSlipPanel({
    */
   const resolveLinePatchForCode = (fullCode: string) => {
     const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
-    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
+    const selectable = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
+    const catalogItem = productCatalogByKey.get(prefixKey);
+    const item = selectable?.name ? selectable : catalogItem || selectable;
     // Mã quét mang hậu tố lô/serial chỉ dùng để tra danh mục và chống trùng khi quét — dòng
     // phiếu (ô Mã NPL/SP) chỉ lưu đúng mã gốc/tiền tố, không mang hậu tố.
     const canonicalCode = item?.code || warehouseCodePrefix(fullCode);
@@ -1986,7 +2012,9 @@ export function WarehouseSlipPanel({
       if (!codes) codesByPrefix.set(prefixKey, (codes = new Map()));
       codes.set(fullCodeKey, fullCode);
       savedAtByCode[fullCode] = String(row.created_at || new Date().toISOString());
-      const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
+      const item =
+        productCatalogByKey.get(prefixKey) ||
+        itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
       const line = grouped.get(prefixKey);
       if (line) line.quantity = String((Number(line.quantity) || 0) + (Number(row.so_luong) || 1));
       else {
@@ -2020,7 +2048,7 @@ export function WarehouseSlipPanel({
     setNote(String(slip.ghi_chu || ''));
     setActionMessage('');
     setFormError('');
-  }, [itemOptions, loginName, slipType]);
+  }, [itemOptions, productCatalogByKey, loginName, slipType]);
 
   const handleProductSlipSelection = (code: string) => {
     if (code === selectedProductSlipCode) return;
@@ -2462,7 +2490,10 @@ export function WarehouseSlipPanel({
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || isEditingProductInbound || loadingProductSummary || productSummaryError) return;
     setLines(savedProductSummary.map(row => {
       const code = String(row.ma_sp || '').trim();
-      const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(code));
+      const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(code));
+      const item =
+        productCatalogByKey.get(codeKey) ||
+        itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
       return {
         ...createWarehouseLineDraft(),
         code,
@@ -2472,7 +2503,7 @@ export function WarehouseSlipPanel({
         documentQuantity: String(row.so_luong || 0)
       };
     }));
-  }, [showProductExportTabs, productExportView, isEditingProductInbound, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions]);
+  }, [showProductExportTabs, productExportView, isEditingProductInbound, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions, productCatalogByKey]);
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -4157,7 +4188,10 @@ export function WarehouseSlipPanel({
                 </thead>
                 <tbody>
                   {savedProductSummary.map((row, index) => {
-                    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(row.ma_sp));
+                    const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(row.ma_sp));
+                    const item =
+                      productCatalogByKey.get(codeKey) ||
+                      itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
                     return (
                       <tr key={row.ma_sp} className="border-b border-zinc-100 even:bg-zinc-50/70">
                         <td className="px-1 py-2 text-center text-zinc-500">{index + 1}</td>

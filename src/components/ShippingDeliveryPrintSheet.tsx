@@ -197,6 +197,40 @@ export function ShippingDeliveryPrintSheet({
         return (
       <div className="bb-gx-print-page" key={`bb-gx-page-${pageIndex}`}>
         <div className="bb-gx-sheet">
+          <table className="bb-gx-top">
+            <tbody>
+              <tr>
+                <td className="bb-gx-brand-cell">
+                  <div className="bb-gx-brand">
+                    <img src={vietNhatLogoUrl} alt="Việt Nhật IPT" className="bb-gx-logo" />
+                    <div className="bb-gx-brand-text">
+                      <div className="bb-gx-company">CÔNG TY CỔ PHẦN VẬT LIỆU CÁCH NHIỆT VIỆT NHẬT</div>
+                      <h1 className="bb-gx-title">BIÊN BẢN GIAO XE</h1>
+                      <div className="bb-gx-sub">PHIẾU XUẤT HÀNG - GIAO HÀNG</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="bb-gx-meta-cell">
+                  <table className="bb-gx-meta">
+                    <tbody>
+                      <tr>
+                        <td className="bb-gx-meta-label">Ngày giao hàng</td>
+                        <td className="bb-gx-meta-value bb-gx-meta-strong">{shipDate}</td>
+                      </tr>
+                      <tr>
+                        <td className="bb-gx-meta-label">Số phiếu</td>
+                        <td className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</td>
+                      </tr>
+                      <tr>
+                        <td className="bb-gx-meta-label">BIỂN SỐ XE</td>
+                        <td className="bb-gx-meta-value bb-gx-plate-value">{plates}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           <table className="bb-gx-table">
             <colgroup>
               <col style={{ width: '3.5%' }} />
@@ -213,37 +247,6 @@ export function ShippingDeliveryPrintSheet({
               <col style={{ width: '16.5%' }} />
             </colgroup>
             <thead>
-              <tr>
-                <td colSpan={12} className="bb-gx-head-cell">
-                  <section className="bb-gx-top">
-                    <div className="bb-gx-brand">
-                      <img src={vietNhatLogoUrl} alt="Việt Nhật IPT" className="bb-gx-logo" />
-                      <div className="bb-gx-brand-text">
-                        <div className="bb-gx-company">CÔNG TY CỔ PHẦN VẬT LIỆU CÁCH NHIỆT VIỆT NHẬT</div>
-                        <h1 className="bb-gx-title">BIÊN BẢN GIAO XE</h1>
-                        <div className="bb-gx-sub">PHIẾU XUẤT HÀNG - GIAO HÀNG</div>
-                      </div>
-                    </div>
-
-                    <table className="bb-gx-meta">
-                      <tbody>
-                        <tr>
-                          <td className="bb-gx-meta-label">Ngày giao hàng</td>
-                          <td className="bb-gx-meta-value bb-gx-meta-strong">{shipDate}</td>
-                        </tr>
-                        <tr>
-                          <td className="bb-gx-meta-label">Số phiếu</td>
-                          <td className="bb-gx-meta-value bb-gx-meta-strong">{slipNo}</td>
-                        </tr>
-                        <tr>
-                          <td className="bb-gx-meta-label">BIỂN SỐ XE</td>
-                          <td className="bb-gx-meta-value bb-gx-plate-value">{plates}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </section>
-                </td>
-              </tr>
               <tr>
                 <th>TT</th>
                 <th>Mã KH</th>

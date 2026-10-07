@@ -6682,7 +6682,7 @@ input[type="number"] {
 @media print {
   @page bb-gx-print-page {
     size: 210mm 297mm;
-    margin: 14mm 4mm 4mm;
+    margin: 26mm 4mm 4mm;
   }
 
   body.shipping-delivery-print-active #root {
@@ -6730,6 +6730,10 @@ input[type="number"] {
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-print-page {
+    padding-top: 8mm !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-sheet,

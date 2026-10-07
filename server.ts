@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import dotenv from 'dotenv';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductionReport } from './src/types';
+import { machineSlipCodeToken } from './src/utils/warehouseSlipCode';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 
@@ -6870,7 +6871,7 @@ function parseWarehouseSlipBody(body: unknown): {
   if (!loaiPhieu) {
     return { error: 'Loại phiếu phải là nhập hoặc xuất.' };
   }
-  if (slipCode && !new RegExp(`^${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-\\d{8}-\\d{6}$`).test(slipCode)) {
+  if (slipCode && !new RegExp(`^${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-(?:[A-Z0-9]+-)?\\d{8}-\\d{6}$`).test(slipCode)) {
     return { error: 'Mã phiếu không hợp lệ.' };
   }
   if (!ngayPhieu) {
@@ -7236,11 +7237,13 @@ async function saveWarehouseSlipToKho(
   return { header, lines: parsed.items.length };
 }
 
-function generateWarehouseSlipCode(loaiPhieu: 'nhap' | 'xuat') {
+function generateWarehouseSlipCode(loaiPhieu: 'nhap' | 'xuat', machineName = '') {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
   const time = now.toISOString().slice(11, 19).replace(/:/g, '');
-  return `${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
+  const prefix = loaiPhieu === 'nhap' ? 'PN' : 'PX';
+  const token = machineSlipCodeToken(machineName);
+  return token ? `${prefix}-${token}-${date}-${time}` : `${prefix}-${date}-${time}`;
 }
 
 async function syncProductDetailsFromWarehouseSlip(
@@ -13228,7 +13231,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Thiếu ma_sp.' });
       }
       if (!maPhieu) {
-        maPhieu = generateWarehouseSlipCode(loaiPhieu);
+        maPhieu = generateWarehouseSlipCode(loaiPhieu, String(body.may ?? body.machine ?? ''));
       }
 
       const nowVn = new Date(
@@ -13445,7 +13448,7 @@ export function createApp() {
       if (req.method === 'POST' && path === '/') {
         const parsed = parseWarehouseSlipBody(req.body);
         if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-        const slipCode = parsed.slipCode || generateWarehouseSlipCode(parsed.loaiPhieu);
+        const slipCode = parsed.slipCode || generateWarehouseSlipCode(parsed.loaiPhieu, parsed.may || '');
         if (parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl') {
           const lotError = await validateNvlExportLots(parsed.items);
           if (lotError) return res.status(400).json(lotError);

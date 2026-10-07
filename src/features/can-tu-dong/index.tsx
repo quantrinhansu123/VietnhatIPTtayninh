@@ -25,6 +25,7 @@ import WarehouseSlipPrintModal, {
   type WarehouseSlipPrintData
 } from '../../components/WarehouseSlipPrintModal';
 import { formatNumber } from '../../utils';
+import { machineSlipCodeToken } from '../../utils/warehouseSlipCode';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import { downloadCanTuDongExcel } from '../../utils/canTuDongExcel';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
@@ -387,11 +388,12 @@ function isFinishedGoodsWarehouseName(value: string) {
   return key.includes('thanh pham') || key.includes('san pham') || key.includes('finished') || key.includes('kho sp');
 }
 
-function newPhieuNhapCode() {
+function newPhieuNhapCode(machineName: string) {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
   const time = now.toISOString().slice(11, 19).replace(/:/g, '');
-  return `PN-${date}-${time}`;
+  const token = machineSlipCodeToken(machineName);
+  return token ? `PN-${token}-${date}-${time}` : `PN-${date}-${time}`;
 }
 
 type NhapKhoSlipOption = {
@@ -1688,7 +1690,7 @@ export function CanTuDongPanel({
       return;
     }
     const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
-    const maPhieu = newPhieuNhapCode();
+    const maPhieu = newPhieuNhapCode(nhapKhoMay);
     const toWarehouseItems = (rows: CanTuDongRecord[]) =>
       rows.map(row => {
         const fullCode = String(row.qr_code || '').trim();

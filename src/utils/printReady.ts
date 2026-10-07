@@ -40,13 +40,19 @@ const PORTRAIT_PRINT_PAGE_STYLE_ID = 'app-print-page-portrait-override';
 /**
  * Chrome hay giữ @page landscape toàn cục — inject @page A4 dọc trước khi in.
  */
-export function enablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID, marginMm = 8) {
+export function enablePortraitPrintPage(
+  styleId = PORTRAIT_PRINT_PAGE_STYLE_ID,
+  marginMm: number | string = 8
+) {
   document.getElementById(styleId)?.remove();
   const style = document.createElement('style');
   style.id = styleId;
   style.media = 'print';
-  const margin = Number.isFinite(marginMm) ? marginMm : 8;
-  style.textContent = `@page { size: 210mm 297mm; margin: ${margin}mm; }`;
+  const margin =
+    typeof marginMm === 'string' && marginMm.trim()
+      ? marginMm.trim()
+      : `${Number.isFinite(marginMm) ? marginMm : 8}mm`;
+  style.textContent = `@page { size: 210mm 297mm; margin: ${margin}; }`;
   document.head.appendChild(style);
 }
 

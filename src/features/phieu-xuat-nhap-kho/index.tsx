@@ -15,7 +15,6 @@ import {
   History,
   ImagePlus,
   Loader2,
-  ListChecks,
   Package,
   Pencil,
   Plus,
@@ -33,6 +32,7 @@ import {
   X
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { machineSlipCodeToken } from '../../utils/warehouseSlipCode';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -44,7 +44,6 @@ import {
   TableSearchInput,
   TableDateFilter,
   TableShell,
-  TablePagination,
   TableHead,
   TableHeadCell,
   TableBody,
@@ -193,28 +192,6 @@ export interface WarehouseSlipLineDraft {
   isScanned?: boolean;
 }
 
-type PendingDamagedReportItem = {
-  reportRowId: string;
-  materialType: string;
-  code: string;
-  name: string;
-  unit: string;
-  quantity: number;
-};
-
-type PendingDamagedReport = {
-  key: string;
-  documentNo: string;
-  reportDate: string;
-  productionDate: string;
-  shift: string;
-  weigher: string;
-  machine: string;
-  note: string;
-  createdAt: string;
-  items: PendingDamagedReportItem[];
-};
-
 type WarehouseMachineOption = {
   id: string;
   code: string;
@@ -306,14 +283,6 @@ type OpenProductSlip = {
   status: 'chua_chot';
   created_at?: string | null;
 };
-
-function formatWarehouseSavedAt(value: string) {
-  if (!value) return 'Đang lưu…';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN', {
-    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
-  });
-}
 
 /** Draft quá thời gian này (ms) coi như đã cũ/bỏ dở, không tự điền vào phiếu mới nữa. */
 const WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS = 5 * 60 * 1000;
@@ -632,11 +601,13 @@ export function computeWarehouseLineAmount(quantityText: string, unitPriceText: 
   return Math.round(quantity * unitPrice * 100) / 100;
 }
 
-export function generateWarehouseSlipPreviewCode(slipType: WarehouseSlipType) {
+export function generateWarehouseSlipPreviewCode(slipType: WarehouseSlipType, machineName = '') {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
   const time = now.toISOString().slice(11, 19).replace(/:/g, '');
-  return `${slipType === 'nhap' ? 'PN' : 'PX'}-${date}-${time}`;
+  const prefix = slipType === 'nhap' ? 'PN' : 'PX';
+  const token = machineSlipCodeToken(machineName);
+  return token ? `${prefix}-${token}-${date}-${time}` : `${prefix}-${date}-${time}`;
 }
 
 export type WarehouseSlipPayloadItem = {
@@ -1363,7 +1334,7 @@ export function WarehouseSlipPanel({
   const [warehouseLocation, setWarehouseLocation] = useState('HCM');
   const [lines, setLines] = useState<WarehouseSlipLineDraft[]>(() => [createWarehouseLineDraft()]);
   const [productLineView, setProductLineView] = useState<'detail' | 'summary'>('detail');
-  const [productExportView, setProductExportView] = useState<'thuc-hien' | 'chi-tiet' | 'lap-phieu'>('thuc-hien');
+  const [productExportView, setProductExportView] = useState<'thuc-hien' | 'lap-phieu'>('thuc-hien');
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [avgInboundPriceByKey, setAvgInboundPriceByKey] = useState<Record<string, number>>({});
@@ -1404,12 +1375,6 @@ export function WarehouseSlipPanel({
   const [isAutofillingFromOrders, setIsAutofillingFromOrders] = useState(false);
   const [isAutofillingFromCanTuDong, setIsAutofillingFromCanTuDong] = useState(false);
   const [isLoadingProductionOrders, setIsLoadingProductionOrders] = useState(true);
-  const [pendingDamagedReports, setPendingDamagedReports] = useState<PendingDamagedReport[]>([]);
-  const [isLoadingDamagedReports, setIsLoadingDamagedReports] = useState(false);
-  const [damagedReportsError, setDamagedReportsError] = useState('');
-  const [reviewingDamagedReportKey, setReviewingDamagedReportKey] = useState('');
-  const damagedReportsRequestSeqRef = useRef(0);
-
   const clearSavedPrint = () => {
     setPrintSlip(null);
     setPrintAutoTrigger(false);
@@ -1461,111 +1426,11 @@ export function WarehouseSlipPanel({
         ? warehouseNhapFullMobileHeaderGridClass
         : warehouseNhapHeaderGridClass;
   const showFullWarehouseSlipFields = slipType === 'nhap' || warehouseKind === 'san_pham';
-  const productionReportLoai: 'thanh_pham' | 'gia_cong' | 'sp_loi' | 'sp_rac' | null = !selectedWarehouseName
-    ? null
-    : isFinishedGoodsWarehouseName(warehouseName)
-      ? 'thanh_pham'
-      : isProcessingWarehouseName(warehouseName)
-        ? 'gia_cong'
-        : isDamagedGoodsWarehouseName(warehouseName)
-          ? 'sp_loi'
-          : isTrashWarehouseName(warehouseName)
-            ? 'sp_rac'
-            : null;
-  const productionReportLoaiLabel =
-    productionReportLoai === 'thanh_pham'
-      ? 'Thành phẩm'
-      : productionReportLoai === 'gia_cong'
-        ? 'Gia công'
-        : productionReportLoai === 'sp_loi'
-          ? 'SP lỗi'
-          : productionReportLoai === 'sp_rac'
-            ? 'SP rác'
-            : '';
-  const showPendingProductionReports =
-    Boolean(productionReportLoai) && slipType === 'nhap' && !isXuatTreoMode && !editSlipCode;
-
   useEffect(() => {
     if (editSlipCode) return;
     if (!loginName) return;
     setCreatedBy(prev => (prev.trim() ? prev : loginName));
   }, [editSlipCode, loginName]);
-
-  const loadPendingDamagedReports = async () => {
-    const requestSeq = ++damagedReportsRequestSeqRef.current;
-    if (!productionReportLoai || !slipDate) {
-      setPendingDamagedReports([]);
-      setDamagedReportsError('');
-      setIsLoadingDamagedReports(false);
-      return;
-    }
-    setIsLoadingDamagedReports(true);
-    setDamagedReportsError('');
-    try {
-      const params = new URLSearchParams({ loai: productionReportLoai, ngay: slipDate });
-      const res = await fetch(`/api/bao-cao-san-luong/cho-nhap-kho?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-          throw new Error(readApiErrorMessage(res, data, 'Không thể tải báo cáo sản lượng chờ nhập kho.'));
-      }
-      if (requestSeq !== damagedReportsRequestSeqRef.current) return;
-      setPendingDamagedReports(Array.isArray(data?.records) ? data.records : []);
-    } catch (error: any) {
-      if (requestSeq !== damagedReportsRequestSeqRef.current) return;
-      setPendingDamagedReports([]);
-      setDamagedReportsError(error?.message || 'Không thể tải báo cáo sản lượng chờ nhập kho.');
-    } finally {
-      if (requestSeq === damagedReportsRequestSeqRef.current) {
-        setIsLoadingDamagedReports(false);
-      }
-    }
-  };
-
-  const handleReviewDamagedReport = (report: PendingDamagedReport) => {
-    clearSavedPrint();
-    setSlipType('nhap');
-    setIsXuatTreoMode(false);
-    // Giữ nguyên kho thủ kho đang chọn; chỉ suy lại loại kho cho chắc.
-    setWarehouseKind(inferWarehouseKindFromName(warehouseName));
-    setSlipDate(report.productionDate || report.reportDate || slipDate || new Date().toISOString().slice(0, 10));
-    setSelectedShifts(report.shift ? [report.shift] : []);
-    setReason(`Nhập kho từ báo cáo sản lượng ${report.documentNo}`);
-    setNote([report.machine, report.note].filter(Boolean).join(' · '));
-    setMachine(report.machine || '');
-    setDeliverer(report.weigher || '');
-    setLines(
-      report.items.map(item => ({
-        ...createWarehouseLineDraft(),
-        code: item.code,
-        name: item.name,
-        unit: item.unit || (productionReportLoai === 'sp_loi' || productionReportLoai === 'sp_rac' ? 'kg' : ''),
-        quantity: String(item.quantity),
-        unitPrice: '',
-        acceptanceReportRowId: item.reportRowId
-      }))
-    );
-    setReviewingDamagedReportKey(report.key);
-    setEditSlipCode(null);
-    setFormError('');
-    setActionMessage(
-      `Đã nạp báo cáo ${report.documentNo}. Kiểm tra dữ liệu rồi bấm Lưu phiếu nhập kho.`
-    );
-    window.setTimeout(() => {
-      document.querySelector('[data-warehouse-slip-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  };
-
-  useEffect(() => {
-    if (!showPendingProductionReports || !slipDate) {
-      damagedReportsRequestSeqRef.current += 1;
-      setPendingDamagedReports([]);
-      setDamagedReportsError('');
-      setIsLoadingDamagedReports(false);
-      return;
-    }
-    void loadPendingDamagedReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPendingProductionReports, productionReportLoai, slipDate]);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -2002,13 +1867,7 @@ export function WarehouseSlipPanel({
   // Giữ mã QR đầy đủ trong phiếu nháp và chặn quét trùng tuyệt đối.
   const scannedFullCodesByPrefixRef = useRef<Map<string, Map<string, string>>>(new Map());
   const [scannedSavedAtByCode, setScannedSavedAtByCode] = useState<Record<string, string>>({});
-  const [savedProductScanRows, setSavedProductScanRows] = useState<SavedProductScanRow[] | null>(null);
-  const [savedProductScanTotal, setSavedProductScanTotal] = useState(0);
   const [isLoadingExistingProductScans, setIsLoadingExistingProductScans] = useState(false);
-  const [savedProductScanPage, setSavedProductScanPage] = useState(1);
-  const [savedProductScanPageSize, setSavedProductScanPageSize] = useState(50);
-  const [loadingSavedProductScans, setLoadingSavedProductScans] = useState(false);
-  const [savedProductScanError, setSavedProductScanError] = useState('');
   const [savedProductSummary, setSavedProductSummary] = useState<SavedProductSummaryRow[]>([]);
   const [loadingProductSummary, setLoadingProductSummary] = useState(false);
   const [productSummaryError, setProductSummaryError] = useState('');
@@ -2048,6 +1907,23 @@ export function WarehouseSlipPanel({
     return khoScanMaPhieuRef.current;
   };
 
+  useEffect(() => {
+    if (editSlipCode || selectedProductSlipCode || savedProductBatchCodes.size > 0) return;
+    const prefix = slipType === 'nhap' ? 'PN' : 'PX';
+    const token = machineSlipCodeToken(machine);
+    if (!newSlipCode.startsWith(`${prefix}-`)) return;
+    const parts = newSlipCode.split('-');
+    const datePart = parts[parts.length - 2] ?? '';
+    const hasToken = parts.length >= 4 && /^\d{8}$/.test(datePart);
+    const currentToken = hasToken ? parts.slice(1, -2).join('-') : '';
+    if (currentToken === token) return;
+    const next = generateWarehouseSlipPreviewCode(slipType, machine);
+    if (!khoScanMaPhieuRef.current || khoScanMaPhieuRef.current === newSlipCode) {
+      khoScanMaPhieuRef.current = next;
+    }
+    setNewSlipCode(next);
+  }, [machine, slipType, editSlipCode, selectedProductSlipCode, savedProductBatchCodes, newSlipCode]);
+
   const createNewProductSlip = useCallback(() => {
     const code = generateWarehouseSlipPreviewCode(slipType);
     setProductExportView('thuc-hien');
@@ -2057,8 +1933,6 @@ export function WarehouseSlipPanel({
     scannedFullCodesByPrefixRef.current.clear();
     setSavedProductBatchCodes(new Set());
     setScannedSavedAtByCode({});
-    setSavedProductScanRows(null);
-    setSavedProductScanTotal(0);
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     setLines(emptyLines);
@@ -2125,8 +1999,6 @@ export function WarehouseSlipPanel({
     setLines(nextLines);
     setSavedProductBatchCodes(new Set([...codesByPrefix.values()].flatMap(codes => [...codes.values()]).map(normalizeMaterialCodeKey)));
     setScannedSavedAtByCode(savedAtByCode);
-    setSavedProductScanRows(null);
-    setSavedProductScanTotal(0);
     setProductExportView('lap-phieu');
     setSelectedProductSlipCode(slipCode);
     setNewSlipCode(slipCode);
@@ -2208,7 +2080,7 @@ export function WarehouseSlipPanel({
       );
       setMachineImportOpen(false);
       setMachineImportRows([]);
-      setProductExportView('chi-tiet');
+      setProductExportView('lap-phieu');
       setMachineImportNonce(value => value + 1);
     } catch (error: unknown) {
       setFormError(error instanceof Error ? error.message : 'Không xác nhận nhập kho được.');
@@ -2556,38 +2428,6 @@ export function WarehouseSlipPanel({
   }, [showProductExportTabs, warehouseName, slipType, editSlipCode, loadOpenProductSlip, createNewProductSlip]);
 
   useEffect(() => {
-    setSavedProductScanPage(1);
-  }, [productDetailSlipCode]);
-
-  useEffect(() => {
-    if (!showProductExportTabs || productExportView !== 'chi-tiet' || !productDetailSlipCode) return;
-    let cancelled = false;
-    const offset = (savedProductScanPage - 1) * savedProductScanPageSize;
-    setLoadingSavedProductScans(true);
-    setSavedProductScanError('');
-    setSavedProductScanRows(null);
-    setSavedProductScanTotal(0);
-    fetch(`/api/kho/chi-tiet?loai_phieu=${slipType}&ma_phieu=${encodeURIComponent(productDetailSlipCode)}&limit=${savedProductScanPageSize}&offset=${offset}`)
-      .then(async res => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || 'Không tải được chi tiết phiếu.');
-        if (cancelled) return;
-        setSavedProductScanRows(Array.isArray(data?.records) ? data.records : []);
-        setSavedProductScanTotal(Number(data?.total) || 0);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        setSavedProductScanRows(null);
-        setSavedProductScanTotal(0);
-        setSavedProductScanError(err?.message || 'Không tải được chi tiết phiếu.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSavedProductScans(false);
-      });
-    return () => { cancelled = true; };
-  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, savedProductScanPage, savedProductScanPageSize, scannedSavedAtByCode, machineImportNonce]);
-
-  useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode || isEditingProductInbound) return;
     let cancelled = false;
     setLoadingProductSummary(true);
@@ -2606,7 +2446,7 @@ export function WarehouseSlipPanel({
       })
       .finally(() => { if (!cancelled) setLoadingProductSummary(false); });
     return () => { cancelled = true; };
-  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode, isEditingProductInbound]);
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode, isEditingProductInbound, machineImportNonce]);
 
   useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || isEditingProductInbound || loadingProductSummary || productSummaryError) return;
@@ -2623,27 +2463,6 @@ export function WarehouseSlipPanel({
       };
     }));
   }, [showProductExportTabs, productExportView, isEditingProductInbound, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions]);
-
-  const savedProductDetails = savedProductScanRows?.map(row => {
-    const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
-    const baseCode = warehouseCodePrefix(String(row.ma_sp || fullCode));
-    const codeKey = normalizeMaterialCodeKey(baseCode);
-    const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
-    const line = lines.find(candidate => normalizeMaterialCodeKey(candidate.code) === codeKey);
-    return {
-      key: String(row.id),
-      baseCode,
-      fullCode,
-      name: String(row.ten_sp || item?.name || line?.name || ''),
-      unit: String(row.don_vi || item?.unit || line?.unit || ''),
-      savedAt: String(row.created_at || '')
-    };
-  }) ?? null;
-  const productDetailRows = savedProductDetails ?? scannedProductDetails.slice(
-    (savedProductScanPage - 1) * savedProductScanPageSize,
-    savedProductScanPage * savedProductScanPageSize
-  );
-  const productDetailTotal = savedProductDetails ? savedProductScanTotal : scannedProductDetails.length;
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -3482,15 +3301,6 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (reviewingDamagedReportKey) {
-      if (isXuatTreoMode || slipType !== 'nhap' || !productionReportLoai) {
-        setFormError(
-          showSaveFailure('Báo cáo sản lượng chỉ được nạp bằng phiếu Nhập kho vào đúng kho tương ứng.')
-        );
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-    }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3657,11 +3467,6 @@ export function WarehouseSlipPanel({
           : savedMessage;
       setActionMessage(okMsg);
       showAppToast(okMsg);
-      if (reviewingDamagedReportKey) {
-        setPendingDamagedReports(current => current.filter(report => report.key !== reviewingDamagedReportKey));
-        setReviewingDamagedReportKey('');
-        void loadPendingDamagedReports();
-      }
       setEditSlipCode(null);
       setReason('');
       setNote('');
@@ -3688,116 +3493,10 @@ export function WarehouseSlipPanel({
     }
   };
 
-  const pendingReportsCardConfig = showPendingProductionReports
-    ? {
-        title: `Báo cáo sản lượng (${productionReportLoaiLabel}) chờ nhập ${selectedWarehouseName}`,
-        subtitle:
-          'Chọn đúng kho và Ngày phiếu để xem báo cáo sản lượng của ngày đó. Bấm Kiểm tra để nạp xuống phiếu; lưu phiếu nhập rồi thì báo cáo không hiện lại nữa.',
-        emptyText: `Không có phiếu ${productionReportLoaiLabel} nào của ngày ${slipDate || '—'} đang chờ nhập kho.`
-      }
-    : null;
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
-      {pendingReportsCardConfig && (
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-          <div className="border-b border-slate-200 bg-white p-4 text-slate-700">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ClipboardCheck className="h-5 w-5 text-[#ef1b2d]" />
-                  <h2 className="text-base font-black text-slate-900">{pendingReportsCardConfig.title}</h2>
-                  {!isLoadingDamagedReports && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">
-                      {pendingDamagedReports.length}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-xs font-medium text-slate-500">{pendingReportsCardConfig.subtitle}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void loadPendingDamagedReports()}
-                  disabled={isLoadingDamagedReports}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
-                >
-                  <Loader2 className={`h-3.5 w-3.5 ${isLoadingDamagedReports ? 'animate-spin' : ''}`} />
-                  Tải lại
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenHistory}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
-                >
-                  <History className="h-4 w-4" />
-                  Lịch sử
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3">
-              {isLoadingDamagedReports ? (
-                <div className="flex h-16 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Đang tải danh sách báo cáo...
-                </div>
-              ) : damagedReportsError ? (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-bold text-rose-700">
-                  {damagedReportsError}
-                </p>
-              ) : pendingDamagedReports.length === 0 ? (
-                <div className="flex h-16 items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
-                  {pendingReportsCardConfig.emptyText}
-                </div>
-              ) : (
-                <div className="scrollbar-hidden grid max-h-72 gap-2 overflow-y-auto pr-1 lg:grid-cols-2 xl:grid-cols-3">
-                  {pendingDamagedReports.map(report => {
-                    const isReviewing = reviewingDamagedReportKey === report.key;
-                    return (
-                      <div
-                        key={report.key}
-                        className={`rounded-xl border p-3 transition ${
-                          isReviewing ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-slate-900">{report.documentNo}</p>
-                            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                              {report.productionDate || report.reportDate || 'Chưa có ngày'}
-                              {report.shift ? ` · ${report.shift}` : ''}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleReviewDamagedReport(report)}
-                            className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black transition ${
-                              isReviewing
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-[#ef1b2d] text-white hover:bg-[#d91526]'
-                            }`}
-                          >
-                            {isReviewing ? 'Đang kiểm tra' : 'Kiểm tra'}
-                          </button>
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                          <span className="truncate text-slate-600">Người báo: <b>{report.weigher || '—'}</b></span>
-                          <span className="truncate text-slate-600">Máy: <b>{report.machine || '—'}</b></span>
-                          <span className="col-span-2 text-slate-600">
-                            {report.items.length} dòng vật tư · {report.items.map(item => `${item.name}: ${formatNumber(item.quantity)} ${item.unit}`).join('; ')}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
       {((formError && showInlineFormError) || actionMessage) && (
         <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
           {formError && showInlineFormError && (
@@ -3819,39 +3518,38 @@ export function WarehouseSlipPanel({
         </section>
       )}
 
-      <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-2">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wide text-zinc-700">Loại phiếu</p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const, treoMode: false },
-                { key: 'xuat_treo', label: 'Xuất kho treo', Icon: Clock, slipType: 'xuat' as const, treoMode: true },
-                { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const, treoMode: false }
-              ] as const).map(option => {
-                const isActive = slipType === option.slipType && isXuatTreoMode === option.treoMode;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => handleSlipModeChange(option.slipType, option.treoMode)}
-                    className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
-                      isActive
-                        ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                        : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
-                    }`}
-                  >
-                    <option.Icon className="h-4 w-4" />
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
+      <div className="sticky top-0 z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-2 pt-2 md:-mx-3 md:-mt-3 md:px-3">
+        <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-wide text-zinc-700">Loại phiếu</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const, treoMode: false },
+              { key: 'xuat_treo', label: 'Xuất kho treo', Icon: Clock, slipType: 'xuat' as const, treoMode: true },
+              { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const, treoMode: false }
+            ] as const).map(option => {
+              const isActive = slipType === option.slipType && isXuatTreoMode === option.treoMode;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => handleSlipModeChange(option.slipType, option.treoMode)}
+                  className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
+                    isActive
+                      ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
+                  }`}
+                >
+                  <option.Icon className="h-4 w-4" />
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
+        </div>
+      </div>
 
-          <div className="space-y-2">
+      <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <div className="space-y-2">
             <label className="block space-y-1">
               <span className="text-xs font-black uppercase tracking-wide text-zinc-700">Tên kho *</span>
               <SearchableSelect
@@ -3970,15 +3668,13 @@ export function WarehouseSlipPanel({
                 </div>
               </div>
             ) : null}
-          </div>
         </div>
       </section>
 
       {showProductExportTabs ? (
-        <nav aria-label="Chức năng xuất kho thành phẩm" className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2">
+        <nav aria-label="Chức năng xuất kho thành phẩm" className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2">
           {([
             { key: 'thuc-hien', label: 'Thực hiện', Icon: ClipboardCheck },
-            { key: 'chi-tiet', label: 'Chi tiết', Icon: ListChecks },
             { key: 'lap-phieu', label: 'Lập phiếu', Icon: FilePlus2 }
           ] as const).map(tab => (
             <button
@@ -4130,12 +3826,22 @@ export function WarehouseSlipPanel({
           <label className="block min-w-0 space-y-1">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
             <input
-              value={createdBy}
+              value={
+                machine.trim() && createdBy.trim() && !createdBy.toLowerCase().includes(machine.trim().toLowerCase())
+                  ? `${createdBy.trim()} · ${machine.trim()}`
+                  : createdBy
+              }
               onChange={event => setCreatedBy(event.target.value)}
               className={warehouseFieldClass}
               placeholder={loginName || 'Tên người lập phiếu'}
               readOnly={Boolean(loginName) && !editSlipCode}
-              title={loginName ? `Theo tài khoản đăng nhập: ${loginName}` : undefined}
+              title={
+                machine.trim()
+                  ? `${createdBy.trim() || loginName} · ${machine.trim()}`
+                  : loginName
+                    ? `Theo tài khoản đăng nhập: ${loginName}`
+                    : undefined
+              }
             />
           </label>
           {showFullWarehouseSlipFields ? (
@@ -4337,9 +4043,17 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
-      <section className="space-y-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+      <section className={
+        showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
+          ? '-mx-2 space-y-3 border-y border-zinc-200 bg-white py-3 shadow-sm md:-mx-3'
+          : 'space-y-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm'
+      }>
+        <div className={
+          showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
+            ? 'space-y-2'
+            : 'space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-2.5'
+        }>
+          <div className={`flex flex-wrap items-center justify-between gap-2 ${showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? 'px-3' : ''}`}>
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 {isEditingProductInbound
@@ -4415,37 +4129,40 @@ export function WarehouseSlipPanel({
           </div>
 
           {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? (
-            <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
-              <table className="w-full min-w-[620px] border-separate border-spacing-0 text-left text-xs">
+            <div className="w-full min-w-0 overflow-x-hidden">
+              <table className="w-full table-fixed border-collapse text-left text-sm">
+                <colgroup>
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '58%' }} />
+                  <col style={{ width: '16%' }} />
+                </colgroup>
                 <thead>
                   <tr className="bg-[#ef1b2d] text-white">
-                    {['STT', 'Mã TP', 'Tên TP', 'Số lượng', 'Trọng lượng'].map(label => (
-                      <th key={label} className="px-3 py-2 font-black first:rounded-tl-lg last:rounded-tr-lg">{label}</th>
-                    ))}
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">STT</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Mã TP</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Tên TP</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Số lượng</th>
                   </tr>
                 </thead>
                 <tbody>
                   {savedProductSummary.map((row, index) => {
                     const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(row.ma_sp));
-                    const weightKg = convertWarehouseQuantityToKg({
-                      quantity: Number(row.so_luong),
-                      unit: item?.unit || '',
-                      itemCode: row.ma_sp,
-                      warehouseKind: 'san_pham',
-                      products: weightCatalog
-                    });
                     return (
                       <tr key={row.ma_sp} className="border-b border-zinc-100 even:bg-zinc-50/70">
-                        <td className="px-3 py-2 text-zinc-500">{index + 1}</td>
-                        <td className="px-3 py-2 font-bold text-zinc-800">{row.ma_sp}</td>
-                        <td className="px-3 py-2">{row.ten_sp || item?.name || '—'}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatNumber(Number(row.so_luong) || 0)}</td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatWarehouseWeightKg(weightKg)}</td>
+                        <td className="px-3 py-2.5 text-center text-zinc-500">{index + 1}</td>
+                        <td className="px-3 py-2.5 text-center font-bold text-zinc-800">{row.ma_sp}</td>
+                        <td className="px-3 py-2.5 align-top">
+                          <div className="line-clamp-4 whitespace-normal break-words leading-snug" title={row.ten_sp || item?.name || ''}>
+                            {row.ten_sp || item?.name || '—'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold tabular-nums whitespace-nowrap">{formatNumber(Number(row.so_luong) || 0)}</td>
                       </tr>
                     );
                   })}
                   {!savedProductSummary.length ? (
-                    <tr><td colSpan={5} className="px-3 py-8 text-center text-zinc-500">{loadingProductSummary ? 'Đang tải danh sách…' : productSummaryError || 'Chưa có sản phẩm đã quét cho phiếu này.'}</td></tr>
+                    <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-500">{loadingProductSummary ? 'Đang tải danh sách…' : productSummaryError || 'Chưa có sản phẩm đã quét cho phiếu này.'}</td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -4852,61 +4569,10 @@ export function WarehouseSlipPanel({
                 {scannedProductDetails.length
                   ? 'Các mã trong đợt đã được lưu. Quét tiếp mã mới nếu cần.'
                   : isEditingProductInbound
-                    ? 'Quét thêm mã mới tại đây. Các mã QR đã lưu xem trong tab Chi tiết.'
+                    ? 'Quét thêm mã mới tại đây. Các mã QR đã lưu xem trong tab Lập phiếu.'
                     : 'Quét mã QR để xem danh sách sản phẩm trong đợt. Mã chỉ được lưu vào kho khi bấm Lưu đợt.'}
               </div>
             )}
-          </section>
-        </>
-      ) : null}
-
-      {showProductExportTabs && productExportView === 'chi-tiet' ? (
-        <>
-          <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-            <div className="border-b border-zinc-100 p-3 text-sm font-black text-zinc-900">
-              Danh sách sản phẩm đã quét <span className="ml-1 rounded-full bg-zinc-100 px-2 py-1 text-xs">{productDetailTotal} mã</span>
-            </div>
-            <div className="scrollbar-hidden w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x">
-              <table className="w-max min-w-full table-auto whitespace-nowrap text-left text-xs sm:text-sm">
-                <thead className="bg-[#ef1b2d] text-white">
-                  <tr>
-                    <th className="px-3 py-2">STT</th>
-                    <th className="px-3 py-2">Mã TP gốc</th>
-                    <th className="px-3 py-2">Mã quét</th>
-                    <th className="px-3 py-2">Tên TP</th>
-                    <th className="px-3 py-2">ĐV</th>
-                    <th className="px-3 py-2">Kho</th>
-                    <th className="px-3 py-2">Thời điểm lưu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productDetailRows.map((detail, index) => (
-                    <tr key={detail.key} className="border-b border-zinc-100 even:bg-zinc-50">
-                      <td className="px-3 py-2 text-black">{(savedProductScanPage - 1) * savedProductScanPageSize + index + 1}</td>
-                      <td className="px-3 py-2 font-extrabold text-black">{detail.baseCode}</td>
-                      <td className="px-3 py-2 font-mono font-extrabold text-black">{detail.fullCode}</td>
-                      <td className="px-3 py-2 text-black">{detail.name || '—'}</td>
-                      <td className="px-3 py-2 text-black">{detail.unit || '—'}</td>
-                      <td className="px-3 py-2 text-black">{warehouseName || '—'}</td>
-                      <td className="px-3 py-2 text-black">{formatWarehouseSavedAt(detail.savedAt)}</td>
-                    </tr>
-                  ))}
-                  {!productDetailRows.length ? (
-                    <tr><td colSpan={7} className="px-3 py-8 text-center font-semibold text-black">{loadingSavedProductScans ? 'Đang tải danh sách…' : savedProductScanError || 'Chưa có mã QR nào được quét.'}</td></tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            {productDetailTotal > 0 ? (
-              <TablePagination
-                totalRecords={productDetailTotal}
-                currentPage={savedProductScanPage}
-                totalPages={Math.max(1, Math.ceil(productDetailTotal / savedProductScanPageSize))}
-                pageSize={savedProductScanPageSize}
-                onPageChange={setSavedProductScanPage}
-                onPageSizeChange={size => { setSavedProductScanPageSize(size); setSavedProductScanPage(1); }}
-              />
-            ) : null}
           </section>
         </>
       ) : null}

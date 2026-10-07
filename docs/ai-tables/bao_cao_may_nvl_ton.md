@@ -24,6 +24,6 @@ SUPABASE_MACHINE_NVL_REPORTS_TABLE=bao_cao_may_nvl_ton
 - Báo cáo tồn đầu ca
 - Báo cáo tồn cuối ca
 
-**Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** mở modal lọc Ngày/Ca/Máy (mặc định trống) → chọn phiếu tồn cuối ca trong sổ xuống → **Điền vào form**. Báo cáo đầu ca không bắt chụp ảnh từng dòng; báo cáo cuối ca vẫn bắt ảnh trước khi lưu.
+**Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** mở modal lọc Ngày/Ca/Máy (mặc định trống) → chọn phiếu tồn cuối ca trong sổ xuống → **Điền vào form**. Ảnh từng dòng là tùy chọn ở cả đầu ca và cuối ca; không có ảnh vẫn lưu được.
 
 **Chống trùng:** không lưu 2 phiếu cùng **ngày + ca + máy + loại** (đầu/cuối ca). Form và API (`409`) báo đỏ: «Đã lưu … Không lưu bản trùng.»

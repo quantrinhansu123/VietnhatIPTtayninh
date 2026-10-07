@@ -4524,24 +4524,6 @@ function parseMachineNvlReportBody(body: unknown): { error: string } | { record:
   }
 
   const loai_bao_cao = parseMachineNvlReportKind(source.loai_bao_cao ?? source.loai ?? source.reportKind);
-  const missingImageLine = loai_bao_cao === 'dau_ca' ? undefined : chi_tiet.find(line => {
-    const hasContent = Boolean(
-      line.ma_nvl ||
-        line.ten_nvl ||
-        (line.so_luong_ton ?? 0) > 0 ||
-        (line.so_luong_trong_may ?? 0) > 0 ||
-        (line.so_luong_trong_bon_tron ?? 0) > 0 ||
-        (line.so_luong_nl_chua_tron ?? 0) > 0 ||
-        (line.so_luong_ton_ngoai ?? 0) > 0 ||
-        (line.so_luong_ton_dinh_muc ?? 0) > 0 ||
-        (line.so_luong_ton_ca_truoc ?? 0) > 0
-    );
-    return hasContent && !String(line.hinh_anh ?? '').trim();
-  });
-  if (missingImageLine) {
-    const label = missingImageLine.ma_nvl || missingImageLine.ten_nvl || `STT ${missingImageLine.stt}`;
-    return { error: `Dòng ${label}: vui lòng chụp ảnh.` };
-  }
 
   const tong_so_luong_ton =
     Math.round(chi_tiet.reduce((sum, line) => sum + (line.so_luong_ton ?? 0), 0) * 100) / 100;
@@ -15072,9 +15054,6 @@ export function createApp() {
     const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
     const coreImageUrl = String(body.core_image_url ?? '').trim();
     const productImageUrl = String(body.product_image_url ?? '').trim();
-    if (!coreImageUrl && !productImageUrl) {
-      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một ảnh cân.' });
-    }
     const ngay = String(body.ngay ?? body.work_date ?? '').trim();
     const ca = String(body.ca ?? '').trim();
     const lenhSx = String(body.lenh_sx ?? body.ma_lenh_sx ?? '').trim();

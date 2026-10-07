@@ -846,11 +846,6 @@ export default function AcceptanceReportListView({
           skipped += 1;
           continue;
         }
-        if (!report.hinh_anh) {
-          failures.push(`${report.mat_hang}: thiếu ảnh, không cập nhật được`);
-          continue;
-        }
-
         const res = await fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(report.id)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },

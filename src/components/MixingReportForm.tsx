@@ -1507,7 +1507,7 @@ export default function MixingReportForm({
     }
   }, [form.chi_tiet, activeRoundCount]);
 
-  /** Lần đã nhập xong (có NVL + ảnh) không còn là lần cuối thì tự thu gọn, đỡ phải lướt qua dữ liệu cũ. */
+  /** Lần đã nhập NVL và không còn là lần cuối thì tự thu gọn, đỡ phải lướt qua dữ liệu cũ. */
   useEffect(() => {
     ROUND_KEYS.slice(0, displayedRoundCount).forEach((roundKey, index) => {
       const isLast = index === displayedRoundCount - 1;
@@ -1839,7 +1839,7 @@ export default function MixingReportForm({
   const getRoundPhotos = (roundKey: RoundKey) => form.hinh_anh_theo_lan?.[roundKey] ?? [];
 
   const isRoundComplete = (roundKey: RoundKey) =>
-    listRoundMaterialEntries(form.chi_tiet, roundKey).length > 0 && getRoundPhotos(roundKey).length > 0;
+    listRoundMaterialEntries(form.chi_tiet, roundKey).length > 0;
 
   const toggleRoundCollapsed = (roundKey: RoundKey) => {
     setCollapsedRounds(prev => {
@@ -1996,19 +1996,6 @@ export default function MixingReportForm({
       const roundIndex = ROUND_KEYS.indexOf(missingBatchRound);
       setError(
         showSaveFailure(`Vui lòng nhập KL 1 mẻ (kg) cho ${roundColumnLabel(sessionRoundStart, roundIndex)}.`)
-      );
-      return;
-    }
-
-    const missingPhotoRound = ROUND_KEYS.slice(0, displayedRoundCount).find(roundKey => {
-      const hasNvl = listRoundMaterialEntries(chiTietReady, roundKey).length > 0;
-      const hasPhoto = (form.hinh_anh_theo_lan?.[roundKey]?.length ?? 0) > 0;
-      return hasNvl && !hasPhoto;
-    });
-    if (missingPhotoRound) {
-      const roundIndex = ROUND_KEYS.indexOf(missingPhotoRound);
-      setError(
-        showSaveFailure(`Vui lòng chụp ít nhất một ảnh cho ${roundColumnLabel(sessionRoundStart, roundIndex)}.`)
       );
       return;
     }

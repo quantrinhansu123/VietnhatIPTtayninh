@@ -824,15 +824,6 @@ export function MachineNvlReportPanel({
       return;
     }
 
-    if (!isDauCaTab) {
-      const missingImageLine = activeLines.find(line => !machineNvlLineImageSrc(line));
-      if (missingImageLine) {
-        const label = missingImageLine.code.trim() || missingImageLine.name.trim() || 'NVL';
-        setMessage(showSaveFailure(`Dòng ${label}: vui lòng chụp ảnh.`));
-        return;
-      }
-    }
-
     setIsSaving(true);
     let resolvedLines = lines;
     try {
@@ -1269,7 +1260,7 @@ export function MachineNvlReportPanel({
                             ) : (
                               <label className="flex h-[76px] w-full cursor-pointer flex-col items-center justify-center gap-1 text-[9px] font-bold text-zinc-400">
                                 <Camera className="h-4 w-4" />
-                                <span>Chụp ảnh *</span>
+                                <span>Chụp ảnh</span>
                                 <input
                                   type="file"
                                   accept="image/*"

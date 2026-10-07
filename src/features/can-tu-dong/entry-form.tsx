@@ -154,10 +154,6 @@ export function CanTuDongEntryForm({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
-    if (!coreImage && !productImage) {
-      setError('Vui lòng chọn ít nhất một ảnh cân.');
-      return;
-    }
     setSaving(true);
     try {
       const uploadOne = async (picked: PickedImage | null) => {
@@ -287,7 +283,7 @@ export function CanTuDongEntryForm({
           ) : null}
           {savedCount > 0 ? (
             <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-              Đã lưu {savedCount} dòng và ảnh lên Cloudinary. Số cân điền sau trên danh sách cân AI.
+              Đã lưu {savedCount} dòng. Số cân điền sau trên danh sách cân AI.
             </p>
           ) : null}
           <div className="flex justify-end">
@@ -297,7 +293,7 @@ export function CanTuDongEntryForm({
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-extrabold text-white hover:bg-zinc-800 disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {saving ? 'Đang tải ảnh...' : 'Lưu ảnh và ghi dòng'}
+              {saving ? 'Đang lưu...' : 'Lưu dòng'}
             </button>
           </div>
         </form>

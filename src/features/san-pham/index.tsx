@@ -305,6 +305,7 @@ export function ProductNplItemFormModal({
               onChange={pickMaterial}
               options={materialOptions}
               placeholder="Gõ để tìm mã NPL"
+              preferValueMatch
               isLoading={isLoadingMaterials}
               disabled={isLoadingMaterials}
               inputClassName={productFieldClass}

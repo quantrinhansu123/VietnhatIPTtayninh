@@ -738,6 +738,7 @@ export function MachinesPanel({ onBack }: { onBack: () => void }) {
                         }}
                         options={materialOptions}
                         placeholder="Chọn mã NVL"
+                        preferValueMatch
                         isLoading={isLoadingMaterials}
                         inputClassName={machineFieldClass}
                         getLabel={option => {

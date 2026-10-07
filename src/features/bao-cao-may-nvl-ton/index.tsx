@@ -1306,6 +1306,7 @@ export function MachineNvlReportPanel({
                                 }}
                                 options={materials}
                                 placeholder="Mã"
+                                preferValueMatch
                                 isLoading={isLoading}
                                 displaySelectedAsValue
                                 dropdownMinWidth={460}

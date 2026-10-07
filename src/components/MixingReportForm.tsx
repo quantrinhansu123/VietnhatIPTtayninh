@@ -557,13 +557,19 @@ function MixingRoundItemFormModal({
   const materialSuggestions = useMemo(() => {
     const keyword = materialSearch.trim().toLocaleLowerCase('vi');
     if (!keyword) return materials.slice(0, 12);
-    const codeMatches = materials.filter(material =>
-      material.code.toLocaleLowerCase('vi').includes(keyword)
+    const fold = (value: string) =>
+      value
+        .toLocaleLowerCase('vi')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd');
+    const foldedKeyword = fold(keyword);
+    const codeMatches = materials.filter(material => fold(material.code).includes(foldedKeyword));
+    const codeSet = new Set(codeMatches);
+    const nameMatches = materials.filter(
+      material => !codeSet.has(material) && fold(material.name).includes(foldedKeyword)
     );
-    return (codeMatches.length
-      ? codeMatches
-      : materials.filter(material => material.name.toLocaleLowerCase('vi').includes(keyword))
-    ).slice(0, 12);
+    return [...codeMatches, ...nameMatches].slice(0, 12);
   }, [materialSearch, materials]);
 
   const pickMaterial = (material: MaterialOption) => {

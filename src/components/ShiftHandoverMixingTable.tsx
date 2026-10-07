@@ -135,6 +135,7 @@ export default function ShiftHandoverMixingTable({
                       }}
                       options={materials}
                       placeholder="Chọn hoặc nhập tên vật tư"
+                      preferValueMatch
                       searchPlaceholder="Tìm mã / tên NVL..."
                       isLoading={isLoading}
                       inputClassName={cellClass}

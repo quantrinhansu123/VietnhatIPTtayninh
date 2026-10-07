@@ -66,15 +66,19 @@ export default function SearchableSelect({
   }, [selectedLabel, open]);
 
   const filteredOptions = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const list = normalized
-      ? options.filter(item => {
-          const label = searchText(item).toLowerCase();
-          const optionValue = getValue(item).toLowerCase();
-          return label.includes(normalized) || optionValue.includes(normalized);
-        })
-      : options;
-    return list.slice(0, maxResults);
+    const normalized = query
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd');
+    if (!normalized) return options.slice(0, maxResults);
+    const fold = (value: string) =>
+      value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    const valueMatches = options.filter(item => fold(getValue(item)).includes(normalized));
+    const valueSet = new Set(valueMatches);
+    const nameMatches = options.filter(item => !valueSet.has(item) && fold(searchText(item)).includes(normalized));
+    return [...valueMatches, ...nameMatches].slice(0, maxResults);
   }, [options, query, searchText, getValue, maxResults]);
 
   const commitValue = (nextValue: string, item: unknown | null = null) => {

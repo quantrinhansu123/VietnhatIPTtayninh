@@ -1223,26 +1223,23 @@ export default function MixingNormMaterialsTab() {
                                   key={line.key}
                                   className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-200 bg-white p-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)_0.7fr_0.5fr_0.75fr_auto]"
                                 >
-                                  <select
+                                  <SearchableSelect
                                     value={line.maNvl}
-                                    onChange={event =>
-                                      selectMaterialCode(product.key, line.key, event.target.value)
+                                    onChange={code => selectMaterialCode(product.key, line.key, code)}
+                                    options={
+                                      line.maNvl && !codeInCatalog
+                                        ? [{ code: line.maNvl, name: `${line.tenNvl} (không còn trong kho)`, unit: line.donVi }, ...materials]
+                                        : materials
                                     }
-                                    className={inputClass}
-                                  >
-                                    <option value="">{`Chọn mã NVL #${index + 1}`}</option>
-                                    {line.maNvl && !codeInCatalog && (
-                                      <option value={line.maNvl}>
-                                        {line.maNvl} (không còn trong kho)
-                                      </option>
-                                    )}
-                                    {materials.map(material => (
-                                      <option key={material.code} value={material.code}>
-                                        {material.code}
-                                        {material.name ? ` — ${material.name}` : ''}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    placeholder={`Chọn mã NVL #${index + 1}`}
+                                    inputClassName={inputClass}
+                                    preferValueMatch
+                                    getValue={item => (item as MaterialOption).code}
+                                    getLabel={item => {
+                                      const material = item as MaterialOption;
+                                      return material.name ? `${material.code} — ${material.name}` : material.code;
+                                    }}
+                                  />
                                   <input
                                     value={line.tenNvl}
                                     readOnly

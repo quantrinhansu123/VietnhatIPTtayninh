@@ -43,7 +43,8 @@ export function SearchableSelect({
   comboboxSearchable = true,
   matchDropdownWidth = false,
   dropdownMinWidth = 0,
-  searchPlaceholder
+  searchPlaceholder,
+  preferValueMatch = true
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -78,6 +79,8 @@ export function SearchableSelect({
   dropdownMinWidth?: number;
   /** Placeholder riêng cho ô tìm kiếm trong menu combobox. */
   searchPlaceholder?: string;
+  /** Mã khớp từ khóa xếp trước, rồi mới đến kết quả khớp theo tên. */
+  preferValueMatch?: boolean;
 }) {
   const fieldClass = inputClassName || orderFieldClass;
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -114,14 +117,19 @@ export function SearchableSelect({
       return options.slice(0, maxResults);
     }
     const normalized = normalizeSearchText(query.trim());
-    const list = normalized
-      ? options.filter(item => {
-          const label = normalizeSearchText((getSearchText ?? getLabel)(item));
-          const optionValue = normalizeSearchText(getValue(item));
-          return label.includes(normalized) || optionValue.includes(normalized);
-        })
-      : options;
-    return list.slice(0, maxResults);
+    if (!normalized) return options.slice(0, maxResults);
+    const matchesText = (item: unknown) => {
+      const label = normalizeSearchText((getSearchText ?? getLabel)(item));
+      const optionValue = normalizeSearchText(getValue(item));
+      return label.includes(normalized) || optionValue.includes(normalized);
+    };
+    if (!preferValueMatch) {
+      return options.filter(matchesText).slice(0, maxResults);
+    }
+    const valueMatches = options.filter(item => normalizeSearchText(getValue(item)).includes(normalized));
+    const valueSet = new Set(valueMatches);
+    const nameMatches = options.filter(item => !valueSet.has(item) && matchesText(item));
+    return [...valueMatches, ...nameMatches].slice(0, maxResults);
   }, [
     options,
     query,
@@ -130,7 +138,8 @@ export function SearchableSelect({
     getValue,
     maxResults,
     comboboxMode,
-    comboboxSearchable
+    comboboxSearchable,
+    preferValueMatch
   ]);
 
   const commitValue = (nextValue: string, item: unknown | null = null) => {

@@ -2883,6 +2883,7 @@ export default function WeighingReportForm({
                       }}
                       options={productSelectOptions}
                       placeholder={productCodePlaceholder}
+                      preferValueMatch
                       isLoading={isOtherOrderSelected ? isLoadingMaterials : isLoadingProductionOrders}
                       disabled={productCodeSelectDisabled}
                       inputClassName={modalInputClass}
@@ -3088,6 +3089,7 @@ export default function WeighingReportForm({
                               }}
                               options={materials}
                               placeholder={isLoadingMaterials ? 'Đang tải kho NVL...' : 'Gõ mã hoặc tên NVL...'}
+                              preferValueMatch
                               isLoading={isLoadingMaterials}
                               disabled={isLoadingMaterials}
                               inputClassName={modalInputClass}

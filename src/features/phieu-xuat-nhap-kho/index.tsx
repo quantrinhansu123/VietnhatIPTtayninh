@@ -4523,6 +4523,7 @@ export function WarehouseSlipPanel({
                       onChange={code => pickItem(line.key, code)}
                       options={itemOptions}
                       placeholder=""
+                      preferValueMatch
                       emptyInputText=""
                       isLoading={isLoadingItems}
                       disabled={isLoadingItems}

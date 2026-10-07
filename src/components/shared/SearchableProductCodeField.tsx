@@ -27,13 +27,23 @@ export function SearchableProductCodeField({
   }, [value]);
 
   const filteredProducts = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    const list = normalized
-      ? products.filter(product =>
-          `${product.code} ${product.newCode} ${product.name}`.toLowerCase().includes(normalized)
-        )
-      : products;
-    return list.slice(0, 40);
+    const normalized = query
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd');
+    if (!normalized) return products.slice(0, 40);
+    const fold = (value: string) =>
+      value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    const codeMatches = products.filter(product =>
+      fold(`${product.code} ${product.newCode}`).includes(normalized)
+    );
+    const codeSet = new Set(codeMatches);
+    const nameMatches = products.filter(
+      product => !codeSet.has(product) && fold(product.name).includes(normalized)
+    );
+    return [...codeMatches, ...nameMatches].slice(0, 40);
   }, [products, query]);
 
   const commitCode = (nextCode: string) => {

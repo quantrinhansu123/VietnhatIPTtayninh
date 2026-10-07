@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
+import { Copy, Eye, Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
-import { formatNumber } from '../../utils';
+import { formatMoney, formatNumber } from '../../utils';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
 import { ShippingDeliveryPrintSheet } from '../../components/ShippingDeliveryPrintSheet';
@@ -445,6 +445,7 @@ export function ShippingOrdersPanel({
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState<ShippingOrder | null>(null);
   const [fillOpen, setFillOpen] = useState(false);
   const [fillDate, setFillDate] = useState(todayIso());
   const [fillOrders, setFillOrders] = useState<SalesOrderPick[]>([]);
@@ -1095,6 +1096,14 @@ export function ShippingOrdersPanel({
                   <td className="px-4 py-3 text-center">
                     <RowActionsMenu label={`Thao tác ${order.ma_lenh}`}>
                     <div className="inline-flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewingOrder(order)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                        title="Xem"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
                       {canCreate ? (
                         <button
                           type="button"
@@ -1143,6 +1152,97 @@ export function ShippingOrdersPanel({
           )}
         </TableBody>
       </TableShell>
+
+      {viewingOrder
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex items-stretch justify-center bg-slate-950/50 p-0 sm:items-center sm:p-3">
+              <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[98vw] flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-2xl">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                      Chi tiết lệnh xuất hàng
+                    </h3>
+                    <p className="mt-0.5 font-mono text-xs font-bold text-sky-800">{viewingOrder.ma_lenh || '—'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewingOrder(null)}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    Đóng
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ['Ngày xuất', formatDateVi(viewingOrder.ngay_xuat)],
+                      ['BSX', viewingOrder.bsx || '—'],
+                      ['Số Km', viewingOrder.so_km != null && viewingOrder.so_km > 0 ? formatNumber(viewingOrder.so_km, 1) : '—'],
+                      ['Trạng thái', viewingOrder.trang_thai || 'Chờ xuất']
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                        <div className="mt-0.5 text-sm font-bold text-slate-900">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {groupsFromOrder(viewingOrder).map((group, groupIndex) => (
+                    <section key={group.id} className="rounded-xl border border-slate-200 p-3">
+                      <h4 className="text-xs font-black uppercase tracking-wide text-slate-700">
+                        Khách {groupIndex + 1}
+                        {group.ma_khach_hang ? ` · ${group.ma_khach_hang}` : ''}
+                      </h4>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {[
+                          ['Khách hàng', group.ten_khach_hang || '—'],
+                          ['Địa chỉ', group.dia_chi_giao || '—'],
+                          ['SĐT', group.so_dien_thoai || '—'],
+                          ['Thanh toán', group.thanh_toan || '—'],
+                          ['Người phụ trách', group.nhan_vien || '—'],
+                          ['Ghi chú', group.ghi_chu || '—']
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+                            <div className="mt-0.5 whitespace-pre-line text-sm font-semibold text-slate-800">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="w-full min-w-[640px] text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                              <th className="px-2 py-2">Mã SP</th>
+                              <th className="px-2 py-2">Tên SP</th>
+                              <th className="px-2 py-2">ĐVT</th>
+                              <th className="px-2 py-2 text-right">SL</th>
+                              <th className="px-2 py-2 text-right">Đơn giá</th>
+                              <th className="px-2 py-2 text-right">Tổng tiền</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.chi_tiet
+                              .filter(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0)
+                              .map(line => (
+                                <tr key={line.id} className="border-b border-slate-100">
+                                  <td className="px-2 py-2 font-mono font-bold text-slate-800">{line.ma_sp || '—'}</td>
+                                  <td className="px-2 py-2 font-semibold text-slate-800">{line.ten_sp || '—'}</td>
+                                  <td className="px-2 py-2 text-slate-600">{line.don_vi || '—'}</td>
+                                  <td className="px-2 py-2 text-right font-mono font-bold">{formatNumber(line.so_luong || 0, 2)}</td>
+                                  <td className="px-2 py-2 text-right font-mono">{formatMoney(line.don_gia || 0)}</td>
+                                  <td className="px-2 py-2 text-right font-mono font-bold">{formatMoney(line.tong_tien || 0)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {previewOpen && previewOrders.length > 0
         ? createPortal(

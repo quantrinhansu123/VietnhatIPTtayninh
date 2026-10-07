@@ -14,4 +14,4 @@ Số Km: cột `so_km`
 In biên bản giao xe: A4 dọc, xem trước 3 lệnh/trang, tiêu đề lặp khi sang trang (`ShippingDeliveryPrintSheet`). Cột **Tên-Địa chỉ** hiện tên khách rồi xuống dòng địa chỉ.  
 Danh sách lọc theo khoảng **Từ ngày** / **Đến ngày** trên `ngay_xuat`.  
 Khi tạo mới bị trùng `ma_lenh` (người khác lưu trước), API tự lấy max STT dạng `LXH###` rồi lưu mã kế tiếp.  
-Nút **Sao chép** trên từng dòng tạo lệnh mới giống hệt, chỉ đổi `ma_lenh` theo max STT.
+Nút **Xem** trên từng dòng mở chi tiết lệnh ở chế độ chỉ đọc: từng khách kèm thanh toán, người phụ trách, ghi chú và mặt hàng. Nút **Sao chép** trên từng dòng tạo lệnh mới giống hệt, chỉ đổi `ma_lenh` theo max STT.

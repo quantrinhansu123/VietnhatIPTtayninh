@@ -13155,7 +13155,7 @@ export function createApp() {
                   ca: slipCa || null,
                   may: slipMay || null,
                   ngay: String(body.ngay ?? '').trim() || null,
-                  nguoi_thao_tac: slipNguoiLap || null,
+                  nguoi_thao_tac: String(body.nhan_su ?? '').trim() || slipNguoiLap || null,
                   trang_thai: 'Đang chờ'
                 }
               : {})

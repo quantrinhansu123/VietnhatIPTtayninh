@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
+  Eye,
   Factory,
   FilePlus2,
   History,
@@ -300,6 +301,8 @@ type OpenProductSlip = {
   ngay?: string | null;
   nhan_su?: string | null;
   ghi_chu?: string | null;
+  ca?: string | null;
+  may?: string | null;
   status: 'chua_chot';
   created_at?: string | null;
 };
@@ -2061,6 +2064,8 @@ export function WarehouseSlipPanel({
     setLines(emptyLines);
     setSlipDate(new Date().toISOString().slice(0, 10));
     setNote('');
+    setSelectedShifts([]);
+    setMachine('');
     setCreatedBy(loginName);
     setActionMessage('');
     setFormError('');
@@ -2128,6 +2133,8 @@ export function WarehouseSlipPanel({
     khoScanMaPhieuRef.current = slipCode;
     setSlipDate(String(slip.ngay || new Date().toISOString().slice(0, 10)).slice(0, 10));
     setCreatedBy(String(slip.nhan_su || loginName));
+    setSelectedShifts(parseWarehouseShiftSelection(slip.ca || ''));
+    setMachine(String(slip.may || '').trim());
     setNote(String(slip.ghi_chu || ''));
     setActionMessage('');
     setFormError('');
@@ -5859,6 +5866,7 @@ export function WarehouseHistoryPanel({
                             <div><dt className="font-bold text-zinc-400">Người lập</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{header.createdBy || '-'}</dd></div>
                           </dl>
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+                            <button type="button" onClick={() => openSlipDetail(group.slipCode)} disabled={!group.slipCode} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-800 disabled:opacity-50"><Eye className="h-3.5 w-3.5" />Xem</button>
                             {canEdit && canEditWarehouseHistorySlip(header.slipType, group.rows[0]?.warehouseKind || warehouseTab, header.daIn) ? (
                               <button type="button" onClick={() => handleEditSlip(group.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
                             ) : null}
@@ -5936,6 +5944,17 @@ export function WarehouseHistoryPanel({
                           {!isFinishedGoodsHistory ? <td className="px-4 py-3 font-semibold text-zinc-700">{header.machine || '-'}</td> : null}
                           <td className="px-4 py-3 font-semibold text-zinc-600">{header.createdBy || '-'}</td>
                           <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openSlipDetail(group.slipCode)}
+                              disabled={!group.slipCode}
+                              title="Xem phiếu"
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Xem
+                            </button>
                             <RowActionsMenu label={`Thao tác phiếu ${group.slipCode}`}>
                             <div className="flex items-center justify-center gap-1">
                               {canEdit && canEditWarehouseHistorySlip(header.slipType, group.rows[0]?.warehouseKind || warehouseTab, header.daIn) ? (
@@ -5973,6 +5992,7 @@ export function WarehouseHistoryPanel({
                               ) : null}
                             </div>
                             </RowActionsMenu>
+                            </div>
                           </td>
                         </TableRow>
                       </React.Fragment>

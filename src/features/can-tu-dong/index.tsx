@@ -1717,7 +1717,7 @@ export function CanTuDongPanel({
             ma_phieu: maPhieu,
             ngay: nhapKhoSlipDate,
             nhan_su: nguoi,
-            nguoi_lap: nguoi,
+            nguoi_lap: nhapKhoMay.trim(),
             kho,
             ca: nhapKhoCa.trim(),
             may: nhapKhoMay.trim(),

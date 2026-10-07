@@ -43,6 +43,6 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 - **Lưu đợt** chỉ ghi các mã QR vào DB kho. Chỉ thao tác **Lưu phiếu** cuối cùng mới đồng bộ nhập/xuất sang `chi_tiet_san_pham`.
 - Đồng bộ QR và lịch sử chạy qua RPC PostgreSQL trong DB chính như một transaction: `bien_dong_chi_tiet_san_pham` và snapshot `chi_tiet_san_pham` cùng commit hoặc cùng rollback. Header chỉ chuyển `da_chot` sau khi transaction thành công; nếu lỗi, giữ `chua_chot` để thử lưu lại.
 - Khi chốt phiếu xuất thành phẩm mới, các QR đầy đủ của phiếu trong `xuat_kho` được cập nhật hoặc tạo trong `chi_tiet_san_pham` với `trang_thai='da_xuat'`.
-- Khi mở lại trang nhập/xuất thành phẩm, FE tự chọn phiếu `chua_chot` mới nhất theo kho; có thể đổi phiếu hoặc chọn **+ Tạo phiếu**.
+- Khi mở lại trang nhập/xuất thành phẩm, FE tự chọn phiếu `chua_chot` mới nhất theo kho và điền **Ca**, **Máy** từ header phiếu; có thể đổi phiếu hoặc chọn **+ Tạo phiếu**.
 - **Lưu phiếu** lập chứng từ chính thức rồi chuyển header sang `status='da_chot'`.
 - DB kho cần chạy `supabase-kho-stage-lines.sql` một lần để bỏ FK từ bảng dòng sang header, cho phép lưu đợt trước khi lập phiếu.

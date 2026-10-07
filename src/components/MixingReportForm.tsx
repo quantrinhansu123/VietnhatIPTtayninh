@@ -557,11 +557,13 @@ function MixingRoundItemFormModal({
   const materialSuggestions = useMemo(() => {
     const keyword = materialSearch.trim().toLocaleLowerCase('vi');
     if (!keyword) return materials.slice(0, 12);
-    return materials
-      .filter(material =>
-        `${material.code} ${material.name}`.toLocaleLowerCase('vi').includes(keyword)
-      )
-      .slice(0, 12);
+    const codeMatches = materials.filter(material =>
+      material.code.toLocaleLowerCase('vi').includes(keyword)
+    );
+    return (codeMatches.length
+      ? codeMatches
+      : materials.filter(material => material.name.toLocaleLowerCase('vi').includes(keyword))
+    ).slice(0, 12);
   }, [materialSearch, materials]);
 
   const pickMaterial = (material: MaterialOption) => {

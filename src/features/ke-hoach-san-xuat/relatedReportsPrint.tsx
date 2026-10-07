@@ -357,13 +357,18 @@ async function fetchJson(url: string): Promise<{ ok: boolean; data: unknown }> {
 export async function loadProductionPlanRelatedReports(
   planDate: string,
   shiftList: string[],
-  productCatalog: ProductRow[] = []
+  productCatalog: ProductRow[] = [],
+  selectedMachine: { code?: string; name?: string } = {}
 ): Promise<ProductionPlanRelatedReports> {
   if (!planDate) {
     throw new Error('Chưa có ngày kế hoạch để in các phiếu liên quan.');
   }
 
   const shifts = Array.from(new Set((shiftList ?? []).map(s => s.trim()).filter(Boolean)));
+  const machineMatchers = buildMachineMatchers([selectedMachine.code || '', selectedMachine.name || '']);
+  const matchesSelectedMachine = (...candidates: Array<string | undefined | null>) =>
+    machineMatchers.size === 0 || machineMatches(machineMatchers, ...candidates);
+  const machineFilter = selectedMachine.code || selectedMachine.name || 'all';
   const errors: string[] = [];
   const encodedDate = encodeURIComponent(planDate);
   const shiftOptions = await loadShiftOptions();
@@ -371,7 +376,7 @@ export async function loadProductionPlanRelatedReports(
     dateFrom: planDate,
     dateTo: planDate,
     shiftFilter: shifts[0] || 'all',
-    machineFilter: 'all',
+    machineFilter,
     sanLuongSource: 'can-tu-dong',
     includeAllMachines: true
   });
@@ -399,7 +404,9 @@ export async function loadProductionPlanRelatedReports(
 
   const productionOrdersAll = productionOrderRes.ok ? normalizeProductionOrders(productionOrderRes.data) : [];
   const productionOrdersForPrint = productionOrdersAll.filter(order =>
-    matchesIsoPrintDate(order.startDate, planDate) && shouldIncludeRelatedReport(order.shift, shifts, shiftOptions)
+    matchesIsoPrintDate(order.startDate, planDate) &&
+    shouldIncludeRelatedReport(order.shift, shifts, shiftOptions) &&
+    matchesSelectedMachine(order.machine)
   );
   const productionOrders = (
     await Promise.all(
@@ -424,12 +431,18 @@ export async function loadProductionPlanRelatedReports(
     .filter(({ detail }) => detail.ok)
     .map(({ plan, detail }) => {
       const lines = normalizeProductionPlanHistoryLines(detail.data)
-        .filter(line => shouldIncludeRelatedReport(line.shift, shifts, shiftOptions))
-        .map(line => {
-          const source = productionOrdersAll.find(order =>
+        .map(line => ({
+          line,
+          source: productionOrdersAll.find(order =>
             (line.productionOrderId && order.id === line.productionOrderId) ||
             (line.orderCode && order.code === line.orderCode)
-          );
+          )
+        }))
+        .filter(({ line, source }) =>
+          shouldIncludeRelatedReport(line.shift, shifts, shiftOptions) &&
+          matchesSelectedMachine(line.machine, line.position, source?.machine)
+        )
+        .map(({ line, source }) => {
           if (source) return productionOrderToPlanLine(source, line.priority);
           const firstProduct = line.products[0];
           return {
@@ -461,7 +474,8 @@ export async function loadProductionPlanRelatedReports(
 
   const machineNvlAll = nvlRes.ok ? normalizeMachineNvlReports(nvlRes.data) : [];
   const machineNvl = machineNvlAll.filter(report =>
-    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions)
+    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+    matchesSelectedMachine(report.maMay, report.tenMay)
   );
   if (!nvlRes.ok) errors.push('Báo cáo tồn NVL');
 
@@ -471,25 +485,29 @@ export async function loadProductionPlanRelatedReports(
       ? mixingReportsRaw.map((item: Record<string, unknown>) => normalizeMixingReport(item))
       : [];
   const mixing = mixingAll.filter(report =>
-    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions)
+    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+    matchesSelectedMachine(report.ma_may, report.ten_may)
   );
   if (!mixingRes.ok) errors.push('Trộn nguyên vật liệu');
 
   const weighingAll = weighingRes.ok ? normalizeWeighingRecords(weighingRes.data) : [];
   const weighing = weighingAll.filter(record =>
-    shouldIncludeRelatedReport(record.shiftName, shifts, shiftOptions)
+    shouldIncludeRelatedReport(record.shiftName, shifts, shiftOptions) &&
+    matchesSelectedMachine(record.machineName)
   );
   if (!weighingRes.ok) errors.push('Phiếu cân');
 
   const downtimeAll = downtimeRes.ok ? normalizeMachineDowntimeSlips(downtimeRes.data) : [];
   const downtime = downtimeAll.filter(slip =>
-    shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions)
+    shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions) &&
+    matchesSelectedMachine(slip.machineCode, slip.machineName)
   );
   if (!downtimeRes.ok) errors.push('Phiếu báo dừng máy');
 
   const damagedAll = damagedRes.ok ? normalizeWeighingRecords(damagedRes.data) : [];
   const damaged = damagedAll.filter(record =>
-    shouldIncludeRelatedReport(record.shiftName, shifts, shiftOptions)
+    shouldIncludeRelatedReport(record.shiftName, shifts, shiftOptions) &&
+    matchesSelectedMachine(record.machineName)
   );
   if (!damagedRes.ok) errors.push('Báo cáo hàng hỏng');
 
@@ -503,13 +521,15 @@ export async function loadProductionPlanRelatedReports(
         )
       : acceptanceAllRaw;
   const acceptance = acceptanceAll.filter(report =>
-    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions)
+    shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+    matchesSelectedMachine(report.ma_may, report.ten_may)
   );
   if (!acceptanceRes.ok) errors.push('Báo cáo sản lượng');
 
   const shiftHandoversAll = shiftHandoverRes.ok ? normalizeShiftHandoverSlips(shiftHandoverRes.data) : [];
   const shiftHandovers = shiftHandoversAll.filter(slip =>
-    shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions)
+    shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions) &&
+    matchesSelectedMachine(slip.machineCode, slip.machineName)
   );
   if (!shiftHandoverRes.ok) errors.push('Phiếu giao ca');
 
@@ -517,7 +537,8 @@ export async function loadProductionPlanRelatedReports(
     ? (canTuDongRes.data as { records: CanTuDongWeightRow[] }).records
     : [];
   const canTuDongRecords = canTuDongAll.filter(row =>
-    shouldIncludeRelatedReport(String(row.ca ?? ''), shifts, shiftOptions)
+    shouldIncludeRelatedReport(String(row.ca ?? ''), shifts, shiftOptions) &&
+    matchesSelectedMachine(row.may, row.machine)
   );
   if (!canTuDongRes.ok) errors.push('Phiếu cân tự động');
   const productNameByCode = new Map<string, string>();
@@ -566,7 +587,8 @@ export async function loadProductionPlanRelatedReports(
   // Cả phiếu xuất lẫn phiếu nhập trong batch phải khớp đúng ca người dùng chọn.
   // Không lấy tất cả phiếu xuất của cùng ngày, vì sẽ lẫn vật tư của ca khác.
   const warehouseMovements = warehouseMovementsAll.filter(row =>
-    shouldIncludeRelatedReport(row.shift, shifts, shiftOptions)
+    shouldIncludeRelatedReport(row.shift, shifts, shiftOptions) &&
+    matchesSelectedMachine(row.machine)
   );
   if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
   if (!finishedGoodsInboundRes.ok) errors.push('Phiếu nhập kho thành phẩm');
@@ -594,7 +616,7 @@ export async function loadProductionPlanRelatedReports(
         dateFrom: planDate,
         dateTo: planDate,
         shiftFilter: shifts[0] || 'all',
-        machineFilter: 'all'
+        machineFilter
       })
     : null;
 

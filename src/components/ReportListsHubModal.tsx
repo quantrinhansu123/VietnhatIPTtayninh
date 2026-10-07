@@ -39,6 +39,7 @@ export type ReportListHubFilters = {
   shift?: string;
   /** Mã máy; `all` / rỗng = không lọc */
   machineCode?: string;
+  machineName?: string;
 };
 
 type Props = {
@@ -69,7 +70,8 @@ function normalizeHubFilters(filters?: ReportListHubFilters): ReportListHubFilte
     dateFrom: (filters?.dateFrom || '').trim() || undefined,
     dateTo: (filters?.dateTo || '').trim() || undefined,
     shift: !shift || shift === 'all' ? undefined : shift,
-    machineCode: !machineCode || machineCode === 'all' ? undefined : machineCode
+    machineCode: !machineCode || machineCode === 'all' ? undefined : machineCode,
+    machineName: (filters?.machineName || '').trim() || undefined
   };
 }
 
@@ -96,11 +98,13 @@ export default function ReportListsHubModal({
   }, [allowedTabs]);
 
   const hubFilters = useMemo(() => normalizeHubFilters(filters), [filters]);
+  const printMachineLabel = hubFilters.machineName || hubFilters.machineCode || 'Tất cả máy';
   const filtersKey = [
     hubFilters.dateFrom || '',
     hubFilters.dateTo || '',
     hubFilters.shift || '',
-    hubFilters.machineCode || ''
+    hubFilters.machineCode || '',
+    hubFilters.machineName || ''
   ].join('|');
 
   const [activeTab, setActiveTab] = useState<ReportListHubTab>(
@@ -139,9 +143,12 @@ export default function ReportListsHubModal({
       const productRes = await fetch('/api/san-pham');
       const productJson = await productRes.json().catch(() => []);
       const catalog = productRes.ok ? normalizeProducts(productJson) : [];
-      const data = await loadProductionPlanRelatedReports(date, [shift], catalog);
+      const data = await loadProductionPlanRelatedReports(date, [shift], catalog, {
+        code: hubFilters.machineCode,
+        name: hubFilters.machineName
+      });
       if (data.isEmpty) {
-        setPrintError('Không có phiếu nào của ngày và ca đã chọn để in.');
+        setPrintError('Không có phiếu nào khớp ngày, ca và máy đã chọn để in.');
         return;
       }
       setPrintData(data);
@@ -156,7 +163,7 @@ export default function ReportListsHubModal({
     if (!open || !isAutoPrint) return;
     void prepareAndPrint(lockedPrintDate, lockedPrintShift);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift]);
+  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift, hubFilters.machineCode, hubFilters.machineName]);
 
   useEffect(() => {
     if (!printData) return;
@@ -246,7 +253,7 @@ export default function ReportListsHubModal({
             ) : (
               <div className="flex items-center gap-2.5 text-zinc-700">
                 <Loader2 className="h-5 w-5 animate-spin text-red-600" />
-                <span className="text-sm font-bold">Đang chuẩn bị bản in {lockedPrintDate} · {lockedPrintShift}...</span>
+                <span className="text-sm font-bold">Đang chuẩn bị bản in {lockedPrintDate} · {lockedPrintShift} · {printMachineLabel}...</span>
               </div>
             )}
           </div>
@@ -259,6 +266,7 @@ export default function ReportListsHubModal({
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">In báo cáo</p>
               <h3 className="mt-0.5 text-base font-black">Chọn ngày và ca</h3>
               <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối và sản lượng nếu có.</p>
+              <p className="mt-1 text-[11px] font-bold text-zinc-600">Máy: {printMachineLabel}</p>
             </div>
             <button type="button" onClick={onClose} aria-label="Đóng" title="Đóng" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
           </div>

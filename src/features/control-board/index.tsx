@@ -1640,7 +1640,8 @@ export function ControlBoardPanel({
             dateFrom: effectiveDateFrom,
             dateTo: effectiveDateTo,
             shift: boardFilterShift,
-            machineCode: boardFilterMachine
+            machineCode: boardFilterMachine,
+            machineName: selectedBoardMachine?.name
           }}
           filterSummary={
             [

@@ -34,7 +34,7 @@ import MachineRunLogPanel from './components/MachineRunLogPanel';
 import AppToastHost from './components/AppToastHost';
 import { AppTab, pathFromTab, tabFromPath, isWeighingListPath } from './routes';
 import {
-  FilePlus2, BarChart3, CheckCircle, Sparkles, Loader2, Menu, Search, Save, ChevronRight, ChevronLeft,
+  FilePlus2, BarChart3, CheckCircle, Sparkles, Loader2, Menu, RefreshCw, Search, Save, ChevronRight, ChevronLeft,
   Package, Cpu, Boxes, ClipboardList, X, LogOut
 } from 'lucide-react';
 
@@ -638,6 +638,17 @@ export default function App() {
             })()}
           </div>
 
+          {activeTab === 'warehouse-slip' ? (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('warehouse-slip-refresh'))}
+              aria-label="Làm mới"
+              title="Làm mới dữ liệu phiếu"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition active:scale-95 shrink-0"
+            >
+              <RefreshCw className="h-[16px] w-[16px]" />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setQuickNavOpen(true)}

@@ -1304,6 +1304,7 @@ export function WarehouseSlipPanel({
   const { canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseKind);
   const [warehouseName, setWarehouseName] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
+  const [pageRefreshNonce, setPageRefreshNonce] = useState(0);
   const [slipType, setSlipType] = useState<WarehouseSlipType>('nhap');
   const [newSlipCode, setNewSlipCode] = useState(() => generateWarehouseSlipPreviewCode(slipType));
   const [openProductSlips, setOpenProductSlips] = useState<OpenProductSlip[]>([]);
@@ -1449,7 +1450,7 @@ export function WarehouseSlipPanel({
       }
     };
     void loadWarehouses();
-  }, []);
+  }, [pageRefreshNonce]);
 
   useEffect(() => {
     const loadProductionOrders = async () => {
@@ -1466,7 +1467,7 @@ export function WarehouseSlipPanel({
       }
     };
     void loadProductionOrders();
-  }, []);
+  }, [pageRefreshNonce]);
 
   useEffect(() => {
     const loadShiftSettings = async () => {
@@ -1481,7 +1482,7 @@ export function WarehouseSlipPanel({
       }
     };
     void loadShiftSettings();
-  }, []);
+  }, [pageRefreshNonce]);
 
   useEffect(() => {
     const loadMachines = async () => {
@@ -1510,7 +1511,7 @@ export function WarehouseSlipPanel({
       }
     };
     void loadMachines();
-  }, []);
+  }, [pageRefreshNonce]);
 
   useEffect(() => {
     const rawDraft = localStorage.getItem(STORAGE_WAREHOUSE_SLIP_DRAFT_KEY);
@@ -1594,6 +1595,15 @@ export function WarehouseSlipPanel({
   }, []);
 
   const reloadWarehouseCatalogRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    const refresh = () => {
+      setPageRefreshNonce(current => current + 1);
+      showAppToast('Đang tải lại danh mục kho, máy, lệnh sản xuất và danh sách phiếu.');
+    };
+    window.addEventListener('warehouse-slip-refresh', refresh);
+    return () => window.removeEventListener('warehouse-slip-refresh', refresh);
+  }, []);
 
   useEffect(() => {
     const loadItems = async () => {
@@ -1688,7 +1698,7 @@ export function WarehouseSlipPanel({
 
     reloadWarehouseCatalogRef.current = loadItems;
     void loadItems();
-  }, [warehouseKind, warehouseName]);
+  }, [warehouseKind, warehouseName, pageRefreshNonce]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -2446,7 +2456,7 @@ export function WarehouseSlipPanel({
       })
       .finally(() => { if (!cancelled) setLoadingProductSummary(false); });
     return () => { cancelled = true; };
-  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode, isEditingProductInbound, machineImportNonce]);
+  }, [showProductExportTabs, productExportView, slipType, productDetailSlipCode, scannedSavedAtByCode, isEditingProductInbound, machineImportNonce, pageRefreshNonce]);
 
   useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || isEditingProductInbound || loadingProductSummary || productSummaryError) return;

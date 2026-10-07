@@ -553,6 +553,7 @@ export function CanTuDongPanel({
   const [nhapKhoSlipDate, setNhapKhoSlipDate] = useState(() => localIsoDateToday());
   const [nhapKhoCa, setNhapKhoCa] = useState('');
   const [nhapKhoMay, setNhapKhoMay] = useState('');
+  const [nhapKhoMaSp, setNhapKhoMaSp] = useState('');
   const [loadingNhapKhoKho, setLoadingNhapKhoKho] = useState(false);
 
   const filteredPrintPhieu = useMemo(() => {
@@ -1583,14 +1584,32 @@ export function CanTuDongPanel({
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [records, nhapKhoSlipDate, nhapKhoCa]);
 
-  const waitingNhapKho = useMemo(() => {
+  const nhapKhoMaSpOptions = useMemo(() => {
     if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) return [];
+    const byKey = new Map<string, string>();
+    for (const row of records) {
+      if (!readNhapKho(row).waiting || !String(row.qr_code || '').trim()) continue;
+      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+      if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) continue;
+      if (!mayMatches(resolveRowMay(row), nhapKhoMay)) continue;
+      const maSp = resolveRowMaSp(row);
+      const key = normalizeProductCodeKey(maSp);
+      if (!key || byKey.has(key)) continue;
+      byKey.set(key, maSp);
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay]);
+
+  const waitingNhapKho = useMemo(() => {
+    const maSpKey = normalizeProductCodeKey(nhapKhoMaSp);
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim() || !maSpKey) return [];
     return records
       .filter(row => {
         if (!readNhapKho(row).waiting || !String(row.qr_code || '').trim()) return false;
         if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) return false;
         if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) return false;
-        return mayMatches(resolveRowMay(row), nhapKhoMay);
+        if (!mayMatches(resolveRowMay(row), nhapKhoMay)) return false;
+        return normalizeProductCodeKey(resolveRowMaSp(row)) === maSpKey;
       })
       .sort((a, b) => {
         const ta = Date.parse(String(a.captured_at || '')) || 0;
@@ -1598,7 +1617,7 @@ export function CanTuDongPanel({
         if (tb !== ta) return tb - ta;
         return String(b.id).localeCompare(String(a.id), 'en', { numeric: true });
       });
-  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay]);
+  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay, nhapKhoMaSp]);
   const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
   const nhapKhoPreview = nhapKhoCount > 0 ? waitingNhapKho.slice(0, nhapKhoCount) : [];
 
@@ -1685,8 +1704,8 @@ export function CanTuDongPanel({
       showAppToast('Chưa có kho thành phẩm để lập phiếu nhập.', 'error');
       return;
     }
-    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) {
-      showAppToast('Chọn cả ca và máy để lọc mã QR nhập kho.', 'error');
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim() || !nhapKhoMaSp.trim()) {
+      showAppToast('Chọn ca, máy và Mã SP để lọc mã QR nhập kho.', 'error');
       return;
     }
     const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
@@ -2805,6 +2824,7 @@ export function CanTuDongPanel({
                   setNhapKhoSlipDate(value || localIsoDateToday());
                   setNhapKhoCa('');
                   setNhapKhoMay('');
+                  setNhapKhoMaSp('');
                   setNhapKhoChecked(false);
                 }}
                 className="w-full"
@@ -2818,6 +2838,7 @@ export function CanTuDongPanel({
                     onChange={event => {
                       setNhapKhoCa(event.target.value);
                       setNhapKhoMay('');
+                      setNhapKhoMaSp('');
                       setNhapKhoChecked(false);
                     }}
                     className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
@@ -2835,6 +2856,7 @@ export function CanTuDongPanel({
                     disabled={isNhapKho || !nhapKhoCa}
                     onChange={event => {
                       setNhapKhoMay(event.target.value);
+                      setNhapKhoMaSp('');
                       setNhapKhoChecked(false);
                     }}
                     className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
@@ -2846,8 +2868,36 @@ export function CanTuDongPanel({
                   </select>
                 </label>
               </div>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Mã SP</span>
+                <select
+                  value={nhapKhoMaSp}
+                  disabled={isNhapKho || !nhapKhoCa || !nhapKhoMay}
+                  onChange={event => {
+                    setNhapKhoMaSp(event.target.value);
+                    setNhapKhoChecked(false);
+                  }}
+                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
+                >
+                  <option value="">
+                    {!nhapKhoCa || !nhapKhoMay
+                      ? 'Chọn ca và máy trước'
+                      : nhapKhoMaSpOptions.length
+                        ? 'Chọn Mã SP'
+                        : 'Không có Mã SP chờ nhập kho'}
+                  </option>
+                  {nhapKhoMaSpOptions.map(code => {
+                    const name = productNameByCode.get(normalizeProductCodeKey(code));
+                    return (
+                      <option key={code} value={code}>
+                        {name ? `${code} · ${name}` : code}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
               <p className="text-[11px] font-semibold text-zinc-500">
-                Mỗi lần xác nhận tạo phiếu nhập mới, trạng thái chưa chốt, ghi QR thẳng vào nhap_kho.
+                Danh sách bên dưới chỉ gồm mã QR của Mã SP đã chọn. Mỗi lần xác nhận tạo phiếu nhập mới, trạng thái chưa chốt.
               </p>
               <label className="block space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Số cuộn</span>
@@ -2881,9 +2931,11 @@ export function CanTuDongPanel({
                         <td colSpan={3} className="px-3 py-6 text-center font-semibold text-zinc-400">
                           {!nhapKhoCa || !nhapKhoMay
                             ? 'Chọn cả ca và máy để lọc mã QR.'
-                            : nhapKhoCount > 0
-                              ? 'Không còn mã QR chờ nhập kho cho ca và máy này.'
-                              : 'Nhập số cuộn để hiện danh sách mã QR.'}
+                            : !nhapKhoMaSp
+                              ? 'Chọn Mã SP để hiện mã QR chờ nhập kho.'
+                              : nhapKhoCount > 0
+                                ? 'Không còn mã QR chờ nhập kho cho Mã SP này.'
+                                : 'Nhập số cuộn để hiện danh sách mã QR.'}
                         </td>
                       </tr>
                     ) : (
@@ -2935,7 +2987,7 @@ export function CanTuDongPanel({
               <button
                 type="button"
                 onClick={() => void handleConfirmNhapKho()}
-                disabled={isNhapKho || loadingNhapKhoKho || !nhapKhoCa || !nhapKhoMay || nhapKhoPreview.length === 0 || !nhapKhoKho}
+                disabled={isNhapKho || loadingNhapKhoKho || !nhapKhoCa || !nhapKhoMay || !nhapKhoMaSp || nhapKhoPreview.length === 0 || !nhapKhoKho}
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
               >
                 {isNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}

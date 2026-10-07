@@ -824,11 +824,13 @@ export function MachineNvlReportPanel({
       return;
     }
 
-    const missingImageLine = activeLines.find(line => !machineNvlLineImageSrc(line));
-    if (missingImageLine) {
-      const label = missingImageLine.code.trim() || missingImageLine.name.trim() || 'NVL';
-      setMessage(showSaveFailure(`Dòng ${label}: vui lòng chụp ảnh.`));
-      return;
+    if (!isDauCaTab) {
+      const missingImageLine = activeLines.find(line => !machineNvlLineImageSrc(line));
+      if (missingImageLine) {
+        const label = missingImageLine.code.trim() || missingImageLine.name.trim() || 'NVL';
+        setMessage(showSaveFailure(`Dòng ${label}: vui lòng chụp ảnh.`));
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -1244,6 +1246,7 @@ export function MachineNvlReportPanel({
 
                       <div className="flex gap-2">
                         <div className="flex w-[42%] min-w-[128px] max-w-[220px] shrink-0 flex-col gap-1">
+                          {isDauCaTab ? null : (
                           <div className="relative overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50">
                             {lineImageSrc ? (
                               <button
@@ -1286,6 +1289,7 @@ export function MachineNvlReportPanel({
                               </div>
                             ) : null}
                           </div>
+                          )}
 
                           <div className="grid grid-cols-1 gap-1 md:grid-cols-2">
                             <label className="field-cell min-w-0">
@@ -1346,7 +1350,7 @@ export function MachineNvlReportPanel({
                             {line.name ? ` · ${line.name}` : ''}
                           </p>
 
-                          {lineImageSrc ? (
+                          {!isDauCaTab && lineImageSrc ? (
                             <label className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-extrabold text-zinc-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]">
                               Chụp lại
                               <input

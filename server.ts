@@ -4522,7 +4522,8 @@ function parseMachineNvlReportBody(body: unknown): { error: string } | { record:
     return { error: 'Vui lòng nhập ít nhất một dòng NVL tồn theo máy.' };
   }
 
-  const missingImageLine = chi_tiet.find(line => {
+  const loai_bao_cao = parseMachineNvlReportKind(source.loai_bao_cao ?? source.loai ?? source.reportKind);
+  const missingImageLine = loai_bao_cao === 'dau_ca' ? undefined : chi_tiet.find(line => {
     const hasContent = Boolean(
       line.ma_nvl ||
         line.ten_nvl ||
@@ -4548,7 +4549,7 @@ function parseMachineNvlReportBody(body: unknown): { error: string } | { record:
     record: {
       ngay,
       ca,
-      loai_bao_cao: parseMachineNvlReportKind(source.loai_bao_cao ?? source.loai ?? source.reportKind),
+      loai_bao_cao,
       gio: String(source.gio ?? '').trim() || null,
       ma_may: ma_may || null,
       ten_may: ten_may || null,

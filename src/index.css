@@ -6346,7 +6346,7 @@ input[type="number"] {
 .bb-gx-top > tbody > tr > td {
   border: none;
   background: #fff;
-  vertical-align: middle;
+  vertical-align: top;
   padding: 0 0 4px;
   text-align: left;
 }
@@ -6358,6 +6358,10 @@ input[type="number"] {
 .bb-gx-meta-cell {
   width: 38%;
   text-align: right;
+}
+
+.bb-gx-top > tbody > tr > td.bb-gx-meta-cell {
+  padding-top: 1.35em;
 }
 
 .bb-gx-brand {
@@ -6682,7 +6686,7 @@ input[type="number"] {
 @media print {
   @page bb-gx-print-page {
     size: 210mm 297mm;
-    margin: 26mm 4mm 4mm;
+    margin: 18mm 4mm 4mm;
   }
 
   body.shipping-delivery-print-active #root {
@@ -6733,7 +6737,7 @@ input[type="number"] {
   }
 
   body.shipping-delivery-print-active .bb-gx-print-page {
-    padding-top: 8mm !important;
+    padding-top: 0 !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-sheet,
@@ -6828,8 +6832,12 @@ input[type="number"] {
   body.shipping-delivery-print-active .bb-gx-top > tbody > tr > td {
     display: table-cell !important;
     border: none !important;
-    vertical-align: middle !important;
+    vertical-align: top !important;
     background: #fff !important;
+  }
+
+  body.shipping-delivery-print-active .bb-gx-meta-cell {
+    padding-top: 7mm !important;
   }
 
   body.shipping-delivery-print-active .bb-gx-meta-label,

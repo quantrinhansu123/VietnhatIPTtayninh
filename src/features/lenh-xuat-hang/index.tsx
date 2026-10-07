@@ -579,7 +579,7 @@ export function ShippingOrdersPanel({
     if (!pendingPrint || printingOrders.length === 0) return;
     let cancelled = false;
     document.body.classList.add('shipping-delivery-print-active');
-    enablePortraitPrintPage('shipping-delivery-print-page-a4', '26mm 4mm 4mm');
+    enablePortraitPrintPage('shipping-delivery-print-page-a4', '18mm 4mm 4mm');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;

@@ -391,9 +391,6 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             Ngày {dateParts.day || '……'} tháng {dateParts.month || '……'} năm {dateParts.year || '……'}
           </em>
         </p>
-        <p className="warehouse-nhap-kho-print-code">
-          <strong>Số:</strong> {data.slipCode || '…………'}
-        </p>
       </div>
 
       <div className="warehouse-nhap-kho-print-meta">

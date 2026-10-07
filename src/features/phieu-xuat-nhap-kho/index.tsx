@@ -4130,19 +4130,19 @@ export function WarehouseSlipPanel({
 
           {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? (
             <div className="w-full min-w-0 overflow-x-hidden">
-              <table className="w-full table-fixed border-collapse text-left text-sm">
+              <table className="w-full table-fixed border-collapse text-left text-xs">
                 <colgroup>
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '58%' }} />
-                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '38%' }} />
+                  <col style={{ width: '24%' }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-[#ef1b2d] text-white">
-                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">STT</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Mã TP</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Tên TP</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-center font-black">Số lượng</th>
+                  <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+                    <th className="overflow-hidden px-1 py-2 text-center font-black">STT</th>
+                    <th className="overflow-hidden px-1 py-2 text-center font-black">Mã TP</th>
+                    <th className="overflow-hidden px-1 py-2 text-center font-black">Tên TP</th>
+                    <th className="overflow-hidden px-1 py-2 text-center font-black">Số lượng</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4150,14 +4150,14 @@ export function WarehouseSlipPanel({
                     const item = itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(row.ma_sp));
                     return (
                       <tr key={row.ma_sp} className="border-b border-zinc-100 even:bg-zinc-50/70">
-                        <td className="px-3 py-2.5 text-center text-zinc-500">{index + 1}</td>
-                        <td className="px-3 py-2.5 text-center font-bold text-zinc-800">{row.ma_sp}</td>
-                        <td className="px-3 py-2.5 align-top">
+                        <td className="px-1 py-2 text-center text-zinc-500">{index + 1}</td>
+                        <td className="px-1 py-2 text-center font-bold break-all text-zinc-800">{row.ma_sp}</td>
+                        <td className="px-1.5 py-2 align-top">
                           <div className="line-clamp-4 whitespace-normal break-words leading-snug" title={row.ten_sp || item?.name || ''}>
                             {row.ten_sp || item?.name || '—'}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-center font-bold tabular-nums whitespace-nowrap">{formatNumber(Number(row.so_luong) || 0)}</td>
+                        <td className="px-1 py-2 text-center font-bold tabular-nums">{formatNumber(Number(row.so_luong) || 0)}</td>
                       </tr>
                     );
                   })}

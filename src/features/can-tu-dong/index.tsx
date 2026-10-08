@@ -536,6 +536,7 @@ export function CanTuDongPanel({
   const [lenhSxFilter, setLenhSxFilter] = useState('all');
   /** Chỉ hiện dòng có mã QR trùng trong phạm vi bộ lọc ngày/ca/Mã SP. */
   const [onlyDuplicateQr, setOnlyDuplicateQr] = useState(false);
+  const [dayKhoFilter, setDayKhoFilter] = useState<'all' | typeof NHAP_KHO_CHO | typeof NHAP_KHO_DA>('all');
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -872,6 +873,9 @@ export function CanTuDongPanel({
         return Boolean(key && qrDuplicateInfo.duplicateKeys.has(key));
       });
     }
+    if (dayKhoFilter !== 'all') {
+      rows = rows.filter(row => readNhapKho(row).status === dayKhoFilter);
+    }
     return rows;
   }, [
     recordsByMaSp,
@@ -881,7 +885,8 @@ export function CanTuDongPanel({
     productFilmWeightByCode,
     diffFilter,
     onlyDuplicateQr,
-    qrDuplicateInfo.duplicateKeys
+    qrDuplicateInfo.duplicateKeys,
+    dayKhoFilter
   ]);
 
   const visibleIds = useMemo(
@@ -950,8 +955,9 @@ export function CanTuDongPanel({
   const hasMayFilter = mayFilter !== 'all';
   const hasLenhSxFilter = lenhSxFilter !== 'all';
   const hasMaSpFilters = maSpFilter !== 'all' || Boolean(maSpQuery.trim());
+  const hasDayKhoFilter = dayKhoFilter !== 'all';
   const hasActiveFilters =
-    hasDateFilters || hasCaFilter || hasMayFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr;
+    hasDateFilters || hasCaFilter || hasMayFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr || hasDayKhoFilter;
 
   /** Phân tích kém cân / hơn cân theo |%| chênh lệch nhựa ÷ Nhựa thực tế (ngưỡng 2%). */
   const phanTichCan = useMemo(() => {
@@ -1344,6 +1350,7 @@ export function CanTuDongPanel({
     setMayFilter('all');
     setLenhSxFilter('all');
     setOnlyDuplicateQr(false);
+    setDayKhoFilter('all');
   };
 
   const handleToggleDuplicateQrFilter = () => {
@@ -1837,6 +1844,15 @@ export function CanTuDongPanel({
             return name ? `${code} · ${name}` : code;
           }}
           dropdownWidth="w-max min-w-[16rem] max-w-[min(28rem,calc(100vw-1rem))]"
+        />
+        <FilterCombobox
+          label="Đẩy kho"
+          options={[NHAP_KHO_CHO, NHAP_KHO_DA]}
+          value={dayKhoFilter}
+          onChange={value => setDayKhoFilter(value === NHAP_KHO_CHO || value === NHAP_KHO_DA ? value : 'all')}
+          searchPlaceholder="Tìm trạng thái..."
+          searchable={false}
+          compact
         />
         <button
           type="button"
@@ -2369,6 +2385,8 @@ export function CanTuDongPanel({
                     ? `Không có dòng nào với Ca ${caFilter}.`
                     : hasMayFilter && recordsByMay.length === 0
                       ? `Không có dòng nào với máy ${mayFilter}.`
+                    : hasDayKhoFilter
+                      ? `Không có dòng nào ${dayKhoFilter.toLocaleLowerCase('vi')}.`
                     : onlyDuplicateQr
                       ? 'Không có mã QR trùng trong bộ lọc hiện tại.'
                       : hasMaSpFilters && recordsByMaSp.length === 0

@@ -60,7 +60,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** (ngày, ca, **máy**, lệnh SX, mã SP) · Excel · **In** bảng tổng hợp. Không còn nút **In đã nhập kho** |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: **Phân tích** · **Bộ lọc** (ngày, ca, **máy**, lệnh SX, mã SP, **Đẩy kho**: Chờ nhập kho / Đã nhập kho) · Excel · **In** bảng tổng hợp. Không còn nút **In đã nhập kho** |
 | `src/features/can-tu-dong/entry-form.tsx` | Form **Trạm cân AI** (`/phieu-bao-cao`) và **Trạm cân QR** (`/tram-can-qr`) — ghi thêm dòng vào `can_tu_dong`, không mở trạm ngoài |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |

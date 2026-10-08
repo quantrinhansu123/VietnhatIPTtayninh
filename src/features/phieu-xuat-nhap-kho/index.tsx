@@ -3775,6 +3775,7 @@ export function WarehouseSlipPanel({
                 />
               </label>
             ) : null}
+            {shippingOrderPicker}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <button
                 type="button"
@@ -4217,8 +4218,6 @@ export function WarehouseSlipPanel({
           ) : null}
         </div>
       </section>
-
-      {shippingOrderPicker}
 
       <section className={
         showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
@@ -4668,8 +4667,6 @@ export function WarehouseSlipPanel({
               ) : null}
             </div>
           </section>
-
-          {shippingOrderPicker}
 
           <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-2.5">

@@ -13120,8 +13120,8 @@ export function createApp() {
         }
       }
 
-      for (let attempt = 0; pendingItems.length; attempt += 1) {
-        const rows = pendingItems.map(item => {
+      const buildLineRows = (batch: typeof pendingItems) =>
+        batch.map(item => {
           const separators = ['_', '+'].map(separator => {
             const index = item.fullCode.indexOf(separator);
             return index > 0 ? index : Number.POSITIVE_INFINITY;
@@ -13146,24 +13146,44 @@ export function createApp() {
               : {})
           };
         });
-        const { error } = await khoDb.from(lineTable).insert(rows);
+
+      const insertSkippingDuplicates = async (batch: typeof pendingItems) => {
+        if (!batch.length) return;
+        const { error } = await khoDb.from(lineTable).insert(buildLineRows(batch));
         if (!error) {
           const savedAt = new Date().toISOString();
-          for (const item of pendingItems) {
+          for (const item of batch) {
             savedByCode.set(item.fullCode, { ma_sp_quet: item.fullCode, created_at: savedAt });
           }
-          pendingItems = [];
-          break;
+          return;
         }
-
-        if (error.code !== '23505' || attempt >= 2) {
+        if (error.code !== '23505') {
           console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} batch insert error:`, error);
-          return res.status(500).json({ error: `Không thể ghi đợt mã QR. ${error.message}` });
+          throw new Error(`Không thể ghi đợt mã QR. ${error.message}`);
         }
+        const details = String(error.details || '');
+        const conflict = details.match(/\(ma_sp_quet\)=\((.*)\) already exists/i)?.[1]?.trim() || '';
+        if (conflict) {
+          const conflictKey = conflict.replace(/\s+/g, '').toUpperCase();
+          const index = batch.findIndex(
+            item => item.fullCode === conflict || item.fullCode.replace(/\s+/g, '').toUpperCase() === conflictKey
+          );
+          if (index >= 0) {
+            duplicateCodes.add(batch[index].fullCode);
+            await insertSkippingDuplicates([...batch.slice(0, index), ...batch.slice(index + 1)]);
+            return;
+          }
+        }
+        if (batch.length === 1) {
+          duplicateCodes.add(batch[0].fullCode);
+          return;
+        }
+        const mid = Math.floor(batch.length / 2);
+        await insertSkippingDuplicates(batch.slice(0, mid));
+        await insertSkippingDuplicates(batch.slice(mid));
+      };
 
-        const racedExisting = await loadExisting(pendingItems.map(item => item.fullCode));
-        pendingItems = classifyExisting(pendingItems, racedExisting);
-      }
+      await insertSkippingDuplicates(pendingItems);
 
       return res.status(201).json({
         success: true,

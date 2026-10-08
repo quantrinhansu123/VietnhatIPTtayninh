@@ -32,7 +32,7 @@ import {
   X
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
-import { machineSlipCodeToken } from '../../utils/warehouseSlipCode';
+import { machineSlipCodeToken, warehouseSlipCodeGroupPrefix } from '../../utils/warehouseSlipCode';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -5092,27 +5092,31 @@ export function WarehouseHistoryPanel({
         totalAmount: rows.reduce((sum, row) => sum + row.lineAmount, 0)
       }))
       .sort((a, b) => {
-        const byCreated = b.createdAt.localeCompare(a.createdAt);
-        if (byCreated !== 0) return byCreated;
-        return (b.slipCode || '').localeCompare(a.slipCode || '', 'vi');
+        const byPrefix = warehouseSlipCodeGroupPrefix(a.slipCode).localeCompare(
+          warehouseSlipCodeGroupPrefix(b.slipCode),
+          'vi',
+          { numeric: true, sensitivity: 'base' }
+        );
+        if (byPrefix !== 0) return byPrefix;
+        return (a.slipCode || '').localeCompare(b.slipCode || '', 'vi', { numeric: true });
       });
   }, [filteredMovements]);
 
-  const slipDateGroups = useMemo(() => {
+  const slipPrefixGroups = useMemo(() => {
     const map = new Map<string, typeof slipGroups>();
     slipGroups.forEach(group => {
-      const key = group.header.slipDate || '—';
+      const key = warehouseSlipCodeGroupPrefix(group.slipCode) || '—';
       const current = map.get(key) || [];
       current.push(group);
       map.set(key, current);
     });
     return [...map.entries()]
-      .map(([slipDate, groups]) => ({
-        slipDate,
+      .map(([prefix, groups]) => ({
+        prefix,
         groups,
         totalAmount: groups.reduce((sum, group) => sum + group.totalAmount, 0)
       }))
-      .sort((a, b) => b.slipDate.localeCompare(a.slipDate));
+      .sort((a, b) => a.prefix.localeCompare(b.prefix, 'vi', { numeric: true, sensitivity: 'base' }));
   }, [slipGroups]);
 
   const productRollSummary = useMemo(() => {
@@ -5663,7 +5667,7 @@ export function WarehouseHistoryPanel({
             <TableEmptyRow colSpan={isFinishedGoodsHistory ? 5 : 7}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
-      ) : slipDateGroups.length === 0 ? (
+      ) : slipPrefixGroups.length === 0 ? (
         <TableShell minWidthClassName={isFinishedGoodsHistory ? 'min-w-[700px]' : 'min-w-[900px]'}>
           <TableHead>
             <TableHeadCell className="w-10" align="center">
@@ -5684,30 +5688,25 @@ export function WarehouseHistoryPanel({
         </TableShell>
       ) : (
         <div className="space-y-3">
-          {slipDateGroups.map(dateGroup => (
-            <div key={dateGroup.slipDate} className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm">
+          {slipPrefixGroups.map(prefixGroup => (
+            <div key={prefixGroup.prefix} className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm">
               <div className="flex items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>
-                  <span className="font-mono text-sm font-black text-zinc-900">
-                    {(() => {
-                      const [y, m, d] = dateGroup.slipDate.split('-');
-                      return y && m && d ? `${d}/${m}/${y}` : dateGroup.slipDate;
-                    })()}
-                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Nhóm mã</span>
+                  <span className="font-mono text-sm font-black text-zinc-900">{prefixGroup.prefix}</span>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
-                    {dateGroup.groups.length} phiếu
+                    {prefixGroup.groups.length} phiếu
                   </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng ngày</p>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng nhóm</p>
                   <p className="font-mono text-sm font-black text-emerald-800">
-                    {formatWarehouseMoney(dateGroup.totalAmount)} đ
+                    {formatWarehouseMoney(prefixGroup.totalAmount)} đ
                   </p>
                 </div>
               </div>
               <div className="space-y-2 p-2 md:hidden">
-                {dateGroup.groups.map(group => {
+                {prefixGroup.groups.map(group => {
                   const header = group.header;
                   const lineCount = group.rows.length;
                   const isSelected = selectedSlipCodes.has(group.slipCode);
@@ -5784,7 +5783,7 @@ export function WarehouseHistoryPanel({
                   <TableHeadCell align="center">Thao tác</TableHeadCell>
                 </TableHead>
                 <TableBody>
-                  {dateGroup.groups.map(group => {
+                  {prefixGroup.groups.map(group => {
                     const header = group.header;
                     const lineCount = group.rows.length;
                     const isSelected = selectedSlipCodes.has(group.slipCode);

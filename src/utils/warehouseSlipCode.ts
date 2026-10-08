@@ -13,6 +13,17 @@ export function machineSlipCodeToken(machineName: string): string {
   return tokens.map(token => (/^\d+$/.test(token) ? token : token[0])).join('');
 }
 
+/** PN-MBB5-20261008-081716 → PN-MBB5; PN-20261008-081716 → PN. */
+export function warehouseSlipCodeGroupPrefix(slipCode: string): string {
+  const code = slipCode.trim().toUpperCase();
+  const withToken = code.match(/^(P[NX])-([A-Z0-9]+)-\d{8}-\d{6}$/);
+  if (withToken) return `${withToken[1]}-${withToken[2]}`;
+  const plain = code.match(/^(P[NX])-\d{8}-\d{6}$/);
+  if (plain) return plain[1];
+  const loose = code.match(/^(.*)-\d{8}-\d{6}$/);
+  return loose?.[1] || code || '—';
+}
+
 function foldMachineText(value: string) {
   return value
     .normalize('NFD')

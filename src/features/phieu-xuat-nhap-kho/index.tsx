@@ -5142,11 +5142,16 @@ export function WarehouseHistoryPanel({
       if (byPrefix !== 0) return byPrefix;
       return a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true });
     });
-    const groups: Array<{ prefix: string; slips: typeof slips }> = [];
+    const groups: Array<{ prefix: string; totalRolls: number; slips: typeof slips }> = [];
     for (const slip of slips) {
+      const slipRolls = slip.products.reduce((sum, product) => sum + product.quantity, 0);
       const last = groups[groups.length - 1];
-      if (last && last.prefix === slip.prefix) last.slips.push(slip);
-      else groups.push({ prefix: slip.prefix, slips: [slip] });
+      if (last && last.prefix === slip.prefix) {
+        last.slips.push(slip);
+        last.totalRolls += slipRolls;
+      } else {
+        groups.push({ prefix: slip.prefix, totalRolls: slipRolls, slips: [slip] });
+      }
     }
     return groups;
   }, [filteredMovements]);
@@ -5711,7 +5716,10 @@ export function WarehouseHistoryPanel({
           <div className="space-y-4 p-2 md:hidden">
             {historyPrefixGroups.map(group => (
               <section key={group.prefix} className="space-y-2">
-                <h3 className="rounded-lg bg-zinc-900 px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">{group.prefix}</h3>
+                <h3 className="flex items-center justify-between gap-3 rounded-lg bg-zinc-900 px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">
+                  <span>{group.prefix}</span>
+                  <span className="normal-case">{formatWarehouseRollTotal(group.totalRolls)}</span>
+                </h3>
                 {group.slips.map(slip => (
                   <section key={slip.slipCode} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
                     <div className="border-b border-zinc-200 bg-zinc-100 px-3 py-2">
@@ -5761,9 +5769,13 @@ export function WarehouseHistoryPanel({
               <TableBody>
                 {historyPrefixGroups.flatMap(group => [
                   <tr key={`prefix-${group.prefix}`} className="bg-zinc-900">
-                    <td colSpan={historyColumnCount} className="px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">
+                    <td colSpan={4} className="px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">
                       {group.prefix}
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-center font-mono text-xs font-black text-white">
+                      {formatWarehouseRollTotal(group.totalRolls)}
+                    </td>
+                    <td colSpan={historyColumnCount - 5} />
                   </tr>,
                   ...group.slips.flatMap(slip => slip.products.map((product, index) => {
                   const isSelected = selectedSlipCodes.has(slip.slipCode);

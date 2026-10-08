@@ -5104,30 +5104,43 @@ export function WarehouseHistoryPanel({
       });
   }, [filteredMovements]);
 
-  const historyProductGroups = useMemo(() => {
-    const map = new Map<string, { code: string; name: string; lines: WarehouseMovementRow[] }>();
+  const historySlipGroups = useMemo(() => {
+    const bySlip = new Map<string, WarehouseMovementRow[]>();
     for (const row of filteredMovements) {
-      const rollSource = row.scannedCode?.trim() || row.itemCode;
-      const code = warehouseCodePrefix(rollSource) || row.itemCode || '—';
-      const key = normalizeMaterialCodeKey(code) || code;
-      const current = map.get(key) || { code, name: '', lines: [] };
-      if (!current.name && row.itemName.trim()) current.name = row.itemName.trim();
-      current.lines.push(row);
-      map.set(key, current);
+      const slipCode = row.slipCode || '—';
+      const current = bySlip.get(slipCode) || [];
+      current.push(row);
+      bySlip.set(slipCode, current);
     }
-    return [...map.values()]
-      .map(group => ({
-        ...group,
-        quantity: group.lines.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
-        lines: [...group.lines].sort((a, b) => {
-          const rollA = a.scannedCode?.trim() || a.itemCode;
-          const rollB = b.scannedCode?.trim() || b.itemCode;
-          const byRoll = rollA.localeCompare(rollB, 'vi', { numeric: true });
-          if (byRoll !== 0) return byRoll;
-          return a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true });
-        })
-      }))
-      .sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }));
+    return [...bySlip.entries()].map(([slipCode, lines]) => {
+      const products = new Map<string, { code: string; name: string; quantity: number }>();
+      for (const row of lines) {
+        const rollSource = row.scannedCode?.trim() || row.itemCode;
+        const code = warehouseCodePrefix(rollSource) || row.itemCode || '—';
+        const key = normalizeMaterialCodeKey(code) || code;
+        const current = products.get(key) || { code, name: '', quantity: 0 };
+        if (!current.name && row.itemName.trim()) current.name = row.itemName.trim();
+        current.quantity += Number(row.quantity) || 0;
+        products.set(key, current);
+      }
+      const createdAt = lines.find(row => row.slipCreatedAt)?.slipCreatedAt
+        || lines.reduce((latest, row) => row.createdAt.localeCompare(latest) > 0 ? row.createdAt : latest, '');
+      return {
+        slipCode,
+        lines,
+        header: lines[0],
+        createdAt,
+        products: [...products.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }))
+      };
+    }).sort((a, b) => {
+      const byPrefix = warehouseSlipCodeGroupPrefix(a.slipCode).localeCompare(
+        warehouseSlipCodeGroupPrefix(b.slipCode),
+        'vi',
+        { numeric: true, sensitivity: 'base' }
+      );
+      if (byPrefix !== 0) return byPrefix;
+      return a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true });
+    });
   }, [filteredMovements]);
 
   const historyColumnCount = isFinishedGoodsHistory ? 9 : 11;
@@ -5664,7 +5677,7 @@ export function WarehouseHistoryPanel({
             <TableEmptyRow colSpan={historyColumnCount}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
-      ) : historyProductGroups.length === 0 ? (
+      ) : historySlipGroups.length === 0 ? (
         <TableShell minWidthClassName="min-w-[980px]">
           <TableHead>
             <TableHeadCell className="w-10" align="center"> </TableHeadCell>
@@ -5688,12 +5701,22 @@ export function WarehouseHistoryPanel({
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm">
           <div className="space-y-3 p-2 md:hidden">
-            {historyProductGroups.map(group => (
-              <section key={group.code} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            {historySlipGroups.map(slip => (
+              <section key={slip.slipCode} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
                 <div className="border-b border-zinc-200 bg-zinc-100 px-3 py-2">
-                  <p className="font-mono text-sm font-black text-zinc-950">{group.code}</p>
-                  <p className="text-xs font-semibold text-zinc-600">{group.name || '—'}</p>
-                  <p className="text-sm font-black text-[#ef1b2d]">Số lượng {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)}</p>
+                  <p className="break-all font-mono text-sm font-black text-zinc-950">{slip.slipCode}</p>
+                  <p className="text-[11px] font-semibold text-zinc-500">{formatWarehouseSlipSavedTime(slip.createdAt)} · {slip.header.createdBy || '—'}</p>
+                </div>
+                <div className="divide-y divide-zinc-100">
+                  {slip.products.map(product => (
+                    <div key={product.code} className="flex items-start justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-black text-zinc-950">{product.code}</p>
+                        <p className="text-[11px] font-semibold text-zinc-500">{product.name || '—'}</p>
+                      </div>
+                      <p className="shrink-0 font-mono text-sm font-black text-[#ef1b2d]">{formatNumber(product.quantity, Number.isInteger(product.quantity) ? 0 : 2)}</p>
+                    </div>
+                  ))}
                 </div>
               </section>
             ))}
@@ -5723,67 +5746,60 @@ export function WarehouseHistoryPanel({
                 <TableHeadCell align="center">Thao tác</TableHeadCell>
               </TableHead>
               <TableBody>
-                {historyProductGroups.map(group => {
-                  const slipCodes = [...new Set(group.lines.map(row => row.slipCode).filter(Boolean))];
-                  const onlySlip = slipCodes.length === 1 ? group.lines.find(row => row.slipCode === slipCodes[0]) : undefined;
-                  const isSelected = slipCodes.length > 0 && slipCodes.every(code => selectedSlipCodes.has(code));
-                  const isDeleting = slipCodes.some(code => deletingSlipCode === code);
-                  const creators = [...new Set(group.lines.map(row => row.createdBy.trim()).filter(Boolean))];
+                {historySlipGroups.flatMap(slip => slip.products.map((product, index) => {
+                  const isSelected = selectedSlipCodes.has(slip.slipCode);
+                  const isDeleting = deletingSlipCode === slip.slipCode;
+                  const rowSpan = slip.products.length;
                   return (
-                    <TableRow key={group.code} className={isSelected ? 'bg-red-50/30' : ''}>
-                      <td className="px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          disabled={slipCodes.length === 0 || isBulkDeleting || isDeleting}
-                          onChange={() => {
-                            setSelectedSlipCodes(prev => {
-                              const next = new Set(prev);
-                              if (isSelected) slipCodes.forEach(code => next.delete(code));
-                              else slipCodes.forEach(code => next.add(code));
-                              return next;
-                            });
-                          }}
-                          className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Chọn các phiếu của mã này"
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs font-black text-zinc-950">{group.code}</td>
+                    <TableRow key={`${slip.slipCode}-${product.code}`} className={isSelected ? 'bg-red-50/30' : ''}>
+                      {index === 0 ? (
+                        <td rowSpan={rowSpan} className="align-top px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={!slip.slipCode || isBulkDeleting || isDeleting}
+                            onChange={() => toggleSlipSelection(slip.slipCode)}
+                            className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Chọn phiếu"
+                          />
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-2 font-mono text-xs font-black text-zinc-950">{product.code}</td>
                       <td className="px-3 py-2 text-xs font-semibold text-zinc-700">
-                        <div className="line-clamp-4 whitespace-normal break-words" title={group.name || '—'}>{group.name || '—'}</div>
+                        <div className="line-clamp-4 whitespace-normal break-words" title={product.name || '—'}>{product.name || '—'}</div>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-950">{group.code}</td>
+                      <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-950">{product.code}</td>
                       <td className="px-3 py-2 text-center font-mono text-sm font-black tabular-nums text-zinc-900">
-                        {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)}
+                        {formatNumber(product.quantity, Number.isInteger(product.quantity) ? 0 : 2)}
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11px] font-bold text-zinc-700">
-                        {slipCodes.length === 1 ? slipCodes[0] : `${slipCodes.length} phiếu`}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs font-bold tabular-nums text-zinc-700">
-                        {onlySlip ? formatWarehouseSlipSavedTime(onlySlip.slipCreatedAt || onlySlip.createdAt) : '—'}
-                      </td>
-                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{onlySlip?.shift || '—'}</td> : null}
-                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{onlySlip?.machine || '—'}</td> : null}
-                      <td className="px-3 py-2 text-xs font-semibold text-zinc-600">
-                        {creators.length === 0 ? '—' : creators.length === 1 ? creators[0] : `${creators.length} người`}
-                      </td>
-                      <td className="px-3 py-2">
-                        {onlySlip ? (
+                      {index === 0 ? (
+                        <td rowSpan={rowSpan} className="align-top px-3 py-2 font-mono text-[11px] font-bold text-[#ef1b2d]">{slip.slipCode}</td>
+                      ) : null}
+                      {index === 0 ? (
+                        <td rowSpan={rowSpan} className="align-top px-3 py-2 font-mono text-xs font-bold tabular-nums text-zinc-700">{formatWarehouseSlipSavedTime(slip.createdAt)}</td>
+                      ) : null}
+                      {!isFinishedGoodsHistory && index === 0 ? <td rowSpan={rowSpan} className="align-top px-3 py-2 text-xs font-semibold text-zinc-700">{slip.header.shift || '—'}</td> : null}
+                      {!isFinishedGoodsHistory && index === 0 ? <td rowSpan={rowSpan} className="align-top px-3 py-2 text-xs font-semibold text-zinc-700">{slip.header.machine || '—'}</td> : null}
+                      {index === 0 ? (
+                        <td rowSpan={rowSpan} className="align-top px-3 py-2 text-xs font-semibold text-zinc-600">{slip.header.createdBy || '—'}</td>
+                      ) : null}
+                      {index === 0 ? (
+                        <td rowSpan={rowSpan} className="align-top px-3 py-2">
                           <div className="flex items-center justify-center">
-                            <RowActionsMenu label={`Thao tác phiếu ${onlySlip.slipCode}`}>
+                            <RowActionsMenu label={`Thao tác phiếu ${slip.slipCode}`}>
                               <div className="flex items-center justify-center gap-1">
-                                {canEdit && canEditWarehouseHistorySlip(onlySlip.slipType, onlySlip.warehouseKind, onlySlip.daIn) ? (
-                                  <button type="button" onClick={() => handleEditSlip(onlySlip.slipCode)} title="Sửa phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50">
+                                {canEdit && canEditWarehouseHistorySlip(slip.header.slipType, slip.header.warehouseKind, slip.header.daIn) ? (
+                                  <button type="button" onClick={() => handleEditSlip(slip.slipCode)} title="Sửa phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50">
                                     <Pencil className="h-4 w-4" />
                                   </button>
                                 ) : null}
-                                <button type="button" onClick={() => handlePrintSlipByCode(onlySlip.slipCode, true)} title="In phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50">
+                                <button type="button" onClick={() => handlePrintSlipByCode(slip.slipCode, true)} title="In phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50">
                                   <Printer className="h-4 w-4" />
                                 </button>
                                 {canDelete ? (
                                   <button
                                     type="button"
-                                    onClick={() => void handleDeleteSlip(onlySlip.slipCode, group.lines.filter(line => line.slipCode === onlySlip.slipCode).length)}
+                                    onClick={() => void handleDeleteSlip(slip.slipCode, slip.lines.length)}
                                     disabled={isDeleting || isBulkDeleting}
                                     title="Xóa phiếu"
                                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -5794,11 +5810,11 @@ export function WarehouseHistoryPanel({
                               </div>
                             </RowActionsMenu>
                           </div>
-                        ) : null}
-                      </td>
+                        </td>
+                      ) : null}
                     </TableRow>
                   );
-                })}
+                }))}
               </TableBody>
             </TableShell>
           </div>

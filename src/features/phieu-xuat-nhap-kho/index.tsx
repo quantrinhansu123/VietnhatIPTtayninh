@@ -5130,7 +5130,6 @@ export function WarehouseHistoryPanel({
       .sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }));
   }, [filteredMovements]);
 
-  const historyRollCode = (row: WarehouseMovementRow) => row.scannedCode?.trim() || row.itemCode || '—';
   const historyColumnCount = isFinishedGoodsHistory ? 9 : 11;
 
   const productRollSummary = useMemo(() => {
@@ -5694,43 +5693,7 @@ export function WarehouseHistoryPanel({
                 <div className="border-b border-zinc-200 bg-zinc-100 px-3 py-2">
                   <p className="font-mono text-sm font-black text-zinc-950">{group.code}</p>
                   <p className="text-xs font-semibold text-zinc-600">{group.name || '—'}</p>
-                  <p className="text-[11px] font-bold text-zinc-500">Số lượng {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)}</p>
-                </div>
-                <div className="space-y-2 p-2">
-                  {group.lines.map(row => {
-                    const isSelected = selectedSlipCodes.has(row.slipCode);
-                    const isDeleting = deletingSlipCode === row.slipCode;
-                    return (
-                      <article key={row.id || `${row.slipCode}-${historyRollCode(row)}`} className={`rounded-lg border border-zinc-100 p-2 ${isSelected ? 'bg-red-50/40' : ''}`}>
-                        <div className="flex items-start gap-2">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            disabled={!row.slipCode || isBulkDeleting || isDeleting}
-                            onChange={() => toggleSlipSelection(row.slipCode)}
-                            className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:opacity-40"
-                            title="Chọn phiếu"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="break-all font-mono text-xs font-black text-zinc-950">{historyRollCode(row)}</p>
-                            <p className="mt-1 text-sm font-black text-[#ef1b2d]">Số lượng {formatNumber(row.quantity, Number.isInteger(row.quantity) ? 0 : 2)}</p>
-                            <p className="mt-1 break-all text-[11px] font-semibold text-zinc-500">{row.slipCode || '—'} · {formatWarehouseSlipSavedTime(row.slipCreatedAt || row.createdAt)} · {row.createdBy || '—'}</p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {canEdit && canEditWarehouseHistorySlip(row.slipType, row.warehouseKind, row.daIn) ? (
-                                <button type="button" onClick={() => handleEditSlip(row.slipCode)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-200 px-2 text-xs font-bold text-amber-800"><Pencil className="h-3.5 w-3.5" />Sửa</button>
-                              ) : null}
-                              <button type="button" onClick={() => handlePrintSlipByCode(row.slipCode, true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 text-xs font-bold text-[#ef1b2d]"><Printer className="h-3.5 w-3.5" />In</button>
-                              {canDelete ? (
-                                <button type="button" onClick={() => void handleDeleteSlip(row.slipCode, group.lines.filter(line => line.slipCode === row.slipCode).length)} disabled={isDeleting || isBulkDeleting} className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-2 text-xs font-bold text-rose-700 disabled:opacity-50">
-                                  {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Xóa
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
+                  <p className="text-sm font-black text-[#ef1b2d]">Số lượng {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)}</p>
                 </div>
               </section>
             ))}
@@ -5760,71 +5723,82 @@ export function WarehouseHistoryPanel({
                 <TableHeadCell align="center">Thao tác</TableHeadCell>
               </TableHead>
               <TableBody>
-                {historyProductGroups.flatMap(group => group.lines.map((row, index) => {
-                  const isSelected = selectedSlipCodes.has(row.slipCode);
-                  const isDeleting = deletingSlipCode === row.slipCode;
+                {historyProductGroups.map(group => {
+                  const slipCodes = [...new Set(group.lines.map(row => row.slipCode).filter(Boolean))];
+                  const onlySlip = slipCodes.length === 1 ? group.lines.find(row => row.slipCode === slipCodes[0]) : undefined;
+                  const isSelected = slipCodes.length > 0 && slipCodes.every(code => selectedSlipCodes.has(code));
+                  const isDeleting = slipCodes.some(code => deletingSlipCode === code);
+                  const creators = [...new Set(group.lines.map(row => row.createdBy.trim()).filter(Boolean))];
                   return (
-                    <TableRow key={row.id || `${group.code}-${row.slipCode}-${historyRollCode(row)}`} className={isSelected ? 'bg-red-50/30' : ''}>
+                    <TableRow key={group.code} className={isSelected ? 'bg-red-50/30' : ''}>
                       <td className="px-3 py-2 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          disabled={!row.slipCode || isBulkDeleting || isDeleting}
-                          onChange={() => toggleSlipSelection(row.slipCode)}
+                          disabled={slipCodes.length === 0 || isBulkDeleting || isDeleting}
+                          onChange={() => {
+                            setSelectedSlipCodes(prev => {
+                              const next = new Set(prev);
+                              if (isSelected) slipCodes.forEach(code => next.delete(code));
+                              else slipCodes.forEach(code => next.add(code));
+                              return next;
+                            });
+                          }}
                           className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Chọn phiếu"
+                          title="Chọn các phiếu của mã này"
                         />
                       </td>
-                      {index === 0 ? (
-                        <td rowSpan={group.lines.length} className="align-top px-3 py-2 font-mono text-xs font-black text-zinc-950">{group.code}</td>
-                      ) : null}
-                      {index === 0 ? (
-                        <td rowSpan={group.lines.length} className="align-top px-3 py-2 text-xs font-semibold text-zinc-700">
-                          <div className="line-clamp-4 whitespace-normal break-words" title={group.name || '—'}>{group.name || '—'}</div>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
-                            {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)} · {group.lines.length} dòng
-                          </p>
-                        </td>
-                      ) : null}
-                      <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-950">{historyRollCode(row)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-sm font-black tabular-nums text-zinc-900">
-                        {formatNumber(row.quantity, Number.isInteger(row.quantity) ? 0 : 2)}
+                      <td className="px-3 py-2 font-mono text-xs font-black text-zinc-950">{group.code}</td>
+                      <td className="px-3 py-2 text-xs font-semibold text-zinc-700">
+                        <div className="line-clamp-4 whitespace-normal break-words" title={group.name || '—'}>{group.name || '—'}</div>
                       </td>
-                      <td className="px-3 py-2 font-mono text-[11px] font-bold text-zinc-700">{row.slipCode || '—'}</td>
-                      <td className="px-3 py-2 font-mono text-xs font-bold tabular-nums text-zinc-700">{formatWarehouseSlipSavedTime(row.slipCreatedAt || row.createdAt)}</td>
-                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{row.shift || '—'}</td> : null}
-                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{row.machine || '—'}</td> : null}
-                      <td className="px-3 py-2 text-xs font-semibold text-zinc-600">{row.createdBy || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-950">{group.code}</td>
+                      <td className="px-3 py-2 text-center font-mono text-sm font-black tabular-nums text-zinc-900">
+                        {formatNumber(group.quantity, Number.isInteger(group.quantity) ? 0 : 2)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[11px] font-bold text-zinc-700">
+                        {slipCodes.length === 1 ? slipCodes[0] : `${slipCodes.length} phiếu`}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs font-bold tabular-nums text-zinc-700">
+                        {onlySlip ? formatWarehouseSlipSavedTime(onlySlip.slipCreatedAt || onlySlip.createdAt) : '—'}
+                      </td>
+                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{onlySlip?.shift || '—'}</td> : null}
+                      {!isFinishedGoodsHistory ? <td className="px-3 py-2 text-xs font-semibold text-zinc-700">{onlySlip?.machine || '—'}</td> : null}
+                      <td className="px-3 py-2 text-xs font-semibold text-zinc-600">
+                        {creators.length === 0 ? '—' : creators.length === 1 ? creators[0] : `${creators.length} người`}
+                      </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center justify-center">
-                          <RowActionsMenu label={`Thao tác phiếu ${row.slipCode}`}>
-                            <div className="flex items-center justify-center gap-1">
-                              {canEdit && canEditWarehouseHistorySlip(row.slipType, row.warehouseKind, row.daIn) ? (
-                                <button type="button" onClick={() => handleEditSlip(row.slipCode)} title="Sửa phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50">
-                                  <Pencil className="h-4 w-4" />
+                        {onlySlip ? (
+                          <div className="flex items-center justify-center">
+                            <RowActionsMenu label={`Thao tác phiếu ${onlySlip.slipCode}`}>
+                              <div className="flex items-center justify-center gap-1">
+                                {canEdit && canEditWarehouseHistorySlip(onlySlip.slipType, onlySlip.warehouseKind, onlySlip.daIn) ? (
+                                  <button type="button" onClick={() => handleEditSlip(onlySlip.slipCode)} title="Sửa phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-amber-700 transition hover:bg-amber-50">
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                                <button type="button" onClick={() => handlePrintSlipByCode(onlySlip.slipCode, true)} title="In phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50">
+                                  <Printer className="h-4 w-4" />
                                 </button>
-                              ) : null}
-                              <button type="button" onClick={() => handlePrintSlipByCode(row.slipCode, true)} title="In phiếu" className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-[#ef1b2d] transition hover:bg-red-50">
-                                <Printer className="h-4 w-4" />
-                              </button>
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteSlip(row.slipCode, group.lines.filter(line => line.slipCode === row.slipCode).length)}
-                                  disabled={isDeleting || isBulkDeleting}
-                                  title="Xóa phiếu"
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                </button>
-                              ) : null}
-                            </div>
-                          </RowActionsMenu>
-                        </div>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteSlip(onlySlip.slipCode, group.lines.filter(line => line.slipCode === onlySlip.slipCode).length)}
+                                    disabled={isDeleting || isBulkDeleting}
+                                    title="Xóa phiếu"
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </RowActionsMenu>
+                          </div>
+                        ) : null}
                       </td>
                     </TableRow>
                   );
-                }))}
+                })}
               </TableBody>
             </TableShell>
           </div>

@@ -396,46 +396,10 @@ function nhapKhoQrKey(qr: string) {
   return qr.trim().toUpperCase();
 }
 
-/** Mã đã có trong nhap_kho, hoặc trùng ngay trong danh sách cân, không chiếm suất nhập. */
-async function fetchNhapKhoDuplicateKeys(codes: string[]) {
-  const unique = [...new Set(codes.map(code => code.trim()).filter(Boolean))];
-  const hits = new Set<string>();
-  for (let offset = 0; offset < unique.length; offset += 400) {
-    const res = await fetch('/api/kho/kiem-tra-ma-quet', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ loai_phieu: 'nhap', ma_sp_quet: unique.slice(offset, offset + 400) })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không kiểm tra được mã QR trong nhập kho.'));
-    const matches = Array.isArray(data?.matches) ? data.matches : [];
-    for (const row of matches) {
-      const code = nhapKhoQrKey(String(row?.ma_sp_quet || ''));
-      if (code) hits.add(code);
-    }
-    const duplicates = Array.isArray(data?.duplicateCodes) ? data.duplicateCodes : [];
-    for (const code of duplicates) {
-      const key = nhapKhoQrKey(String(code || ''));
-      if (key) hits.add(key);
-    }
-  }
-  return hits;
-}
-
-function queueNhapKhoRows(rows: CanTuDongRecord[], duplicateKeys: Set<string>, quota: number) {
-  const seen = new Set<string>();
-  const eligible: CanTuDongRecord[] = [];
-  let skippedAhead = 0;
-  for (const row of rows) {
-    const key = nhapKhoQrKey(String(row.qr_code || ''));
-    if (!key || seen.has(key) || duplicateKeys.has(key)) {
-      if (quota > 0 && eligible.length < quota) skippedAhead += 1;
-      continue;
-    }
-    seen.add(key);
-    eligible.push(row);
-  }
-  return { eligible, skippedAhead };
+/** Mỗi dòng cân có mã QR đều được đẩy, kể cả mã lặp trong danh sách hoặc đã có trong nhap_kho. */
+function queueNhapKhoRows(rows: CanTuDongRecord[]) {
+  const eligible = rows.filter(row => nhapKhoQrKey(String(row.qr_code || '')));
+  return { eligible };
 }
 
 function readNhapKho(row: CanTuDongRecord) {
@@ -566,8 +530,6 @@ export function CanTuDongPanel({
   /** Mã QR (in hoa) → các mã phiếu nhập đã có trong bảng nhap_kho. */
   const [nhapKhoHits, setNhapKhoHits] = useState<Map<string, string[]>>(new Map());
   const [nhapKhoChecked, setNhapKhoChecked] = useState(false);
-  const [nhapKhoDuplicateKeys, setNhapKhoDuplicateKeys] = useState<Set<string>>(() => new Set());
-  const [nhapKhoDuplicateLoading, setNhapKhoDuplicateLoading] = useState(false);
   const [nhapKhoWarehouses, setNhapKhoWarehouses] = useState<string[]>([]);
   const [nhapKhoKho, setNhapKhoKho] = useState('');
   const [nhapKhoSlipDate, setNhapKhoSlipDate] = useState(() => localIsoDateToday());
@@ -1438,39 +1400,8 @@ export function CanTuDongPanel({
       });
   }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay, nhapKhoMaSp]);
   const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
-  const nhapKhoQueue = useMemo(
-    () => queueNhapKhoRows(waitingNhapKho, nhapKhoDuplicateKeys, nhapKhoCount),
-    [waitingNhapKho, nhapKhoDuplicateKeys, nhapKhoCount]
-  );
+  const nhapKhoQueue = useMemo(() => queueNhapKhoRows(waitingNhapKho), [waitingNhapKho]);
   const nhapKhoPreview = nhapKhoCount > 0 ? nhapKhoQueue.eligible.slice(0, nhapKhoCount) : [];
-
-  useEffect(() => {
-    if (!showNhapKhoModal) return;
-    const codes = waitingNhapKho.map(row => String(row.qr_code || '').trim()).filter(Boolean);
-    if (!codes.length) {
-      setNhapKhoDuplicateKeys(new Set());
-      setNhapKhoDuplicateLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setNhapKhoDuplicateLoading(true);
-        try {
-          const hits = await fetchNhapKhoDuplicateKeys(codes);
-          if (!cancelled) setNhapKhoDuplicateKeys(hits);
-        } catch {
-          if (!cancelled) setNhapKhoDuplicateKeys(new Set());
-        } finally {
-          if (!cancelled) setNhapKhoDuplicateLoading(false);
-        }
-      })();
-    }, 300);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [showNhapKhoModal, waitingNhapKho]);
 
   useEffect(() => {
     if (!showNhapKhoModal) return;
@@ -1579,65 +1510,35 @@ export function CanTuDongPanel({
       });
     setIsNhapKho(true);
     try {
-      const duplicateKeys = await fetchNhapKhoDuplicateKeys(
-        waitingNhapKho.map(row => String(row.qr_code || '').trim()).filter(Boolean)
-      );
-      setNhapKhoDuplicateKeys(duplicateKeys);
-      const queued = queueNhapKhoRows(waitingNhapKho, duplicateKeys, nhapKhoCount);
-      const queue = queued.eligible;
+      const queue = nhapKhoPreview;
       if (queue.length === 0) {
-        throw new Error('Các cuộn đang chờ đều trùng. Không có cuộn mới để nhập kho.');
+        throw new Error('Không có mã QR chờ nhập kho.');
       }
-      const savedRows: CanTuDongRecord[] = [];
-      const skippedCodes: string[] = [];
-      let cursor = 0;
-      while (savedRows.length < nhapKhoCount && cursor < queue.length) {
-        const batch = queue.slice(cursor, cursor + (nhapKhoCount - savedRows.length));
-        cursor += batch.length;
-        const batchRes = await fetch('/api/kho/quet-dot', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            loai_phieu: 'nhap',
-            ma_phieu: maPhieu,
-            ngay: nhapKhoSlipDate,
-            nhan_su: nguoi,
-            nguoi_lap: nhapKhoMay.trim(),
-            kho,
-            ca: nhapKhoCa.trim(),
-            may: nhapKhoMay.trim(),
-            items: toWarehouseItems(batch).map(item => ({
-              ma_sp_quet: item.ma_sp_quet,
-              ten_sp: item.ten_sp,
-              don_vi: item.don_vi
-            }))
-          })
-        });
-        const batchData = await batchRes.json().catch(() => ({}));
-        if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào nhap_kho.'));
-        const savedCodes = new Set(
-          (Array.isArray(batchData?.saved) ? batchData.saved : [])
-            .map((row: { ma_sp_quet?: unknown }) => String(row.ma_sp_quet || '').trim().toUpperCase())
-            .filter(Boolean)
-        );
-        const duplicates = (Array.isArray(batchData?.duplicateCodes) ? batchData.duplicateCodes : [])
-          .map((code: unknown) => String(code || '').trim())
-          .filter(Boolean);
-        skippedCodes.push(...duplicates);
-        savedRows.push(
-          ...batch.filter(row => savedCodes.has(String(row.qr_code || '').trim().toUpperCase()))
-        );
-        if (savedCodes.size === 0 && duplicates.length === 0) {
-          throw new Error('Không ghi được mã QR vào nhap_kho.');
-        }
-      }
-      const duplicateCount = skippedCodes.length + queued.skippedAhead;
-      if (savedRows.length === 0) {
-        throw new Error(
-          duplicateCount
-            ? `Không ghi được mã mới. ${duplicateCount} mã QR đã có trong nhap_kho.`
-            : 'Không ghi được mã QR vào nhap_kho.'
-        );
+      const batchRes = await fetch('/api/kho/quet-dot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loai_phieu: 'nhap',
+          ma_phieu: maPhieu,
+          ngay: nhapKhoSlipDate,
+          nhan_su: nguoi,
+          nguoi_lap: nhapKhoMay.trim(),
+          kho,
+          ca: nhapKhoCa.trim(),
+          may: nhapKhoMay.trim(),
+          cho_phep_trung: true,
+          items: toWarehouseItems(queue).map(item => ({
+            ma_sp_quet: item.ma_sp_quet,
+            ten_sp: item.ten_sp,
+            don_vi: item.don_vi
+          }))
+        })
+      });
+      const batchData = await batchRes.json().catch(() => ({}));
+      if (!batchRes.ok) throw new Error(readApiErrorMessage(batchRes, batchData, 'Không ghi được mã QR vào nhap_kho.'));
+      const savedRows = queue;
+      if (!Array.isArray(batchData?.saved) || batchData.saved.length === 0) {
+        throw new Error('Không ghi được mã QR vào nhap_kho.');
       }
 
       const res = await fetch('/api/can-tu-dong/nhap-kho', {
@@ -1674,11 +1575,7 @@ export function CanTuDongPanel({
         })
       );
       const savedCount = formatNumber(Number(data.updated) || savedRows.length, 0);
-      showAppToast(
-        duplicateCount
-          ? `Đã tạo phiếu chưa chốt ${maPhieu}, ghi ${savedCount} mã vào nhap_kho. Đã loại ${duplicateCount} cuộn trùng để các cuộn sau được nhập trước.`
-          : `Đã tạo phiếu chưa chốt ${maPhieu}, ghi ${savedCount} mã vào nhap_kho và lịch sử Kho thành phẩm.`
-      );
+      showAppToast(`Đã tạo phiếu chưa chốt ${maPhieu}, ghi ${savedCount} mã vào nhap_kho và lịch sử Kho thành phẩm.`);
       setShowNhapKhoModal(false);
       setNhapKhoSoCuon('');
     } catch (err: unknown) {
@@ -2776,16 +2673,9 @@ export function CanTuDongPanel({
                   className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
                 />
               </label>
-              {nhapKhoDuplicateLoading ? (
-                <p className="text-xs font-semibold text-zinc-500">Đang loại cuộn trùng để các cuộn sau được nhập trước.</p>
-              ) : nhapKhoQueue.skippedAhead > 0 ? (
-                <p className="text-xs font-semibold text-amber-700">
-                  Đã loại {formatNumber(nhapKhoQueue.skippedAhead, 0)} cuộn trùng. Các cuộn phía sau được đưa lên để nhập trước.
-                </p>
-              ) : null}
               {nhapKhoCount > nhapKhoQueue.eligible.length ? (
                 <p className="text-xs font-semibold text-amber-700">
-                  Chỉ còn {formatNumber(nhapKhoQueue.eligible.length, 0)} cuộn chưa trùng.
+                  Chỉ còn {formatNumber(nhapKhoQueue.eligible.length, 0)} cuộn chờ nhập kho.
                 </p>
               ) : null}
               <div className="overflow-hidden rounded-xl border border-zinc-200">
@@ -2808,7 +2698,7 @@ export function CanTuDongPanel({
                               : nhapKhoCount > 0
                                 ? waitingNhapKho.length === 0
                                   ? 'Không còn mã QR chờ nhập kho cho Mã SP này.'
-                                  : 'Các cuộn chờ đều trùng. Không còn cuộn mới để nhập.'
+                                  : 'Không có mã QR hợp lệ để nhập kho.'
                                 : 'Nhập số cuộn để hiện danh sách mã QR.'}
                         </td>
                       </tr>
@@ -2861,7 +2751,7 @@ export function CanTuDongPanel({
               <button
                 type="button"
                 onClick={() => void handleConfirmNhapKho()}
-                disabled={isNhapKho || nhapKhoDuplicateLoading || loadingNhapKhoKho || !nhapKhoCa || !nhapKhoMay || !nhapKhoMaSp || nhapKhoPreview.length === 0 || !nhapKhoKho}
+                disabled={isNhapKho || loadingNhapKhoKho || !nhapKhoCa || !nhapKhoMay || !nhapKhoMaSp || nhapKhoPreview.length === 0 || !nhapKhoKho}
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
               >
                 {isNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}

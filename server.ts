@@ -12891,7 +12891,6 @@ export function createApp() {
     }
 
     const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
-    const duplicates = new Set<string>();
     const matches: Array<{ ma_sp_quet: string; ma_phieu: string }> = [];
     for (let offset = 0; offset < codes.length; offset += 100) {
       const { data, error } = await supabaseKho
@@ -12902,11 +12901,10 @@ export function createApp() {
       for (const row of data || []) {
         const code = String(row.ma_sp_quet ?? '').trim();
         if (!code) continue;
-        duplicates.add(code);
         matches.push({ ma_sp_quet: code, ma_phieu: String(row.ma_phieu ?? '').trim() });
       }
     }
-    return res.json({ duplicateCodes: [...duplicates], matches, unavailableCodes: [] });
+    return res.json({ duplicateCodes: [], matches, unavailableCodes: [] });
   });
 
   app.post('/api/kho/quet-dot', async (req, res) => {
@@ -12919,22 +12917,27 @@ export function createApp() {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const loaiPhieu = String(body.loai_phieu ?? '').trim().toLowerCase();
       const maPhieu = String(body.ma_phieu ?? '').trim();
+      const allowDuplicate = body.cho_phep_trung === true || body.cho_phep_trung === 1 || body.cho_phep_trung === '1';
       const itemsByCode = new Map<string, { fullCode: string; tenSp: string; donVi: string }>();
+      const duplicateItems: Array<{ fullCode: string; tenSp: string; donVi: string }> = [];
       const rawItems = Array.isArray(body.items) ? body.items : [];
       for (const raw of rawItems) {
         if (!raw || typeof raw !== 'object') continue;
         const fullCode = String((raw as any).ma_sp_quet ?? (raw as any).ma_sp ?? '').trim();
         if (!fullCode) continue;
-        const key = fullCode.replace(/\s+/g, '').toUpperCase();
-        if (!itemsByCode.has(key)) {
-          itemsByCode.set(key, {
-            fullCode,
-            tenSp: String((raw as any).ten_sp ?? '').trim(),
-            donVi: String((raw as any).don_vi ?? (raw as any).unit ?? '').trim()
-          });
+        const item = {
+          fullCode,
+          tenSp: String((raw as any).ten_sp ?? '').trim(),
+          donVi: String((raw as any).don_vi ?? (raw as any).unit ?? '').trim()
+        };
+        if (allowDuplicate) {
+          duplicateItems.push(item);
+          continue;
         }
+        const key = fullCode.replace(/\s+/g, '').toUpperCase();
+        if (!itemsByCode.has(key)) itemsByCode.set(key, item);
       }
-      const items = [...itemsByCode.values()];
+      const items = allowDuplicate ? duplicateItems : [...itemsByCode.values()];
       if (!['nhap', 'xuat'].includes(loaiPhieu) || !maPhieu || !items.length) {
         return res.status(400).json({ error: 'Cần loai_phieu, ma_phieu và danh sách mã QR hợp lệ.' });
       }
@@ -12990,17 +12993,14 @@ export function createApp() {
       const classifyExisting = (candidateItems: typeof items, existing: Map<string, { ma_phieu: string; created_at: string }>) => {
         for (const item of candidateItems) {
           const row = existing.get(item.fullCode);
-          if (!row) continue;
-          if (row.ma_phieu === maPhieu) {
+          if (row?.ma_phieu === maPhieu) {
             savedByCode.set(item.fullCode, {
               ma_sp_quet: item.fullCode,
               created_at: row.created_at || new Date().toISOString()
             });
-          } else {
-            duplicateCodes.add(item.fullCode);
           }
         }
-        return candidateItems.filter(item => !existing.has(item.fullCode));
+        return candidateItems.filter(item => existing.get(item.fullCode)?.ma_phieu !== maPhieu);
       };
 
       const initialExisting = await loadExisting(items.map(item => item.fullCode));
@@ -13087,6 +13087,9 @@ export function createApp() {
             savedByCode.set(item.fullCode, { ma_sp_quet: item.fullCode, created_at: savedAt });
           }
           return;
+        }
+        if (error.code === '23505' && allowDuplicate) {
+          throw new Error('Mã QR vẫn bị chặn trùng trên nhap_kho/xuat_kho. Chạy supabase-kho-qr-san-pham-unique.sql trên DB kho rồi đẩy lại.');
         }
         if (error.code !== '23505') {
           console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${lineTable} batch insert error:`, error);
@@ -13204,11 +13207,12 @@ export function createApp() {
           .from(lineTable)
           .select('id')
           .eq('ma_sp_quet', maSpFull)
+          .eq('ma_phieu', maPhieu)
           .limit(1)
           .maybeSingle();
         if (duplicateError) return res.status(500).json({ error: duplicateError.message || 'Không thể kiểm tra mã QR trùng.' });
         if (duplicateLine) {
-          return res.status(409).json({ duplicate: true, error: `Mã QR ${maSpFull} đã tồn tại trong phiếu ${loaiPhieu}.` });
+          return res.status(409).json({ duplicate: true, error: `Mã QR ${maSpFull} đã có trên phiếu ${maPhieu}.` });
         }
       }
 

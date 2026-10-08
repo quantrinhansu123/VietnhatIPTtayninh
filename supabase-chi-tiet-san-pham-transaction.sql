@@ -21,7 +21,6 @@ set search_path = public
 as $$
 declare
   affected_rows integer;
-  unavailable_qrs text;
 begin
   if p_loai_phieu is null or p_loai_phieu not in ('nhap', 'xuat') then
     raise exception 'loai_phieu chi nhan nhap hoac xuat' using errcode = '22023';
@@ -39,32 +38,6 @@ begin
        or nullif(btrim(item.ma_sp_qr), '') is null
   ) then
     raise exception 'Moi ma QR can ma_sp_goc va ma_sp_qr' using errcode = '22023';
-  end if;
-
-  if p_loai_phieu = 'xuat' then
-    -- Khóa các QR hiện có để hai phiếu xuất đồng thời không cùng lấy một mã.
-    perform 1
-    from public.chi_tiet_san_pham as detail
-    where detail.ma_sp_qr in (
-      select distinct btrim(item.ma_sp_qr)
-      from jsonb_to_recordset(p_items) as item(ma_sp_goc text, ma_sp_qr text)
-    )
-    for update;
-
-    select string_agg(qr.ma_sp_qr, ', ' order by qr.ma_sp_qr)
-      into unavailable_qrs
-    from (
-      select distinct btrim(item.ma_sp_qr) as ma_sp_qr
-      from jsonb_to_recordset(p_items) as item(ma_sp_goc text, ma_sp_qr text)
-    ) as qr
-    left join public.chi_tiet_san_pham as detail on detail.ma_sp_qr = qr.ma_sp_qr
-    where detail.ma_sp_qr is null
-       or detail.trang_thai is distinct from 'trong_kho';
-
-    if unavailable_qrs is not null then
-      raise exception 'Ma QR chua nhap kho hoac khong con ton: %', unavailable_qrs
-        using errcode = '23514';
-    end if;
   end if;
 
   insert into public.bien_dong_chi_tiet_san_pham (

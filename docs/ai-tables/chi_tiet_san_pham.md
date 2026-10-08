@@ -13,7 +13,7 @@
 | **Tồn hiện tại** | `GET /api/chi-tiet-san-pham/ton-kho?ma_sp_goc=...` đếm QR có trạng thái `trong_kho`; form đơn hàng tự làm mới số đếm khi đang mở. |
 | **Feature** | `src/features/phieu-xuat-nhap-kho/index.tsx` gửi yêu cầu cập nhật chi tiết sau khi lưu phiếu thành công. |
 
-`so_luong` trong snapshot mặc định và giới hạn bằng `1`, vì một dòng biểu diễn một mã QR. Bảng biến động cũng lưu một dòng cho mỗi QR trong mỗi phiếu; phiếu khác cùng ngày/ca vẫn là sự kiện riêng nhờ `ma_phieu`. RPC dùng một transaction để ghi lịch sử và cập nhật snapshot; xuất cập nhật `trang_thai='da_xuat'` và `updated_at`.
+`so_luong` trong snapshot mặc định và giới hạn bằng `1`, vì một dòng biểu diễn một mã QR. Bảng biến động cũng lưu một dòng cho mỗi QR trong mỗi phiếu; phiếu khác cùng ngày/ca vẫn là sự kiện riêng nhờ `ma_phieu`. RPC dùng một transaction để ghi lịch sử và cập nhật snapshot; xuất cập nhật `trang_thai='da_xuat'` và `updated_at`. Xuất không còn từ chối mã khi snapshot thiếu hoặc khác `trong_kho`.
 
 DB phiếu kho và DB chính là hai Supabase project riêng. RPC bảo đảm toàn bộ thay đổi trong `chi_tiet_san_pham` cùng commit hoặc rollback; không thể mở một transaction PostgreSQL duy nhất bao trùm cả hai project. Khi đồng bộ chi tiết lỗi, header phiếu được giữ `chua_chot` để có thể lưu lại.
 

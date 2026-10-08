@@ -125,12 +125,12 @@ try {
     `TP-${suffix}_PREFIX_OUT_${suffix}`,
     `TP-${suffix}+PREFIX_OUT_${suffix}`
   ];
-  const rejectedOutbound = await apiRaw('/api/kho/quet-dot', 'POST', {
+  addCreated(qrOutboundBatch);
+  const acceptedOutbound = await api('/api/kho/quet-dot', 'POST', {
     loai_phieu: 'xuat', ma_phieu: qrOutboundBatch, ngay: '2099-12-31', nhan_su: 'Codex test',
     kho: 'Kho test routing', items: qrOutboundCodes.map(ma_sp_quet => ({ ma_sp_quet, ten_sp: 'Thanh pham QR test', don_vi: 'cai' }))
   });
-  assert.equal(rejectedOutbound.response.status, 409);
-  assert.deepEqual(rejectedOutbound.data?.unavailableCodes?.sort(), qrOutboundCodes.sort());
+  assert.equal(acceptedOutbound.saved?.length, qrOutboundCodes.length);
 
   const price = await api('/api/kho/gia-tb-nhap?ma_npl=TEST-KHO-NVL&thang=2099-12');
   assert.equal(typeof price.don_gia, 'number');
@@ -150,7 +150,7 @@ try {
   assert.equal(hangingAfterDelete.length, 0);
   assert.equal(qrAfter.length, 0);
   assert.equal(qrOutboundAfter.length, 0);
-  console.log(JSON.stringify({ ok: true, tested: ['save', 'update', 'history', 'remap-shift', 'print', 'treo', 'qr-batch-in', 'qr-batch-out-requires-inbound', 'qr-history', 'price', 'lots', 'delete-line', 'delete-slip'], created: [...created] }));
+  console.log(JSON.stringify({ ok: true, tested: ['save', 'update', 'history', 'remap-shift', 'print', 'treo', 'qr-batch-in', 'qr-batch-out', 'qr-history', 'price', 'lots', 'delete-line', 'delete-slip'], created: [...created] }));
 } finally {
   for (const code of created) {
     try { await api(`/api/kho/phieu/${code}`, 'DELETE'); } catch {}

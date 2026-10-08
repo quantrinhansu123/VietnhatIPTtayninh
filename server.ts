@@ -7104,38 +7104,6 @@ async function loadWarehouseMovementsFromKho(filter: WarehouseMovementFilter = {
   );
 }
 
-class ProductQrUnavailableError extends Error {
-  constructor(readonly codes: string[]) {
-    super('Mã QR chưa nhập kho hoặc không còn tồn: ' + codes.join(', '));
-    this.name = 'ProductQrUnavailableError';
-  }
-}
-
-async function findUnavailableProductQrCodes(codes: string[]) {
-  if (!supabase) throw new Error('DB sản phẩm chưa được cấu hình để kiểm tra mã QR.');
-
-  const requested = [...new Set(codes.map(code => String(code || '').trim()).filter(Boolean))];
-  const available = new Set<string>();
-  for (let offset = 0; offset < requested.length; offset += 100) {
-    const { data, error } = await supabase
-      .from('chi_tiet_san_pham')
-      .select('ma_sp_qr')
-      .eq('trang_thai', 'trong_kho')
-      .in('ma_sp_qr', requested.slice(offset, offset + 100));
-    if (error) throw new Error('Không thể kiểm tra tồn kho mã QR. ' + error.message);
-    for (const row of data || []) {
-      const code = String(row.ma_sp_qr ?? '').trim();
-      if (code) available.add(code);
-    }
-  }
-  return requested.filter(code => !available.has(code));
-}
-
-async function assertProductQrAvailableForExport(codes: string[]) {
-  const unavailable = await findUnavailableProductQrCodes(codes);
-  if (unavailable.length) throw new ProductQrUnavailableError(unavailable);
-}
-
 async function saveWarehouseSlipToKho(
   parsed: {
     loaiPhieu: 'nhap' | 'xuat';
@@ -7278,9 +7246,6 @@ async function syncProductDetailsFromWarehouseSlip(
   const details = [...detailByQr.values()];
   if (details.length === 0) {
     throw new Error(`Phiếu ${maPhieu} không có mã QR thành phẩm để đồng bộ.`);
-  }
-  if (loaiPhieu === 'xuat') {
-    await assertProductQrAvailableForExport(details.map(item => item.ma_sp_qr));
   }
   const { data: affectedRows, error } = await supabase.rpc('sync_chi_tiet_san_pham', {
     p_loai_phieu: loaiPhieu,
@@ -12811,12 +12776,6 @@ export function createApp() {
         try {
           productDetailsSynced = await syncProductDetailsFromWarehouseSlip(maPhieu, warehouseName, loaiPhieu as 'nhap' | 'xuat');
         } catch (syncError: any) {
-          if (syncError instanceof ProductQrUnavailableError) {
-            return res.status(409).json({
-              error: syncError.message,
-              unavailableCodes: syncError.codes
-            });
-          }
           console.error(`[SUPABASE:${SUPABASE_MAIN_DB_LABEL}] chi_tiet_san_pham ${loaiPhieu} sync error:`, syncError);
           return res.status(500).json({ error: `Phiếu đã lưu nhưng ${syncError?.message || 'không thể đồng bộ trạng thái mã QR.'}` });
         }
@@ -12947,18 +12906,7 @@ export function createApp() {
         matches.push({ ma_sp_quet: code, ma_phieu: String(row.ma_phieu ?? '').trim() });
       }
     }
-    let unavailableCodes: string[] = [];
-    if (slipType === 'xuat') {
-      if (!supabase) {
-        return res.status(503).json({ error: 'DB sản phẩm chưa được cấu hình để kiểm tra mã QR.' });
-      }
-      try {
-        unavailableCodes = await findUnavailableProductQrCodes(codes);
-      } catch (error: any) {
-        return res.status(500).json({ error: error?.message || 'Không thể kiểm tra tồn kho mã QR.' });
-      }
-    }
-    return res.json({ duplicateCodes: [...duplicates], matches, unavailableCodes });
+    return res.json({ duplicateCodes: [...duplicates], matches, unavailableCodes: [] });
   });
 
   app.post('/api/kho/quet-dot', async (req, res) => {
@@ -12993,23 +12941,6 @@ export function createApp() {
       if (items.length > 2000) {
         return res.status(413).json({ error: 'Mỗi đợt chỉ hỗ trợ tối đa 2000 mã QR.' });
       }
-      if (loaiPhieu === 'xuat') {
-        if (!supabase) {
-          return res.status(503).json({ error: 'DB sản phẩm chưa được cấu hình để kiểm tra mã QR.' });
-        }
-        try {
-          await assertProductQrAvailableForExport(items.map(item => item.fullCode));
-        } catch (error: any) {
-          if (error instanceof ProductQrUnavailableError) {
-            return res.status(409).json({
-              error: error.message,
-              unavailableCodes: error.codes
-            });
-          }
-          throw error;
-        }
-      }
-
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
       const headerFields: Record<string, string | null | undefined> = {

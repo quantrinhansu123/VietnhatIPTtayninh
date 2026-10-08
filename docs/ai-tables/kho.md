@@ -14,7 +14,7 @@
 | GET | `/api/kho/chi-tiet?loai_phieu=nhap|xuat&ma_phieu=...&limit=50&offset=0` | Phân trang chi tiết `nhap_kho`/`xuat_kho`; `summary=true` trả tổng hợp theo mã gốc. Đọc theo từng đoạn `.range()` để vượt giới hạn mặc định 1.000 dòng của Supabase |
 | GET | `/api/kho/phieu?loai_phieu=nhap|xuat&kho=...&ngay=&status=` | Mặc định phiếu `chua_chot`. `ngay` lọc đúng ngày. `status=all` lấy cả chưa chốt và đã chốt |
 | GET | `/api/kho/lich-su` | Ghép header `phieu_nhap`/`phieu_xuat` với dòng `nhap_kho`/`xuat_kho` theo `ma_phieu`. Mặc định chỉ `da_chot` hoặc `status` null. `status=all` (trang lịch sử) gồm cả phiếu `chua_chot` đã có dòng, nên phiếu nhập từ máy hiện ở Kho thành phẩm |
-| POST | `/api/kho/kiem-tra-ma-quet` | Kiểm tra QR trùng trong cùng chiều. Trả `duplicateCodes` và `matches` (`ma_sp_quet`, `ma_phieu`). Phiếu xuất còn kiểm tra mã đang `trong_kho` |
+| POST | `/api/kho/kiem-tra-ma-quet` | Kiểm tra QR trùng trong cùng chiều. Trả `duplicateCodes` và `matches` (`ma_sp_quet`, `ma_phieu`). Không chặn theo `chi_tiet_san_pham.trang_thai` |
 | POST | `/api/kho/quet-dot` | Lưu cả đợt QR thành phẩm bằng một lệnh insert nhiều dòng, kèm ĐVT; mã trùng bị loại khỏi đợt để các mã còn lại vẫn ghi được; cho bổ sung phiếu nhập đã chốt nhưng chưa in |
 | POST | `/api/kho/quet` | Mỗi lần quét máy → insert 1 dòng `nhap_kho` hoặc `xuat_kho` (`so_luong=1`), upsert header `phieu_nhap`/`phieu_xuat`, cập nhật tồn `kho`; cả hai bảng dòng lưu `ma_sp` gốc, `ma_sp_quet` đầy đủ, `ten_sp`, `don_vi` |
 | POST | `/api/kho/phieu` | Tạo/cập nhật header (`status` `chua_chot`/`da_chot`); nhận thêm `items` NVL hoặc hàng hỏng nhập tay để ghi `nhap_kho`/`xuat_kho` không cần `ma_sp_quet`; tính lại tồn NVL; khi bấm **Lưu phiếu** nhập, đồng bộ QR sang `chi_tiet_san_pham` ở DB chính với `trang_thai='trong_kho'`; khi bấm **Lưu phiếu** xuất, cập nhật QR từ `xuat_kho` thành `da_xuat` |
@@ -39,7 +39,7 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 ## Lưu phiếu thành phẩm hai bước
 
 - **Lưu đợt** gửi cả danh sách QR qua `/api/kho/quet-dot`; API ghi nhiều dòng cùng lúc vào `nhap_kho`/`xuat_kho` và tạo/cập nhật header. Phiếu nhập thành phẩm đã chốt vẫn nhận mã bổ sung nếu phiếu chưa in.
-- **Lưu đợt xuất** chỉ nhận QR đang có trong `chi_tiet_san_pham` với `trang_thai='trong_kho'`; mã chưa nhập, đã xuất hoặc không còn tồn bị từ chối.
+- **Lưu đợt xuất** không kiểm tra `chi_tiet_san_pham.trang_thai`. Mã vẫn bị bỏ nếu đúng QR đã có trên một phiếu xuất khác.
 - **Lưu đợt** chỉ ghi các mã QR vào DB kho. Chỉ thao tác **Lưu phiếu** cuối cùng mới đồng bộ nhập/xuất sang `chi_tiet_san_pham`.
 - Đồng bộ QR và lịch sử chạy qua RPC PostgreSQL trong DB chính như một transaction: `bien_dong_chi_tiet_san_pham` và snapshot `chi_tiet_san_pham` cùng commit hoặc cùng rollback. Header chỉ chuyển `da_chot` sau khi transaction thành công; nếu lỗi, giữ `chua_chot` để thử lưu lại.
 - Khi chốt phiếu xuất thành phẩm mới, các QR đầy đủ của phiếu trong `xuat_kho` được cập nhật hoặc tạo trong `chi_tiet_san_pham` với `trang_thai='da_xuat'`.

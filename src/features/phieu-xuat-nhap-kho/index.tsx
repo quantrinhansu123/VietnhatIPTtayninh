@@ -75,6 +75,7 @@ import {
   loadProductionOrderProductCatalog
 } from '../ke-hoach-san-xuat';
 import { normalizeMaterialsInventory } from '../kho-nvl';
+import { normalizeShippingOrders, type ShippingOrder } from '../lenh-xuat-hang';
 import {
   composeReasonWithProductionOrderCodes,
   extractLinkedProductionOrderCodes,
@@ -1319,6 +1320,9 @@ export function WarehouseSlipPanel({
   /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
   const [isXuatTreoMode, setIsXuatTreoMode] = useState(false);
   const [slipDate, setSlipDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [shippingOrders, setShippingOrders] = useState<ShippingOrder[]>([]);
+  const [shippingOrdersLoading, setShippingOrdersLoading] = useState(false);
+  const [shippingOrderId, setShippingOrderId] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [createdBy, setCreatedBy] = useState('');
@@ -2381,6 +2385,59 @@ export function WarehouseSlipPanel({
   // Các loại phiếu xuất khác không có luồng này.
   const showOrderFields = isNvlExport;
   const showProductExportTabs = warehouseKind === 'san_pham' && !isXuatTreoMode;
+  const showShippingOrderPicker = slipType === 'xuat' && !isXuatTreoMode && Boolean(selectedWarehouseName);
+
+  useEffect(() => {
+    if (!showShippingOrderPicker) return;
+    let cancelled = false;
+    setShippingOrdersLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch('/api/lenh-xuat-hang');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu xuất hàng.'));
+        if (!cancelled) setShippingOrders(normalizeShippingOrders(data));
+      } catch {
+        if (!cancelled) setShippingOrders([]);
+      } finally {
+        if (!cancelled) setShippingOrdersLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showShippingOrderPicker, pageRefreshNonce]);
+
+  const shippingOrdersForDate = useMemo(() => {
+    const day = slipDate.trim().slice(0, 10);
+    return shippingOrders
+      .filter(order => order.ngay_xuat.slice(0, 10) === day)
+      .sort((a, b) => a.ma_lenh.localeCompare(b.ma_lenh, 'vi', { numeric: true }));
+  }, [shippingOrders, slipDate]);
+
+  useEffect(() => {
+    if (!shippingOrderId) return;
+    if (!shippingOrdersForDate.some(order => order.id === shippingOrderId)) {
+      setShippingOrderId('');
+    }
+  }, [shippingOrderId, shippingOrdersForDate]);
+
+  const shippingOrderItems = useMemo(() => {
+    const order = shippingOrdersForDate.find(item => item.id === shippingOrderId);
+    if (!order) return [];
+    const byCode = new Map<string, { code: string; name: string; qty: number }>();
+    for (const line of order.chi_tiet) {
+      const code = line.ma_sp.trim();
+      const name = line.ten_sp.trim();
+      if (!code && !name) continue;
+      const key = (code || name).replace(/\s+/g, '').toUpperCase();
+      const current = byCode.get(key) || { code: code || '—', name, qty: 0 };
+      current.qty += Number(line.so_luong) || 0;
+      if (!current.name && name) current.name = name;
+      byCode.set(key, current);
+    }
+    return [...byCode.values()];
+  }, [shippingOrdersForDate, shippingOrderId]);
   const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
 
   useEffect(() => {
@@ -3535,6 +3592,83 @@ export function WarehouseSlipPanel({
   };
 
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
+  const shippingOrderPicker = showShippingOrderPicker ? (
+    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+      <p className="text-sm font-black text-zinc-950">Phiếu xuất hàng</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày</span>
+          <input
+            type="date"
+            value={slipDate}
+            onChange={event => setSlipDate(event.target.value)}
+            className={warehouseFieldClass}
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Phiếu xuất hàng</span>
+          <SearchableSelect
+            value={shippingOrderId}
+            onChange={setShippingOrderId}
+            options={shippingOrdersForDate}
+            getValue={item => (item as ShippingOrder).id}
+            getLabel={item => {
+              const order = item as ShippingOrder;
+              const customer = order.ten_khach_hang.trim();
+              return customer ? `${order.ma_lenh} · ${customer}` : order.ma_lenh;
+            }}
+            placeholder={
+              shippingOrdersLoading
+                ? 'Đang tải phiếu xuất hàng...'
+                : shippingOrdersForDate.length
+                  ? '-- Chọn phiếu xuất hàng --'
+                  : 'Không có phiếu xuất hàng ngày này'
+            }
+            disabled={shippingOrdersLoading || shippingOrdersForDate.length === 0}
+            inputClassName={warehouseFieldClass}
+            comboboxMode
+            matchDropdownWidth
+            autoFlip
+          />
+        </label>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-zinc-200">
+        <table className="w-full table-fixed border-collapse text-left text-xs">
+          <colgroup>
+            <col style={{ width: '28%' }} />
+            <col style={{ width: '48%' }} />
+            <col style={{ width: '24%' }} />
+          </colgroup>
+          <thead>
+            <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+              <th className="px-2 py-2 text-center font-black">Mã</th>
+              <th className="px-2 py-2 text-center font-black">Mặt hàng</th>
+              <th className="px-2 py-2 text-center font-black">Số lượng</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shippingOrderItems.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-3 py-6 text-center font-semibold text-zinc-400">
+                  {shippingOrderId ? 'Phiếu này chưa có mặt hàng.' : 'Chọn phiếu xuất hàng để hiện mã, mặt hàng và số lượng.'}
+                </td>
+              </tr>
+            ) : (
+              shippingOrderItems.map(item => (
+                <tr key={item.code} className="border-t border-zinc-100">
+                  <td className="px-2 py-2 text-center font-bold break-all text-zinc-800">{item.code}</td>
+                  <td className="px-2 py-2 break-words text-zinc-800">{item.name || '—'}</td>
+                  <td className="px-2 py-2 text-center font-bold tabular-nums">
+                    {formatNumber(item.qty, Number.isInteger(item.qty) ? 0 : 2)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  ) : null;
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-4">
@@ -4084,6 +4218,8 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
+      {shippingOrderPicker}
+
       <section className={
         showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
           ? '-mx-2 space-y-3 border-y border-zinc-200 bg-white py-3 shadow-sm md:-mx-3'
@@ -4532,6 +4668,8 @@ export function WarehouseSlipPanel({
               ) : null}
             </div>
           </section>
+
+          {shippingOrderPicker}
 
           <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-2.5">

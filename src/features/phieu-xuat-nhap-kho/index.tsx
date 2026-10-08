@@ -5062,17 +5062,21 @@ export function WarehouseHistoryPanel({
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMovements = useMemo(() => {
     return movements.filter(row => {
+      const day = row.slipDate.slice(0, 10);
+      if (fromDate && day < fromDate) return false;
+      if (toDate && day > toDate) return false;
       if (!movementMatchesShiftFilter(row.shift, filterShift)) return false;
       if (!normalizedSearch) return true;
-      return `${row.slipCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
+      const productCode = warehouseCodePrefix(row.scannedCode?.trim() || row.itemCode);
+      return `${row.slipCode} ${warehouseSlipCodeGroupPrefix(row.slipCode)} ${row.scannedCode || ''} ${productCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
         .toLowerCase()
         .includes(normalizedSearch);
     });
-  }, [movements, filterShift, normalizedSearch]);
+  }, [movements, fromDate, toDate, filterShift, normalizedSearch]);
 
   useEffect(() => {
     setSelectedSlipCodes(new Set());
-  }, [normalizedSearch, filterShift]);
+  }, [normalizedSearch, filterShift, fromDate, toDate]);
 
   const slipGroups = useMemo(() => {
     const map = new Map<string, WarehouseMovementRow[]>();
@@ -5104,7 +5108,7 @@ export function WarehouseHistoryPanel({
       });
   }, [filteredMovements]);
 
-  const historySlipGroups = useMemo(() => {
+  const historyPrefixGroups = useMemo(() => {
     const bySlip = new Map<string, WarehouseMovementRow[]>();
     for (const row of filteredMovements) {
       const slipCode = row.slipCode || '—';
@@ -5112,7 +5116,7 @@ export function WarehouseHistoryPanel({
       current.push(row);
       bySlip.set(slipCode, current);
     }
-    return [...bySlip.entries()].map(([slipCode, lines]) => {
+    const slips = [...bySlip.entries()].map(([slipCode, lines]) => {
       const products = new Map<string, { code: string; name: string; quantity: number }>();
       for (const row of lines) {
         const rollSource = row.scannedCode?.trim() || row.itemCode;
@@ -5126,6 +5130,7 @@ export function WarehouseHistoryPanel({
       const createdAt = lines.find(row => row.slipCreatedAt)?.slipCreatedAt
         || lines.reduce((latest, row) => row.createdAt.localeCompare(latest) > 0 ? row.createdAt : latest, '');
       return {
+        prefix: warehouseSlipCodeGroupPrefix(slipCode),
         slipCode,
         lines,
         header: lines[0],
@@ -5133,14 +5138,17 @@ export function WarehouseHistoryPanel({
         products: [...products.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }))
       };
     }).sort((a, b) => {
-      const byPrefix = warehouseSlipCodeGroupPrefix(a.slipCode).localeCompare(
-        warehouseSlipCodeGroupPrefix(b.slipCode),
-        'vi',
-        { numeric: true, sensitivity: 'base' }
-      );
+      const byPrefix = a.prefix.localeCompare(b.prefix, 'vi', { numeric: true, sensitivity: 'base' });
       if (byPrefix !== 0) return byPrefix;
       return a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true });
     });
+    const groups: Array<{ prefix: string; slips: typeof slips }> = [];
+    for (const slip of slips) {
+      const last = groups[groups.length - 1];
+      if (last && last.prefix === slip.prefix) last.slips.push(slip);
+      else groups.push({ prefix: slip.prefix, slips: [slip] });
+    }
+    return groups;
   }, [filteredMovements]);
 
   const historyColumnCount = isFinishedGoodsHistory ? 9 : 11;
@@ -5148,7 +5156,7 @@ export function WarehouseHistoryPanel({
   const productRollSummary = useMemo(() => {
     const byCode = new Map<string, { code: string; name: string; rolls: number }>();
     for (const row of filteredMovements) {
-      const code = warehouseCodePrefix(row.itemCode).trim() || row.itemCode.trim();
+      const code = warehouseCodePrefix(row.scannedCode?.trim() || row.itemCode).trim() || row.itemCode.trim();
       if (!code) continue;
       const quantity = Number(row.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) continue;
@@ -5677,7 +5685,7 @@ export function WarehouseHistoryPanel({
             <TableEmptyRow colSpan={historyColumnCount}>Đang tải Supabase...</TableEmptyRow>
           </TableBody>
         </TableShell>
-      ) : historySlipGroups.length === 0 ? (
+      ) : historyPrefixGroups.length === 0 ? (
         <TableShell minWidthClassName="min-w-[980px]">
           <TableHead>
             <TableHeadCell className="w-10" align="center"> </TableHeadCell>
@@ -5700,24 +5708,29 @@ export function WarehouseHistoryPanel({
         </TableShell>
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-200 shadow-sm">
-          <div className="space-y-3 p-2 md:hidden">
-            {historySlipGroups.map(slip => (
-              <section key={slip.slipCode} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-                <div className="border-b border-zinc-200 bg-zinc-100 px-3 py-2">
-                  <p className="break-all font-mono text-sm font-black text-zinc-950">{slip.slipCode}</p>
-                  <p className="text-[11px] font-semibold text-zinc-500">{formatWarehouseSlipSavedTime(slip.createdAt)} · {slip.header.createdBy || '—'}</p>
-                </div>
-                <div className="divide-y divide-zinc-100">
-                  {slip.products.map(product => (
-                    <div key={product.code} className="flex items-start justify-between gap-3 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs font-black text-zinc-950">{product.code}</p>
-                        <p className="text-[11px] font-semibold text-zinc-500">{product.name || '—'}</p>
-                      </div>
-                      <p className="shrink-0 font-mono text-sm font-black text-[#ef1b2d]">{formatNumber(product.quantity, Number.isInteger(product.quantity) ? 0 : 2)}</p>
+          <div className="space-y-4 p-2 md:hidden">
+            {historyPrefixGroups.map(group => (
+              <section key={group.prefix} className="space-y-2">
+                <h3 className="rounded-lg bg-zinc-900 px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">{group.prefix}</h3>
+                {group.slips.map(slip => (
+                  <section key={slip.slipCode} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+                    <div className="border-b border-zinc-200 bg-zinc-100 px-3 py-2">
+                      <p className="break-all font-mono text-sm font-black text-zinc-950">{slip.slipCode}</p>
+                      <p className="text-[11px] font-semibold text-zinc-500">{formatWarehouseSlipSavedTime(slip.createdAt)} · {slip.header.createdBy || '—'}</p>
                     </div>
-                  ))}
-                </div>
+                    <div className="divide-y divide-zinc-100">
+                      {slip.products.map(product => (
+                        <div key={product.code} className="flex items-start justify-between gap-3 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="font-mono text-xs font-black text-zinc-950">{product.code}</p>
+                            <p className="text-[11px] font-semibold text-zinc-500">{product.name || '—'}</p>
+                          </div>
+                          <p className="shrink-0 font-mono text-sm font-black text-[#ef1b2d]">{formatNumber(product.quantity, Number.isInteger(product.quantity) ? 0 : 2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
               </section>
             ))}
           </div>
@@ -5746,7 +5759,13 @@ export function WarehouseHistoryPanel({
                 <TableHeadCell align="center">Thao tác</TableHeadCell>
               </TableHead>
               <TableBody>
-                {historySlipGroups.flatMap(slip => slip.products.map((product, index) => {
+                {historyPrefixGroups.flatMap(group => [
+                  <tr key={`prefix-${group.prefix}`} className="bg-zinc-900">
+                    <td colSpan={historyColumnCount} className="px-3 py-2 font-mono text-xs font-black uppercase tracking-wide text-white">
+                      {group.prefix}
+                    </td>
+                  </tr>,
+                  ...group.slips.flatMap(slip => slip.products.map((product, index) => {
                   const isSelected = selectedSlipCodes.has(slip.slipCode);
                   const isDeleting = deletingSlipCode === slip.slipCode;
                   const rowSpan = slip.products.length;
@@ -5814,7 +5833,8 @@ export function WarehouseHistoryPanel({
                       ) : null}
                     </TableRow>
                   );
-                }))}
+                  }))
+                ])}
               </TableBody>
             </TableShell>
           </div>

@@ -4980,6 +4980,27 @@ export function WarehouseHistoryPanel({
       .sort((a, b) => b.slipDate.localeCompare(a.slipDate));
   }, [slipGroups]);
 
+  const productRollSummary = useMemo(() => {
+    const byCode = new Map<string, { code: string; name: string; rolls: number }>();
+    for (const row of filteredMovements) {
+      const code = warehouseCodePrefix(row.itemCode).trim() || row.itemCode.trim();
+      if (!code) continue;
+      const quantity = Number(row.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const countAsRolls = isFinishedGoodsHistory || isCuonUnit(row.unit);
+      if (!countAsRolls) continue;
+      const key = code.replace(/\s+/g, '').toUpperCase();
+      const current = byCode.get(key) || { code, name: '', rolls: 0 };
+      current.rolls += quantity;
+      const name = row.itemName.trim();
+      if (!current.name && name && name !== '-') current.name = name;
+      byCode.set(key, current);
+    }
+    const rows = [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }));
+    const total = rows.reduce((sum, row) => sum + row.rolls, 0);
+    return { rows, total };
+  }, [filteredMovements, isFinishedGoodsHistory]);
+
   const selectableSlips = useMemo(
     () => slipGroups.filter(group => group.slipCode && group.rows.some(row => row.id)),
     [slipGroups]
@@ -5445,6 +5466,19 @@ export function WarehouseHistoryPanel({
         <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} className="w-full shrink-0 sm:w-auto" />
       </TableToolbar>
 
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">Số cuộn theo bộ lọc</p>
+          <p className="text-[11px] font-semibold text-sky-800/80">
+            {warehouseKindLabel(warehouseTab)} · {warehouseSlipTypeLabel(selectedType)}
+            {selectedWarehouseName ? ` · ${selectedWarehouseName}` : ''}
+          </p>
+        </div>
+        <p className="font-mono text-2xl font-black tabular-nums text-sky-950">
+          {isLoading ? '…' : formatWarehouseRollTotal(productRollSummary.total)}
+        </p>
+      </div>
+
       {selectableSlips.length > 0 && (
         <section className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-zinc-900/10 bg-zinc-50 px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold text-zinc-600">
@@ -5715,6 +5749,65 @@ export function WarehouseHistoryPanel({
           ))}
         </div>
       )}
+
+      {!isLoading ? (
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+            <h2 className="text-sm font-black text-zinc-950">Tổng hợp theo Mã SP</h2>
+            <p className="text-[11px] font-semibold text-zinc-500">
+              {productRollSummary.rows.length} mã · {formatWarehouseRollTotal(productRollSummary.total)}
+            </p>
+          </div>
+          <div className="w-full min-w-0 overflow-x-hidden">
+            <table className="w-full table-fixed border-collapse text-left text-xs">
+              <colgroup>
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+                  <th className="overflow-hidden px-1 py-2 text-center font-black">STT</th>
+                  <th className="overflow-hidden px-1 py-2 text-center font-black">Mã SP</th>
+                  <th className="overflow-hidden px-1 py-2 text-center font-black">Tên SP</th>
+                  <th className="overflow-hidden px-1 py-2 text-center font-black">Số cuộn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productRollSummary.rows.map((row, index) => (
+                  <tr key={row.code} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                    <td className="px-1 py-2 text-center text-zinc-500">{index + 1}</td>
+                    <td className="px-1 py-2 text-center font-bold break-all text-zinc-800">{row.code}</td>
+                    <td className="px-1.5 py-2 align-top">
+                      <div className="line-clamp-3 whitespace-normal break-words leading-snug" title={row.name}>
+                        {row.name || '—'}
+                      </div>
+                    </td>
+                    <td className="px-1 py-2 text-center font-bold tabular-nums">{formatNumber(row.rolls, Number.isInteger(row.rolls) ? 0 : 2)}</td>
+                  </tr>
+                ))}
+                {productRollSummary.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-8 text-center text-zinc-500">
+                      Không có cuộn trong bộ lọc hiện tại.
+                    </td>
+                  </tr>
+                ) : (
+                  <tr className="bg-zinc-100">
+                    <td colSpan={3} className="px-2 py-2 text-right text-[11px] font-black uppercase tracking-wide text-zinc-600">
+                      Tổng
+                    </td>
+                    <td className="px-1 py-2 text-center font-black tabular-nums text-zinc-950">
+                      {formatNumber(productRollSummary.total, Number.isInteger(productRollSummary.total) ? 0 : 2)}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       </>
       )}

@@ -1,6 +1,7 @@
 -- Run in the main Supabase project (bfnsopyvgvhaegqijpum), after
 -- supabase-bien-dong-chi-tiet-san-pham.sql.
--- One RPC transaction writes movement history and the current QR snapshot;
+-- One RPC transaction updates the current QR snapshot in chi_tiet_san_pham.
+-- It does not write bien_dong_chi_tiet_san_pham.
 -- p_la_dieu_chinh separates inventory correction slips from ordinary in/out.
 drop function if exists public.sync_chi_tiet_san_pham(text, jsonb);
 drop function if exists public.sync_chi_tiet_san_pham(text, text, date, text, text, jsonb);
@@ -39,28 +40,6 @@ begin
   ) then
     raise exception 'Moi ma QR can ma_sp_goc va ma_sp_qr' using errcode = '22023';
   end if;
-
-  insert into public.bien_dong_chi_tiet_san_pham (
-    ma_sp_goc, ma_sp_qr, loai_bien_dong, ma_phieu, ngay_phieu, kho, ca, la_dieu_chinh
-  )
-  select distinct on (btrim(item.ma_sp_qr))
-    btrim(item.ma_sp_goc),
-    btrim(item.ma_sp_qr),
-    p_loai_phieu,
-    btrim(p_ma_phieu),
-    p_ngay_phieu,
-    btrim(p_kho),
-    nullif(btrim(p_ca), ''),
-    p_la_dieu_chinh
-  from jsonb_to_recordset(p_items) as item(ma_sp_goc text, ma_sp_qr text)
-  order by btrim(item.ma_sp_qr)
-  on conflict (loai_bien_dong, ma_phieu, ma_sp_qr) where ma_phieu is not null
-  do update set
-    ma_sp_goc = excluded.ma_sp_goc,
-    ngay_phieu = excluded.ngay_phieu,
-    kho = excluded.kho,
-    ca = excluded.ca,
-    la_dieu_chinh = excluded.la_dieu_chinh;
 
   if p_loai_phieu = 'nhap' then
     insert into public.chi_tiet_san_pham (ma_sp_goc, ma_sp_qr, kho, trang_thai, so_luong)

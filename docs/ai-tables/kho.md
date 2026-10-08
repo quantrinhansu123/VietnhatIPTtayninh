@@ -41,7 +41,7 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 - **Lưu đợt** gửi cả danh sách QR qua `/api/kho/quet-dot`; API ghi nhiều dòng cùng lúc vào `nhap_kho`/`xuat_kho` và tạo/cập nhật header. Phiếu nhập thành phẩm đã chốt vẫn nhận mã bổ sung nếu phiếu chưa in.
 - **Lưu đợt xuất** không kiểm tra `chi_tiet_san_pham.trang_thai`. Mã vẫn bị bỏ nếu đúng QR đã có trên một phiếu xuất khác.
 - **Lưu đợt** chỉ ghi các mã QR vào DB kho. Chỉ thao tác **Lưu phiếu** cuối cùng mới đồng bộ nhập/xuất sang `chi_tiet_san_pham`.
-- Đồng bộ QR và lịch sử chạy qua RPC PostgreSQL trong DB chính như một transaction: `bien_dong_chi_tiet_san_pham` và snapshot `chi_tiet_san_pham` cùng commit hoặc cùng rollback. Header chỉ chuyển `da_chot` sau khi transaction thành công; nếu lỗi, giữ `chua_chot` để thử lưu lại.
+- Đồng bộ QR chạy qua RPC PostgreSQL trong DB chính và chỉ cập nhật snapshot `chi_tiet_san_pham`. Không ghi `bien_dong_chi_tiet_san_pham`. Header chỉ chuyển `da_chot` sau khi transaction thành công; nếu lỗi, giữ `chua_chot` để thử lưu lại.
 - Khi chốt phiếu xuất thành phẩm mới, các QR đầy đủ của phiếu trong `xuat_kho` được cập nhật hoặc tạo trong `chi_tiet_san_pham` với `trang_thai='da_xuat'`.
 - Khi mở lại trang nhập/xuất thành phẩm, FE tự chọn phiếu `chua_chot` mới nhất theo kho và điền **Ca**, **Máy** từ header phiếu; có thể đổi phiếu hoặc chọn **+ Tạo phiếu**.
 - Mã phiếu tự tạo: `PN-YYYYMMDD-HHMMSS`. Khi đã chọn máy thì chèn viết tắt ngay sau `PN`, ví dụ Máy bao bì 15 → `PN-MBB15-YYYYMMDD-HHMMSS`. Nhập kho từ cân tự động dùng cùng quy tắc.

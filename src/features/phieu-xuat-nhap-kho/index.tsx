@@ -5461,7 +5461,7 @@ export function WarehouseHistoryPanel({
       return;
     }
     if (!slipCode) return;
-    if (!window.confirm(`Xóa toàn bộ phiếu ${slipCode} (${lineCount} dòng)?`)) return;
+    if (!window.confirm(`Xóa phiếu ${slipCode} và ${lineCount} dòng tương ứng trong nhap_kho/xuat_kho?`)) return;
 
     setDeletingSlipCode(slipCode);
     setError('');

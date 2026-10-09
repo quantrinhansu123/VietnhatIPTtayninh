@@ -5442,16 +5442,11 @@ export function AddProductionOrderModal({
     setAutofillSearch('');
   }, [form.startDate]);
 
-  const ordersForSelectedDate = useMemo(
-    () => filterOrdersForProductionDate(orders, form.startDate),
-    [orders, form.startDate]
-  );
-
   const orderCodeOptions = useMemo(() => {
-    return [...new Set(ordersForSelectedDate.map(order => order.orderCode).filter(code => code && code !== '-'))].sort(
-      (a, b) => String(a).localeCompare(String(b), 'vi')
+    return [...new Set(orders.map(order => order.orderCode).filter(code => code && code !== '-'))].sort((a, b) =>
+      String(a).localeCompare(String(b), 'vi', { numeric: true })
     );
-  }, [ordersForSelectedDate]);
+  }, [orders]);
 
   const shiftOptions = useMemo(() => {
     const fromSettings = settings
@@ -5752,7 +5747,7 @@ export function AddProductionOrderModal({
   };
 
   const handleEntryOrderChange = (key: string, orderRef: string) => {
-    const options = listProductOptionsForOrder(ordersForSelectedDate, productionOrders, catalogProducts, orderRef);
+    const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
     let patch: Partial<ProductionOrderEntryLine> = {
       orderRef,
       productCode: '',
@@ -5778,7 +5773,7 @@ export function AddProductionOrderModal({
   };
 
   const handleEntryProductChange = (key: string, orderRef: string, productCode: string) => {
-    const options = listProductOptionsForOrder(ordersForSelectedDate, productionOrders, catalogProducts, orderRef);
+    const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
     const product = options.find(item => item.code === productCode);
     const built = buildProductionEntryLine(
       orders,
@@ -6041,14 +6036,12 @@ export function AddProductionOrderModal({
             ]}
           >
             <p className="pb-2 text-[11px] font-bold text-zinc-500">
-              {form.startDate
-                ? `Gợi ý đơn hàng cùng ngày ${formatDateDdMmYyyy(form.startDate)} hoặc còn SL chưa lập lệnh.`
-                : 'Chọn ngày lệnh SX để lọc đơn hàng cùng ngày.'}
+              Có thể chọn mọi đơn hàng đã lưu, kể cả đơn ngày khác.
             </p>
 
             {form.entryLines.map(line => {
               const productOptions = listProductOptionsForOrder(
-                ordersForSelectedDate,
+                orders,
                 productionOrders,
                 catalogProducts,
                 line.orderRef
@@ -6063,6 +6056,7 @@ export function AddProductionOrderModal({
                       value={line.orderRef}
                       onChange={orderRef => handleEntryOrderChange(line.key, orderRef)}
                       options={orderCodeOptions}
+                      maxResults={Math.max(orderCodeOptions.length, 1)}
                       placeholder="Gõ để tìm mã đơn"
                       isLoading={isLoadingLookups}
                       inputClassName={orderFieldClass}
@@ -6559,6 +6553,7 @@ export function AddProductionOrderModal({
                     setLineDraftProductCode('');
                   }}
                   options={orderCodeOptions}
+                  maxResults={Math.max(orderCodeOptions.length, 1)}
                   placeholder="Gõ để tìm mã đơn"
                   isLoading={isLoadingLookups}
                   inputClassName="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
@@ -6573,7 +6568,7 @@ export function AddProductionOrderModal({
                   value={lineDraftProductCode}
                   onChange={setLineDraftProductCode}
                   options={listProductOptionsForOrder(
-                    ordersForSelectedDate,
+                    orders,
                     productionOrders,
                     catalogProducts,
                     lineDraftOrderRef
@@ -6859,7 +6854,7 @@ export function EditProductionOrderModal({
 
   const orderCodeOptions = useMemo(() => {
     return [...new Set(orders.map(order => order.orderCode).filter(code => code && code !== '-'))].sort((a, b) =>
-      a.localeCompare(b, 'vi')
+      a.localeCompare(b, 'vi', { numeric: true })
     );
   }, [orders]);
 
@@ -7056,6 +7051,7 @@ export function EditProductionOrderModal({
                       value={line.orderRef}
                       onChange={orderRef => handleEntryOrderChange(line.key, orderRef)}
                       options={orderCodeOptions}
+                      maxResults={Math.max(orderCodeOptions.length, 1)}
                       placeholder="Gõ để tìm mã đơn"
                       inputClassName={orderFieldClass}
                       getLabel={item => String(item)}

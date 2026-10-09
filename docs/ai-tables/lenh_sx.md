@@ -44,6 +44,8 @@ Trang `/lenh-san-xuat`: nút **Thêm đơn hàng** mở `OrderFormModal` trực 
 
 Nút **Thêm đơn mới** trong form thêm lệnh SX cũng mở `OrderFormModal` rồi tự điền dòng đơn/mã hàng.
 
+Ô **Mã đơn** khi thêm dòng lấy mọi đơn đã lưu, không chỉ đơn cùng ngày lệnh. Sổ xuống hiện hết mã, không cắt ở 50 kết quả.
+
 **Trùng mã hàng:** các dòng cùng `ma_sp` được gộp thành 1 dòng — cộng số lượng, gộp mã đơn (`DH001, DH002`). Áp dụng khi tự điền / thêm đơn / thêm dòng / chọn mã / lúc lưu.
 
 **SL vs còn lại:** form/API **không chặn** khi số lượng lệnh > còn lại theo đơn (chỉ báo «Còn N» trên UI). Vẫn yêu cầu mã hàng thuộc đơn hàng.

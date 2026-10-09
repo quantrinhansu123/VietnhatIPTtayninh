@@ -6998,6 +6998,43 @@ function warehouseTables(loaiPhieu: 'nhap' | 'xuat') {
   } as const;
 }
 
+/** Xóa mọi dòng của một phiếu. Lặp theo lô vì PostgREST chỉ xóa tối đa khoảng 1000 dòng mỗi lệnh. */
+async function deleteKhoLinesBySlip(lineTable: 'nhap_kho' | 'xuat_kho', slipCode: string) {
+  if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
+  const removed: Array<{ ma_sp: string; ma_sp_quet: string | null; loai: string | null; so_luong: number }> = [];
+  for (;;) {
+    const { data, error } = await supabaseKho
+      .from(lineTable)
+      .select('id, ma_sp, ma_sp_quet, loai, so_luong')
+      .eq('ma_phieu', slipCode)
+      .limit(200);
+    if (error) throw new Error(`Không tải được chi tiết phiếu. ${error.message}`);
+    const batch = data || [];
+    if (!batch.length) break;
+    const ids = batch.map(row => String(row.id || '')).filter(Boolean);
+    if (!ids.length) throw new Error(`Không xóa được dòng ${lineTable} vì thiếu id.`);
+    const { data: deleted, error: deleteError } = await supabaseKho
+      .from(lineTable)
+      .delete()
+      .in('id', ids)
+      .select('id');
+    if (deleteError) throw new Error(`Không thể xóa chi tiết phiếu. ${deleteError.message}`);
+    const deletedIds = new Set((deleted || []).map(row => String(row.id || '')));
+    if (deletedIds.size !== ids.length) {
+      throw new Error(`Không xóa hết dòng trong ${lineTable}. Đã xóa ${deletedIds.size}/${ids.length} dòng.`);
+    }
+    for (const row of batch) {
+      removed.push({
+        ma_sp: String(row.ma_sp || ''),
+        ma_sp_quet: row.ma_sp_quet ? String(row.ma_sp_quet) : null,
+        loai: row.loai ? String(row.loai) : null,
+        so_luong: Number(row.so_luong) || 0
+      });
+    }
+  }
+  return removed;
+}
+
 function normalizeWarehouseMovementCode(value: unknown) {
   return String(value ?? '').trim().replace(/[\s\u00a0]+/g, '').toUpperCase();
 }
@@ -12825,18 +12862,11 @@ export function createApp() {
 
       const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
-      const { data: lines, error: linesError } = await supabaseKho
-        .from(lineTable)
-        .select('id, ma_sp, ma_sp_quet, loai, so_luong')
-        .eq('ma_phieu', slipCode);
-      if (linesError) return res.status(500).json({ error: `Không tải được chi tiết phiếu. ${linesError.message}` });
-
-      const { error: lineDeleteError } = await supabaseKho.from(lineTable).delete().eq('ma_phieu', slipCode);
-      if (lineDeleteError) return res.status(500).json({ error: `Không thể xóa chi tiết phiếu. ${lineDeleteError.message}` });
+      const lines = await deleteKhoLinesBySlip(lineTable, slipCode);
 
       if (!draftOnly) {
         const stockDeltas = new Map<string, number>();
-        for (const line of lines || []) {
+        for (const line of lines) {
           const fullCode = String(line.ma_sp || '').trim();
           if (!line.ma_sp_quet) {
             if (line.loai === 'nvl' && fullCode) {
@@ -12871,7 +12901,7 @@ export function createApp() {
 
       const { error: headerDeleteError } = await supabaseKho.from(headerTable).delete().eq('ma_phieu', slipCode);
       if (headerDeleteError) return res.status(500).json({ error: `Không thể xóa header phiếu. ${headerDeleteError.message}` });
-      return res.json({ success: true, deletedCount: lines?.length || 0 });
+      return res.json({ success: true, deletedCount: lines.length, lineTable });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi xóa phiếu kho.' });
     }
@@ -13467,8 +13497,7 @@ export function createApp() {
         const tables = warehouseTables(type);
         const rows = await loadWarehouseMovementsFromKho({ loaiPhieu: type, maPhieu: slipCode });
         if (!rows.length) return res.status(404).json({ error: 'Khong tim thay phieu can xoa.' });
-        const { error: lineError } = await supabaseKho.from(tables.line).delete().eq('ma_phieu', slipCode);
-        if (lineError) return res.status(500).json({ error: lineError.message });
+        await deleteKhoLinesBySlip(tables.line, slipCode);
         const { error: headerError } = await supabaseKho.from(tables.header).delete().eq('ma_phieu', slipCode);
         if (headerError) return res.status(500).json({ error: headerError.message });
         await syncCodes(rows);

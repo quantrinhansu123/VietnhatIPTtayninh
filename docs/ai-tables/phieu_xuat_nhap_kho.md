@@ -20,7 +20,7 @@
 | POST | `/api/kho/luu-phieu` | Lưu header + dòng trên DB kho mới; body có thể kèm `treo: true` |
 | POST | `/api/kho/phieu/:slipCode/xac-nhan-treo` | Chốt phiếu xuất treo |
 | PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu chưa in; phiếu xuất chỉ hỗ trợ NVL và hàng hỏng |
-| DELETE | `/api/kho/phieu/:slipCode` hoặc `/api/kho/dong/:id` | Xóa phiếu hoặc một dòng |
+| DELETE | `/api/kho/phieu/:slipCode` hoặc `/api/kho/dong/:id` | Xóa phiếu: xóa hết dòng `nhap_kho` hoặc `xuat_kho` cùng `ma_phieu`, rồi xóa header. Lặp theo lô để không sót khi phiếu nhiều hơn 1000 dòng |
 
 ## Frontend
 

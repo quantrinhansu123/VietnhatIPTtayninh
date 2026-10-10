@@ -1639,24 +1639,6 @@ export function CanTuDongPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              setNhapKhoSoCuon('');
-              setNhapKhoHits(new Map());
-              setNhapKhoChecked(false);
-              setNhapKhoSlipDate(fromDate || localIsoDateToday());
-              setNhapKhoCa(caFilter !== 'all' ? caFilter : '');
-              setNhapKhoMay(mayFilter !== 'all' ? mayFilter : '');
-              setShowNhapKhoModal(true);
-            }}
-            disabled={loading || isNhapKho}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Chọn ca và máy, tạo phiếu nhập mới chưa chốt và ghi QR vào nhap_kho"
-          >
-            <Warehouse className="h-4 w-4" />
-            Nhập kho
-          </button>
-          <button
-            type="button"
             onClick={handleDownloadExcel}
             disabled={loading || visibleRecords.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"

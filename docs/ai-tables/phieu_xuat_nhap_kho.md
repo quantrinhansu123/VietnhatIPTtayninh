@@ -38,7 +38,7 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang
 - **Xuất kho treo** lưu ngay `treo=false` thành phiếu xuất chính thức, cập nhật tồn kho, lịch sử và mở mẫu in.
 - Không còn card **Phiếu xuất kho treo chờ xác nhận** và không có bước Xác nhận riêng.
 
-- Form **Xuất kho**: trước các dòng hàng phải chọn **Ngày** và **Phiếu xuất hàng**. Danh sách phiếu lấy từ `/api/lenh-xuat-hang` theo đúng ngày (`ngay_xuat`), rồi hiện **Mã**, **Mặt hàng**, **Số lượng**.
+- Form **Xuất kho**: tab **Thực hiện** (quét) chọn **Ngày** rồi **Lệnh xuất hàng** trong ngày (`ngay_xuat` từ `/api/lenh-xuat-hang`). Bảng có **Mã / Mặt hàng / Số lượng / Đã quét**. Cột **Đã quét** đếm QR theo tiền tố mã hàng. Kho thành phẩm chưa quét đủ số lượng từng mã thì không **Lưu đợt** và không **Lưu phiếu**.
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 - **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).
 - Form phiếu lưu **Ca** (`ca`) và **Máy** (`may`). Dữ liệu XK trên `/phan-tich-tu-dong` khớp theo **ngày** (bộ lọc ngày, không lọc ca) + máy (phiếu cũ không có `may` suy máy từ lệnh SX gắn trên lý do/ghi chú, giống `/lich-su-xuat-nhap-kho`). **Ca không bắt buộc** trên form (Nhập / Xuất).

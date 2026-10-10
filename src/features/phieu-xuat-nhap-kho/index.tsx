@@ -2440,6 +2440,30 @@ export function WarehouseSlipPanel({
     }
     return [...byCode.values()];
   }, [shippingOrdersForDate, shippingOrderId]);
+  const shippingOrderQtyTotal = shippingOrderItems.reduce((sum, item) => sum + item.qty, 0);
+  const scannedQtyByOrderCode = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const line of lines) {
+      if (!line.isScanned || !line.code.trim()) continue;
+      const key = normalizeMaterialCodeKey(warehouseCodePrefix(line.code) || line.code);
+      if (!key) continue;
+      const qty = parsePercentInput(line.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      map.set(key, (map.get(key) || 0) + qty);
+    }
+    return map;
+  }, [lines]);
+  const shippingOrderScanRows = useMemo(
+    () =>
+      shippingOrderItems.map(item => ({
+        ...item,
+        scanned: scannedQtyByOrderCode.get(normalizeMaterialCodeKey(item.code)) || 0
+      })),
+    [shippingOrderItems, scannedQtyByOrderCode]
+  );
+  const shippingOrderScanShort = shippingOrderScanRows.filter(item => item.scanned < item.qty);
+  const blockShortShippingExport =
+    slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanShort.length > 0;
   const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
 
   useEffect(() => {
@@ -3318,6 +3342,13 @@ export function WarehouseSlipPanel({
       setFormError('Bạn không có quyền lưu mã quét vào kho này.');
       return;
     }
+    if (blockShortShippingExport) {
+      const missing = shippingOrderScanShort
+        .map(item => `${item.code}: đã quét ${formatNumber(item.scanned, 0)}/${formatNumber(item.qty, 0)}`)
+        .join('; ');
+      setFormError(`Chưa quét đủ số lượng lệnh xuất. ${missing}`);
+      return;
+    }
     setIsSaving(true);
     setFormError('');
     setActionMessage('');
@@ -3403,6 +3434,14 @@ export function WarehouseSlipPanel({
     }
     if (!warehouseName.trim()) {
       setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (blockShortShippingExport) {
+      const missing = shippingOrderScanShort
+        .map(item => `${item.code}: đã quét ${formatNumber(item.scanned, 0)}/${formatNumber(item.qty, 0)}`)
+        .join('; ');
+      setFormError(showSaveFailure(`Chưa quét đủ số lượng lệnh xuất. ${missing}`));
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -3596,7 +3635,7 @@ export function WarehouseSlipPanel({
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
   const shippingOrderPicker = showShippingOrderPicker ? (
     <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-      <p className="text-sm font-black text-zinc-950">Phiếu xuất hàng</p>
+      <p className="text-sm font-black text-zinc-950">Lệnh xuất hàng</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="block space-y-1">
           <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày</span>
@@ -3608,7 +3647,7 @@ export function WarehouseSlipPanel({
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Phiếu xuất hàng</span>
+          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</span>
           <SearchableSelect
             value={shippingOrderId}
             onChange={setShippingOrderId}
@@ -3621,12 +3660,13 @@ export function WarehouseSlipPanel({
             }}
             placeholder={
               shippingOrdersLoading
-                ? 'Đang tải phiếu xuất hàng...'
+                ? 'Đang tải lệnh xuất hàng...'
                 : shippingOrdersForDate.length
-                  ? '-- Chọn phiếu xuất hàng --'
-                  : 'Không có phiếu xuất hàng ngày này'
+                  ? '-- Chọn lệnh xuất hàng --'
+                  : 'Không có lệnh xuất hàng ngày này'
             }
             disabled={shippingOrdersLoading || shippingOrdersForDate.length === 0}
+            maxResults={Math.max(shippingOrdersForDate.length, 1)}
             inputClassName={warehouseFieldClass}
             comboboxMode
             matchDropdownWidth
@@ -3634,37 +3674,53 @@ export function WarehouseSlipPanel({
           />
         </label>
       </div>
+      {shippingOrderId ? (
+        <p className="rounded-lg bg-zinc-100 px-2.5 py-1.5 text-sm font-black text-zinc-950">
+          Số lượng lệnh xuất: {formatNumber(shippingOrderQtyTotal, Number.isInteger(shippingOrderQtyTotal) ? 0 : 2)}
+          {blockShortShippingExport
+            ? ` · Chưa đủ, còn thiếu ${formatNumber(shippingOrderScanShort.reduce((sum, item) => sum + (item.qty - item.scanned), 0), 0)}`
+            : ''}
+        </p>
+      ) : null}
       <div className="overflow-hidden rounded-xl border border-zinc-200">
         <table className="w-full table-fixed border-collapse text-left text-xs">
           <colgroup>
-            <col style={{ width: '28%' }} />
-            <col style={{ width: '48%' }} />
-            <col style={{ width: '24%' }} />
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '40%' }} />
+            <col style={{ width: '19%' }} />
+            <col style={{ width: '19%' }} />
           </colgroup>
           <thead>
             <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
               <th className="px-2 py-2 text-center font-black">Mã</th>
               <th className="px-2 py-2 text-center font-black">Mặt hàng</th>
               <th className="px-2 py-2 text-center font-black">Số lượng</th>
+              <th className="px-2 py-2 text-center font-black">Đã quét</th>
             </tr>
           </thead>
           <tbody>
-            {shippingOrderItems.length === 0 ? (
+            {shippingOrderScanRows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center font-semibold text-zinc-400">
-                  {shippingOrderId ? 'Phiếu này chưa có mặt hàng.' : 'Chọn phiếu xuất hàng để hiện mã, mặt hàng và số lượng.'}
+                <td colSpan={4} className="px-3 py-6 text-center font-semibold text-zinc-400">
+                  {shippingOrderId ? 'Lệnh này chưa có mặt hàng.' : 'Chọn lệnh xuất hàng để hiện mã, mặt hàng và số lượng.'}
                 </td>
               </tr>
             ) : (
-              shippingOrderItems.map(item => (
-                <tr key={item.code} className="border-t border-zinc-100">
-                  <td className="px-2 py-2 text-center font-bold break-all text-zinc-800">{item.code}</td>
-                  <td className="px-2 py-2 break-words text-zinc-800">{item.name || '—'}</td>
-                  <td className="px-2 py-2 text-center font-bold tabular-nums">
-                    {formatNumber(item.qty, Number.isInteger(item.qty) ? 0 : 2)}
-                  </td>
-                </tr>
-              ))
+              shippingOrderScanRows.map(item => {
+                const enough = item.scanned >= item.qty;
+                return (
+                  <tr key={item.code} className="border-t border-zinc-100">
+                    <td className="px-2 py-2 text-center font-bold break-all text-zinc-800">{item.code}</td>
+                    <td className="px-2 py-2 break-words text-zinc-800">{item.name || '—'}</td>
+                    <td className="px-2 py-2 text-center font-bold tabular-nums">
+                      {formatNumber(item.qty, Number.isInteger(item.qty) ? 0 : 2)}
+                    </td>
+                    <td className={`px-2 py-2 text-center font-bold tabular-nums ${enough ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formatNumber(item.scanned, Number.isInteger(item.scanned) ? 0 : 2)}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -3777,7 +3833,7 @@ export function WarehouseSlipPanel({
                 />
               </label>
             ) : null}
-            {shippingOrderPicker}
+            {showProductExportTabs && productExportView === 'thuc-hien' ? null : shippingOrderPicker}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <button
                 type="button"
@@ -4623,7 +4679,8 @@ export function WarehouseSlipPanel({
             <button
               type="button"
               onClick={() => void handleSave(false)}
-              disabled={isSaving}
+              disabled={isSaving || blockShortShippingExport}
+              title={blockShortShippingExport ? 'Chưa quét đủ số lượng lệnh xuất, chưa thể xuất' : undefined}
               className="flex h-11 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-5 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -4647,6 +4704,7 @@ export function WarehouseSlipPanel({
 
       {showProductExportTabs && productExportView === 'thuc-hien' ? (
         <>
+          {slipType === 'xuat' ? shippingOrderPicker : null}
           {actionMessage ? (
             <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
               <ClipboardCheck className="h-4 w-4 shrink-0" />
@@ -4660,7 +4718,8 @@ export function WarehouseSlipPanel({
                 <button
                   type="button"
                   onClick={() => void handleSaveScannedProductBatch()}
-                  disabled={isSaving || pendingScannedProductDetails.length === 0}
+                  disabled={isSaving || pendingScannedProductDetails.length === 0 || blockShortShippingExport}
+                  title={blockShortShippingExport ? 'Chưa quét đủ số lượng lệnh xuất, chưa thể xuất' : undefined}
                   className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
                 >
                   {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

@@ -133,7 +133,9 @@ export function normalizeOrderProducts(data: unknown, warehouse = ''): OrderProd
   return normalizeProducts(data)
     .filter(product =>
       !warehouse ||
-      (normalizeLookupText(product.warehouse) === normalizeLookupText(warehouse) &&
+      ((normalizeLookupText(product.warehouse) === normalizeLookupText(warehouse) ||
+        // ten_kho có thể trống: dựa vào tính chất "Thành phẩm"
+        (!product.warehouse && normalizeLookupText(product.nature) === normalizeLookupText('Thành phẩm'))) &&
         !product.code.trim().toUpperCase().startsWith('MT-'))
     )
     .map(product => ({

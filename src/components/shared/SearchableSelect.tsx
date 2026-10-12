@@ -126,7 +126,13 @@ export function SearchableSelect({
     if (!preferValueMatch) {
       return options.filter(matchesText).slice(0, maxResults);
     }
-    const valueMatches = options.filter(item => normalizeSearchText(getValue(item)).includes(normalized));
+    const valueMatches = options
+      .filter(item => normalizeSearchText(getValue(item)).includes(normalized))
+      .sort(
+        (a, b) =>
+          Number(!normalizeSearchText(getValue(a)).startsWith(normalized)) -
+          Number(!normalizeSearchText(getValue(b)).startsWith(normalized))
+      );
     const valueSet = new Set(valueMatches);
     const nameMatches = options.filter(item => !valueSet.has(item) && matchesText(item));
     return [...valueMatches, ...nameMatches].slice(0, maxResults);

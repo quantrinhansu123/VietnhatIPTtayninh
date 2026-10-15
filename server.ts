@@ -13079,6 +13079,69 @@ export function createApp() {
 
       const initialExisting = await loadExisting(items.map(item => item.fullCode));
       let pendingItems = classifyExisting(items, initialExisting);
+      const unimportedCodes: string[] = [];
+      const alreadyExportedCodes: string[] = [];
+      if (loaiPhieu === 'xuat' && pendingItems.length) {
+        const exportedKeys = new Set<string>();
+        for (let offset = 0; offset < pendingItems.length; offset += 100) {
+          const batch = pendingItems.slice(offset, offset + 100);
+          const { data: exportedRows, error: exportedError } = await khoDb
+            .from('xuat_kho')
+            .select('ma_sp_quet')
+            .eq('loai', 'san_pham')
+            .neq('ma_phieu', maPhieu)
+            .in('ma_sp_quet', batch.map(item => item.fullCode));
+          if (exportedError) {
+            return res.status(500).json({ error: exportedError.message || 'Không kiểm tra được mã đã xuất kho.' });
+          }
+          for (const row of exportedRows || []) {
+            const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
+            if (key) exportedKeys.add(key);
+          }
+        }
+        pendingItems = pendingItems.filter(item => {
+          const exported = exportedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
+          if (exported) alreadyExportedCodes.push(item.fullCode);
+          return !exported;
+        });
+
+        const khoName = String(body.kho ?? '').trim();
+        const importedKeys = new Set<string>();
+        for (let offset = 0; offset < pendingItems.length; offset += 100) {
+          const batch = pendingItems.slice(offset, offset + 100);
+          const { data: inboundRows, error: inboundError } = await khoDb
+            .from('nhap_kho')
+            .select('ma_sp_quet, ma_phieu')
+            .eq('loai', 'san_pham')
+            .in('ma_sp_quet', batch.map(item => item.fullCode));
+          if (inboundError) {
+            return res.status(500).json({ error: inboundError.message || 'Không kiểm tra được mã đã nhập kho.' });
+          }
+          const inboundSlipCodes = [...new Set((inboundRows || []).map(row => String(row.ma_phieu ?? '').trim()).filter(Boolean))];
+          if (!inboundSlipCodes.length) continue;
+          const { data: inboundHeaders, error: inboundHeaderError } = await khoDb
+            .from('phieu_nhap')
+            .select('ma_phieu, status, kho')
+            .in('ma_phieu', inboundSlipCodes);
+          if (inboundHeaderError) {
+            return res.status(500).json({ error: inboundHeaderError.message || 'Không kiểm tra được phiếu nhập kho.' });
+          }
+          const committedSlips = new Set((inboundHeaders || [])
+            .filter(header => header.status !== 'chua_chot' && String(header.kho ?? '').trim() === khoName)
+            .map(header => String(header.ma_phieu ?? '').trim()));
+          for (const row of inboundRows || []) {
+            if (committedSlips.has(String(row.ma_phieu ?? '').trim())) {
+              const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
+              if (key) importedKeys.add(key);
+            }
+          }
+        }
+        pendingItems = pendingItems.filter(item => {
+          const imported = importedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
+          if (!imported) unimportedCodes.push(item.fullCode);
+          return imported;
+        });
+      }
       let header: any = null;
 
       if (pendingItems.length || savedByCode.size) {
@@ -13198,6 +13261,8 @@ export function createApp() {
         header,
         saved: [...savedByCode.values()],
         duplicateCodes: [...duplicateCodes],
+        unimportedCodes,
+        alreadyExportedCodes,
         source: SUPABASE_KHO_DB_LABEL
       });
     } catch (err: any) {

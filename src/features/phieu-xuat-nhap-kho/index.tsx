@@ -3438,9 +3438,27 @@ export function WarehouseSlipPanel({
       const duplicateCodes = Array.isArray(data?.duplicateCodes)
         ? data.duplicateCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
         : [];
+      const unimportedCodes = Array.isArray(data?.unimportedCodes)
+        ? data.unimportedCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
+        : [];
+      const alreadyExportedCodes = Array.isArray(data?.alreadyExportedCodes)
+        ? data.alreadyExportedCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
+        : [];
       if (duplicateCodes.length) {
         discardDuplicateScannedProducts(duplicateCodes);
         showAppToast(`Bỏ qua ${duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`, 'error');
+      }
+      const rejectedCodeMessage = (codes: string[], reason: string) =>
+        codes.length
+          ? `${reason}${codes.slice(0, 8).join(', ')}${codes.length > 8 ? ` và ${codes.length - 8} mã khác` : ''}.`
+          : '';
+      const warning = [
+        rejectedCodeMessage(alreadyExportedCodes, 'Đã xuất hoặc đang có trong phiếu xuất khác, không thể xuất lại: '),
+        rejectedCodeMessage(unimportedCodes, 'Chưa nhập kho nên không lưu: ')
+      ].filter(Boolean).join(' ');
+      if (warning) {
+        setFormError(warning);
+        showAppToast(warning, 'error');
       }
       if (data?.header?.ma_phieu) {
         setSelectedProductSlipCode(maPhieu);

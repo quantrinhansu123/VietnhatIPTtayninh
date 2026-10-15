@@ -1983,6 +1983,7 @@ export function WarehouseSlipPanel({
     const code = generateWarehouseSlipPreviewCode(slipType);
     setProductExportView('thuc-hien');
     setSelectedProductSlipCode('');
+    setShippingOrderId('');
     setNewSlipCode(code);
     khoScanMaPhieuRef.current = '';
     scannedFullCodesByPrefixRef.current.clear();
@@ -2078,6 +2079,7 @@ export function WarehouseSlipPanel({
     }
     const selected = openProductSlips.find(slip => slip.ma_phieu === code);
     if (!selected) return;
+    setShippingOrderId('');
     setIsLoadingProductSlips(true);
     void loadOpenProductSlip(selected)
       .catch((error: any) => setFormError(showSaveFailure(error, 'Không tải được phiếu chưa chốt.')))
@@ -2458,6 +2460,20 @@ export function WarehouseSlipPanel({
   }, [shippingOrders, slipDate, exportedByOrder, shippingOrderId]);
 
   useEffect(() => {
+    const selectedSlip = openProductSlips.find(slip => slip.ma_phieu === selectedProductSlipCode);
+    const orderCode = String(selectedSlip?.ghi_chu ?? '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
+    const selectedSlipDate = String(selectedSlip?.ngay ?? '').slice(0, 10);
+    const linkedOrder = slipType === 'xuat' && orderCode
+      ? shippingOrders.find(order =>
+          normalizeMaterialCodeKey(order.ma_lenh) === normalizeMaterialCodeKey(orderCode) &&
+          (!selectedSlipDate || order.ngay_xuat.slice(0, 10) === selectedSlipDate)
+        )
+      : undefined;
+    const nextId = linkedOrder?.id || '';
+    setShippingOrderId(current => current === nextId ? current : nextId);
+  }, [openProductSlips, selectedProductSlipCode, shippingOrders, slipType]);
+
+  useEffect(() => {
     if (!shippingOrderId) return;
     if (!shippingOrdersForDate.some(order => order.id === shippingOrderId)) {
       setShippingOrderId('');
@@ -2510,9 +2526,10 @@ export function WarehouseSlipPanel({
     slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanShort.length > 0;
   const selectedShippingOrderCode = shippingOrdersForDate.find(order => order.id === shippingOrderId)?.ma_lenh || '';
   // Gắn lệnh xuất hàng vào ghi chú phiếu để biết lệnh nào đã xuất đủ.
+  const noteWithoutOrderTag = note.replace(/\s*\[LXH:[^\]]+\]/gi, '').trim();
   const noteWithOrderTag =
     slipType === 'xuat' && warehouseKind === 'san_pham' && selectedShippingOrderCode
-      ? `${note.trim()} [LXH:${selectedShippingOrderCode}]`.trim()
+      ? `${noteWithoutOrderTag} [LXH:${selectedShippingOrderCode}]`.trim()
       : note.trim();
   const blockOverShippingExport =
     slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanOver.length > 0;

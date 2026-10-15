@@ -3655,10 +3655,10 @@ export function WarehouseSlipPanel({
 
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
   const shippingOrderPicker = showShippingOrderPicker ? (
-    <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+    <section className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
       <p className="text-sm font-black text-zinc-950">Lệnh xuất hàng</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="block space-y-1">
+      <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="block min-w-0 space-y-1">
           <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày</span>
           <input
             type="date"
@@ -3667,7 +3667,7 @@ export function WarehouseSlipPanel({
             className={warehouseFieldClass}
           />
         </label>
-        <label className="block space-y-1">
+        <label className="block min-w-0 space-y-1">
           <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</span>
           <SearchableSelect
             value={shippingOrderId}

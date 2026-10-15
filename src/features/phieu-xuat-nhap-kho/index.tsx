@@ -2275,6 +2275,18 @@ export function WarehouseSlipPanel({
     const prefixKey = normalizeMaterialCodeKey(prefix);
     const fullCodeKey = normalizeMaterialCodeKey(fullCode);
 
+    if (
+      slipType === 'xuat' &&
+      warehouseKind === 'san_pham' &&
+      shippingOrderId &&
+      !shippingOrderItems.some(item => normalizeMaterialCodeKey(item.code) === prefixKey)
+    ) {
+      const message = `Mã ${fullCode} không nằm trong lệnh xuất hàng này, không thể quét.`;
+      setFormError(message);
+      showAppToast(message, 'error');
+      return false;
+    }
+
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
     if (scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';

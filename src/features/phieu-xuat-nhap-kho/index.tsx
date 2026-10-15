@@ -2454,24 +2454,20 @@ export function WarehouseSlipPanel({
   const shippingOrdersForDate = useMemo(() => {
     const day = slipDate.trim().slice(0, 10);
     return shippingOrders
-      .filter(order => order.ngay_xuat.slice(0, 10) === day)
+      .filter(order => order.id === shippingOrderId || order.ngay_xuat.slice(0, 10) === day)
       .filter(order => order.id === shippingOrderId || !isShippingOrderFullyExported(order, exportedByOrder[order.ma_lenh]))
       .sort((a, b) => a.ma_lenh.localeCompare(b.ma_lenh, 'vi', { numeric: true }));
   }, [shippingOrders, slipDate, exportedByOrder, shippingOrderId]);
 
   useEffect(() => {
-    const selectedSlip = openProductSlips.find(slip => slip.ma_phieu === selectedProductSlipCode);
-    const orderCode = String(selectedSlip?.ghi_chu ?? '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
-    const selectedSlipDate = String(selectedSlip?.ngay ?? '').slice(0, 10);
-    const linkedOrder = slipType === 'xuat' && orderCode
-      ? shippingOrders.find(order =>
-          normalizeMaterialCodeKey(order.ma_lenh) === normalizeMaterialCodeKey(orderCode) &&
-          (!selectedSlipDate || order.ngay_xuat.slice(0, 10) === selectedSlipDate)
-        )
-      : undefined;
-    const nextId = linkedOrder?.id || '';
-    setShippingOrderId(current => current === nextId ? current : nextId);
-  }, [openProductSlips, selectedProductSlipCode, shippingOrders, slipType]);
+    const orderCode = selectedProductSlipCode && slipType === 'xuat'
+      ? note.match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim()
+      : '';
+    const linkedOrder = orderCode && shippingOrders.find(order =>
+      normalizeMaterialCodeKey(order.ma_lenh) === normalizeMaterialCodeKey(orderCode)
+    );
+    if (linkedOrder) setShippingOrderId(current => current || linkedOrder.id);
+  }, [note, selectedProductSlipCode, shippingOrders, slipType]);
 
   useEffect(() => {
     if (!shippingOrderId) return;

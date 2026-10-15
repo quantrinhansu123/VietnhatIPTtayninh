@@ -3856,7 +3856,7 @@ export function WarehouseSlipPanel({
                 />
               </label>
             ) : null}
-            {showProductExportTabs && productExportView === 'thuc-hien' ? null : shippingOrderPicker}
+            {shippingOrderPicker}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <button
                 type="button"
@@ -4727,7 +4727,6 @@ export function WarehouseSlipPanel({
 
       {showProductExportTabs && productExportView === 'thuc-hien' ? (
         <>
-          {slipType === 'xuat' ? shippingOrderPicker : null}
           {actionMessage ? (
             <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
               <ClipboardCheck className="h-4 w-4 shrink-0" />

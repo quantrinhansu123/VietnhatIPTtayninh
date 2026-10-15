@@ -3492,6 +3492,11 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    if (slipType === 'xuat' && warehouseKind === 'san_pham' && showShippingOrderPicker && !shippingOrderId) {
+      setFormError(showSaveFailure('Vui lòng chọn lệnh xuất hàng trước khi lưu phiếu.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (blockShortShippingExport) {
       const missing = shippingOrderScanShort
         .map(item => `${item.code}: đã quét ${formatNumber(item.scanned, 0)}/${formatNumber(item.qty, 0)}`)

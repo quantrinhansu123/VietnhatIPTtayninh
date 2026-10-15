@@ -2441,7 +2441,7 @@ export function WarehouseSlipPanel({
     return [...byCode.values()];
   }, [shippingOrdersForDate, shippingOrderId]);
   const shippingOrderQtyTotal = shippingOrderItems.reduce((sum, item) => sum + item.qty, 0);
-  // "Đã quét" chỉ tăng khi bấm Lưu đợt; mã mới quét (pending) tính riêng để chặn quét vượt.
+  // "Đã quét" tăng ngay khi quét; Lưu đợt loại mã không hợp lệ (trùng) nên số tự giảm theo.
   const countScansByOrderCode = (details: typeof scannedProductDetails) => {
     const map = new Map<string, number>();
     for (const detail of details) {
@@ -2460,8 +2460,8 @@ export function WarehouseSlipPanel({
     const key = normalizeMaterialCodeKey(item.code);
     return {
       ...item,
-      scanned: savedQtyByOrderCode.get(key) || 0,
-      pending: pendingQtyByOrderCode.get(key) || 0
+      scanned: (savedQtyByOrderCode.get(key) || 0) + (pendingQtyByOrderCode.get(key) || 0),
+      pending: 0
     };
   });
   const shippingOrderScanShort = shippingOrderScanRows.filter(item => item.scanned < item.qty);
@@ -3727,11 +3727,7 @@ export function WarehouseSlipPanel({
                     </td>
                     <td className={`px-1 py-2 text-center font-bold tabular-nums sm:px-2 ${over ? 'text-rose-700' : enough ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {formatNumber(item.scanned, Number.isInteger(item.scanned) ? 0 : 2)}
-                      {item.pending > 0 ? (
-                        <span className={`block text-[10px] font-semibold leading-tight sm:inline sm:ml-1 sm:text-xs ${over ? 'text-rose-700' : 'text-amber-600'}`}>
-                          +{formatNumber(item.pending, 0)} chờ lưu{over ? ' (vượt)' : ''}
-                        </span>
-                      ) : null}
+                      {over ? <span className="block text-[10px] font-semibold leading-tight sm:inline sm:ml-1 sm:text-xs">(vượt)</span> : null}
                     </td>
                   </tr>
                 );

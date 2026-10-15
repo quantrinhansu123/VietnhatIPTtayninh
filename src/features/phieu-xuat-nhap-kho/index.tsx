@@ -2441,29 +2441,35 @@ export function WarehouseSlipPanel({
     return [...byCode.values()];
   }, [shippingOrdersForDate, shippingOrderId]);
   const shippingOrderQtyTotal = shippingOrderItems.reduce((sum, item) => sum + item.qty, 0);
-  const scannedQtyByOrderCode = useMemo(() => {
+  // "Đã quét" chỉ tăng khi bấm Lưu đợt; mã mới quét (pending) tính riêng để chặn quét vượt.
+  const countScansByOrderCode = (details: typeof scannedProductDetails) => {
     const map = new Map<string, number>();
-    for (const line of lines) {
-      if (!line.isScanned || !line.code.trim()) continue;
-      const key = normalizeMaterialCodeKey(warehouseCodePrefix(line.code) || line.code);
-      if (!key) continue;
-      const qty = parsePercentInput(line.quantity);
-      if (!Number.isFinite(qty) || qty <= 0) continue;
+    for (const detail of details) {
+      const key = normalizeMaterialCodeKey(warehouseCodePrefix(detail.fullCode) || detail.fullCode);
+      const qty = parsePercentInput(detail.quantity);
+      if (!key || !Number.isFinite(qty) || qty <= 0) continue;
       map.set(key, (map.get(key) || 0) + qty);
     }
     return map;
-  }, [lines]);
-  const shippingOrderScanRows = useMemo(
-    () =>
-      shippingOrderItems.map(item => ({
-        ...item,
-        scanned: scannedQtyByOrderCode.get(normalizeMaterialCodeKey(item.code)) || 0
-      })),
-    [shippingOrderItems, scannedQtyByOrderCode]
-  );
+  };
+  const isDetailSaved = (detail: (typeof scannedProductDetails)[number]) =>
+    Boolean(detail.savedAt) || savedProductBatchCodes.has(normalizeMaterialCodeKey(detail.fullCode));
+  const savedQtyByOrderCode = countScansByOrderCode(scannedProductDetails.filter(isDetailSaved));
+  const pendingQtyByOrderCode = countScansByOrderCode(scannedProductDetails.filter(detail => !isDetailSaved(detail)));
+  const shippingOrderScanRows = shippingOrderItems.map(item => {
+    const key = normalizeMaterialCodeKey(item.code);
+    return {
+      ...item,
+      scanned: savedQtyByOrderCode.get(key) || 0,
+      pending: pendingQtyByOrderCode.get(key) || 0
+    };
+  });
   const shippingOrderScanShort = shippingOrderScanRows.filter(item => item.scanned < item.qty);
+  const shippingOrderScanOver = shippingOrderScanRows.filter(item => item.scanned + item.pending > item.qty);
   const blockShortShippingExport =
     slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanShort.length > 0;
+  const blockOverShippingExport =
+    slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanOver.length > 0;
   const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
 
   useEffect(() => {
@@ -3342,11 +3348,14 @@ export function WarehouseSlipPanel({
       setFormError('Bạn không có quyền lưu mã quét vào kho này.');
       return;
     }
-    if (blockShortShippingExport) {
-      const missing = shippingOrderScanShort
-        .map(item => `${item.code}: đã quét ${formatNumber(item.scanned, 0)}/${formatNumber(item.qty, 0)}`)
+    if (blockOverShippingExport) {
+      const over = shippingOrderScanOver
+        .map(item => `${item.code}: ${formatNumber(item.scanned + item.pending, 0)}/${formatNumber(item.qty, 0)}`)
         .join('; ');
-      setFormError(`Chưa quét đủ số lượng lệnh xuất. ${missing}`);
+      const message = `Quét vượt số lượng lệnh xuất, không thể lưu đợt. Hãy xóa bớt mã đã quét. ${over}`;
+      setFormError(message);
+      showAppToast(message, 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setIsSaving(true);
@@ -3708,6 +3717,7 @@ export function WarehouseSlipPanel({
             ) : (
               shippingOrderScanRows.map(item => {
                 const enough = item.scanned >= item.qty;
+                const over = item.scanned + item.pending > item.qty;
                 return (
                   <tr key={item.code} className="border-t border-zinc-100">
                     <td className="px-2 py-2 text-center font-bold break-all text-zinc-800">{item.code}</td>
@@ -3715,8 +3725,13 @@ export function WarehouseSlipPanel({
                     <td className="px-2 py-2 text-center font-bold tabular-nums">
                       {formatNumber(item.qty, Number.isInteger(item.qty) ? 0 : 2)}
                     </td>
-                    <td className={`px-2 py-2 text-center font-bold tabular-nums ${enough ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    <td className={`px-1 py-2 text-center font-bold tabular-nums sm:px-2 ${over ? 'text-rose-700' : enough ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {formatNumber(item.scanned, Number.isInteger(item.scanned) ? 0 : 2)}
+                      {item.pending > 0 ? (
+                        <span className={`block text-[10px] font-semibold leading-tight sm:inline sm:ml-1 sm:text-xs ${over ? 'text-rose-700' : 'text-amber-600'}`}>
+                          +{formatNumber(item.pending, 0)} chờ lưu{over ? ' (vượt)' : ''}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -4718,8 +4733,8 @@ export function WarehouseSlipPanel({
                 <button
                   type="button"
                   onClick={() => void handleSaveScannedProductBatch()}
-                  disabled={isSaving || pendingScannedProductDetails.length === 0 || blockShortShippingExport}
-                  title={blockShortShippingExport ? 'Chưa quét đủ số lượng lệnh xuất, chưa thể xuất' : undefined}
+                  disabled={isSaving || pendingScannedProductDetails.length === 0}
+                  title={blockOverShippingExport ? 'Quét vượt số lượng lệnh xuất, không thể lưu đợt' : undefined}
                   className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:w-auto sm:text-xs"
                 >
                   {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

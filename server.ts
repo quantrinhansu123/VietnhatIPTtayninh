@@ -12937,6 +12937,50 @@ export function createApp() {
     return res.json({ duplicateCodes: [], matches, unavailableCodes: [] });
   });
 
+  // Số lượng thành phẩm đã xuất (phiếu đã chốt) theo lệnh xuất hàng; phiếu gắn lệnh qua thẻ [LXH:<mã lệnh>] trong ghi_chu.
+  app.get('/api/kho/lenh-xuat-da-xuat', async (_req, res) => {
+    const khoDb = supabaseKho;
+    if (!khoDb) return res.json({ exported: {} });
+    try {
+      const { data: slips, error } = await khoDb
+        .from('phieu_xuat')
+        .select('ma_phieu, ghi_chu')
+        .eq('status', 'da_chot')
+        .like('ghi_chu', '%[LXH:%');
+      if (error) return res.status(500).json({ error: error.message });
+      const orderBySlip = new Map<string, string>();
+      for (const slip of slips || []) {
+        const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/)?.[1]?.trim();
+        if (code) orderBySlip.set(String(slip.ma_phieu), code);
+      }
+      const exported: Record<string, Record<string, number>> = {};
+      const slipCodes = [...orderBySlip.keys()];
+      for (let i = 0; i < slipCodes.length; i += 50) {
+        const chunk = slipCodes.slice(i, i + 50);
+        for (let from = 0; ; from += 1000) {
+          const { data: rows, error: lineError } = await khoDb
+            .from('xuat_kho')
+            .select('ma_phieu, ma_sp, so_luong')
+            .eq('loai', 'san_pham')
+            .in('ma_phieu', chunk)
+            .range(from, from + 999);
+          if (lineError) return res.status(500).json({ error: lineError.message });
+          for (const row of rows || []) {
+            const order = orderBySlip.get(String(row.ma_phieu));
+            const sp = String(row.ma_sp || '').replace(/\s+/g, '').toUpperCase();
+            if (!order || !sp) continue;
+            exported[order] ||= {};
+            exported[order][sp] = (exported[order][sp] || 0) + (Number(row.so_luong) || 1);
+          }
+          if (!rows || rows.length < 1000) break;
+        }
+      }
+      return res.json({ exported });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải số lượng đã xuất theo lệnh.' });
+    }
+  });
+
   app.post('/api/kho/quet-dot', async (req, res) => {
     const khoDb = supabaseKho;
     if (!khoDb) {

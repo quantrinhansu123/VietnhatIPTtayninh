@@ -880,6 +880,17 @@ function mergeWarehouseExportLineDrafts(lines: WarehouseSlipLineDraft[]): Wareho
  * Tem thực tế dùng dấu "_" làm ranh giới (VD "MN-BB332_CXIxxxx" → "MN-BB332"); bản thân mã gốc
  * có thể chứa dấu "-" nên KHÔNG được tách theo "-", chỉ tách theo "_".
  */
+/** Lệnh đã xuất đủ khi mọi mặt hàng đều có SL đã xuất (phiếu đã chốt) >= SL lệnh. */
+function isShippingOrderFullyExported(order: ShippingOrder, exported?: Record<string, number>) {
+  if (!exported) return false;
+  const need = new Map<string, number>();
+  for (const line of order.chi_tiet) {
+    const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
+    if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
+  }
+  return need.size > 0 && [...need].every(([key, qty]) => (exported[key] || 0) >= qty);
+}
+
 function warehouseCodePrefix(raw: string) {
   const trimmed = raw.trim();
   if (!trimmed) return '';
@@ -1325,6 +1336,8 @@ export function WarehouseSlipPanel({
   const [shippingOrders, setShippingOrders] = useState<ShippingOrder[]>([]);
   const [shippingOrdersLoading, setShippingOrdersLoading] = useState(false);
   const [shippingOrderId, setShippingOrderId] = useState('');
+  const [exportedByOrder, setExportedByOrder] = useState<Record<string, Record<string, number>>>({});
+  const [exportedRefreshNonce, setExportedRefreshNonce] = useState(0);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [createdBy, setCreatedBy] = useState('');
@@ -2422,12 +2435,27 @@ export function WarehouseSlipPanel({
     };
   }, [showShippingOrderPicker, pageRefreshNonce]);
 
+  useEffect(() => {
+    if (!showShippingOrderPicker) return;
+    let cancelled = false;
+    void fetch('/api/kho/lenh-xuat-da-xuat')
+      .then((res): Promise<any> => (res.ok ? res.json() : Promise.resolve({})))
+      .then(data => {
+        if (!cancelled) setExportedByOrder(data?.exported && typeof data.exported === 'object' ? data.exported : {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [showShippingOrderPicker, pageRefreshNonce, exportedRefreshNonce]);
+
   const shippingOrdersForDate = useMemo(() => {
     const day = slipDate.trim().slice(0, 10);
     return shippingOrders
       .filter(order => order.ngay_xuat.slice(0, 10) === day)
+      .filter(order => order.id === shippingOrderId || !isShippingOrderFullyExported(order, exportedByOrder[order.ma_lenh]))
       .sort((a, b) => a.ma_lenh.localeCompare(b.ma_lenh, 'vi', { numeric: true }));
-  }, [shippingOrders, slipDate]);
+  }, [shippingOrders, slipDate, exportedByOrder, shippingOrderId]);
 
   useEffect(() => {
     if (!shippingOrderId) return;
@@ -2480,6 +2508,12 @@ export function WarehouseSlipPanel({
   const shippingOrderScanOver = shippingOrderScanRows.filter(item => item.scanned + item.pending > item.qty);
   const blockShortShippingExport =
     slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanShort.length > 0;
+  const selectedShippingOrderCode = shippingOrdersForDate.find(order => order.id === shippingOrderId)?.ma_lenh || '';
+  // Gắn lệnh xuất hàng vào ghi chú phiếu để biết lệnh nào đã xuất đủ.
+  const noteWithOrderTag =
+    slipType === 'xuat' && warehouseKind === 'san_pham' && selectedShippingOrderCode
+      ? `${note.trim()} [LXH:${selectedShippingOrderCode}]`.trim()
+      : note.trim();
   const blockOverShippingExport =
     slipType === 'xuat' && warehouseKind === 'san_pham' && Boolean(shippingOrderId) && shippingOrderScanOver.length > 0;
   const productDetailSlipCode = String(editSlipCode || newSlipCode || '').trim();
@@ -3391,7 +3425,7 @@ export function WarehouseSlipPanel({
           ngay: slipDate,
           nhan_su: createdBy.trim() || loginName,
           kho: warehouseName.trim(),
-          ghi_chu: note.trim(),
+          ghi_chu: noteWithOrderTag,
           items: candidates.map(item => ({ ma_sp_quet: item.fullCode, ten_sp: item.name, don_vi: item.unit }))
         })
       });
@@ -3560,7 +3594,7 @@ export function WarehouseSlipPanel({
             kho: warehouseName.trim(),
             ca: shiftLabelForSave,
             may: showWarehouseShiftAndMachine ? machine.trim() : '',
-            ghi_chu: note.trim(),
+            ghi_chu: noteWithOrderTag,
             status: 'da_chot',
             ...(printSlipType === 'nhap' ? { dong_bo_chi_tiet_san_pham: true } : {}),
             ...(printSlipType === 'xuat' ? { danh_dau_chi_tiet_san_pham_da_xuat: true } : {})
@@ -3630,6 +3664,7 @@ export function WarehouseSlipPanel({
       setEditSlipCode(null);
       setReason('');
       setNote('');
+      setExportedRefreshNonce(n => n + 1);
       setDeliverer('');
       setCreatedBy(loginName);
       setProductionOrderCodes([]);

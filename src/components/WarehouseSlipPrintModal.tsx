@@ -474,7 +474,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           {data.totalAmount > 0 ? formatVietnameseMoneyWords(data.totalAmount) : '.................................................................'}
         </p>
         <p>
-          <span>- Số chứng từ gốc kèm theo:</span> {data.note || '.................................................................'}
+          <span>- Số chứng từ gốc kèm theo:</span> .................................................................
         </p>
       </div>
 
@@ -672,11 +672,6 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
               <p>
                 <strong>Lý do:</strong> {printData.reason || '-'}
               </p>
-              {printData.note ? (
-                <p>
-                  <strong>Ghi chú:</strong> {printData.note}
-                </p>
-              ) : null}
               <p>
                 <strong>Ngày in:</strong> {printDate}
               </p>

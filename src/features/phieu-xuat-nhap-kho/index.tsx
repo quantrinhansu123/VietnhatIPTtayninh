@@ -8,7 +8,6 @@ import {
   Boxes,
   ChevronDown,
   ClipboardCheck,
-  Clock,
   Factory,
   FilePlus2,
   History,
@@ -39,7 +38,6 @@ import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import {
   FilterCombobox,
-  TableToolbar,
   TableSearchInput,
   TableDateFilter,
   TableShell,
@@ -1231,32 +1229,71 @@ function splitWarehouseMachineValues(value: string) {
     .filter(Boolean);
 }
 
+function warehouseMachineAliasSet(
+  value: string,
+  machineOptions: Array<{ code?: string; name?: string; label?: string }> = []
+) {
+  const parts = splitWarehouseMachineValues(value);
+  return new Set(
+    parts.flatMap(part => {
+      const option = machineOptions.find(item =>
+        [item.label, item.code, item.name].some(
+          candidate => normalizeWarehouseMachineText(candidate || '') === normalizeWarehouseMachineText(part)
+        )
+      );
+      return [
+        part,
+        option?.label,
+        option?.code,
+        option?.name,
+        ...part.split(/\s+-\s+/)
+      ]
+        .filter(Boolean)
+        .map(item => normalizeWarehouseMachineText(String(item)));
+    })
+  );
+}
+
 export function warehouseMachineMatchesFilter(
   machineFilter: string,
   orderMachine: string,
   machineOptions: Array<{ code?: string; name?: string; label?: string }> = []
 ) {
-  const selectedMachines = splitWarehouseMachineValues(machineFilter);
-  if (selectedMachines.length === 0) return true;
+  if (!String(machineFilter || '').trim()) return true;
+  const selectedAliases = warehouseMachineAliasSet(machineFilter, machineOptions);
+  if (selectedAliases.size === 0) return true;
+  const orderAliases = warehouseMachineAliasSet(orderMachine, machineOptions);
+  for (const alias of selectedAliases) {
+    if (!alias || alias === '-') continue;
+    if (orderAliases.has(alias)) return true;
+  }
+  return false;
+}
 
-  const selectedAliases = new Set(
-    selectedMachines.flatMap(selected => {
-      const option = machineOptions.find(item =>
-        [item.label, item.code, item.name].some(value => normalizeWarehouseMachineText(value || '') === normalizeWarehouseMachineText(selected))
-      );
-      return [
-        selected,
-        option?.label,
-        option?.code,
-        option?.name,
-        ...selected.split(/\s+-\s+/)
-      ]
-        .filter(Boolean)
-        .map(value => normalizeWarehouseMachineText(String(value)));
-    })
+/** Phiếu mở khớp máy + ngày + ca trên form (Nhập TP — Lưu tất cả). */
+export function warehouseOpenSlipMatchesMachineBatch(
+  slip: Pick<OpenProductSlip, 'ngay' | 'ca' | 'may'>,
+  options: {
+    slipDate: string;
+    selectedShifts: string[];
+    machine: string;
+    machineOptions?: Array<{ code?: string; name?: string; label?: string }>;
+  }
+) {
+  const machine = String(options.machine || '').trim();
+  const slipDate = String(options.slipDate || '').trim().slice(0, 10);
+  if (!machine || !slipDate || options.selectedShifts.length === 0) return false;
+  if (String(slip.ngay || '').trim().slice(0, 10) !== slipDate) return false;
+  if (!warehouseMachineMatchesFilter(machine, String(slip.may || ''), options.machineOptions || [])) return false;
+  const slipShifts = parseWarehouseShiftSelection(slip.ca || '');
+  if (slipShifts.length === 0) return false;
+  const formMatchesSlip = options.selectedShifts.every(formShift =>
+    slipShifts.some(slipShift => shiftNamesMatch(formShift, slipShift) || formShift === slipShift)
   );
-
-  return selectedAliases.has(normalizeWarehouseMachineText(orderMachine));
+  const slipMatchesForm = slipShifts.every(slipShift =>
+    options.selectedShifts.some(formShift => shiftNamesMatch(formShift, slipShift) || formShift === slipShift)
+  );
+  return formMatchesSlip && slipMatchesForm;
 }
 
 export function filterWarehouseProductionOrdersByDateShift(
@@ -1328,6 +1365,13 @@ export function WarehouseSlipPanel({
   const [machineImportLoading, setMachineImportLoading] = useState(false);
   const [machineImportSaving, setMachineImportSaving] = useState(false);
   const [machineImportNonce, setMachineImportNonce] = useState(0);
+  const [selectedMachineSlipCodes, setSelectedMachineSlipCodes] = useState<Set<string>>(() => new Set());
+  const knownMachineMatchedSlipCodesRef = useRef<Set<string>>(new Set());
+  const [machineSlipSummaries, setMachineSlipSummaries] = useState<Record<string, SavedProductSummaryRow[]>>({});
+  const [loadingMachineBatchSummaries, setLoadingMachineBatchSummaries] = useState(false);
+  const [machineBatchSummaryError, setMachineBatchSummaryError] = useState('');
+  const [isSavingAllMachineSlips, setIsSavingAllMachineSlips] = useState(false);
+  const [machineBatchListOpen, setMachineBatchListOpen] = useState(false);
   const [isLoadingProductSlips, setIsLoadingProductSlips] = useState(false);
   const [isDeletingProductSlip, setIsDeletingProductSlip] = useState(false);
   /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
@@ -2100,14 +2144,22 @@ export function WarehouseSlipPanel({
       const res = await fetch(`/api/kho-cho?ma_phieu=${encodeURIComponent(maPhieu)}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được mã từ máy.'));
-      const rows = (Array.isArray(data?.records) ? data.records : []).map((row: Record<string, unknown>) => ({
-        id: String(row.id || ''),
-        ma_sp: String(row.ma_sp || '').trim(),
-        ma_sp_quet: String(row.ma_sp_quet || '').trim(),
-        ten_sp: String(row.ten_sp || '').trim(),
-        don_vi: String(row.don_vi || '').trim(),
-        so_luong: Number(row.so_luong) || 1
-      })).filter((row: { ma_sp_quet: string }) => row.ma_sp_quet);
+      const rows = (Array.isArray(data?.records) ? data.records : []).map((row: Record<string, unknown>) => {
+        const maSp = String(row.ma_sp || '').trim();
+        const maSpQuet = String(row.ma_sp_quet || '').trim();
+        const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(maSp || maSpQuet));
+        const catalog =
+          productCatalogByKey.get(codeKey) ||
+          itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
+        return {
+          id: String(row.id || ''),
+          ma_sp: maSp,
+          ma_sp_quet: maSpQuet,
+          ten_sp: String(row.ten_sp || catalog?.name || '').trim(),
+          don_vi: String(row.don_vi || catalog?.unit || '').trim(),
+          so_luong: Number(row.so_luong) || 1
+        };
+      }).filter((row: { ma_sp_quet: string }) => row.ma_sp_quet);
       setMachineImportRows(rows);
     } catch (error: unknown) {
       setMachineImportOpen(false);
@@ -2590,7 +2642,7 @@ export function WarehouseSlipPanel({
     let cancelled = false;
     const loadOpenSlips = async () => {
       setIsLoadingProductSlips(true);
-      const params = new URLSearchParams({ loai_phieu: slipType, kho: warehouseName });
+      const params = new URLSearchParams({ loai_phieu: slipType, kho: warehouseName, limit: '100' });
       try {
         const response = await fetch(`/api/kho/phieu?${params.toString()}`);
         const data = await response.json().catch(() => ({}));
@@ -2611,7 +2663,7 @@ export function WarehouseSlipPanel({
     };
     void loadOpenSlips();
     return () => { cancelled = true; };
-  }, [showProductExportTabs, warehouseName, slipType, editSlipCode, loadOpenProductSlip, createNewProductSlip]);
+  }, [showProductExportTabs, warehouseName, slipType, editSlipCode, loadOpenProductSlip, createNewProductSlip, pageRefreshNonce]);
 
   useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode || isEditingProductInbound) return;
@@ -2652,6 +2704,160 @@ export function WarehouseSlipPanel({
       };
     }));
   }, [showProductExportTabs, productExportView, isEditingProductInbound, loadingProductSummary, productSummaryError, savedProductSummary, itemOptions, productCatalogByKey]);
+
+  const showMachineBatchInbound =
+    showProductExportTabs &&
+    slipType === 'nhap' &&
+    productExportView === 'lap-phieu' &&
+    !editSlipCode &&
+    Boolean(selectedWarehouseName);
+
+  const machineMatchedOpenSlips = useMemo(() => {
+    if (!showMachineBatchInbound) return [] as OpenProductSlip[];
+    return openProductSlips.filter(slip =>
+      warehouseOpenSlipMatchesMachineBatch(slip, {
+        slipDate,
+        selectedShifts,
+        machine,
+        machineOptions: machineSelectOptions
+      })
+    );
+  }, [
+    showMachineBatchInbound,
+    openProductSlips,
+    slipDate,
+    selectedShifts,
+    machine,
+    machineSelectOptions
+  ]);
+
+  const machineMatchedSlipCodesKey = machineMatchedOpenSlips.map(slip => slip.ma_phieu).join('|');
+
+  useEffect(() => {
+    if (!showMachineBatchInbound) {
+      knownMachineMatchedSlipCodesRef.current = new Set();
+      setSelectedMachineSlipCodes(new Set());
+      return;
+    }
+    const codes = machineMatchedOpenSlips.map(slip => slip.ma_phieu);
+    setSelectedMachineSlipCodes(prev => {
+      const next = new Set<string>();
+      for (const code of codes) {
+        if (prev.has(code) || !knownMachineMatchedSlipCodesRef.current.has(code)) {
+          next.add(code);
+        }
+      }
+      knownMachineMatchedSlipCodesRef.current = new Set(codes);
+      return next;
+    });
+  }, [showMachineBatchInbound, machineMatchedSlipCodesKey, machineMatchedOpenSlips]);
+
+  useEffect(() => {
+    if (!showMachineBatchInbound || machineMatchedOpenSlips.length === 0) {
+      setMachineSlipSummaries({});
+      setMachineBatchSummaryError('');
+      setLoadingMachineBatchSummaries(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingMachineBatchSummaries(true);
+    setMachineBatchSummaryError('');
+    void (async () => {
+      try {
+        const entries = await Promise.all(
+          machineMatchedOpenSlips.map(async slip => {
+            const response = await fetch(
+              `/api/kho/chi-tiet?loai_phieu=nhap&ma_phieu=${encodeURIComponent(slip.ma_phieu)}&summary=true`
+            );
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(
+                readApiErrorMessage(response, data, `Không tải được tổng hợp phiếu ${slip.ma_phieu}.`)
+              );
+            }
+            const rows = Array.isArray(data?.records) ? (data.records as SavedProductSummaryRow[]) : [];
+            return [slip.ma_phieu, rows] as const;
+          })
+        );
+        if (cancelled) return;
+        const next: Record<string, SavedProductSummaryRow[]> = {};
+        for (const [code, rows] of entries) next[code] = rows;
+        setMachineSlipSummaries(next);
+      } catch (error: any) {
+        if (cancelled) return;
+        setMachineSlipSummaries({});
+        setMachineBatchSummaryError(error?.message || 'Không tải được tổng hợp theo máy.');
+      } finally {
+        if (!cancelled) setLoadingMachineBatchSummaries(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showMachineBatchInbound, machineMatchedSlipCodesKey, machineMatchedOpenSlips, machineImportNonce, pageRefreshNonce]);
+
+  const machineBatchTotals = useMemo(() => {
+    const byCode = new Map<string, SavedProductSummaryRow>();
+    for (const slip of machineMatchedOpenSlips) {
+      if (!selectedMachineSlipCodes.has(slip.ma_phieu)) continue;
+      for (const row of machineSlipSummaries[slip.ma_phieu] || []) {
+        const code = String(row.ma_sp || '').trim();
+        if (!code) continue;
+        const key = normalizeMaterialCodeKey(warehouseCodePrefix(code));
+        const catalogName =
+          productCatalogByKey.get(key)?.name ||
+          itemOptions.find(option => normalizeMaterialCodeKey(option.code) === key)?.name ||
+          '';
+        const tenSp = String(row.ten_sp || catalogName || '').trim();
+        const current = byCode.get(key);
+        if (current) {
+          current.so_luong += Number(row.so_luong) || 0;
+          if (!current.ten_sp && tenSp) current.ten_sp = tenSp;
+        } else {
+          byCode.set(key, {
+            ma_sp: code,
+            ten_sp: tenSp,
+            so_luong: Number(row.so_luong) || 0
+          });
+        }
+      }
+    }
+    return [...byCode.values()].sort((a, b) => a.ma_sp.localeCompare(b.ma_sp, 'vi', { numeric: true }));
+  }, [machineMatchedOpenSlips, selectedMachineSlipCodes, machineSlipSummaries, productCatalogByKey, itemOptions]);
+
+  const machineBatchSelectedCount = useMemo(
+    () => machineMatchedOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu)).length,
+    [machineMatchedOpenSlips, selectedMachineSlipCodes]
+  );
+
+  const machineBatchTotalQty = useMemo(
+    () => machineBatchTotals.reduce((sum, row) => sum + (Number(row.so_luong) || 0), 0),
+    [machineBatchTotals]
+  );
+
+  const machineBatchAllQty = useMemo(
+    () =>
+      machineMatchedOpenSlips.reduce((sum, slip) => {
+        const rows = machineSlipSummaries[slip.ma_phieu] || [];
+        return sum + rows.reduce((rowSum, row) => rowSum + (Number(row.so_luong) || 0), 0);
+      }, 0),
+    [machineMatchedOpenSlips, machineSlipSummaries]
+  );
+
+  const toggleMachineSlipSelection = (slipCode: string) => {
+    setSelectedMachineSlipCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(slipCode)) next.delete(slipCode);
+      else next.add(slipCode);
+      return next;
+    });
+  };
+
+  const toggleAllMachineSlipSelection = () => {
+    const codes = machineMatchedOpenSlips.map(slip => slip.ma_phieu);
+    const allSelected = codes.length > 0 && codes.every(code => selectedMachineSlipCodes.has(code));
+    setSelectedMachineSlipCodes(allSelected ? new Set() : new Set(codes));
+  };
 
   useEffect(() => {
     if (!isNvlExport) return;
@@ -3728,6 +3934,158 @@ export function WarehouseSlipPanel({
     }
   };
 
+  const handleSaveAllMachineSlips = async () => {
+    if (!canCreate) {
+      setFormError(showSaveFailure('Bạn không có quyền lập phiếu thuộc kho này.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!warehouseName.trim()) {
+      setFormError(showSaveFailure('Vui lòng chọn tên kho từ danh sách Quản lý kho.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (!machine.trim() || selectedShifts.length === 0) {
+      setFormError(showSaveFailure('Chọn Máy và Ca trước khi lưu tất cả phiếu theo máy.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const slipsToSave = machineMatchedOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu));
+    if (slipsToSave.length === 0) {
+      setFormError(showSaveFailure('Hãy tick ít nhất một phiếu để lưu tất cả.'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    setIsSavingAllMachineSlips(true);
+    setIsSaving(true);
+    setFormError('');
+    setActionMessage('');
+
+    const savedCodes: string[] = [];
+    const errors: string[] = [];
+
+    for (const slip of slipsToSave) {
+      const slipCode = String(slip.ma_phieu || '').trim();
+      const summaryRows = machineSlipSummaries[slipCode] || [];
+      const draftLines = summaryRows.map(row => {
+        const code = String(row.ma_sp || '').trim();
+        const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(code));
+        const item =
+          productCatalogByKey.get(codeKey) ||
+          itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
+        return {
+          ...createWarehouseLineDraft(),
+          code,
+          name: String(row.ten_sp || item?.name || ''),
+          unit: item?.unit || '',
+          quantity: String(row.so_luong || 0),
+          documentQuantity: String(row.so_luong || 0)
+        };
+      });
+      const parsed = parseWarehouseSlipPayloadItems(draftLines, 'san_pham', {
+        allowMissingUnitPrice: true,
+        requireInboundLot: false,
+        includeDocumentQuantity: false
+      });
+      if ('error' in parsed) {
+        errors.push(`${slipCode}: ${parsed.error}`);
+        continue;
+      }
+
+      const slipCa = String(slip.ca || shiftLabelForSave || '').trim();
+      const slipMay = String(slip.may || machine || '').trim();
+      const slipNgay = String(slip.ngay || slipDate).slice(0, 10);
+      const slipNhanSu = String(slip.nhan_su || createdBy || loginName).trim();
+      const slipNote = String(slip.ghi_chu || note || '').trim();
+
+      try {
+        const res = await fetch('/api/kho/luu-phieu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            maPhieu: slipCode,
+            loaiPhieu: 'nhap',
+            loaiKho: 'san_pham',
+            tenKho: warehouseName.trim(),
+            ngayPhieu: slipNgay,
+            lyDo: reason.trim(),
+            ghiChu: slipNote,
+            nguoiLap: slipNhanSu,
+            ca: slipCa || null,
+            may: slipMay || null,
+            treo: false,
+            items: parsed.items
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(readApiErrorMessage(res, data, 'Không thể lưu phiếu xuất nhập kho.'));
+        }
+        const savedSlipCode = String(data.slipCode || slipCode).trim() || slipCode;
+        const statusResponse = await fetch('/api/kho/phieu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            loai_phieu: 'nhap',
+            ma_phieu: savedSlipCode,
+            ngay: slipNgay,
+            nhan_su: slipNhanSu,
+            kho: warehouseName.trim(),
+            ca: slipCa,
+            may: slipMay,
+            ghi_chu: slipNote,
+            status: 'da_chot',
+            dong_bo_chi_tiet_san_pham: true
+          })
+        });
+        const statusData = await statusResponse.json().catch(() => ({}));
+        if (!statusResponse.ok) {
+          throw new Error(readApiErrorMessage(statusResponse, statusData, 'Không thể chốt trạng thái phiếu.'));
+        }
+        savedCodes.push(savedSlipCode);
+      } catch (error: any) {
+        errors.push(`${slipCode}: ${error?.message || 'Lưu thất bại.'}`);
+      }
+    }
+
+    const savedSet = new Set(savedCodes);
+    setOpenProductSlips(current => current.filter(slip => !savedSet.has(slip.ma_phieu)));
+    setSelectedMachineSlipCodes(prev => {
+      const next = new Set(prev);
+      for (const code of savedCodes) next.delete(code);
+      return next;
+    });
+    setMachineSlipSummaries(prev => {
+      const next = { ...prev };
+      for (const code of savedCodes) delete next[code];
+      return next;
+    });
+    if (savedSet.has(selectedProductSlipCode)) {
+      setSelectedProductSlipCode('');
+      createNewProductSlip();
+    }
+
+    setIsSavingAllMachineSlips(false);
+    setIsSaving(false);
+    setPageRefreshNonce(n => n + 1);
+
+    if (savedCodes.length > 0 && errors.length === 0) {
+      const okMsg = `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu theo máy ${machine.trim()}.`;
+      setActionMessage(okMsg);
+      showAppToast(okMsg, 'success');
+    } else if (savedCodes.length > 0) {
+      const warnMsg = `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu. Lỗi: ${errors.join(' | ')}`;
+      setActionMessage(warnMsg);
+      setFormError(showSaveFailure(warnMsg));
+      showAppToast(warnMsg, 'error');
+    } else {
+      const failMsg = errors.join(' | ') || 'Không chốt được phiếu nào.';
+      setFormError(showSaveFailure(failMsg));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
   const shippingOrderPicker = showShippingOrderPicker ? (
     <section className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -3852,18 +4210,17 @@ export function WarehouseSlipPanel({
       <div className="sticky top-0 z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-2 pt-2 md:-mx-3 md:-mt-3 md:px-3">
         <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
           <p className="text-xs font-black uppercase tracking-wide text-zinc-700">Loại phiếu</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {([
-              { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const, treoMode: false },
-              { key: 'xuat_treo', label: 'Xuất kho treo', Icon: Clock, slipType: 'xuat' as const, treoMode: true },
-              { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const, treoMode: false }
+              { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const },
+              { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const }
             ] as const).map(option => {
-              const isActive = slipType === option.slipType && isXuatTreoMode === option.treoMode;
+              const isActive = slipType === option.slipType && !isXuatTreoMode;
               return (
                 <button
                   key={option.key}
                   type="button"
-                  onClick={() => handleSlipModeChange(option.slipType, option.treoMode)}
+                  onClick={() => handleSlipModeChange(option.slipType, false)}
                   className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
                     isActive
                       ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
@@ -3910,27 +4267,6 @@ export function WarehouseSlipPanel({
                 </p>
               ) : null}
             </label>
-            {showProductExportTabs && !editSlipCode && warehouseName ? (
-              <label className="block space-y-1">
-                <span className="text-xs font-black uppercase tracking-wide text-zinc-700">
-                  Chọn phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'} chưa chốt
-                </span>
-                <SearchableSelect
-                  value={selectedProductSlipCode}
-                  onChange={handleProductSlipSelection}
-                  options={openProductSlips}
-                  getValue={item => (item as OpenProductSlip).ma_phieu}
-                  getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
-                  placeholder={`+ Tạo phiếu ${slipType === 'nhap' ? 'nhập' : 'xuất'}`}
-                  disabled={isLoadingProductSlips}
-                  inputClassName={warehouseFieldClass}
-                  comboboxMode
-                  comboboxSearchable={false}
-                  matchDropdownWidth
-                  autoFlip
-                />
-              </label>
-            ) : null}
             {shippingOrderPicker}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <button
@@ -3976,7 +4312,11 @@ export function WarehouseSlipPanel({
                             <tr key={row.id || row.ma_sp_quet} className="border-t border-zinc-100">
                               <td className="py-2 pr-3 font-mono text-xs font-bold text-zinc-950">{row.ma_sp_quet}</td>
                               <td className="py-2 pr-3 font-mono text-xs">{row.ma_sp || '—'}</td>
-                              <td className="py-2 pr-3">{row.ten_sp || '—'}</td>
+                              <td className="py-2 pr-3">
+                                {row.ten_sp ||
+                                  productCatalogByKey.get(normalizeMaterialCodeKey(warehouseCodePrefix(row.ma_sp || row.ma_sp_quet)))?.name ||
+                                  '—'}
+                              </td>
                               <td className="py-2 pr-3">{row.don_vi || 'Cuộn'}</td>
                               <td className="py-2 text-right font-bold">{formatNumber(row.so_luong, 0)}</td>
                             </tr>
@@ -4119,8 +4459,78 @@ export function WarehouseSlipPanel({
             />
           </label>
           ) : null}
-          {showWarehouseShiftAndMachine ? (
+
+          <label className="block min-w-0 space-y-1">
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
+            <input
+              value={
+                machine.trim() && createdBy.trim() && !createdBy.toLowerCase().includes(machine.trim().toLowerCase())
+                  ? `${createdBy.trim()} · ${machine.trim()}`
+                  : createdBy
+              }
+              onChange={event => setCreatedBy(event.target.value)}
+              className={warehouseFieldClass}
+              placeholder={loginName || 'Tên người lập phiếu'}
+              readOnly={Boolean(loginName) && !editSlipCode}
+              title={
+                machine.trim()
+                  ? `${createdBy.trim() || loginName} · ${machine.trim()}`
+                  : loginName
+                    ? `Theo tài khoản đăng nhập: ${loginName}`
+                    : undefined
+              }
+            />
+          </label>
+          {slipType === 'xuat' && showFullWarehouseSlipFields ? (
+            <label className="block min-w-0 space-y-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người giao hàng</span>
+              <input
+                value={deliverer}
+                onChange={event => setDeliverer(event.target.value)}
+                className={warehouseFieldClass}
+                placeholder="Họ tên người giao hàng"
+              />
+            </label>
+          ) : slipType === 'xuat' ? (
+            <label className="block min-w-0 space-y-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
+              <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Xuất sản xuất..." />
+            </label>
+          ) : null}
+
+          {showFullWarehouseSlipFields ? (
+            <>
+              {slipType === 'xuat' ? (
+                <>
+                  <label className="block min-w-0 space-y-1.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Địa điểm</span>
+                    <input
+                      value={warehouseLocation}
+                      onChange={event => setWarehouseLocation(event.target.value)}
+                      className={warehouseFieldClass}
+                      placeholder="VD: HCM"
+                    />
+                  </label>
+                  <label className="block min-w-0 space-y-1.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
+                    <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài..." />
+                  </label>
+                </>
+              ) : null}
+              <label className="block min-w-0 space-y-1">
+                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
+                <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Số chứng từ gốc kèm theo..." />
+              </label>
+            </>
+          ) : (
             <label className="block min-w-0 space-y-1">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
+              <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
+            </label>
+          )}
+
+          {showWarehouseShiftAndMachine ? (
+            <label className="col-span-2 block min-w-0 w-full space-y-1">
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Máy</span>
               <SearchableSelect
                 value={machine}
@@ -4154,71 +4564,6 @@ export function WarehouseSlipPanel({
               />
             </label>
           ) : null}
-
-          <label className="block min-w-0 space-y-1">
-            <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người lập</span>
-            <input
-              value={
-                machine.trim() && createdBy.trim() && !createdBy.toLowerCase().includes(machine.trim().toLowerCase())
-                  ? `${createdBy.trim()} · ${machine.trim()}`
-                  : createdBy
-              }
-              onChange={event => setCreatedBy(event.target.value)}
-              className={warehouseFieldClass}
-              placeholder={loginName || 'Tên người lập phiếu'}
-              readOnly={Boolean(loginName) && !editSlipCode}
-              title={
-                machine.trim()
-                  ? `${createdBy.trim() || loginName} · ${machine.trim()}`
-                  : loginName
-                    ? `Theo tài khoản đăng nhập: ${loginName}`
-                    : undefined
-              }
-            />
-          </label>
-          {showFullWarehouseSlipFields ? (
-            <label className="block min-w-0 space-y-1.5">
-              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Người giao hàng</span>
-              <input
-                value={deliverer}
-                onChange={event => setDeliverer(event.target.value)}
-                className={warehouseFieldClass}
-                placeholder="Họ tên người giao hàng"
-              />
-            </label>
-          ) : (
-            <label className="block min-w-0 space-y-1.5">
-              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
-              <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Xuất sản xuất..." />
-            </label>
-          )}
-
-          {showFullWarehouseSlipFields ? (
-            <>
-              <label className="block min-w-0 space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Địa điểm</span>
-                <input
-                  value={warehouseLocation}
-                  onChange={event => setWarehouseLocation(event.target.value)}
-                  className={warehouseFieldClass}
-                  placeholder="VD: HCM"
-                />
-              </label>
-              <label className="block min-w-0 space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lý do</span>
-                <input value={reason} onChange={event => setReason(event.target.value)} className={warehouseFieldClass} placeholder="VD: Nhập mua ngoài..." />
-              </label>
-              <label className="block min-w-0 space-y-1">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
-                <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Số chứng từ gốc kèm theo..." />
-              </label>
-            </>
-          ) : (
-            <label className="block min-w-0 space-y-1">
-              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
-              <input value={note} onChange={event => setNote(event.target.value)} className={warehouseFieldClass} placeholder="Ghi chú thêm (tuỳ chọn)" />
-            </label>
-          )}
 
           {showOrderFields ? (
             <div className="relative col-span-2 block min-w-0 space-y-1">
@@ -4375,6 +4720,114 @@ export function WarehouseSlipPanel({
         </div>
       </section>
 
+      {showMachineBatchInbound ? (
+        <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+          <div className="flex w-full items-center gap-2 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={
+                machineMatchedOpenSlips.length > 0 &&
+                machineMatchedOpenSlips.every(slip => selectedMachineSlipCodes.has(slip.ma_phieu))
+              }
+              disabled={machineMatchedOpenSlips.length === 0}
+              ref={el => {
+                if (!el) return;
+                const some =
+                  machineBatchSelectedCount > 0 &&
+                  machineBatchSelectedCount < machineMatchedOpenSlips.length;
+                el.indeterminate = some;
+              }}
+              onChange={toggleAllMachineSlipSelection}
+              onClick={event => event.stopPropagation()}
+              className="h-4 w-4 shrink-0 accent-[#ef1b2d] disabled:opacity-40"
+              aria-label="Tick tất cả phiếu theo máy"
+              title="Tick tất cả"
+            />
+            <button
+              type="button"
+              onClick={() => setMachineBatchListOpen(open => !open)}
+              aria-expanded={machineBatchListOpen}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-zinc-950">Phiếu chưa chốt theo máy</p>
+                <p className="text-[11px] font-semibold text-zinc-500">
+                  {!machine.trim() || selectedShifts.length === 0
+                    ? 'Chọn Máy và Ca ở trên để lọc phiếu.'
+                    : `${machineMatchedOpenSlips.length} phiếu · đã tick ${machineBatchSelectedCount} · tổng cuộn ${formatNumber(
+                        machineBatchSelectedCount > 0 ? machineBatchTotalQty : machineBatchAllQty,
+                        0
+                      )}`}
+                </p>
+              </div>
+              <ChevronDown
+                className={`h-5 w-5 shrink-0 text-zinc-500 transition-transform ${machineBatchListOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
+          {machineBatchListOpen ? (
+            <div className="space-y-2 border-t border-zinc-100 px-3 py-2.5">
+              {!machine.trim() || selectedShifts.length === 0 ? (
+                <p className="text-sm font-semibold text-zinc-500">Chọn Máy + Ca để hiện tất cả phiếu nhập chưa chốt cùng ngày.</p>
+              ) : machineMatchedOpenSlips.length === 0 ? (
+                <p className="text-sm font-semibold text-zinc-500">Không có phiếu chưa chốt khớp máy / ngày / ca này.</p>
+              ) : (
+                <ul className="max-h-56 space-y-1.5 overflow-y-auto">
+                  {machineMatchedOpenSlips.map(slip => {
+                    const qty = (machineSlipSummaries[slip.ma_phieu] || []).reduce(
+                      (sum, row) => sum + (Number(row.so_luong) || 0),
+                      0
+                    );
+                    const checked = selectedMachineSlipCodes.has(slip.ma_phieu);
+                    const isCurrent = slip.ma_phieu === selectedProductSlipCode;
+                    return (
+                      <li key={slip.ma_phieu}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleMachineSlipSelection(slip.ma_phieu);
+                            if (!checked) handleProductSlipSelection(slip.ma_phieu);
+                          }}
+                          className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition ${
+                            checked || isCurrent
+                              ? 'border-[#ef1b2d] bg-red-50/60'
+                              : 'border-zinc-200 bg-zinc-50/50 hover:border-zinc-300'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                              checked ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white' : 'border-zinc-300 bg-white'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {checked ? (
+                              <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M2.5 6.5 5 9l4.5-5.5" />
+                              </svg>
+                            ) : null}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-extrabold text-zinc-900">{slip.ma_phieu}</p>
+                            <p className="text-[11px] font-semibold text-zinc-500">
+                              {loadingMachineBatchSummaries
+                                ? 'Đang tải…'
+                                : `${formatNumber(qty, 0)} cuộn · Chưa chốt`}
+                            </p>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {machineBatchSummaryError ? (
+                <p className="text-xs font-semibold text-red-600">{machineBatchSummaryError}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className={
         showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
           ? '-mx-2 space-y-3 border-y border-zinc-200 bg-white py-3 shadow-sm md:-mx-3'
@@ -4390,9 +4843,11 @@ export function WarehouseSlipPanel({
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 {isEditingProductInbound
                   ? 'Chỉnh sửa sản phẩm trong phiếu nhập'
-                  : showProductExportTabs && productExportView === 'lap-phieu'
-                    ? 'Tổng hợp sản phẩm đã quét'
-                    : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : warehouseKind === 'hang_hong' ? 'hàng hỏng' : 'NVL'}`}
+                  : showMachineBatchInbound && machineMatchedOpenSlips.length > 0
+                    ? 'Tổng hợp theo máy (các phiếu đã tick)'
+                    : showProductExportTabs && productExportView === 'lap-phieu'
+                      ? 'Tổng hợp sản phẩm đã quét'
+                      : `Chi tiết ${warehouseKind === 'san_pham' ? 'sản phẩm' : warehouseKind === 'hang_hong' ? 'hàng hỏng' : 'NVL'}`}
               </p>
             </div>
             {warehouseKind === 'san_pham' && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
@@ -4462,6 +4917,18 @@ export function WarehouseSlipPanel({
 
           {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? (
             <div className="w-full min-w-0 overflow-x-hidden">
+              {(() => {
+                const useMachineBatchTable = showMachineBatchInbound && machineMatchedOpenSlips.length > 0;
+                const summaryRows = useMachineBatchTable ? machineBatchTotals : savedProductSummary;
+                const loadingSummary = useMachineBatchTable ? loadingMachineBatchSummaries : loadingProductSummary;
+                const summaryError = useMachineBatchTable ? machineBatchSummaryError : productSummaryError;
+                const emptyLabel = useMachineBatchTable
+                  ? machineBatchSelectedCount === 0
+                    ? 'Hãy tick ít nhất một phiếu để xem tổng.'
+                    : 'Các phiếu đã tick chưa có sản phẩm.'
+                  : 'Chưa có sản phẩm đã quét cho phiếu này.';
+                return (
+                  <>
               <table className="w-full table-fixed border-collapse text-left text-xs">
                 <colgroup>
                   <col style={{ width: '12%' }} />
@@ -4478,7 +4945,7 @@ export function WarehouseSlipPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {savedProductSummary.map((row, index) => {
+                  {summaryRows.map((row, index) => {
                     const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(row.ma_sp));
                     const item =
                       productCatalogByKey.get(codeKey) ||
@@ -4496,11 +4963,19 @@ export function WarehouseSlipPanel({
                       </tr>
                     );
                   })}
-                  {!savedProductSummary.length ? (
-                    <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-500">{loadingProductSummary ? 'Đang tải danh sách…' : productSummaryError || 'Chưa có sản phẩm đã quét cho phiếu này.'}</td></tr>
+                  {!summaryRows.length ? (
+                    <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-500">{loadingSummary ? 'Đang tải danh sách…' : summaryError || emptyLabel}</td></tr>
                   ) : null}
                 </tbody>
               </table>
+              {useMachineBatchTable ? (
+                <p className="mt-2 px-3 text-[11px] font-semibold text-zinc-600">
+                  {machineBatchSelectedCount} phiếu đã tick · tổng cuộn {formatNumber(machineBatchTotalQty, 0)}
+                </p>
+              ) : null}
+                  </>
+                );
+              })()}
             </div>
           ) : warehouseKind === 'san_pham' && productLineView === 'detail' ? (
             <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
@@ -4773,6 +5248,17 @@ export function WarehouseSlipPanel({
             Phiếu chỉ cập nhật tồn kho sau khi bấm nút lưu.
           </p>
           <>
+            {canCreate && showMachineBatchInbound && machineBatchSelectedCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => void handleSaveAllMachineSlips()}
+                disabled={isSaving || isSavingAllMachineSlips || loadingMachineBatchSummaries}
+                className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingAllMachineSlips ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSavingAllMachineSlips ? 'Đang lưu tất cả...' : `Lưu tất cả (${machineBatchSelectedCount})`}
+              </button>
+            ) : null}
             {(editSlipCode ? canEdit : canCreate) ? (
             <button
               type="button"
@@ -4997,6 +5483,7 @@ export function WarehouseHistoryPanel({
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
+    machineCode?: string;
   };
   initialWarehouseTab?: WarehouseKind;
   /** Khi có: chỉ hiển thị chi tiết đúng 1 phiếu (trang mở ở tab mới), ẩn bộ lọc & danh sách. */
@@ -5024,6 +5511,13 @@ export function WarehouseHistoryPanel({
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? '' : shift;
   });
+  const [filterMachine, setFilterMachine] = useState(() => {
+    const machine = initialFilters?.machineCode?.trim() || '';
+    return !machine || machine === 'all' ? '' : machine;
+  });
+  const [historyMachineCatalog, setHistoryMachineCatalog] = useState<
+    Array<{ code?: string; name?: string; label?: string }>
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -5076,6 +5570,23 @@ export function WarehouseHistoryPanel({
       products: weightCatalogProducts,
       preferTongKgOnly: true
     });
+
+  const productNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of weightCatalogProducts) {
+      const key = normalizeMaterialCodeKey(item.code);
+      const name = String(item.name || '').trim();
+      if (key && name && !map.has(key)) map.set(key, name);
+    }
+    return map;
+  }, [weightCatalogProducts]);
+
+  const resolveCatalogProductName = (code: string, fallback = '') => {
+    const trimmed = String(fallback || '').trim();
+    if (trimmed && trimmed !== '-') return trimmed;
+    const key = normalizeMaterialCodeKey(warehouseCodePrefix(code) || code);
+    return key ? productNameByKey.get(key) || '' : '';
+  };
 
   useEffect(() => {
     void loadWeightCatalog();
@@ -5190,12 +5701,18 @@ export function WarehouseHistoryPanel({
   }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate]);
 
   const isFinishedGoodsHistory = warehouseTab === 'san_pham';
-  const hasActiveFilters = Boolean(fromDate) || Boolean(toDate) || Boolean(filterShift) || Boolean(searchText);
+  const hasActiveFilters =
+    Boolean(fromDate) ||
+    Boolean(toDate) ||
+    Boolean(filterShift) ||
+    Boolean(filterMachine) ||
+    Boolean(searchText);
 
   const resetFilters = () => {
     setFromDate('');
     setToDate('');
     setFilterShift('');
+    setFilterMachine('');
     setSearchText('');
   };
 
@@ -5212,6 +5729,55 @@ export function WarehouseHistoryPanel({
     return [...shifts].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
   }, [movements]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/danh-sach-may');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || cancelled) return;
+        const rows = Array.isArray(data?.machines) ? data.machines : [];
+        const options = rows
+          .map((record: any) => {
+            const code = String(record?.ma_may ?? record?.code ?? '').trim();
+            const name = String(record?.ten_may ?? record?.name ?? '').trim();
+            const label = [code, name].filter(Boolean).join(' - ') || name || code;
+            return label ? { code, name, label } : null;
+          })
+          .filter(Boolean) as Array<{ code?: string; name?: string; label?: string }>;
+        if (!cancelled) setHistoryMachineCatalog(options);
+      } catch {
+        if (!cancelled) setHistoryMachineCatalog([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const machineFilterOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
+    const addMachine = (raw: string, code = '', name = '') => {
+      const value = String(raw || '').trim();
+      if (!value) return;
+      const key = normalizeWarehouseMachineText(
+        [code, name].filter(Boolean).join(' ') || value.split(/\s+-\s+/)[0] || value
+      );
+      if (!key || byKey.has(key)) return;
+      byKey.set(key, value);
+    };
+    for (const option of historyMachineCatalog) {
+      addMachine(option.label || '', option.code || '', option.name || '');
+    }
+    for (const row of movements) {
+      const raw = String(row.machine || '').trim();
+      if (!raw) continue;
+      const [codePart, ...nameParts] = raw.split(/\s+-\s+/);
+      addMachine(raw, codePart || '', nameParts.join(' - '));
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true, sensitivity: 'base' }));
+  }, [historyMachineCatalog, movements]);
+
   const movementMatchesShiftFilter = (rowShift: string | undefined, shiftFilter: string) => {
     if (!shiftFilter) return true;
     const raw = String(rowShift || '').trim();
@@ -5225,22 +5791,34 @@ export function WarehouseHistoryPanel({
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredMovements = useMemo(() => {
-    return movements.filter(row => {
-      const day = row.slipDate.slice(0, 10);
-      if (fromDate && day < fromDate) return false;
-      if (toDate && day > toDate) return false;
-      if (!movementMatchesShiftFilter(row.shift, filterShift)) return false;
-      if (!normalizedSearch) return true;
-      const productCode = warehouseCodePrefix(row.scannedCode?.trim() || row.itemCode);
-      return `${row.slipCode} ${warehouseSlipCodeGroupPrefix(row.slipCode)} ${row.scannedCode || ''} ${productCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
-        .toLowerCase()
-        .includes(normalizedSearch);
-    });
-  }, [movements, fromDate, toDate, filterShift, normalizedSearch]);
+    return movements
+      .map(row => {
+        if (row.warehouseKind !== 'san_pham') return row;
+        const itemName = resolveCatalogProductName(row.scannedCode || row.itemCode, row.itemName);
+        return itemName && itemName !== row.itemName ? { ...row, itemName } : row;
+      })
+      .filter(row => {
+        const day = row.slipDate.slice(0, 10);
+        if (fromDate && day < fromDate) return false;
+        if (toDate && day > toDate) return false;
+        if (!movementMatchesShiftFilter(row.shift, filterShift)) return false;
+        if (
+          filterMachine &&
+          !warehouseMachineMatchesFilter(filterMachine, String(row.machine || ''), historyMachineCatalog)
+        ) {
+          return false;
+        }
+        if (!normalizedSearch) return true;
+        const productCode = warehouseCodePrefix(row.scannedCode?.trim() || row.itemCode);
+        return `${row.slipCode} ${warehouseSlipCodeGroupPrefix(row.slipCode)} ${row.scannedCode || ''} ${productCode} ${row.shift} ${row.machine} ${row.itemCode} ${row.itemName} ${row.reason} ${row.createdBy}`
+          .toLowerCase()
+          .includes(normalizedSearch);
+      });
+  }, [movements, fromDate, toDate, filterShift, filterMachine, normalizedSearch, historyMachineCatalog, productNameByKey]);
 
   useEffect(() => {
     setSelectedSlipCodes(new Set());
-  }, [normalizedSearch, filterShift, fromDate, toDate]);
+  }, [normalizedSearch, filterShift, filterMachine, fromDate, toDate]);
 
   const slipGroups = useMemo(() => {
     const map = new Map<string, WarehouseMovementRow[]>();
@@ -5741,78 +6319,110 @@ export function WarehouseHistoryPanel({
         })}
       </nav>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <FilterCombobox
-            label="Chọn kho"
-            options={warehouseOptions.map(option => option.name)}
-            value={selectedWarehouseName || 'all'}
-            onChange={value => {
-              const option = warehouseOptions.find(item => item.name === value);
-              if (!option) return;
-              setSelectedWarehouseName(option.name);
-              setWarehouseTab(option.kind);
-            }}
-            searchPlaceholder="Tìm kho..."
-            includeAll={false}
-            matchButtonWidth
-            dropdownWidth="min-w-0 max-w-none"
-          />
+      <div className="space-y-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1 [&_button]:!h-9 [&_button]:!w-full [&_button]:!justify-between [&_button]:!rounded-lg [&_button]:!px-2.5 [&_button]:!text-[11px]">
+            <FilterCombobox
+              label="Chọn kho"
+              options={warehouseOptions.map(option => option.name)}
+              value={selectedWarehouseName || 'all'}
+              onChange={value => {
+                const option = warehouseOptions.find(item => item.name === value);
+                if (!option) return;
+                setSelectedWarehouseName(option.name);
+                setWarehouseTab(option.kind);
+              }}
+              searchPlaceholder="Tìm kho..."
+              includeAll={false}
+              matchButtonWidth
+              dropdownWidth="min-w-0 max-w-none"
+              className="w-full"
+            />
+          </div>
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={onOpenSlip}
+              className="flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Lập phiếu
+            </button>
+          ) : null}
         </div>
-        {canCreate ? (
-          <button
-            type="button"
-            onClick={onOpenSlip}
-            className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] sm:w-auto"
-          >
-            <Plus className="h-4 w-4" />
-            Lập phiếu
-          </button>
-        ) : null}
+
+        <section className="rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
+          <div className="space-y-1.5 [&_button]:!h-9 [&_button]:!gap-1 [&_button]:!rounded-lg [&_button]:!px-1.5 [&_button]:!text-[11px] [&_label]:!h-9 [&_label]:!min-w-0 [&_label]:!gap-1 [&_label]:!rounded-lg [&_label]:!px-1.5 [&_label]:!text-[10px] [&_input]:!text-[11px]">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_auto_minmax(0,1.3fr)] items-center gap-1.5">
+              <TableSearchInput
+                value={searchText}
+                onChange={setSearchText}
+                placeholder="Tìm..."
+                disabled={isLoading}
+                fullWidthOnMobile={false}
+              />
+              <FilterCombobox
+                label="Ca"
+                options={shiftOptions}
+                value={filterShift || 'all'}
+                onChange={value => setFilterShift(value === 'all' ? '' : value)}
+                searchPlaceholder="Tìm ca..."
+                compact
+                className="shrink-0"
+                buttonClassName="!h-9 !px-1.5 !text-[11px]"
+              />
+              <FilterCombobox
+                label="Máy"
+                options={machineFilterOptions}
+                value={filterMachine || 'all'}
+                onChange={value => setFilterMachine(value === 'all' ? '' : value)}
+                searchPlaceholder="Tìm máy..."
+                compact
+                className="min-w-0"
+                buttonClassName="!h-9 !w-full !justify-between !px-1.5 !text-[11px]"
+                matchButtonWidth
+                dropdownWidth="min-w-0 max-w-none"
+              />
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
+              <TableDateFilter
+                label="Từ"
+                value={fromDate}
+                onChange={setFromDate}
+                className="!h-9 !min-w-0 !px-1.5 !text-[10px]"
+                inputMinWidthClassName="min-w-0"
+              />
+              <TableDateFilter
+                label="Đến"
+                value={toDate}
+                onChange={setToDate}
+                className="!h-9 !min-w-0 !px-1.5 !text-[10px]"
+                inputMinWidthClassName="min-w-0"
+              />
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-[10px] font-black text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+                >
+                  Xóa
+                </button>
+              ) : (
+                <span className="h-9 w-8" aria-hidden="true" />
+              )}
+            </div>
+          </div>
+          {isLoading ? (
+            <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">Đang tải...</p>
+          ) : null}
+          {error ? (
+            <p className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] font-bold text-rose-700">{error}</p>
+          ) : null}
+          {message ? (
+            <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-amber-800">{message}</p>
+          ) : null}
+        </section>
       </div>
-
-      <TableToolbar
-        isLoading={isLoading}
-        hasActiveFilters={hasActiveFilters}
-        onResetFilters={resetFilters}
-        loadError={error}
-        actionMessage={message}
-      >
-        <div className="flex w-full min-w-0 items-center gap-3 lg:contents">
-          <TableSearchInput
-            value={searchText}
-            onChange={setSearchText}
-            placeholder={
-              warehouseTab === 'san_pham'
-                ? 'Tìm mã phiếu, SP, lý do...'
-                : warehouseTab === 'hang_hong'
-                  ? 'Tìm mã phiếu, hàng hỏng, máy...'
-                : warehouseTab === 'hang_hoa'
-                  ? 'Tìm mã phiếu, hàng hóa, lý do...'
-                : warehouseTab === 'cong_cu_dung_cu'
-                  ? 'Tìm mã phiếu, công cụ dụng cụ...'
-                : warehouseTab === 'gia_cong'
-                  ? 'Tìm mã phiếu, hàng gia công...'
-                : warehouseTab === 'tai_che'
-                  ? 'Tìm mã phiếu, NPL tái chế, lý do...'
-                  : 'Tìm mã phiếu, NPL, lý do...'
-            }
-            disabled={isLoading}
-            fullWidthOnMobile={false}
-          />
-          <FilterCombobox
-            label="Ca"
-            options={shiftOptions}
-            value={filterShift || 'all'}
-            onChange={value => setFilterShift(value === 'all' ? '' : value)}
-            searchPlaceholder="Tìm ca..."
-            compact
-          />
-        </div>
-
-        <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} className="w-full shrink-0 sm:w-auto" />
-        <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} className="w-full shrink-0 sm:w-auto" />
-      </TableToolbar>
 
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm">
         <div>
@@ -5895,7 +6505,9 @@ export function WarehouseHistoryPanel({
           </TableHead>
           <TableBody>
             <TableEmptyRow colSpan={historyColumnCount}>
-              Chưa có phiếu {warehouseSlipTypeLabel(selectedType).toLowerCase()} tại {warehouseKindLabel(warehouseTab)}.
+              {hasActiveFilters || movements.length > 0
+                ? `Không có phiếu ${warehouseSlipTypeLabel(selectedType).toLowerCase()} khớp bộ lọc (ca / máy / ngày / tìm kiếm). Thử tab ${selectedType === 'xuat' ? 'Nhập kho' : 'Xuất kho'} hoặc bấm Xóa.`
+                : `Chưa có phiếu ${warehouseSlipTypeLabel(selectedType).toLowerCase()} tại ${warehouseKindLabel(warehouseTab)}.`}
             </TableEmptyRow>
           </TableBody>
         </TableShell>
@@ -5935,6 +6547,7 @@ export function WarehouseHistoryPanel({
                   const isSelected = selectedSlipCodes.has(slip.slipCode);
                   const isDeleting = deletingSlipCode === slip.slipCode;
                   const shown = slip.products.slice(0, 4);
+                  const rollTotal = slip.products.reduce((sum, product) => sum + (Number(product.quantity) || 0), 0);
                   return (
                     <div
                       key={slip.slipCode}
@@ -5949,20 +6562,22 @@ export function WarehouseHistoryPanel({
                         title="Chọn phiếu"
                       />
                       <div className="min-w-0">
-                        <a
-                          href={`/lich-su-xuat-nhap-kho/phieu?ma_phieu=${encodeURIComponent(slip.slipCode)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="break-all font-mono text-sm font-black text-[#ef1b2d] transition-colors hover:text-[#b30d1c]"
-                        >
-                          {slip.slipCode}
-                        </a>
-                        <p className="text-[11px] font-semibold text-zinc-500">
-                          {slip.products.length} mã · {formatNumber(slip.totalAmount, 0)} đ
-                        </p>
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <a
+                            href={`/lich-su-xuat-nhap-kho/phieu?ma_phieu=${encodeURIComponent(slip.slipCode)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-w-0 break-all font-mono text-sm font-black text-[#ef1b2d] transition-colors hover:text-[#b30d1c]"
+                          >
+                            {slip.slipCode}
+                          </a>
+                          <span className="shrink-0 font-mono text-sm font-black tabular-nums text-zinc-950">
+                            × {formatNumber(rollTotal, Number.isInteger(rollTotal) ? 0 : 2)}
+                          </span>
+                        </div>
                         <p className="truncate text-[11px] font-semibold text-zinc-700">
-                          {shown.map(product => `${product.code} × ${formatNumber(product.quantity, Number.isInteger(product.quantity) ? 0 : 2)}`).join(' · ')}
-                          {slip.products.length > shown.length ? ` · +${slip.products.length - shown.length} mã` : ''}
+                          {shown.map(product => product.code).join(' · ')}
+                          {slip.products.length > shown.length ? ` · +${slip.products.length - shown.length}` : ''}
                         </p>
                         <p className="text-[11px] font-semibold text-zinc-500 md:hidden">
                           {formatWarehouseSlipSavedTime(slip.createdAt)} · {slip.header.shift || '—'} · {slip.header.machine || '—'} · {slip.header.createdBy || '—'}

@@ -16,7 +16,7 @@
 | GET | `/api/san-pham/:id/phieu-kho?loai=nhap\|xuat` | Nhật ký theo SP — dùng tab Nhập kho / Xuất kho trong Xem sản phẩm |
 | GET | `/api/kho/lo-ton` | (lô tồn theo `ma_npl`, loại trừ xuất treo chưa xác nhận) |
 | GET | `/api/kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
-| GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng chung cho tab Nhập kho lẫn tab Xuất kho treo) |
+| GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng cho luồng nhập/xuất liên quan hàng hỏng) |
 | POST | `/api/kho/luu-phieu` | Lưu header + dòng trên DB kho mới; body có thể kèm `treo: true` |
 | POST | `/api/kho/phieu/:slipCode/xac-nhan-treo` | Chốt phiếu xuất treo |
 | PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu chưa in; phiếu xuất chỉ hỗ trợ NVL và hàng hỏng |
@@ -26,7 +26,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Header trang có nút **Làm mới** (chỉ tab này): tải lại danh mục kho, máy, lệnh SX và danh sách phiếu, không xóa phiếu đang nhập. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho` |
+| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Header trang có nút **Làm mới** (chỉ tab này): tải lại danh mục kho, máy, lệnh SX và danh sách phiếu, không xóa phiếu đang nhập. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho`. Tab **Lập phiếu** nhập TP: không còn dropdown **Chọn phiếu chưa chốt** — chọn phiếu qua **Phiếu chưa chốt theo máy** (Máy + Ngày + Ca, tick, tổng Mã TP, **Lưu tất cả**) |
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
@@ -34,9 +34,7 @@
 
 Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang_hoa` · `cong_cu_dung_cu` · `gia_cong`. Màn `/lich-su-xuat-nhap-kho` chia 2 tab **Xuất kho** / **Nhập kho** (lọc `loai`), dropdown **Chọn kho** giữ các loại kho. Phía trên danh sách có **số cuộn theo bộ lọc** (kho, loại phiếu, ngày, ca, ô tìm). Phía dưới có bảng **Tổng hợp theo Mã SP** (STT, Mã SP, Tên SP, Số cuộn). Danh sách lịch sử áp bộ lọc ngày, ca và ô tìm trước, rồi gom 3 cấp cho cả tab Xuất kho và Nhập kho: **tiền tố phiếu** (ví dụ PN-MBB5, dòng tiêu đề hiện tổng cuộn của nhóm), **mã phiếu**, rồi **mã SP** (tiền tố trước `_`, số lượng cộng các cuộn cùng tiền tố). Không còn nút **Xem** từng phiếu. Cột giờ vẫn hiện `created_at` của header theo giờ Việt Nam. Với kho thành phẩm (`san_pham`), danh sách lịch sử ẩn Ca và Máy trên cả desktop và mobile. Trang chi tiết một phiếu (`/lich-su-xuat-nhap-kho/phieu`) vẫn mở được khi vào thẳng đường dẫn. Bảng phụ **Chi tiết từng dòng** đã bỏ; modal xem phiếu vẫn xếp **ĐVT kg lên đầu** (`sortWarehouseLinesKgFirst`). Link `/kho-hang-hong` mở nhóm tab Kho hàng hỏng / Kho hàng hóa / Kho công cụ dụng cụ / Kho gia công. Form phiếu không còn card **Báo cáo sản lượng chờ nhập kho** phía trên.
 
-**Loại phiếu** trên form có 3 lựa chọn: **Nhập kho** · **Xuất kho treo** · **Xuất kho**.
-- **Xuất kho treo** lưu ngay `treo=false` thành phiếu xuất chính thức, cập nhật tồn kho, lịch sử và mở mẫu in.
-- Không còn card **Phiếu xuất kho treo chờ xác nhận** và không có bước Xác nhận riêng.
+**Loại phiếu** trên form có 2 lựa chọn: **Nhập kho** · **Xuất kho**. Tab **Xuất kho treo** đã bỏ khỏi UI.
 
 - Form **Xuất kho**: tab **Thực hiện** (quét) chọn **Ngày** rồi **Lệnh xuất hàng** trong ngày (`ngay_xuat` từ `/api/lenh-xuat-hang`). Bảng có **Mã / Mặt hàng / Số lượng / Đã quét**. Cột **Đã quét** đếm QR theo tiền tố mã hàng. Kho thành phẩm chưa quét đủ số lượng từng mã thì không **Lưu đợt** và không **Lưu phiếu**.
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).

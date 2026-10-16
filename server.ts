@@ -7039,6 +7039,82 @@ function normalizeWarehouseMovementCode(value: unknown) {
   return String(value ?? '').trim().replace(/[\s\u00a0]+/g, '').toUpperCase();
 }
 
+/** Tiền tố mã SP từ mã QR đầy đủ (MN-CN020_123 → MN-CN020). */
+function warehouseProductCodePrefix(raw: unknown) {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return '';
+  const plusIdx = trimmed.indexOf('+');
+  if (plusIdx > 0) return trimmed.slice(0, plusIdx).trim();
+  const underscoreIdx = trimmed.indexOf('_');
+  return underscoreIdx > 0 ? trimmed.slice(0, underscoreIdx).trim() : trimmed;
+}
+
+/**
+ * Tra tên/ĐVT từ danh mục san_pham theo mã gốc.
+ * Dùng khi dòng nhap_kho/xuat_kho/kho_cho thiếu ten_sp (máy/QR thường chỉ gửi mã).
+ */
+async function lookupSanPhamNamesByCodes(
+  codes: Array<string | null | undefined>
+): Promise<Map<string, { ten_sp: string; don_vi: string }>> {
+  const result = new Map<string, { ten_sp: string; don_vi: string }>();
+  if (!supabase) return result;
+  const unique = [
+    ...new Set(
+      codes
+        .map(code => warehouseProductCodePrefix(code) || String(code ?? '').trim())
+        .map(code => code.trim())
+        .filter(Boolean)
+    )
+  ];
+  if (!unique.length) return result;
+  for (let offset = 0; offset < unique.length; offset += 100) {
+    const batch = unique.slice(offset, offset + 100);
+    const { data, error } = await supabase
+      .from(SUPABASE_PRODUCTS_TABLE)
+      .select('ma_sp, ten_sp, don_vi')
+      .in('ma_sp', batch);
+    if (error) {
+      console.warn(`[${SUPABASE_PRODUCTS_TABLE}] lookup names:`, error.message);
+      break;
+    }
+    for (const row of data || []) {
+      const code = String((row as { ma_sp?: string }).ma_sp || '').trim();
+      const key = normalizeWarehouseMovementCode(code);
+      if (!key || result.has(key)) continue;
+      result.set(key, {
+        ten_sp: String((row as { ten_sp?: string }).ten_sp || '').trim(),
+        don_vi: String((row as { don_vi?: string }).don_vi || '').trim()
+      });
+    }
+  }
+  return result;
+}
+
+async function enrichWarehouseProductNames<T extends { ma_sp?: string | null; ma_sp_quet?: string | null; ten_sp?: string | null; don_vi?: string | null }>(
+  rows: T[]
+): Promise<T[]> {
+  const missingCodes = rows
+    .filter(row => !String(row.ten_sp || '').trim())
+    .map(row => String(row.ma_sp || row.ma_sp_quet || '').trim())
+    .filter(Boolean);
+  if (!missingCodes.length) return rows;
+  const names = await lookupSanPhamNamesByCodes(missingCodes);
+  if (!names.size) return rows;
+  return rows.map(row => {
+    if (String(row.ten_sp || '').trim()) return row;
+    const key = normalizeWarehouseMovementCode(
+      warehouseProductCodePrefix(row.ma_sp || row.ma_sp_quet) || row.ma_sp || row.ma_sp_quet
+    );
+    const info = names.get(key);
+    if (!info?.ten_sp) return row;
+    return {
+      ...row,
+      ten_sp: info.ten_sp,
+      don_vi: String(row.don_vi || '').trim() || info.don_vi || row.don_vi
+    };
+  });
+}
+
 function mapKhoLineToMovement(
   line: Record<string, any>,
   header: Record<string, any>,
@@ -7136,9 +7212,27 @@ async function loadWarehouseMovementsFromKho(filter: WarehouseMovementFilter = {
     }
   }
 
-  return movements.sort((a, b) =>
+  const sorted = movements.sort((a, b) =>
     String(b.created_at || b.created_at_phieu || '').localeCompare(String(a.created_at || a.created_at_phieu || ''))
   );
+  const productRows = sorted.filter(row => row.loai_kho === 'san_pham' && !String(row.ten_sp || '').trim());
+  if (!productRows.length) return sorted;
+  const names = await lookupSanPhamNamesByCodes(
+    productRows.map(row => String(row.ma_sp || row.ma_sp_quet || '').trim())
+  );
+  if (!names.size) return sorted;
+  for (const row of sorted) {
+    if (row.loai_kho !== 'san_pham' || String(row.ten_sp || '').trim()) continue;
+    const key = normalizeWarehouseMovementCode(
+      warehouseProductCodePrefix(row.ma_sp || row.ma_sp_quet) || row.ma_sp || row.ma_sp_quet
+    );
+    const info = names.get(key);
+    if (info?.ten_sp) {
+      row.ten_sp = info.ten_sp;
+      if (!String(row.don_vi || '').trim() && info.don_vi) row.don_vi = info.don_vi;
+    }
+  }
+  return sorted;
 }
 
 async function saveWarehouseSlipToKho(
@@ -12378,7 +12472,8 @@ export function createApp() {
           offset += rows.length;
           if (rows.length < batchSize) break;
         }
-        return res.json({ records: [...grouped.values()], total: grouped.size });
+        const records = await enrichWarehouseProductNames([...grouped.values()]);
+        return res.json({ records, total: records.length });
       } catch (err: any) {
         return res.status(500).json({ error: err?.message || 'Lỗi khi tải tổng hợp chi tiết phiếu.' });
       }
@@ -12398,7 +12493,8 @@ export function createApp() {
         .range(offset, offset + limit - 1);
 
       if (error) return res.status(500).json({ error: error.message || 'Không tải được chi tiết phiếu.' });
-      return res.json({ records: data || [], total: count ?? data?.length ?? 0, limit, offset });
+      const records = await enrichWarehouseProductNames(data || []);
+      return res.json({ records, total: count ?? records.length, limit, offset });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải chi tiết phiếu.' });
     }
@@ -12584,6 +12680,27 @@ export function createApp() {
           treo: Boolean(header.treo),
           da_in: Boolean(header.da_in)
         });
+      }
+      const productMissing = movements.filter(
+        row => row.loai_kho === 'san_pham' && !String(row.ten_sp || '').trim() && String(row.ma_sp || row.ma_sp_quet || '').trim()
+      );
+      if (productMissing.length) {
+        const names = await lookupSanPhamNamesByCodes(
+          productMissing.map(row => String(row.ma_sp || row.ma_sp_quet || '').trim())
+        );
+        if (names.size) {
+          for (const row of movements) {
+            if (row.loai_kho !== 'san_pham' || String(row.ten_sp || '').trim()) continue;
+            const key = normalizeWarehouseMovementCode(
+              warehouseProductCodePrefix(row.ma_sp || row.ma_sp_quet) || row.ma_sp || row.ma_sp_quet
+            );
+            const info = names.get(key);
+            if (info?.ten_sp) {
+              row.ten_sp = info.ten_sp;
+              if ((!row.don_vi || row.don_vi === '-') && info.don_vi) row.don_vi = info.don_vi;
+            }
+          }
+        }
       }
       return res.json({ movements, total: movements.length, source: 'supabase', db: SUPABASE_KHO_DB_LABEL });
     } catch (err: any) {
@@ -13197,6 +13314,9 @@ export function createApp() {
         }
       }
 
+      const catalogNames = await lookupSanPhamNamesByCodes(
+        pendingItems.filter(item => !item.tenSp).map(item => item.fullCode)
+      );
       const buildLineRows = (batch: typeof pendingItems) =>
         batch.map(item => {
           const separators = ['_', '+'].map(separator => {
@@ -13204,11 +13324,13 @@ export function createApp() {
             return index > 0 ? index : Number.POSITIVE_INFINITY;
           });
           const separatorIndex = Math.min(...separators);
+          const maSp = Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode;
+          const catalog = catalogNames.get(normalizeWarehouseMovementCode(maSp));
           return {
-            ma_sp: Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode,
+            ma_sp: maSp,
             ma_sp_quet: item.fullCode,
-            ten_sp: item.tenSp || null,
-            don_vi: item.donVi || null,
+            ten_sp: item.tenSp || catalog?.ten_sp || null,
+            don_vi: item.donVi || catalog?.don_vi || null,
             loai: 'san_pham',
             so_luong: 1,
             ma_phieu: maPhieu,
@@ -15643,7 +15765,8 @@ export function createApp() {
       if (isMissingTableError(error)) return res.status(503).json({ error: khoChoMissingTableMessage() });
       return res.status(500).json({ error: error.message || 'Không tải được mã từ máy.' });
     }
-    return res.json({ records: data || [], total: data?.length || 0 });
+    const records = await enrichWarehouseProductNames(data || []);
+    return res.json({ records, total: records.length });
   });
 
   app.post('/api/kho-cho/xac-nhan', async (req, res) => {
@@ -15688,15 +15811,24 @@ export function createApp() {
         return owner && owner !== maPhieu;
       });
       if (pending.length) {
-        const rows = pending.map(row => ({
-          ma_sp: String(row.ma_sp || '').trim() || String(row.ma_sp_quet).trim(),
-          ma_sp_quet: String(row.ma_sp_quet).trim(),
-          ten_sp: row.ten_sp || null,
-          don_vi: row.don_vi || null,
-          loai: String(row.loai || '').trim() || 'san_pham',
-          so_luong: Number(row.so_luong) || 1,
-          ma_phieu: maPhieu
-        }));
+        const catalogNames = await lookupSanPhamNamesByCodes(
+          pending
+            .filter(row => !String(row.ten_sp || '').trim())
+            .map(row => String(row.ma_sp || row.ma_sp_quet || '').trim())
+        );
+        const rows = pending.map(row => {
+          const maSp = String(row.ma_sp || '').trim() || warehouseProductCodePrefix(row.ma_sp_quet) || String(row.ma_sp_quet).trim();
+          const catalog = catalogNames.get(normalizeWarehouseMovementCode(maSp));
+          return {
+            ma_sp: maSp,
+            ma_sp_quet: String(row.ma_sp_quet).trim(),
+            ten_sp: String(row.ten_sp || '').trim() || catalog?.ten_sp || null,
+            don_vi: String(row.don_vi || '').trim() || catalog?.don_vi || null,
+            loai: String(row.loai || '').trim() || 'san_pham',
+            so_luong: Number(row.so_luong) || 1,
+            ma_phieu: maPhieu
+          };
+        });
         const { error: insertError } = await supabaseKho.from('nhap_kho').insert(rows);
         if (insertError) {
           return res.status(500).json({ error: insertError.message || 'Không ghi được vào nhap_kho.' });
@@ -15792,17 +15924,22 @@ export function createApp() {
 
       const savedAt = new Date().toISOString();
       if (pending.length) {
+        const catalogNames = await lookupSanPhamNamesByCodes(
+          pending.filter(item => !item.tenSp).map(item => item.fullCode)
+        );
         const rows = pending.map(item => {
           const separators = ['_', '+'].map(separator => {
             const index = item.fullCode.indexOf(separator);
             return index > 0 ? index : Number.POSITIVE_INFINITY;
           });
           const separatorIndex = Math.min(...separators);
+          const maSp = Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode;
+          const catalog = catalogNames.get(normalizeWarehouseMovementCode(maSp));
           return {
-            ma_sp: Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode,
+            ma_sp: maSp,
             ma_sp_quet: item.fullCode,
-            ten_sp: item.tenSp || null,
-            don_vi: item.donVi || null,
+            ten_sp: item.tenSp || catalog?.ten_sp || null,
+            don_vi: item.donVi || catalog?.don_vi || null,
             loai: 'san_pham',
             so_luong: 1,
             ma_phieu: maPhieu

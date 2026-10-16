@@ -344,21 +344,28 @@ function normalizeProductionOrders(data: unknown): ProductionOrderOption[] {
   if (!Array.isArray(rows)) return [];
 
   return rows
-    .map((item): ProductionOrderOption | null => {
-      if (!item || typeof item !== 'object') return null;
+    .flatMap((item): ProductionOrderOption[] => {
+      if (!item || typeof item !== 'object') return [];
       const record = item as Record<string, unknown>;
       const shift = String(record.ca ?? record.shift ?? '').trim();
       const machine = String(record.may ?? record.ma_may ?? record.ten_may ?? '').trim();
-      const productCode = String(record.ma_hang ?? record.ma_sp ?? '').trim();
-      const productName = String(record.ten_hang ?? record.san_pham ?? record.ten_sp ?? '').trim();
-      const unit = String(record.don_vi ?? record.unit ?? '').trim();
       const startDate = extractIsoDate(
-        String(record.ngay_gio_bat_dau ?? record.ngay_bat_dau ?? record.start_date ?? '')
+        String(record.ngay || record.ngay_bat_dau || record.ngay_gio_bat_dau || record.start_date || '')
       );
-      if (!shift && !machine && !productName && !startDate) return null;
-      return { shift, machine, productCode, productName, unit, startDate };
-    })
-    .filter((row): row is ProductionOrderOption => Boolean(row));
+      const lines = Array.isArray(record.lenh_sx_dong) && record.lenh_sx_dong.length
+        ? record.lenh_sx_dong
+        : Array.isArray(record.san_pham) && record.san_pham.length
+          ? record.san_pham
+          : [record];
+      return lines.flatMap(line => {
+        if (!line || typeof line !== 'object') return [];
+        const product = line as Record<string, unknown>;
+        const productCode = String(product.ma_sp ?? product.ma_hang ?? '').trim();
+        const productName = String(product.ten_sp ?? product.ten_hang ?? '').trim();
+        const unit = String(product.don_vi ?? product.unit ?? '').trim();
+        return [{ shift, machine, productCode, productName, unit, startDate }];
+      });
+    });
 }
 
 function normalizeMachines(data: unknown): MachineOption[] {
@@ -534,41 +541,30 @@ export default function AcceptanceReportForm({
     (async () => {
       setError('');
       try {
-        const [machineRes, productionRes, productRes, settingsRes, materialRes] = await Promise.all([
-          fetch('/api/danh-sach-may'),
-          fetch('/api/lenh-sx'),
-          fetch('/api/san-pham?format=table'),
-          fetch('/api/cai-dat'),
-          fetch('/api/kho-nvl')
+        const load = async (url: string, apply: (data: unknown) => void, label: string) => {
+          try {
+            const response = await fetch(url);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Không thể tải ' + label + '.');
+            if (!cancelled) apply(data);
+          } catch (err) {
+            if (!cancelled) {
+              const message = err instanceof Error ? err.message : 'Không thể tải ' + label + '.';
+              setError(previous => previous ? previous + ' ' + message : message);
+            }
+          }
+        };
+        await Promise.all([
+          load('/api/danh-sach-may', data => setMachines(normalizeMachines(data)), 'danh sách máy'),
+          load('/api/lenh-sx', data => setProductionOrders(normalizeProductionOrders(data)), 'lệnh sản xuất'),
+          load('/api/cai-dat', data => setShiftSettings(normalizeShiftSettings(data)), 'ca trong Cài đặt'),
+          load('/api/san-pham?format=table', data => setCatalogProducts(normalizeCatalogProducts(data)), 'danh mục sản phẩm')
+            .finally(() => { if (!cancelled) setIsLoadingProducts(false); }),
+          load('/api/kho-nvl', data => {
+            setHangHongMaterialOptions(normalizeMaterialCatalogOptions(data, isHangHongWarehouse));
+            setRacMaterialOptions(normalizeMaterialCatalogOptions(data, isRacWarehouse));
+          }, 'danh mục nguyên vật liệu')
         ]);
-        const machineData = await machineRes.json().catch(() => ({}));
-        const productionData = await productionRes.json().catch(() => ({}));
-        const productData = await productRes.json().catch(() => ({}));
-        const settingsData = await settingsRes.json().catch(() => ({}));
-        const materialData = await materialRes.json().catch(() => ({}));
-        if (!machineRes.ok) throw new Error(machineData.error || 'Không thể tải danh sách máy.');
-        if (!productionRes.ok) throw new Error(productionData.error || 'Không thể tải lệnh sản xuất.');
-        if (cancelled) return;
-
-        setMachines(normalizeMachines(machineData));
-        setProductionOrders(normalizeProductionOrders(productionData));
-        if (productRes.ok) {
-          setCatalogProducts(normalizeCatalogProducts(productData));
-        } else {
-          setCatalogProducts([]);
-        }
-        if (materialRes.ok) {
-          setHangHongMaterialOptions(normalizeMaterialCatalogOptions(materialData, isHangHongWarehouse));
-          setRacMaterialOptions(normalizeMaterialCatalogOptions(materialData, isRacWarehouse));
-        } else {
-          setHangHongMaterialOptions([]);
-          setRacMaterialOptions([]);
-        }
-        if (settingsRes.ok) {
-          setShiftSettings(normalizeShiftSettings(settingsData));
-        } else {
-          setShiftSettings([]);
-        }
       } catch (err: any) {
         if (!cancelled) setError(err.message || 'Không thể tải dữ liệu.');
       } finally {

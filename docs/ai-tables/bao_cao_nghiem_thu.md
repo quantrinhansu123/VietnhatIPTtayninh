@@ -18,6 +18,8 @@ Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.d
 
 **Mã SP theo loại vật tư:** Thành phẩm / Gia công lấy `san_pham`. **SP lỗi** thêm mã `kho_nvl` thuộc Kho hàng hỏng (vd. NC). **SP rác** thêm mã kho rác. Vẫn gộp mã từ lệnh SX khớp ngày + ca + máy.
 
+Liên kết LSX ưu tiên ngày `lenh_sx.ngay`, lấy từng sản phẩm từ `lenh_sx_dong` (fallback `san_pham`, rồi dòng tổng cho dữ liệu cũ). Tải lỗi một API không chặn máy/ca từ các API còn lại; form hiển thị lỗi tải máy, ca hoặc LSX.
+
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
 Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm`; mã SP thuộc **Kho thành phẩm** hoặc **chưa gán kho** — loại kho hàng hỏng/rác).

@@ -77,6 +77,10 @@ interface ProductSelectOption {
 }
 
 interface AiWeighingRecord {
+  may?: string | null;
+  machine?: string | null;
+  ma_may?: string | null;
+  ten_may?: string | null;
   qr_code?: string | null;
   ca?: string | null;
   unit?: string | null;
@@ -525,7 +529,7 @@ export default function AcceptanceReportForm({
   const [scannerMode, setScannerMode] = useState<'hardware' | 'camera'>('hardware');
   const [isAutoReportOpen, setIsAutoReportOpen] = useState(false);
   const [isLoadingAutoReport, setIsLoadingAutoReport] = useState(false);
-  const [autoReportFilter, setAutoReportFilter] = useState({ ngay: todayIso(), ca: '' });
+  const [autoReportFilter, setAutoReportFilter] = useState({ ngay: todayIso(), ca: '', machineId: '' });
   const [highlightLine, setHighlightLine] = useState<{ type: MaterialType; lineId: string } | null>(null);
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const cameraInputRefs = useRef<Record<MaterialType, HTMLInputElement | null>>({
@@ -1356,15 +1360,16 @@ export default function AcceptanceReportForm({
     '';
 
   const openAutoReport = () => {
-    setAutoReportFilter({ ngay: header.ngay || todayIso(), ca: header.ca });
+    setAutoReportFilter({ ngay: header.ngay || todayIso(), ca: header.ca, machineId: teamSelectValue });
     setError('');
     setIsAutoReportOpen(true);
   };
 
   const handleAutoReport = async () => {
-    const { ngay, ca } = autoReportFilter;
-    if (!ngay || !ca) {
-      setError('Vui lòng chọn đủ ngày và ca.');
+    const { ngay, ca, machineId } = autoReportFilter;
+    const machine = machines.find(item => item.id === machineId);
+    if (!ngay || !ca || !machine) {
+      setError('Vui lòng chọn đủ ngày, ca và máy.');
       return;
     }
 
@@ -1372,7 +1377,7 @@ export default function AcceptanceReportForm({
     setError('');
     setMessage('');
     try {
-      const params = new URLSearchParams({ from: ngay, to: ngay, limit: '2000', dateBy: 'ngay' });
+      const params = new URLSearchParams({ from: ngay, to: ngay, all: '1', images: '0', dateBy: 'ngay' });
       const response = await fetch(`/api/can-tu-dong?${params.toString()}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -1380,9 +1385,15 @@ export default function AcceptanceReportForm({
       }
 
       const records = Array.isArray(data.records) ? (data.records as AiWeighingRecord[]) : [];
-      const matched = records.filter(record => shiftMatches(String(record.ca ?? ''), ca));
+      const machineKeys = [machine.code, machine.name, `${machine.code} · ${machine.name}`]
+        .map(normalizeKey).filter(Boolean);
+      const matched = records.filter(record =>
+        shiftMatches(String(record.ca ?? ''), ca) &&
+        [record.may, record.machine, record.ma_may, record.ten_may]
+          .some(value => Boolean(value) && machineKeys.includes(normalizeKey(String(value))))
+      );
       if (matched.length === 0) {
-        throw new Error('Không có phiếu cân AI phù hợp với ngày và ca đã chọn.');
+        throw new Error('Không có phiếu cân AI phù hợp với ngày, ca và máy đã chọn.');
       }
 
       const quantities = new Map<
@@ -1424,7 +1435,8 @@ export default function AcceptanceReportForm({
         // Trọng lượng cuộn = tổng cột «Cân sản phẩm» (cả lõi, chưa trừ bì)
         trong_luong: rollWeightKg > 0 ? formatAutoWeight(rollWeightKg) : ''
       }));
-      setHeader(prev => ({ ...prev, ngay, ca }));
+      setHeader(prev => ({ ...prev, ngay, ca, teamId: machine.id, ma_may: machine.code,
+        ten_may: machine.name, machineRef: machine.name || machine.code }));
       updateSection('Thành phẩm', section => ({ ...section, lines }));
       setIsAutoReportOpen(false);
       setMessage(
@@ -1639,7 +1651,7 @@ export default function AcceptanceReportForm({
                           onClick={openAutoReport}
                           className="flex h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-[#ef1b2d] px-2.5 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
                           aria-label="Tạo báo cáo tự động từ phiếu cân AI"
-                          title="Chọn ngày và ca để lấy dữ liệu phiếu cân AI"
+                          title="Chọn ngày, ca và máy để lấy dữ liệu phiếu cân AI"
                         >
                           <Scale className="h-3.5 w-3.5 shrink-0" />
                           <span>Tự động BC</span>
@@ -1901,6 +1913,23 @@ export default function AcceptanceReportForm({
                   ))}
                 </select>
               </label>
+              <label className="field-cell">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
+                <select
+                  value={autoReportFilter.machineId}
+                  onChange={event => setAutoReportFilter(prev => ({ ...prev, machineId: event.target.value }))}
+                  disabled={isLoadingAutoReport || teamOptions.length === 0}
+                  className={inputClass}
+                >
+                  <option value="">Chọn máy...</option>
+                  {teamOptions.map(machine => (
+                    <option key={machine.id} value={machine.id}>
+                      {machine.code && machine.name ? `${machine.code} · ${machine.name}` : machine.name || machine.code}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
               <p className="rounded-xl bg-blue-50 px-3 py-2.5 text-xs font-semibold leading-5 text-blue-800">
                 Mỗi QR cân AI được tính là 1 sản phẩm. Các QR cùng mã SP sẽ được cộng thành một dòng số lượng. Dữ liệu sẽ điền vào phiếu Thành phẩm.
               </p>
@@ -1917,7 +1946,7 @@ export default function AcceptanceReportForm({
               <button
                 type="button"
                 onClick={() => void handleAutoReport()}
-                disabled={isLoadingAutoReport || !autoReportFilter.ngay || !autoReportFilter.ca}
+                disabled={isLoadingAutoReport || !autoReportFilter.ngay || !autoReportFilter.ca || !autoReportFilter.machineId}
                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-50"
               >
                 {isLoadingAutoReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}

@@ -3459,7 +3459,11 @@ export function WarehouseSlipPanel({
         : [];
       if (duplicateCodes.length) {
         discardDuplicateScannedProducts(duplicateCodes);
-        showAppToast(`Bỏ qua ${duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`, 'error');
+        const msg = slipType === 'nhap'
+          ? `Mã QR đã tồn tại trong kho, không lưu: ${duplicateCodes.slice(0, 8).join(', ')}${duplicateCodes.length > 8 ? ` và ${duplicateCodes.length - 8} mã khác` : ''}.`
+          : `Bỏ qua ${duplicateCodes.length} mã QR đã tồn tại trong phiếu ${slipType}.`;
+        setFormError(msg);
+        showAppToast(msg, 'error');
       }
       const rejectedCodeMessage = (codes: string[], reason: string) =>
         codes.length

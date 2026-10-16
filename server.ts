@@ -13074,7 +13074,16 @@ export function createApp() {
             });
           }
         }
-        return candidateItems.filter(item => existing.get(item.fullCode)?.ma_phieu !== maPhieu);
+        return candidateItems.filter(item => {
+          const row = existing.get(item.fullCode);
+          if (!row || row.ma_phieu === maPhieu) return !row;
+          // Nhập kho: mã QR đã có trong kho (phiếu khác) → không lưu, báo trùng.
+          if (loaiPhieu === 'nhap' && !allowDuplicate) {
+            duplicateCodes.add(item.fullCode);
+            return false;
+          }
+          return true;
+        });
       };
 
       const initialExisting = await loadExisting(items.map(item => item.fullCode));

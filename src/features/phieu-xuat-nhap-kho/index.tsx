@@ -4033,8 +4033,7 @@ export function WarehouseSlipPanel({
             ca: slipCa,
             may: slipMay,
             ghi_chu: slipNote,
-            status: 'da_chot',
-            dong_bo_chi_tiet_san_pham: true
+            status: 'da_chot'
           })
         });
         const statusData = await statusResponse.json().catch(() => ({}));

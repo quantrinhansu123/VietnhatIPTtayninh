@@ -1301,7 +1301,7 @@ export function MachineNvlReportPanel({
                                 isLoading={isLoading}
                                 displaySelectedAsValue
                                 dropdownMinWidth={460}
-                                openUpward
+                                autoFlip
                                 inputClassName="machine-nvl-line-mobile-input h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
                                 getLabel={item => (item as MaterialRow).code}
                                 getSearchText={item => {
@@ -1511,7 +1511,7 @@ export function MachineNvlReportPanel({
         : null}
 
       {showCuoiCaPicker ? (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4">
           <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
             <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
               <div>
@@ -1570,52 +1570,41 @@ export function MachineNvlReportPanel({
                 </label>
               </div>
 
-              <label className={machineNvlFormLabelClass}>
+              <div className={machineNvlFormLabelClass}>
                 Phiếu tồn cuối ca
-                <select
-                  value={pickerReportId}
-                  onChange={event => setPickerReportId(event.target.value)}
-                  className={machineNvlFormFieldClass}
-                >
-                  <option value="">
-                    {pickerCuoiCaOptions.length === 0
-                      ? 'Không có phiếu khớp bộ lọc'
-                      : `Chọn phiếu (${pickerCuoiCaOptions.length})`}
-                  </option>
-                  {pickerCuoiCaOptions.map(report => (
-                    <option key={report.id} value={report.id}>
-                      {formatMachineNvlCuoiCaOptionLabel(report)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {pickerReportId ? (
-                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
-                  Đã chọn:{' '}
-                  {formatMachineNvlCuoiCaOptionLabel(
-                    pickerCuoiCaOptions.find(report => report.id === pickerReportId) ||
-                      cuoiCaReports.find(report => report.id === pickerReportId) || {
-                        id: pickerReportId,
-                        ngay: '—',
-                        ca: '—',
-                        gio: '',
-                        maMay: '',
-                        tenMay: '—',
-                        nhanSu: '',
-                        total: NaN,
-                        note: '',
-                        reportKind: 'cuoi_ca',
-                        lines: [],
-                        createdAt: ''
-                      }
+                <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
+                  {pickerCuoiCaOptions.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-500">
+                      Không có phiếu khớp bộ lọc. Thử bỏ Ngày/Ca/Máy.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-zinc-100">
+                      {pickerCuoiCaOptions.map(report => {
+                        const selected = pickerReportId === report.id;
+                        return (
+                          <button
+                            key={report.id}
+                            type="button"
+                            onClick={() => setPickerReportId(selected ? '' : report.id)}
+                            className={`block w-full px-3 py-2.5 text-left text-[11px] transition hover:bg-sky-50 ${
+                              selected
+                                ? 'bg-sky-50 font-black text-sky-900'
+                                : 'font-semibold text-zinc-800'
+                            }`}
+                          >
+                            {formatMachineNvlCuoiCaOptionLabel(report)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
+                </div>
+                <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
+                  {pickerReportId
+                    ? `Đã chọn 1 phiếu · ${pickerCuoiCaOptions.length} phiếu trong bộ lọc`
+                    : `Chạm để chọn · ${pickerCuoiCaOptions.length} phiếu · có thể để trống Ngày/Ca/Máy`}
                 </p>
-              ) : (
-                <p className="text-[11px] font-semibold text-zinc-500">
-                  Có thể để trống Ngày/Ca/Máy để xem toàn bộ phiếu tồn cuối ca.
-                </p>
-              )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-3">

@@ -562,7 +562,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-bang-tron-vat-tu-dinh-muc.sql'],
     apiPrefix: '/api/bang-tron-vat-tu-dinh-muc',
     serverLines: 'bang_tron_vat_tu_dinh_muc routes',
-    appTab: '(detached from mixing-report-list UI)',
+    appTab: 'mixing-report-list (tab Bảng trộn định mức)',
     appLines: 'src/components/MixingNormMaterialsTab.tsx',
     components: ['src/components/MixingNormMaterialsTab.tsx'],
     utils: []
@@ -573,7 +573,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-phieu-tron-thuc-te.sql'],
     apiPrefix: '/api/phieu-tron-thuc-te',
     serverLines: 'phieu_tron_thuc_te routes',
-    appTab: '(detached from mixing-report-list UI)',
+    appTab: 'mixing-report-list (tab Phiếu trộn thực tế)',
     appLines: 'src/components/ActualMixingSheetTab.tsx',
     components: ['src/components/ActualMixingSheetTab.tsx'],
     utils: []

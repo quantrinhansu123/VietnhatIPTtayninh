@@ -242,23 +242,25 @@ export function SearchableSelect({
     const spaceBelow = Math.max(0, viewportHeight - rect.bottom - margin);
     const spaceAbove = Math.max(0, rect.top - margin);
 
-    if (openUpward && spaceAbove > 0) {
+    const pickMaxHeight = (space: number) => Math.max(96, Math.min(preferredHeight, Math.max(space, 96)));
+
+    if (openUpward && spaceAbove >= 96) {
       setMenuStyle({
         bottom: viewportHeight - rect.top + 4,
         left,
         width,
-        maxHeight: Math.min(preferredHeight, spaceAbove)
+        maxHeight: pickMaxHeight(spaceAbove)
       });
       return;
     }
 
-    if (autoFlip || (desktopAutoFlip && isDesktop)) {
-      if (spaceBelow < preferredHeight && spaceAbove > spaceBelow) {
+    if (autoFlip || openUpward || (desktopAutoFlip && isDesktop)) {
+      if (spaceBelow < 96 && spaceAbove > spaceBelow) {
         setMenuStyle({
           bottom: viewportHeight - rect.top + 4,
           left,
           width,
-          maxHeight: Math.min(preferredHeight, spaceAbove)
+          maxHeight: pickMaxHeight(spaceAbove)
         });
         return;
       }
@@ -267,12 +269,12 @@ export function SearchableSelect({
         top: rect.bottom + 4,
         left,
         width,
-        maxHeight: Math.min(preferredHeight, spaceBelow)
+        maxHeight: pickMaxHeight(spaceBelow || preferredHeight)
       });
       return;
     }
 
-    setMenuStyle({ top: rect.bottom + 4, left, width });
+    setMenuStyle({ top: rect.bottom + 4, left, width, maxHeight: preferredHeight });
   };
 
   useEffect(() => {
@@ -338,7 +340,7 @@ export function SearchableSelect({
   ]);
 
   const dropdownPanelClass =
-    'fixed z-[200] max-h-52 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-lg';
+    'fixed z-[300] max-h-52 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-lg';
 
   const keepFocusForSelection = () => {
     suppressBlurRef.current = true;
@@ -397,7 +399,7 @@ export function SearchableSelect({
       return createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[200] flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
+          className="fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg"
           style={menuStyle}
         >
           {comboboxSearchable ? (
@@ -501,16 +503,20 @@ export function SearchableSelect({
       );
     }
 
-    if (query.trim()) {
-      return createPortal(
-        <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
-          <div className="px-3 py-2 text-xs font-semibold text-zinc-500">Không tìm thấy kết quả</div>
-        </div>,
-        document.body
-      );
-    }
-
-    return null;
+    return createPortal(
+      <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
+        <div className="px-3 py-2 text-xs font-semibold text-zinc-500">
+          {isLoading
+            ? 'Đang tải...'
+            : options.length === 0
+              ? 'Không có dữ liệu'
+              : query.trim()
+                ? 'Không tìm thấy kết quả'
+                : 'Không có lựa chọn phù hợp'}
+        </div>
+      </div>,
+      document.body
+    );
   };
 
   return (

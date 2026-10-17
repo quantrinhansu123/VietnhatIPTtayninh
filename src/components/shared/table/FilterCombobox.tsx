@@ -151,7 +151,7 @@ export function FilterCombobox({
             <div
               ref={menuRef}
               role="listbox"
-              className={`fixed z-[200] ${dropdownWidth} rounded-xl border border-zinc-200 bg-white p-2 shadow-lg`}
+              className={`fixed z-[300] ${dropdownWidth} rounded-xl border border-zinc-200 bg-white p-2 shadow-lg`}
               style={{ top: menuStyle.top, left: menuStyle.left, minWidth: menuStyle.minWidth, width: menuStyle.width }}
             >
               {searchable && (

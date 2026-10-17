@@ -187,6 +187,9 @@ export function renderMachineSelect(
       disabled={options?.disabled}
       isLoading={options?.isLoading}
       inputClassName={options?.inputClassName}
+      comboboxMode
+      autoFlip
+      allowEmpty
       getLabel={item => machineSelectLabel(item as MachineRow)}
       getValue={item => machineSelectValue(item as MachineRow)}
       resolveSelectedItem={(opts, val) => findMachineByRef(opts as MachineRow[], val)}

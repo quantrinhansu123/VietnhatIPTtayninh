@@ -31,6 +31,8 @@ import type { MixingRoundPhoto } from './MixingReportForm';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
 import type { MixingReport, MixingReportLine } from './MixingReportForm';
 import MixingReportForm from './MixingReportForm';
+import MixingNormMaterialsTab from './MixingNormMaterialsTab';
+import ActualMixingSheetTab from './ActualMixingSheetTab';
 import {
   getProductionShiftOptions,
   normalizeShiftSettings,
@@ -255,6 +257,8 @@ export default function MixingReportListView({
   };
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('mixing-report-list');
+  /** Tab định mức/thực tế từng bị gỡ — gắn lại vì menu QC «BOM và tỷ lệ phối trộn» cần Bảng trộn. */
+  const [listTab, setListTab] = useState<'reports' | 'norms' | 'actual'>('norms');
   const [filters, setFilters] = useState<MixingReportFilters>(() => {
     const shift = initialFilters?.shift?.trim() || '';
     return {
@@ -910,28 +914,32 @@ export default function MixingReportListView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePrintFilteredReports}
-                disabled={selectedCount === 0 || pendingPrint}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Printer className="h-4 w-4" />
-                In phiếu ({selectedCount})
-              </button>
-              {canCreate ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormModalMode('create');
-                    setPendingEditReport(null);
-                    setCreateModalOpen(true);
-                  }}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Thêm mới
-                </button>
+              {listTab === 'reports' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePrintFilteredReports}
+                    disabled={selectedCount === 0 || pendingPrint}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Printer className="h-4 w-4" />
+                    In phiếu ({selectedCount})
+                  </button>
+                  {canCreate ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormModalMode('create');
+                        setPendingEditReport(null);
+                        setCreateModalOpen(true);
+                      }}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Thêm mới
+                    </button>
+                  ) : null}
+                </>
               ) : null}
               <button
                 type="button"
@@ -945,6 +953,55 @@ export default function MixingReportListView({
           </div>
         </div>
 
+        <div className="grid gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => setListTab('norms')}
+            aria-pressed={listTab === 'norms'}
+            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+              listTab === 'norms'
+                ? 'border-[#ef1b2d] bg-red-50'
+                : 'border-zinc-200 bg-white hover:border-zinc-300'
+            }`}
+          >
+            <span className="block text-sm font-black text-zinc-950">Bảng trộn định mức</span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
+              Lệnh SX → Sản phẩm → NVL (BOM / tỷ lệ)
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setListTab('actual')}
+            aria-pressed={listTab === 'actual'}
+            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+              listTab === 'actual'
+                ? 'border-[#ef1b2d] bg-red-50'
+                : 'border-zinc-200 bg-white hover:border-zinc-300'
+            }`}
+          >
+            <span className="block text-sm font-black text-zinc-950">Phiếu trộn thực tế</span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
+              Chọn ngày + ca, nhập % thực tế
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setListTab('reports')}
+            aria-pressed={listTab === 'reports'}
+            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+              listTab === 'reports'
+                ? 'border-[#ef1b2d] bg-red-50'
+                : 'border-zinc-200 bg-white hover:border-zinc-300'
+            }`}
+          >
+            <span className="block text-sm font-black text-zinc-950">Danh sách phiếu phối trộn</span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
+              Báo cáo phối trộn theo ngày · ca · máy
+            </span>
+          </button>
+        </div>
+
+        {listTab === 'reports' ? (
         <div className="space-y-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -1025,8 +1082,15 @@ export default function MixingReportListView({
             </div>
           </div>
         </div>
+        ) : null}
       </section>
 
+      {listTab === 'norms' ? (
+        <MixingNormMaterialsTab />
+      ) : listTab === 'actual' ? (
+        <ActualMixingSheetTab />
+      ) : (
+        <>
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
           {error}
@@ -1235,6 +1299,8 @@ export default function MixingReportListView({
           </div>
         )}
       </section>
+        </>
+      )}
 
       {previewPhoto ? (
         <div className="fixed inset-0 z-[70] flex flex-col bg-zinc-950/95">

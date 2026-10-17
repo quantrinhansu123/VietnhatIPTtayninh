@@ -1,7 +1,7 @@
 # bang_tron_vat_tu_dinh_muc
 
 | **Bảng** | `bang_tron_vat_tu_dinh_muc` |
-| **Tab** | *(không gắn UI danh sách phối trộn — component còn, API còn)* |
+| **Tab** | `mixing-report-list` → tab **Bảng trộn định mức** |
 | **SQL** | `supabase-bang-tron-vat-tu-dinh-muc.sql` |
 
 **API:** `/api/bang-tron-vat-tu-dinh-muc`  
@@ -9,7 +9,7 @@ Query: `ngay`, `ca`, `q`
 **UI:** `MixingNormMaterialsTab.tsx` · in: `MixingNormRatioPrintSheet.tsx`  
 Gợi ý sang form phối trộn: `MixingReportForm.tsx` + `utils/mixingNormSuggestion.ts`
 
-> `/danh-sach-bao-cao-phoi-tron` đã bỏ tab định mức/thực tế; chỉ còn danh sách `bao_cao_phoi_tron`.
+> `/danh-sach-bao-cao-phoi-tron` (`mixing-report-list`) có 3 tab: **Bảng trộn định mức** · **Phiếu trộn thực tế** · **Danh sách phiếu phối trộn**.
 
 ## Mô hình
 

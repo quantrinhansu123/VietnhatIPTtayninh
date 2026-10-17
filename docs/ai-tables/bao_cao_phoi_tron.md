@@ -34,7 +34,7 @@
 
 
 
-**Danh sách:** Tab `mixing-report-list` → phiếu `bao_cao_phoi_tron`. Khi mở chi tiết hiện **Tỉ lệ trộn Định mức** (`ti_le_phan_tram`) và **Tỉ lệ trộn Thực tế** (KL TT dòng ÷ tổng KL TT phiếu × 100).
+**Danh sách:** Tab `mixing-report-list` có 3 tab con: **Bảng trộn định mức** (`bang_tron_vat_tu_dinh_muc`) · **Phiếu trộn thực tế** · **Danh sách phiếu phối trộn** (`bao_cao_phoi_tron`). Khi mở chi tiết phiếu phối trộn hiện **Tỉ lệ trộn Định mức** (`ti_le_phan_tram`) và **Tỉ lệ trộn Thực tế** (KL TT dòng ÷ tổng KL TT phiếu × 100).
 
 
 

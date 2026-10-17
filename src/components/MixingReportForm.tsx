@@ -1093,18 +1093,21 @@ export default function MixingReportForm({
   }, [reasonOptions, form.ly_do_theo_lan]);
 
   const loadReferenceData = async () => {
-    const [machineRes, materialRes, productionRes, productRes, settingRes] = await Promise.all([
+    // Ca lấy riêng: /api/kho-nvl chậm (~18s) không được làm trống ô Ca sản xuất.
+    fetch('/api/cai-dat')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (data) setShiftSettings(normalizeShiftSettings(data)); })
+      .catch(() => undefined);
+    const [machineRes, materialRes, productionRes, productRes] = await Promise.all([
       fetch('/api/danh-sach-may'),
       fetch('/api/kho-nvl'),
       fetch('/api/lenh-sx'),
-      fetch('/api/san-pham?format=table'),
-      fetch('/api/cai-dat')
+      fetch('/api/san-pham?format=table')
     ]);
     const machineData = await machineRes.json().catch(() => ({}));
     const materialData = await materialRes.json().catch(() => ({}));
     const productionData = await productionRes.json().catch(() => ({}));
     const productData = await productRes.json().catch(() => ({}));
-    const settingData = await settingRes.json().catch(() => ({}));
     if (!machineRes.ok) throw new Error(machineData.error || 'Không thể tải danh sách máy.');
     if (!materialRes.ok) throw new Error(materialData.error || 'Không thể tải kho NVL.');
     if (!productionRes.ok) throw new Error(productionData.error || 'Không thể tải lệnh sản xuất.');
@@ -1133,7 +1136,6 @@ export default function MixingReportForm({
 
     setProductionOrders(normalizeMixingProductionOrders(productionData));
     if (productRes.ok) setCatalogProducts(normalizeMixingCatalogProducts(productData));
-    if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
   };
 
   useEffect(() => {

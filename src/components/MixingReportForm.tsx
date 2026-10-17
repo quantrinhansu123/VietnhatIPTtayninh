@@ -1227,18 +1227,28 @@ export default function MixingReportForm({
   }, [form.ca, productionOrdersForDate]);
 
   const machineSelectOptions = useMemo(() => {
-    const options = new Map<string, MachineOption>();
+    // Hiện đủ danh sách máy — không chỉ máy có lệnh SX ngày+ca (trước đó ẩn máy như MBB 11).
+    const withOrderIds = new Set<string>();
     productionOrdersForDateShift.forEach(order => {
       const machine = resolveMachineFromProductionRef(order.machine, machines);
-      if (machine) options.set(machine.id, machine);
+      if (machine?.id) withOrderIds.add(machine.id);
     });
+    const list = machines.filter(machine => machine.id && (machine.code || machine.name));
     if (editingId && (form.ma_may || form.ten_may)) {
       const current =
         machines.find(machine => machine.code === form.ma_may) ??
         machines.find(machine => machine.name === form.ten_may);
-      if (current) options.set(current.id, current);
+      if (current && !list.some(item => item.id === current.id)) list.push(current);
     }
-    return [...options.values()];
+    return list.sort((left, right) => {
+      const leftHit = withOrderIds.has(left.id) ? 0 : 1;
+      const rightHit = withOrderIds.has(right.id) ? 0 : 1;
+      if (leftHit !== rightHit) return leftHit - rightHit;
+      return `${left.code} ${left.name}`.localeCompare(`${right.code} ${right.name}`, 'vi', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
   }, [editingId, form.ma_may, form.ten_may, machines, productionOrdersForDateShift]);
 
   const staffSelectOptions = useMemo(() => {

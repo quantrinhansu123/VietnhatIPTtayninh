@@ -32,6 +32,8 @@
 
 **Gợi ý định mức QC:** Form `/bao-cao-phoi-tron` khi chọn Ngày + Ca sẽ tải `/api/bang-tron-vat-tu-dinh-muc?ngay&ca` và hiện phiếu định mức QC để **Áp dụng** (đổ NVL gộp theo mã vào lần 1).
 
+**Sổ Máy:** hiện đủ máy từ `/api/danh-sach-may` (không chỉ máy có lệnh SX đúng ngày+ca). Máy có lệnh SX ngày+ca được xếp lên đầu danh sách.
+
 
 
 **Danh sách:** Tab `mixing-report-list` có 3 tab con: **Bảng trộn định mức** (`bang_tron_vat_tu_dinh_muc`) · **Phiếu trộn thực tế** · **Danh sách phiếu phối trộn** (`bao_cao_phoi_tron`). Khi mở chi tiết phiếu phối trộn hiện **Tỉ lệ trộn Định mức** (`ti_le_phan_tram`) và **Tỉ lệ trộn Thực tế** (KL TT dòng ÷ tổng KL TT phiếu × 100).

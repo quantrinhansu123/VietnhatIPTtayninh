@@ -7327,69 +7327,6 @@ function generateWarehouseSlipCode(loaiPhieu: 'nhap' | 'xuat', machineName = '')
   return token ? `${prefix}-${token}-${date}-${time}` : `${prefix}-${date}-${time}`;
 }
 
-async function syncProductDetailsFromWarehouseSlip(
-  maPhieu: string,
-  kho: string,
-  loaiPhieu: 'nhap' | 'xuat'
-) {
-  if (!supabase || !supabaseKho) throw new Error('DB kho hoặc DB sản phẩm chưa được cấu hình.');
-  const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
-  const { data: slipHeader, error: headerError } = await supabaseKho
-    .from(headerTable)
-    .select('ngay, kho, ca')
-    .eq('ma_phieu', maPhieu)
-    .maybeSingle();
-  if (headerError) throw new Error(`Không thể đọc thông tin phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'}. ${headerError.message}`);
-
-  const warehouseName = String(slipHeader?.kho ?? kho ?? '').trim();
-  const slipDate = String(slipHeader?.ngay ?? '').slice(0, 10);
-  const shift = String(slipHeader?.ca ?? '').trim() || null;
-  if (!warehouseName) throw new Error(`Thiếu kho của phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'} thành phẩm.`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(slipDate)) throw new Error('Phiếu thành phẩm thiếu ngày phiếu hợp lệ.');
-
-  const detailByQr = new Map<string, { ma_sp_goc: string; ma_sp_qr: string }>();
-  const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
-  const batchSize = 1000;
-  const addRows = (rows: Array<{ ma_sp?: string | null; ma_sp_quet?: string | null }> | null) => {
-    for (const row of rows || []) {
-      const maSpQr = String(row.ma_sp_quet ?? '').trim();
-      const maSpGoc = String(row.ma_sp ?? '').trim();
-      if (!maSpQr) continue;
-      if (!maSpGoc) throw new Error(`Mã QR ${maSpQr} thiếu mã sản phẩm gốc.`);
-      detailByQr.set(maSpQr, { ma_sp_goc: maSpGoc, ma_sp_qr: maSpQr });
-    }
-  };
-  for (let offset = 0; ; offset += batchSize) {
-    const { data: rows, error } = await supabaseKho
-      .from(lineTable)
-      .select('ma_sp, ma_sp_quet')
-      .eq('ma_phieu', maPhieu)
-      .eq('loai', 'san_pham')
-      .not('ma_sp_quet', 'is', null)
-      .neq('ma_sp_quet', '')
-      .order('ma_sp_quet', { ascending: true })
-      .range(offset, offset + batchSize - 1);
-    if (error) throw new Error(`Không thể đọc mã QR của phiếu ${loaiPhieu === 'nhap' ? 'nhập' : 'xuất'}. ${error.message}`);
-    addRows(rows);
-    if (!rows || rows.length < batchSize) break;
-  }
-
-  const details = [...detailByQr.values()];
-  if (details.length === 0) {
-    throw new Error(`Phiếu ${maPhieu} không có mã QR thành phẩm để đồng bộ.`);
-  }
-  const { data: affectedRows, error } = await supabase.rpc('sync_chi_tiet_san_pham', {
-    p_loai_phieu: loaiPhieu,
-    p_ma_phieu: maPhieu,
-    p_ngay_phieu: slipDate,
-    p_kho: warehouseName,
-    p_ca: shift,
-    p_items: details
-  });
-  if (error) throw new Error(`Không thể ghi lịch sử và cập nhật chi_tiet_san_pham trong transaction. ${error.message}`);
-  return Number(affectedRows) || 0;
-}
-
 async function stageProductAdjustmentSlipInKhoDb(
   parsed: {
     loaiPhieu: 'nhap' | 'xuat';
@@ -12754,22 +12691,6 @@ export function createApp() {
         return res.status(400).json({ error: 'status chỉ nhận chua_chot hoặc da_chot.' });
       }
 
-      const syncProductDetails = body.dong_bo_chi_tiet_san_pham === true;
-      if (syncProductDetails && (loaiPhieu !== 'nhap' || status !== 'da_chot')) {
-        return res.status(400).json({ error: 'Chỉ đồng bộ chi tiết sản phẩm khi chốt phiếu nhập.' });
-      }
-      const markProductDetailsExported = body.danh_dau_chi_tiet_san_pham_da_xuat === true;
-      if (markProductDetailsExported && (loaiPhieu !== 'xuat' || status !== 'da_chot')) {
-        return res.status(400).json({ error: 'Chỉ cập nhật chi tiết sản phẩm thành đã xuất khi chốt phiếu xuất.' });
-      }
-      if ((syncProductDetails || markProductDetailsExported) && !supabase) {
-        return res.status(503).json({ error: 'DB sản phẩm chưa được cấu hình để lưu mã QR chi tiết.' });
-      }
-      const warehouseName = String(body.kho ?? '').trim();
-      if ((syncProductDetails || markProductDetailsExported) && !warehouseName) {
-        return res.status(400).json({ error: `Thiếu kho của phiếu ${markProductDetailsExported ? 'xuất' : 'nhập'} thành phẩm.` });
-      }
-
       const hasItems = Object.prototype.hasOwnProperty.call(body, 'items');
       const manualKind = String(body.loai ?? body.loai_kho ?? '').trim().toLowerCase();
       const manualItems: Array<{ code: string; name: string | null; unit: string | null; quantity: number }> = [];
@@ -12812,8 +12733,7 @@ export function createApp() {
         ly_do: optionalText(body.ly_do ?? body.lyDo ?? body.reason),
         nguoi_lap: optionalText(body.nguoi_lap ?? body.nguoiLap)
       };
-      const syncProductDetailsToCommit = syncProductDetails || markProductDetailsExported;
-      if (status) headerPayload.status = syncProductDetailsToCommit ? 'chua_chot' : status;
+      if (status) headerPayload.status = status;
       const { data: savedHeader, error } = await supabaseKho
         .from(headerTable)
         .upsert(headerPayload, { onConflict: 'ma_phieu' })
@@ -12924,30 +12844,9 @@ export function createApp() {
         }
       }
 
-      let productDetailsSynced = 0;
-      let header = savedHeader;
-      if (syncProductDetailsToCommit) {
-        try {
-          productDetailsSynced = await syncProductDetailsFromWarehouseSlip(maPhieu, warehouseName, loaiPhieu as 'nhap' | 'xuat');
-        } catch (syncError: any) {
-          console.error(`[SUPABASE:${SUPABASE_MAIN_DB_LABEL}] chi_tiet_san_pham ${loaiPhieu} sync error:`, syncError);
-          return res.status(500).json({ error: `Phiếu đã lưu nhưng ${syncError?.message || 'không thể đồng bộ trạng thái mã QR.'}` });
-        }
+      const header = savedHeader;
 
-        const { data: finalizedHeader, error: finalizeError } = await supabaseKho
-          .from(headerTable)
-          .update({ status: 'da_chot' })
-          .eq('ma_phieu', maPhieu)
-          .select(WAREHOUSE_HEADER_SELECT)
-          .single();
-        if (finalizeError) {
-          console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] ${headerTable} finalize error:`, finalizeError);
-          return res.status(500).json({ error: `Mã chi tiết đã đồng bộ nhưng không thể chốt phiếu. ${finalizeError.message}` });
-        }
-        header = finalizedHeader;
-      }
-
-      return res.json({ success: true, header, chi_tiet_san_pham_synced: productDetailsSynced, source: SUPABASE_KHO_DB_LABEL });
+      return res.json({ success: true, header, source: SUPABASE_KHO_DB_LABEL });
     } catch (err: any) {
       console.error(`[SUPABASE:${SUPABASE_KHO_DB_LABEL}] /api/kho/phieu error:`, err);
       return res.status(500).json({ error: err?.message || 'Lỗi khi lưu thông tin phiếu kho.' });
@@ -17581,86 +17480,29 @@ export function createApp() {
         : Date.now();
       const cutoff = Number.isFinite(confirmTime) ? confirmTime : Date.now();
 
-      const [snapshotRows, movementRows, productRows] = await Promise.all([
-        loadAllTonKhoRows((from, to) => supabase!
-          .from('chi_tiet_san_pham')
-          .select('ma_sp_goc, ma_sp_qr, kho, trang_thai, created_at, updated_at')
-          .order('ma_sp_qr', { ascending: true })
-          .range(from, to)),
-        loadAllTonKhoRows((from, to) => supabase!
-          .from('bien_dong_chi_tiet_san_pham')
-          .select('id, ma_sp_goc, ma_sp_qr, loai_bien_dong, kho, created_at')
-          .order('ma_sp_qr', { ascending: true })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true })
-          .range(from, to)),
+      const cutoffDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(cutoff));
+      const [stockResult, productRows] = await Promise.all([
+        loadTonKhoGop('san_pham', tenKho || null, null, cutoffDate),
         loadAllTonKhoRows((from, to) => supabase!
           .from(SUPABASE_PRODUCTS_TABLE)
           .select('ma_sp, ten_sp, don_vi')
           .range(from, to))
       ]);
-
-      // Rebuild stock from each QR's last movement before the selected batch's confirmation time.
-      const historyByQr = new Map<string, Array<Record<string, unknown>>>();
-      for (const movement of movementRows) {
-        const qr = String(movement.ma_sp_qr ?? '').trim();
-        if (!qr) continue;
-        const history = historyByQr.get(qr) || [];
-        history.push(movement);
-        historyByQr.set(qr, history);
-      }
-      const snapshotByQr = new Map(snapshotRows.map(row => [String(row.ma_sp_qr ?? '').trim(), row] as const));
-      const productByCode = new Map(productRows.map(row => [String(row.ma_sp ?? '').trim(), row] as const));
-      const allQr = new Set([...snapshotByQr.keys(), ...historyByQr.keys()]);
+      if (stockResult.error) throw stockResult.error;
       const heThongChiTiet: Array<{
         ma: string; ma_goc: string; ten: string; loai_kho: 'san_pham';
         don_vi: string | null; ten_kho: string | null; ton_cuoi_ky: number;
-      }> = [];
-
-      for (const qr of allQr) {
-        if (!qr) continue;
-        const snapshot = snapshotByQr.get(qr);
-        const history = historyByQr.get(qr) || [];
-        const validHistory = history.filter(row => Number.isFinite(Date.parse(String(row.created_at ?? ''))));
-        let stock = false;
-        let warehouse: string | null = null;
-        let productCode = '';
-
-        if (validHistory.length) {
-          const lastBefore = [...validHistory].reverse().find(row => Date.parse(String(row.created_at)) <= cutoff);
-          const firstAfter = validHistory.find(row => Date.parse(String(row.created_at)) > cutoff);
-          // Without a prior event, a later export proves it was in stock; a later import proves it was not yet in stock.
-          const movement = lastBefore || firstAfter;
-          const type = String(movement?.loai_bien_dong ?? '').trim();
-          stock = lastBefore ? type !== 'xuat' : type === 'xuat';
-          warehouse = String(movement?.kho ?? '').trim() || null;
-          productCode = String(movement?.ma_sp_goc ?? '').trim();
-        } else {
-          const createdAt = Date.parse(String(snapshot?.created_at ?? ''));
-          const updatedAt = Date.parse(String(snapshot?.updated_at ?? ''));
-          const status = String(snapshot?.trang_thai ?? '').trim();
-          stock = status === 'trong_kho'
-            ? Number.isFinite(createdAt) && createdAt <= cutoff
-            : status === 'da_xuat'
-              && Number.isFinite(createdAt) && createdAt <= cutoff
-              && Number.isFinite(updatedAt) && updatedAt > cutoff;
-          warehouse = String(snapshot?.kho ?? '').trim() || null;
-          productCode = String(snapshot?.ma_sp_goc ?? '').trim();
-        }
-
-        if (!stock || (tenKho && warehouse !== tenKho)) continue;
-        productCode ||= String(snapshot?.ma_sp_goc ?? '').trim() || extractTonKhoPrefix(qr) || qr;
-        const product = productByCode.get(productCode);
-        heThongChiTiet.push({
-          ma: qr,
-          ma_goc: productCode,
-          ten: String(product?.ten_sp ?? '').trim() || qr,
-          loai_kho: 'san_pham',
-          don_vi: String(product?.don_vi ?? '').trim() || null,
-          ten_kho: warehouse,
-          ton_cuoi_ky: 1
-        });
-      }
+      }> = ((stockResult.data as TonKhoGopRow[]) || [])
+        .filter(row => Number(row.ton_cuoi_ky) > 0)
+        .map(row => ({
+          ma: row.ma,
+          ma_goc: extractTonKhoPrefix(row.ma),
+          ten: row.ten,
+          loai_kho: 'san_pham' as const,
+          don_vi: row.don_vi,
+          ten_kho: row.ten_kho,
+          ton_cuoi_ky: Number(row.ton_cuoi_ky)
+        }));
       heThongChiTiet.sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
       const spRowsRaw: TonKhoGopRow[] = heThongChiTiet.map(row => ({
         ma: row.ma,
@@ -18305,6 +18147,73 @@ export function createApp() {
     });
   }
 
+  // Tồn thành phẩm theo từng mã QR: nhap_kho/xuat_kho (+ header phieu_nhap/phieu_xuat) ở DB kho.
+  // Tồn đầu kỳ = nhập - xuất của mọi ngày trước tuNgay, nên tồn đầu hôm sau = tồn cuối hôm trước.
+  async function loadTonKhoSanPhamFromKho(
+    tenKho: string | null,
+    tuNgay: string | null,
+    denNgay: string | null
+  ): Promise<TonKhoGopRow[]> {
+    if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
+    const pageSize = 1000;
+    const rowsByCode = new Map<string, TonKhoGopRow>();
+    for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+      const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
+      const headers = new Map<string, { ngay: string; kho: string }>();
+      for (let offset = 0; ; offset += pageSize) {
+        let query = supabaseKho.from(headerTable).select('ma_phieu, ngay, kho, treo').order('ma_phieu');
+        if (tenKho) query = query.eq('kho', tenKho);
+        if (denNgay) query = query.lte('ngay', denNgay);
+        const { data, error } = await query.range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        for (const row of data || []) {
+          if (row.treo) continue;
+          headers.set(String(row.ma_phieu), { ngay: String(row.ngay ?? '').slice(0, 10), kho: String(row.kho ?? '').trim() });
+        }
+        if (!data || data.length < pageSize) break;
+      }
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabaseKho
+          .from(lineTable)
+          .select('id, ma_phieu, ma_sp, ma_sp_quet, ten_sp, don_vi, so_luong')
+          .eq('loai', 'san_pham')
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        for (const line of data || []) {
+          const header = headers.get(String(line.ma_phieu));
+          if (!header || !header.ngay) continue;
+          const code = String(line.ma_sp_quet ?? '').trim() || String(line.ma_sp ?? '').trim();
+          if (!code) continue;
+          const qty = Number(line.so_luong) || 0;
+          let row = rowsByCode.get(code);
+          if (!row) {
+            row = {
+              ma: code,
+              ten: String(line.ten_sp ?? '').trim() || code,
+              don_vi: String(line.don_vi ?? '').trim() || null,
+              ten_kho: header.kho || tenKho,
+              ton_dau_ky: 0,
+              nhap_trong_ky: 0,
+              xuat_trong_ky: 0,
+              ton_cuoi_ky: 0
+            };
+            rowsByCode.set(code, row);
+          }
+          const signed = loaiPhieu === 'nhap' ? qty : -qty;
+          if (tuNgay && header.ngay < tuNgay) row.ton_dau_ky += signed;
+          else if (loaiPhieu === 'nhap') row.nhap_trong_ky += qty;
+          else row.xuat_trong_ky += qty;
+        }
+        if (!data || data.length < pageSize) break;
+      }
+    }
+    return [...rowsByCode.values()].map(row => ({
+      ...row,
+      ton_cuoi_ky: row.ton_dau_ky + row.nhap_trong_ky - row.xuat_trong_ky
+    }));
+  }
+
   let hasWarnedMissingTonKhoRpc = false;
 
   async function loadTonKhoGop(
@@ -18316,19 +18225,21 @@ export function createApp() {
     if (loaiKho !== 'nvl' && loaiKho !== 'san_pham') {
       return { data: await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay), error: null };
     }
-    const rpcName = loaiKho === 'san_pham' ? 'ton_kho_san_pham_gop' : 'ton_kho_nvl_gop';
+    if (loaiKho === 'san_pham') {
+      try {
+        const rows = await loadTonKhoSanPhamFromKho(tenKho, tuNgay, denNgay);
+        return { data: await enrichProductTonKhoRows(rows), error: null };
+      } catch (err: any) {
+        return { data: null, error: { message: err?.message || 'Không thể tính tồn thành phẩm từ nhập/xuất kho.' } as any };
+      }
+    }
+    const rpcName = 'ton_kho_nvl_gop';
     const result = await supabase!.rpc(rpcName, {
       p_ten_kho: tenKho,
       p_tu_ngay: tuNgay,
       p_den_ngay: denNgay
     });
-    if (!result.error) {
-      if (loaiKho !== 'san_pham' || !Array.isArray(result.data)) return result;
-      return {
-        ...result,
-        data: await enrichProductTonKhoRows(result.data as TonKhoGopRow[])
-      };
-    }
+    if (!result.error) return result;
     if (result.error.code !== 'PGRST202') return result;
 
     if (!hasWarnedMissingTonKhoRpc) {
@@ -18339,11 +18250,7 @@ export function createApp() {
       hasWarnedMissingTonKhoRpc = true;
     }
 
-    const fallbackData = await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay);
-    const data = loaiKho === 'san_pham'
-      ? await enrichProductTonKhoRows(fallbackData)
-      : fallbackData;
-    return { data, error: null };
+    return { data: await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay), error: null };
   }
 
   app.get('/api/chi-tiet-san-pham/ton-kho', async (req, res) => {
@@ -18352,204 +18259,15 @@ export function createApp() {
     if (!supabase) return res.status(503).json({ error: 'Chưa kết nối cơ sở dữ liệu sản phẩm.' });
 
     try {
-      const { count, error } = await supabase
-        .from('chi_tiet_san_pham')
-        .select('ma_sp_qr', { count: 'exact', head: true })
-        .eq('ma_sp_goc', maSpGoc)
-        .eq('trang_thai', 'trong_kho');
+      const { data, error } = await loadTonKhoGop('san_pham', null, null, null);
       if (error) throw error;
-      return res.json({ ma_sp_goc: maSpGoc, so_luong: count ?? 0 });
+      const count = ((data as TonKhoGopRow[]) || [])
+        .filter(row => extractTonKhoPrefix(row.ma) === maSpGoc && Number(row.ton_cuoi_ky) > 0)
+        .reduce((sum, row) => sum + Number(row.ton_cuoi_ky), 0);
+      return res.json({ ma_sp_goc: maSpGoc, so_luong: count });
     } catch (err: any) {
       console.error('Product stock count query error:', err);
       return res.status(500).json({ error: err?.message || 'Không thể tải tồn kho sản phẩm.' });
-    }
-  });
-
-  app.get('/api/ton-kho-qr-data', async (req, res) => {
-    if (!supabase) return res.json({ chi_tiet_records: [], tong_hop_records: [], source: 'local' });
-
-    try {
-      const tenKho = String(req.query.ten_kho ?? req.query.tenKho ?? '').trim();
-      const tuNgay = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
-      const denNgay = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
-      if (tuNgay && denNgay && tuNgay > denNgay) {
-        return res.status(400).json({ error: 'Ngày đầu kỳ phải nhỏ hơn hoặc bằng ngày kết thúc.' });
-      }
-
-      const [snapshotRows, movementRows, productRows] = await Promise.all([
-        loadAllTonKhoRows((from, to) => {
-          let query = supabase!
-            .from('chi_tiet_san_pham')
-            .select('ma_sp_goc, ma_sp_qr, kho, trang_thai, so_luong')
-            .eq('trang_thai', 'trong_kho')
-            .order('ma_sp_qr', { ascending: true });
-          if (tenKho) query = query.eq('kho', tenKho);
-          return query.range(from, to);
-        }),
-        loadAllTonKhoRows((from, to) => {
-          let query = supabase!
-            .from('bien_dong_chi_tiet_san_pham')
-            .select('id, ma_sp_goc, ma_sp_qr, loai_bien_dong, la_dieu_chinh, ma_phieu, ngay_phieu, kho, ca')
-            .order('ngay_phieu', { ascending: true })
-            .order('id', { ascending: true });
-          if (tenKho) query = query.eq('kho', tenKho);
-          return query.range(from, to);
-        }),
-        loadAllTonKhoRows((from, to) =>
-          supabase!
-            .from(SUPABASE_PRODUCTS_TABLE)
-            .select('ma_sp, ten_sp, don_vi')
-            .order('ma_sp', { ascending: true })
-            .range(from, to)
-        )
-      ]);
-
-      const productsByCode = new Map<string, Record<string, unknown>>();
-      for (const product of productRows) {
-        const code = String(product.ma_sp ?? '').trim();
-        if (code) productsByCode.set(code, product);
-      }
-      const chiTietRecords = snapshotRows
-        .map(row => {
-          const code = String(row.ma_sp_goc ?? '').trim();
-          const product = productsByCode.get(code);
-          return {
-            ma_sp_goc: code,
-            ma_sp_qr: String(row.ma_sp_qr ?? '').trim(),
-            ten: String(product?.ten_sp ?? '').trim() || code,
-            loai_sp: 'Thành phẩm',
-            don_vi: String(product?.don_vi ?? '').trim() || null,
-            ten_kho: String(row.kho ?? '').trim(),
-            so_luong: Number(row.so_luong) || 0
-          };
-        })
-        .filter(row => row.ma_sp_goc && row.ma_sp_qr)
-        .sort((a, b) => a.ma_sp_goc.localeCompare(b.ma_sp_goc, 'vi') || a.ma_sp_qr.localeCompare(b.ma_sp_qr, 'vi'));
-
-      const totals = new Map<string, TonKhoGopRow>();
-      const ensureTotal = (code: string) => {
-        let row = totals.get(code);
-        if (!row) {
-          const product = productsByCode.get(code);
-          row = {
-            ma: code,
-            ten: String(product?.ten_sp ?? '').trim() || code,
-            don_vi: String(product?.don_vi ?? '').trim() || null,
-            ten_kho: tenKho || null,
-            ton_dau_ky: 0,
-            nhap_trong_ky: 0,
-            xuat_trong_ky: 0,
-            dieu_chinh_trong_ky: 0,
-            ton_cuoi_ky: 0
-          };
-          totals.set(code, row);
-        }
-        return row;
-      };
-
-      const currentStockByProduct = new Map<string, number>();
-      const futureImportsByProduct = new Map<string, number>();
-      const futureExportsByProduct = new Map<string, number>();
-      const futureAdjustmentsByProduct = new Map<string, number>();
-      const nhapRecords: Array<Record<string, unknown>> = [];
-      const xuatRecords: Array<Record<string, unknown>> = [];
-      for (const row of snapshotRows) {
-        const code = String(row.ma_sp_goc ?? '').trim();
-        if (!code) continue;
-        currentStockByProduct.set(code, (currentStockByProduct.get(code) ?? 0) + (Number(row.so_luong) || 0));
-        ensureTotal(code);
-      }
-
-      for (const row of movementRows) {
-        const code = String(row.ma_sp_goc ?? '').trim();
-        const date = String(row.ngay_phieu ?? '').slice(0, 10);
-        const type = String(row.loai_bien_dong ?? '').trim();
-        const laDieuChinh = row.la_dieu_chinh === true;
-        if (!code || !date) continue;
-
-        const total = ensureTotal(code);
-        if (denNgay && date > denNgay) {
-          if (laDieuChinh && type === 'nhap') futureAdjustmentsByProduct.set(code, (futureAdjustmentsByProduct.get(code) ?? 0) + 1);
-          else if (laDieuChinh && type === 'xuat') futureAdjustmentsByProduct.set(code, (futureAdjustmentsByProduct.get(code) ?? 0) - 1);
-          else if (type === 'nhap') futureImportsByProduct.set(code, (futureImportsByProduct.get(code) ?? 0) + 1);
-          else if (type === 'xuat') futureExportsByProduct.set(code, (futureExportsByProduct.get(code) ?? 0) + 1);
-          continue;
-        }
-        const beforePeriod = Boolean(tuNgay && date < tuNgay);
-        if (type === 'ton_dau') {
-          if (!tuNgay || date <= tuNgay) total.ton_dau_ky += 1;
-        } else if (beforePeriod) {
-          if (type === 'nhap') total.ton_dau_ky += 1;
-          if (type === 'xuat') total.ton_dau_ky -= 1;
-        } else if ((!tuNgay || date >= tuNgay) && (!denNgay || date <= denNgay)) {
-          if (laDieuChinh && type === 'nhap') total.dieu_chinh_trong_ky += 1;
-          else if (laDieuChinh && type === 'xuat') total.dieu_chinh_trong_ky -= 1;
-          else if (type === 'nhap') total.nhap_trong_ky += 1;
-          else if (type === 'xuat') total.xuat_trong_ky += 1;
-
-          if (type === 'nhap' || type === 'xuat') {
-            const product = productsByCode.get(code);
-            const movement = {
-              id: String(row.id ?? `${type}-${code}-${date}-${row.ma_sp_qr ?? ''}`),
-              ma_sp_goc: code,
-              ma_sp_qr: String(row.ma_sp_qr ?? '').trim(),
-              ten: String(product?.ten_sp ?? '').trim() || code,
-              don_vi: String(product?.don_vi ?? '').trim() || null,
-              ma_phieu: String(row.ma_phieu ?? '').trim() || null,
-              ngay_phieu: date,
-              kho: String(row.kho ?? '').trim(),
-              ca: String(row.ca ?? '').trim() || null,
-              la_dieu_chinh: laDieuChinh,
-              so_luong: 1
-            };
-            if (type === 'nhap') nhapRecords.push(movement);
-            else xuatRecords.push(movement);
-          }
-        }
-      }
-
-      nhapRecords.sort((a, b) =>
-        String(b.ngay_phieu).localeCompare(String(a.ngay_phieu)) ||
-        String(a.ma_sp_goc).localeCompare(String(b.ma_sp_goc), 'vi') ||
-        String(a.ma_sp_qr).localeCompare(String(b.ma_sp_qr), 'vi')
-      );
-      xuatRecords.sort((a, b) =>
-        String(b.ngay_phieu).localeCompare(String(a.ngay_phieu)) ||
-        String(a.ma_sp_goc).localeCompare(String(b.ma_sp_goc), 'vi') ||
-        String(a.ma_sp_qr).localeCompare(String(b.ma_sp_qr), 'vi')
-      );
-
-      const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-      const useCurrentSnapshot = (!denNgay || denNgay >= today) && (!tuNgay || tuNgay <= today);
-      const tongHopRecords = Array.from(totals.values())
-        .map(row => {
-          if (useCurrentSnapshot) {
-            row.ton_cuoi_ky = currentStockByProduct.get(row.ma) ?? 0;
-            // Snapshot hiện tại là số tồn chuẩn; suy ngược tồn đầu theo nhập, xuất và điều chỉnh.
-            row.ton_dau_ky = row.ton_cuoi_ky - row.nhap_trong_ky + row.xuat_trong_ky - row.dieu_chinh_trong_ky;
-          } else {
-            // Với kỳ đã qua, lùi snapshot theo mọi biến động sau ngày kết thúc.
-            row.ton_cuoi_ky = (currentStockByProduct.get(row.ma) ?? 0)
-              - (futureImportsByProduct.get(row.ma) ?? 0)
-              + (futureExportsByProduct.get(row.ma) ?? 0)
-              - (futureAdjustmentsByProduct.get(row.ma) ?? 0);
-            row.ton_dau_ky = row.ton_cuoi_ky - row.nhap_trong_ky + row.xuat_trong_ky - row.dieu_chinh_trong_ky;
-          }
-          return row;
-        })
-        .filter(row => row.ton_cuoi_ky > 0 || row.nhap_trong_ky > 0 || row.xuat_trong_ky > 0 || row.dieu_chinh_trong_ky !== 0)
-        .sort((a, b) => a.ma.localeCompare(b.ma, 'vi'));
-
-      return res.json({
-        chi_tiet_records: chiTietRecords,
-        tong_hop_records: tongHopRecords,
-        nhap_records: nhapRecords,
-        xuat_records: xuatRecords,
-        source: 'chi_tiet_san_pham+bien_dong_chi_tiet_san_pham'
-      });
-    } catch (err: any) {
-      console.error('Supabase QR inventory query error:', err);
-      return res.status(500).json({ error: err?.message || 'Không thể tải tồn kho từ sổ mã QR.' });
     }
   });
 

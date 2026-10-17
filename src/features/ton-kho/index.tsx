@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, ClipboardCheck, ListChecks } from 'lucide-react';
+import { BarChart3, CalendarRange, ListChecks, Loader2, RefreshCw } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import {
@@ -25,37 +25,15 @@ function todayIsoDate() {
 
 type TonKhoRow = {
   ma: string;
+  ma_goc: string;
   ten: string;
+  loai_sp: string | null;
   don_vi: string | null;
+  ten_kho: string | null;
   ton_dau_ky: number;
   nhap_trong_ky: number;
   xuat_trong_ky: number;
-  dieu_chinh_trong_ky: number;
   ton_cuoi_ky: number;
-};
-
-type TonKhoDetailRow = {
-  ma_sp_goc: string;
-  ma_sp_qr: string;
-  ten: string;
-  loai_sp: string;
-  don_vi: string | null;
-  ten_kho: string;
-  so_luong: number;
-};
-
-type TonKhoMovementRow = {
-  id: string;
-  ma_sp_goc: string;
-  ma_sp_qr: string;
-  ten: string;
-  don_vi: string | null;
-  ma_phieu: string | null;
-  ngay_phieu: string;
-  kho: string;
-  ca: string | null;
-  la_dieu_chinh: boolean;
-  so_luong: number;
 };
 
 function normalizeTonKhoRows(data: unknown): TonKhoRow[] {
@@ -76,89 +54,30 @@ function normalizeTonKhoRows(data: unknown): TonKhoRow[] {
       };
       return {
         ma,
+        // Mã gốc trên màn hình luôn là tiền tố của chính mã quét. Điều này giữ
+        // các lô/serial cùng nhóm ngay cả khi dữ liệu cũ lưu ma_goc chưa đồng nhất.
+        ma_goc: getBaseInventoryCode(ma),
         ten: String(record.ten ?? '').trim(),
+        loai_sp: record.loai_sp ? String(record.loai_sp).trim() : null,
         don_vi: record.don_vi ? String(record.don_vi).trim() : null,
+        ten_kho: record.ten_kho ? String(record.ten_kho).trim() : null,
         ton_dau_ky: num(record.ton_dau_ky),
         nhap_trong_ky: num(record.nhap_trong_ky),
         xuat_trong_ky: num(record.xuat_trong_ky),
-        dieu_chinh_trong_ky: num(record.dieu_chinh_trong_ky),
         ton_cuoi_ky: num(record.ton_cuoi_ky)
       };
     })
     .filter((row): row is TonKhoRow => Boolean(row));
 }
 
-function normalizeTonKhoDetailRows(data: unknown): TonKhoDetailRow[] {
-  const records =
-    data && typeof data === 'object' && Array.isArray((data as { records?: unknown }).records)
-      ? (data as { records: unknown[] }).records
-      : [];
-
-  return records
-    .map((item): TonKhoDetailRow | null => {
-      if (!item || typeof item !== 'object') return null;
-      const record = item as Record<string, unknown>;
-      const maSp = String(record.ma_sp_goc ?? '').trim();
-      const maQr = String(record.ma_sp_qr ?? '').trim();
-      if (!maSp || !maQr) return null;
-      const quantity = Number(record.so_luong);
-      return {
-        ma_sp_goc: maSp,
-        ma_sp_qr: maQr,
-        ten: String(record.ten ?? '').trim(),
-        loai_sp: String(record.loai_sp ?? 'Thành phẩm').trim(),
-        don_vi: record.don_vi ? String(record.don_vi).trim() : null,
-        ten_kho: String(record.ten_kho ?? '').trim(),
-        so_luong: Number.isFinite(quantity) ? quantity : 0
-      };
-    })
-    .filter((row): row is TonKhoDetailRow => Boolean(row));
-}
-
-function normalizeTonKhoMovementRows(data: unknown): TonKhoMovementRow[] {
-  const records =
-    data && typeof data === 'object' && Array.isArray((data as { records?: unknown }).records)
-      ? (data as { records: unknown[] }).records
-      : [];
-
-  return records
-    .map((item): TonKhoMovementRow | null => {
-      if (!item || typeof item !== 'object') return null;
-      const record = item as Record<string, unknown>;
-      const maSp = String(record.ma_sp_goc ?? '').trim();
-      const maQr = String(record.ma_sp_qr ?? '').trim();
-      const ngay = String(record.ngay_phieu ?? '').slice(0, 10);
-      if (!maSp || !maQr || !ngay) return null;
-      const quantity = Number(record.so_luong);
-      return {
-        id: String(record.id ?? `${maQr}-${ngay}`),
-        ma_sp_goc: maSp,
-        ma_sp_qr: maQr,
-        ten: String(record.ten ?? '').trim() || maSp,
-        don_vi: record.don_vi ? String(record.don_vi).trim() : null,
-        ma_phieu: record.ma_phieu ? String(record.ma_phieu).trim() : null,
-        ngay_phieu: ngay,
-        kho: String(record.kho ?? '').trim(),
-        ca: record.ca ? String(record.ca).trim() : null,
-        la_dieu_chinh: record.la_dieu_chinh === true,
-        so_luong: Number.isFinite(quantity) ? quantity : 1
-      };
-    })
-    .filter((row): row is TonKhoMovementRow => Boolean(row));
-}
-
 function formatQty(value: number) {
   return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 }
 
-function formatAdjustment(value: number) {
-  return value > 0 ? `+${formatQty(value)}` : formatQty(value);
-}
-
-function formatIsoToVi(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return value || '—';
-  return `${match[3]}/${match[2]}/${match[1]}`;
+function getBaseInventoryCode(value: string) {
+  const code = String(value ?? '').trim();
+  const suffixSeparatorIndex = code.indexOf('_');
+  return suffixSeparatorIndex > 0 ? code.slice(0, suffixSeparatorIndex).trim() : code;
 }
 
 type WarehouseCatalogItem = { id: string | number; ten_kho: string };
@@ -180,26 +99,31 @@ function normalizeWarehouseCatalog(data: unknown): WarehouseCatalogItem[] {
     .filter((item): item is WarehouseCatalogItem => Boolean(item));
 }
 
-type TonKhoMainTab = 'kiem-ton' | 'xuat-kho' | 'nhap-kho';
-type TonKhoKiemTonView = 'chi-tiet' | 'tong-hop';
+type TonKhoView = 'chi-tiet' | 'tong-hop' | 'tong-hop-ky';
 
 export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   useTabAccess('ton-kho');
 
-  const [mainTab, setMainTab] = useState<TonKhoMainTab>('kiem-ton');
-  const [kiemTonView, setKiemTonView] = useState<TonKhoKiemTonView>('tong-hop');
+  const [view, setView] = useState<TonKhoView>('chi-tiet');
   const [tenKho, setTenKho] = useState('all');
   const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState(() => todayIsoDate());
+  const [toDate, setToDate] = useState('');
+  const [kyStartDate, setKyStartDate] = useState('');
+  const [kyEndDate, setKyEndDate] = useState(() => todayIsoDate());
+  const [appliedKyStart, setAppliedKyStart] = useState('');
+  const [appliedKyEnd, setAppliedKyEnd] = useState('');
   const [searchText, setSearchText] = useState('');
 
   const [warehouses, setWarehouses] = useState<WarehouseCatalogItem[]>([]);
-  const [chiTietRows, setChiTietRows] = useState<TonKhoDetailRow[]>([]);
+  const [chiTietRows, setChiTietRows] = useState<TonKhoRow[]>([]);
   const [tongHopRows, setTongHopRows] = useState<TonKhoRow[]>([]);
-  const [nhapRows, setNhapRows] = useState<TonKhoMovementRow[]>([]);
-  const [xuatRows, setXuatRows] = useState<TonKhoMovementRow[]>([]);
+  const [tongHopKyRows, setTongHopKyRows] = useState<TonKhoRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingKy, setIsLoadingKy] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [kyError, setKyError] = useState('');
+  const hasDateRange = Boolean(fromDate && toDate);
+  const hasAppliedKy = Boolean(appliedKyStart && appliedKyEnd);
 
   useEffect(() => {
     const loadWarehouses = async () => {
@@ -217,15 +141,13 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   }, []);
 
   useEffect(() => {
-    const start = fromDate.trim();
-    const end = toDate.trim();
-    if (!end || end < start) {
-      setIsLoading(false);
-      setLoadError(!end ? 'Chọn ngày kết thúc kỳ.' : 'Đến ngày phải từ ngày đầu kỳ trở đi.');
-      setChiTietRows([]);
-      setTongHopRows([]);
-      setNhapRows([]);
-      setXuatRows([]);
+    if (!hasDateRange || view === 'tong-hop-ky') {
+      if (!hasDateRange) {
+        setChiTietRows([]);
+        setTongHopRows([]);
+        setLoadError('');
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -235,32 +157,81 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
       setLoadError('');
       try {
         const params = new URLSearchParams();
+        // Trang tồn kho này chỉ dùng để đối chiếu thành phẩm đã kiểm kê.
+        params.set('loai_kho', 'san_pham');
         if (tenKho !== 'all') params.set('ten_kho', tenKho);
-        if (start) params.set('from', start);
-        params.set('to', end);
+        params.set('from', fromDate);
+        params.set('to', toDate);
 
-        const res = await fetch(`/api/ton-kho-qr-data?${params.toString()}`, { signal: controller.signal });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được dữ liệu tồn kho QR.'));
-        setChiTietRows(normalizeTonKhoDetailRows({ records: data.chi_tiet_records }));
-        setTongHopRows(normalizeTonKhoRows({ records: data.tong_hop_records }));
-        setNhapRows(normalizeTonKhoMovementRows({ records: data.nhap_records }));
-        setXuatRows(normalizeTonKhoMovementRows({ records: data.xuat_records }));
+        const query = params.toString();
+        const [chiTietRes, tongHopRes] = await Promise.all([
+          fetch(`/api/ton-kho/chi-tiet?${query}`, { signal: controller.signal }),
+          fetch(`/api/ton-kho/tong-hop?${query}`, { signal: controller.signal })
+        ]);
+        const [chiTietData, tongHopData] = await Promise.all([
+          chiTietRes.json().catch(() => ({})),
+          tongHopRes.json().catch(() => ({}))
+        ]);
+        if (!chiTietRes.ok) {
+          throw new Error(readApiErrorMessage(chiTietRes, chiTietData, 'Không tải được danh sách sản phẩm tồn kho.'));
+        }
+        if (!tongHopRes.ok) {
+          throw new Error(readApiErrorMessage(tongHopRes, tongHopData, 'Không tải được dữ liệu tồn kho.'));
+        }
+        setChiTietRows(normalizeTonKhoRows(chiTietData));
+        setTongHopRows(normalizeTonKhoRows(tongHopData));
       } catch (err: any) {
         if (err?.name === 'AbortError') return;
-        const message = err?.message || 'Không tải được dữ liệu tồn kho QR.';
+        const message = err?.message || 'Không tải được dữ liệu tồn kho.';
         setLoadError(message);
         setChiTietRows([]);
         setTongHopRows([]);
-        setNhapRows([]);
-        setXuatRows([]);
       } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
+        setIsLoading(false);
       }
     };
     void load();
     return () => controller.abort();
-  }, [tenKho, fromDate, toDate]);
+  }, [tenKho, fromDate, toDate, hasDateRange, view]);
+
+  useEffect(() => {
+    if (view !== 'tong-hop-ky' || !hasAppliedKy) {
+      if (view !== 'tong-hop-ky') {
+        setIsLoadingKy(false);
+      }
+      return;
+    }
+
+    const controller = new AbortController();
+    const load = async () => {
+      setIsLoadingKy(true);
+      setKyError('');
+      try {
+        const params = new URLSearchParams();
+        params.set('loai_kho', 'san_pham');
+        if (tenKho !== 'all') params.set('ten_kho', tenKho);
+        // Tồn đầu kỳ = tính đến trước ngày đầu kỳ; Nhập/Xuất = nhật ký phiếu XNK từ ngày đó → đến ngày.
+        params.set('from', appliedKyStart);
+        params.set('to', appliedKyEnd);
+
+        const res = await fetch(`/api/ton-kho/tong-hop?${params.toString()}`, { signal: controller.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(readApiErrorMessage(res, data, 'Không tải được tổng hợp kỳ.'));
+        }
+        setTongHopKyRows(normalizeTonKhoRows(data));
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+        const message = err?.message || 'Không tải được tổng hợp kỳ.';
+        setKyError(message);
+        setTongHopKyRows([]);
+      } finally {
+        setIsLoadingKy(false);
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [view, tenKho, appliedKyStart, appliedKyEnd, hasAppliedKy]);
 
   const warehouseOptions = useMemo(() => warehouses.map(w => w.ten_kho), [warehouses]);
 
@@ -268,7 +239,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   const filteredChiTiet = useMemo(() => {
     if (!normalizedSearch) return chiTietRows;
     return chiTietRows.filter(row =>
-      `${row.ma_sp_goc} ${row.ma_sp_qr} ${row.ten} ${row.ten_kho}`.toLowerCase().includes(normalizedSearch)
+      `${row.ma_goc} ${row.ma} ${row.ten} ${row.ten_kho ?? ''}`.toLowerCase().includes(normalizedSearch)
     );
   }, [chiTietRows, normalizedSearch]);
 
@@ -277,19 +248,10 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     return tongHopRows.filter(row => `${row.ma} ${row.ten}`.toLowerCase().includes(normalizedSearch));
   }, [tongHopRows, normalizedSearch]);
 
-  const filteredNhap = useMemo(() => {
-    if (!normalizedSearch) return nhapRows;
-    return nhapRows.filter(row =>
-      `${row.ma_sp_goc} ${row.ma_sp_qr} ${row.ten} ${row.ma_phieu ?? ''} ${row.kho}`.toLowerCase().includes(normalizedSearch)
-    );
-  }, [nhapRows, normalizedSearch]);
-
-  const filteredXuat = useMemo(() => {
-    if (!normalizedSearch) return xuatRows;
-    return xuatRows.filter(row =>
-      `${row.ma_sp_goc} ${row.ma_sp_qr} ${row.ten} ${row.ma_phieu ?? ''} ${row.kho}`.toLowerCase().includes(normalizedSearch)
-    );
-  }, [xuatRows, normalizedSearch]);
+  const filteredTongHopKy = useMemo(() => {
+    if (!normalizedSearch) return tongHopKyRows;
+    return tongHopKyRows.filter(row => `${row.ma} ${row.ten}`.toLowerCase().includes(normalizedSearch));
+  }, [tongHopKyRows, normalizedSearch]);
 
   const sumTonRows = (rows: TonKhoRow[]) =>
     rows.reduce(
@@ -297,24 +259,48 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
         ton_dau_ky: acc.ton_dau_ky + row.ton_dau_ky,
         nhap_trong_ky: acc.nhap_trong_ky + row.nhap_trong_ky,
         xuat_trong_ky: acc.xuat_trong_ky + row.xuat_trong_ky,
-        dieu_chinh_trong_ky: acc.dieu_chinh_trong_ky + row.dieu_chinh_trong_ky,
         ton_cuoi_ky: acc.ton_cuoi_ky + row.ton_cuoi_ky
       }),
-      { ton_dau_ky: 0, nhap_trong_ky: 0, xuat_trong_ky: 0, dieu_chinh_trong_ky: 0, ton_cuoi_ky: 0 }
+      { ton_dau_ky: 0, nhap_trong_ky: 0, xuat_trong_ky: 0, ton_cuoi_ky: 0 }
     );
 
   const tongHopTotals = useMemo(() => sumTonRows(filteredTongHop), [filteredTongHop]);
+  const tongHopKyTotals = useMemo(() => sumTonRows(filteredTongHopKy), [filteredTongHopKy]);
 
   const hasActiveFilters =
     tenKho !== 'all' ||
     Boolean(fromDate) ||
-    toDate !== todayIsoDate() ||
+    Boolean(toDate) ||
+    Boolean(kyStartDate) ||
     Boolean(searchText);
   const resetFilters = () => {
     setTenKho('all');
     setFromDate('');
-    setToDate(todayIsoDate());
+    setToDate('');
+    setKyStartDate('');
+    setKyEndDate(todayIsoDate());
+    setAppliedKyStart('');
+    setAppliedKyEnd('');
+    setTongHopKyRows([]);
+    setKyError('');
     setSearchText('');
+  };
+
+  const handleApplyTongHopKy = () => {
+    const start = kyStartDate.trim();
+    const end = (kyEndDate.trim() || todayIsoDate());
+    if (!start) {
+      showAppToast('Chọn ngày đầu kỳ trước khi tổng hợp.', 'error');
+      return;
+    }
+    if (end < start) {
+      showAppToast('Đến ngày phải từ ngày đầu kỳ trở đi.', 'error');
+      return;
+    }
+    setView('tong-hop-ky');
+    setAppliedKyStart(start);
+    setAppliedKyEnd(end);
+    showAppToast('Đã tổng hợp kỳ theo nhật ký xuất nhập kho. Cập nhật kỳ gần nhất sẽ bổ sung sau.', 'success');
   };
 
   const renderTongHopTable = (
@@ -323,7 +309,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     emptyText: string,
     loading: boolean
   ) => (
-    <TableShell minWidthClassName="min-w-[920px]" maxHeightClassName="max-h-[560px]">
+    <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[560px]">
       <TableHead>
         <TableHeadCell>Mã</TableHeadCell>
         <TableHeadCell>Tên</TableHeadCell>
@@ -331,7 +317,6 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
         <TableHeadCell align="center">Tồn đầu kỳ</TableHeadCell>
         <TableHeadCell align="center">Nhập trong kỳ</TableHeadCell>
         <TableHeadCell align="center">Xuất trong kỳ</TableHeadCell>
-        <TableHeadCell align="center">Điều chỉnh</TableHeadCell>
         <TableHeadCell align="center">Tồn cuối kỳ</TableHeadCell>
       </TableHead>
       <TableBody>
@@ -344,12 +329,11 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
               <td className="px-4 py-3 text-right font-mono font-bold text-zinc-700">{formatQty(row.ton_dau_ky)}</td>
               <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">{formatQty(row.nhap_trong_ky)}</td>
               <td className="px-4 py-3 text-right font-mono font-bold text-amber-700">{formatQty(row.xuat_trong_ky)}</td>
-              <td className="px-4 py-3 text-right font-mono font-bold text-sky-700">{formatAdjustment(row.dieu_chinh_trong_ky)}</td>
               <td className="px-4 py-3 text-right font-mono font-black text-zinc-900">{formatQty(row.ton_cuoi_ky)}</td>
             </TableRow>
           </React.Fragment>
         ))}
-        {!loading && rows.length === 0 && <TableEmptyRow colSpan={8}>{emptyText}</TableEmptyRow>}
+        {!loading && rows.length === 0 && <TableEmptyRow colSpan={7}>{emptyText}</TableEmptyRow>}
         {rows.length > 0 && (
           <TableRow className="bg-zinc-50">
             <td className="px-4 py-3 font-black text-zinc-900" colSpan={3}>
@@ -362,9 +346,6 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
             <td className="px-4 py-3 text-right font-mono font-black text-amber-700">
               {formatQty(totals.xuat_trong_ky)}
             </td>
-            <td className="px-4 py-3 text-right font-mono font-black text-sky-700">
-              {formatAdjustment(totals.dieu_chinh_trong_ky)}
-            </td>
             <td className="px-4 py-3 text-right font-mono font-black text-zinc-900">{formatQty(totals.ton_cuoi_ky)}</td>
           </TableRow>
         )}
@@ -372,92 +353,20 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     </TableShell>
   );
 
-  const renderMovementTable = (
-    rows: TonKhoMovementRow[],
-    emptyText: string,
-    accentClass: string
-  ) => (
-    <TableShell minWidthClassName="min-w-[980px]" maxHeightClassName="max-h-[560px]">
-      <TableHead>
-        <TableHeadCell>Ngày</TableHeadCell>
-        <TableHeadCell>Phiếu</TableHeadCell>
-        <TableHeadCell>Mã SP</TableHeadCell>
-        <TableHeadCell>Mã QR</TableHeadCell>
-        <TableHeadCell>Tên sản phẩm</TableHeadCell>
-        <TableHeadCell>Kho</TableHeadCell>
-        <TableHeadCell>Ca</TableHeadCell>
-        <TableHeadCell align="center">SL</TableHeadCell>
-        <TableHeadCell>Loại</TableHeadCell>
-      </TableHead>
-      <TableBody>
-        {rows.map(row => (
-          <React.Fragment key={row.id}>
-            <TableRow>
-              <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">{formatIsoToVi(row.ngay_phieu)}</td>
-              <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-zinc-900">{row.ma_phieu || '—'}</td>
-              <td className="whitespace-nowrap px-4 py-3 font-mono font-black text-zinc-900">{row.ma_sp_goc}</td>
-              <td className="whitespace-nowrap px-4 py-3 font-mono text-sm font-semibold text-zinc-700">{row.ma_sp_qr}</td>
-              <td className="px-4 py-3 font-semibold text-zinc-700">{row.ten || '—'}</td>
-              <td className="px-4 py-3 font-semibold text-zinc-600">{row.kho || '—'}</td>
-              <td className="px-4 py-3 font-semibold text-zinc-600">{row.ca || '—'}</td>
-              <td className={`px-4 py-3 text-right font-mono font-black ${accentClass}`}>{formatQty(row.so_luong)}</td>
-              <td className="px-4 py-3 font-semibold text-zinc-600">
-                {row.la_dieu_chinh ? 'Điều chỉnh' : 'Thường'}
-              </td>
-            </TableRow>
-          </React.Fragment>
-        ))}
-        {!isLoading && rows.length === 0 && <TableEmptyRow colSpan={9}>{emptyText}</TableEmptyRow>}
-      </TableBody>
-    </TableShell>
-  );
-
-  const mainTabs: Array<{
-    key: TonKhoMainTab;
-    label: string;
-    shortLabel: string;
-    hint: string;
-    Icon: typeof ClipboardCheck;
-  }> = [
-    {
-      key: 'kiem-ton',
-      label: 'Kiểm tồn',
-      shortLabel: 'Kiểm tồn',
-      hint: 'Chi tiết QR đang trong kho và bảng tổng hợp kỳ',
-      Icon: ClipboardCheck
-    },
-    {
-      key: 'xuat-kho',
-      label: 'Xuất kho',
-      shortLabel: 'Xuất kho',
-      hint: 'Các mã QR xuất trong kỳ đã chọn',
-      Icon: ArrowUpFromLine
-    },
-    {
-      key: 'nhap-kho',
-      label: 'Nhập kho',
-      shortLabel: 'Nhập kho',
-      hint: 'Các mã QR nhập trong kỳ đã chọn',
-      Icon: ArrowDownToLine
-    }
-  ];
-
-  const showPeriodFilters = mainTab !== 'kiem-ton' || kiemTonView === 'tong-hop';
-
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
         <TableToolbar
-          isLoading={isLoading}
+          isLoading={view === 'tong-hop-ky' ? isLoadingKy : isLoading}
           hasActiveFilters={hasActiveFilters}
           onResetFilters={resetFilters}
-          loadError={loadError}
+          loadError={view === 'tong-hop-ky' ? kyError : loadError}
         >
           <TableSearchInput
             value={searchText}
             onChange={setSearchText}
-            placeholder="Tìm mã sản phẩm, tên, kho, phiếu..."
-            disabled={isLoading}
+            placeholder="Tìm mã sản phẩm, tên, kho..."
+            disabled={view === 'tong-hop-ky' ? isLoadingKy : isLoading}
           />
           <FilterCombobox
             label="Kho"
@@ -467,12 +376,26 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
             searchPlaceholder="Tìm kho..."
             compact
           />
-          {showPeriodFilters ? (
+          {view === 'tong-hop-ky' ? (
             <>
-              <TableDateFilter label="Ngày đầu kỳ" value={fromDate} onChange={setFromDate} />
+              <TableDateFilter label="Ngày đầu kỳ" value={kyStartDate} onChange={setKyStartDate} />
+              <TableDateFilter label="Đến ngày" value={kyEndDate} onChange={setKyEndDate} />
+              <button
+                type="button"
+                onClick={handleApplyTongHopKy}
+                disabled={isLoadingKy || !kyStartDate}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#ef1b2d] bg-[#ef1b2d] px-3 text-sm font-extrabold text-white transition hover:bg-[#d41424] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isLoadingKy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Tổng hợp kỳ
+              </button>
+            </>
+          ) : (
+            <>
+              <TableDateFilter label="Từ ngày" value={fromDate} onChange={setFromDate} />
               <TableDateFilter label="Đến ngày" value={toDate} onChange={setToDate} />
             </>
-          ) : null}
+          )}
         </TableToolbar>
       </section>
 
@@ -480,165 +403,160 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
         aria-label="Chức năng tồn kho"
         className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:p-3"
       >
-        {mainTabs.map(tab => {
-          const active = mainTab === tab.key;
-          const Icon = tab.Icon;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              aria-current={active ? 'page' : undefined}
-              onClick={() => setMainTab(tab.key)}
-              className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
-                active
-                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
-                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-              }`}
-            >
-              <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${
-                  active ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'
-                }`}
-              >
-                <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">{tab.shortLabel}</span>
-                <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">{tab.label}</span>
-                <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">{tab.hint}</span>
-              </span>
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          aria-current={view === 'chi-tiet' ? 'page' : undefined}
+          onClick={() => setView('chi-tiet')}
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'chi-tiet'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+          }`}
+        >
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'chi-tiet' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Chi tiết</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Danh sách chi tiết</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Mỗi mã phát sinh trên sổ kho trong khoảng ngày là một dòng
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          aria-current={view === 'tong-hop' ? 'page' : undefined}
+          onClick={() => setView('tong-hop')}
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'tong-hop'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+          }`}
+        >
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'tong-hop' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Tổng hợp</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Bảng tổng hợp</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Tồn đầu, nhập, xuất, tồn cuối kỳ
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          aria-current={view === 'tong-hop-ky' ? 'page' : undefined}
+          onClick={() => {
+            setView('tong-hop-ky');
+            if (!kyStartDate && fromDate) setKyStartDate(fromDate);
+            if (!kyEndDate) setKyEndDate(toDate || todayIsoDate());
+          }}
+          className={`group flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[76px] sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left lg:min-h-[92px] lg:gap-3 lg:px-4 ${
+            view === 'tong-hop-ky'
+              ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
+              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+          }`}
+        >
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${view === 'tong-hop-ky' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+            <CalendarRange className="h-4 w-4 sm:h-5 sm:w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Tổng hợp kỳ</span>
+            <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Tổng hợp kỳ</span>
+            <span className="mt-1 hidden text-xs font-semibold leading-snug text-zinc-500 lg:block">
+              Tồn đầu theo ngày · nhập/xuất từ nhật ký XNK
+            </span>
+          </span>
+        </button>
       </nav>
 
-      {mainTab === 'kiem-ton' ? (
-        <>
-          <nav
-            aria-label="Kiểm tồn"
-            className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2"
-          >
-            <button
-              type="button"
-              aria-current={kiemTonView === 'chi-tiet' ? 'page' : undefined}
-              onClick={() => setKiemTonView('chi-tiet')}
-              className={`group flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left ${
-                kiemTonView === 'chi-tiet'
-                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
-                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-              }`}
-            >
-              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${kiemTonView === 'chi-tiet' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
-                <ListChecks className="h-4 w-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Chi tiết</span>
-                <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Danh sách chi tiết</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-current={kiemTonView === 'tong-hop' ? 'page' : undefined}
-              onClick={() => setKiemTonView('tong-hop')}
-              className={`group flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left ${
-                kiemTonView === 'tong-hop'
-                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
-                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-              }`}
-            >
-              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${kiemTonView === 'tong-hop' ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
-                <BarChart3 className="h-4 w-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-black leading-tight text-zinc-900 sm:hidden">Tổng hợp</span>
-                <span className="hidden text-sm font-black leading-tight text-zinc-900 sm:block">Bảng tổng hợp</span>
-              </span>
-            </button>
-          </nav>
+      {view === 'chi-tiet' ? (
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
+            <div>
+              <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm trên sổ kho</h2>
+              <p className="text-[11px] font-semibold text-zinc-500">{filteredChiTiet.length} mã sản phẩm</p>
+            </div>
+          </div>
 
-          {kiemTonView === 'chi-tiet' ? (
-            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-                <div>
-                  <h2 className="text-sm font-black text-zinc-900">Danh sách chi tiết sản phẩm trong kho</h2>
-                  <p className="text-[11px] font-semibold text-zinc-500">{filteredChiTiet.length} mã QR</p>
-                </div>
-              </div>
-
-              <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[560px]">
-                <TableHead>
-                  <TableHeadCell>Mã SP</TableHeadCell>
-                  <TableHeadCell>Mã SP chi tiết</TableHeadCell>
-                  <TableHeadCell>Tên sản phẩm</TableHeadCell>
-                  <TableHeadCell>Loại sản phẩm</TableHeadCell>
-                  <TableHeadCell>Kho</TableHeadCell>
-                  <TableHeadCell align="center">Số lượng</TableHeadCell>
-                </TableHead>
-                <TableBody>
-                  {filteredChiTiet.map(row => (
-                    <React.Fragment key={row.ma_sp_qr}>
-                      <TableRow>
-                        <td className="whitespace-nowrap px-5 py-4 font-mono text-base font-black text-zinc-900">{row.ma_sp_goc}</td>
-                        <td className="whitespace-nowrap px-5 py-4 font-mono text-base font-semibold text-zinc-700">{row.ma_sp_qr}</td>
-                        <td className="px-5 py-4 text-base font-bold text-zinc-700">{row.ten || '—'}</td>
-                        <td className="px-5 py-4 font-semibold text-zinc-600">
-                          {row.loai_sp || 'Thành phẩm'}
-                        </td>
-                        <td className="px-5 py-4 font-semibold text-zinc-600">{row.ten_kho || '—'}</td>
-                        <td className="px-5 py-4 text-right font-mono text-base font-black text-zinc-900">
-                          {formatQty(row.so_luong)}
-                        </td>
-                      </TableRow>
-                    </React.Fragment>
-                  ))}
-                  {!isLoading && filteredChiTiet.length === 0 && (
-                    <TableEmptyRow colSpan={6}>Không có mã QR thành phẩm đang trong kho.</TableEmptyRow>
-                  )}
-                </TableBody>
-              </TableShell>
-            </section>
-          ) : (
-            <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-                <div>
-                  <h2 className="text-sm font-black text-zinc-900">Bảng tổng hợp</h2>
-                  <p className="text-[11px] font-semibold text-zinc-500">{filteredTongHop.length} mã</p>
-                </div>
-              </div>
-              {renderTongHopTable(
-                filteredTongHop,
-                tongHopTotals,
-                'Không có dữ liệu phù hợp bộ lọc.',
-                isLoading
+          <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[560px]">
+            <TableHead>
+              <TableHeadCell>Mã SP</TableHeadCell>
+              <TableHeadCell align="center">Số lượng</TableHeadCell>
+              <TableHeadCell>Tên sản phẩm</TableHeadCell>
+              <TableHeadCell>Loại sản phẩm</TableHeadCell>
+              <TableHeadCell>Kho</TableHeadCell>
+            </TableHead>
+            <TableBody>
+              {filteredChiTiet.map((row, index) => (
+                <React.Fragment key={`${row.ma}-${index}`}>
+                  <TableRow>
+                    <td className="whitespace-nowrap px-5 py-4 font-mono text-base font-black text-zinc-900">{row.ma}</td>
+                    <td className="px-5 py-4 text-right font-mono text-base font-black text-zinc-900">
+                      {formatQty(row.ton_cuoi_ky)}
+                    </td>
+                    <td className="px-5 py-4 text-base font-bold text-zinc-700">{row.ten || '—'}</td>
+                    <td className="px-5 py-4 font-semibold text-zinc-600">
+                      {row.loai_sp || 'Thành phẩm'}
+                    </td>
+                    <td className="px-5 py-4 font-semibold text-zinc-600">{row.ten_kho || '—'}</td>
+                  </TableRow>
+                </React.Fragment>
+              ))}
+              {!isLoading && filteredChiTiet.length === 0 && (
+                <TableEmptyRow colSpan={5}>
+                  {hasDateRange ? 'Không có dữ liệu phù hợp bộ lọc.' : 'Vui lòng chọn đủ Từ ngày và Đến ngày.'}
+                </TableEmptyRow>
               )}
-            </section>
+            </TableBody>
+          </TableShell>
+        </section>
+      ) : view === 'tong-hop' ? (
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
+            <div>
+              <h2 className="text-sm font-black text-zinc-900">Bảng tổng hợp</h2>
+              <p className="text-[11px] font-semibold text-zinc-500">{filteredTongHop.length} mã</p>
+            </div>
+          </div>
+          {renderTongHopTable(
+            filteredTongHop,
+            tongHopTotals,
+            hasDateRange ? 'Không có dữ liệu phù hợp bộ lọc.' : 'Vui lòng chọn đủ Từ ngày và Đến ngày.',
+            isLoading
           )}
-        </>
-      ) : null}
-
-      {mainTab === 'xuat-kho' ? (
+        </section>
+      ) : (
         <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
             <div>
-              <h2 className="text-sm font-black text-zinc-900">Xuất kho trong kỳ</h2>
-              <p className="text-[11px] font-semibold text-zinc-500">{filteredXuat.length} dòng QR</p>
+              <h2 className="text-sm font-black text-zinc-900">Tổng hợp kỳ</h2>
+              <p className="text-[11px] font-semibold text-zinc-500">
+                {hasAppliedKy
+                  ? `${filteredTongHopKy.length} mã · ${appliedKyStart} → ${appliedKyEnd}`
+                  : 'Chọn ngày đầu kỳ rồi bấm Tổng hợp kỳ'}
+              </p>
             </div>
           </div>
-          {renderMovementTable(filteredXuat, 'Không có phiếu xuất trong kỳ đã chọn.', 'text-amber-700')}
-        </section>
-      ) : null}
-
-      {mainTab === 'nhap-kho' ? (
-        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4">
-            <div>
-              <h2 className="text-sm font-black text-zinc-900">Nhập kho trong kỳ</h2>
-              <p className="text-[11px] font-semibold text-zinc-500">{filteredNhap.length} dòng QR</p>
-            </div>
+          <div className="border-b border-amber-100 bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-5 text-amber-900 sm:px-4">
+            <strong>Tồn đầu kỳ</strong> tính theo ngày đầu kỳ đã chọn.{' '}
+            <strong>Nhập / Xuất / Tồn cuối</strong> lấy từ nhật ký phiếu xuất nhập kho từ ngày đó trở đi để cập nhật tiếp.
+            Cập nhật kỳ gần nhất sẽ bổ sung sau.
           </div>
-          {renderMovementTable(filteredNhap, 'Không có phiếu nhập trong kỳ đã chọn.', 'text-emerald-700')}
+          {renderTongHopTable(
+            filteredTongHopKy,
+            tongHopKyTotals,
+            hasAppliedKy
+              ? 'Không có dữ liệu phù hợp bộ lọc.'
+              : 'Chọn Ngày đầu kỳ (và Đến ngày nếu cần) rồi bấm nút Tổng hợp kỳ.',
+            isLoadingKy
+          )}
         </section>
-      ) : null}
+      )}
     </div>
   );
 }

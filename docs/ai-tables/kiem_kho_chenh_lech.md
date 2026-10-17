@@ -17,7 +17,7 @@
 `kiem_kho` và các bảng kho thành phẩm nằm trên hai Supabase project khác nhau; API đọc cả hai nguồn rồi đối chiếu tại Node.
 
 - `GET /api/kiem-kho/chenh-lech` tải toàn bộ dòng kiểm kê theo trang; tab chi tiết tải đủ các trang của `/api/kiem-kho` (500 dòng/trang), không cắt ở 500 mã.
-- Tồn hệ thống thành phẩm được dựng theo từng `ma_sp_qr` từ `chi_tiet_san_pham` và `bien_dong_chi_tiet_san_pham`; dùng `created_at` để lấy trạng thái đúng tại `thoi_gian_xac_nhan` của đợt đã chốt. Nếu mã chưa có lịch sử biến động thì dựa vào `created_at`/`updated_at` của snapshot.
+- Tồn hệ thống thành phẩm lấy từ nhập/xuất kho theo từng mã QR (`loadTonKhoSanPhamFromKho`) tại ngày xác nhận của đợt đã chốt.
 - Tab chi tiết so khớp nguyên mã QR đầy đủ giữa tồn tại thời điểm chốt và các dòng đã quét. Tab tổng hợp đếm kiểm kê theo `ma_nvl` (tiền tố sản phẩm) và cộng tồn hệ thống theo `ma_sp_goc`.
 
 `ton_he_thong` là số QR còn trong kho tại đúng thời điểm chốt đợt (hoặc thời điểm hiện tại nếu đợt chưa chốt). `loai_kho` là `san_pham` khi tiền tố khớp danh mục thành phẩm; nếu không khớp thì `null` và không tạo được phiếu điều chỉnh cho dòng này.

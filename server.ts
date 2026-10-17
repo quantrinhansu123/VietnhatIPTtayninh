@@ -12146,8 +12146,10 @@ export function createApp() {
         });
       }
 
-      const movementTotals = await buildMaterialMovementTotals();
-      const materials = applyMaterialMovementTotals(rows, movementTotals);
+      // ?light=1: chỉ danh mục (mã/tên/đơn vị), bỏ tính tồn từ nhập/xuất — nhanh hơn nhiều.
+      const materials = _req.query.light === '1'
+        ? rows
+        : applyMaterialMovementTotals(rows, await buildMaterialMovementTotals());
 
       return res.json({
         materials,

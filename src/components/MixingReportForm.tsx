@@ -1092,50 +1092,71 @@ export default function MixingReportForm({
     return [...merged].sort((left, right) => left.localeCompare(right, 'vi'));
   }, [reasonOptions, form.ly_do_theo_lan]);
 
+  // Mỗi danh mục tải độc lập và hiện ngay khi xong: /api/kho-nvl chậm (~20s) không được chặn máy, ca, nhân sự.
   const loadReferenceData = async () => {
-    // Ca lấy riêng: /api/kho-nvl chậm (~18s) không được làm trống ô Ca sản xuất.
-    fetch('/api/cai-dat')
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => { if (data) setShiftSettings(normalizeShiftSettings(data)); })
-      .catch(() => undefined);
-    const [machineRes, materialRes, productionRes, productRes] = await Promise.all([
-      fetch('/api/danh-sach-may'),
-      fetch('/api/kho-nvl'),
-      fetch('/api/lenh-sx'),
-      fetch('/api/san-pham?format=table')
+    const load = async (
+      url: string,
+      apply: (data: any) => void,
+      errorMessage: string,
+      required: boolean
+    ) => {
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (required) throw new Error(data.error || errorMessage);
+        return;
+      }
+      apply(data);
+    };
+    await Promise.all([
+      load('/api/cai-dat', data => setShiftSettings(normalizeShiftSettings(data)), '', false).catch(() => undefined),
+      load(
+        '/api/danh-sach-may',
+        data => {
+          const machineRows = Array.isArray(data.machines) ? data.machines : [];
+          setMachines(
+            machineRows.map((row: Record<string, unknown>) => ({
+              id: String(row.id ?? ''),
+              code: String(row.ma_may ?? row.code ?? '').trim(),
+              name: String(row.ten_may ?? row.name ?? '').trim(),
+              branch: String(row.chi_nhanh ?? row.branch ?? '').trim(),
+              batchWeightKg: parseMachineBatchWeight(row.dinh_luong)
+            }))
+          );
+        },
+        'Không thể tải danh sách máy.',
+        true
+      ),
+      load(
+        '/api/lenh-sx',
+        data => setProductionOrders(normalizeMixingProductionOrders(data)),
+        'Không thể tải lệnh sản xuất.',
+        true
+      ),
+      load(
+        '/api/san-pham?format=table',
+        data => setCatalogProducts(normalizeMixingCatalogProducts(data)),
+        '',
+        false
+      ).catch(() => undefined),
+      load(
+        '/api/kho-nvl?light=1',
+        data => {
+          const materialRows = Array.isArray(data.materials) ? data.materials : [];
+          setMaterials(
+            materialRows
+              .map((row: Record<string, unknown>) => ({
+                code: String(row.ma_npl ?? '').trim(),
+                name: String(row.ten_npl ?? '').trim(),
+                unit: String(row.don_vi ?? 'kg').trim() || 'kg'
+              }))
+              .filter(item => item.code || item.name)
+          );
+        },
+        'Không thể tải kho NVL.',
+        true
+      )
     ]);
-    const machineData = await machineRes.json().catch(() => ({}));
-    const materialData = await materialRes.json().catch(() => ({}));
-    const productionData = await productionRes.json().catch(() => ({}));
-    const productData = await productRes.json().catch(() => ({}));
-    if (!machineRes.ok) throw new Error(machineData.error || 'Không thể tải danh sách máy.');
-    if (!materialRes.ok) throw new Error(materialData.error || 'Không thể tải kho NVL.');
-    if (!productionRes.ok) throw new Error(productionData.error || 'Không thể tải lệnh sản xuất.');
-
-    const machineRows = Array.isArray(machineData.machines) ? machineData.machines : [];
-    setMachines(
-      machineRows.map((row: Record<string, unknown>) => ({
-        id: String(row.id ?? ''),
-        code: String(row.ma_may ?? row.code ?? '').trim(),
-        name: String(row.ten_may ?? row.name ?? '').trim(),
-        branch: String(row.chi_nhanh ?? row.branch ?? '').trim(),
-        batchWeightKg: parseMachineBatchWeight(row.dinh_luong)
-      }))
-    );
-
-    const materialRows = Array.isArray(materialData.materials) ? materialData.materials : [];
-    setMaterials(
-      materialRows
-        .map((row: Record<string, unknown>) => ({
-          code: String(row.ma_npl ?? '').trim(),
-          name: String(row.ten_npl ?? '').trim(),
-          unit: String(row.don_vi ?? 'kg').trim() || 'kg'
-        }))
-        .filter(item => item.code || item.name)
-    );
-
-    setProductionOrders(normalizeMixingProductionOrders(productionData));
-    if (productRes.ok) setCatalogProducts(normalizeMixingCatalogProducts(productData));
   };
 
   useEffect(() => {

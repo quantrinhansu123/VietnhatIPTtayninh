@@ -5461,6 +5461,9 @@ export function WarehouseSlipPanel({
 
 const HISTORY_ROW_GRID =
   'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_150px_150px_56px]';
+/** Phiếu xuất thành phẩm không hiện cột Ca, Máy. */
+const HISTORY_ROW_GRID_NO_SHIFT_MACHINE =
+  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_150px_56px]';
 
 function formatWarehouseHistoryDay(day: string) {
   const [y, m, d] = day.split('-');
@@ -5521,6 +5524,14 @@ export function WarehouseHistoryPanel({
   const [viewingSlipCode, setViewingSlipCode] = useState<string | null>(null);
   const [deletingSlipCode, setDeletingSlipCode] = useState<string | null>(null);
   const [selectedSlipCodes, setSelectedSlipCodes] = useState<Set<string>>(new Set());
+  const [expandedSlipCodes, setExpandedSlipCodes] = useState<Set<string>>(new Set());
+  const toggleSlipExpanded = (code: string) =>
+    setExpandedSlipCodes(current => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [historyPrintSlips, setHistoryPrintSlips] = useState<WarehouseSlipPrintData[]>([]);
   const [historyPrintOpen, setHistoryPrintOpen] = useState(false);
@@ -6510,7 +6521,10 @@ export function WarehouseHistoryPanel({
         </TableShell>
       ) : (
         <div className="space-y-4">
-          {historyDayGroups.map(day => (
+          {historyDayGroups.map(day => {
+            const hideShiftMachine = selectedType === 'xuat' && isFinishedGoodsHistory;
+            const rowGrid = hideShiftMachine ? HISTORY_ROW_GRID_NO_SHIFT_MACHINE : HISTORY_ROW_GRID;
+            return (
             <section key={day.day} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 bg-zinc-100 px-4 py-2.5">
                 <div className="flex items-center gap-2">
@@ -6523,7 +6537,7 @@ export function WarehouseHistoryPanel({
                   <p className="font-mono text-sm font-black tabular-nums text-emerald-800">{formatNumber(day.totalAmount, 0)} đ</p>
                 </div>
               </div>
-              <div className={`hidden items-center gap-3 bg-[#ef1b2d] px-4 py-2 text-[11px] font-black uppercase tracking-wide text-white md:grid ${HISTORY_ROW_GRID}`}>
+              <div className={`hidden items-center gap-3 bg-[#ef1b2d] px-4 py-2 text-[11px] font-black uppercase tracking-wide text-white md:grid ${rowGrid}`}>
                 <input
                   type="checkbox"
                   checked={day.slips.every(slip => selectedSlipCodes.has(slip.slipCode))}
@@ -6534,8 +6548,8 @@ export function WarehouseHistoryPanel({
                 />
                 <span>Mã phiếu</span>
                 <span title="Thời điểm lưu phiếu theo giờ Việt Nam">Giờ</span>
-                <span>Ca</span>
-                <span>Máy</span>
+                {hideShiftMachine ? null : <span>Ca</span>}
+                {hideShiftMachine ? null : <span>Máy</span>}
                 <span>Người lập</span>
                 <span className="text-center">Thao tác</span>
               </div>
@@ -6545,10 +6559,11 @@ export function WarehouseHistoryPanel({
                   const isDeleting = deletingSlipCode === slip.slipCode;
                   const shown = slip.products.slice(0, 4);
                   const rollTotal = slip.products.reduce((sum, product) => sum + (Number(product.quantity) || 0), 0);
+                  const isExpanded = expandedSlipCodes.has(slip.slipCode);
                   return (
+                    <div key={slip.slipCode}>
                     <div
-                      key={slip.slipCode}
-                      className={`grid items-center gap-x-3 gap-y-1 px-4 py-3 ${HISTORY_ROW_GRID} ${isSelected ? 'bg-red-50/40' : ''}`}
+                      className={`grid items-center gap-x-3 gap-y-1 px-4 py-3 ${rowGrid} ${isSelected ? 'bg-red-50/40' : ''}`}
                     >
                       <input
                         type="checkbox"
@@ -6568,8 +6583,19 @@ export function WarehouseHistoryPanel({
                           >
                             {slip.slipCode}
                           </a>
-                          <span className="shrink-0 font-mono text-sm font-black tabular-nums text-zinc-950">
-                            × {formatNumber(rollTotal, Number.isInteger(rollTotal) ? 0 : 2)}
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <span className="font-mono text-sm font-black tabular-nums text-zinc-950">
+                              × {formatNumber(rollTotal, Number.isInteger(rollTotal) ? 0 : 2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleSlipExpanded(slip.slipCode)}
+                              aria-expanded={isExpanded}
+                              title={isExpanded ? 'Thu gọn chi tiết' : 'Xem chi tiết phiếu'}
+                              className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100"
+                            >
+                              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
                           </span>
                         </div>
                         <p className="truncate text-[11px] font-semibold text-zinc-700">
@@ -6577,12 +6603,12 @@ export function WarehouseHistoryPanel({
                           {slip.products.length > shown.length ? ` · +${slip.products.length - shown.length}` : ''}
                         </p>
                         <p className="text-[11px] font-semibold text-zinc-500 md:hidden">
-                          {formatWarehouseSlipSavedTime(slip.createdAt)} · {slip.header.shift || '—'} · {slip.header.machine || '—'} · {slip.header.createdBy || '—'}
+                          {formatWarehouseSlipSavedTime(slip.createdAt)}{hideShiftMachine ? '' : ` · ${slip.header.shift || '—'} · ${slip.header.machine || '—'}`} · {slip.header.createdBy || '—'}
                         </p>
                       </div>
                       <span className="font-mono text-xs font-bold tabular-nums text-zinc-700 max-md:hidden">{formatWarehouseSlipSavedTime(slip.createdAt)}</span>
-                      <span className="text-xs font-bold text-zinc-800 max-md:hidden">{slip.header.shift || '—'}</span>
-                      <span className="text-xs font-semibold text-zinc-800 max-md:hidden">{slip.header.machine || '—'}</span>
+                      {hideShiftMachine ? null : <span className="text-xs font-bold text-zinc-800 max-md:hidden">{slip.header.shift || '—'}</span>}
+                      {hideShiftMachine ? null : <span className="text-xs font-semibold text-zinc-800 max-md:hidden">{slip.header.machine || '—'}</span>}
                       <span className="text-xs font-semibold text-zinc-600 max-md:hidden">{slip.header.createdBy || '—'}</span>
                       <div className="flex items-center justify-center">
                         <RowActionsMenu label={`Thao tác phiếu ${slip.slipCode}`}>
@@ -6610,11 +6636,49 @@ export function WarehouseHistoryPanel({
                         </RowActionsMenu>
                       </div>
                     </div>
+                    {isExpanded ? (
+                      <div className="border-t border-zinc-100 bg-zinc-50/60 px-4 py-3">
+                        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
+                          <table className="w-full min-w-[480px] text-left text-xs">
+                            <thead className="bg-zinc-100 text-[10px] uppercase tracking-wider text-zinc-600">
+                              <tr>
+                                <th className="px-3 py-2 text-center font-black">STT</th>
+                                <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Mã SP' : warehouseItemCodeLabel(warehouseTab)}</th>
+                                <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Tên SP' : warehouseItemNameLabel(warehouseTab)}</th>
+                                <th className="px-3 py-2 text-right font-black">SL</th>
+                                <th className="px-3 py-2 font-black">ĐVT</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-100">
+                              {Array.from(
+                                slip.lines.reduce((groups, line) => {
+                                  const key = `${line.itemCode}|${line.unit}`;
+                                  const group = groups.get(key);
+                                  if (group) group.quantity += Number(line.quantity) || 0;
+                                  else groups.set(key, { itemCode: line.itemCode, itemName: line.itemName, unit: line.unit, quantity: Number(line.quantity) || 0 });
+                                  return groups;
+                                }, new Map<string, { itemCode: string; itemName?: string; unit?: string; quantity: number }>()).values()
+                              ).map((line, index) => (
+                                <tr key={`${line.itemCode}-${index}`}>
+                                  <td className="px-3 py-1.5 text-center font-bold text-zinc-500">{index + 1}</td>
+                                  <td className="px-3 py-1.5 font-bold text-zinc-900">{line.itemCode}</td>
+                                  <td className="px-3 py-1.5 text-zinc-700">{line.itemName || '—'}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono font-bold text-zinc-800">{formatNumber(line.quantity, Number.isInteger(line.quantity) ? 0 : 2)}</td>
+                                  <td className="px-3 py-1.5 text-zinc-700">{line.unit || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : null}
+                    </div>
                   );
                 })}
               </div>
             </section>
-          ))}
+            );
+          })}
         </div>
       )}
 

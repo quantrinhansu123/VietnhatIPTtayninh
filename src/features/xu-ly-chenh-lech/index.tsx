@@ -809,27 +809,6 @@ export function XuLyChenhLechPanel({
           if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tạo được phiếu điều chỉnh.'));
           const slipCode = String((data as any)?.slipCode ?? '').trim();
 
-          await Promise.all(
-            group.rows.map(async row => {
-              const historyRes = await fetch('/api/kiem-kho/chenh-lech-xu-ly', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  dot_kiem_kho: selectedDot,
-                  ma_sp: row.ma_sp,
-                  loai_phieu: group.loaiPhieu,
-                  so_luong_dieu_chinh: row.so_luong,
-                  ma_phieu_dieu_chinh: slipCode,
-                  nguoi_xu_ly: loginName || null
-                })
-              });
-              const historyData = await historyRes.json().catch(() => ({}));
-              if (!historyRes.ok) {
-                throw new Error(readApiErrorMessage(historyRes, historyData, `Không lưu được lịch sử mã ${row.ma_sp}.`));
-              }
-            })
-          );
-
           createdCount += 1;
         } catch (err: any) {
           failures.push(err?.message || `Lỗi khi tạo phiếu ${group.loaiPhieu} ${group.loaiKho}.`);

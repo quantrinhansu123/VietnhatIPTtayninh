@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Bảng** | `kiem_kho_chenh_lech_xu_ly` |
+| **Bảng** | Không còn bảng riêng; phiếu điều chỉnh chỉ ghi `nhap_kho`, `xuat_kho`, `phieu_nhap`, `phieu_xuat` (DB kho) |
 | **Tab** | `kiem-kho-chenh-lech` → `/xu-ly-chenh-lech` |
 | **DB** | Riêng — label `kiem-kho` (project `grlcgkzotqishzxwpddc`), cùng chỗ với `kiem_kho`/`kiem_kho_tong_hop` |
-| **SQL** | `supabase-kiem-kho-chenh-lech-xu-ly.sql`; cập nhật sổ QR bằng `supabase-chi-tiet-san-pham-dieu-chinh.sql` trên DB chính |
+| **SQL** | Không cần (bảng `kiem_kho_chenh_lech_xu_ly` cũ không còn được ghi) |
 
 ## Mục đích
 
@@ -24,14 +24,13 @@
 
 ## Bảng `kiem_kho_chenh_lech_xu_ly`
 
-Không phải "trạng thái" tính toán được — chỉ là **lịch sử các lần đã tạo phiếu điều chỉnh**, để giao diện hiển thị "Đã xử lý" mà không phải suy luận lại. `ma_sp` lưu mã nguyên bản, gồm hậu tố lô/serial nếu có. Cột: `dot_kiem_kho`, `ma_sp`, `loai_phieu` (`nhap`/`xuat`), `so_luong_dieu_chinh`, `ma_phieu_dieu_chinh` (mã phiếu ở `phieu_nhap`/`phieu_xuat`), `ghi_chu`, `nguoi_xu_ly`, `xu_ly_luc`. Không có ràng buộc unique — 1 mã có thể được xử lý nhiều lần (mỗi lần thêm 1 dòng lịch sử); route GET chỉ lấy dòng mới nhất theo `ma_sp`.
+**Đã không còn dùng.** Trạng thái "Đã xử lý" suy ra từ phiếu điều chỉnh có `ly_do` = `Điều chỉnh tồn kho sau kiểm kê - đợt <dot>` trong `phieu_nhap`/`phieu_xuat` (mã SP lấy từ dòng `nhap_kho`/`xuat_kho`). Xóa phiếu điều chỉnh thì dòng quay lại "chưa xử lý".
 
 ## API (`server.ts`)
 
 | Method | Path | Nội dung |
 |---|---|---|
 | GET | `/api/kiem-kho/chenh-lech` | Query `dotKiemKho` (bắt buộc), `tenKho` (tuỳ chọn). Trả bảng tổng hợp `records[]`, tồn nguyên bản `he_thong_chi_tiet[]` và lịch sử theo mã nguyên bản `xu_ly_chi_tiet[]`. Record tổng hợp có thêm `trang_thai_xu_ly`: `chua_xu_ly`, `dang_xu_ly`, `da_xu_ly` hoặc `khong_can_xu_ly`. |
-| POST | `/api/kiem-kho/chenh-lech-xu-ly` | Body `{ dot_kiem_kho, ma_sp, loai_phieu, so_luong_dieu_chinh, ma_phieu_dieu_chinh, ghi_chu?, nguoi_xu_ly? }` — `ma_sp` là mã nguyên bản; insert 1 dòng lịch sử sau khi tạo phiếu kho thành công. |
 | POST | `/api/kho/luu-phieu` | Phiếu điều chỉnh gửi `laDieuChinh: true`; tạo header `phieu_nhap`/`phieu_xuat` và từng dòng QR trong `nhap_kho`/`xuat_kho` trên DB kho. |
 
 ## Frontend

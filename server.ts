@@ -17552,21 +17552,28 @@ export function createApp() {
       const spMap = new Map(spRows.map(row => [row.ma, row]));
 
       const xuLyMap = new Map<string, { ma_phieu_dieu_chinh: string; loai_phieu: string | null }>();
-      const xuLyResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);
-      if (xuLyResolved) {
-        const { data: xuLyRows, error: xuLyError } = await xuLyResolved.client
-          .from(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
-          .select('ma_sp, ma_phieu_dieu_chinh, loai_phieu, xu_ly_luc')
-          .eq('dot_kiem_kho', dotKiemKho)
-          .order('xu_ly_luc', { ascending: true });
-        if (!xuLyError) {
-          for (const row of xuLyRows || []) {
-            const ma = String((row as any).ma_sp ?? '').trim();
-            if (!ma) continue;
-            xuLyMap.set(ma, {
-              ma_phieu_dieu_chinh: String((row as any).ma_phieu_dieu_chinh ?? ''),
-              loai_phieu: (row as any).loai_phieu ?? null
-            });
+      // "Đã xử lý" suy ra từ chính phiếu điều chỉnh trong DB kho (ly_do chứa mã đợt), không có bảng riêng.
+      if (supabaseKho) {
+        const lyDoDieuChinh = `Điều chỉnh tồn kho sau kiểm kê - đợt ${dotKiemKho}`;
+        for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+          const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
+          const { data: slipHeaders, error: slipError } = await supabaseKho
+            .from(headerTable)
+            .select('ma_phieu')
+            .eq('ly_do', lyDoDieuChinh)
+            .order('created_at', { ascending: true });
+          if (slipError) throw slipError;
+          const slipCodes = (slipHeaders || []).map(row => String(row.ma_phieu));
+          for (let index = 0; index < slipCodes.length; index += 100) {
+            const { data: slipLines, error: lineError } = await supabaseKho
+              .from(lineTable)
+              .select('ma_sp, ma_phieu')
+              .in('ma_phieu', slipCodes.slice(index, index + 100));
+            if (lineError) throw lineError;
+            for (const line of slipLines || []) {
+              const ma = String(line.ma_sp ?? '').trim();
+              if (ma) xuLyMap.set(ma, { ma_phieu_dieu_chinh: String(line.ma_phieu ?? ''), loai_phieu: loaiPhieu });
+            }
           }
         }
       }
@@ -17695,90 +17702,6 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi đối chiếu chênh lệch kiểm kho.' });
-    }
-  });
-
-  app.post('/api/kiem-kho/chenh-lech-xu-ly', async (req, res) => {
-    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-    const dotKiemKho = String(body.dot_kiem_kho ?? body.dotKiemKho ?? '').trim();
-    const maSp = String(body.ma_sp ?? body.maSp ?? '').trim();
-    const maPhieuDieuChinh = String(body.ma_phieu_dieu_chinh ?? body.maPhieuDieuChinh ?? '').trim();
-
-    if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
-    if (!maSp) return res.status(400).json({ error: 'Thiếu mã sản phẩm.' });
-    if (!maPhieuDieuChinh) return res.status(400).json({ error: 'Thiếu mã phiếu điều chỉnh.' });
-
-    const kiemKhoResolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
-    if (!kiemKhoResolved) {
-      return res.status(503).json({ error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa được cấu hình.` });
-    }
-    const { data: confirmationRows, error: confirmationError } = await kiemKhoResolved.client
-      .from(SUPABASE_KIEM_KHO_TABLE)
-      .select('thoi_gian_xac_nhan')
-      .eq('dot_kiem_kho', dotKiemKho);
-    if (confirmationError && isMissingKiemKhoConfirmColumnError(confirmationError)) {
-      const exists = await kiemKhoResolved.client
-        .from(SUPABASE_KIEM_KHO_TABLE)
-        .select('id')
-        .eq('dot_kiem_kho', dotKiemKho)
-        .limit(1);
-      if (exists.error) {
-        return res.status(500).json({
-          error: exists.error.message || 'Không kiểm tra được đợt kiểm kho.',
-          db: kiemKhoResolved.label
-        });
-      }
-      if (!exists.data?.length) {
-        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
-      }
-      // DB chưa có cột chốt — cho phép xử lý chênh lệch (không chặn).
-    } else if (confirmationError) {
-      return res.status(500).json({
-        error: confirmationError.message || 'Không kiểm tra được trạng thái xác nhận đợt kiểm kho.',
-        db: kiemKhoResolved.label
-      });
-    } else {
-      if (!confirmationRows?.length) {
-        return res.status(404).json({ error: 'Không tìm thấy đợt kiểm kho.' });
-      }
-      if (confirmationRows.some(row => !row.thoi_gian_xac_nhan)) {
-        return res.status(409).json({ error: 'Đợt kiểm kho chưa xác nhận, chưa thể xử lý chênh lệch.' });
-      }
-    }
-
-    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE);
-    if (!resolved) {
-      return res.status(503).json({
-        error: `Bảng ${SUPABASE_KIEM_KHO_CHENH_LECH_TABLE} chưa có trên Supabase. Hãy chạy supabase-kiem-kho-chenh-lech-xu-ly.sql.`
-      });
-    }
-
-    const soLuongRaw = Number(body.so_luong_dieu_chinh ?? body.soLuongDieuChinh);
-    const record = {
-      dot_kiem_kho: dotKiemKho,
-      ma_sp: maSp,
-      loai_phieu: String(body.loai_phieu ?? body.loaiPhieu ?? '').trim() || null,
-      so_luong_dieu_chinh: Number.isFinite(soLuongRaw) ? soLuongRaw : null,
-      ma_phieu_dieu_chinh: maPhieuDieuChinh,
-      ghi_chu: String(body.ghi_chu ?? body.ghiChu ?? '').trim() || null,
-      nguoi_xu_ly: String(body.nguoi_xu_ly ?? body.nguoiXuLy ?? '').trim() || null
-    };
-
-    try {
-      const { data, error } = await resolved.client
-        .from(SUPABASE_KIEM_KHO_CHENH_LECH_TABLE)
-        .insert(record)
-        .select('*')
-        .single();
-      if (error) {
-        return res.status(500).json({
-          error: error.message || 'Không lưu được trạng thái xử lý chênh lệch.',
-          db: resolved.label
-        });
-      }
-      return res.status(201).json({ success: true, record: data, db: resolved.label });
-    } catch (err: any) {
-      return res.status(500).json({ error: err?.message || 'Lỗi khi lưu trạng thái xử lý chênh lệch.' });
     }
   });
 

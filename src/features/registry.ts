@@ -153,7 +153,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     label: 'Xử lý chênh lệch kiểm kho',
     sql: ['supabase-kiem-kho-chenh-lech-xu-ly.sql'],
     apiPrefix: '/api/kiem-kho/chenh-lech',
-    serverLines: 'GET /api/kiem-kho/chenh-lech + POST /api/kiem-kho/chenh-lech-xu-ly (gộp kiem_kho_tong_hop DB kiem-kho + RPC ton_kho_*_gop DB chính)',
+    serverLines: 'GET /api/kiem-kho/chenh-lech (gộp kiem_kho_tong_hop DB kiem-kho + RPC ton_kho_*_gop DB chính)',
     appTab: 'kiem-kho-chenh-lech',
     appLines: 'src/features/xu-ly-chenh-lech/index.tsx',
     components: [],

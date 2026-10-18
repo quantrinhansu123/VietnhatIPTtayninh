@@ -843,11 +843,17 @@ export function OrdersPanel({
       const orderDate = order.orderDate || order.createdAt.slice(0, 10);
       const matchesDateFrom = !dateFrom || Boolean(orderDate && orderDate >= dateFrom);
       const matchesDateTo = !dateTo || Boolean(orderDate && orderDate <= dateTo);
-      const matchesSearch =
-        !normalizedSearch ||
-        `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${formatOrderProductsSummary(getOrderProductLines(order))} ${order.note}`
-          .toLowerCase()
-          .includes(normalizedSearch);
+      if (!normalizedSearch) {
+        return matchesType && matchesDateFrom && matchesDateTo;
+      }
+      const productLines = getOrderProductLines(order);
+      const productSearchText = productLines
+        .map(line => `${line.productCode || ''} ${line.productName || ''}`.trim())
+        .filter(Boolean)
+        .join(' ');
+      const matchesSearch = `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${productSearchText} ${formatOrderProductsSummary(productLines)} ${order.note}`
+        .toLowerCase()
+        .includes(normalizedSearch);
       return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
     });
   }, [dateFrom, dateTo, orders, normalizedSearch, selectedType]);
@@ -1264,7 +1270,7 @@ export function OrdersPanel({
             <TableSearchInput
             value={searchText}
             onChange={setSearchText}
-            placeholder="Tìm mã đơn, khách hàng, mã hàng..."
+            placeholder="Tìm mã đơn, khách hàng, mã SP, tên SP..."
             disabled={isLoadingOrders}
           />
           </div>

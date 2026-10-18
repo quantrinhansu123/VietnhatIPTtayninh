@@ -385,6 +385,86 @@ function reportMachineMatches(
   return machineTextMatches(hay, machineCode, machineName);
 }
 
+export type ClosingStockProductBomOption = {
+  code: string;
+  name?: string;
+  unit?: string;
+  nplItems: Array<{ code?: string; name?: string; unit?: string }>;
+};
+
+/**
+ * Gợi ý NVL tồn cuối theo LSX của máy (Ngày + Ca + Máy).
+ * Chỉ điền mã/tên/ĐVT — **không** điền số lượng / trọng lượng.
+ */
+export function buildClosingStockSuggestionsFromLsx(input: {
+  orders: ProductionOrderRow[];
+  products: ClosingStockProductBomOption[];
+  date: string;
+  shift: string;
+  machineCode?: string;
+  machineName?: string;
+}): ClosingStockLine[] {
+  const dateIso = String(input.date || '').slice(0, 10);
+  if (!dateIso) return [emptyClosingStockLine()];
+
+  const dayOrders = filterProductionOrdersForHandover({
+    orders: input.orders,
+    date: dateIso,
+    shift: input.shift,
+    machineCode: input.machineCode,
+    machineName: input.machineName
+  });
+  if (dayOrders.length === 0) return [emptyClosingStockLine()];
+
+  const catalogByCode = new Map(
+    input.products
+      .map(product => [normalizeProductCodeKey(product.code), product] as const)
+      .filter(([key]) => Boolean(key))
+  );
+
+  const byKey = new Map<string, { itemCode: string; itemName: string; unit: string }>();
+
+  for (const order of dayOrders) {
+    for (const line of getProductionOrderProductLines(order)) {
+      const productKey = normalizeProductCodeKey(line.productCode);
+      if (!productKey) continue;
+      const product = catalogByCode.get(productKey);
+      const nplItems = product?.nplItems || [];
+      for (const item of nplItems) {
+        const itemCode = String(item.code || '').trim();
+        const itemName = String(item.name || '').trim();
+        if (!itemCode && !itemName) continue;
+        const key = normalizeProductCodeKey(itemCode) || `name:${itemName.toLowerCase()}`;
+        const existing = byKey.get(key);
+        if (existing) {
+          if (!existing.itemName && itemName) existing.itemName = itemName;
+          if (!existing.unit && item.unit) existing.unit = String(item.unit).trim();
+          continue;
+        }
+        byKey.set(key, {
+          itemCode,
+          itemName,
+          unit: String(item.unit || '').trim() || 'kg'
+        });
+      }
+    }
+  }
+
+  const lines = [...byKey.values()]
+    .sort((a, b) => a.itemCode.localeCompare(b.itemCode, 'vi') || a.itemName.localeCompare(b.itemName, 'vi'))
+    .map(item => ({
+      ...emptyClosingStockLine(),
+      itemCode: item.itemCode,
+      itemName: item.itemName,
+      unit: item.unit,
+      // Chỉ gợi ý NVL — để trống số lượng / TL để người dùng nhập tay.
+      quantity: '',
+      weightKg: ''
+    }));
+
+  return lines.length > 0 ? lines : [emptyClosingStockLine()];
+}
+
 /** Tồn cuối ca từ báo cáo máy NVL — ưu tiên Máy đã chọn, không có thì lấy mọi máy cùng Ngày + Ca. */
 export function buildClosingStockLinesFromMachineNvl(input: {
   reports: unknown;

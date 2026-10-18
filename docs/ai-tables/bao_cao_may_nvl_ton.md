@@ -7,9 +7,12 @@
 
 **API:** `server.ts` — `/api/bao-cao-may-nvl-ton`  
 **Feature:** `src/features/bao-cao-may-nvl-ton/index.tsx` — `MachineNvlReportPanel`  
+**Hub:** `/phieu-bao-cao` → `src/features/report-forms/ReportFormsHub.tsx` (lazy tab; mặc định tồn máy-NVL)  
 **Components:** `MachineNvlPrintSheet.tsx`, `MachineNvlReportListView.tsx`  
 **Utils:** `utils/machineNvlReports.ts`  
 **App:** `src/App.tsx` — import + route tab (shell, không đọc logic)
+
+**Tải form (nhanh):** mở UI sau máy + ca; song song `GET /api/kho-nvl?light=1` (cache 60s), `GET /api/lenh-sx?light=1`, sổ đầu/cuối `limit=100`.
 
 Loại báo cáo: tồn đầu ca, tồn cuối ca.
 
@@ -24,6 +27,8 @@ SUPABASE_MACHINE_NVL_REPORTS_TABLE=bao_cao_may_nvl_ton
 - Báo cáo tồn đầu ca
 - Báo cáo tồn cuối ca
 
-**Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** mở modal lọc Ngày/Ca/Máy (mặc định trống) → chọn phiếu tồn cuối ca trong sổ xuống → **Điền vào form**. Ảnh từng dòng là tùy chọn ở cả đầu ca và cuối ca; không có ảnh vẫn lưu được.
+**Tự điền đầu ca (logic cũ, giữ nguyên):** Nút **Tự điền tồn đầu ca** → chọn phiếu **tồn cuối ca** trước → kế thừa mã NVL / SL sang form đầu ca.
+
+**Tự điền cuối ca:** Nút **Tự điền tồn cuối ca** → lấy danh sách NVL từ **phiếu tồn đầu ca** cùng **Ngày · Ca** (**không** lọc máy; gộp mọi máy) — SL đầu ca làm tham chiếu, SL vị trí để trống để kiểm kê. Ảnh từng dòng tùy chọn ở cả hai loại; không có ảnh vẫn lưu được.
 
 **Chống trùng:** không lưu 2 phiếu cùng **ngày + ca + máy + loại** (đầu/cuối ca). Form và API (`409`) báo đỏ: «Đã lưu … Không lưu bản trùng.»

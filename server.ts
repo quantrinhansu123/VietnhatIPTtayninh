@@ -125,7 +125,15 @@ const SUPABASE_MACHINES_TABLE = (() => {
   return raw;
 })();
 const SUPABASE_MATERIALS_TABLE = process.env.SUPABASE_MATERIALS_TABLE || 'kho_nvl';
+/** Cache ngắn cho GET /api/kho-nvl?light=1 — tránh cold trip ~10s mỗi lần mở form báo cáo. */
+const KHO_NVL_LIGHT_CACHE_TTL_MS = 60_000;
+let khoNvlLightCache: { at: number; payload: { materials: unknown[]; total: number; source: string; light: true } } | null =
+  null;
+function invalidateKhoNvlLightCache() {
+  khoNvlLightCache = null;
+}
 const SUPABASE_STAFF_TABLE = process.env.SUPABASE_STAFF_TABLE || 'nhan_su';
+
 const SUPABASE_VEHICLES_TABLE = process.env.SUPABASE_VEHICLES_TABLE || 'danh_sach_xe';
 const SUPABASE_DRIVER_RECONCILIATION_TABLE =
   process.env.SUPABASE_DRIVER_RECONCILIATION_TABLE || 'doi_chieu_lai_xe';
@@ -10759,6 +10767,8 @@ export function createApp() {
     }
 
     try {
+      // ?light=1: bỏ enrich dòng SP — đủ cho gợi ý nhân sự / máy trên form báo cáo.
+      const light = _req.query.light === '1';
       let { data, error } = await supabase
         .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
         .select('*')
@@ -10788,12 +10798,13 @@ export function createApp() {
       }
 
       const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
-      const productionOrders = await enrichProductionOrdersWithDong(rows);
+      const productionOrders = light ? rows : await enrichProductionOrdersWithDong(rows);
 
       return res.json({
         productionOrders,
         total: productionOrders.length,
-        source: 'supabase'
+        source: 'supabase',
+        light: light || undefined
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tải lệnh sản xuất.' });
@@ -12186,22 +12197,46 @@ export function createApp() {
     }
 
     try {
+      // ?light=1: danh mục gọn (mã/tên/ĐVT/KL) — không select * và không tính tồn nhập/xuất.
+      const light = _req.query.light === '1';
+      if (
+        light &&
+        khoNvlLightCache &&
+        Date.now() - khoNvlLightCache.at < KHO_NVL_LIGHT_CACHE_TTL_MS
+      ) {
+        return res.json(khoNvlLightCache.payload);
+      }
+
+      const lightSelect = 'id,ma_npl,ten_npl,don_vi,ten_kho,tong_trong_luong';
       // PostgREST mặc định tối đa 1000 dòng/query → phân trang range để lấy hết.
       const PAGE_SIZE = 1000;
       const rows: Record<string, unknown>[] = [];
       let queryError: { message?: string; code?: string } | null = null;
+      let selectCols = light ? lightSelect : '*';
 
       for (let from = 0; ; from += PAGE_SIZE) {
-        let query = supabase.from(SUPABASE_MATERIALS_TABLE).select('*');
-        const ordered = await query
+        let ordered = await supabase
+          .from(SUPABASE_MATERIALS_TABLE)
+          .select(selectCols)
           .order('created_at', { ascending: false, nullsFirst: false })
           .order('id', { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
 
+        // Cột light thiếu → fallback select * (vẫn bỏ movement totals khi light).
+        if (ordered.error && light && selectCols === lightSelect && isMissingColumnError(ordered.error)) {
+          selectCols = '*';
+          ordered = await supabase
+            .from(SUPABASE_MATERIALS_TABLE)
+            .select('*')
+            .order('created_at', { ascending: false, nullsFirst: false })
+            .order('id', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+        }
+
         if (ordered.error && isMissingColumnError(ordered.error)) {
           const fallback = await supabase
             .from(SUPABASE_MATERIALS_TABLE)
-            .select('*')
+            .select(selectCols === lightSelect ? '*' : selectCols)
             .order('id', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
           if (fallback.error) {
@@ -12229,16 +12264,21 @@ export function createApp() {
         });
       }
 
-      // ?light=1: chỉ danh mục (mã/tên/đơn vị), bỏ tính tồn từ nhập/xuất — nhanh hơn nhiều.
-      const materials = _req.query.light === '1'
+      const materials = light
         ? rows
         : applyMaterialMovementTotals(rows, await buildMaterialMovementTotals());
 
-      return res.json({
+      const payload = {
         materials,
         total: materials.length,
-        source: 'supabase'
-      });
+        source: 'supabase' as const,
+        ...(light ? { light: true as const } : {})
+      };
+      if (light) {
+        khoNvlLightCache = { at: Date.now(), payload: { ...payload, light: true } };
+      }
+
+      return res.json(payload);
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tải nguyên phụ liệu.' });
     }
@@ -12266,6 +12306,7 @@ export function createApp() {
         return res.status(500).json({ error: materialWriteErrorMessage(error) });
       }
 
+      invalidateKhoNvlLightCache();
       return res.status(201).json({ success: true, material: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi thêm nguyên phụ liệu.' });
@@ -12313,6 +12354,7 @@ export function createApp() {
         return res.status(500).json({ error: materialWriteErrorMessage(updateError) });
       }
 
+      invalidateKhoNvlLightCache();
       return res.json({
         success: true,
         updated: codes.length,
@@ -12357,6 +12399,7 @@ export function createApp() {
         return res.status(404).json({ error: 'Không tìm thấy nguyên phụ liệu cần cập nhật.' });
       }
 
+      invalidateKhoNvlLightCache();
       return res.json({ success: true, material: data });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi cập nhật nguyên phụ liệu.' });
@@ -12409,6 +12452,7 @@ export function createApp() {
         deleted += data?.length || 0;
       }
 
+      invalidateKhoNvlLightCache();
       return res.json({ success: true, deleted });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa nguyên phụ liệu.' });
@@ -12443,6 +12487,7 @@ export function createApp() {
         return res.status(404).json({ error: 'Không tìm thấy nguyên phụ liệu cần xóa.' });
       }
 
+      invalidateKhoNvlLightCache();
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi xóa nguyên phụ liệu.' });

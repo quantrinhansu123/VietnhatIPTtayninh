@@ -20,9 +20,10 @@ import {
   type ShiftSetting
 } from '../utils/shiftSettings';
 import {
-  buildClosingStockLinesFromMachineNvl,
+  buildClosingStockSuggestionsFromLsx,
   pickHandoverMachineAndOperators
 } from '../utils/shiftHandoverAutofill';
+import { normalizeProducts } from '../features/san-pham';
 import { formatNumber } from '../utils';
 import {
   SHIFT_HANDOVER_FORM_CODE,
@@ -331,29 +332,26 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
     const machineName = selectedMachine?.name || '';
     if (
       formHasDetailData() &&
-      !window.confirm('Đã có dữ liệu trên form. Tự động điền sẽ ghi đè Tồn cuối ca. Tiếp tục?')
+      !window.confirm(
+        'Đã có dữ liệu trên form. Tự động điền sẽ ghi đè danh sách NVL gợi ý (không điền số lượng). Tiếp tục?'
+      )
     ) {
       return;
     }
 
     setIsAutofilling(true);
     try {
-      // Lấy theo Ngày (không lọc ma_may trên API) để vẫn hiện NVL cùng Ca khi máy đã chọn chưa có phiếu.
-      const nvlParams = new URLSearchParams({
-        limit: '200',
-        loai_bao_cao: 'cuoi_ca',
-        ngay: date
-      });
-
-      const nvlRes = await fetch(`/api/bao-cao-may-nvl-ton?${nvlParams.toString()}`);
-      const nvlData = await nvlRes.json().catch(() => ({}));
-
-      if (!nvlRes.ok) {
-        throw new Error(readApiErrorMessage(nvlRes, nvlData, 'Không tải được tồn cuối ca.'));
+      // Gợi ý NVL theo BOM của LSX từng máy — chỉ mã/tên/ĐVT, không điền SL/TL.
+      const productRes = await fetch('/api/san-pham?format=table');
+      const productData = await productRes.json().catch(() => ({}));
+      if (!productRes.ok) {
+        throw new Error(readApiErrorMessage(productRes, productData, 'Không tải được danh mục SP (BOM NVL).'));
       }
+      const products = normalizeProducts(productData);
 
-      const nextClosing = buildClosingStockLinesFromMachineNvl({
-        reports: nvlData,
+      const nextClosing = buildClosingStockSuggestionsFromLsx({
+        orders: productionOrders,
+        products,
         date,
         shift,
         machineCode,
@@ -363,12 +361,12 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       setClosingStockLines(nextClosing);
 
       const filledClosing = nextClosing.filter(
-        line => line.itemCode.trim() || line.itemName.trim() || parseQty(line.quantity) !== null
+        line => line.itemCode.trim() || line.itemName.trim()
       ).length;
       const okMsg =
         filledClosing > 0
-          ? `Đã điền: ${filledClosing} dòng NVL tồn cuối ca (${date} · ${shift}).`
-          : `Không có phiếu tồn cuối ca cho Ngày + Ca này (${date} · ${shift}).`;
+          ? `Đã gợi ý ${filledClosing} NVL theo LSX máy (${date} · ${shift}${machineCode ? ` · ${machineCode}` : ''}) — chưa điền số lượng.`
+          : `Không có NVL định mức từ LSX cho Ngày + Ca${machineCode ? ' + Máy' : ''} này (${date} · ${shift}).`;
       if (filledClosing > 0) {
         setMessage(okMsg);
         showAppToast(okMsg);
@@ -645,7 +643,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   onClick={() => void handleAutofill()}
                   disabled={isAutofilling || isLoading || isSaving}
                   className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
-                  title="Điền NVL tồn cuối ca theo Ngày + Ca (ưu tiên Máy đã chọn)"
+                  title="Gợi ý NVL theo LSX của máy đã chọn — chỉ mã/tên/ĐVT, không điền số lượng"
                 >
                   {isAutofilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4 text-[#ef1b2d]" />}
                   {isAutofilling ? 'Đang điền...' : 'Tự động điền'}

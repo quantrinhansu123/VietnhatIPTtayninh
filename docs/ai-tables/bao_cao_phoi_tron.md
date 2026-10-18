@@ -36,7 +36,13 @@
 
 
 
-**Danh sách:** Tab `mixing-report-list` có 3 tab con: **Bảng trộn định mức** (`bang_tron_vat_tu_dinh_muc`) · **Phiếu trộn thực tế** · **Danh sách phiếu phối trộn** (`bao_cao_phoi_tron`). Khi mở chi tiết phiếu phối trộn hiện **Tỉ lệ trộn Định mức** (`ti_le_phan_tram`) và **Tỉ lệ trộn Thực tế** (KL TT dòng ÷ tổng KL TT phiếu × 100).
+**Một trang nhiều tab:** Cả `mixing-report` và `mixing-report-list` đều mở `MixingReportListView` với 4 tab:
+1. **Nhập báo cáo trộn** (`bao_cao_phoi_tron` form)
+2. **Bảng trộn định mức** (`bang_tron_vat_tu_dinh_muc`)
+3. **Phiếu trộn thực tế**
+4. **Danh sách phiếu** (`bao_cao_phoi_tron`)
+
+Menu Sản xuất → Trộn NVL mở tab nhập; QC → BOM mở tab định mức. Khi mở chi tiết phiếu hiện **Tỉ lệ trộn Định mức** / **Thực tế**.
 
 
 

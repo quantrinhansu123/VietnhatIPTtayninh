@@ -1028,6 +1028,8 @@ export default function MixingReportForm({
   onBack,
   onOpenList,
   modalMode = false,
+  /** Nhúng trong hub tab — bỏ header trang riêng (logo / Quay lại). */
+  embedded = false,
   open = true,
   onClose,
   onSaved,
@@ -1039,6 +1041,7 @@ export default function MixingReportForm({
   onBack?: () => void;
   onOpenList?: () => void;
   modalMode?: boolean;
+  embedded?: boolean;
   open?: boolean;
   onClose?: () => void;
   onSaved?: () => void | Promise<void>;
@@ -2177,7 +2180,7 @@ export default function MixingReportForm({
 
   const formBody = (
     <>
-      {!modalMode && (
+      {!modalMode && !embedded && (
         <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b-4 border-[#ef1b2d] bg-white px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
@@ -2212,7 +2215,7 @@ export default function MixingReportForm({
         </section>
       )}
 
-      {modalMode && (
+      {(modalMode || embedded) && (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
           {headerFields}
         </div>

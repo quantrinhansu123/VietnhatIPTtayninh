@@ -36,6 +36,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `can_tu_dong_tong_hop` | `/phan-tich-tu-dong` (tab Dữ liệu cân thực tế) | [can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) |
 | `kiem_kho` | `/kiem-kho` | [kiem_kho.md](./kiem_kho.md) |
 | `kho_cho` | `/can-tu-dong` (nút Nhập kho) | [kho_cho.md](./kho_cho.md) |
+| *(hub)* `report-forms` | `/phieu-bao-cao` — **tab** nhập báo cáo | [phieu_bao_cao.md](./phieu_bao_cao.md) |
 | `doi_soat` | `/doi-soat` (hub `/phieu-bao-cao`) · DB `njdlkyx…` | [doi_soat.md](./doi_soat.md) |
 | `quan_ly_kho` | `/quan-ly-kho` | [quan_ly_kho.md](./quan_ly_kho.md) |
 | `bao_cao_hang_hong` | `/bao-cao-hang-hong` | [bao_cao_hang_hong.md](./bao_cao_hang_hong.md) |

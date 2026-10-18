@@ -11,7 +11,6 @@ import WasteForm from './components/WasteForm';
 import WeighingShiftSummary from './components/WeighingShiftSummary';
 import WeighingReportForm from './components/WeighingReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from './lib/weighingSlipConfig';
-import MixingReportForm from './components/MixingReportForm';
 import MixingReportListView from './components/MixingReportListView';
 import MachineNvlReportListView from './components/MachineNvlReportListView';
 import AcceptanceReportForm, {
@@ -84,6 +83,7 @@ import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
+import { ReportFormsHub } from './features/report-forms';
 import { BieuDoThPanel } from './features/bieu-do-th';
 
 const DEFAULT_REPORT: Omit<ProductionReport, 'id' | 'createdAt'> = {
@@ -883,15 +883,35 @@ export default function App() {
               </motion.div>
             ) : activeTab === 'report-forms' ? (
               <motion.div
-                key="report-forms-menu"
+                key="report-forms-hub"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="space-y-3"
               >
-                <MenuPageHeader title="Nhập báo cáo" desc="Chọn phiếu báo cáo cần lập hoặc mở." />
-                <MenuCardGrid items={filterMenuItems(REPORT_FORM_MENU_ITEMS)} onNavigate={navigateToTab} />
+                <ReportFormsHub
+                  menuItems={filterMenuItems(REPORT_FORM_MENU_ITEMS)}
+                  onBack={() => goBack('factory-cong-nhan')}
+                  currentUser={authUser}
+                  onOpenList={navigateToTab}
+                  mixingReportMachinePrefill={mixingReportMachinePrefill}
+                  onMixingPrefillConsumed={() => setMixingReportMachinePrefill(null)}
+                  machineNvlReportPrefill={machineNvlReportPrefill}
+                  onMachineNvlPrefillConsumed={() => setMachineNvlReportPrefill(null)}
+                  machineNvlEditReport={machineNvlEditReport}
+                  onMachineNvlEditConsumed={() => setMachineNvlEditReport(null)}
+                  acceptanceEditReport={acceptanceEditReport}
+                  onAcceptanceEditConsumed={() => setAcceptanceEditReport(null)}
+                  acceptanceEditReportGroup={acceptanceEditReportGroup}
+                  onAcceptanceEditGroupConsumed={() => setAcceptanceEditReportGroup(null)}
+                  acceptanceCreatePrefill={acceptanceCreatePrefill}
+                  onAcceptanceCreatePrefillConsumed={() => setAcceptanceCreatePrefill(null)}
+                  acceptanceShowForm={acceptanceShowForm}
+                  setAcceptanceShowForm={setAcceptanceShowForm}
+                  setAcceptanceEditReport={setAcceptanceEditReport}
+                  setAcceptanceEditReportGroup={setAcceptanceEditReportGroup}
+                  setAcceptanceCreatePrefill={setAcceptanceCreatePrefill}
+                />
               </motion.div>
             ) : activeTab === 'report-lists' ? (
               <motion.div
@@ -1228,9 +1248,9 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <MixingReportForm
+                <MixingReportListView
+                  initialTab="form"
                   onBack={() => goBack('report-forms')}
-                  onOpenList={() => navigateToTab('mixing-report-list')}
                   initialMachine={mixingReportMachinePrefill}
                   onInitialMachineConsumed={() => setMixingReportMachinePrefill(null)}
                 />
@@ -1244,6 +1264,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <MixingReportListView
+                  initialTab="norms"
                   onBack={() => goBack('report-lists')}
                 />
               </motion.div>

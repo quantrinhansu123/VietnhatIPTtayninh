@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bảng** | `doi_soat` |
-| **Tab** | `doi-soat` → `/doi-soat` (card trên `/phieu-bao-cao`) |
+| **Tab** | `doi-soat` → `/doi-soat` (tab trên hub `/phieu-bao-cao`) |
 | **DB** | Cân tự động — project `njdlkyxdieefeebcyaov` (`SUPABASE_WEIGHING_*`) |
 | **SQL** | `supabase-doi-soat.sql` |
 
@@ -38,4 +38,4 @@ Không có chốt đợt / bảng tổng hợp / chênh lệch (bản gọn so v
 | `src/features/doi-soat/index.tsx` | 2 tab: Thực hiện đối soát · Danh sách đã quét |
 | `src/components/ProductQrScanner.tsx` | Quét máy V2 / Quét ĐT |
 
-Hub: `REPORT_FORM_MENU_ITEMS` card **Đối soát** → `report-forms`.
+Hub: `src/features/report-forms/ReportFormsHub.tsx` — tab **Đối soát** trên `/phieu-bao-cao` (`report-forms`).

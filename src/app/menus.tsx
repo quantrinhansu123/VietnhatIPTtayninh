@@ -161,11 +161,45 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'machine-nvl-report'
   },
   {
-    title: 'Trộn nguyên vật liệu',
+    title: 'Bảng trộn',
     desc: 'Nhập bảng trộn vật tư theo ca, máy và lần phối trộn.',
     icon: FlaskConical,
     icon3d: testTube3d,
     tab: 'mixing-report'
+  },
+  {
+    title: 'Báo cáo sản lượng',
+    desc: 'Ghi nhận mặt hàng, số lượng và ảnh sản lượng theo ca.',
+    icon: ClipboardCheck,
+    icon3d: chartIncreasing3d,
+    tab: 'acceptance-report'
+  },
+  {
+    title: 'Phiếu giao ca',
+    desc: 'Nhật ký sản xuất kiêm phiếu giao ca QT-16-BM02: thành phẩm, hàng lỗi và báo cáo cuối ca.',
+    icon: ArrowLeftRight,
+    tab: 'shift-handover-report'
+  },
+  {
+    title: 'Phiếu báo dừng máy',
+    desc: 'Ghi nhận thời gian dừng, lý do và số cuộn ảnh hưởng theo ca.',
+    icon: MachineDowntimeIcon,
+    icon3d: stopwatch3d,
+    tab: 'machine-downtime-report'
+  },
+  {
+    title: 'Nhật ký chạy máy',
+    desc: 'Thợ chính ghi mỗi 2 giờ: tốc độ, nhiệt độ, cuộn ra và hiệu suất ca.',
+    icon: Activity,
+    icon3d: notebook3d,
+    tab: 'machine-run-log'
+  },
+  {
+    title: 'Đối soát',
+    desc: 'Quét QR đối soát theo kho và đợt — tối ưu máy quét BT-A700.',
+    icon: ScanBarcode,
+    icon3d: cardIndexDividers3d,
+    tab: 'doi-soat'
   },
   {
     title: 'Danh sách cân AI',
@@ -188,40 +222,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: Scale,
     icon3d: scale3d,
     tab: 'can-kiem-kho'
-  },
-  {
-    title: 'Phiếu báo dừng máy',
-    desc: 'Ghi nhận thời gian dừng, lý do và số cuộn ảnh hưởng theo ca.',
-    icon: MachineDowntimeIcon,
-    icon3d: stopwatch3d,
-    tab: 'machine-downtime-report'
-  },
-  {
-    title: 'Nhật ký chạy máy',
-    desc: 'Thợ chính ghi mỗi 2 giờ: tốc độ, nhiệt độ, cuộn ra và hiệu suất ca.',
-    icon: Activity,
-    icon3d: notebook3d,
-    tab: 'machine-run-log'
-  },
-  {
-    title: 'Báo cáo sản lượng',
-    desc: 'Ghi nhận mặt hàng, số lượng và ảnh sản lượng theo ca.',
-    icon: ClipboardCheck,
-    icon3d: chartIncreasing3d,
-    tab: 'acceptance-report'
-  },
-  {
-    title: 'Phiếu giao ca',
-    desc: 'Nhật ký sản xuất kiêm phiếu giao ca QT-16-BM02: thành phẩm, hàng lỗi và báo cáo cuối ca.',
-    icon: ArrowLeftRight,
-    tab: 'shift-handover-report'
-  },
-  {
-    title: 'Đối soát',
-    desc: 'Quét QR đối soát theo kho và đợt — tối ưu máy quét BT-A700.',
-    icon: ScanBarcode,
-    icon3d: cardIndexDividers3d,
-    tab: 'doi-soat'
   }
 ];
 

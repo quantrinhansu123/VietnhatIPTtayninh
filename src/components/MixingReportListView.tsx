@@ -244,9 +244,14 @@ function renderExplanationText(text: string | undefined) {
   return <p className="whitespace-pre-line text-xs font-medium leading-relaxed text-zinc-700">{value}</p>;
 }
 
+export type MixingReportHubTab = 'form' | 'norms' | 'actual' | 'reports';
+
 export default function MixingReportListView({
   onBack,
-  initialFilters
+  initialFilters,
+  initialTab = 'form',
+  initialMachine = null,
+  onInitialMachineConsumed
 }: {
   onBack: () => void;
   initialFilters?: {
@@ -255,10 +260,13 @@ export default function MixingReportListView({
     shift?: string;
     machineCode?: string;
   };
+  /** Tab mở sẵn: form nhập · định mức · thực tế · danh sách. */
+  initialTab?: MixingReportHubTab;
+  initialMachine?: { id: string; code: string; name: string } | null;
+  onInitialMachineConsumed?: () => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('mixing-report-list');
-  /** Tab định mức/thực tế từng bị gỡ — gắn lại vì menu QC «BOM và tỷ lệ phối trộn» cần Bảng trộn. */
-  const [listTab, setListTab] = useState<'reports' | 'norms' | 'actual'>('norms');
+  const [listTab, setListTab] = useState<MixingReportHubTab>(initialTab);
   const [filters, setFilters] = useState<MixingReportFilters>(() => {
     const shift = initialFilters?.shift?.trim() || '';
     return {
@@ -291,7 +299,6 @@ export default function MixingReportListView({
     setPreviewPhoto(null);
   };
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; label: string } | null>(null);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [formModalMode, setFormModalMode] = useState<'create' | 'edit'>('create');
   const [pendingEditReport, setPendingEditReport] = useState<MixingReport | null>(null);
   const [deletingId, setDeletingId] = useState('');
@@ -594,8 +601,12 @@ export default function MixingReportListView({
     }
     setFormModalMode('edit');
     setPendingEditReport(report);
-    setCreateModalOpen(true);
+    setListTab('form');
   };
+
+  useEffect(() => {
+    setListTab(initialTab);
+  }, [initialTab]);
 
   const renderReportActions = (report: MixingReport) => (
     <div className="flex items-center justify-center gap-1">
@@ -931,7 +942,7 @@ export default function MixingReportListView({
                       onClick={() => {
                         setFormModalMode('create');
                         setPendingEditReport(null);
-                        setCreateModalOpen(true);
+                        setListTab('form');
                       }}
                       className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
                     >
@@ -953,7 +964,26 @@ export default function MixingReportListView({
           </div>
         </div>
 
-        <div className="grid gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-3">
+        <div className="grid gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingEditReport(null);
+              setFormModalMode('create');
+              setListTab('form');
+            }}
+            aria-pressed={listTab === 'form'}
+            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+              listTab === 'form'
+                ? 'border-[#ef1b2d] bg-red-50'
+                : 'border-zinc-200 bg-white hover:border-zinc-300'
+            }`}
+          >
+            <span className="block text-sm font-black text-zinc-950">Nhập báo cáo trộn</span>
+            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
+              Ngày · ca · máy · lần phối trộn
+            </span>
+          </button>
           <button
             type="button"
             onClick={() => setListTab('norms')}
@@ -994,9 +1024,9 @@ export default function MixingReportListView({
                 : 'border-zinc-200 bg-white hover:border-zinc-300'
             }`}
           >
-            <span className="block text-sm font-black text-zinc-950">Danh sách phiếu phối trộn</span>
+            <span className="block text-sm font-black text-zinc-950">Danh sách phiếu</span>
             <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Báo cáo phối trộn theo ngày · ca · máy
+              Báo cáo đã lưu theo ngày · ca · máy
             </span>
           </button>
         </div>
@@ -1085,7 +1115,25 @@ export default function MixingReportListView({
         ) : null}
       </section>
 
-      {listTab === 'norms' ? (
+      {listTab === 'form' ? (
+        <MixingReportForm
+          embedded
+          editReport={pendingEditReport}
+          onEditConsumed={() => setPendingEditReport(null)}
+          initialMachine={initialMachine}
+          onInitialMachineConsumed={onInitialMachineConsumed}
+          onOpenList={() => setListTab('reports')}
+          onSaved={async () => {
+            setMessage(
+              formModalMode === 'edit' ? 'Đã cập nhật báo cáo phối trộn.' : 'Đã lưu báo cáo phối trộn.'
+            );
+            setFormModalMode('create');
+            setPendingEditReport(null);
+            await loadReports(filters, machines);
+            setListTab('reports');
+          }}
+        />
+      ) : listTab === 'norms' ? (
         <MixingNormMaterialsTab />
       ) : listTab === 'actual' ? (
         <ActualMixingSheetTab />
@@ -1323,26 +1371,6 @@ export default function MixingReportListView({
             />
           </div>
         </div>
-      ) : null}
-
-      {createModalOpen && (canCreate || (canEdit && pendingEditReport)) ? (
-        <MixingReportForm
-          modalMode
-          open
-          editReport={pendingEditReport}
-          onEditConsumed={() => setPendingEditReport(null)}
-          onClose={() => {
-            setCreateModalOpen(false);
-            setPendingEditReport(null);
-            setFormModalMode('create');
-          }}
-          onSaved={async () => {
-            setMessage(
-              formModalMode === 'edit' ? 'Đã cập nhật báo cáo phối trộn.' : 'Đã lưu báo cáo phối trộn.'
-            );
-            await loadReports(filters, machines);
-          }}
-        />
       ) : null}
 
       {printReports.length > 0 ? <MixingReportPrintBatch reports={printReports} /> : null}

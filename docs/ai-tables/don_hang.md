@@ -29,6 +29,10 @@ Helper tự sinh mã: `generateNextOrderCodeFromDb()` ~2924.
 
 Tạo lệnh SX: `POST /api/lenh-sx/from-don-hang/:id`
 
+### Danh sách / tìm kiếm
+
+- Ô tìm trên `/don-hang` khớp **mã đơn, khách, mã SP, tên SP** (không dấu). Nếu dòng đơn chỉ lưu mã SP, tên lấy từ danh mục `/api/san-pham` để vẫn tìm được theo tên.
+
 ### Form đơn hàng
 
 - **Khách hàng**: sổ xuống lấy từ `/api/khach-hang`; bắt buộc với **Đơn bán**, không bắt buộc với **Đơn sản xuất**.

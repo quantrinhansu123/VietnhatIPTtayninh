@@ -76,6 +76,15 @@ export function generateNextOrderCode(existingCodes: Iterable<string>) {
   return `DH${String(next).padStart(width, '0')}`;
 }
 
+/** Chuẩn hóa chuỗi tìm kiếm đơn hàng (không dấu, không phân biệt hoa thường). */
+export function normalizeOrderSearchText(value: string) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+}
+
 function formatOrderCreatedAt(value: string): string {
   const trimmed = String(value || '').trim();
   if (!trimmed) return '—';
@@ -472,6 +481,8 @@ export function OrdersPanel({
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
   const [productOptions, setProductOptions] = useState<OrderProductOption[]>([]);
+  /** Danh mục SP để tìm đơn theo tên khi dòng đơn chỉ lưu mã SP. */
+  const [productCatalog, setProductCatalog] = useState<OrderProductOption[]>([]);
   const [stockByProduct, setStockByProduct] = useState<Record<string, number>>({});
   const [loadingStockByProduct, setLoadingStockByProduct] = useState<Record<string, boolean>>({});
   const [stockErrorByProduct, setStockErrorByProduct] = useState<Record<string, boolean>>({});
@@ -520,6 +531,24 @@ export function OrdersPanel({
 
   useEffect(() => {
     loadOrders();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProductCatalog = async () => {
+      try {
+        const res = await fetch('/api/san-pham?format=table');
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        setProductCatalog(normalizeOrderProducts(data, ''));
+      } catch {
+        if (!cancelled) setProductCatalog([]);
+      }
+    };
+    void loadProductCatalog();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -836,7 +865,7 @@ export function OrdersPanel({
       .filter((type): type is string => type !== '-' && type.length > 0);
     return [...new Set(types)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [orders]);
-  const normalizedSearch = searchText.trim().toLowerCase();
+  const normalizedSearch = normalizeOrderSearchText(searchText.trim());
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesType = selectedType === 'all' || order.orderType === selectedType;
@@ -848,15 +877,26 @@ export function OrdersPanel({
       }
       const productLines = getOrderProductLines(order);
       const productSearchText = productLines
-        .map(line => `${line.productCode || ''} ${line.productName || ''}`.trim())
+        .map(line => {
+          const catalog = findOrderProductByCode(productCatalog, line.productCode);
+          return [
+            line.productCode,
+            line.productName,
+            catalog?.code,
+            catalog?.newCode,
+            catalog?.name
+          ]
+            .filter(Boolean)
+            .join(' ');
+        })
         .filter(Boolean)
         .join(' ');
-      const matchesSearch = `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${productSearchText} ${formatOrderProductsSummary(productLines)} ${order.note}`
-        .toLowerCase()
-        .includes(normalizedSearch);
+      const matchesSearch = normalizeOrderSearchText(
+        `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${productSearchText} ${formatOrderProductsSummary(productLines)} ${order.note}`
+      ).includes(normalizedSearch);
       return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
     });
-  }, [dateFrom, dateTo, orders, normalizedSearch, selectedType]);
+  }, [dateFrom, dateTo, orders, normalizedSearch, productCatalog, selectedType]);
 
   const hasActiveFilters = selectedType !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
 
@@ -1034,7 +1074,7 @@ export function OrdersPanel({
                           value={line.productCode}
                           onChange={productCode => pickOrderProduct(line.key, productCode)}
                           options={productOptions}
-                          placeholder="Gõ để tìm mã SP"
+                          placeholder="Gõ để tìm mã / tên SP"
                           isLoading={isLoadingLookups}
                           inputClassName={orderFieldClass}
                           openUpward

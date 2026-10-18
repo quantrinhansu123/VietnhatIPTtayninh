@@ -401,7 +401,7 @@ export function OrderFormModal({
                         value={line.productCode}
                         onChange={productCode => pickOrderProduct(line.key, productCode)}
                         options={productOptions}
-                        placeholder="Gõ để tìm mã SP"
+                        placeholder="Gõ để tìm mã / tên SP"
                         isLoading={isLoadingLookups}
                         inputClassName={orderFieldClass}
                         openUpward

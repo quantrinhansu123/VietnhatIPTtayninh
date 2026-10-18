@@ -1161,7 +1161,7 @@ export function downloadProductNplComponentsTemplate(
   XLSX.writeFile(workbook, `mau-thanh-phan-${safeCode}.xlsx`);
 }
 
-export function downloadBulkProductNplComponentsTemplate(rows: BulkProductNplComponentsExportRow[]) {
+export function downloadBulkProductNplComponentsTemplate(rows: BulkProductNplComponentsExportRow[] = []) {
   const exportRows: ExcelLoaiRow[] =
     rows.length > 0
       ? rows.flatMap(row =>
@@ -1176,10 +1176,9 @@ export function downloadBulkProductNplComponentsTemplate(rows: BulkProductNplCom
           })
         )
       : [
-          { 'Mã SP': 'MT- MN001', 'Mã NVL': 'NNS 1L', Loại: 'Phần trăm', 'Giá trị': 9.17, ĐVT: '%' },
-          { 'Mã SP': 'MT- MN001', 'Mã NVL': 'NNS 1L', Loại: 'Số lượng', 'Giá trị': 0.51, ĐVT: 'Kg' },
-          { 'Mã SP': 'MT- MN001', 'Mã NVL': 'T1,08x2,2m', Loại: 'Số lượng', 'Giá trị': 1, ĐVT: 'Cái' },
-          { 'Mã SP': 'MT- MN001', 'Mã NVL': 'T1,08x2,2m', Loại: 'Số lượng', 'Giá trị': 0.1333, ĐVT: 'Kg' }
+          // Chỉ 2 dòng mẫu — không xuất dữ liệu thật.
+          { 'Mã SP': 'SP-001', 'Mã NVL': 'NVL-001', Loại: 'Phần trăm', 'Giá trị': 10, ĐVT: '%' },
+          { 'Mã SP': 'SP-001', 'Mã NVL': 'NVL-002', Loại: 'Số lượng', 'Giá trị': 1, ĐVT: 'Cái' }
         ];
 
   const worksheet = XLSX.utils.json_to_sheet(exportRows, {

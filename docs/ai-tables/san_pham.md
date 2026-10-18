@@ -63,14 +63,14 @@ Xóa SP: `DELETE /api/san-pham` gọi RPC `xoa_san_pham_hang_loat` (hoặc FK `O
 - Bấm in cập nhật `so_lan_in` và `ngay_in_gan_nhat`.
 - Trong **Xem sản phẩm** có tab **Mã QR đã cấp**: xem mã, trạng thái, ngày cấp và lịch sử in.
 
-### Excel danh mục SP
+### Excel danh mục SP (thông số kỹ thuật)
 
-- Nút **Tải mẫu Excel** / **Tải Excel lên** (và **Tải mẫu Excel SP**) — `src/utils/productCatalogExcel.ts`
-- Cột khớp bảng UI trước: Mã SP, Tên, Tính chất, Nhóm, Đơn vị, Tổng TL, Tồn đầu, Nhập, Xuất, Tồn, Tồn TT + thêm định mức (AMIS, khổ cuộn, TL lõi/túi/nhựa…)
-- **Ô trống vẫn đẩy lên** (chỉ bắt buộc có Mã SP hoặc Tên)
-- Upsert theo `ma_sp`
-- File mẫu cũ kiểu Tên NVL/Loại/Giá trị → báo lỗi hướng dẫn dùng mẫu danh mục
-- Định mức NVL: **Nhập định mức NVL** → `import_sp` · **Xem import_sp** · **Đồng bộ Thành phần** (`POST /api/import-sp/dong-bo`) — xem `import_sp.md`.
+- Nút **Tải mẫu Excel SP** / **Tải Excel SP lên** (header) — `src/utils/productCatalogExcel.ts`
+- **Tải mẫu** chỉ file mẫu (dòng ví dụ), **không** xuất toàn bộ SP
+- **13 cột:** Mã SP · Tên · Tính chất · Nhóm · Đơn vị · Tổng TL · Khổ cuộn · Chiều dài · TL lõi · TL túi · TL nhựa · Mã AMIS · Mã mới
+- **Upsert theo Mã SP:** đã có → `PATCH` cập nhật; chưa có → `POST` thêm mới (bắt buộc có Mã SP)
+- Không gửi tồn kho / mô tả qua Excel này
+- Không nhầm với **Mẫu định mức NVL** (BOM → `import_sp`) — xem `import_sp.md`
 
 ## Không đọc
 

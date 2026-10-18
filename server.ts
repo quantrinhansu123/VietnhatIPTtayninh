@@ -9892,6 +9892,23 @@ export function createApp() {
         return res.status(400).json({ error: 'Không có dòng Excel để ghi vào import_sp.' });
       }
 
+      const normalizeCodePart = (value: unknown) =>
+        String(value ?? '')
+          .trim()
+          .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '')
+          .toUpperCase();
+      const normalizeTextPart = (value: unknown) =>
+        String(value ?? '')
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd')
+          .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]+/g, '');
+      /** Key ghép: Mã SP + Mã NVL + Loại + ĐVT */
+      const buildImportSpKey = (maSp: unknown, maNvl: unknown, loai: unknown, dvt: unknown) =>
+        [normalizeCodePart(maSp), normalizeCodePart(maNvl), normalizeTextPart(loai), normalizeTextPart(dvt)].join('|');
+
       const batchId =
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
@@ -9940,7 +9957,71 @@ export function createApp() {
         return res.status(400).json({ error: 'Không có dòng hợp lệ (cần Mã SP + Mã NVL).' });
       }
 
-      // Nhập thêm: luôn insert dòng mới — không xóa/ghi đè import_sp cũ cùng mã SP.
+      const excelKeys = new Set(
+        records.map(row => buildImportSpKey(row.ma_sp, row.ma_nvl, row.loai, row.dvt))
+      );
+
+      // Xóa dòng cũ trùng key (Mã SP + Mã NVL + Loại + ĐVT) trước khi ghi Excel.
+      const uniqueMaSp = Array.from(new Set(records.map(row => row.ma_sp).filter(Boolean)));
+      const candidateMap = new Map<string, Record<string, unknown>>();
+      for (const maSp of uniqueMaSp) {
+        const targetKey = normalizeCodePart(maSp);
+        const variants = Array.from(
+          new Set(
+            [
+              maSp,
+              targetKey,
+              targetKey.replace(/^([A-Z]+)(-?)([A-Z]+)(\d+)$/i, (_, a, _d, b, n) => `${a}-${b}${n}`),
+              targetKey.replace(/^([A-Z]+)-([A-Z]+)(\d+)$/i, (_, a, b, n) => `${a}- ${b}${n}`)
+            ]
+              .map(value => String(value || '').trim())
+              .filter(Boolean)
+          )
+        );
+        for (const variant of variants) {
+          const { data, error } = await supabase
+            .from(SUPABASE_IMPORT_SP_TABLE)
+            .select('id, ma_sp, ma_nvl, loai, dvt')
+            .eq('ma_sp', variant)
+            .limit(5000);
+          if (error) {
+            console.error('Supabase import_sp delete-prep query error:', error);
+            return res.status(500).json({
+              error: `Không thể đọc ${SUPABASE_IMPORT_SP_TABLE} để xóa dòng cũ. ${error.message}`
+            });
+          }
+          for (const row of (data || []) as Record<string, unknown>[]) {
+            const id = String(row.id ?? '').trim();
+            if (id) candidateMap.set(id, row);
+          }
+        }
+      }
+
+      const idsToDelete = [...candidateMap.values()]
+        .filter(row =>
+          excelKeys.has(buildImportSpKey(row.ma_sp, row.ma_nvl, row.loai, row.dvt))
+        )
+        .map(row => String(row.id ?? '').trim())
+        .filter(Boolean);
+
+      let deleted = 0;
+      const deleteChunkSize = 200;
+      for (let i = 0; i < idsToDelete.length; i += deleteChunkSize) {
+        const chunk = idsToDelete.slice(i, i + deleteChunkSize);
+        const { error, count } = await supabase
+          .from(SUPABASE_IMPORT_SP_TABLE)
+          .delete({ count: 'exact' })
+          .in('id', chunk);
+        if (error) {
+          console.error('Supabase import_sp delete error:', error);
+          return res.status(500).json({
+            error: `Không thể xóa dòng cũ trùng key trên ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`,
+            deleted
+          });
+        }
+        deleted += typeof count === 'number' ? count : chunk.length;
+      }
+
       const chunkSize = 200;
       let inserted = 0;
       for (let i = 0; i < records.length; i += chunkSize) {
@@ -9951,6 +10032,7 @@ export function createApp() {
           return res.status(500).json({
             error: `Không thể ghi ${SUPABASE_IMPORT_SP_TABLE}. ${error.message}`,
             batch_id: batchId,
+            deleted,
             inserted
           });
         }
@@ -9960,6 +10042,7 @@ export function createApp() {
       return res.json({
         success: true,
         batch_id: batchId,
+        deleted,
         inserted,
         file_name: fileName
       });

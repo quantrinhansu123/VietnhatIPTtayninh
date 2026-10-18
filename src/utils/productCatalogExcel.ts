@@ -1,10 +1,11 @@
 import * as XLSX from 'xlsx';
 
-/** Dòng Excel danh mục sản phẩm — khớp form / bảng UI / cột `san_pham`. */
+/**
+ * Dòng Excel danh mục SP — chỉ các trường danh mục + thông số kỹ thuật.
+ * Upsert theo Mã SP: có thì PATCH, chưa thì POST.
+ */
 export type ProductCatalogExcelRow = {
   code: string;
-  amisCode: string;
-  newCode: string;
   name: string;
   nature: string;
   group: string;
@@ -15,20 +16,13 @@ export type ProductCatalogExcelRow = {
   coreWeight: string;
   bagWeight: string;
   plasticWeight: string;
-  openingStock: string;
-  inbound: string;
-  outbound: string;
-  stock: string;
-  minStock: string;
-  origin: string;
-  description: string;
+  amisCode: string;
+  newCode: string;
   rowNumber: number;
 };
 
 const HEADER_ALIASES: Record<keyof Omit<ProductCatalogExcelRow, 'rowNumber'>, string[]> = {
   code: ['ma sp', 'ma_sp', 'ma san pham', 'ma hang', 'ma vat tu', 'code'],
-  amisCode: ['ma amis', 'ma_amis', 'amis'],
-  newCode: ['ma moi', 'ma_sp_moi', 'ma sp moi'],
   name: ['ten san pham', 'ten_sp', 'ten sp', 'ten hang', 'ten vat tu', 'name'],
   nature: ['tinh chat', 'tinh_chat', 'nature'],
   group: ['nhom vthh', 'nhom_vthh', 'nhom', 'group'],
@@ -45,19 +39,11 @@ const HEADER_ALIASES: Record<keyof Omit<ProductCatalogExcelRow, 'rowNumber'>, st
     'trong_luong_nhua',
     'plastic weight'
   ],
-  openingStock: ['ton dau', 'ton_dau_ky', 'opening stock'],
-  inbound: ['nhap trong ky', 'nhap_trong_ky', 'nhap', 'inbound'],
-  outbound: ['xuat trong ky', 'xuat_trong_ky', 'xuat', 'outbound'],
-  stock: ['sl_ton', 'ton kho', 'stock'],
-  minStock: ['ton toi thieu', 'so_luong_ton_toi_thieu', 'min stock'],
-  origin: ['nguon goc', 'nguon_goc', 'origin'],
-  description: ['mo ta', 'mo_ta', 'ghi chu', 'description']
+  amisCode: ['ma amis', 'ma_amis', 'amis'],
+  newCode: ['ma moi', 'ma_sp_moi', 'ma sp moi']
 };
 
-/**
- * Cột mẫu khớp bảng `/san-pham` + form thêm/sửa / DB `san_pham`.
- * Ô trống = vẫn đẩy lên (null / bỏ trống), không bắt buộc đủ giá trị.
- */
+/** Đúng 13 cột theo mẫu Kho thành phẩm. */
 export const PRODUCT_CATALOG_EXCEL_HEADERS = [
   'Mã SP',
   'Tên sản phẩm',
@@ -65,21 +51,46 @@ export const PRODUCT_CATALOG_EXCEL_HEADERS = [
   'Nhóm',
   'Đơn vị',
   'Tổng TL (kg)',
-  'Tồn đầu',
-  'Nhập',
-  'Xuất',
-  'Tồn',
-  'Tồn tối thiểu',
-  'Mã AMIS',
-  'Mã mới',
   'Khổ cuộn (m)',
   'Chiều dài mét/cuộn (m)',
   'Trọng lượng lõi (kg)',
   'Trọng lượng túi (kg)',
   'Trọng lượng nhựa + phụ gia (kg)',
-  'Nguồn gốc',
-  'Mô tả'
+  'Mã AMIS',
+  'Mã mới'
 ] as const;
+
+function cellToText(value: unknown) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return String(value).trim();
+}
+
+function excelCell(value: unknown) {
+  const text = cellToText(value);
+  return text === '-' ? '' : text;
+}
+
+/** Map 1 SP trên UI → 1 dòng Excel (đúng thứ tự PRODUCT_CATALOG_EXCEL_HEADERS). */
+export function productToCatalogExcelValues(
+  product: Omit<ProductCatalogExcelRow, 'rowNumber'>
+): string[] {
+  return [
+    excelCell(product.code),
+    excelCell(product.name),
+    excelCell(product.nature),
+    excelCell(product.group),
+    excelCell(product.unit),
+    excelCell(product.totalWeight),
+    excelCell(product.rollWidth),
+    excelCell(product.rollLength),
+    excelCell(product.coreWeight),
+    excelCell(product.bagWeight),
+    excelCell(product.plasticWeight),
+    excelCell(product.amisCode),
+    excelCell(product.newCode)
+  ];
+}
 
 function normalizeHeader(value: unknown) {
   return String(value ?? '')
@@ -93,13 +104,7 @@ function normalizeHeader(value: unknown) {
     .replace(/\s+/g, ' ');
 }
 
-function cellToText(value: unknown) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return String(value).trim();
-}
-
-/** Ưu tiên khớp đúng cả chuỗi header; tránh "ton" ăn nhầm "ton dau". */
+/** Ưu tiên khớp đúng cả chuỗi header. */
 function findColumn(headers: string[], aliases: string[]) {
   const exact = headers.findIndex(header => aliases.some(alias => header === alias));
   if (exact >= 0) return exact;
@@ -133,19 +138,13 @@ export async function parseProductCatalogExcel(file: File): Promise<ProductCatal
   }
 
   const codeIndex = findColumn(headers, HEADER_ALIASES.code);
-  const nameIndex = findColumn(headers, HEADER_ALIASES.name);
-  if (codeIndex < 0 && nameIndex < 0) {
-    throw new Error('Không tìm thấy cột "Mã SP" hoặc "Tên sản phẩm" trong file Excel.');
+  if (codeIndex < 0) {
+    throw new Error('Không tìm thấy cột "Mã SP" trong file Excel.');
   }
-
-  // "Tồn" đúng cột — sau khi đã map ton dau / ton toi thieu
-  const stockAliases = [...HEADER_ALIASES.stock, 'ton'];
 
   const indices = {
     code: codeIndex,
-    amisCode: findColumn(headers, HEADER_ALIASES.amisCode),
-    newCode: findColumn(headers, HEADER_ALIASES.newCode),
-    name: nameIndex,
+    name: findColumn(headers, HEADER_ALIASES.name),
     nature: findColumn(headers, HEADER_ALIASES.nature),
     group: findColumn(headers, HEADER_ALIASES.group),
     unit: findColumn(headers, HEADER_ALIASES.unit),
@@ -155,26 +154,9 @@ export async function parseProductCatalogExcel(file: File): Promise<ProductCatal
     coreWeight: findColumn(headers, HEADER_ALIASES.coreWeight),
     bagWeight: findColumn(headers, HEADER_ALIASES.bagWeight),
     plasticWeight: findColumn(headers, HEADER_ALIASES.plasticWeight),
-    openingStock: findColumn(headers, HEADER_ALIASES.openingStock),
-    inbound: findColumn(headers, HEADER_ALIASES.inbound),
-    outbound: findColumn(headers, HEADER_ALIASES.outbound),
-    stock: findColumn(headers, stockAliases),
-    minStock: findColumn(headers, HEADER_ALIASES.minStock),
-    origin: findColumn(headers, HEADER_ALIASES.origin),
-    description: findColumn(headers, HEADER_ALIASES.description)
+    amisCode: findColumn(headers, HEADER_ALIASES.amisCode),
+    newCode: findColumn(headers, HEADER_ALIASES.newCode)
   } as const;
-
-  // Nếu "ton" trùng cột đã dùng cho tồn đầu / tồn TT thì bỏ
-  if (
-    indices.stock >= 0 &&
-    (indices.stock === indices.openingStock || indices.stock === indices.minStock)
-  ) {
-    const exactTon = headers.findIndex(header => header === 'ton');
-    (indices as { stock: number }).stock =
-      exactTon >= 0 && exactTon !== indices.openingStock && exactTon !== indices.minStock
-        ? exactTon
-        : -1;
-  }
 
   return matrix
     .slice(1)
@@ -185,8 +167,6 @@ export async function parseProductCatalogExcel(file: File): Promise<ProductCatal
       };
       return {
         code: get('code'),
-        amisCode: get('amisCode'),
-        newCode: get('newCode'),
         name: get('name'),
         nature: get('nature'),
         group: get('group'),
@@ -197,63 +177,70 @@ export async function parseProductCatalogExcel(file: File): Promise<ProductCatal
         coreWeight: get('coreWeight'),
         bagWeight: get('bagWeight'),
         plasticWeight: get('plasticWeight'),
-        openingStock: get('openingStock'),
-        inbound: get('inbound'),
-        outbound: get('outbound'),
-        stock: get('stock'),
-        minStock: get('minStock'),
-        origin: get('origin'),
-        description: get('description'),
+        amisCode: get('amisCode'),
+        newCode: get('newCode'),
         rowNumber: index + 2
       };
     })
-    .filter(row => Boolean(row.code.trim() || row.name.trim()));
+    .filter(row => Boolean(row.code.trim()));
 }
 
-export function downloadProductCatalogExcelTemplate() {
-  const worksheet = XLSX.utils.aoa_to_sheet([
-    [...PRODUCT_CATALOG_EXCEL_HEADERS],
-    // 1 dòng đủ mẫu
-    [
-      'SP-001',
-      'Tấm nhựa sóng mẫu',
-      'Thành phẩm',
-      'Nhựa',
-      'tấm',
-      '12.5',
-      '0',
-      '0',
-      '0',
-      '0',
-      '10',
-      'AMIS-001',
-      '',
-      '1.2',
-      '50',
-      '0.2',
-      '0.1',
-      '12.2',
-      '',
-      ''
-    ],
-    // 1 dòng gần như trống — vẫn hợp lệ khi tải lên (chỉ cần Mã SP hoặc Tên)
-    ['SP-002', 'Sản phẩm để trống các cột còn lại', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
-  ]);
+export function downloadProductCatalogExcelTemplate(
+  products?: Array<Omit<ProductCatalogExcelRow, 'rowNumber'>>
+) {
+  const dataRows =
+    products && products.length > 0
+      ? products.map(productToCatalogExcelValues)
+      : [
+          productToCatalogExcelValues({
+            code: 'SP-001',
+            name: 'Tấm nhựa sóng mẫu',
+            nature: 'Thành phẩm',
+            group: 'Nhựa',
+            unit: 'tấm',
+            totalWeight: '12.5',
+            rollWidth: '1.2',
+            rollLength: '50',
+            coreWeight: '0.2',
+            bagWeight: '0.1',
+            plasticWeight: '12.2',
+            amisCode: 'AMIS-001',
+            newCode: ''
+          }),
+          productToCatalogExcelValues({
+            code: 'SP-002',
+            name: 'Sản phẩm để trống các cột còn lại',
+            nature: '',
+            group: '',
+            unit: '',
+            totalWeight: '',
+            rollWidth: '',
+            rollLength: '',
+            coreWeight: '',
+            bagWeight: '',
+            plasticWeight: '',
+            amisCode: '',
+            newCode: ''
+          })
+        ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet([[...PRODUCT_CATALOG_EXCEL_HEADERS], ...dataRows]);
   worksheet['!cols'] = PRODUCT_CATALOG_EXCEL_HEADERS.map(header => ({
-    wch: Math.min(34, Math.max(12, header.length + 2))
+    wch: Math.min(36, Math.max(12, header.length + 2))
   }));
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'San_pham');
-  XLSX.writeFile(workbook, 'mau-danh-muc-san-pham.xlsx');
+  XLSX.writeFile(
+    workbook,
+    products && products.length > 0 ? 'danh-sach-san-pham.xlsx' : 'mau-danh-muc-san-pham.xlsx'
+  );
 }
 
+/** Chỉ gửi 13 trường danh mục/thông số — không đụng tồn kho / mô tả. */
 export function productCatalogRowToPayload(row: ProductCatalogExcelRow) {
-  // Chuỗi rỗng vẫn gửi lên — API map thành null / bỏ trống, không chặn import.
   return {
     code: row.code.trim(),
-    newCode: row.newCode.trim(),
-    amisCode: row.amisCode.trim(),
     name: row.name.trim(),
     nature: row.nature.trim(),
     group: row.group.trim(),
@@ -264,12 +251,7 @@ export function productCatalogRowToPayload(row: ProductCatalogExcelRow) {
     coreWeight: row.coreWeight.trim(),
     bagWeight: row.bagWeight.trim(),
     plasticWeight: row.plasticWeight.trim(),
-    openingStock: row.openingStock.trim(),
-    inbound: row.inbound.trim(),
-    outbound: row.outbound.trim(),
-    stock: row.stock.trim(),
-    minStock: row.minStock.trim(),
-    origin: row.origin.trim(),
-    description: row.description.trim()
+    amisCode: row.amisCode.trim(),
+    newCode: row.newCode.trim()
   };
 }

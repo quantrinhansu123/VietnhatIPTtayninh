@@ -11,7 +11,7 @@
 | Method | Path | Mô tả |
 |--------|------|-------|
 | GET | `/api/import-sp?limit=&batch_id=` | Xem dòng đã import |
-| POST | `/api/import-sp` | Body `{ file_name, rows[] }` — ghi Excel vào bảng |
+| POST | `/api/import-sp` | Body `{ file_name, rows[] }` — **xóa dòng cũ trùng key** `ma_sp+ma_nvl+loai+dvt` rồi insert hết (chia lô) |
 | POST | `/api/import-sp/dong-bo` | Đồng bộ `trang_thai=moi` → `san_pham.npl_phan_tram` theo mã SP |
 
 ## Frontend
@@ -23,9 +23,12 @@
 
 ## Luồng
 
-1. **Nhập định mức NVL** → Excel → `import_sp` (`trang_thai=moi`). **Nhập thêm**: luôn ghi thêm dòng mới (không xóa/ghi đè bản cũ cùng mã SP).
+1. **Nhập định mức NVL** → Excel (đẩy hết, chia lô):
+   - Xóa toàn bộ dòng `import_sp` cũ trùng key ghép **Mã SP + Mã NVL + Loại + ĐVT**
+   - Insert toàn bộ dòng Excel (`trang_thai=moi`)
+   - Tự gọi đồng bộ Thành phần
 2. **Xem import_sp** → kiểm tra
-3. **Đồng bộ Thành phần** → gộp theo `ma_sp` + `ma_nvl` → ghi đè Thành phần SP → đánh dấu `da_ap_dung`
+3. **Đồng bộ Thành phần** (nút riêng) → gộp theo `ma_sp` + `ma_nvl` → ghi đè Thành phần SP → đánh dấu `da_ap_dung`
 
 Khớp mã: bỏ khoảng trắng (`MT- MN001` ≡ `MT-MN001`). BDT chỉ Kg → `so_luong=0` + `khoi_luong_kg`.
 

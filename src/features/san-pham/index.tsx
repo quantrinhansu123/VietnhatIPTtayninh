@@ -2276,6 +2276,57 @@ export function ProductViewModal({
                   <TableHeadCell align="center">Hành động</TableHeadCell>
                 </TableHead>
                 <TableBody>
+                  {items.length > 0 ? (
+                    <TableRow className="bg-amber-50/80">
+                      <td className="px-4 py-3 text-xs font-black uppercase tracking-wide text-zinc-500">Σ</td>
+                      <td className="px-4 py-3 font-black text-zinc-950" colSpan={2}>
+                        Tổng cộng
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex max-w-full rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">
+                          {formatNplDecimal(
+                            items.reduce((sum, item) => {
+                              if (
+                                item.percent !== null &&
+                                item.percent !== undefined &&
+                                Number.isFinite(item.percent)
+                              ) {
+                                return sum + item.percent;
+                              }
+                              return sum;
+                            }, 0)
+                          )}
+                          %
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-black text-emerald-800">
+                        {(() => {
+                          const totalKg = items.reduce((sum, item) => {
+                            let weight: number | null = null;
+                            if (
+                              item.weightKg !== null &&
+                              item.weightKg !== undefined &&
+                              Number.isFinite(item.weightKg) &&
+                              item.weightKg >= 0
+                            ) {
+                              weight = item.weightKg;
+                            } else if (
+                              item.quantity !== null &&
+                              item.quantity !== undefined &&
+                              Number.isFinite(item.quantity) &&
+                              item.quantity >= 0 &&
+                              isProductNplKgUnit(item.unit)
+                            ) {
+                              weight = item.quantity;
+                            }
+                            return weight !== null ? sum + weight : sum;
+                          }, 0);
+                          return totalKg > 0 ? `${formatNplWeightKg(totalKg)} kg` : '—';
+                        })()}
+                      </td>
+                      <td className="px-4 py-3" />
+                    </TableRow>
+                  ) : null}
                   {items.map((item, index) => (
                     <React.Fragment key={`${item.code}-${index}`}>
                       <TableRow>
@@ -3250,6 +3301,7 @@ export function ProductsPanel({
   };
 
   const handleDownloadProductCatalogTemplate = () => {
+    // Chỉ tải file mẫu (dòng ví dụ), không xuất toàn bộ danh sách SP.
     downloadProductCatalogExcelTemplate();
   };
 
@@ -3278,9 +3330,8 @@ export function ProductsPanel({
 
       for (const row of rows) {
         const code = row.code.trim();
-        const name = row.name.trim();
-        if (!code && !name) {
-          failures.push(`dòng ${row.rowNumber}: thiếu mã SP và tên`);
+        if (!code) {
+          failures.push(`dòng ${row.rowNumber}: thiếu Mã SP`);
           continue;
         }
 
@@ -3288,7 +3339,8 @@ export function ProductsPanel({
           ...productCatalogRowToPayload(row),
           ...(warehouseFilter.trim() ? { warehouse: warehouseFilter.trim() } : {})
         };
-        const existing = code ? byCode.get(normalizeProductCodeKey(code)) : undefined;
+        // Có Mã SP trong hệ thống → cập nhật; chưa có → thêm mới.
+        const existing = byCode.get(normalizeProductCodeKey(code));
 
         const res = existing
           ? await fetch(`/api/san-pham/${existing.id}`, {
@@ -3306,8 +3358,23 @@ export function ProductsPanel({
           failures.push(`dòng ${row.rowNumber}: ${data.error || 'Không lưu được'}`);
           continue;
         }
-        if (existing) updated += 1;
-        else created += 1;
+        if (existing) {
+          updated += 1;
+          byCode.set(normalizeProductCodeKey(code), {
+            ...existing,
+            ...payload,
+            id: existing.id
+          } as ProductRow);
+        } else {
+          created += 1;
+          const createdId = String(data?.id ?? data?.product?.id ?? '').trim();
+          if (createdId) {
+            byCode.set(normalizeProductCodeKey(code), {
+              id: createdId,
+              ...payload
+            } as ProductRow);
+          }
+        }
       }
 
       if (created > 0 || updated > 0) {
@@ -3337,20 +3404,8 @@ export function ProductsPanel({
   };
 
   const handleDownloadBulkProductComponentsTemplate = () => {
-    downloadBulkProductNplComponentsTemplate(
-      products.flatMap(product =>
-        product.nplItems.map(item => ({
-          productCode: product.code,
-          componentCode: item.code,
-          componentName: item.name,
-          amountType: item.amountType,
-          percent: item.percent,
-          quantity: item.quantity,
-          unit: item.unit,
-          weightKg: item.weightKg
-        }))
-      )
-    );
+    // Chỉ tải file mẫu (2 dòng ví dụ), không xuất toàn bộ định mức SP.
+    downloadBulkProductNplComponentsTemplate([]);
   };
 
   const handleImportBulkProductComponents = async (file?: File | null) => {
@@ -3369,11 +3424,13 @@ export function ProductsPanel({
       }
 
       const confirmMessage = [
-        `Ghi thêm ${rows.length} dòng vào bảng import_sp?`,
+        `Nhập ${rows.length} dòng định mức NVL?`,
+        `1) Xóa dòng cũ trùng key Mã SP + Mã NVL + Loại + ĐVT`,
+        `2) Ghi toàn bộ Excel vào import_sp (chia lô, đẩy hết)`,
         `File: ${file.name}`,
         `Ví dụ: ${rows
           .slice(0, 3)
-          .map(r => `${r.ma_sp}/${r.ma_nvl}=${r.gia_tri}${r.dvt ? ` ${r.dvt}` : ''}`)
+          .map(r => `${r.ma_sp}/${r.ma_nvl}/${r.loai || '-'} / ${r.dvt || '-'}=${r.gia_tri}`)
           .join(' · ')}`
       ].join('\n');
       if (!window.confirm(confirmMessage)) return;
@@ -3403,7 +3460,7 @@ export function ProductsPanel({
 
       const missing = Array.isArray(syncData.missing_product_codes) ? syncData.missing_product_codes : [];
       const summary = [
-        `Đã ghi thêm ${data.inserted ?? rows.length} dòng và đồng bộ ${syncData.updated_products ?? 0} SP (${syncData.updated_lines ?? 0} dòng NVL).`,
+        `Đã xóa ${data.deleted ?? 0} dòng cũ trùng key, ghi ${data.inserted ?? rows.length} dòng Excel, đồng bộ ${syncData.updated_products ?? 0} SP (${syncData.updated_lines ?? 0} dòng NVL).`,
         missing.length ? `Bỏ qua ${missing.length} mã SP chưa có trong danh mục.` : ''
       ]
         .filter(Boolean)
@@ -3972,7 +4029,7 @@ export function ProductsPanel({
                 onClick={handleDownloadProductCatalogTemplate}
                 disabled={isImportingProductCatalog || isLoadingProducts}
                 className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
+                title="Tải file mẫu Excel SP (13 cột) — điền rồi Tải Excel SP lên"
               >
                 <Download className="h-4 w-4" />
                 Tải mẫu Excel SP
@@ -4076,7 +4133,7 @@ export function ProductsPanel({
                 onClick={handleDownloadProductCatalogTemplate}
                 disabled={isImportingProductCatalog || isLoadingProducts}
                 className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Mẫu Excel danh mục SP khớp cột bảng / form / DB san_pham"
+                title="Tải file mẫu Excel SP (13 cột) — điền rồi Tải Excel SP lên"
               >
                 <Download className="h-4 w-4" />
                 Tải mẫu Excel SP
@@ -4175,31 +4232,10 @@ export function ProductsPanel({
         </button>
         <button
           type="button"
-          onClick={handleDownloadProductCatalogTemplate}
-          disabled={isLoadingProducts || isImportingProductCatalog}
-          className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Mẫu cột bảng /san-pham — ô trống vẫn đẩy lên được"
-        >
-          <Download className="h-4 w-4" />
-          Tải mẫu Excel
-        </button>
-        {canCreate || canEdit ? (
-          <button
-            type="button"
-            onClick={() => catalogFileInputRef.current?.click()}
-            disabled={isLoadingProducts || isImportingProductCatalog}
-            className="flex h-10 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isImportingProductCatalog ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isImportingProductCatalog ? 'Đang nhập...' : 'Tải Excel lên'}
-          </button>
-        ) : null}
-        <button
-          type="button"
           onClick={handleDownloadBulkProductComponentsTemplate}
           disabled={isLoadingProducts}
           className="flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Mẫu định mức theo Mã SP + Mã NVL (tên NVL tự khớp từ kho)"
+          title="Tải file mẫu định mức (2 dòng ví dụ: Mã SP · Mã NVL · Loại · Giá trị · ĐVT) — không xuất dữ liệu thật"
         >
           <Download className="h-4 w-4" />
           Mẫu định mức NVL
@@ -4210,7 +4246,7 @@ export function ProductsPanel({
             onClick={() => bulkComponentsFileInputRef.current?.click()}
             disabled={isLoadingProducts || isImportingBulkProductComponents}
             className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Đổ Excel định mức NVL vào bảng import_sp"
+            title="Xóa dòng cũ trùng key (Mã SP+Mã NVL+Loại+ĐVT) rồi ghi toàn bộ Excel (chia lô, đẩy hết)"
           >
             {isImportingBulkProductComponents ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {isImportingBulkProductComponents ? 'Đang nhập...' : 'Nhập định mức NVL'}

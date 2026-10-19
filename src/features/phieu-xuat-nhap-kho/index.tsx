@@ -4280,10 +4280,11 @@ export function WarehouseSlipPanel({
                 </p>
               ) : null}
             </label>
-            {showProductExportTabs && !editSlipCode && warehouseName ? (
+            {/* Xuất TP: bỏ «Chọn phiếu xuất chưa chốt» — chỉ giữ Lệnh xuất hàng + quét. Nhập TP vẫn chọn phiếu chưa chốt. */}
+            {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <label className="block space-y-1">
                 <span className="text-xs font-black uppercase tracking-wide text-zinc-700">
-                  Chọn phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'} chưa chốt
+                  Chọn phiếu nhập chưa chốt
                 </span>
                 <SearchableSelect
                   value={selectedProductSlipCode}
@@ -4291,7 +4292,7 @@ export function WarehouseSlipPanel({
                   options={openProductSlips}
                   getValue={item => (item as OpenProductSlip).ma_phieu}
                   getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
-                  placeholder={`+ Tạo phiếu ${slipType === 'nhap' ? 'nhập' : 'xuất'}`}
+                  placeholder="+ Tạo phiếu nhập"
                   disabled={isLoadingProductSlips}
                   inputClassName={warehouseFieldClass}
                   comboboxMode

@@ -548,6 +548,7 @@ button:not(:disabled):active {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* Ẩn nút spinner; cuộn chuột tăng/giảm số được chặn ở enableNumberInputWheelGuard(). */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;

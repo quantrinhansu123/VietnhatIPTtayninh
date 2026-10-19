@@ -43,3 +43,20 @@ export const enableMobileNumericKeyboards = () => {
 
   return () => observer.disconnect();
 };
+
+/**
+ * Chặn cuộn chuột khi focus ô `type="number"` — tránh tăng/giảm số ngoài ý muốn
+ * (vd. tồn máy / KL định mức trên báo cáo NVL).
+ */
+export const enableNumberInputWheelGuard = () => {
+  const onWheel = (event: WheelEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.type !== 'number') return;
+    if (document.activeElement !== target) return;
+    event.preventDefault();
+  };
+
+  document.addEventListener('wheel', onWheel, { passive: false });
+  return () => document.removeEventListener('wheel', onWheel);
+};

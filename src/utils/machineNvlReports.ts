@@ -39,16 +39,9 @@ export function guessMachineNvlMaterialType(code: string, name: string, unit: st
   return 'nhua';
 }
 
-/** NVL Trộn = Nhựa; còn lại (Màng, Lõi, Bao Bì) = Vật tư khác. */
-export function isMachineNvlTronMaterial(
-  loaiVatTu: MachineNvlMaterialType | null | undefined,
-  code = '',
-  name = '',
-  unit = ''
-) {
-  if (loaiVatTu === 'nhua') return true;
-  if (loaiVatTu === 'mang' || loaiVatTu === 'loi' || loaiVatTu === 'bao_bi') return false;
-  return guessMachineNvlMaterialType(code, name, unit) === 'nhua';
+/** Vật tư trộn = mã NHUA* / NVLK* (không phụ thuộc ô «Loại vật tư» người nhập chọn); còn lại = không trộn. */
+export function isMachineNvlTronMaterial(code = '') {
+  return /^(NHUA|NVLK)/i.test(code.trim());
 }
 
 export function splitMachineNvlLinesByMaterialGroup<
@@ -62,14 +55,7 @@ export function splitMachineNvlLinesByMaterialGroup<
   const nvlTron: T[] = [];
   const vatTuKhac: T[] = [];
   for (const line of lines) {
-    if (
-      isMachineNvlTronMaterial(
-        line.loaiVatTu,
-        String(line.maNvl ?? ''),
-        String(line.tenNvl ?? ''),
-        String(line.donVi ?? '')
-      )
-    ) {
+    if (isMachineNvlTronMaterial(String(line.maNvl ?? ''))) {
       nvlTron.push(line);
     } else {
       vatTuKhac.push(line);

@@ -284,12 +284,12 @@ function MachineNvlReportDetailModal({
               emptyLabel="Không có vật tư trộn (nhựa)."
             />
             <MachineNvlDetailLinesTable
-              title="Vật tư còn lại"
+              title="Vật tư không trộn"
               accentClass="border-slate-200 bg-slate-50 text-slate-800"
               headerClass="bg-slate-700"
               lines={vatTuKhac}
               isDauCa={isDauCa}
-              emptyLabel="Không có vật tư còn lại (màng / lõi / bao bì)."
+              emptyLabel="Không có vật tư không trộn (màng / lõi / bao bì)."
             />
           </div>
 
@@ -298,7 +298,7 @@ function MachineNvlReportDetailModal({
               Tổng cộng:{' '}
               <span className="font-mono font-black text-emerald-800">{formatNumber(totalKg, 3)} kg</span>
               <span className="ml-2 text-zinc-400">
-                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa), 3)} + còn lại{' '}
+                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa), 3)} + không trộn{' '}
                 {formatNumber(sumLinesKg(vatTuKhac, isDauCa), 3)})
               </span>
             </p>

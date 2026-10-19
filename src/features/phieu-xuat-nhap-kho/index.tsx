@@ -2118,6 +2118,14 @@ export function WarehouseSlipPanel({
     setFormError('');
   }, [itemOptions, productCatalogByKey, loginName, slipType]);
 
+  // Effect tải danh sách phiếu chỉ chạy khi đổi kho/loại phiếu/làm mới; không phụ thuộc callback đổi theo dữ liệu tải trễ.
+  const loadOpenProductSlipRef = useRef(loadOpenProductSlip);
+  const createNewProductSlipRef = useRef(createNewProductSlip);
+  const selectedProductSlipCodeRef = useRef(selectedProductSlipCode);
+  loadOpenProductSlipRef.current = loadOpenProductSlip;
+  createNewProductSlipRef.current = createNewProductSlip;
+  selectedProductSlipCodeRef.current = selectedProductSlipCode;
+
   const handleProductSlipSelection = (code: string) => {
     if (code === selectedProductSlipCode) return;
     if (pendingScannedProductDetails.length && !window.confirm('Các mã mới quét chưa lưu đợt. Đổi phiếu sẽ xóa chúng khỏi danh sách hiện tại. Tiếp tục?')) return;
@@ -2659,12 +2667,15 @@ export function WarehouseSlipPanel({
         if (cancelled) return;
         const slips = Array.isArray(data?.records) ? data.records as OpenProductSlip[] : [];
         setOpenProductSlips(slips);
-        if (slips[0]) await loadOpenProductSlip(slips[0]);
-        else createNewProductSlip();
+        const current = selectedProductSlipCodeRef.current;
+        // Đang chọn phiếu còn trong danh sách thì giữ nguyên, không nhảy về phiếu đầu.
+        if (current && slips.some(slip => slip.ma_phieu === current)) return;
+        if (slips[0]) await loadOpenProductSlipRef.current(slips[0]);
+        else createNewProductSlipRef.current();
       } catch (error: any) {
         if (cancelled) return;
         setOpenProductSlips([]);
-        createNewProductSlip();
+        createNewProductSlipRef.current();
         setFormError(showSaveFailure(error, 'Không tải được phiếu chưa chốt.'));
       } finally {
         if (!cancelled) setIsLoadingProductSlips(false);
@@ -2672,7 +2683,7 @@ export function WarehouseSlipPanel({
     };
     void loadOpenSlips();
     return () => { cancelled = true; };
-  }, [showProductExportTabs, warehouseName, slipType, editSlipCode, loadOpenProductSlip, createNewProductSlip, pageRefreshNonce]);
+  }, [showProductExportTabs, warehouseName, slipType, editSlipCode, pageRefreshNonce]);
 
   useEffect(() => {
     if (!showProductExportTabs || productExportView !== 'lap-phieu' || !productDetailSlipCode || isEditingProductInbound) return;
@@ -5572,7 +5583,6 @@ export function WarehouseHistoryPanel({
       } else {
         params.set('loai_kho', warehouseTab);
         params.set('loai', selectedType);
-        params.set('status', 'all');
         if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
         if (fromDate) params.set('from', fromDate);
         if (toDate) params.set('to', toDate);

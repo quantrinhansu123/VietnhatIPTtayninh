@@ -1579,6 +1579,13 @@ export function MachineNvlReportPanel({
                               title="Số lượng × Khối lượng định mức (kho NVL theo mã)"
                               className={machineNvlLineMobileQtyReadonlyClass}
                             />
+                            {line.code &&
+                            !isKgUnitValue(line.unit) &&
+                            resolveMachineNvlLineUnitWeightKg(line, materials) <= 0 ? (
+                              <span className="mt-1 block text-[10px] font-bold text-red-600">
+                                Chưa có KL quy đổi — cập nhật tại Kho hàng, nếu không SL thực tế = 0 kg.
+                              </span>
+                            ) : null}
                           </label>
                           <label className="field-cell col-span-2 md:col-span-4">
                             <span className="machine-nvl-line-mobile-label">Ghi chú</span>

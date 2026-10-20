@@ -2142,6 +2142,39 @@ export function WarehouseSlipPanel({
       .finally(() => setIsLoadingProductSlips(false));
   };
 
+  // Phiếu gắn với lệnh qua [LXH:mã] trong ghi chú: đổi lệnh thì chuyển sang phiếu chưa chốt của lệnh đó, không có thì phiếu mới.
+  const handleShippingOrderChange = (id: string) => {
+    if (id === shippingOrderId) return;
+    const order = shippingOrders.find(item => item.id === id);
+    const hasSlip = Boolean(selectedProductSlipCode) || lines.some(line => line.code.trim());
+    if (!hasSlip && !pendingScannedProductDetails.length) {
+      setShippingOrderId(id);
+      return;
+    }
+    if (pendingScannedProductDetails.length && !window.confirm('Các mã mới quét chưa lưu đợt. Đổi lệnh xuất sẽ xóa chúng khỏi danh sách hiện tại. Tiếp tục?')) return;
+    const day = slipDate;
+    const tag = order ? normalizeMaterialCodeKey(order.ma_lenh) : '';
+    const existing = tag
+      ? openProductSlips.find(slip => {
+          const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
+          return code && normalizeMaterialCodeKey(code) === tag;
+        })
+      : undefined;
+    if (existing) {
+      setIsLoadingProductSlips(true);
+      void loadOpenProductSlip(existing)
+        .catch((error: any) => setFormError(showSaveFailure(error, 'Không tải được phiếu chưa chốt.')))
+        .finally(() => {
+          setIsLoadingProductSlips(false);
+          setShippingOrderId(id);
+        });
+      return;
+    }
+    createNewProductSlip();
+    setSlipDate(day);
+    setShippingOrderId(id);
+  };
+
   const handleOpenMachineImport = async () => {
     const maPhieu = selectedProductSlipCode.trim();
     if (!maPhieu) {
@@ -4117,7 +4150,7 @@ export function WarehouseSlipPanel({
           <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</span>
           <SearchableSelect
             value={shippingOrderId}
-            onChange={setShippingOrderId}
+            onChange={handleShippingOrderChange}
             options={shippingOrdersForDate}
             getValue={item => (item as ShippingOrder).id}
             getLabel={item => {

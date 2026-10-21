@@ -122,6 +122,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
   const [isLoadingKy, setIsLoadingKy] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [kyError, setKyError] = useState('');
+  const [reloadNonce, setReloadNonce] = useState(0);
   const hasDateRange = Boolean(toDate); // Từ ngày bỏ trống = tính từ đầu
   const hasAppliedKy = Boolean(appliedKyStart && appliedKyEnd);
 
@@ -192,7 +193,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     };
     void load();
     return () => controller.abort();
-  }, [tenKho, fromDate, toDate, hasDateRange, view]);
+  }, [tenKho, fromDate, toDate, hasDateRange, view, reloadNonce]);
 
   useEffect(() => {
     if (view !== 'tong-hop-ky' || !hasAppliedKy) {
@@ -231,7 +232,20 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
     };
     void load();
     return () => controller.abort();
-  }, [view, tenKho, appliedKyStart, appliedKyEnd, hasAppliedKy]);
+  }, [view, tenKho, appliedKyStart, appliedKyEnd, hasAppliedKy, reloadNonce]);
+
+  const reloadTableButton = (
+    <button
+      type="button"
+      onClick={() => setReloadNonce(n => n + 1)}
+      disabled={isLoading || isLoadingKy}
+      title="Tải lại bảng"
+      aria-label="Tải lại bảng"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <RefreshCw className={`h-4 w-4 ${isLoading || isLoadingKy ? 'animate-spin' : ''}`} />
+    </button>
+  );
 
   const warehouseOptions = useMemo(() => warehouses.map(w => w.ten_kho), [warehouses]);
 
@@ -406,6 +420,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
               <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm trên sổ kho</h2>
               <p className="text-[11px] font-semibold text-zinc-500">{filteredChiTiet.length} mã sản phẩm</p>
             </div>
+            {reloadTableButton}
           </div>
 
           <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[560px]">
@@ -447,6 +462,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
               <h2 className="text-sm font-black text-zinc-900">Bảng tổng hợp</h2>
               <p className="text-[11px] font-semibold text-zinc-500">{filteredTongHop.length} mã</p>
             </div>
+            {reloadTableButton}
           </div>
           {renderTongHopTable(
             filteredTongHop,
@@ -466,6 +482,7 @@ export function TonKhoPanel({ onBack }: { onBack: () => void }) {
                   : 'Chọn ngày đầu kỳ rồi bấm Tổng hợp kỳ'}
               </p>
             </div>
+            {reloadTableButton}
           </div>
           <div className="border-b border-amber-100 bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-5 text-amber-900 sm:px-4">
             <strong>Tồn đầu kỳ</strong> tính theo ngày đầu kỳ đã chọn.{' '}

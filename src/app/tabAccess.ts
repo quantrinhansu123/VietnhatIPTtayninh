@@ -23,7 +23,9 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   /** Trang chi tiết lệnh SX (mở tab mới) dùng chung quyền với danh sách lệnh SX. */
   'production-order-detail': 'production-orders',
   /** Trang chi tiết đơn hàng (mở tab mới) dùng chung quyền với danh sách đơn hàng. */
-  'orders-detail': 'orders'
+  'orders-detail': 'orders',
+  /** Trả kho NVL dùng chung quyền phiếu xuất nhập kho - Vật tư. */
+  'tra-kho-nvl': 'warehouse-slip-vat-tu'
 };
 
 /**
@@ -34,6 +36,7 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
   'report-forms': [
     'machine-nvl-report',
     'material-request',
+    'tra-kho-nvl',
     'mixing-report',
     'can-tu-dong',
     'can-kiem-kho',
@@ -133,7 +136,7 @@ export function hubHasAllowedChild(hubTab: string, allowed: Set<string>): boolea
   // Hai route kho dùng chung giao diện, nhưng quyền nghiệp vụ phải giữ riêng theo loại kho.
   // Chỉ dùng phép suy ngược này để mở route; không đưa vào expandImpliedHubTabs vì quyền
   // warehouse-slip cũ tuyệt đối không được tự biến thành quyền sửa/xóa cả hai kho mới.
-  if (hubTab === 'warehouse-slip' || hubTab === 'warehouse-history') {
+  if (hubTab === 'warehouse-slip' || hubTab === 'warehouse-history' || hubTab === 'tra-kho-nvl') {
     return ['warehouse-slip-vat-tu', 'warehouse-slip-thanh-pham'].some(tab => allowed.has(tab));
   }
   const group = STAFF_MENU_VIEW_TREE.find(item => item.menu === hubTab);

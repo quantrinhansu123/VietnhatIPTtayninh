@@ -170,6 +170,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     components: [],
     utils: []
   },
+  tra_kho_nvl: {
+    table: 'tra_kho_nvl',
+    label: 'Trả kho NVL',
+    sql: ['supabase-tra-kho-nvl.sql'],
+    apiPrefix: '/api/tra-kho-nvl',
+    serverLines: 'GET/POST/DELETE /api/tra-kho-nvl, POST /api/tra-kho-nvl/:ma_phieu/chot',
+    appTab: 'tra-kho-nvl',
+    appLines: 'src/features/tra-kho-nvl/index.tsx',
+    components: [],
+    utils: []
+  },
   bao_cao_hang_hong: {
     table: 'bao_cao_hang_hong',
     label: 'Báo cáo hàng hỏng',

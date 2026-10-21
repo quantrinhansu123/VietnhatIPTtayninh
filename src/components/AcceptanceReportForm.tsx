@@ -91,7 +91,7 @@ interface AiWeighingRecord {
 }
 
 const inputClass =
-  'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+  'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 
 /** Danh sách loại vật tư — mỗi loại hiển thị thành 1 phiếu báo cáo độc lập trên màn hình. */
 const MATERIAL_TYPES = ['Thành phẩm', 'Gia công', 'SP lỗi', 'SP rác'] as const;
@@ -1455,23 +1455,23 @@ export default function AcceptanceReportForm({
   const visibleTypes = isIndividualEdit && editingType ? [editingType] : MATERIAL_TYPES;
 
   return (
-    <div className="space-y-3 pb-1 sm:space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
-          <h2 className="min-w-0 flex-1 text-sm font-black text-zinc-950 sm:text-base">
+    <div className="space-y-2 pb-1">
+      <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-2.5 py-1.5">
+          <h2 className="min-w-0 flex-1 text-sm font-black text-zinc-950">
             {editingGroupIds
               ? 'Sửa toàn bộ báo cáo sản lượng'
               : editingId
                 ? `Sửa phiếu ${MATERIAL_TYPE_TITLE_LABELS[editingType || 'Thành phẩm']}`
                 : 'Báo cáo sản lượng'}
           </h2>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1.5">
             {!editingId && (
               <button
                 type="button"
                 onClick={resetAll}
                 disabled={isSaving || Boolean(uploadingType)}
-                className="inline-flex h-9 shrink-0 items-center rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
+                className="inline-flex h-7 shrink-0 items-center rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
               >
                 Làm mới
               </button>
@@ -1481,9 +1481,9 @@ export default function AcceptanceReportForm({
                 type="button"
                 onClick={handleSaveAll}
                 disabled={isSaving || Boolean(uploadingType)}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 sm:h-10 sm:px-4 sm:text-xs"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-[#ef1b2d] px-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
               >
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Lưu báo cáo
               </button>
             )}
@@ -1493,7 +1493,7 @@ export default function AcceptanceReportForm({
                   type="button"
                   onClick={resetAll}
                   disabled={isSaving || Boolean(uploadingType)}
-                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 sm:h-10 sm:px-3 sm:text-xs"
+                  className="inline-flex h-7 shrink-0 items-center rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
                 >
                   Hủy
                 </button>
@@ -1501,9 +1501,9 @@ export default function AcceptanceReportForm({
                   type="button"
                   onClick={() => void handleUpdateGroup()}
                   disabled={isSaving || Boolean(uploadingType)}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 sm:h-10 sm:px-4 sm:text-xs"
+                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-[#ef1b2d] px-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
                 >
-                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                   Lưu cả báo cáo
                 </button>
               </>
@@ -1512,26 +1512,26 @@ export default function AcceptanceReportForm({
               <button
                 type="button"
                 onClick={onOpenList}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 sm:h-10 sm:gap-1.5 sm:px-3 sm:text-xs"
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-zinc-200 px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50"
               >
-                <List className="h-4 w-4" />
+                <List className="h-3.5 w-3.5" />
                 <span className="hidden min-[380px]:inline">Danh sách</span>
               </button>
             )}
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 px-2.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-50 sm:h-10 sm:gap-1.5 sm:px-3 sm:text-xs"
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-zinc-200 px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50"
               aria-label="Quay lại"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
               <span className="hidden min-[380px]:inline">Quay lại</span>
             </button>
           </div>
         </div>
 
-        <div className="space-y-3 bg-zinc-50 p-3 sm:p-4">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2 bg-zinc-50 p-2 sm:p-2.5">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             <label className="field-cell">
               <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" /> Ngày
@@ -1611,7 +1611,7 @@ export default function AcceptanceReportForm({
         const productSelectOptions = productOptionsByType[type];
         const isUploading = uploadingType === type;
         return (
-          <section key={type} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <section key={type} className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
               <h3 className="min-w-0 flex-1 text-sm font-black text-zinc-950">
                 Phiếu {MATERIAL_TYPE_TITLE_LABELS[type]}

@@ -20,7 +20,7 @@ import { waitForPrintImagesReady } from '../utils/printReady';
 import { shiftNamesMatch } from '../utils/shiftSettings';
 
 const fieldClass =
-  'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+  'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 
 type MachineOption = { id: string; code: string; name: string };
 type StaffOption = { id: string; name: string; shift: string };
@@ -529,36 +529,32 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
         ? createPortal(<MachineDowntimePrintBatch slips={[printSlip]} />, document.body)
         : null}
 
-      <div className="border-b border-zinc-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+      <div className="border-b border-zinc-200 bg-white px-2 py-1.5 sm:px-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onBack}
-              className="flex h-10 items-center gap-1 rounded-xl border border-zinc-200 px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50"
+              className="flex h-7 items-center gap-1 rounded-md border border-zinc-200 px-2 text-[10px] font-bold text-zinc-600 transition hover:bg-zinc-50"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
               Quay lại
             </button>
-            <div>
-              <h1 className="text-xl font-black text-zinc-900">Phiếu báo dừng máy</h1>
-            </div>
+            <h1 className="text-sm font-black text-zinc-900 sm:text-base">Phiếu báo dừng máy</h1>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-right">
-            <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">Tổng dừng</p>
-            <p className="text-lg font-black text-amber-900">{formatNumber(totalDowntimeMinutes, 0)} phút</p>
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-right">
+            <span className="text-[9px] font-black uppercase tracking-wider text-amber-700">Tổng dừng</span>
+            <span className="text-sm font-black tabular-nums text-amber-900">{formatNumber(totalDowntimeMinutes, 0)} phút</span>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center gap-2 border-b border-zinc-100 pb-3">
-              <MachineDowntimeIcon className="h-5 w-5" />
-              <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-zinc-950">PHIẾU BÁO DỪNG MÁY</h2>
-              </div>
+      <div className="flex-1 overflow-y-auto p-2 sm:p-2.5">
+        <div className="grid gap-2 xl:grid-cols-[1.3fr_0.7fr]">
+          <section className="rounded-md border border-zinc-200 bg-white p-2.5 shadow-sm">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-zinc-100 pb-1.5">
+              <MachineDowntimeIcon className="h-4 w-4" />
+              <h2 className="text-[11px] font-black uppercase tracking-wider text-zinc-950">Phiếu báo dừng máy</h2>
             </div>
 
             {error && (
@@ -572,14 +568,14 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+            <div className="grid gap-1.5 md:grid-cols-3">
+              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Ngày *
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-1`} />
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-0.5`} />
               </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Ca *
-                <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
                   <option value="">Chọn ca</option>
                   {shiftOptions.map(option => (
                     <option key={option} value={option}>
@@ -588,9 +584,9 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Máy *
-                <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
                   <option value="">Chọn máy</option>
                   {machines.map(machine => (
                     <option key={machine.id} value={machine.code}>
@@ -599,9 +595,9 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Người lập
-                <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
                   <option value="">Chọn nhân sự sản xuất</option>
                   {filteredStaffOptions.map(staff => (
                     <option key={staff.id} value={staff.name}>
@@ -610,12 +606,12 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500 md:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 md:col-span-2">
                 Lệnh SX liên quan
                 <select
                   value={productionOrder}
                   onChange={e => setProductionOrder(e.target.value)}
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-0.5`}
                   disabled={isLoading || !date || !shift}
                 >
                   <option value="">{date && shift ? 'Chọn lệnh SX theo ngày và ca' : 'Chọn ngày và ca trước'}</option>
@@ -720,10 +716,10 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
             </div>
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
+          <section className="rounded-md border border-zinc-200 bg-white p-2.5 shadow-sm">
+            <div className="mb-2 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-black text-zinc-900">Lịch sử phiếu</h2>
+                <h2 className="text-sm font-black text-zinc-900">Lịch sử phiếu</h2>
               </div>
               <MachineDowntimeIcon className="h-5 w-5" />
             </div>

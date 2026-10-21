@@ -52,7 +52,7 @@ import calendarPlain3d from '@iconify-icons/fluent-emoji/calendar';
 import ledger3d from '@iconify-icons/fluent-emoji/page-facing-up';
 import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
-  ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, Scale, Settings, Receipt,
+  ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, PackageMinus, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
   ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode
   , X
@@ -161,8 +161,8 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'machine-nvl-report'
   },
   {
-    title: 'Yêu cầu xuất vật tư',
-    desc: 'Công nhân gửi yêu cầu xuất NVL để thủ kho xác nhận.',
+    title: 'Nhận vật tư về máy',
+    desc: 'Công nhân nhận NVL về máy; thủ kho xác nhận xuất kho.',
     icon: ClipboardList,
     tab: 'material-request'
   },
@@ -228,6 +228,12 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: Scale,
     icon3d: scale3d,
     tab: 'can-kiem-kho'
+  },
+  {
+    title: 'Trả kho NVL',
+    desc: 'Lập phiếu trả nguyên vật liệu từ sản xuất về kho và chốt tăng tồn.',
+    icon: PackageMinus,
+    tab: 'tra-kho-nvl'
   }
 ];
 
@@ -283,6 +289,13 @@ export const FACILITY_MENU_ITEMS: MenuCardConfig[] = [
     icon: ArrowDownToLine,
     icon3d: warehouseSlip3d,
     tab: 'warehouse-slip'
+  },
+  {
+    title: 'Trả kho NVL',
+    desc: 'Lập phiếu trả nguyên vật liệu từ sản xuất về kho và chốt tăng tồn.',
+    icon: PackageMinus,
+    icon3d: warehouseSlip3d,
+    tab: 'tra-kho-nvl'
   },
   {
     title: 'Lịch sử xuất nhập kho',
@@ -688,6 +701,13 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'warehouse-slip'
   },
   {
+    title: 'Trả kho NVL',
+    desc: 'Lập phiếu trả nguyên vật liệu từ sản xuất về kho và chốt tăng tồn.',
+    icon: PackageMinus,
+    icon3d: warehouseSlip3d,
+    tab: 'tra-kho-nvl'
+  },
+  {
     title: 'Kiểm kho',
     desc: 'Tạo đợt kiểm kho, quét mã SP và xử lý chênh lệch tồn kho.',
     icon: ClipboardList,
@@ -1025,6 +1045,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kho hàng', tab: 'inventory-catalog' },
       { label: 'Kho hàng hỏng', tab: 'damaged-goods-warehouse' },
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
+      { label: 'Trả kho NVL', tab: 'tra-kho-nvl' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
       { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
@@ -1085,6 +1106,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'inventory-catalog': { group: 'Kho', sub: 'Kho hàng' },
   'machines': { group: 'Trang chủ', sub: 'Quản lý máy' },
   'warehouse-slip': { group: 'Kho', sub: 'Phiếu xuất nhập kho' },
+  'tra-kho-nvl': { group: 'Kho', sub: 'Trả kho NVL' },
   'warehouse-history': { group: 'Kho', sub: 'Lịch sử xuất nhập' },
   'warehouse-history-detail': { group: 'Kho', sub: 'Chi tiết phiếu' },
   'damaged-goods-warehouse': { group: 'Kho', sub: 'Kho hàng hỏng' },

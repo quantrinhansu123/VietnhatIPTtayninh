@@ -345,10 +345,10 @@ const machineNvlLineMobileQtyClass =
 const machineNvlLineMobileQtyReadonlyClass =
   'machine-nvl-line-mobile-input h-9 w-full min-w-0 rounded-md border border-zinc-200 bg-zinc-50 px-0.5 text-center font-mono text-sm font-black tracking-tight text-zinc-800 outline-none';
 const machineNvlFormControlClass =
-  'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 lg:h-11 lg:px-3 lg:text-sm';
-const machineNvlFormFieldClass = `mt-1 ${machineNvlFormControlClass}`;
+  'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
+const machineNvlFormFieldClass = `mt-0.5 ${machineNvlFormControlClass}`;
 const machineNvlFormLabelClass =
-  'block min-w-0 text-[10px] font-black uppercase tracking-wider text-zinc-500 sm:text-xs';
+  'block min-w-0 text-[10px] font-black uppercase tracking-wider text-zinc-500';
 
 export function findMaterialByCode(materials: MaterialRow[], code: string) {
   const normalized = code.trim();
@@ -1167,40 +1167,46 @@ export function MachineNvlReportPanel({
 
   return (
     <div className="flex h-full w-full flex-col bg-zinc-50">
-      <div className="border-b border-zinc-200 bg-white px-2 py-3 sm:px-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-xl font-black text-zinc-900">Báo cáo NVL tồn theo máy</h1>
-            </div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-right">
-            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Tổng tồn</p>
-            <p className="text-lg font-black text-emerald-900">{formatNumber(totalWeightKg)} kg</p>
+      <div className="border-b border-zinc-200 bg-white px-2 py-1.5 sm:px-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-sm font-black text-zinc-900 sm:text-base">Báo cáo NVL tồn theo máy</h1>
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-right">
+            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Tổng tồn</span>
+            <span className="text-sm font-black tabular-nums text-emerald-900">{formatNumber(totalWeightKg)} kg</span>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-1 sm:mt-3 sm:gap-2">
-          {MACHINE_NVL_REPORT_TABS.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => switchReportKind(tab.id)}
-              className={`inline-flex h-7 min-w-0 flex-1 items-center justify-center rounded-lg px-1 text-[9px] font-extrabold leading-tight transition sm:h-8 sm:rounded-xl sm:px-3 sm:text-xs ${
-                activeKind === tab.id
-                  ? 'bg-[#ef1b2d] text-white shadow-sm'
-                  : 'border border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-[#ef1b2d]/40 hover:text-[#ef1b2d]'
-              }`}
-            >
-              <span className="truncate">{tab.label}</span>
-            </button>
-          ))}
+        <div className="mt-1.5 flex items-end gap-1 overflow-x-auto scrollbar-thin">
+          {MACHINE_NVL_REPORT_TABS.map((tab, index) => {
+            const active = activeKind === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => switchReportKind(tab.id)}
+                className={`relative inline-flex h-7 min-w-0 shrink-0 items-center gap-1 rounded-t-md px-2 text-[10px] font-extrabold leading-tight transition sm:text-[11px] ${
+                  active
+                    ? 'z-10 -mb-px border border-b-white border-zinc-200 bg-white text-zinc-900'
+                    : 'mb-px border border-transparent bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80 hover:text-[#ef1b2d]'
+                }`}
+              >
+                <span
+                  className={`inline-flex h-4 min-w-[1rem] items-center justify-center rounded px-0.5 text-[9px] font-black tabular-nums ${
+                    active ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-200 text-zinc-600'
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                <span className="truncate">{tab.label}</span>
+              </button>
+            );
+          })}
           {onOpenList ? (
             <button
               type="button"
               onClick={onOpenList}
-              className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-1 text-[9px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 sm:h-8 sm:rounded-lg sm:px-2.5 sm:text-xs"
+              className="mb-px inline-flex h-7 min-w-0 shrink-0 items-center justify-center gap-1 rounded-t-md border border-transparent bg-emerald-50 px-2 text-[10px] font-extrabold text-emerald-800 transition hover:bg-emerald-100 sm:text-[11px]"
             >
-              <ClipboardList className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+              <ClipboardList className="h-3 w-3 shrink-0" />
               <span className="truncate">Danh sách</span>
             </button>
           ) : null}
@@ -1208,19 +1214,14 @@ export function MachineNvlReportPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="xl:p-4">
-          <section className="w-full min-w-0 max-w-full overflow-hidden border-b border-zinc-200 bg-white px-1.5 py-2 sm:px-2 sm:py-3 xl:rounded-2xl xl:border xl:p-4 xl:shadow-sm">
-            <div className="mb-3 border-b border-zinc-100 pb-3">
-              <p className="text-sm font-black text-zinc-900">
-                {editingReportId ? `Đang sửa ${activeTabMeta.label.toLowerCase()}` : activeTabMeta.label}
+        <div className="xl:p-2">
+          <section className="w-full min-w-0 max-w-full overflow-hidden border-b border-zinc-200 bg-white px-1.5 py-1.5 sm:px-2 sm:py-2 xl:rounded-b-xl xl:rounded-tr-xl xl:border xl:border-t-0 xl:p-2.5 xl:shadow-sm">
+            {editingReportId ? (
+              <p className="mb-1.5 text-[11px] font-semibold text-[#ef1b2d]">
+                Đang sửa {activeTabMeta.label.toLowerCase()} · bấm Cập nhật để lưu
               </p>
-              {editingReportId ? (
-                <p className="mt-1 text-xs font-semibold text-[#ef1b2d]">
-                  Chỉnh sửa phiếu đã lưu · bấm Cập nhật để lưu thay đổi
-                </p>
-              ) : null}
-            </div>
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-3">
+            ) : null}
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
               <label className={machineNvlFormLabelClass}>
                 Ngày
                 <input
@@ -1241,9 +1242,9 @@ export function MachineNvlReportPanel({
                   ))}
                 </select>
               </label>
-              <label className={`${machineNvlFormLabelClass} lg:col-span-2`}>
+              <label className={machineNvlFormLabelClass}>
                 Máy
-                <div className="mt-1 min-w-0">
+                <div className="mt-0.5 min-w-0">
                   {renderMachineSelect(machineRef, setMachineRef, machines, {
                     placeholder: 'Chọn máy',
                     isLoading,
@@ -1251,16 +1252,16 @@ export function MachineNvlReportPanel({
                   })}
                 </div>
               </label>
-              <div className={`${machineNvlFormLabelClass} lg:col-span-2`}>
-                Nhân sự (chọn nhiều)
-                <div className="mt-1 flex min-h-10 max-h-40 min-w-0 flex-col overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-1.5 lg:min-h-11">
+              <div className={`${machineNvlFormLabelClass} col-span-2 sm:col-span-2 lg:col-span-2`}>
+                Nhân sự
+                <div className="mt-0.5 flex max-h-20 min-h-8 min-w-0 flex-wrap content-start gap-1 overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50 p-1">
                   {!date || !shift || !machineRef.trim() ? (
-                    <p className="flex flex-1 items-center px-1 text-[11px] font-semibold leading-tight text-zinc-400">
-                      Chọn ngày, ca và máy trước.
+                    <p className="flex items-center px-1 text-[10px] font-semibold leading-tight text-zinc-400">
+                      Chọn ngày, ca và máy trước
                     </p>
                   ) : staffOptions.length === 0 ? (
-                    <p className="flex flex-1 items-center px-1 text-[11px] font-semibold leading-tight text-zinc-400">
-                      Không có nhân sự theo máy/ca/ngày.
+                    <p className="flex items-center px-1 text-[10px] font-semibold leading-tight text-zinc-400">
+                      Không có nhân sự theo máy/ca/ngày
                     </p>
                   ) : (
                     staffOptions.map(option => {
@@ -1268,7 +1269,7 @@ export function MachineNvlReportPanel({
                       return (
                         <label
                           key={option}
-                          className={`mb-1 flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 text-xs font-semibold transition last:mb-0 ${
+                          className={`inline-flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold transition ${
                             checked
                               ? 'border-[#ef1b2d]/30 bg-red-50 text-[#b30d1c]'
                               : 'border-zinc-200 bg-white text-zinc-700'
@@ -1278,66 +1279,61 @@ export function MachineNvlReportPanel({
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleStaffName(option)}
-                            className="h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                            className="h-3 w-3 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
                           />
-                          <span className="font-black">{option}</span>
+                          <span className="font-bold">{option}</span>
                         </label>
                       );
                     })
                   )}
                 </div>
               </div>
-              <label className={`${machineNvlFormLabelClass} col-span-2 lg:col-span-2`}>
+              <label className={`${machineNvlFormLabelClass} col-span-2 sm:col-span-1 lg:col-span-1`}>
                 Ghi chú
-                <textarea
+                <input
                   value={note}
                   onChange={event => setNote(event.target.value)}
                   placeholder="Ghi chú chung"
-                  rows={2}
-                  className="mt-1 min-h-10 w-full resize-y rounded-lg border border-zinc-200 px-2 py-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 lg:min-h-11 lg:px-3 lg:text-sm"
+                  className={machineNvlFormFieldClass}
                 />
               </label>
             </div>
 
             {isDauCaTab ? (
-              <div className="mt-3 flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-black text-sky-900">Điền từ báo cáo tồn cuối ca</p>
-                  <p className="mt-0.5 text-[11px] font-semibold text-sky-800/80">
-                    Logic cũ: chọn phiếu tồn cuối ca trước → kế thừa mã NVL / SL sang tồn đầu ca.
-                  </p>
-                </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-sky-200 bg-sky-50/80 px-2 py-1">
+                <p className="min-w-0 flex-1 text-[10px] font-semibold text-sky-900">
+                  <span className="font-black">Tự điền đầu ca</span>
+                  <span className="text-sky-800/80"> · từ phiếu tồn cuối ca trước</span>
+                </p>
                 <button
                   type="button"
                   onClick={openCuoiCaPickerForDauCa}
                   disabled={isLoading}
-                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-sky-700 px-3 text-[11px] font-extrabold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-sky-700 px-2.5 text-[10px] font-extrabold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Wand2 className="h-3.5 w-3.5" />
-                  Tự điền tồn đầu ca
+                  <Wand2 className="h-3 w-3" />
+                  Tự điền
                 </button>
               </div>
             ) : (
-              <div className="mt-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-black text-amber-950">Gợi ý từ tồn đầu ca</p>
-                  <p className="mt-0.5 text-[11px] font-semibold text-amber-900/80">
-                    Lấy danh sách NVL theo Ngày · Ca (không lọc máy) — SL đầu ca làm tham chiếu, SL vị trí để trống.
-                  </p>
-                </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1">
+                <p className="min-w-0 flex-1 text-[10px] font-semibold text-amber-950">
+                  <span className="font-black">Tự điền cuối ca</span>
+                  <span className="text-amber-900/80"> · NVL từ tồn đầu ca (Ngày · Ca)</span>
+                </p>
                 <button
                   type="button"
                   onClick={autofillCuoiCaFromDauCa}
                   disabled={isLoading}
-                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-amber-700 px-3 text-[11px] font-extrabold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-amber-700 px-2.5 text-[10px] font-extrabold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Wand2 className="h-3.5 w-3.5" />
-                  Tự điền tồn cuối ca
+                  <Wand2 className="h-3 w-3" />
+                  Tự điền
                 </button>
               </div>
             )}
 
-            <div className="mt-3 min-w-0 max-w-full overflow-hidden rounded-lg border border-zinc-200 md:mt-4 md:rounded-xl">
+            <div className="mt-1.5 min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-200">
               {lines.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
                   <p className="text-sm font-bold text-zinc-500">Chưa có dòng NVL nào.</p>
@@ -1616,9 +1612,9 @@ export function MachineNvlReportPanel({
               ) : null}
             </div>
 
-            <div className="mt-3 space-y-2">
+            <div className="mt-1.5 space-y-1.5">
               {message ? (
-                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center text-[11px] font-bold text-rose-700">
+                <p className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-center text-[10px] font-bold text-rose-700">
                   {message}
                 </p>
               ) : null}
@@ -1626,7 +1622,7 @@ export function MachineNvlReportPanel({
                 <button
                   type="button"
                   onClick={() => setLines(prev => [...prev, emptyMachineNvlLine()])}
-                  className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-extrabold text-zinc-800 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
+                  className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-extrabold text-zinc-800 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
                 >
                   <Plus className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">Thêm dòng NVL</span>
@@ -1635,7 +1631,7 @@ export function MachineNvlReportPanel({
                   <button
                     type="button"
                     onClick={cancelEditReport}
-                    className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-extrabold text-zinc-700 transition hover:border-zinc-400"
+                    className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-extrabold text-zinc-700 transition hover:border-zinc-400"
                   >
                     <span className="truncate">Hủy sửa</span>
                   </button>
@@ -1644,7 +1640,7 @@ export function MachineNvlReportPanel({
                   type="button"
                   onClick={() => void saveReport()}
                   disabled={isSaving}
-                  className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60 md:hidden"
+                  className="inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-[#ef1b2d] px-2 text-[10px] font-extrabold text-white shadow-sm disabled:opacity-60 md:hidden"
                 >
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Save className="h-3.5 w-3.5 shrink-0" />}
                   <span className="truncate normal-case">Lưu báo cáo</span>
@@ -1653,7 +1649,7 @@ export function MachineNvlReportPanel({
                   type="button"
                   onClick={() => void saveReport({ printAfterSave: true })}
                   disabled={isSaving}
-                  className="hidden h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-2 text-[11px] font-extrabold text-white shadow-sm disabled:opacity-60 md:inline-flex"
+                  className="hidden h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-[#ef1b2d] px-2 text-[10px] font-extrabold text-white shadow-sm disabled:opacity-60 md:inline-flex"
                 >
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Printer className="h-3.5 w-3.5 shrink-0" />}
                   <span className="truncate normal-case">Lưu và in báo cáo</span>

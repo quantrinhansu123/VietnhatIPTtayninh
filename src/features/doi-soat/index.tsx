@@ -88,7 +88,7 @@ type DoiSoatDetailRow = {
 };
 
 const inputClass =
-  'h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
+  'h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 
 function normalizeKey(value: string) {
   return String(value ?? '')
@@ -602,7 +602,7 @@ export function DoiSoatPanel({
 
       {view === 'thuc-hien' ? (
         <>
-          <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+          <section className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm sm:p-2.5">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-black text-zinc-900">Thông tin phiếu</h2>
               {canCreate ? (
@@ -791,7 +791,7 @@ export function DoiSoatPanel({
         </>
       ) : (
         <>
-          <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+          <section className="rounded-md border border-zinc-200 bg-white p-2 shadow-sm sm:p-2.5">
             <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn kho và đợt đối soát</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">

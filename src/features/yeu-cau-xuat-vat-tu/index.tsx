@@ -1,26 +1,42 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Send, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import { formatNumber } from '../../utils';
+import { shiftNamesMatch } from '../../utils/shiftSettings';
 import { convertWarehouseQuantityToKg, mapMaterialToWeightCatalogItem } from '../../utils/warehouseWeight';
+import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
 import { normalizeMachines, machineSelectValue, type MachineRow } from '../danh-sach-may';
 import { normalizeMaterialsInventory, type MaterialRow } from '../kho-nvl';
 import {
   formatProductionOrderShiftLabel,
   mapProductionOrderSettings,
-  type ProductionOrderLookupSetting
+  normalizeProductionOrders,
+  resolveProductionOrderMachine,
+  type ProductionOrderLookupSetting,
+  type ProductionOrderRow
 } from '../ke-hoach-san-xuat';
+import { normalizeWarehouseMovements } from '../phieu-xuat-nhap-kho';
 
 type Line = { key: string; code: string; name: string; unit: string; qty: string };
 
 const newLine = (): Line => ({ key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, code: '', name: '', unit: '', qty: '' });
 const fieldClass =
-  'mt-1 h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]';
-const gridClass = 'grid grid-cols-[44px_minmax(150px,1.2fr)_minmax(160px,2fr)_70px_110px_110px_40px] items-center gap-2';
-const readonlyClass = 'h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-sm font-semibold text-zinc-700 outline-none';
-const labelClass = 'block min-w-0 text-[11px] font-black uppercase tracking-wider text-zinc-500';
+  'mt-0.5 h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
+const gridClass = 'grid grid-cols-[36px_minmax(130px,1.2fr)_minmax(140px,2fr)_60px_96px_96px_36px] items-center gap-1.5';
+const readonlyClass = 'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 text-xs font-semibold text-zinc-700 outline-none';
+const labelClass = 'block min-w-0 text-[10px] font-black uppercase tracking-wider text-zinc-500';
+
+function collectOrderStaffNames(order: ProductionOrderRow): string[] {
+  return [
+    ...splitProductionOrderStaffNames(order.staff),
+    ...splitProductionOrderStaffNames(order.shiftLead),
+    ...splitProductionOrderStaffNames(order.mainStaff),
+    ...splitProductionOrderStaffNames(order.assistantStaff),
+    ...splitProductionOrderStaffNames(order.traineeStaff)
+  ];
+}
 
 export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | null }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -31,13 +47,15 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [settings, setSettings] = useState<ProductionOrderLookupSetting[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
+  const [isAutofilling, setIsAutofilling] = useState(false);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
     void get('/api/danh-sach-may').then(d => d && setMachines(normalizeMachines(d)));
     void get('/api/cai-dat').then(d => d && setSettings(mapProductionOrderSettings(d)));
     void get('/api/kho-nvl?light=1').then(d => d && setMaterials(normalizeMaterialsInventory(d)));
+    void get('/api/lenh-sx?light=1').then(d => d && setProductionOrders(normalizeProductionOrders(d)));
   }, []);
 
   const shiftOptions = useMemo(
@@ -49,40 +67,116 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
     [settings]
   );
 
+  const staffOptions = useMemo(() => {
+    if (!date) return [];
+    const matched = productionOrders.filter(order => {
+      const orderDate = parseProductionOrderFilterDate(order.startDate);
+      if (orderDate && orderDate !== date) return false;
+      if (shift && order.shift && order.shift !== '-' && !shiftNamesMatch(order.shift, shift)) return false;
+      if (machine.trim()) {
+        const orderMachine = resolveProductionOrderMachine(order, machines);
+        if (orderMachine && orderMachine !== '-' && orderMachine !== machine.trim()) return false;
+      }
+      return true;
+    });
+    return Array.from(new Set(matched.flatMap(collectOrderStaffNames))).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [date, machine, machines, productionOrders, shift]);
+
+  useEffect(() => {
+    if (!date) {
+      setRequester('');
+      return;
+    }
+    if (staffOptions.length === 1) {
+      setRequester(staffOptions[0]);
+      return;
+    }
+    setRequester(prev => (prev && staffOptions.includes(prev) ? prev : ''));
+  }, [date, staffOptions]);
+
   const updateLine = (key: string, patch: Partial<Line>) =>
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)));
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
 
-  const submit = async () => {
-    setIsSaving(true);
+  const autofillFromWarehouseExport = async () => {
+    if (!date || !shift || !machine.trim()) {
+      showAppToast('Chọn đủ Ngày · Ca · Máy trước khi tự động điền.', 'error');
+      return;
+    }
+    const machineRef = machine.trim();
+    setIsAutofilling(true);
     try {
-      const res = await fetch('/api/yeu-cau-xuat-kho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ngay: date,
-          ca: shift,
-          may: machine,
-          nguoi_yc: requester,
-          lines: lines.map(l => ({ ma_nvl: l.code, ten_nvl: l.name, don_vi: l.unit, so_luong: Number(l.qty.replace(',', '.')) }))
-        })
+      const params = new URLSearchParams({
+        loai: 'xuat',
+        loai_kho: 'nvl',
+        from: date,
+        to: date
       });
+      const res = await fetch(`/api/kho/lich-su?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không gửi được yêu cầu.'));
-      showAppToast(`Đã gửi yêu cầu ${data.ma_yeu_cau}. Thủ kho sẽ xác nhận ở Phiếu xuất nhập kho.`);
-      setLines([newLine()]);
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được phiếu xuất kho NVL.'));
+
+      const movements = normalizeWarehouseMovements(data).filter(row => {
+        if (row.slipType !== 'xuat' || row.warehouseKind !== 'nvl') return false;
+        if (!row.itemCode || !(row.quantity > 0)) return false;
+        if (!row.shift || !shiftNamesMatch(row.shift, shift)) return false;
+        const slipMachine = String(row.machine || '').trim();
+        if (!slipMachine || slipMachine !== machineRef) return false;
+        return true;
+      });
+
+      if (movements.length === 0) {
+        showAppToast(`Không có phiếu xuất kho NVL ngày ${date} · ca ${shift} · máy ${machineRef}.`, 'error');
+        return;
+      }
+
+      const byCode = new Map<string, { code: string; name: string; unit: string; qty: number }>();
+      for (const row of movements) {
+        const code = row.itemCode.trim();
+        const catalog = materials.find(m => m.code === code);
+        const prev = byCode.get(code);
+        const qty = Number(row.quantity) || 0;
+        if (prev) {
+          prev.qty += qty;
+          if (!prev.name && (row.itemName || catalog?.name)) prev.name = row.itemName || catalog?.name || '';
+          if ((!prev.unit || prev.unit === '-') && (row.unit || catalog?.unit)) {
+            prev.unit = row.unit !== '-' ? row.unit : catalog?.unit || prev.unit;
+          }
+        } else {
+          byCode.set(code, {
+            code,
+            name: row.itemName || catalog?.name || '',
+            unit: (row.unit && row.unit !== '-' ? row.unit : '') || catalog?.unit || '',
+            qty
+          });
+        }
+      }
+
+      const nextLines = [...byCode.values()]
+        .sort((a, b) => a.code.localeCompare(b.code, 'vi'))
+        .map(item => ({
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          code: item.code,
+          name: item.name,
+          unit: item.unit,
+          qty: String(item.qty)
+        }));
+
+      setLines(nextLines.length > 0 ? nextLines : [newLine()]);
+      const slipCount = new Set(movements.map(m => m.slipCode).filter(Boolean)).size;
+      showAppToast(`Đã điền ${nextLines.length} NVL từ ${slipCount} phiếu xuất kho NVL.`);
     } catch (error: any) {
-      showSaveFailure(error, 'Không gửi được yêu cầu.');
+      showSaveFailure(error, 'Không tự động điền từ phiếu xuất kho NVL.');
     } finally {
-      setIsSaving(false);
+      setIsAutofilling(false);
     }
   };
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
-      <h3 className="text-lg font-black text-zinc-900">Yêu cầu xuất vật tư</h3>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <section className="space-y-2 rounded-md border border-slate-200 bg-white p-2 shadow-card sm:p-2.5">
+      <h3 className="text-sm font-black text-zinc-900">Nhận vật tư về máy</h3>
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         <label className={labelClass}>
           Ngày
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className={fieldClass} />
@@ -109,16 +203,34 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
             ))}
           </select>
         </label>
+        <label className={labelClass}>
+          Người yêu cầu *
+          <select
+            value={requester}
+            onChange={e => setRequester(e.target.value)}
+            className={fieldClass}
+            disabled={!date}
+          >
+            <option value="">
+              {!date
+                ? 'Chọn ngày trước'
+                : staffOptions.length === 0
+                  ? 'Không có nhân sự theo ngày'
+                  : 'Chọn người yêu cầu...'}
+            </option>
+            {staffOptions.map(name => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      <label className={labelClass}>
-        Người yêu cầu *
-        <input value={requester} onChange={e => setRequester(e.target.value)} placeholder="Nhập tên người yêu cầu" className={fieldClass} />
-      </label>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[760px] space-y-2">
-          <div className={`${gridClass} rounded-lg bg-[#ef1b2d] py-2 text-[11px] font-black uppercase tracking-wider text-white`}>
-            <span className="pl-2">STT</span>
+        <div className="min-w-[700px] space-y-1.5">
+          <div className={`${gridClass} rounded-md bg-[#ef1b2d] py-1.5 text-[10px] font-black uppercase tracking-wider text-white`}>
+            <span className="pl-1.5">STT</span>
             <span>Mã NVL</span>
             <span>Tên NVL</span>
             <span>ĐVT</span>
@@ -136,7 +248,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
             });
             return (
               <div key={line.key} className={gridClass}>
-                <span className="pl-2 text-lg font-black text-zinc-950">{index + 1}</span>
+                <span className="pl-1.5 text-sm font-black text-zinc-950">{index + 1}</span>
                 <div className="min-w-0">
                 <SearchableSelect
                   value={line.code}
@@ -147,7 +259,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
                   displaySelectedAsValue
                   matchDropdownWidth
                   autoFlip
-                  inputClassName="h-10 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-sm font-bold outline-none focus:border-[#ef1b2d]"
+                  inputClassName="h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-bold outline-none focus:border-[#ef1b2d]"
                   getLabel={item => (item as MaterialRow).code}
                   getSearchText={item => `${(item as MaterialRow).code} ${(item as MaterialRow).name}`}
                   getOptionLabel={item => `${(item as MaterialRow).code} — ${(item as MaterialRow).name}`}
@@ -165,7 +277,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
                   value={line.qty}
                   onChange={e => updateLine(line.key, { qty: e.target.value })}
                   placeholder="Số lượng"
-                  className="h-10 w-full min-w-0 rounded-lg border border-zinc-200 px-2 text-right font-mono text-sm font-bold outline-none focus:border-[#ef1b2d]"
+                  className="h-8 w-full min-w-0 rounded-md border border-zinc-200 px-2 text-right font-mono text-xs font-bold outline-none focus:border-[#ef1b2d]"
                 />
                 <input
                   readOnly
@@ -177,10 +289,10 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
                 <button
                   type="button"
                   onClick={() => setLines(prev => (prev.length > 1 ? prev.filter(l => l.key !== line.key) : prev))}
-                  className="flex h-10 items-center justify-center rounded-lg text-zinc-400 hover:bg-red-50 hover:text-[#ef1b2d]"
+                  className="flex h-8 items-center justify-center rounded-md text-zinc-400 hover:bg-red-50 hover:text-[#ef1b2d]"
                   aria-label="Xóa dòng"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             );
@@ -188,22 +300,22 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           onClick={() => setLines(prev => [...prev, newLine()])}
-          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 px-2.5 text-[10px] font-bold text-zinc-700 hover:bg-zinc-50"
         >
-          <Plus className="h-4 w-4" /> Thêm NVL
+          <Plus className="h-3.5 w-3.5" /> Thêm NVL
         </button>
         <button
           type="button"
-          onClick={() => void submit()}
-          disabled={isSaving}
-          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-black text-white hover:bg-[#b30d1c] disabled:opacity-50"
+          onClick={() => void autofillFromWarehouseExport()}
+          disabled={isAutofilling}
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-[#ef1b2d] px-2.5 text-[10px] font-black text-white hover:bg-[#b30d1c] disabled:opacity-50"
         >
-          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Gửi yêu cầu
+          {isAutofilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+          Tự động điền từ Phiếu xuất kho NVL
         </button>
       </div>
     </section>

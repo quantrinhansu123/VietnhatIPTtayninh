@@ -4226,11 +4226,11 @@ export function WarehouseSlipPanel({
 
   const showInlineFormError = !(showProductExportTabs && productExportView === 'thuc-hien');
   const shippingOrderPicker = showShippingOrderPicker ? (
-    <section className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-      <p className="text-sm font-black text-zinc-950">Lệnh xuất hàng</p>
-      <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="block min-w-0 space-y-1">
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày</span>
+    <section className="min-w-0 max-w-full space-y-1.5 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50/80 p-2">
+      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</p>
+      <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <label className="block min-w-0 space-y-0.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
           <input
             type="date"
             value={slipDate}
@@ -4238,8 +4238,8 @@ export function WarehouseSlipPanel({
             className={warehouseFieldClass}
           />
         </label>
-        <label className="block min-w-0 space-y-1">
-          <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</span>
+        <label className="block min-w-0 space-y-0.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lệnh xuất hàng</span>
           <SearchableSelect
             value={shippingOrderId}
             onChange={handleShippingOrderChange}
@@ -4323,19 +4323,19 @@ export function WarehouseSlipPanel({
   ) : null;
 
   return (
-    <div className="w-full min-w-0 max-w-none space-y-4">
+    <div className="w-full min-w-0 max-w-none space-y-2">
       {((formError && showInlineFormError) || actionMessage) && (
-        <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
+        <section className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm">
           {formError && showInlineFormError && (
-            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{formError}</p>
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-700">{formError}</p>
           )}
           {actionMessage && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <div className={`${formError && showInlineFormError ? 'mt-1.5' : ''} flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5`}>
               <p className="text-xs font-bold text-emerald-700">{actionMessage}</p>
               <button
                 type="button"
                 onClick={onOpenHistory}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300 bg-white px-3 text-[11px] font-black text-emerald-800 transition hover:bg-emerald-100"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-300 bg-white px-2.5 text-[11px] font-black text-emerald-800 transition hover:bg-emerald-100"
               >
                 <History className="h-3.5 w-3.5" />
                 Xem lịch sử
@@ -4345,39 +4345,40 @@ export function WarehouseSlipPanel({
         </section>
       )}
 
-      <div className="sticky top-0 z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-2 pt-2 md:-mx-3 md:-mt-3 md:px-3">
-        <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-wide text-zinc-700">Loại phiếu</p>
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const },
-              { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const }
-            ] as const).map(option => {
-              const isActive = slipType === option.slipType && !isXuatTreoMode;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => handleSlipModeChange(option.slipType, false)}
-                  className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs font-extrabold transition ${
-                    isActive
-                      ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                      : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
-                  }`}
-                >
-                  <option.Icon className="h-4 w-4" />
-                  {option.label}
-                </button>
-              );
-            })}
+      <div className="sticky top-0 z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-1.5 pt-1.5 md:-mx-3 md:-mt-3 md:px-3">
+        <section data-warehouse-slip-form className="space-y-1.5 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
+              {([
+                { key: 'nhap', label: 'Nhập kho', Icon: ArrowDownToLine, slipType: 'nhap' as const },
+                { key: 'xuat', label: 'Xuất kho', Icon: ArrowUpFromLine, slipType: 'xuat' as const }
+              ] as const).map(option => {
+                const isActive = slipType === option.slipType && !isXuatTreoMode;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => handleSlipModeChange(option.slipType, false)}
+                    className={`flex h-8 items-center justify-center gap-1 rounded-md border px-2 text-[11px] font-extrabold transition ${
+                      isActive
+                        ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                        : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
+                    }`}
+                  >
+                    <option.Icon className="h-3.5 w-3.5" />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </div>
 
-      <section data-warehouse-slip-form className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <div className="space-y-2">
-            <label className="block space-y-1">
-              <span className="text-xs font-black uppercase tracking-wide text-zinc-700">Tên kho *</span>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            <label className="block min-w-0 space-y-0.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                Tên kho *{warehouseName ? <span className="ml-1 font-semibold normal-case tracking-normal text-zinc-400">· {warehouseKindLabel(warehouseKind)}</span> : null}
+              </span>
               <SearchableSelect
                 value={warehouseName}
                 onChange={handleWarehouseNameChange}
@@ -4391,120 +4392,120 @@ export function WarehouseSlipPanel({
                 matchDropdownWidth
                 autoFlip
               />
-              {warehouseName ? (
-                <p className="text-[11px] font-semibold text-zinc-500">
-                  Loại: {warehouseKindLabel(warehouseKind)}
-                </p>
-              ) : warehouseOptions.length === 0 ? (
-                <p className="text-[11px] font-semibold text-amber-700">
+              {!warehouseName && warehouseOptions.length === 0 ? (
+                <p className="text-[10px] font-semibold text-amber-700">
                   Chưa có tên kho — thêm tại mục Quản lý kho.
                 </p>
-              ) : warehouseSelectOptions.length === 0 ? (
-                <p className="text-[11px] font-semibold text-amber-700">
+              ) : !warehouseName && warehouseSelectOptions.length === 0 ? (
+                <p className="text-[10px] font-semibold text-amber-700">
                   Bạn chưa được phân quyền lập phiếu cho kho vật tư hoặc kho thành phẩm nào.
                 </p>
               ) : null}
             </label>
             {/* Xuất TP: bỏ «Chọn phiếu xuất chưa chốt» — chỉ giữ Lệnh xuất hàng + quét. Nhập TP vẫn chọn phiếu chưa chốt. */}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
-              <label className="block space-y-1">
-                <span className="text-xs font-black uppercase tracking-wide text-zinc-700">
-                  Chọn phiếu nhập chưa chốt
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Phiếu nhập chưa chốt
                 </span>
-                <SearchableSelect
-                  value={selectedProductSlipCode}
-                  onChange={handleProductSlipSelection}
-                  options={openProductSlips}
-                  getValue={item => (item as OpenProductSlip).ma_phieu}
-                  getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
-                  placeholder="+ Tạo phiếu nhập"
-                  disabled={isLoadingProductSlips}
-                  inputClassName={warehouseFieldClass}
-                  comboboxMode
-                  comboboxSearchable={false}
-                  matchDropdownWidth
-                  autoFlip
-                />
-              </label>
-            ) : null}
-            {shippingOrderPicker}
-            {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
-              <button
-                type="button"
-                onClick={() => void handleOpenMachineImport()}
-                disabled={machineImportLoading || isSaving}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-              >
-                {machineImportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanBarcode className="h-4 w-4" />}
-                Nhập từ máy
-              </button>
-            ) : null}
-            {machineImportOpen ? (
-              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
-                <div className="flex h-[min(90vh,40rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                  <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3">
-                    <div>
-                      <h3 className="text-base font-black text-zinc-950">Nhập từ máy</h3>
-                      <p className="text-xs font-semibold text-zinc-500">Phiếu {selectedProductSlipCode} · {machineImportRows.length} mã trong kho chờ</p>
-                    </div>
-                    <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50">
-                      <X className="h-5 w-5" />
-                    </button>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <SearchableSelect
+                      value={selectedProductSlipCode}
+                      onChange={handleProductSlipSelection}
+                      options={openProductSlips}
+                      getValue={item => (item as OpenProductSlip).ma_phieu}
+                      getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
+                      placeholder="+ Tạo phiếu nhập"
+                      disabled={isLoadingProductSlips}
+                      inputClassName={warehouseFieldClass}
+                      comboboxMode
+                      comboboxSearchable={false}
+                      matchDropdownWidth
+                      autoFlip
+                    />
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                    {machineImportLoading ? (
-                      <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải mã từ máy...</p>
-                    ) : machineImportRows.length === 0 ? (
-                      <p className="text-sm font-semibold text-zinc-500">Phiếu này chưa có mã từ máy.</p>
-                    ) : (
-                      <table className="w-full text-left text-sm">
-                        <thead className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                          <tr>
-                            <th className="py-2 pr-3">Mã quét</th>
-                            <th className="py-2 pr-3">Mã SP</th>
-                            <th className="py-2 pr-3">Tên</th>
-                            <th className="py-2 pr-3">ĐVT</th>
-                            <th className="py-2 text-right">SL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {machineImportRows.map(row => (
-                            <tr key={row.id || row.ma_sp_quet} className="border-t border-zinc-100">
-                              <td className="py-2 pr-3 font-mono text-xs font-bold text-zinc-950">{row.ma_sp_quet}</td>
-                              <td className="py-2 pr-3 font-mono text-xs">{row.ma_sp || '—'}</td>
-                              <td className="py-2 pr-3">
-                                {row.ten_sp ||
-                                  productCatalogByKey.get(normalizeMaterialCodeKey(warehouseCodePrefix(row.ma_sp || row.ma_sp_quet)))?.name ||
-                                  '—'}
-                              </td>
-                              <td className="py-2 pr-3">{row.don_vi || 'Cuộn'}</td>
-                              <td className="py-2 text-right font-bold">{formatNumber(row.so_luong, 0)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-100 px-4 py-3">
-                    <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60">Hủy</button>
-                    <button
-                      type="button"
-                      onClick={() => void handleConfirmMachineImport()}
-                      disabled={machineImportSaving || machineImportLoading || machineImportRows.length === 0}
-                      className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-60"
-                    >
-                      {machineImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Xác nhận nhập kho
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenMachineImport()}
+                    disabled={machineImportLoading || isSaving}
+                    title="Nhập từ máy"
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 text-[11px] font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
+                  >
+                    {machineImportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanBarcode className="h-3.5 w-3.5" />}
+                    <span className="hidden sm:inline">Máy</span>
+                  </button>
                 </div>
               </div>
             ) : null}
-        </div>
-      </section>
+          </div>
+          {shippingOrderPicker}
+          {machineImportOpen ? (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
+              <div className="flex h-[min(90vh,40rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3">
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950">Nhập từ máy</h3>
+                    <p className="text-xs font-semibold text-zinc-500">Phiếu {selectedProductSlipCode} · {machineImportRows.length} mã trong kho chờ</p>
+                  </div>
+                  <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  {machineImportLoading ? (
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải mã từ máy...</p>
+                  ) : machineImportRows.length === 0 ? (
+                    <p className="text-sm font-semibold text-zinc-500">Phiếu này chưa có mã từ máy.</p>
+                  ) : (
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                        <tr>
+                          <th className="py-2 pr-3">Mã quét</th>
+                          <th className="py-2 pr-3">Mã SP</th>
+                          <th className="py-2 pr-3">Tên</th>
+                          <th className="py-2 pr-3">ĐVT</th>
+                          <th className="py-2 text-right">SL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {machineImportRows.map(row => (
+                          <tr key={row.id || row.ma_sp_quet} className="border-t border-zinc-100">
+                            <td className="py-2 pr-3 font-mono text-xs font-bold text-zinc-950">{row.ma_sp_quet}</td>
+                            <td className="py-2 pr-3 font-mono text-xs">{row.ma_sp || '—'}</td>
+                            <td className="py-2 pr-3">
+                              {row.ten_sp ||
+                                productCatalogByKey.get(normalizeMaterialCodeKey(warehouseCodePrefix(row.ma_sp || row.ma_sp_quet)))?.name ||
+                                '—'}
+                            </td>
+                            <td className="py-2 pr-3">{row.don_vi || 'Cuộn'}</td>
+                            <td className="py-2 text-right font-bold">{formatNumber(row.so_luong, 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <div className="flex shrink-0 justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+                  <button type="button" onClick={() => setMachineImportOpen(false)} disabled={machineImportSaving} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60">Hủy</button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmMachineImport()}
+                    disabled={machineImportSaving || machineImportLoading || machineImportRows.length === 0}
+                    className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white disabled:opacity-60"
+                  >
+                    {machineImportSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Xác nhận nhập kho
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
 
       {showProductExportTabs ? (
-        <nav aria-label="Chức năng xuất kho thành phẩm" className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2">
+        <nav aria-label="Chức năng xuất kho thành phẩm" className="grid grid-cols-2 gap-1 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
           {([
             { key: 'thuc-hien', label: 'Thực hiện', Icon: ClipboardCheck },
             { key: 'lap-phieu', label: 'Lập phiếu', Icon: FilePlus2 }
@@ -4517,16 +4518,14 @@ export function WarehouseSlipPanel({
                 setProductExportView(tab.key);
                 if (tab.key === 'lap-phieu') setProductLineView('summary');
               }}
-              className={`flex min-h-[60px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition sm:min-h-[84px] sm:flex-row sm:justify-center sm:gap-3 sm:px-3 ${
+              className={`flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-extrabold transition ${
                 productExportView === tab.key
-                  ? 'border-[#ef1b2d] bg-red-50 shadow-sm'
-                  : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+                  ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                  : 'border-transparent text-zinc-700 hover:bg-zinc-50'
               }`}
             >
-              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11 sm:rounded-xl ${productExportView === tab.key ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-100 text-zinc-500'}`}>
-                <tab.Icon className="h-4 w-4 sm:h-6 sm:w-6" />
-              </span>
-              <span className="text-[11px] font-black leading-tight text-zinc-900 sm:text-base">{tab.label}</span>
+              <tab.Icon className="h-3.5 w-3.5 shrink-0" />
+              {tab.label}
             </button>
           ))}
         </nav>
@@ -4536,10 +4535,10 @@ export function WarehouseSlipPanel({
         <>
       {!showProductExportTabs || productExportView === 'lap-phieu' ? (
         <>
-      <section className="space-y-1.5 rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm">
-        <div className="flex min-w-0 items-center gap-2 border-b border-zinc-100 pb-1.5">
-          <p className="text-sm font-black text-zinc-950">Thông tin phiếu</p>
-          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-zinc-400">
+      <section className="space-y-1 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
+        <div className="flex min-w-0 items-center gap-1.5 border-b border-zinc-100 pb-1">
+          <p className="text-xs font-black text-zinc-950">Thông tin phiếu</p>
+          <p className="min-w-0 flex-1 truncate text-[10px] font-semibold text-zinc-400">
             {slipType === 'xuat' && isXuatTreoMode ? 'Xuất kho treo' : warehouseSlipTypeLabel(slipType)} ·{' '}
             {warehouseName || warehouseKindLabel(warehouseKind)}
           </p>
@@ -4552,18 +4551,14 @@ export function WarehouseSlipPanel({
               disabled={isDeletingProductSlip || isSaving}
               aria-label={`Xóa phiếu tạm ${selectedProductSlipCode}`}
               title={`Xóa phiếu tạm ${selectedProductSlipCode}`}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-[#ef1b2d] transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-red-200 bg-red-50 text-[#ef1b2d] transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isDeletingProductSlip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isDeletingProductSlip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             </button>
           ) : null}
         </div>
 
-        <div
-          className={`grid gap-x-2 gap-y-1 ${
-            !showFullWarehouseSlipFields ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'
-          }`}
-        >
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1 sm:grid-cols-3">
           <label className="block min-w-0 w-full max-w-full space-y-0.5 overflow-hidden">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày phiếu *</span>
             <div className="relative min-w-0 w-full max-w-full overflow-hidden">
@@ -4691,7 +4686,7 @@ export function WarehouseSlipPanel({
           )}
 
           {showWarehouseShiftAndMachine ? (
-            <label className={`block min-w-0 w-full space-y-0.5 ${showFullWarehouseSlipFields ? 'col-span-2' : 'sm:col-span-1'}`}>
+            <label className="block min-w-0 w-full space-y-0.5 sm:col-span-1">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
               <SearchableSelect
                 value={machine}
@@ -4727,7 +4722,7 @@ export function WarehouseSlipPanel({
           ) : null}
 
           {showMaterialRequests ? (
-            <div className="col-span-2 min-w-0 space-y-1.5 sm:col-span-3">
+            <div className="col-span-2 min-w-0 space-y-1 sm:col-span-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Yêu cầu xuất vật tư chờ xử lý ({materialRequests.length})
               </span>

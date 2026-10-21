@@ -104,6 +104,9 @@ const SUPABASE_KHO_CHO_KEY =
   '';
 const SUPABASE_KHO_CHO_TABLE = process.env.SUPABASE_KHO_CHO_TABLE || 'kho_cho';
 const SUPABASE_QUAN_LY_KHO_TABLE = process.env.SUPABASE_QUAN_LY_KHO_TABLE || 'quan_ly_kho';
+const SUPABASE_TRA_KHO_NVL_TABLE = process.env.SUPABASE_TRA_KHO_NVL_TABLE || 'tra_kho_nvl';
+const SUPABASE_TRA_KHO_NVL_DONG_TABLE =
+  process.env.SUPABASE_TRA_KHO_NVL_DONG_TABLE || 'tra_kho_nvl_dong';
 const SUPABASE_DAMAGED_GOODS_TABLE = process.env.SUPABASE_DAMAGED_GOODS_TABLE || 'bao_cao_hang_hong';
 const SUPABASE_PRODUCTS_TABLE = process.env.SUPABASE_PRODUCTS_TABLE || 'san_pham';
 const SUPABASE_IMPORT_SP_TABLE = process.env.SUPABASE_IMPORT_SP_TABLE || 'import_sp';
@@ -17918,6 +17921,386 @@ export function createApp() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi đối chiếu chênh lệch kiểm kho.' });
+    }
+  });
+
+  const newTraKhoNvlMaPhieu = () => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const time = now.toISOString().slice(11, 19).replace(/:/g, '');
+    return `TK-NVL-${date}-${time}`;
+  };
+
+  const parseTraKhoNvlLines = (raw: unknown) => {
+    if (!Array.isArray(raw) || raw.length === 0 || raw.length > 2000) {
+      throw new Error('Cần từ 1 đến 2000 dòng NVL.');
+    }
+    const lines: Array<{ ma_npl: string; ten_npl: string | null; don_vi: string | null; so_luong: number }> = [];
+    for (const item of raw) {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const maNpl = String(row.ma_npl ?? row.ma_sp ?? row.code ?? '').trim();
+      const soLuong = Number(row.so_luong ?? row.quantity);
+      if (!maNpl || !Number.isFinite(soLuong) || soLuong <= 0) {
+        throw new Error('Mỗi dòng cần mã NPL và số lượng lớn hơn 0.');
+      }
+      lines.push({
+        ma_npl: maNpl,
+        ten_npl: String(row.ten_npl ?? row.ten_sp ?? row.name ?? '').trim() || null,
+        don_vi: String(row.don_vi ?? row.unit ?? '').trim() || null,
+        so_luong: soLuong
+      });
+    }
+    return lines;
+  };
+
+  const replaceTraKhoNvlDong = async (
+    client: NonNullable<typeof supabase>,
+    maPhieu: string,
+    lines: Array<{ ma_npl: string; ten_npl: string | null; don_vi: string | null; so_luong: number }>
+  ) => {
+    const { error: deleteError } = await client
+      .from(SUPABASE_TRA_KHO_NVL_DONG_TABLE)
+      .delete()
+      .eq('ma_phieu', maPhieu);
+    if (deleteError) throw new Error(`Không xóa được dòng cũ. ${deleteError.message}`);
+    const { error: insertError } = await client.from(SUPABASE_TRA_KHO_NVL_DONG_TABLE).insert(
+      lines.map(line => ({
+        ma_phieu: maPhieu,
+        ma_npl: line.ma_npl,
+        ten_npl: line.ten_npl,
+        don_vi: line.don_vi,
+        so_luong: line.so_luong
+      }))
+    );
+    if (insertError) throw new Error(`Không lưu được dòng trả kho. ${insertError.message}`);
+  };
+
+  app.get('/api/tra-kho-nvl', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      let query = supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .select('*')
+        .order('ngay', { ascending: false })
+        .order('created_at', { ascending: false });
+      const from = String(req.query.from || '').trim();
+      const to = String(req.query.to || '').trim();
+      const ca = String(req.query.ca || '').trim();
+      const may = String(req.query.may || '').trim();
+      const status = String(req.query.status || '').trim();
+      if (from) query = query.gte('ngay', from);
+      if (to) query = query.lte('ngay', to);
+      if (ca) query = query.eq('ca', ca);
+      if (may) query = query.ilike('may', may);
+      if (status === 'chua_chot' || status === 'da_chot') query = query.eq('status', status);
+      const { data, error } = await query;
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không đọc được bảng tra_kho_nvl. Hãy chạy supabase-tra-kho-nvl.sql.'
+        });
+      }
+      const records = Array.isArray(data) ? data : [];
+      return res.json({ records, total: records.length, table: SUPABASE_TRA_KHO_NVL_TABLE });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải phiếu trả kho NVL.' });
+    }
+  });
+
+  app.get('/api/tra-kho-nvl/:ma_phieu', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const maPhieu = String(req.params.ma_phieu || '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+    try {
+      const { data: header, error } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .select('*')
+        .eq('ma_phieu', maPhieu)
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: error.message });
+      if (!header) return res.status(404).json({ error: 'Không tìm thấy phiếu trả kho.' });
+      const { data: lines, error: lineError } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_DONG_TABLE)
+        .select('*')
+        .eq('ma_phieu', maPhieu)
+        .order('created_at', { ascending: true });
+      if (lineError) return res.status(500).json({ error: lineError.message });
+      return res.json({ header, lines: Array.isArray(lines) ? lines : [] });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải chi tiết phiếu trả kho.' });
+    }
+  });
+
+  app.post('/api/tra-kho-nvl', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const lines = parseTraKhoNvlLines(body.lines ?? body.items ?? body.dong);
+      const existingMaPhieu = String(body.ma_phieu ?? body.maPhieu ?? '').trim();
+      const maPhieu = existingMaPhieu || newTraKhoNvlMaPhieu();
+      const optionalText = (value: unknown) => String(value ?? '').trim() || null;
+      const ngay =
+        optionalText(body.ngay) ||
+        new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+      if (existingMaPhieu) {
+        const { data: existing, error: existingError } = await supabase
+          .from(SUPABASE_TRA_KHO_NVL_TABLE)
+          .select('ma_phieu, status')
+          .eq('ma_phieu', existingMaPhieu)
+          .maybeSingle();
+        if (existingError) return res.status(500).json({ error: existingError.message });
+        if (!existing) return res.status(404).json({ error: 'Không tìm thấy phiếu để cập nhật.' });
+        if (String(existing.status) === 'da_chot') {
+          return res.status(400).json({ error: 'Phiếu đã chốt — không sửa được.' });
+        }
+      }
+
+      const headerPayload = {
+        ma_phieu: maPhieu,
+        ngay,
+        ca: optionalText(body.ca),
+        may: optionalText(body.may),
+        ten_kho: optionalText(body.ten_kho ?? body.kho),
+        nguoi_lap: optionalText(body.nguoi_lap ?? body.nguoiLap),
+        ghi_chu: optionalText(body.ghi_chu ?? body.ghiChu),
+        ly_do: optionalText(body.ly_do ?? body.lyDo) || 'Trả kho NVL',
+        status: 'chua_chot',
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: header, error } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .upsert(headerPayload, { onConflict: 'ma_phieu' })
+        .select('*')
+        .single();
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không lưu được phiếu trả kho. Hãy chạy supabase-tra-kho-nvl.sql.'
+        });
+      }
+
+      await replaceTraKhoNvlDong(supabase, maPhieu, lines);
+      const { data: savedLines } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_DONG_TABLE)
+        .select('*')
+        .eq('ma_phieu', maPhieu)
+        .order('created_at', { ascending: true });
+
+      return res.json({ success: true, header, lines: savedLines || [] });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi lưu phiếu trả kho NVL.' });
+    }
+  });
+
+  app.post('/api/tra-kho-nvl/:ma_phieu/chot', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+    const maPhieu = String(req.params.ma_phieu || '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+
+    try {
+      const { data: header, error } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .select('*')
+        .eq('ma_phieu', maPhieu)
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: error.message });
+      if (!header) return res.status(404).json({ error: 'Không tìm thấy phiếu trả kho.' });
+      if (String(header.status) === 'da_chot' && header.ma_phieu_nhap) {
+        return res.json({ success: true, header, already: true });
+      }
+
+      const { data: lines, error: lineError } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_DONG_TABLE)
+        .select('*')
+        .eq('ma_phieu', maPhieu);
+      if (lineError) return res.status(500).json({ error: lineError.message });
+      const items = (Array.isArray(lines) ? lines : [])
+        .map(row => ({
+          ma_npl: String(row.ma_npl || '').trim(),
+          ten_npl: String(row.ten_npl || '').trim() || null,
+          don_vi: String(row.don_vi || '').trim() || null,
+          so_luong: Number(row.so_luong)
+        }))
+        .filter(row => row.ma_npl && Number.isFinite(row.so_luong) && row.so_luong > 0);
+      if (items.length === 0) {
+        return res.status(400).json({ error: 'Phiếu chưa có dòng NVL hợp lệ để chốt.' });
+      }
+
+      const maPhieuNhap =
+        String(header.ma_phieu_nhap || '').trim() ||
+        `PN-TKNVL-${String(header.ngay || '').replace(/-/g, '')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+      const optionalText = (value: unknown) => String(value ?? '').trim() || null;
+      const headerPayload: Record<string, unknown> = {
+        ma_phieu: maPhieuNhap,
+        ngay: optionalText(header.ngay) || undefined,
+        nhan_su: optionalText(header.nguoi_lap),
+        kho: optionalText(header.ten_kho),
+        ca: optionalText(header.ca),
+        may: optionalText(header.may),
+        ghi_chu: optionalText(header.ghi_chu),
+        ly_do: optionalText(header.ly_do) || 'Trả kho NVL',
+        nguoi_lap: optionalText(header.nguoi_lap),
+        status: 'da_chot'
+      };
+
+      const { data: savedHeader, error: khoHeaderError } = await supabaseKho
+        .from('phieu_nhap')
+        .upsert(headerPayload, { onConflict: 'ma_phieu' })
+        .select(WAREHOUSE_HEADER_SELECT)
+        .single();
+      if (khoHeaderError) {
+        return res.status(500).json({ error: `Không tạo được phiếu nhập kho. ${khoHeaderError.message}` });
+      }
+
+      const { error: deleteOldError } = await supabaseKho
+        .from('nhap_kho')
+        .delete()
+        .eq('ma_phieu', maPhieuNhap)
+        .eq('loai', 'nvl')
+        .is('ma_sp_quet', null);
+      if (deleteOldError) {
+        return res.status(500).json({ error: `Không cập nhật được dòng nhập kho cũ. ${deleteOldError.message}` });
+      }
+
+      const { error: insertLinesError } = await supabaseKho.from('nhap_kho').insert(
+        items.map(item => ({
+          ma_sp: item.ma_npl,
+          ten_sp: item.ten_npl,
+          don_vi: item.don_vi,
+          loai: 'nvl',
+          so_luong: item.so_luong,
+          ma_phieu: maPhieuNhap
+        }))
+      );
+      if (insertLinesError) {
+        return res.status(500).json({ error: `Không ghi được dòng nhập kho. ${insertLinesError.message}` });
+      }
+
+      // Cập nhật tồn NVL trên bảng kho (cùng logic /api/kho/phieu).
+      const codes = [...new Set(items.map(item => item.ma_npl))];
+      const totals = new Map<string, { nhap: number; xuat: number }>(
+        codes.map(code => [code, { nhap: 0, xuat: 0 }] as const)
+      );
+      for (const [type, table] of [['nhap', 'nhap_kho'], ['xuat', 'xuat_kho']] as const) {
+        for (let codeOffset = 0; codeOffset < codes.length; codeOffset += 100) {
+          const batch = codes.slice(codeOffset, codeOffset + 100);
+          for (let offset = 0; ; offset += 500) {
+            const { data: rows, error: rowsError } = await supabaseKho
+              .from(table)
+              .select('ma_sp, so_luong')
+              .eq('loai', 'nvl')
+              .in('ma_sp', batch)
+              .range(offset, offset + 499);
+            if (rowsError) {
+              return res.status(500).json({ error: `Không thể tính tồn NVL từ ${table}. ${rowsError.message}` });
+            }
+            for (const row of rows || []) {
+              const total = totals.get(String(row.ma_sp ?? '').trim());
+              if (total) total[type] += Number(row.so_luong) || 0;
+            }
+            if (!rows || rows.length < 500) break;
+          }
+        }
+      }
+      const stockByCode = new Map<string, any>();
+      for (let offset = 0; offset < codes.length; offset += 100) {
+        const { data: stocks, error: stockReadError } = await supabaseKho
+          .from('kho')
+          .select('id, ma_sp, ton_dau, ton_toi_thieu, ten_sp')
+          .in('ma_sp', codes.slice(offset, offset + 100));
+        if (stockReadError) {
+          return res.status(500).json({ error: `Không thể tải tồn NVL. ${stockReadError.message}` });
+        }
+        for (const stock of stocks || []) stockByCode.set(String(stock.ma_sp ?? '').trim(), stock);
+      }
+      const nameByCode = new Map(items.map(item => [item.ma_npl, item.ten_npl || ''] as const));
+      for (const code of codes) {
+        const total = totals.get(code)!;
+        const stock = stockByCode.get(code);
+        if (!stock && total.nhap === 0 && total.xuat === 0) continue;
+        const tonDau = Number(stock?.ton_dau) || 0;
+        const stockPayload = {
+          ma_sp: code,
+          ton_dau: tonDau,
+          nhap: total.nhap,
+          xuat: total.xuat,
+          ton_cuoi: tonDau + total.nhap - total.xuat,
+          ton_toi_thieu: Number(stock?.ton_toi_thieu) || 0,
+          loai: 'nvl',
+          ten_sp: nameByCode.get(code) || stock?.ten_sp || null
+        };
+        const stockWrite = stock?.id
+          ? await supabaseKho.from('kho').update(stockPayload).eq('id', stock.id)
+          : await supabaseKho.from('kho').insert(stockPayload);
+        if (stockWrite.error) {
+          return res.status(500).json({ error: `Không thể cập nhật tồn NVL. ${stockWrite.error.message}` });
+        }
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .update({
+          status: 'da_chot',
+          ma_phieu_nhap: maPhieuNhap,
+          updated_at: new Date().toISOString()
+        })
+        .eq('ma_phieu', maPhieu)
+        .select('*')
+        .single();
+      if (updateError) return res.status(500).json({ error: updateError.message });
+
+      return res.json({
+        success: true,
+        header: updated,
+        phieu_nhap: savedHeader,
+        ma_phieu_nhap: maPhieuNhap
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi chốt phiếu trả kho NVL.' });
+    }
+  });
+
+  app.delete('/api/tra-kho-nvl/:ma_phieu', async (req, res) => {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    }
+    const maPhieu = String(req.params.ma_phieu || '').trim();
+    if (!maPhieu) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
+    try {
+      const { data: existing, error: existingError } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_TABLE)
+        .select('ma_phieu, status')
+        .eq('ma_phieu', maPhieu)
+        .maybeSingle();
+      if (existingError) return res.status(500).json({ error: existingError.message });
+      if (!existing) return res.status(404).json({ error: 'Không tìm thấy phiếu trả kho.' });
+      if (String(existing.status) === 'da_chot') {
+        return res.status(400).json({ error: 'Phiếu đã chốt — không xóa được.' });
+      }
+      const { error: lineError } = await supabase
+        .from(SUPABASE_TRA_KHO_NVL_DONG_TABLE)
+        .delete()
+        .eq('ma_phieu', maPhieu);
+      if (lineError) return res.status(500).json({ error: lineError.message });
+      const { error } = await supabase.from(SUPABASE_TRA_KHO_NVL_TABLE).delete().eq('ma_phieu', maPhieu);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json({ success: true, ma_phieu: maPhieu });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi xóa phiếu trả kho NVL.' });
     }
   });
 

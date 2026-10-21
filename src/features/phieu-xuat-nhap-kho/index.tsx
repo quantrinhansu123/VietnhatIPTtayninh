@@ -4404,39 +4404,25 @@ export function WarehouseSlipPanel({
             </label>
             {/* Xuất TP: bỏ «Chọn phiếu xuất chưa chốt» — chỉ giữ Lệnh xuất hàng + quét. Nhập TP vẫn chọn phiếu chưa chốt. */}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
-              <div className="min-w-0 space-y-0.5">
+              <label className="block min-w-0 space-y-0.5">
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                   Phiếu nhập chưa chốt
                 </span>
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <div className="min-w-0 flex-1">
-                    <SearchableSelect
-                      value={selectedProductSlipCode}
-                      onChange={handleProductSlipSelection}
-                      options={openProductSlips}
-                      getValue={item => (item as OpenProductSlip).ma_phieu}
-                      getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
-                      placeholder="+ Tạo phiếu nhập"
-                      disabled={isLoadingProductSlips}
-                      inputClassName={warehouseFieldClass}
-                      comboboxMode
-                      comboboxSearchable={false}
-                      matchDropdownWidth
-                      autoFlip
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleOpenMachineImport()}
-                    disabled={machineImportLoading || isSaving}
-                    title="Nhập từ máy"
-                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 text-[11px] font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
-                  >
-                    {machineImportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanBarcode className="h-3.5 w-3.5" />}
-                    <span className="hidden sm:inline">Máy</span>
-                  </button>
-                </div>
-              </div>
+                <SearchableSelect
+                  value={selectedProductSlipCode}
+                  onChange={handleProductSlipSelection}
+                  options={openProductSlips}
+                  getValue={item => (item as OpenProductSlip).ma_phieu}
+                  getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
+                  placeholder="+ Tạo phiếu nhập"
+                  disabled={isLoadingProductSlips}
+                  inputClassName={warehouseFieldClass}
+                  comboboxMode
+                  comboboxSearchable={false}
+                  matchDropdownWidth
+                  autoFlip
+                />
+              </label>
             ) : null}
           </div>
           {shippingOrderPicker}
@@ -5331,8 +5317,22 @@ export function WarehouseSlipPanel({
               {actionMessage}
             </div>
           ) : null}
+          {slipType === 'nhap' && !editSlipCode && warehouseName ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => void handleOpenMachineImport()}
+                disabled={machineImportLoading || isSaving}
+                title="Nhập từ máy"
+                aria-label="Nhập từ máy"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300 bg-white text-sky-700 transition hover:bg-sky-50 disabled:opacity-60"
+              >
+                {machineImportLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ScanBarcode className="h-5 w-5" />}
+              </button>
+            </div>
+          ) : null}
           <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-sm font-black text-zinc-900">Thông tin phiếu {slipType === 'nhap' ? 'nhập' : 'xuất'}</h2>
               {(editSlipCode ? canEdit : canCreate) ? (
                 <button

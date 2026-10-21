@@ -1177,7 +1177,7 @@ export function ProductViewModal({
           const warehouse =
             product.warehouse && product.warehouse !== '-' ? String(product.warehouse).trim() : '';
 
-          // Tồn đầu = tong_so_luong trên Bảng tổng hợp kiểm kho (không đếm dòng chi tiết).
+          // Tồn đầu ưu tiên Bảng tổng hợp Kiểm kho; không có thì lấy san_pham.ton_dau_ky.
           let best: {
             ton_dau_ky: number;
             chot_luc: string;
@@ -1195,7 +1195,11 @@ export function ProductViewModal({
             if (!response.ok) {
               throw new Error(data.error || 'Không thể tải tồn đầu từ kiểm kho.');
             }
-            const qty = Number(data.ton_dau_ky ?? data.tong_so_luong);
+            // API trả null khi chưa có đợt — Number(null)===0 nên phải chặn source=empty / thiếu số.
+            const rawQty = data.ton_dau_ky ?? data.tong_so_luong;
+            if (rawQty === null || rawQty === undefined || rawQty === '') continue;
+            if (String(data.source ?? '').trim() === 'empty') continue;
+            const qty = Number(rawQty);
             if (!Number.isFinite(qty)) continue;
             best = {
               ton_dau_ky: qty,
@@ -1216,6 +1220,13 @@ export function ProductViewModal({
       } catch (error: any) {
         if (error?.name === 'AbortError') return;
         openingError = error?.message || 'Không thể tải tồn đầu từ kiểm kho.';
+      }
+
+      if (opening === null) {
+        const catalogOpening = Number(String(product.openingStock ?? '').trim().replace(',', '.'));
+        if (Number.isFinite(catalogOpening)) {
+          opening = catalogOpening;
+        }
       }
 
       let inbound = 0;
@@ -1281,7 +1292,7 @@ export function ProductViewModal({
     })();
 
     return () => controller.abort();
-  }, [product.amisCode, product.code, product.id, product.newCode, product.warehouse, tab]);
+  }, [product.amisCode, product.code, product.id, product.newCode, product.openingStock, product.warehouse, tab]);
 
   useEffect(() => {
     setSelectedDetailCodeIds(new Set());
@@ -1662,7 +1673,7 @@ export function ProductViewModal({
     ['Nguồn gốc', product.origin]
   ] as [string, string][]).filter(([, value]) => value && value !== '-');
 
-  // Tồn đầu kỳ ← Kiểm kho; Nhập/Xuất ← tổng SL tab Nhập kho / Xuất kho.
+  // Tồn đầu kỳ ← Kiểm kho (fallback san_pham.ton_dau_ky); Nhập/Xuất ← phiếu kho.
   const openingStockNum = stockFromKiem.opening;
   const inboundNum = stockFromKiem.inbound;
   const outboundNum = stockFromKiem.outbound;
@@ -1728,8 +1739,8 @@ export function ProductViewModal({
     if (stockFromKiemError) return stockFromKiemError;
     const parts: string[] = [];
     if (stockFromKiem.opening === null) {
-      parts.push('Chưa có dữ liệu kiểm kho');
-    } else {
+      parts.push('Chưa có tồn đầu (kiểm kho / danh mục)');
+    } else if (stockFromKiem.chotAt || stockFromKiem.dot || stockFromKiem.confirmed) {
       const chotLabel = stockFromKiem.chotAt
         ? new Date(stockFromKiem.chotAt).toLocaleString('vi-VN')
         : '';
@@ -1743,6 +1754,8 @@ export function ProductViewModal({
           .filter(Boolean)
           .join(' ')
       );
+    } else {
+      parts.push('Tồn đầu = Tồn đầu kỳ trên danh mục sản phẩm');
     }
     parts.push('Nhập/Xuất = tổng SL tab Nhập kho / Xuất kho');
     parts.push('Bấm số Tồn đầu / Nhập / Xuất để xem chi tiết');

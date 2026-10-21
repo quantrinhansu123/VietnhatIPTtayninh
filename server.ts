@@ -13234,7 +13234,6 @@ export function createApp() {
 
       const initialExisting = await loadExisting(items.map(item => item.fullCode));
       let pendingItems = classifyExisting(items, initialExisting);
-      const unimportedCodes: string[] = [];
       const alreadyExportedCodes: string[] = [];
       if (loaiPhieu === 'xuat' && pendingItems.length) {
         const exportedKeys = new Set<string>();
@@ -13254,47 +13253,11 @@ export function createApp() {
             if (key) exportedKeys.add(key);
           }
         }
+        // Xuất TP: cho phép ghi mã chưa có trong nhap_kho; chỉ chặn mã đã xuất / đang ở phiếu xuất khác.
         pendingItems = pendingItems.filter(item => {
           const exported = exportedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
           if (exported) alreadyExportedCodes.push(item.fullCode);
           return !exported;
-        });
-
-        const khoName = String(body.kho ?? '').trim();
-        const importedKeys = new Set<string>();
-        for (let offset = 0; offset < pendingItems.length; offset += 100) {
-          const batch = pendingItems.slice(offset, offset + 100);
-          const { data: inboundRows, error: inboundError } = await khoDb
-            .from('nhap_kho')
-            .select('ma_sp_quet, ma_phieu')
-            .eq('loai', 'san_pham')
-            .in('ma_sp_quet', batch.map(item => item.fullCode));
-          if (inboundError) {
-            return res.status(500).json({ error: inboundError.message || 'Không kiểm tra được mã đã nhập kho.' });
-          }
-          const inboundSlipCodes = [...new Set((inboundRows || []).map(row => String(row.ma_phieu ?? '').trim()).filter(Boolean))];
-          if (!inboundSlipCodes.length) continue;
-          const { data: inboundHeaders, error: inboundHeaderError } = await khoDb
-            .from('phieu_nhap')
-            .select('ma_phieu, status, kho')
-            .in('ma_phieu', inboundSlipCodes);
-          if (inboundHeaderError) {
-            return res.status(500).json({ error: inboundHeaderError.message || 'Không kiểm tra được phiếu nhập kho.' });
-          }
-          const committedSlips = new Set((inboundHeaders || [])
-            .filter(header => header.status !== 'chua_chot' && String(header.kho ?? '').trim() === khoName)
-            .map(header => String(header.ma_phieu ?? '').trim()));
-          for (const row of inboundRows || []) {
-            if (committedSlips.has(String(row.ma_phieu ?? '').trim())) {
-              const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
-              if (key) importedKeys.add(key);
-            }
-          }
-        }
-        pendingItems = pendingItems.filter(item => {
-          const imported = importedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
-          if (!imported) unimportedCodes.push(item.fullCode);
-          return imported;
         });
       }
       let header: any = null;
@@ -13421,7 +13384,8 @@ export function createApp() {
         header,
         saved: [...savedByCode.values()],
         duplicateCodes: [...duplicateCodes],
-        unimportedCodes,
+        // Giữ field để FE cũ không lỗi; xuất TP không còn chặn theo nhap_kho.
+        unimportedCodes: [] as string[],
         alreadyExportedCodes,
         source: SUPABASE_KHO_DB_LABEL
       });
@@ -16067,6 +16031,11 @@ export function createApp() {
           metadata.nhap_kho_luc = luc;
           metadata.nhap_kho_boi = nguoi;
           if (maPhieu) metadata.nhap_kho_ma_phieu = maPhieu;
+        } else {
+          // Về trạng thái ban đầu: bỏ dấu thời điểm / người / phiếu đã nhập.
+          delete metadata.nhap_kho_luc;
+          delete metadata.nhap_kho_boi;
+          delete metadata.nhap_kho_ma_phieu;
         }
         const { error: updateError } = await supabaseWeighing
           .from(SUPABASE_CAN_TU_DONG_TABLE)
@@ -18172,22 +18141,57 @@ export function createApp() {
    * Mã serial không có dòng riêng trong danh mục san_pham. Luôn mượn tên/ĐVT/kho
    * từ mã gốc trước dấu `_`, kể cả khi RPC cũ chưa xử lý được khoảng trắng/case.
    */
-  async function enrichProductTonKhoRows(rows: TonKhoGopRow[]): Promise<TonKhoGopRow[]> {
-    if (!supabase || rows.length === 0) return rows;
+  async function enrichProductTonKhoRows(
+    rows: TonKhoGopRow[],
+    tenKho: string | null = null
+  ): Promise<TonKhoGopRow[]> {
+    if (!supabase) return rows;
 
-    const catalogRows = await loadAllTonKhoRows((from, to) =>
-      supabase
+    const catalogRows = await loadAllTonKhoRows((from, to) => {
+      let query = supabase!
         .from(SUPABASE_PRODUCTS_TABLE)
-        .select('ma_sp, ten_sp, don_vi, ten_kho')
-        .range(from, to)
-    );
+        .select('ma_sp, ten_sp, don_vi, ten_kho, ton_dau_ky');
+      if (tenKho) query = query.eq('ten_kho', tenKho);
+      return query.range(from, to);
+    });
     const catalogByCode = new Map<string, Record<string, unknown>>();
     catalogRows.forEach(record => {
       const key = normalizeTonKhoCatalogCode(record.ma_sp);
       if (key) catalogByCode.set(key, record);
     });
 
-    return rows.map(row => {
+    const merged = new Map<string, TonKhoGopRow>();
+    for (const row of rows) {
+      merged.set(row.ma, { ...row });
+    }
+
+    for (const [code, catalog] of catalogByCode) {
+      const baselineRaw = Number(catalog.ton_dau_ky);
+      const baseline = Number.isFinite(baselineRaw) ? baselineRaw : 0;
+      const existing = merged.get(code);
+      if (existing) {
+        existing.ton_dau_ky += baseline;
+        existing.ten = String(catalog.ten_sp ?? '').trim() || existing.ten;
+        existing.don_vi = String(catalog.don_vi ?? '').trim() || existing.don_vi;
+        existing.ten_kho = String(catalog.ten_kho ?? '').trim() || existing.ten_kho;
+        existing.ton_cuoi_ky = existing.ton_dau_ky + existing.nhap_trong_ky - existing.xuat_trong_ky;
+        continue;
+      }
+      if (baseline === 0) continue;
+      merged.set(code, {
+        ma: code,
+        ten: String(catalog.ten_sp ?? '').trim() || code,
+        don_vi: String(catalog.don_vi ?? '').trim() || null,
+        ten_kho: String(catalog.ten_kho ?? '').trim() || tenKho,
+        ton_dau_ky: baseline,
+        nhap_trong_ky: 0,
+        xuat_trong_ky: 0,
+        ton_cuoi_ky: baseline
+      });
+    }
+
+    // Bổ sung tên/ĐV cho mã lô còn thiếu (không cộng lại ton_dau_ky).
+    return Array.from(merged.values()).map(row => {
       const prefix = extractTonKhoPrefix(row.ma) || row.ma;
       const catalog = catalogByCode.get(normalizeTonKhoCatalogCode(prefix));
       if (!catalog) return row;
@@ -18281,7 +18285,7 @@ export function createApp() {
     if (loaiKho === 'san_pham') {
       try {
         const rows = await loadTonKhoSanPhamFromKho(tenKho, tuNgay, denNgay);
-        return { data: await enrichProductTonKhoRows(rows), error: null };
+        return { data: await enrichProductTonKhoRows(rows, tenKho), error: null };
       } catch (err: any) {
         return { data: null, error: { message: err?.message || 'Không thể tính tồn thành phẩm từ nhập/xuất kho.' } as any };
       }

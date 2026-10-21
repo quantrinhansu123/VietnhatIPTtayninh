@@ -9,6 +9,7 @@ import {
   Pencil,
   Printer,
   RefreshCw,
+  RotateCcw,
   Scale,
   Sparkles,
   Trash2,
@@ -37,16 +38,16 @@ import {
   resolveCanTuDongBusinessDate,
   resolveCanTuDongMachine,
   resolveCanTuDongProductionOrder,
+  buildLsxQtyByLenhAndSp,
+  lookupLsxQty,
   resolveTrongLuongBiKg,
   resolveCanTuDongNhuaThucTeKg,
   resolveNhuaDinhMucKg,
   sumCanTuDongNhuaTieuChuanKg,
   sumCanTuDongNhuaDinhMucKg,
-  sumCanTuDongChenhLechNhuaKg,
   sumCanTuDongCanSanPhamKg,
   sumCanTuDongLoiTieuChuanKg,
   sumCanTuDongCanLoiKg,
-  sumCanTuDongChenhLechLoiKg,
   sumCanTuDongFilmKg,
   sumCanTuDongSanLuongTotals
 } from '../../utils/canTuDongWeights';
@@ -128,48 +129,6 @@ export type CanTuDongRecord = {
   created_at?: string | null;
   metadata?: unknown;
 };
-
-/** Ngưỡng phân tích kém/hơn cân theo |% chênh lệch|. */
-const PHAN_TICH_NGUONG_PCT = 2;
-
-/** Bộ lọc danh sách theo chênh lệch nhựa (TT−ĐM). */
-type CanTuDongDiffFilter = 'all' | 'all-diff' | 'gt-2pct';
-
-type CanTuDongPhanTichBucket = {
-  /** Tổng số dòng kém/hơn cân (không lọc 2%). */
-  rowCount: number;
-  /** Σ |Chênh lệch nhựa| mọi dòng trong nhóm. */
-  weightDiffAllKg: number;
-  rowsLe2Pct: number;
-  rowsGt2Pct: number;
-  /** Σ |Chênh lệch nhựa| của các dòng có |%| > 2%. */
-  weightDiffGt2Kg: number;
-};
-
-function emptyPhanTichBucket(): CanTuDongPhanTichBucket {
-  return {
-    rowCount: 0,
-    weightDiffAllKg: 0,
-    rowsLe2Pct: 0,
-    rowsGt2Pct: 0,
-    weightDiffGt2Kg: 0
-  };
-}
-
-function accumulatePhanTichBucket(
-  bucket: CanTuDongPhanTichBucket,
-  absPhanTram: number,
-  absChenhLechKg: number
-) {
-  bucket.rowCount += 1;
-  bucket.weightDiffAllKg += absChenhLechKg;
-  if (absPhanTram <= PHAN_TICH_NGUONG_PCT) {
-    bucket.rowsLe2Pct += 1;
-  } else {
-    bucket.rowsGt2Pct += 1;
-    bucket.weightDiffGt2Kg += absChenhLechKg;
-  }
-}
 
 /** Giá trị nút «Tự động điền». */
 const AUTO_FILL_NGAY = '2026-08-20';
@@ -329,32 +288,6 @@ function resolveNhuaChenhLechVaPhanTram(
   return { chenhLech, phanTram };
 }
 
-function resolveRowStandardDiff(
-  row: CanTuDongRecord,
-  productStandardWeightByCode: Map<string, number>,
-  productCoreWeightByCode: Map<string, number>,
-  productPlasticWeightByCode: Map<string, number>,
-  productFilmWeightByCode: Map<string, number>
-) {
-  const maSp = parseCanTuDongQrProductCode(row.qr_code);
-  const maSpKey = normalizeProductCodeKey(maSp);
-  const standardKg = maSpKey ? productStandardWeightByCode.get(maSpKey) : undefined;
-  const coreKg = maSpKey ? productCoreWeightByCode.get(maSpKey) : undefined;
-  const plasticKg = maSpKey ? productPlasticWeightByCode.get(maSpKey) : undefined;
-  const nhuaThucTe = resolveCanTuDongNhuaThucTeKg(row, productFilmWeightByCode);
-  const nhuaDinhMuc = resolveNhuaDinhMucKg(standardKg, coreKg, plasticKg);
-  const { chenhLech, phanTram } = resolveNhuaChenhLechVaPhanTram(nhuaThucTe, nhuaDinhMuc);
-  if (chenhLech === null || phanTram === null || chenhLech === 0) return null;
-  return {
-    chenhLech,
-    phanTram,
-    absPhanTram: Math.abs(phanTram),
-    absChenhLech: Math.abs(chenhLech),
-    standardKg: nhuaDinhMuc,
-    canSpKg: nhuaThucTe
-  };
-}
-
 function formatSignedPercent(value: number | null, fractionDigits = 2) {
   if (value === null || !Number.isFinite(value)) return '—';
   const sign = value > 0 ? '+' : '';
@@ -482,7 +415,6 @@ export function CanTuDongPanel({
   const [bulkMaSpMode, setBulkMaSpMode] = useState<'prefix' | 'pick'>('prefix');
   const [bulkMaSpValue, setBulkMaSpValue] = useState('');
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
-  const [diffFilter, setDiffFilter] = useState<CanTuDongDiffFilter>('all');
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
   const [maSpFilter, setMaSpFilter] = useState('all');
   /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
@@ -518,6 +450,8 @@ export function CanTuDongPanel({
   const [productFilmWeightByCode, setProductFilmWeightByCode] = useState<Map<string, number>>(
     () => new Map()
   );
+  /** `MA_LENH|MA_SP` → so_luong dòng trên lệnh SX. */
+  const [lsxQtyByLenhAndSp, setLsxQtyByLenhAndSp] = useState<Map<string, number>>(() => new Map());
   /** Mã SP gốc trong danh mục (hiển thị combobox đồng bộ). */
   const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>([]);
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
@@ -525,6 +459,7 @@ export function CanTuDongPanel({
   const [showNhapKhoModal, setShowNhapKhoModal] = useState(false);
   const [nhapKhoSoCuon, setNhapKhoSoCuon] = useState('');
   const [isNhapKho, setIsNhapKho] = useState(false);
+  const [isResettingNhapKho, setIsResettingNhapKho] = useState(false);
   const [togglingNhapKhoId, setTogglingNhapKhoId] = useState('');
   const [isCheckingNhapKho, setIsCheckingNhapKho] = useState(false);
   /** Mã QR (in hoa) → các mã phiếu nhập đã có trong bảng nhap_kho. */
@@ -644,6 +579,24 @@ export function CanTuDongPanel({
           setProductFilmWeightByCode(new Map());
           setProductCatalogCodes([]);
         }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/lenh-sx');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const orders = Array.isArray(data?.productionOrders) ? data.productionOrders : [];
+        if (!cancelled) setLsxQtyByLenhAndSp(buildLsxQtyByLenhAndSp(orders));
+      } catch {
+        if (!cancelled) setLsxQtyByLenhAndSp(new Map());
       }
     })();
     return () => {
@@ -815,20 +768,6 @@ export function CanTuDongPanel({
 
   const visibleRecords = useMemo(() => {
     let rows = recordsByMaSp;
-    if (diffFilter !== 'all') {
-      rows = rows.filter(row => {
-        const diff = resolveRowStandardDiff(
-          row,
-          productStandardWeightByCode,
-          productCoreWeightByCode,
-          productPlasticWeightByCode,
-          productFilmWeightByCode
-        );
-        if (!diff) return false;
-        if (diffFilter === 'gt-2pct') return diff.absPhanTram > PHAN_TICH_NGUONG_PCT;
-        return true;
-      });
-    }
     if (onlyDuplicateQr) {
       rows = rows.filter(row => {
         const key = normalizeQrKey(row.qr_code);
@@ -839,17 +778,7 @@ export function CanTuDongPanel({
       rows = rows.filter(row => readNhapKho(row).status === dayKhoFilter);
     }
     return rows;
-  }, [
-    recordsByMaSp,
-    productStandardWeightByCode,
-    productCoreWeightByCode,
-    productPlasticWeightByCode,
-    productFilmWeightByCode,
-    diffFilter,
-    onlyDuplicateQr,
-    qrDuplicateInfo.duplicateKeys,
-    dayKhoFilter
-  ]);
+  }, [recordsByMaSp, onlyDuplicateQr, qrDuplicateInfo.duplicateKeys, dayKhoFilter]);
 
   const visibleIds = useMemo(
     () => visibleRecords.map(row => rowIdKey(row.id)).filter(Boolean),
@@ -874,23 +803,6 @@ export function CanTuDongPanel({
       ),
     [visibleRecords, productStandardWeightByCode, productCoreWeightByCode, productPlasticWeightByCode]
   );
-  const chenhLechNhuaTotals = useMemo(
-    () =>
-      sumCanTuDongChenhLechNhuaKg(
-        visibleRecords,
-        productStandardWeightByCode,
-        productCoreWeightByCode,
-        productPlasticWeightByCode,
-        productFilmWeightByCode
-      ),
-    [
-      visibleRecords,
-      productStandardWeightByCode,
-      productCoreWeightByCode,
-      productPlasticWeightByCode,
-      productFilmWeightByCode
-    ]
-  );
   const trongLuongTtTotals = useMemo(
     () => sumCanTuDongCanSanPhamKg(visibleRecords),
     [visibleRecords]
@@ -903,14 +815,173 @@ export function CanTuDongPanel({
     () => sumCanTuDongCanLoiKg(visibleRecords),
     [visibleRecords]
   );
-  const chenhLechLoiTotals = useMemo(
-    () => sumCanTuDongChenhLechLoiKg(visibleRecords, productCoreWeightByCode),
-    [visibleRecords, productCoreWeightByCode]
-  );
   const trongLuongMangTotals = useMemo(
     () => sumCanTuDongFilmKg(visibleRecords, productFilmWeightByCode),
     [visibleRecords, productFilmWeightByCode]
   );
+  /** Cộng SL lệnh theo từng cặp Lệnh SX + Mã SP (không nhân theo số lần cân). */
+  const lsxQtyTotals = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const row of visibleRecords) {
+      const lenhSx = resolveRowLenhSx(row);
+      const maSp = resolveRowMaSp(row);
+      const qty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
+      if (qty == null) continue;
+      const key = `${String(lenhSx).trim().toUpperCase()}|${normalizeProductCodeKey(maSp)}`;
+      if (!key || key === '|' || seen.has(key)) continue;
+      seen.set(key, qty);
+    }
+    let total = 0;
+    for (const qty of seen.values()) total += qty;
+    return { quantity: total, pairCount: seen.size };
+  }, [visibleRecords, lsxQtyByLenhAndSp]);
+
+  /** Theo Mã SP trong bộ lọc: số cuộn thực tế + SL LSX (cộng unique Lệnh SX+Mã SP). */
+  const summaryByMaSp = useMemo(() => {
+    type Acc = {
+      maSp: string;
+      actual: number;
+      lsxSeen: Map<string, number>;
+    };
+    const byKey = new Map<string, Acc>();
+    for (const row of visibleRecords) {
+      const maSp = resolveRowMaSp(row);
+      const key = normalizeProductCodeKey(maSp);
+      if (!key) continue;
+      let acc = byKey.get(key);
+      if (!acc) {
+        acc = { maSp, actual: 0, lsxSeen: new Map() };
+        byKey.set(key, acc);
+      }
+      acc.actual += 1;
+      const lenhSx = resolveRowLenhSx(row);
+      const qty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
+      if (qty == null) continue;
+      const pairKey = `${String(lenhSx).trim().toUpperCase()}|${key}`;
+      if (!pairKey.startsWith('|') && !acc.lsxSeen.has(pairKey)) acc.lsxSeen.set(pairKey, qty);
+    }
+    return [...byKey.values()]
+      .map(acc => {
+        let lsx: number | null = null;
+        if (acc.lsxSeen.size > 0) {
+          lsx = 0;
+          for (const qty of acc.lsxSeen.values()) lsx += qty;
+        }
+        const diff = lsx != null ? acc.actual - lsx : null;
+        return {
+          key: normalizeProductCodeKey(acc.maSp),
+          maSp: acc.maSp,
+          name: productNameByCode.get(normalizeProductCodeKey(acc.maSp)) || '',
+          actual: acc.actual,
+          lsx,
+          diff
+        };
+      })
+      .sort((a, b) => b.actual - a.actual || a.maSp.localeCompare(b.maSp, 'vi', { numeric: true }));
+  }, [visibleRecords, lsxQtyByLenhAndSp, productNameByCode]);
+
+  const summaryMetricGroups = useMemo(() => {
+    /** Chênh lệch = đúng số đang hiện ở dòng trên − dòng dưới; % = chênh / dòng trên. */
+    const buildPair = (opts: {
+      key: string;
+      title: string;
+      topLabel: string;
+      midLabel: string;
+      top: number | null;
+      mid: number | null;
+      digits: number;
+      unit: string;
+    }) => {
+      const { key, title, topLabel, midLabel, top, mid, digits, unit } = opts;
+      const hasTop = top != null && Number.isFinite(top);
+      const hasMid = mid != null && Number.isFinite(mid);
+      const diff = hasTop && hasMid ? (top as number) - (mid as number) : null;
+      const pct =
+        diff != null && hasTop && (top as number) !== 0 ? (diff / (top as number)) * 100 : null;
+      const fmt = (value: number) =>
+        unit ? `${formatNumber(value, digits)} ${unit}` : formatNumber(value, digits);
+      return {
+        key,
+        title,
+        topLabel,
+        topValue: hasTop ? fmt(top as number) : '—',
+        midLabel,
+        midValue: hasMid ? fmt(mid as number) : '—',
+        diff,
+        diffText:
+          diff == null
+            ? '—'
+            : `${diff > 0 ? '+' : ''}${unit ? `${formatNumber(diff, digits)} ${unit}` : formatNumber(diff, digits)}`,
+        pct,
+        unit
+      };
+    };
+
+    const qtyActual = trongLuongNhuaTotals.quantity;
+    const qtyLsx = lsxQtyTotals.pairCount > 0 ? lsxQtyTotals.quantity : null;
+
+    return [
+      buildPair({
+        key: 'so-luong',
+        title: 'Số lượng',
+        topLabel: 'Số lượng',
+        midLabel: 'Số lượng LSX',
+        top: qtyActual,
+        mid: qtyLsx,
+        digits: 0,
+        unit: ''
+      }),
+      buildPair({
+        key: 'nhua',
+        title: 'Nhựa',
+        topLabel: 'Nhựa thực tế',
+        midLabel: 'Nhựa định mức',
+        top: trongLuongNhuaTotals.weightKg,
+        mid: nhuaDinhMucTotals.weightKg,
+        digits: 2,
+        unit: 'kg'
+      }),
+      buildPair({
+        key: 'trong-luong',
+        title: 'Trọng lượng',
+        topLabel: 'Trọng lượng TT',
+        midLabel: 'Trọng lượng tiêu chuẩn',
+        top: trongLuongTtTotals.weightKg,
+        mid: nhuaTieuChuanTotals.weightKg,
+        digits: 2,
+        unit: 'kg'
+      }),
+      buildPair({
+        key: 'loi',
+        title: 'Lõi',
+        topLabel: 'Tổng trọng lượng lõi',
+        midLabel: 'Lõi lý thuyết',
+        top: tongTrongLuongLoiTotals.weightKg,
+        mid: loiTieuChuanTotals.weightKg,
+        digits: 2,
+        unit: 'kg'
+      }),
+      buildPair({
+        key: 'mang',
+        title: 'Màng',
+        topLabel: 'Trọng lượng màng',
+        midLabel: '—',
+        top: trongLuongMangTotals.weightKg,
+        mid: null,
+        digits: 3,
+        unit: 'kg'
+      })
+    ];
+  }, [
+    trongLuongNhuaTotals,
+    lsxQtyTotals,
+    nhuaDinhMucTotals,
+    trongLuongTtTotals,
+    nhuaTieuChuanTotals,
+    tongTrongLuongLoiTotals,
+    loiTieuChuanTotals,
+    trongLuongMangTotals
+  ]);
 
   const hasDateFilters = Boolean(fromDate || toDate);
   const hasCaFilter = caFilter !== 'all';
@@ -920,36 +991,6 @@ export function CanTuDongPanel({
   const hasDayKhoFilter = dayKhoFilter !== 'all';
   const hasActiveFilters =
     hasDateFilters || hasCaFilter || hasMayFilter || hasLenhSxFilter || hasMaSpFilters || onlyDuplicateQr || hasDayKhoFilter;
-
-  /** Phân tích kém cân / hơn cân theo |%| chênh lệch nhựa ÷ Nhựa thực tế (ngưỡng 2%). */
-  const phanTichCan = useMemo(() => {
-    const kem = emptyPhanTichBucket();
-    const hon = emptyPhanTichBucket();
-    let comparedRows = 0;
-    for (const row of recordsByMaSp) {
-      const diff = resolveRowStandardDiff(
-        row,
-        productStandardWeightByCode,
-        productCoreWeightByCode,
-        productPlasticWeightByCode,
-        productFilmWeightByCode
-      );
-      if (!diff) continue;
-      comparedRows += 1;
-      if (diff.chenhLech < 0) {
-        accumulatePhanTichBucket(kem, diff.absPhanTram, diff.absChenhLech);
-      } else {
-        accumulatePhanTichBucket(hon, diff.absPhanTram, diff.absChenhLech);
-      }
-    }
-    return { kem, hon, comparedRows };
-  }, [
-    recordsByMaSp,
-    productStandardWeightByCode,
-    productCoreWeightByCode,
-    productPlasticWeightByCode,
-    productFilmWeightByCode
-  ]);
 
   const selectedCount = selectedIds.size;
   const allVisibleSelected =
@@ -1295,7 +1336,8 @@ export function CanTuDongPanel({
         productStandardWeightByCode,
         productCoreWeightByCode,
         productPlasticWeightByCode,
-        productFilmWeightByCode
+        productFilmWeightByCode,
+        lsxQtyByLenhAndSp
       });
       showAppToast(`Đã tải Excel (${visibleRecords.length} dòng).`);
     } catch (err: unknown) {
@@ -1344,50 +1386,108 @@ export function CanTuDongPanel({
     }
   };
 
+  /** Ưu tiên dòng đúng Ngày phiếu; nếu trống thì lấy mọi dòng đã tải (tránh dropdown ca/máy rỗng). */
+  const nhapKhoSourceRows = useMemo(() => {
+    const onDate = records.filter(row => resolveCanTuDongBusinessDate(row) === nhapKhoSlipDate);
+    return onDate.length > 0 ? onDate : records;
+  }, [records, nhapKhoSlipDate]);
+
   const nhapKhoCaOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const row of records) {
-      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+    for (const row of nhapKhoSourceRows) {
       const ca = String(row.ca ?? '').trim();
       if (ca) set.add(ca);
     }
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [records, nhapKhoSlipDate]);
+  }, [nhapKhoSourceRows]);
 
   const nhapKhoMayOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const row of records) {
-      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+    for (const row of nhapKhoSourceRows) {
       if (nhapKhoCa && !canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) continue;
       const may = resolveRowMay(row);
       if (may) set.add(may);
     }
     return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [records, nhapKhoSlipDate, nhapKhoCa]);
+  }, [nhapKhoSourceRows, nhapKhoCa]);
 
-  const nhapKhoMaSpOptions = useMemo(() => {
-    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) return [];
-    const byKey = new Map<string, string>();
-    for (const row of records) {
-      if (!readNhapKho(row).waiting || !String(row.qr_code || '').trim()) continue;
-      if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) continue;
+  /** Mã SP theo ca·máy (có QR). Ưu tiên mã còn chờ; vẫn liệt kê mã đã nhập để chọn / đưa về chờ. */
+  const nhapKhoMaSpStats = useMemo(() => {
+    const empty = {
+      options: [] as string[],
+      waitingByKey: new Map<string, number>(),
+      doneByKey: new Map<string, number>(),
+      waitingTotal: 0,
+      doneTotal: 0
+    };
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) return empty;
+    const labelByKey = new Map<string, string>();
+    const waitingByKey = new Map<string, number>();
+    const doneByKey = new Map<string, number>();
+    let waitingTotal = 0;
+    let doneTotal = 0;
+    for (const row of nhapKhoSourceRows) {
+      if (!String(row.qr_code || '').trim()) continue;
       if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) continue;
       if (!mayMatches(resolveRowMay(row), nhapKhoMay)) continue;
       const maSp = resolveRowMaSp(row);
       const key = normalizeProductCodeKey(maSp);
-      if (!key || byKey.has(key)) continue;
-      byKey.set(key, maSp);
+      if (!key) continue;
+      if (!labelByKey.has(key)) labelByKey.set(key, maSp);
+      if (readNhapKho(row).waiting) {
+        waitingByKey.set(key, (waitingByKey.get(key) || 0) + 1);
+        waitingTotal += 1;
+      } else {
+        doneByKey.set(key, (doneByKey.get(key) || 0) + 1);
+        doneTotal += 1;
+      }
     }
-    return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
-  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay]);
+    const options = [...labelByKey.entries()]
+      .sort((a, b) => {
+        const aw = waitingByKey.get(a[0]) || 0;
+        const bw = waitingByKey.get(b[0]) || 0;
+        if (bw !== aw) return bw - aw;
+        return a[1].localeCompare(b[1], 'vi', { numeric: true });
+      })
+      .map(([, label]) => label);
+    return { options, waitingByKey, doneByKey, waitingTotal, doneTotal };
+  }, [nhapKhoSourceRows, nhapKhoCa, nhapKhoMay]);
+
+  const nhapKhoMaSpOptions = nhapKhoMaSpStats.options;
+
+  // Giữ ca/máy/Mã SP khớp option đang có (tránh <select> kẹt giá trị không tồn tại).
+  useEffect(() => {
+    if (!showNhapKhoModal) return;
+    if (nhapKhoCa && !nhapKhoCaOptions.some(ca => canTuDongShiftMatches(ca, nhapKhoCa))) {
+      setNhapKhoCa(nhapKhoCaOptions.length === 1 ? nhapKhoCaOptions[0] : '');
+      setNhapKhoMay('');
+      setNhapKhoMaSp('');
+      return;
+    }
+    if (nhapKhoMay && !nhapKhoMayOptions.some(may => mayMatches(may, nhapKhoMay))) {
+      setNhapKhoMay(nhapKhoMayOptions.length === 1 ? nhapKhoMayOptions[0] : '');
+      setNhapKhoMaSp('');
+      return;
+    }
+    if (nhapKhoMaSp && !nhapKhoMaSpOptions.some(code => normalizeProductCodeKey(code) === normalizeProductCodeKey(nhapKhoMaSp))) {
+      setNhapKhoMaSp(nhapKhoMaSpOptions.length === 1 ? nhapKhoMaSpOptions[0] : '');
+    }
+  }, [
+    showNhapKhoModal,
+    nhapKhoCa,
+    nhapKhoMay,
+    nhapKhoMaSp,
+    nhapKhoCaOptions,
+    nhapKhoMayOptions,
+    nhapKhoMaSpOptions
+  ]);
 
   const waitingNhapKho = useMemo(() => {
     const maSpKey = normalizeProductCodeKey(nhapKhoMaSp);
     if (!nhapKhoCa.trim() || !nhapKhoMay.trim() || !maSpKey) return [];
-    return records
+    return nhapKhoSourceRows
       .filter(row => {
         if (!readNhapKho(row).waiting || !String(row.qr_code || '').trim()) return false;
-        if (resolveCanTuDongBusinessDate(row) !== nhapKhoSlipDate) return false;
         if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) return false;
         if (!mayMatches(resolveRowMay(row), nhapKhoMay)) return false;
         return normalizeProductCodeKey(resolveRowMaSp(row)) === maSpKey;
@@ -1398,7 +1498,7 @@ export function CanTuDongPanel({
         if (tb !== ta) return tb - ta;
         return String(b.id).localeCompare(String(a.id), 'en', { numeric: true });
       });
-  }, [records, nhapKhoSlipDate, nhapKhoCa, nhapKhoMay, nhapKhoMaSp]);
+  }, [nhapKhoSourceRows, nhapKhoCa, nhapKhoMay, nhapKhoMaSp]);
   const nhapKhoCount = Math.max(0, Math.floor(Number(nhapKhoSoCuon) || 0));
   const nhapKhoQueue = useMemo(() => queueNhapKhoRows(waitingNhapKho), [waitingNhapKho]);
   const nhapKhoPreview = nhapKhoCount > 0 ? nhapKhoQueue.eligible.slice(0, nhapKhoCount) : [];
@@ -1608,14 +1708,19 @@ export function CanTuDongPanel({
             item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
               ? { ...(item.metadata as Record<string, unknown>) }
               : {};
-          return {
-            ...item,
-            metadata: {
-              ...meta,
-              nhap_kho_trang_thai: next,
-              ...(next === NHAP_KHO_DA ? { nhap_kho_luc: luc, nhap_kho_boi: boi } : {})
-            }
+          const nextMeta: Record<string, unknown> = {
+            ...meta,
+            nhap_kho_trang_thai: next
           };
+          if (next === NHAP_KHO_DA) {
+            nextMeta.nhap_kho_luc = luc;
+            nextMeta.nhap_kho_boi = boi;
+          } else {
+            delete nextMeta.nhap_kho_luc;
+            delete nextMeta.nhap_kho_boi;
+            delete nextMeta.nhap_kho_ma_phieu;
+          }
+          return { ...item, metadata: nextMeta };
         })
       );
     } catch (err: unknown) {
@@ -1623,6 +1728,96 @@ export function CanTuDongPanel({
     } finally {
       setTogglingNhapKhoId('');
     }
+  };
+
+  const applyNhapKhoChoToRows = async (targets: CanTuDongRecord[], confirmLabel: string) => {
+    if (targets.length === 0) {
+      showAppToast('Không có dòng «Đã nhập kho» để đưa về chờ.', 'error');
+      return false;
+    }
+    if (
+      !window.confirm(
+        `Đưa ${formatNumber(targets.length, 0)} dòng «Đã nhập kho» (${confirmLabel}) về «${NHAP_KHO_CHO}»?\n\nKhông xóa phiếu trong nhap_kho — chỉ đổi trạng thái trên cân tự động.`
+      )
+    ) {
+      return false;
+    }
+
+    const nguoi = String(currentUser?.name || '').trim() || 'Không rõ';
+    const ids = targets.map(row => row.id);
+    setIsResettingNhapKho(true);
+    try {
+      let updated = 0;
+      for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+        const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+        const res = await fetch('/api/can-tu-dong/nhap-kho', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: chunk, nguoi, trang_thai: NHAP_KHO_CHO })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(readApiErrorMessage(res, data, 'Không đưa được trạng thái nhập kho về ban đầu.'));
+        }
+        updated += Number(data.updated) || 0;
+      }
+      const idSet = new Set(ids.map(id => rowIdKey(id)));
+      setRecords(prev =>
+        prev.map(row => {
+          if (!idSet.has(rowIdKey(row.id))) return row;
+          const meta =
+            row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+              ? { ...(row.metadata as Record<string, unknown>) }
+              : {};
+          delete meta.nhap_kho_luc;
+          delete meta.nhap_kho_boi;
+          delete meta.nhap_kho_ma_phieu;
+          return {
+            ...row,
+            metadata: {
+              ...meta,
+              nhap_kho_trang_thai: NHAP_KHO_CHO
+            }
+          };
+        })
+      );
+      showAppToast(`Đã đưa ${formatNumber(updated || targets.length, 0)} dòng về «${NHAP_KHO_CHO}».`);
+      setNhapKhoChecked(false);
+      return true;
+    } catch (err: unknown) {
+      showAppToast(err instanceof Error ? err.message : 'Không đưa được trạng thái nhập kho về ban đầu.', 'error');
+      return false;
+    } finally {
+      setIsResettingNhapKho(false);
+    }
+  };
+
+  /** Đưa trạng thái nhập kho về «Chờ nhập kho» cho các dòng đang hiện theo bộ lọc. */
+  const handleResetNhapKhoByFilter = async () => {
+    await applyNhapKhoChoToRows(
+      visibleRecords.filter(row => !readNhapKho(row).waiting),
+      'theo bộ lọc đang xem'
+    );
+  };
+
+  /** Trong modal Nhập kho: đưa về chờ theo ca · máy (± Mã SP đang chọn). */
+  const handleResetNhapKhoInModal = async () => {
+    if (!nhapKhoCa.trim() || !nhapKhoMay.trim()) {
+      showAppToast('Chọn ca và máy trước.', 'error');
+      return;
+    }
+    const maSpKey = normalizeProductCodeKey(nhapKhoMaSp);
+    const targets = nhapKhoSourceRows.filter(row => {
+      if (readNhapKho(row).waiting || !String(row.qr_code || '').trim()) return false;
+      if (!canTuDongShiftMatches(String(row.ca ?? ''), nhapKhoCa)) return false;
+      if (!mayMatches(resolveRowMay(row), nhapKhoMay)) return false;
+      if (maSpKey && normalizeProductCodeKey(resolveRowMaSp(row)) !== maSpKey) return false;
+      return true;
+    });
+    const scope = maSpKey
+      ? `ca ${nhapKhoCa} · máy ${nhapKhoMay} · ${nhapKhoMaSp}`
+      : `ca ${nhapKhoCa} · máy ${nhapKhoMay}`;
+    await applyNhapKhoChoToRows(targets, scope);
   };
 
   return (
@@ -1637,6 +1832,35 @@ export function CanTuDongPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setNhapKhoSlipDate(toDate || fromDate || localIsoDateToday());
+              setNhapKhoCa(caFilter !== 'all' ? caFilter : '');
+              setNhapKhoMay(mayFilter !== 'all' ? mayFilter : '');
+              setNhapKhoMaSp(maSpFilter !== 'all' ? maSpFilter : '');
+              setNhapKhoSoCuon('');
+              setNhapKhoHits(new Map());
+              setNhapKhoChecked(false);
+              setShowNhapKhoModal(true);
+            }}
+            disabled={loading || records.length === 0 || isResettingNhapKho}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-800 transition hover:bg-sky-100 disabled:opacity-60"
+            title="Chọn ca · máy · Mã SP · số cuộn → ghi QR vào nhap_kho (phiếu chưa chốt)"
+          >
+            <Warehouse className="h-4 w-4" />
+            Nhập kho
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleResetNhapKhoByFilter()}
+            disabled={loading || isResettingNhapKho || isNhapKho || visibleRecords.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-950 transition hover:bg-amber-100 disabled:opacity-60"
+            title={`Đưa các dòng «Đã nhập kho» trong bộ lọc đang xem về «${NHAP_KHO_CHO}»`}
+          >
+            {isResettingNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            {isResettingNhapKho ? 'Đang đưa về chờ...' : 'Về chờ nhập kho'}
+          </button>
           <button
             type="button"
             onClick={handleDownloadExcel}
@@ -1812,293 +2036,165 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-emerald-200 bg-emerald-50/70 shadow-sm">
-        <table className="min-w-full border-collapse text-left text-xs">
-          <thead>
-            <tr className="border-b border-emerald-200 bg-emerald-100/80 text-[10px] font-black uppercase tracking-wider text-emerald-900">
-              <th className="whitespace-nowrap px-3 py-2.5" title="Số dòng = số lần cân">
-                Số lượng
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5"
-                title="Tổng cột «Nhựa thực tế» = SP − lõi − bì − màng"
-              >
-                Nhựa thực tế
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-teal-900"
-                title="Tổng cột «Nhựa định mức» = san_pham.trong_luong_nhua (hoặc TL − lõi − bì)"
-              >
-                Nhựa định mức
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-rose-900"
-                title="Chênh lệch nhựa (TT−ĐM) = Nhựa thực tế − Nhựa định mức"
-              >
-                Chênh lệch nhựa ( TT-ĐM)
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-sky-900"
-                title="Tổng cột «Trọng lượng tiêu chuẩn» = Σ san_pham.tong_trong_luong theo Mã SP từ QR"
-              >
-                Trọng lượng tiêu chuẩn
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-violet-900"
-                title="Tổng cột «Cân sản phẩm» (Trọng lượng TT)"
-              >
-                Trọng lượng TT
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-sky-900"
-                title="Tổng cột «Cân lõi» (trọng lượng lõi thực tế)"
-              >
-                Tổng trọng lượng lõi
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-amber-900"
-                title="Tổng cột «Lõi lý thuyết» = Σ san_pham.trong_luong_loi theo Mã SP từ QR"
-              >
-                Tổng trọng lượng lõi lý thuyết
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-orange-900"
-                title="Chênh lệch lõi = Tổng trọng lượng lõi − Tổng trọng lượng lõi lý thuyết (thực tế − LT)"
-              >
-                Chênh lệch lõi
-              </th>
-              <th
-                className="whitespace-nowrap px-3 py-2.5 text-cyan-900"
-                title="Tổng cột «Trọng lượng màng» = Σ BOM màng Thành phần SP / cuộn (không ×2, không làm tròn)"
-              >
-                Trọng lượng màng
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="font-mono text-sm font-black text-emerald-950">
-              <td className="whitespace-nowrap px-3 py-3">
-                {loading ? '…' : formatNumber(trongLuongNhuaTotals.quantity, 0)}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-emerald-800">
-                {loading ? '…' : `${formatNumber(trongLuongNhuaTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-teal-900">
-                {loading ? '…' : `${formatNumber(nhuaDinhMucTotals.weightKg, 2)} kg`}
-              </td>
-              <td
-                className={`whitespace-nowrap px-3 py-3 ${
-                  loading
-                    ? 'text-zinc-500'
-                    : chenhLechNhuaTotals.weightKg > 0
-                      ? 'text-emerald-800'
-                      : chenhLechNhuaTotals.weightKg < 0
-                        ? 'text-rose-700'
-                        : 'text-zinc-800'
-                }`}
-              >
-                {loading
-                  ? '…'
-                  : `${chenhLechNhuaTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechNhuaTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-sky-900">
-                {loading ? '…' : `${formatNumber(nhuaTieuChuanTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-violet-900">
-                {loading ? '…' : `${formatNumber(trongLuongTtTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-sky-900">
-                {loading ? '…' : `${formatNumber(tongTrongLuongLoiTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-amber-900">
-                {loading ? '…' : `${formatNumber(loiTieuChuanTotals.weightKg, 2)} kg`}
-              </td>
-              <td
-                className={`whitespace-nowrap px-3 py-3 ${
-                  loading
-                    ? 'text-zinc-500'
-                    : chenhLechLoiTotals.weightKg > 0
-                      ? 'text-emerald-800'
-                      : chenhLechLoiTotals.weightKg < 0
-                        ? 'text-rose-700'
-                        : 'text-zinc-800'
-                }`}
-              >
-                {loading
-                  ? '…'
-                  : `${chenhLechLoiTotals.weightKg > 0 ? '+' : ''}${formatNumber(chenhLechLoiTotals.weightKg, 2)} kg`}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-cyan-900">
-                {loading ? '…' : formatWeightExact(trongLuongMangTotals.weightKg)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
+        <div className="min-w-0 flex-1 overflow-x-auto rounded-2xl border border-emerald-200 bg-emerald-50/70 shadow-sm">
+          <table className="min-w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-emerald-200 bg-emerald-100/80 text-[10px] font-black uppercase tracking-wider text-emerald-900">
+                <th className="w-28 whitespace-nowrap px-3 py-2.5 text-zinc-600"> </th>
+                {summaryMetricGroups.map(group => (
+                  <th key={group.key} className="whitespace-nowrap px-3 py-2.5">
+                    {group.title}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="font-mono text-sm font-black text-emerald-950">
+              <tr className="border-b border-emerald-100/80">
+                <td className="whitespace-nowrap px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Thực tế
+                </td>
+                {summaryMetricGroups.map(group => (
+                  <td key={`${group.key}-top`} className="whitespace-nowrap px-3 py-2.5 align-top">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                      {group.topLabel}
+                    </div>
+                    <div className="mt-0.5 tabular-nums">{loading ? '…' : group.topValue}</div>
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-b border-emerald-100/80">
+                <td className="whitespace-nowrap px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-indigo-700">
+                  LSX / ĐM
+                </td>
+                {summaryMetricGroups.map(group => (
+                  <td
+                    key={`${group.key}-mid`}
+                    className="whitespace-nowrap px-3 py-2.5 align-top text-indigo-900"
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-600/80">
+                      {group.midLabel}
+                    </div>
+                    <div className="mt-0.5 tabular-nums">{loading ? '…' : group.midValue}</div>
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-rose-700">
+                  Chênh lệch
+                </td>
+                {summaryMetricGroups.map(group => {
+                  const diffClass =
+                    group.diff == null
+                      ? 'text-zinc-400'
+                      : group.diff > 0
+                        ? 'text-emerald-800'
+                        : group.diff < 0
+                          ? 'text-rose-700'
+                          : 'text-zinc-800';
+                  const pctClass =
+                    group.pct == null
+                      ? 'text-zinc-400'
+                      : group.pct > 0
+                        ? 'text-emerald-800'
+                        : group.pct < 0
+                          ? 'text-rose-700'
+                          : 'text-zinc-800';
+                  return (
+                    <td key={`${group.key}-diff`} className="whitespace-nowrap px-3 py-2.5 align-top">
+                      <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                            Chênh lệch
+                          </div>
+                          <div className={`mt-0.5 tabular-nums ${diffClass}`}>
+                            {loading ? '…' : group.diffText}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                            Phần trăm
+                          </div>
+                          <div className={`mt-0.5 tabular-nums ${pctClass}`}>
+                            {loading ? '…' : formatSignedPercent(group.pct)}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-sm font-black uppercase tracking-wider text-zinc-800">
-            Phân tích
-          </h2>
-          <p className="text-[11px] font-semibold text-zinc-500">
-            {diffFilter === 'gt-2pct'
-              ? `So Nhựa thực tế với Nhựa định mức · % = CL ÷ Nhựa TT · ngưỡng ${PHAN_TICH_NGUONG_PCT}%`
-              : diffFilter === 'all-diff'
-                ? 'So Nhựa thực tế với Nhựa định mức · tất cả chênh lệch (không lọc 2%)'
-                : 'Hiển thị toàn bộ dòng cân tự động'}
-            {mayFilter !== 'all' ? ` · Máy ${mayFilter}` : ''}
-            {maSpFilter !== 'all' ? ` · Mã SP ${maSpFilter}` : ''}
-            {maSpQuery.trim() ? ` · tìm «${maSpQuery.trim()}»` : ''}
-            {fromDate || toDate
-              ? ` · Ngày ${fromDate ? formatIsoDateVi(fromDate) : '…'} → ${toDate ? formatIsoDateVi(toDate) : '…'}`
-              : ''}
-            {!loading && phanTichCan.comparedRows > 0
-              ? ` · ${formatNumber(phanTichCan.comparedRows, 0)} dòng có chênh lệch nhựa`
-              : ''}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5">
-          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-            Bộ lọc danh sách
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setDiffFilter('all')}
-              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
-                diffFilter === 'all'
-                  ? 'border-violet-300 bg-violet-600 text-white'
-                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
-              }`}
-              title="Hiện toàn bộ dòng cân tự động"
-            >
-              Tất cả
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiffFilter('all-diff')}
-              className={`h-9 rounded-xl border px-3 text-xs font-bold transition ${
-                diffFilter === 'all-diff'
-                  ? 'border-violet-300 bg-violet-600 text-white'
-                  : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
-              }`}
-              title="Hiện mọi dòng có chênh lệch; bảng Phân tích không tách theo 2%"
-            >
-              Tất cả chênh lệch
-            </button>
+        <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm xl:w-[22rem]">
+          <div className="border-b border-emerald-100 bg-emerald-100/80 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-emerald-900">
+            Mã SP · Số lượng
           </div>
-          <span className="ml-auto text-[11px] font-semibold text-zinc-500">
-            {loading
-              ? '…'
-              : `Đang xem ${formatNumber(visibleRecords.length, 0)} / ${formatNumber(records.length, 0)} dòng`}
-          </span>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {(
-            [
-              {
-                key: 'kem',
-                title: 'Kém cân',
-                hint: 'Nhựa thực tế < Nhựa định mức',
-                tone: 'rose' as const,
-                stats: phanTichCan.kem
-              },
-              {
-                key: 'hon',
-                title: 'Hơn cân',
-                hint: 'Nhựa thực tế > Nhựa định mức',
-                tone: 'emerald' as const,
-                stats: phanTichCan.hon
-              }
-            ] as const
-          ).map(card => {
-            const border =
-              card.tone === 'rose' ? 'border-rose-200 bg-rose-50/60' : 'border-emerald-200 bg-emerald-50/60';
-            const titleColor = card.tone === 'rose' ? 'text-rose-900' : 'text-emerald-900';
-            const muted = card.tone === 'rose' ? 'text-rose-700/80' : 'text-emerald-700/80';
-            const value = card.tone === 'rose' ? 'text-rose-950' : 'text-emerald-950';
-            const showBy2Pct = diffFilter === 'gt-2pct';
-            return (
-              <div key={card.key} className={`overflow-hidden rounded-2xl border ${border}`}>
-                <div className="border-b border-black/5 px-4 py-2.5">
-                  <p className={`text-sm font-black ${titleColor}`}>{card.title}</p>
-                  <p className={`text-[10px] font-semibold ${muted}`}>{card.hint}</p>
-                </div>
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-black/5 bg-white/50 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                      <th className="px-4 py-2 font-black">Chỉ số</th>
-                      <th className="px-4 py-2 text-right font-black">Giá trị</th>
-                    </tr>
-                  </thead>
-                  <tbody className={`font-bold ${value}`}>
-                    {showBy2Pct ? (
-                      <>
-                        <tr className="border-b border-black/5 bg-white/40">
-                          <td className="px-4 py-2.5" title={`|Phần trăm| ≤ ${PHAN_TICH_NGUONG_PCT}%`}>
-                            Số dòng ≤{PHAN_TICH_NGUONG_PCT}%
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                            {loading ? '…' : formatNumber(card.stats.rowsLe2Pct, 0)}
-                          </td>
-                        </tr>
-                        <tr className="border-b border-black/5 bg-white/40">
-                          <td className="px-4 py-2.5" title={`|Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%`}>
-                            Số dòng &gt;{PHAN_TICH_NGUONG_PCT}%
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                            {loading ? '…' : formatNumber(card.stats.rowsGt2Pct, 0)}
-                          </td>
-                        </tr>
-                        <tr className="bg-white/40">
-                          <td
-                            className="px-4 py-2.5"
-                            title={`Tổng |Chênh lệch nhựa| (cột Chênh lệch nhựa TT−ĐM) của dòng |%| > ${PHAN_TICH_NGUONG_PCT}%`}
-                          >
-                            Chênh lệch nhựa &gt;{PHAN_TICH_NGUONG_PCT}%
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                            {loading
-                              ? '…'
-                              : card.stats.weightDiffGt2Kg > 0
-                                ? `${formatNumber(card.stats.weightDiffGt2Kg, 3)} kg`
-                                : '0 kg'}
-                          </td>
-                        </tr>
-                      </>
-                    ) : (
-                      <>
-                        <tr className="border-b border-black/5 bg-white/40">
-                          <td className="px-4 py-2.5" title="Tổng số dòng có chênh lệch nhựa trong nhóm">
-                            Số dòng
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                            {loading ? '…' : formatNumber(card.stats.rowCount, 0)}
-                          </td>
-                        </tr>
-                        <tr className="bg-white/40">
-                          <td
-                            className="px-4 py-2.5"
-                            title="Tổng |Chênh lệch nhựa| = Σ |Nhựa thực tế − Nhựa định mức| (cột Chênh lệch nhựa TT−ĐM)"
-                          >
-                            Chênh lệch nhựa
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                            {loading
-                              ? '…'
-                              : card.stats.weightDiffAllKg > 0
-                                ? `${formatNumber(card.stats.weightDiffAllKg, 3)} kg`
-                                : '0 kg'}
-                          </td>
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
+          <div className="max-h-[13.5rem] overflow-y-auto">
+            <table className="min-w-full border-collapse text-left text-xs">
+              <thead className="sticky top-0 bg-emerald-50/95">
+                <tr className="border-b border-emerald-100 text-[10px] font-black uppercase tracking-wider text-emerald-900">
+                  <th className="px-3 py-2">Mã SP</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">SL</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">SL LSX</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">CL</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono text-sm font-black text-emerald-950">
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-4 text-center text-zinc-400">
+                      …
+                    </td>
+                  </tr>
+                ) : summaryByMaSp.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-400">
+                      Chưa có Mã SP trong bộ lọc
+                    </td>
+                  </tr>
+                ) : (
+                  summaryByMaSp.map(row => {
+                    const diffClass =
+                      row.diff == null
+                        ? 'text-zinc-400'
+                        : row.diff > 0
+                          ? 'text-emerald-800'
+                          : row.diff < 0
+                            ? 'text-rose-700'
+                            : 'text-zinc-800';
+                    return (
+                      <tr key={row.key} className="border-t border-emerald-50 hover:bg-emerald-50/50">
+                        <td className="max-w-[9rem] px-3 py-2 align-top">
+                          <div className="truncate font-mono text-xs font-black text-zinc-900" title={row.maSp}>
+                            {row.maSp}
+                          </div>
+                          {row.name ? (
+                            <div className="truncate text-[10px] font-semibold text-zinc-500" title={row.name}>
+                              {row.name}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums align-top">
+                          {formatNumber(row.actual, 0)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums align-top text-indigo-900">
+                          {row.lsx == null ? '—' : formatNumber(row.lsx, 0)}
+                        </td>
+                        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums align-top ${diffClass}`}>
+                          {row.diff == null
+                            ? '—'
+                            : `${row.diff > 0 ? '+' : ''}${formatNumber(row.diff, 0)}`}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -2141,7 +2237,7 @@ export function CanTuDongPanel({
         </div>
       ) : null}
 
-      <TableShell minWidthClassName="min-w-[2520px]">
+      <TableShell minWidthClassName="min-w-[2680px]">
         <TableHead>
           <TableHeadCell className="w-10 text-center">
             <input
@@ -2177,6 +2273,12 @@ export function CanTuDongPanel({
             title="Mã sản phẩm lấy từ QR"
           >
             Mã SP
+          </TableHeadCell>
+          <TableHeadCell
+            className="whitespace-nowrap"
+            title="so_luong dòng lệnh SX khớp Lệnh SX + Mã SP"
+          >
+            Số lượng trong LSX
           </TableHeadCell>
           <TableHeadCell>QR</TableHeadCell>
           <TableHeadCell title="weight — còn lõi" className="whitespace-nowrap">
@@ -2248,14 +2350,14 @@ export function CanTuDongPanel({
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={22}>
+            <TableEmptyRow colSpan={23}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={22}>
+            <TableEmptyRow colSpan={23}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -2272,11 +2374,7 @@ export function CanTuDongPanel({
                         ? maSpFilter !== 'all'
                           ? `Không có dòng nào với Mã SP ${maSpFilter}.`
                           : `Không có dòng khớp «${maSpQuery.trim()}».`
-                        : diffFilter === 'gt-2pct'
-                          ? `Không có dòng nào có |Phần trăm| > ${PHAN_TICH_NGUONG_PCT}%.`
-                          : diffFilter === 'all-diff'
-                            ? 'Không có dòng nào có chênh lệch nhựa (TT−ĐM).'
-                            : 'Không có bản ghi cân tự động.'}
+                        : 'Không có bản ghi cân tự động.'}
             </TableEmptyRow>
           ) : (
             visibleRecords.map(row => {
@@ -2289,6 +2387,8 @@ export function CanTuDongPanel({
                 String(row.may ?? row.machine ?? '').trim() || resolveCanTuDongMachine(row) || '';
               const maSp = parseCanTuDongQrProductCode(row.qr_code);
               const maSpKey = normalizeProductCodeKey(maSp);
+              const lenhSx = resolveRowLenhSx(row);
+              const lsxQty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
               const filmKgPerRoll = maSpKey ? productFilmWeightByCode.get(maSpKey) : undefined;
               const trongLuongMang =
                 filmKgPerRoll != null && Number.isFinite(filmKgPerRoll) && filmKgPerRoll > 0
@@ -2341,6 +2441,18 @@ export function CanTuDongPanel({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-sky-950">
                     {maSp || '—'}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold tabular-nums text-indigo-900"
+                    title={
+                      lenhSx
+                        ? lsxQty != null
+                          ? `Lệnh ${lenhSx} · Mã SP ${maSp || '—'}`
+                          : `Không tìm thấy SL trên lệnh ${lenhSx} cho Mã SP ${maSp || '—'}`
+                        : 'Chưa có Lệnh SX trên dòng cân'
+                    }
+                  >
+                    {lsxQty != null ? formatNumber(lsxQty, 0) : '—'}
                   </td>
                   <td
                     className={`whitespace-nowrap px-4 py-3 font-mono font-bold ${
@@ -2574,72 +2686,130 @@ export function CanTuDongPanel({
                 className="w-full"
               />
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1">
+                <div className="space-y-1">
                   <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
-                  <select
-                    value={nhapKhoCa}
-                    disabled={isNhapKho}
-                    onChange={event => {
-                      setNhapKhoCa(event.target.value);
+                  <FilterCombobox
+                    label={nhapKhoCaOptions.length ? 'Chọn ca' : 'Không có ca'}
+                    options={nhapKhoCaOptions}
+                    value={nhapKhoCa || 'all'}
+                    includeAll={false}
+                    compact
+                    matchButtonWidth
+                    searchable={nhapKhoCaOptions.length > 6}
+                    searchPlaceholder="Tìm ca..."
+                    className="w-full"
+                    buttonClassName="h-10 w-full justify-between"
+                    onChange={value => {
+                      if (isNhapKho) return;
+                      setNhapKhoCa(value === 'all' ? '' : value);
                       setNhapKhoMay('');
                       setNhapKhoMaSp('');
                       setNhapKhoChecked(false);
                     }}
-                    className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
-                  >
-                    <option value="">Chọn ca</option>
-                    {nhapKhoCaOptions.map(ca => (
-                      <option key={ca} value={ca}>{ca}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block space-y-1">
+                  />
+                </div>
+                <div className="space-y-1">
                   <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
-                  <select
-                    value={nhapKhoMay}
-                    disabled={isNhapKho || !nhapKhoCa}
-                    onChange={event => {
-                      setNhapKhoMay(event.target.value);
+                  <FilterCombobox
+                    label={
+                      !nhapKhoCa
+                        ? 'Chọn ca trước'
+                        : nhapKhoMayOptions.length
+                          ? 'Chọn máy'
+                          : 'Không có máy'
+                    }
+                    options={nhapKhoCa ? nhapKhoMayOptions : []}
+                    value={nhapKhoMay || 'all'}
+                    includeAll={false}
+                    compact
+                    matchButtonWidth
+                    searchable={nhapKhoMayOptions.length > 6}
+                    searchPlaceholder="Tìm máy..."
+                    className="w-full"
+                    buttonClassName={`h-10 w-full justify-between ${!nhapKhoCa || isNhapKho ? 'opacity-60' : ''}`}
+                    onChange={value => {
+                      if (isNhapKho || !nhapKhoCa) return;
+                      setNhapKhoMay(value === 'all' ? '' : value);
                       setNhapKhoMaSp('');
                       setNhapKhoChecked(false);
                     }}
-                    className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
-                  >
-                    <option value="">{nhapKhoCa ? 'Chọn máy' : 'Chọn ca trước'}</option>
-                    {nhapKhoMayOptions.map(may => (
-                      <option key={may} value={may}>{may}</option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
               </div>
-              <label className="block space-y-1">
+              <div className="space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Mã SP</span>
-                <select
-                  value={nhapKhoMaSp}
-                  disabled={isNhapKho || !nhapKhoCa || !nhapKhoMay}
-                  onChange={event => {
-                    setNhapKhoMaSp(event.target.value);
-                    setNhapKhoChecked(false);
-                  }}
-                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
-                >
-                  <option value="">
-                    {!nhapKhoCa || !nhapKhoMay
+                <FilterCombobox
+                  label={
+                    !nhapKhoCa || !nhapKhoMay
                       ? 'Chọn ca và máy trước'
                       : nhapKhoMaSpOptions.length
                         ? 'Chọn Mã SP'
-                        : 'Không có Mã SP chờ nhập kho'}
-                  </option>
-                  {nhapKhoMaSpOptions.map(code => {
-                    const name = productNameByCode.get(normalizeProductCodeKey(code));
-                    return (
-                      <option key={code} value={code}>
-                        {name ? `${code} · ${name}` : code}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
+                        : 'Không có Mã SP (QR) cho ca · máy này'
+                  }
+                  options={nhapKhoCa && nhapKhoMay ? nhapKhoMaSpOptions : []}
+                  value={nhapKhoMaSp || 'all'}
+                  includeAll={false}
+                  compact
+                  matchButtonWidth
+                  searchable
+                  searchPlaceholder="Tìm mã SP..."
+                  className="w-full"
+                  buttonClassName={`h-10 w-full justify-between ${!nhapKhoCa || !nhapKhoMay || isNhapKho ? 'opacity-60' : ''}`}
+                  formatOption={code => {
+                    const key = normalizeProductCodeKey(code);
+                    const name = productNameByCode.get(key);
+                    const cho = nhapKhoMaSpStats.waitingByKey.get(key) || 0;
+                    const da = nhapKhoMaSpStats.doneByKey.get(key) || 0;
+                    const counts =
+                      cho > 0
+                        ? `${formatNumber(cho, 0)} chờ`
+                        : da > 0
+                          ? `${formatNumber(da, 0)} đã nhập`
+                          : '';
+                    const base = name ? `${code} · ${name}` : code;
+                    return counts ? `${base} · ${counts}` : base;
+                  }}
+                  dropdownWidth="w-max min-w-[16rem] max-w-[min(28rem,calc(100vw-1rem))]"
+                  onChange={value => {
+                    if (isNhapKho || !nhapKhoCa || !nhapKhoMay) return;
+                    setNhapKhoMaSp(value === 'all' ? '' : value);
+                    setNhapKhoChecked(false);
+                  }}
+                />
+              </div>
+              {nhapKhoCaOptions.length === 0 ? (
+                <p className="text-xs font-semibold text-amber-700">
+                  Chưa có ca trong dữ liệu đã tải. Kiểm tra bộ lọc ngày trên trang rồi Tải lại.
+                </p>
+              ) : null}
+              {nhapKhoCa && nhapKhoMay && nhapKhoMaSpStats.waitingTotal === 0 && nhapKhoMaSpStats.doneTotal > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="min-w-0 flex-1 text-xs font-semibold text-amber-900">
+                    Ca · máy này có {formatNumber(nhapKhoMaSpStats.doneTotal, 0)} cuộn «Đã nhập kho», chưa còn cuộn chờ.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isNhapKho || isResettingNhapKho}
+                    onClick={() => void handleResetNhapKhoInModal()}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 text-[11px] font-bold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    {isResettingNhapKho ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    Về chờ ({formatNumber(nhapKhoMaSpStats.doneTotal, 0)})
+                  </button>
+                </div>
+              ) : null}
+              {nhapKhoCa &&
+              nhapKhoMay &&
+              nhapKhoMaSp &&
+              nhapKhoMaSpStats.waitingTotal > 0 &&
+              (nhapKhoMaSpStats.waitingByKey.get(normalizeProductCodeKey(nhapKhoMaSp)) || 0) === 0 ? (
+                <p className="text-xs font-semibold text-amber-700">
+                  Mã SP này không còn cuộn chờ nhập kho
+                  {(nhapKhoMaSpStats.doneByKey.get(normalizeProductCodeKey(nhapKhoMaSp)) || 0) > 0
+                    ? ` (có ${formatNumber(nhapKhoMaSpStats.doneByKey.get(normalizeProductCodeKey(nhapKhoMaSp)) || 0, 0)} cuộn đã nhập).`
+                    : '.'}
+                </p>
+              ) : null}
               <p className="text-[11px] font-semibold text-zinc-500">
                 Danh sách bên dưới chỉ gồm mã QR của Mã SP đã chọn. Mỗi lần xác nhận tạo phiếu nhập mới, trạng thái chưa chốt.
               </p>

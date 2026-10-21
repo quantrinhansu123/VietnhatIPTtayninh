@@ -221,6 +221,77 @@ export function resolveCanTuDongProductionOrder(row: CanTuDongWeightRow): string
   return null;
 }
 
+/** Chuẩn hóa mã lệnh SX để ghép với `lenh_sx.ma_lenh_sx`. */
+export function normalizeLenhSxKey(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+export type LsxQtyCatalogOrder = {
+  ma_lenh_sx?: string | null;
+  so_luong?: number | string | null;
+  san_pham?: unknown;
+};
+
+function readLsxLineQuantity(line: Record<string, unknown>): number | null {
+  const raw = line.so_luong ?? line.quantity ?? line.soLuong;
+  const num = typeof raw === 'number' ? raw : Number(String(raw ?? '').replace(',', '.'));
+  return Number.isFinite(num) ? num : null;
+}
+
+/**
+ * Map `MA_LENH|MA_SP` → số lượng dòng trên lệnh SX.
+ * Dùng cho cột «Số lượng trong LSX» trên `/can-tu-dong`.
+ */
+export function buildLsxQtyByLenhAndSp(orders: LsxQtyCatalogOrder[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const order of orders) {
+    const lenhKey = normalizeLenhSxKey(order.ma_lenh_sx);
+    if (!lenhKey) continue;
+    const lines = Array.isArray(order.san_pham) ? order.san_pham : [];
+    if (lines.length === 0) {
+      const total = Number(order.so_luong);
+      if (Number.isFinite(total)) {
+        map.set(`${lenhKey}|`, total);
+      }
+      continue;
+    }
+    for (const raw of lines) {
+      if (!raw || typeof raw !== 'object') continue;
+      const line = raw as Record<string, unknown>;
+      const maSpKey = normalizeProductCodeKey(
+        String(line.ma_sp ?? line.productCode ?? line.code ?? '').trim()
+      );
+      if (!maSpKey) continue;
+      const qty = readLsxLineQuantity(line);
+      if (qty === null) continue;
+      const key = `${lenhKey}|${maSpKey}`;
+      map.set(key, (map.get(key) || 0) + qty);
+    }
+  }
+  return map;
+}
+
+/** Tra SL trên lệnh theo mã lệnh + mã SP (tiền tố QR). */
+export function lookupLsxQty(
+  qtyByLenhAndSp: Map<string, number> | undefined,
+  lenhSx: string | null | undefined,
+  maSp: string | null | undefined
+): number | null {
+  if (!qtyByLenhAndSp?.size) return null;
+  const lenhKey = normalizeLenhSxKey(lenhSx);
+  if (!lenhKey) return null;
+  const maSpKey = normalizeProductCodeKey(maSp);
+  if (maSpKey) {
+    const exact = qtyByLenhAndSp.get(`${lenhKey}|${maSpKey}`);
+    if (exact != null) return exact;
+  }
+  const totalOnly = qtyByLenhAndSp.get(`${lenhKey}|`);
+  return totalOnly != null ? totalOnly : null;
+}
+
 /** Máy: metadata.machine / SOURCE_MACHINE, hoặc cột may/machine. */
 export function resolveCanTuDongMachine(row: CanTuDongWeightRow): string | null {
   const direct = String(row.may ?? row.machine ?? '').trim();

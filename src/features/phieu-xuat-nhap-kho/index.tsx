@@ -3706,9 +3706,6 @@ export function WarehouseSlipPanel({
       const duplicateCodes = Array.isArray(data?.duplicateCodes)
         ? data.duplicateCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
         : [];
-      const unimportedCodes = Array.isArray(data?.unimportedCodes)
-        ? data.unimportedCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
-        : [];
       const alreadyExportedCodes = Array.isArray(data?.alreadyExportedCodes)
         ? data.alreadyExportedCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
         : [];
@@ -3720,15 +3717,8 @@ export function WarehouseSlipPanel({
         setFormError(msg);
         showAppToast(msg, 'error');
       }
-      const rejectedCodeMessage = (codes: string[], reason: string) =>
-        codes.length
-          ? `${reason}${codes.slice(0, 8).join(', ')}${codes.length > 8 ? ` và ${codes.length - 8} mã khác` : ''}.`
-          : '';
-      const warning = [
-        rejectedCodeMessage(alreadyExportedCodes, 'Đã xuất hoặc đang có trong phiếu xuất khác, không thể xuất lại: '),
-        rejectedCodeMessage(unimportedCodes, 'Chưa nhập kho nên không lưu: ')
-      ].filter(Boolean).join(' ');
-      if (warning) {
+      if (alreadyExportedCodes.length) {
+        const warning = `Đã xuất hoặc đang có trong phiếu xuất khác, không thể xuất lại: ${alreadyExportedCodes.slice(0, 8).join(', ')}${alreadyExportedCodes.length > 8 ? ` và ${alreadyExportedCodes.length - 8} mã khác` : ''}.`;
         setFormError(warning);
         showAppToast(warning, 'error');
       }

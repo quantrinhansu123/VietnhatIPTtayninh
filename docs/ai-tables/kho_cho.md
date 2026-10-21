@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bảng** | `kho_cho` |
-| **Tab** | Không còn dùng cho nút **Nhập kho** trên `/can-tu-dong` (QR ghi thẳng `nhap_kho`) |
+| **Tab** | Không dùng cho nút **Nhập kho** trên `/can-tu-dong` (QR ghi thẳng `nhap_kho` qua `quet-dot`) |
 | **DB** | Project `grlcgkzotqishzxwpddc` — `SUPABASE_KHO_CHO_URL` / `SUPABASE_KHO_CHO_SERVICE_KEY`. Không dùng DB kiểm kho `yyddiuaankcrqfgbzusf` |
 | **SQL** | `supabase-kho-cho.sql` — [SQL Editor](https://supabase.com/dashboard/project/grlcgkzotqishzxwpddc/sql/new) |
 

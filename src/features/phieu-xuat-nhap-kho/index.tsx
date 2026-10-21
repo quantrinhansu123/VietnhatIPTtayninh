@@ -2399,12 +2399,25 @@ export function WarehouseSlipPanel({
       return false;
     }
 
+    // Thành phẩm: mã quét phải ra được 1 SP trong danh mục, không thì không ghi (tránh lưu "mã trơn" không tên).
+    if (
+      warehouseKind === 'san_pham' &&
+      productCatalogByKey.size > 0 &&
+      !productCatalogByKey.has(prefixKey) &&
+      !itemOptions.some(option => normalizeMaterialCodeKey(option.code) === prefixKey)
+    ) {
+      const message = `Mã ${fullCode} không khớp sản phẩm nào trong danh mục — kiểm tra lại tem/đầu đọc rồi quét lại.`;
+      setFormError(message);
+      showAppToast(message, 'error');
+      return false;
+    }
+
     const scannedForPrefix = scannedFullCodesByPrefixRef.current.get(prefixKey);
     if (scannedForPrefix?.has(fullCodeKey)) {
       return 'duplicate';
     }
 
-    const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
+    const patch ={ ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
     if (scannedForPrefix) {
       scannedForPrefix.set(fullCodeKey, fullCode);
     } else {

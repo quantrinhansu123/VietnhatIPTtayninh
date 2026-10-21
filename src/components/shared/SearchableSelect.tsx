@@ -255,7 +255,7 @@ export function SearchableSelect({
     }
 
     if (autoFlip || openUpward || (desktopAutoFlip && isDesktop)) {
-      if (spaceBelow < 96 && spaceAbove > spaceBelow) {
+      if (spaceBelow < preferredHeight && spaceAbove > spaceBelow) {
         setMenuStyle({
           bottom: viewportHeight - rect.top + 4,
           left,

@@ -161,6 +161,12 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'machine-nvl-report'
   },
   {
+    title: 'Yêu cầu xuất vật tư',
+    desc: 'Công nhân gửi yêu cầu xuất NVL để thủ kho xác nhận.',
+    icon: ClipboardList,
+    tab: 'material-request'
+  },
+  {
     title: 'Bảng trộn',
     desc: 'Nhập bảng trộn vật tư theo ca, máy và lần phối trộn.',
     icon: FlaskConical,

@@ -9,6 +9,8 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'damaged-goods-report': 'damaged-goods-report-list',
   'mixing-report': 'mixing-report-list',
   'machine-nvl-report': 'machine-nvl-report-list',
+  /** Yêu cầu xuất vật tư dùng chung quyền Báo cáo tồn. */
+  'material-request': 'machine-nvl-report-list',
   'machine-downtime-report': 'machine-downtime-list',
   'shift-handover-report': 'shift-handover-list',
   'acceptance-report': 'acceptance-report-list',
@@ -31,6 +33,7 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
 export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
   'report-forms': [
     'machine-nvl-report',
+    'material-request',
     'mixing-report',
     'can-tu-dong',
     'can-kiem-kho',

@@ -9,6 +9,9 @@ import type { AppTab } from '../../routes';
 const MachineNvlReportPanel = lazy(() =>
   import('../bao-cao-may-nvl-ton').then(m => ({ default: m.MachineNvlReportPanel }))
 );
+const YeuCauXuatVatTuPanel = lazy(() =>
+  import('../yeu-cau-xuat-vat-tu').then(m => ({ default: m.YeuCauXuatVatTuPanel }))
+);
 const MixingReportListView = lazy(() => import('../../components/MixingReportListView'));
 const CanTuDongPanel = lazy(() => import('../can-tu-dong').then(m => ({ default: m.CanTuDongPanel })));
 const CanTuDongEntryForm = lazy(() =>
@@ -26,6 +29,7 @@ const DoiSoatPanel = lazy(() => import('../doi-soat').then(m => ({ default: m.Do
 
 export type ReportFormsHubTabId =
   | 'machine-nvl-report'
+  | 'material-request'
   | 'mixing-report'
   | 'can-tu-dong'
   | 'can-tu-dong-entry'
@@ -191,6 +195,8 @@ export function ReportFormsHub({
               onEditConsumed={onMachineNvlEditConsumed}
             />
           ) : null}
+
+          {activeHubTab === 'material-request' ? <YeuCauXuatVatTuPanel currentUser={currentUser} /> : null}
 
           {activeHubTab === 'mixing-report' ? (
             <MixingReportListView

@@ -13898,6 +13898,86 @@ export function createApp() {
     }
   });
 
+  // ── Yêu cầu xuất vật tư (DB kho): yeu_cau_xuat_kho + nvl_yeu_cau ──
+  app.get('/api/yeu-cau-xuat-kho', async (req, res) => {
+    if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    const status = String(req.query.trang_thai ?? '').trim();
+    let q = supabaseKho.from('yeu_cau_xuat_kho').select('*').order('created_at', { ascending: false }).limit(200);
+    if (status) q = q.eq('trang_thai', status);
+    const { data: heads, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    const codes = (heads || []).map(h => h.ma_yeu_cau);
+    const { data: lines, error: lineError } = codes.length
+      ? await supabaseKho.from('nvl_yeu_cau').select('*').in('ma_yeu_cau', codes).order('created_at')
+      : { data: [], error: null };
+    if (lineError) return res.status(500).json({ error: lineError.message });
+    return res.json({
+      requests: (heads || []).map(h => ({ ...h, lines: (lines || []).filter(l => l.ma_yeu_cau === h.ma_yeu_cau) }))
+    });
+  });
+
+  app.post('/api/yeu-cau-xuat-kho', async (req, res) => {
+    if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    const body = req.body || {};
+    const lines = (Array.isArray(body.lines) ? body.lines : [])
+      .map((l: any) => ({
+        ma_nvl: String(l?.ma_nvl ?? '').trim(),
+        ten_nvl: String(l?.ten_nvl ?? '').trim(),
+        don_vi: String(l?.don_vi ?? '').trim(),
+        so_luong: Number(l?.so_luong)
+      }))
+      .filter((l: any) => l.ma_nvl);
+    if (!body.ngay || !String(body.ca ?? '').trim() || !String(body.may ?? '').trim()) {
+      return res.status(400).json({ error: 'Chọn ngày, ca và máy.' });
+    }
+    if (!String(body.nguoi_yc ?? '').trim()) {
+      return res.status(400).json({ error: 'Nhập tên người yêu cầu.' });
+    }
+    if (!lines.length || lines.some((l: any) => !(l.so_luong > 0))) {
+      return res.status(400).json({ error: 'Nhập mã NVL và số lượng lớn hơn 0 cho từng dòng.' });
+    }
+    const ma_yeu_cau = `YC-${Date.now().toString(36).toUpperCase()}`;
+    const { error } = await supabaseKho.from('yeu_cau_xuat_kho').insert({
+      ma_yeu_cau,
+      ngay: body.ngay,
+      ca: String(body.ca).trim(),
+      may: String(body.may).trim(),
+      nguoi_yc: String(body.nguoi_yc ?? '').trim() || null
+    });
+    if (error) return res.status(500).json({ error: error.message });
+    const { error: lineError } = await supabaseKho
+      .from('nvl_yeu_cau')
+      .insert(lines.map((l: any) => ({ ...l, ma_yeu_cau })));
+    if (lineError) {
+      await supabaseKho.from('yeu_cau_xuat_kho').delete().eq('ma_yeu_cau', ma_yeu_cau);
+      return res.status(500).json({ error: lineError.message });
+    }
+    return res.json({ ma_yeu_cau });
+  });
+
+  /** Xóa yêu cầu (dòng nvl_yeu_cau xóa theo cascade). */
+  app.delete('/api/yeu-cau-xuat-kho/:ma', async (req, res) => {
+    if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    const { error } = await supabaseKho.from('yeu_cau_xuat_kho').delete().eq('ma_yeu_cau', req.params.ma);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ ok: true });
+  });
+
+  /** Thủ kho lưu phiếu xong → đánh dấu yêu cầu đã xuất. */
+  app.post('/api/yeu-cau-xuat-kho/:ma/xac-nhan', async (req, res) => {
+    if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    const { error } = await supabaseKho
+      .from('yeu_cau_xuat_kho')
+      .update({
+        trang_thai: 'da_xuat',
+        ma_phieu_xuat: String(req.body?.ma_phieu ?? '').trim() || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('ma_yeu_cau', req.params.ma);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ ok: true });
+  });
+
   app.get('/api/kho/lo-ton', async (req, res) => {
     if (!supabase) {
       return res.json({ lots: [], total: 0, source: 'local' });

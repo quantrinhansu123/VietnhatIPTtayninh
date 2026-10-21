@@ -391,6 +391,11 @@ const warehouseNhapFullMobileHeaderGridClass =
 const warehouseXuatFullMobileHeaderGridClass =
   'mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
 
+// Xuất kho NVL: không có cột Giá / Thành tiền.
+const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_2rem]';
+const warehouseNvlXuatLineGridClass = `grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[40rem] ${warehouseNvlXuatCols}`;
+const warehouseNvlXuatHeaderGridClass = `mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[40rem] ${warehouseNvlXuatCols}`;
+
 const warehouseDefaultLineMobileHiddenClass = 'hidden md:block';
 
 export function parseWarehouseShiftSelection(value: string | string[] | undefined): string[] {
@@ -1392,6 +1397,16 @@ export function WarehouseSlipPanel({
   const productionOrderTriggerRef = useRef<HTMLButtonElement>(null);
   const productionOrderPanelRef = useRef<HTMLDivElement>(null);
   const [machine, setMachine] = useState('');
+  type MaterialRequest = {
+    ma_yeu_cau: string;
+    ngay: string;
+    ca: string | null;
+    may: string | null;
+    nguoi_yc: string | null;
+    lines: Array<{ ma_nvl: string; ten_nvl: string | null; don_vi: string | null; so_luong: number }>;
+  };
+  const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
+  const [activeRequestCode, setActiveRequestCode] = useState('');
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [recipient, setRecipient] = useState('');
   const [deliverer, setDeliverer] = useState('');
@@ -1475,16 +1490,19 @@ export function WarehouseSlipPanel({
     (Boolean(selectedWarehouseName) && (warehouseKind === 'san_pham' || warehouseKind === 'hang_hong') && slipType === 'nhap');
   const showAllWarehouseColumnsOnMobile = warehouseKind === 'nvl' || warehouseKind === 'hang_hong';
   const warehouseLineMobileHiddenClass = showAllWarehouseColumnsOnMobile ? '' : warehouseDefaultLineMobileHiddenClass;
-  const warehouseLineGridClass =
-    slipType === 'xuat'
+  const hideLinePrice = slipType === 'xuat' && (warehouseKind === 'nvl' || warehouseKind === 'tai_che');
+  const warehouseLineGridClass = hideLinePrice
+    ? warehouseNvlXuatLineGridClass
+    : slipType === 'xuat'
       ? showAllWarehouseColumnsOnMobile
         ? warehouseXuatFullMobileLineGridClass
         : warehouseXuatLineGridClass
       : showAllWarehouseColumnsOnMobile
         ? warehouseNhapFullMobileLineGridClass
         : warehouseNhapLineGridClass;
-  const warehouseHeaderGridClass =
-    slipType === 'xuat'
+  const warehouseHeaderGridClass = hideLinePrice
+    ? warehouseNvlXuatHeaderGridClass
+    : slipType === 'xuat'
       ? showAllWarehouseColumnsOnMobile
         ? warehouseXuatFullMobileHeaderGridClass
         : warehouseXuatHeaderGridClass
@@ -2522,7 +2540,60 @@ export function WarehouseSlipPanel({
   const showQrScanButtons = warehouseKind !== 'nvl' && warehouseKind !== 'hang_hong';
   // Phiếu xuất kho NVL dùng lệnh SX để tự lập các dòng theo định mức BOM.
   // Các loại phiếu xuất khác không có luồng này.
-  const showOrderFields = isNvlExport;
+  // Xuất kho NVL không còn tự điền theo lệnh SX — thủ kho lấy dòng từ yêu cầu xuất vật tư của công nhân.
+  const showOrderFields = false;
+  const showMaterialRequests = isNvlExport && !editSlipCode;
+
+  useEffect(() => {
+    if (!showMaterialRequests) return;
+    let cancelled = false;
+    void fetch('/api/yeu-cau-xuat-kho?trang_thai=cho_xu_ly')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data) setMaterialRequests(Array.isArray(data.requests) ? data.requests : []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [showMaterialRequests, pageRefreshNonce, exportedRefreshNonce]);
+
+  const handleDeleteMaterialRequest = async (code: string) => {
+    if (!window.confirm(`Xóa yêu cầu ${code}? Thao tác này không thể hoàn tác.`)) return;
+    try {
+      const res = await fetch(`/api/yeu-cau-xuat-kho/${encodeURIComponent(code)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không xóa được yêu cầu.'));
+      setMaterialRequests(current => current.filter(request => request.ma_yeu_cau !== code));
+      setActiveRequestCode('');
+      showAppToast(`Đã xóa yêu cầu ${code}.`);
+    } catch (error: any) {
+      setFormError(showSaveFailure(error, 'Không xóa được yêu cầu.'));
+    }
+  };
+
+  const applyMaterialRequest = (request: MaterialRequest) => {
+    setActiveRequestCode(request.ma_yeu_cau);
+    setSlipDate(request.ngay);
+    setSelectedShifts(parseWarehouseShiftSelection(request.ca || undefined));
+    setMachine(request.may || '');
+    setReason(`Xuất NVL theo yêu cầu ${request.ma_yeu_cau}`);
+    setNote(request.nguoi_yc ? `Người yêu cầu: ${request.nguoi_yc}` : '');
+    const next = request.lines.map(line => {
+      const qty = String(line.so_luong);
+      return createWarehouseLineDraftFromPrefill({
+        code: line.ma_nvl,
+        name: line.ten_nvl || '',
+        unit: line.don_vi || '',
+        quantity: qty,
+        documentQuantity: qty
+      } as Parameters<typeof createWarehouseLineDraftFromPrefill>[0]);
+    });
+    const withBlank = next.length ? next : [createWarehouseLineDraft()];
+    linesRef.current = withBlank;
+    setLines(withBlank);
+    setFormError('');
+  };
   const showProductExportTabs = warehouseKind === 'san_pham' && !isXuatTreoMode;
   // Lệnh xuất hàng chỉ dùng cho xuất kho thành phẩm — Kho NVL dùng form thêm dòng thủ công.
   const showShippingOrderPicker =
@@ -3966,6 +4037,15 @@ export function WarehouseSlipPanel({
           : savedMessage;
       setActionMessage(okMsg);
       showAppToast(okMsg);
+      if (activeRequestCode && isNvlExport && !isEditing) {
+        void fetch(`/api/yeu-cau-xuat-kho/${encodeURIComponent(activeRequestCode)}/xac-nhan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ma_phieu: savedSlipCode })
+        }).catch(() => undefined);
+        setMaterialRequests(current => current.filter(request => request.ma_yeu_cau !== activeRequestCode));
+        setActiveRequestCode('');
+      }
       setEditSlipCode(null);
       setReason('');
       setNote('');
@@ -4646,6 +4726,46 @@ export function WarehouseSlipPanel({
             </label>
           ) : null}
 
+          {showMaterialRequests ? (
+            <div className="col-span-2 min-w-0 space-y-1.5 sm:col-span-3">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                Yêu cầu xuất vật tư chờ xử lý ({materialRequests.length})
+              </span>
+              {materialRequests.length === 0 ? (
+                <p className="text-xs font-semibold text-zinc-400">Chưa có yêu cầu nào.</p>
+              ) : (
+                <div className="flex w-full items-center gap-2">
+                  <select
+                    value={activeRequestCode}
+                    onChange={event => {
+                      const request = materialRequests.find(item => item.ma_yeu_cau === event.target.value);
+                      if (request) applyMaterialRequest(request);
+                      else setActiveRequestCode('');
+                    }}
+                    className={`${warehouseFieldClass} min-w-0 flex-1`}
+                  >
+                    <option value="">Chọn yêu cầu xuất vật tư...</option>
+                    {materialRequests.map(request => (
+                      <option key={request.ma_yeu_cau} value={request.ma_yeu_cau}>
+                        {request.ma_yeu_cau} · {request.ngay} · {[request.ca, request.may, request.nguoi_yc].filter(Boolean).join(' · ')} · {request.lines.length} NVL
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!activeRequestCode}
+                    onClick={() => void handleDeleteMaterialRequest(activeRequestCode)}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Xóa yêu cầu đang chọn"
+                    aria-label="Xóa yêu cầu đang chọn"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {showOrderFields ? (
             <div className={`relative block min-w-0 space-y-0.5 ${!showFullWarehouseSlipFields ? 'col-span-2 sm:col-span-3' : 'col-span-2'}`}>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -5014,8 +5134,12 @@ export function WarehouseSlipPanel({
                   </>
                 )}
               </span>
-              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>Giá</span>
-              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-right`}>Thành tiền</span>
+              {hideLinePrice ? null : (
+                <>
+                  <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>Giá</span>
+                  <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-right`}>Thành tiền</span>
+                </>
+              )}
               <span className={warehouseLineMobileHiddenClass} />
             </div>
 
@@ -5049,14 +5173,16 @@ export function WarehouseSlipPanel({
                     <input
                       value={line.name}
                       onChange={event => updateLine(line.key, { name: event.target.value })}
-                      className={warehouseLineFieldClass}
+                      readOnly={hideLinePrice}
+                      className={`${warehouseLineFieldClass} ${hideLinePrice ? 'bg-zinc-50' : ''}`}
                     />
                   </div>
                   <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <input
                       value={line.unit}
                       onChange={event => updateLine(line.key, { unit: event.target.value })}
-                      className={warehouseLineFieldClass}
+                      readOnly={hideLinePrice}
+                      className={`${warehouseLineFieldClass} ${hideLinePrice ? 'bg-zinc-50' : ''}`}
                     />
                   </div>
                   {slipType === 'xuat' ? (
@@ -5102,6 +5228,8 @@ export function WarehouseSlipPanel({
                       })()}
                     </div>
                   </div>
+                  {hideLinePrice ? null : (
+                  <>
                   <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
                     <div className="relative">
                       <input
@@ -5135,6 +5263,8 @@ export function WarehouseSlipPanel({
                       {formatWarehouseMoney(computeWarehouseLineAmount(line.quantity, line.unitPrice))}
                     </div>
                   </div>
+                  </>
+                  )}
                   {lines.length > 1 && canDelete ? (
                     <button
                       type="button"
@@ -5148,69 +5278,6 @@ export function WarehouseSlipPanel({
                     <span className={warehouseLineMobileHiddenClass} />
                   )}
                   </div>
-                  {isNvlExport && !line.isScanned ? (
-                    <div className="mb-2 grid grid-cols-1 justify-items-center gap-2 rounded-lg border border-red-100 bg-red-50/40 p-2 md:justify-items-start">
-                      {([
-                        {
-                          type: 'weight' as const,
-                          label: 'Ảnh số cân thực tế',
-                          url: line.actualWeightImageUrl,
-                          title: 'Ảnh số cân thực tế'
-                        }
-                      ]).map(image => {
-                        const inputId = `warehouse-${image.type}-image-${line.key}`;
-                        const isUploading = uploadingLineImageKey === `${line.key}-${image.type}`;
-                        return (
-                          <div key={image.type} className="w-full max-w-2xl min-w-0 space-y-1.5 md:max-w-none">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-zinc-600">
-                                <ImagePlus className="h-3.5 w-3.5 text-[#ef1b2d]" />
-                                {image.label} <span className="text-[#ef1b2d]">*</span>
-                              </span>
-                              {image.url ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setViewingSlipImage({ url: image.url!, title: `${image.title} · ${line.code}` })}
-                                  className="text-[10px] font-bold text-[#ef1b2d] underline"
-                                >
-                                  Xem ảnh
-                                </button>
-                              ) : null}
-                            </div>
-                            <input
-                              id={inputId}
-                              {...CAMERA_IMAGE_INPUT_PROPS}
-                              disabled={isUploading || isSaving}
-                              className="hidden"
-                              onChange={event => {
-                                const file = event.target.files?.[0] || null;
-                                event.target.value = '';
-                                if (file) void handleLineActualImageUpload(line.key, file);
-                              }}
-                            />
-                            <label
-                              htmlFor={inputId}
-                              className="flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:border-[#ef1b2d] hover:bg-red-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
-                            >
-                              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                              {isUploading ? 'Đang tải ảnh...' : image.url ? 'Chụp lại' : 'Chụp ảnh'}
-                            </label>
-                            {image.url ? (
-                              <WeighingImageThumbnail
-                                url={image.url}
-                                alt={`${image.title} của ${line.code}`}
-                                title={`${image.title} · ${line.code}`}
-                                onView={() => setViewingSlipImage({ url: image.url!, title: `${image.title} · ${line.code}` })}
-                                className="block h-20 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-[#ef1b2d]"
-                              />
-                            ) : (
-                              <p className="text-[10px] font-semibold text-zinc-500">Bắt buộc chụp trước khi lưu phiếu.</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
                 </React.Fragment>
               ))}
             </div>

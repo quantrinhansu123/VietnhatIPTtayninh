@@ -3735,6 +3735,15 @@ export function WarehouseSlipPanel({
         setFormError(warning);
         showAppToast(warning, 'error');
       }
+      const notImportedCodes = Array.isArray(data?.notImportedCodes)
+        ? data.notImportedCodes.map((code: unknown) => String(code || '').trim()).filter(Boolean)
+        : [];
+      if (notImportedCodes.length) {
+        discardDuplicateScannedProducts(notImportedCodes);
+        const warning = `Không thể xuất kho: ${notImportedCodes.length} mã QR chưa được nhập kho. Hãy lập phiếu nhập kho cho các mã này trước: ${notImportedCodes.slice(0, 8).join(', ')}${notImportedCodes.length > 8 ? ` và ${notImportedCodes.length - 8} mã khác` : ''}.`;
+        setFormError(warning);
+        showAppToast(warning, 'error');
+      }
       if (data?.header?.ma_phieu) {
         setSelectedProductSlipCode(maPhieu);
         setOpenProductSlips(current => [

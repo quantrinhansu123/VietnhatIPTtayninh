@@ -6450,6 +6450,16 @@ export function WarehouseHistoryPanel({
                 Xóa đã chọn{selectedCount > 0 ? ` (${selectedCount})` : ''}
               </button>
             ) : null}
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => void loadMovements()}
+              title="Tải lại danh sách phiếu"
+              aria-label="Tải lại danh sách phiếu"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </section>
       )}

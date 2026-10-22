@@ -109,7 +109,7 @@ type VehicleOption = {
   label: string;
 };
 
-const STATUS_OPTIONS = ['Chờ xuất', 'Đang giao', 'Đã giao', 'Hủy'] as const;
+const STATUS_OPTIONS = ['Chờ xuất', 'Đã xuất', 'Đang giao', 'Đã giao', 'Hủy'] as const;
 const PAYMENT_OPTIONS = ['Tiền mặt', 'CK'] as const;
 
 const compactFieldClass =
@@ -417,7 +417,7 @@ function emptyForm(code = '', staffName = ''): ShippingOrderFormState {
 }
 
 function statusBadgeColor(status: string): StatusBadgeColor {
-  if (status === 'Đã giao') return 'emerald';
+  if (status === 'Đã giao' || status === 'Đã xuất') return 'emerald';
   if (status === 'Đang giao') return 'sky';
   if (status === 'Hủy') return 'rose';
   return 'amber';
@@ -470,6 +470,8 @@ export function ShippingOrdersPanel({
         fetch('/api/san-pham?format=table'),
         fetch('/api/danh-sach-xe')
       ]);
+      const exportedData: any = await fetch('/api/kho/lenh-xuat-da-xuat').then(r => (r.ok ? r.json() : {})).catch(() => ({}));
+      const exported: Record<string, Record<string, number>> = exportedData?.exported || {};
       const orderData = await orderRes.json().catch(() => ({}));
       const customerData = await customerRes.json().catch(() => ({}));
       const productData = await productRes.json().catch(() => ({}));
@@ -479,7 +481,17 @@ export function ShippingOrdersPanel({
       if (!vehicleRes.ok) {
         console.warn('Không tải được danh sách xe:', vehicleData.error || vehicleRes.status);
       }
-      setOrders(normalizeShippingOrders(orderData));
+      // Lệnh "Chờ xuất" mà phiếu xuất kho đã chốt đủ mọi mặt hàng → hiện "Đã xuất".
+      setOrders(normalizeShippingOrders(orderData).map(order => {
+        const done = exported[order.ma_lenh];
+        const need = new Map<string, number>();
+        for (const line of order.chi_tiet) {
+          const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
+          if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
+        }
+        const full = Boolean(done) && need.size > 0 && [...need].every(([key, qty]) => (done[key] || 0) >= qty);
+        return full && order.trang_thai === 'Chờ xuất' ? { ...order, trang_thai: 'Đã xuất' } : order;
+      }));
       setCustomers(normalizeCustomerDetails(customerData));
       setProducts(normalizeOrderProducts(productData));
       setVehicles(normalizeVehicles(vehicleData));

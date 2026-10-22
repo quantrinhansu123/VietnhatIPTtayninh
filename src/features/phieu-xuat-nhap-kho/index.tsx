@@ -2640,7 +2640,7 @@ export function WarehouseSlipPanel({
   const shippingOrdersForDate = useMemo(() => {
     const day = slipDate.trim().slice(0, 10);
     return shippingOrders
-      .filter(order => order.id === shippingOrderId || order.ngay_xuat.slice(0, 10) === day)
+      .filter(order => order.ngay_xuat.slice(0, 10) === day)
       .filter(order => order.id === shippingOrderId || !isShippingOrderFullyExported(order, exportedByOrder[order.ma_lenh]))
       .sort((a, b) => a.ma_lenh.localeCompare(b.ma_lenh, 'vi', { numeric: true }));
   }, [shippingOrders, slipDate, exportedByOrder, shippingOrderId]);

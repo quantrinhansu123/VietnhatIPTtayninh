@@ -7287,7 +7287,7 @@ async function saveWarehouseSlipToKho(
 
   const { data: existingLines, error: existingError } = await supabaseKho
     .from(lineTable)
-    .select('id, ma_sp_quet, loai')
+    .select('id, ma_sp, ma_sp_quet, loai')
     .eq('ma_phieu', maPhieu);
   if (existingError) throw existingError;
 
@@ -7301,8 +7301,16 @@ async function saveWarehouseSlipToKho(
     if (error) throw error;
   }
 
-  if (!hasQrLines || parsed.loaiKho !== 'san_pham') {
-    const rows = parsed.items.map(item => ({
+  const keepQrLines = hasQrLines && parsed.loaiKho === 'san_pham';
+  // Phiếu có dòng QR: dòng QR giữ nguyên, chỉ thêm dòng không quét (vd túi nhập số lượng tay) mà mã chưa có dòng QR.
+  const qrBaseCodes = new Set(
+    (existingLines || []).filter((line: any) => String(line.ma_sp_quet || '').trim()).map((line: any) => String(line.ma_sp || '').replace(/\s+/g, '').toUpperCase())
+  );
+  const itemsToInsert = keepQrLines
+    ? parsed.items.filter(item => !qrBaseCodes.has(String(item.code || '').replace(/\s+/g, '').toUpperCase()))
+    : parsed.items;
+  if (itemsToInsert.length) {
+    const rows = itemsToInsert.map(item => ({
       ma_sp: item.code,
       ma_sp_quet: null,
       ten_sp: item.name || null,

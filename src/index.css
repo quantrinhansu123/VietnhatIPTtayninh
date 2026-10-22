@@ -5552,9 +5552,10 @@ input[type="number"] {
     page-break-before: always;
   }
 
+  /* Vùng in A4 trừ lề 8mm = 194mm; để 210mm thì phiếu rộng hơn vùng in và bị cắt mất kẻ dọc bên phải khi xuất PDF. */
   .warehouse-slip-print-batch .warehouse-slip-print-doc {
-    width: 100% !important;
-    max-width: 210mm !important;
+    width: 194mm !important;
+    max-width: 194mm !important;
     margin-left: auto;
     margin-right: auto;
     box-sizing: border-box;

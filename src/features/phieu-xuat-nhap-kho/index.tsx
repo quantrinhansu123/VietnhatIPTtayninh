@@ -4345,7 +4345,7 @@ export function WarehouseSlipPanel({
         </section>
       )}
 
-      <div className="sticky top-0 z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-1.5 pt-1.5 md:-mx-3 md:-mt-3 md:px-3">
+      <div className="md:sticky md:top-0 md:z-30 -mx-2 -mt-2 border-b border-zinc-200 bg-slate-50 px-2 pb-1.5 pt-1.5 md:-mx-3 md:-mt-3 md:px-3">
         <section data-warehouse-slip-form className="space-y-1.5 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>

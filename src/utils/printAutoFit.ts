@@ -29,7 +29,7 @@ const PRINT_DOCUMENT_CONTENT_HEIGHT_MM: Record<string, number> = {
   '.shift-handover-print-doc': 210 - 5 * 2, // @page shift-handover-page: A4 ngang, margin 5mm
   '.mixing-norm-ratio-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
   '.order-print-doc': 297 - 8 * 2, // @page mặc định: A4 dọc, margin 8mm
-  '.production-order-print-doc': 210 - 8 * 2,
+  '.production-order-print-doc': 297 - 8 * 2, // @page production-order-print-page: A4 dọc, margin 8mm
   '.kiem-kho-print-sheet': 297 - 5 * 2,
 };
 const DEFAULT_CONTENT_HEIGHT_MM = 297 - 8 * 2; // @page mặc định: A4 dọc, margin 8mm

@@ -977,6 +977,18 @@ input[type="number"] {
     table-layout: fixed;
   }
 
+  /* Chừa 1.5mm bên phải: viền ngoài của bảng (border-collapse) nằm nửa ngoài
+     vùng in nên bị cắt mất đường kẻ phải. */
+  .production-order-print-doc,
+  .order-print-doc,
+  .production-plan-print-doc,
+  .mixing-report-print-doc,
+  .weighing-slip-print-doc,
+  .warehouse-slip-print-doc {
+    box-sizing: border-box;
+    padding-right: 1.5mm;
+  }
+
   .production-order-print-doc th,
   .production-order-print-doc td,
   .order-print-doc th,
@@ -3724,9 +3736,11 @@ input[type="number"] {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 4mm;
-  margin-top: 12mm;
+  margin-top: 8mm;
   text-align: center;
   font-size: 10pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .production-order-print-signatures p {
@@ -3736,7 +3750,7 @@ input[type="number"] {
 
 .production-order-print-signatures span {
   display: block;
-  margin-top: 18mm;
+  margin-top: 14mm;
   font-style: italic;
   font-weight: 400;
   color: #444444;
@@ -7018,4 +7032,30 @@ input[type="number"] {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+}
+
+/* Báo cáo kết quả theo từng lệnh SX: tăng cỡ chữ, giữ nguyên độ rộng cột (chữ dài tự xuống dòng). */
+.bb-machine-report-print-doc .shift-summary-print-table th,
+.bb-machine-report-print-doc .shift-summary-print-table td {
+  font-size: 9.5pt;
+  line-height: 1.2;
+  padding: 0.9mm 0.7mm;
+}
+
+.bb-machine-report-print-doc .shift-summary-print-table td.shift-summary-print-num {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bb-machine-report-print-doc .bb-finished-goods-print-table-insulation th,
+.bb-machine-report-print-doc .bb-finished-goods-print-table-insulation td {
+  font-size: 8.5pt !important;
+}
+
+.bb-machine-report-print-doc .production-order-print-section-title {
+  font-size: 11pt;
+}
+
+.bb-machine-report-print-doc .bb-machine-report-print-info-note {
+  font-size: 10pt;
 }

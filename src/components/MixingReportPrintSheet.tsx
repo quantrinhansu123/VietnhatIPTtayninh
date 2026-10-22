@@ -185,7 +185,6 @@ export function MixingReportPrintSheet({
             <col className="mixing-report-print-col-name" />
             <col className="mixing-report-print-col-unit" />
             <col className="mixing-report-print-col-weight" />
-            <col className="mixing-report-print-col-photo" />
             <col className="mixing-report-print-col-note" />
           </colgroup>
           <thead>
@@ -196,14 +195,13 @@ export function MixingReportPrintSheet({
               <th>Tên NL</th>
               <th>ĐVT</th>
               <th>KL</th>
-              <th>Ảnh</th>
               <th>Ghi chú</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="mixing-report-print-center">
+                <td colSpan={7}className="mixing-report-print-center">
                   Chưa có dữ liệu trộn nguyên liệu.
                 </td>
               </tr>
@@ -234,11 +232,6 @@ export function MixingReportPrintSheet({
                   <td className="mixing-report-print-right mixing-report-print-weight">
                     {formatPrintWeight(row.khoiLuong)}
                   </td>
-                  {row.showAnhChup ? (
-                    <td rowSpan={row.anhChupRowSpan} className="mixing-report-print-center mixing-report-print-merged mixing-report-print-photo">
-                      {row.anhChup}
-                    </td>
-                  ) : null}
                   <td className="mixing-report-print-note-cell">{row.ghiChu}</td>
                 </tr>
               ))
@@ -250,7 +243,7 @@ export function MixingReportPrintSheet({
               <td className="mixing-report-print-right mixing-report-print-total-value mixing-report-print-weight">
                 {rows.length > 0 ? formatPrintWeight(totalWeight) : ''}
               </td>
-              <td colSpan={2}></td>
+              <td></td>
             </tr>
           </tbody>
         </table>

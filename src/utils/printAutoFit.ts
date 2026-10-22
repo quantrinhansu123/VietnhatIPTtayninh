@@ -34,6 +34,8 @@ const PRINT_DOCUMENT_CONTENT_HEIGHT_MM: Record<string, number> = {
 };
 const DEFAULT_CONTENT_HEIGHT_MM = 297 - 8 * 2; // @page mặc định: A4 dọc, margin 8mm
 
+const PAGE_HEIGHT_SAFETY_MM = 6;
+
 function pageContentHeightPx(element: HTMLElement) {
   const matchedSelector = Object.keys(PRINT_DOCUMENT_CONTENT_HEIGHT_MM).find(selector =>
     element.matches(selector),
@@ -41,12 +43,14 @@ function pageContentHeightPx(element: HTMLElement) {
   const heightMm = matchedSelector
     ? PRINT_DOCUMENT_CONTENT_HEIGHT_MM[matchedSelector]
     : DEFAULT_CONTENT_HEIGHT_MM;
-  return heightMm * PX_PER_MM;
+  // Trừ hao: padding/làm tròn khi in có thể làm đáy phiếu lệch vài mm so với
+  // tính toán, đủ để chữ ký/ghi chú lẻ loi rớt sang trang mới.
+  return (heightMm - PAGE_HEIGHT_SAFETY_MM) * PX_PER_MM;
 }
 
 const PRINT_DOCUMENT_SELECTOR = Object.keys(PRINT_DOCUMENT_CONTENT_HEIGHT_MM).join(', ');
 
-const MAX_SPILLED_ROWS = 2;
+const MAX_SPILLED_ROWS = 3;
 // Một–hai dòng có thể cao do tên vật tư xuống dòng; cho phép co tối đa 25%
 // để vẫn gom được chúng về trang trước. Phiếu tràn nhiều hơn ngưỡng vẫn không
 // đi vào nhánh này nên không làm chữ của tài liệu dài quá nhỏ.
@@ -156,6 +160,7 @@ export function enablePrintAutoFit() {
     // hoàn tất layout và các grid/chữ ký có thể bị phân mảnh qua trang 2.
     fitSparseOverflow();
     window.requestAnimationFrame(fitSparseOverflow);
+    window.setTimeout(fitSparseOverflow, 150);
   });
   window.addEventListener('afterprint', () => {
     document.querySelectorAll<HTMLElement>('.print-auto-fit-one-page').forEach(element => {

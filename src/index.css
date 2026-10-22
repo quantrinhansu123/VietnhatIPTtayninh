@@ -3003,8 +3003,15 @@ input[type="number"] {
 }
 
 .mixing-report-print-table tbody tr {
-  break-inside: auto;
-  page-break-inside: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Hàng/ô bị cắt ngang trang vẫn có đường kẻ đóng ở đáy bảng. */
+.mixing-report-print-table tbody td {
+  box-shadow: inset 0 -1px 0 #222222;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .mixing-report-print-signatures {
@@ -3021,10 +3028,9 @@ input[type="number"] {
 .mixing-report-print-col-lan { width: 8%; }
 .mixing-report-print-col-time { width: 8%; }
 .mixing-report-print-col-code { width: 9%; }
-.mixing-report-print-col-name { width: 35%; }
+.mixing-report-print-col-name { width: 41%; }
 .mixing-report-print-col-unit { width: 6%; }
 .mixing-report-print-col-weight { width: 8%; }
-.mixing-report-print-col-photo { width: 6%; }
 .mixing-report-print-col-note { width: 20%; }
 
 .mixing-report-print-lan,
@@ -4922,7 +4928,7 @@ input[type="number"] {
 .machine-nvl-print-table th:nth-child(11) { width: 8%; }
 
 .machine-nvl-print-note {
-  margin: 6mm 0 0;
+  margin: 3mm 0 0;
   font-size: 10.5pt;
   font-style: italic;
 }
@@ -4939,8 +4945,10 @@ input[type="number"] {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20mm;
-  margin-top: 16mm;
+  margin-top: 6mm;
   text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .machine-nvl-print-signatures p {
@@ -4950,7 +4958,7 @@ input[type="number"] {
 
 .machine-nvl-print-signatures span {
   display: block;
-  margin-top: 18mm;
+  margin-top: 12mm;
   font-style: italic;
 }
 

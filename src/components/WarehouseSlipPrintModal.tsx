@@ -352,12 +352,21 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
   const deliverer = data.deliverer || data.recipient || '';
   const location = data.warehouseLocation || '';
   const referenceText = data.productionOrderRef || data.reason || '';
-  const printRows = data.lines.filter(
+  // Thành phẩm: gộp tổng SL theo mã, cột Mã đứng trước Tên, thông tin đầu phiếu theo ca/máy.
+  const isTp = data.warehouseKind === 'san_pham';
+  const printRows = (isTp ? mergeWarehousePrintLines(data.lines) : data.lines).filter(
     line =>
       Boolean(line.code || line.name) ||
       line.quantity > 0 ||
       line.unitPrice > 0 ||
       line.lineAmount > 0
+  );
+  const slipDateText = formatSlipDate(data.slipDate);
+  const codeTh = <th className="warehouse-nhap-kho-col-code">{isTp ? 'Mã thành phẩm' : 'Mã số'}</th>;
+  const nameTh = (
+    <th className="warehouse-nhap-kho-col-name">
+      {isTp ? 'Tên thành phẩm' : 'Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ sản phẩm, hàng hóa'}
+    </th>
   );
 
   return (
@@ -393,6 +402,31 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
         </p>
       </div>
 
+      {isTp ? (
+        <div
+          className="warehouse-nhap-kho-print-meta"
+          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '16px' }}
+        >
+          <p>
+            <span>Ngày lập phiếu:</span> {slipDateText}
+          </p>
+          <p>
+            <span>Ca:</span> {formatPrintShift(data.shift)}
+          </p>
+          <p>
+            <span>Máy:</span> {data.machine || ''}
+          </p>
+          <p>
+            <span>Người lập:</span> {data.createdBy || ''}
+          </p>
+          {/* Ghi chú tự sinh từ trạm cân là JSON thô — không in. */}
+          {data.note && !data.note.trim().startsWith('{') ? (
+            <p style={{ gridColumn: '1 / -1' }}>
+              <span>Ghi chú:</span> {data.note}
+            </p>
+          ) : null}
+        </div>
+      ) : (
       <div className="warehouse-nhap-kho-print-meta">
         <p>
           <span>- Họ và tên người giao:</span> {deliverer || '.................................................................'}
@@ -410,6 +444,7 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           <span>Địa điểm:</span> {location || '.................................................................'}
         </p>
       </div>
+      )}
 
       <table className="warehouse-nhap-kho-print-table">
         <thead>
@@ -417,12 +452,8 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <th className="warehouse-nhap-kho-col-stt">
               STT
             </th>
-            <th className="warehouse-nhap-kho-col-name">
-              Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ sản phẩm, hàng hóa
-            </th>
-            <th className="warehouse-nhap-kho-col-code">
-              Mã số
-            </th>
+            {isTp ? codeTh : nameTh}
+            {isTp ? nameTh : codeTh}
             <th className="warehouse-nhap-kho-col-unit">
               Đơn vị tính
             </th>
@@ -439,8 +470,17 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
           {printRows.map((line, index) => (
               <tr key={`${line.code}-${index}`}>
                 <td className="warehouse-slip-print-center">{index + 1}</td>
-                <td>{line.name || ''}</td>
-                <td className="warehouse-slip-print-center">{line.code || ''}</td>
+                {isTp ? (
+                  <>
+                    <td className="warehouse-slip-print-center">{line.code || ''}</td>
+                    <td>{line.name || ''}</td>
+                  </>
+                ) : (
+                  <>
+                    <td>{line.name || ''}</td>
+                    <td className="warehouse-slip-print-center">{line.code || ''}</td>
+                  </>
+                )}
                 <td className="warehouse-slip-print-center">{line.unit || ''}</td>
                 <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity, 2)}</td>
                 <td className="warehouse-slip-print-right">
@@ -468,15 +508,17 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
         </tfoot>
       </table>
 
-      <div className="warehouse-nhap-kho-print-footer">
-        <p>
-          <span>- Tổng số tiền (Viết bằng chữ):</span>{' '}
-          {data.totalAmount > 0 ? formatVietnameseMoneyWords(data.totalAmount) : '.................................................................'}
-        </p>
-        <p>
-          <span>- Số chứng từ gốc kèm theo:</span> .................................................................
-        </p>
-      </div>
+      {isTp ? null : (
+        <div className="warehouse-nhap-kho-print-footer">
+          <p>
+            <span>- Tổng số tiền (Viết bằng chữ):</span>{' '}
+            {data.totalAmount > 0 ? formatVietnameseMoneyWords(data.totalAmount) : '.................................................................'}
+          </p>
+          <p>
+            <span>- Số chứng từ gốc kèm theo:</span> .................................................................
+          </p>
+        </div>
+      )}
 
       <div className="warehouse-nhap-kho-print-signatures">
         <div>
@@ -688,7 +730,7 @@ export function WarehouseSlipPrintSheet({ data }: { data: WarehouseSlipPrintData
                 </tr>
               </thead>
               <tbody>
-                {sortPrintLinesByUnit(printData.lines).map((line, index) => (
+                {sortPrintLinesByUnit(mergeWarehousePrintLines(printData.lines)).map((line, index) => (
                   <tr key={`${line.code}-${index}`}>
                     <td className="warehouse-slip-print-center">{index + 1}</td>
                     <td>{line.code || '-'}</td>

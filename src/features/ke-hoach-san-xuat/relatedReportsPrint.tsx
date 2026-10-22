@@ -81,6 +81,7 @@ import {
 import { parseBbGiaiTrinhFields, type BbGiaiTrinhFields } from '../../utils/bbGiaiTrinh';
 import {
   loadProductionOrderPrintMaterials,
+  applyWarehouseActualQuantities,
   normalizeProductionOrders,
   normalizeProductionPlanHistory,
   normalizeProductionPlanHistoryLines,
@@ -653,7 +654,7 @@ export async function loadProductionPlanRelatedReports(
     productCatalog,
     materialCatalog,
     productionPlans,
-    productionOrders,
+    productionOrders: applyWarehouseActualQuantities(productionOrders, warehouseExportSlips, materialCatalog),
     machineNvl,
     mixing,
     weighing,
@@ -684,7 +685,10 @@ function buildWarehouseExportSlips(
   const order: string[] = [];
 
   rows.forEach(row => {
-    const key = row.slipCode || row.id;
+    // Phiếu nhập: gộp thành 1 phiếu duy nhất theo ngày + ca + máy.
+    const key = row.slipType === 'nhap'
+      ? `nhap|${row.slipDate}|${row.shift}|${row.machine}`
+      : row.slipCode || row.id;
     if (!key) return;
     let group = map.get(key);
     if (!group) {
@@ -700,8 +704,11 @@ function buildWarehouseExportSlips(
     .filter(group => group.length > 0)
     .map(group => {
       const header = group[0];
+      const isInbound = header.slipType !== 'xuat';
+      const slipCodes = [...new Set(group.map(row => row.slipCode).filter(Boolean))];
       return {
-        slipCode: header.slipCode,
+        slipCode: isInbound && slipCodes.length > 1 ? slipCodes.join(', ') : header.slipCode,
+        machine: isInbound ? header.machine : undefined,
         slipType: header.slipType === 'xuat' ? 'xuat' : 'nhap',
         warehouseKind: header.warehouseKind,
         slipDate: header.slipDate,
@@ -711,7 +718,7 @@ function buildWarehouseExportSlips(
         shift: header.shift,
         warehouseName: header.warehouseName,
         totalAmount: group.reduce((sum, row) => sum + row.lineAmount, 0),
-        lines: group.map(row => ({
+        lines: mergeInboundLines(isInbound, group.map(row => ({
           code: row.itemCode,
           name: row.itemName,
           unit: row.unit,
@@ -727,9 +734,31 @@ function buildWarehouseExportSlips(
             materials,
             products: []
           })
-        }))
+        })))
       };
     });
+}
+
+/** Phiếu nhập gộp: cộng dồn các dòng cùng mã + ĐVT. */
+function mergeInboundLines(
+  isInbound: boolean,
+  lines: WarehouseSlipPrintData['lines']
+): WarehouseSlipPrintData['lines'] {
+  if (!isInbound) return lines;
+  const merged = new Map<string, WarehouseSlipPrintData['lines'][number]>();
+  for (const line of lines) {
+    const key = `${line.code}|${line.unit}`;
+    const cur = merged.get(key);
+    if (!cur) {
+      merged.set(key, { ...line });
+      continue;
+    }
+    cur.quantity += line.quantity;
+    cur.lineAmount += line.lineAmount;
+    if (line.documentQuantity != null) cur.documentQuantity = (cur.documentQuantity ?? 0) + line.documentQuantity;
+    if (line.weightKg != null) cur.weightKg = (cur.weightKg ?? 0) + line.weightKg;
+  }
+  return [...merged.values()];
 }
 
 function buildWeighingSlips(records: WeighingRecord[]): WeighingSlipPrintData[] {
@@ -765,7 +794,8 @@ function buildWeighingSlips(records: WeighingRecord[]): WeighingSlipPrintData[] 
  */
 export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPlanRelatedReports }) {
 
-  const nvlReports = data.machineNvl.map(savedReportToMachineNvlPrintReport);
+  const nvlWeightCatalog = data.materialCatalog.map(mapMaterialToWeightCatalogItem);
+  const nvlReports = data.machineNvl.map(report => savedReportToMachineNvlPrintReport(report, nvlWeightCatalog));
   const nvlDauCaReports = nvlReports.filter(report => report.reportKind === 'dau_ca');
   const nvlCuoiCaReports = nvlReports.filter(report => report.reportKind === 'cuoi_ca');
   const mixingGroups = groupMixingReportsForPrint(data.mixing);

@@ -69,6 +69,12 @@ import { OrderFormModal } from '../don-hang/OrderFormModal';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
 import { orderFieldClass } from '../_shared/orderHelpers';
 import {
+  convertWarehouseQuantityToKg,
+  inferWarehouseWeightPerUnitFromLabel,
+  isWarehouseKgUnit,
+  mapMaterialToWeightCatalogItem
+} from '../../utils/warehouseWeight';
+import {
   ArrowDown,
   ArrowUp,
   ArrowUpFromLine,
@@ -3103,7 +3109,7 @@ export function ProductionPlanModal({
 
       setRelatedPrintCatalog(productCatalog);
       setRelatedPrintCustomerOrders(customerOrders);
-      setRelatedPrintOrders(applyWarehouseActualQuantities(printableOrders, data.warehouseSlips));
+      setRelatedPrintOrders(applyWarehouseActualQuantities(printableOrders, data.warehouseSlips, data.materialCatalog));
       setRelatedPrintData(data);
 
       // BẢNG TỔNG HỢP THEO CA (đặt trang đầu tiên)
@@ -4219,21 +4225,44 @@ export async function loadProductionOrderPrintMaterials(
   return { materials: [...merged.values()], product: primaryProduct };
 }
 
+/** Quy đổi SL ĐVT khác kg → kg theo hệ số ghi trong tên (vd. "1kg= 7 cái"); null nếu không có. */
+function quantityToKgByLabel(quantity: number, name: string, code: string): number | null {
+  const perUnit = inferWarehouseWeightPerUnitFromLabel(name, code);
+  return perUnit !== null && Number.isFinite(quantity) ? roundNplNumber(quantity * perUnit) : null;
+}
+
+/** KL thực tế (kg) của dòng NVL: ĐVT kg giữ nguyên, ĐVT khác quy đổi theo hệ số; chưa có xuất kho thì lấy SL định mức. */
+function materialActualKg(line: ProductionOrderMaterialLine): number | null {
+  if (line.actualQuantity != null) return line.actualQuantity;
+  if (isWarehouseKgUnit(line.unit || '')) return line.proposedQuantity;
+  return quantityToKgByLabel(line.proposedQuantity, line.name, line.code);
+}
+
 /**
  * Gán KL xuất thực tế từ các Lệnh xuất vật tư (phiếu xuất kho NVL cùng ngày kế hoạch)
  * vào bảng định mức NVL của từng lệnh SX, khớp theo ngày + mã NVL (không lọc ca).
  */
 export function applyWarehouseActualQuantities(
   items: PrintableProductionOrder[],
-  warehouseSlips: Array<{ shift?: string; lines: Array<{ code: string; quantity: number }> }>
+  warehouseSlips: Array<{
+    shift?: string;
+    lines: Array<{ code: string; name?: string; quantity: number; unit?: string; weightKg?: number | null }>;
+  }>,
+  materialCatalog: MaterialRow[] = []
 ): PrintableProductionOrder[] {
+  const weightCatalog = materialCatalog.map(mapMaterialToWeightCatalogItem);
   return items.map(item => {
     const totalsByMaterial = new Map<string, number>();
     warehouseSlips.forEach(slip => {
       slip.lines.forEach(line => {
         const key = normalizeProductCodeKey(line.code);
         if (!key) return;
-        const quantity = Number(line.quantity);
+        // KL thực tế luôn là kg: ĐVT kg giữ nguyên SL, ĐVT khác dùng KL đã quy đổi theo hệ số kho.
+        const quantity = Number(
+          isWarehouseKgUnit(line.unit ?? '')
+            ? line.quantity
+            : line.weightKg ?? quantityToKgByLabel(line.quantity, line.name ?? '', line.code)
+        );
         if (!Number.isFinite(quantity) || quantity <= 0) return;
         totalsByMaterial.set(key, roundNplNumber((totalsByMaterial.get(key) ?? 0) + quantity));
       });
@@ -4241,10 +4270,24 @@ export function applyWarehouseActualQuantities(
 
     return {
       ...item,
-      materials: item.materials.map(material => ({
-        ...material,
-        actualQuantity: totalsByMaterial.get(normalizeProductCodeKey(material.code)) ?? null
-      }))
+      materials: item.materials.map(material => {
+        let actualQuantity = totalsByMaterial.get(normalizeProductCodeKey(material.code)) ?? null;
+        // Chưa có phiếu xuất: ĐVT khác kg quy đổi từ SL định mức theo cột Tổng kg kho NVL.
+        if (actualQuantity == null && !isWarehouseKgUnit(material.unit || '')) {
+          const kg = convertWarehouseQuantityToKg({
+            quantity: material.proposedQuantity,
+            unit: material.unit,
+            itemCode: material.code,
+            warehouseKind: 'nvl',
+            materials: weightCatalog,
+            preferTongKgOnly: false
+          });
+          const byLabel = quantityToKgByLabel(material.proposedQuantity, material.name, material.code);
+          const resolved = kg ?? byLabel;
+          if (resolved !== null) actualQuantity = roundNplNumber(resolved);
+        }
+        return { ...material, actualQuantity };
+      })
     };
   });
 }
@@ -4438,7 +4481,10 @@ export function ProductionOrderPrintSheet({
                   <td className="production-order-print-right">{formatProductionOrderPrintQuantity(line.proposedQuantity)}</td>
                   {showActualQuantity && (
                     <td className="production-order-print-right">
-                      {line.actualQuantity != null ? formatProductionOrderPrintQuantity(line.actualQuantity) : '-'}
+                      {(() => {
+                        const kg = materialActualKg(line);
+                        return kg != null ? formatProductionOrderPrintQuantity(kg) : '-';
+                      })()}
                     </td>
                   )}
                 </tr>

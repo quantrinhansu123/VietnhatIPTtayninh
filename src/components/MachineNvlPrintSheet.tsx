@@ -10,6 +10,7 @@ import {
   type MachineNvlMaterialType,
   type MachineNvlSavedReport
 } from '../utils/machineNvlReports';
+import { findMaterialTongKgPerUnit, type WarehouseWeightCatalogItem } from '../utils/warehouseWeight';
 
 export type MachineNvlPrintKind = 'dau_ca' | 'cuoi_ca';
 
@@ -79,6 +80,11 @@ function hasFormLineData(line: FormLine) {
   );
 }
 
+/** Kg hiển thị làm tròn 3 chữ số thập phân (0,005064 → 0,005). */
+function formatKg(kg: number) {
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(kg);
+}
+
 function formatMachineNvlPrintQty(
   qty: number | null,
   line: Pick<MachineNvlPrintLine, 'donVi' | 'trongLuongQuyDoiKg'>
@@ -86,7 +92,7 @@ function formatMachineNvlPrintQty(
   if (qty === null || !Number.isFinite(qty)) return '';
   if (isKgUnit(line.donVi)) return formatNumber(qty);
   const kg = machineNvlQtyToKg(qty, line);
-  if (kg !== null) return `${formatNumber(qty)} (${formatNumber(kg)} kg)`;
+  if (kg !== null) return `${formatNumber(qty)} (${formatKg(kg)} kg)`;
   return formatNumber(qty);
 }
 
@@ -176,7 +182,7 @@ function MachineNvlPrintLinesTable({
                   {formatMachineNvlPrintQty(line.soLuongTon, line)}
                 </td>
                 <td className="production-order-print-right">
-                  {lineKg > 0 ? `${formatNumber(lineKg)} kg` : ''}
+                  {lineKg > 0 ? `${formatKg(lineKg)} kg` : ''}
                 </td>
                 <td className="whitespace-pre-wrap">{line.ghiChu || ''}</td>
               </tr>
@@ -187,22 +193,22 @@ function MachineNvlPrintLinesTable({
               TỔNG CỘNG
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalInMachineKg)} kg
+              {formatKg(totalInMachineKg)} kg
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalInMixerKg)} kg
+              {formatKg(totalInMixerKg)} kg
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalUnblendedKg)} kg
+              {formatKg(totalUnblendedKg)} kg
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalOutsideKg)} kg
+              {formatKg(totalOutsideKg)} kg
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalActualKg)} kg
+              {formatKg(totalActualKg)} kg
             </td>
             <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-              {formatNumber(totalActualKg)} kg
+              {formatKg(totalActualKg)} kg
             </td>
             <td></td>
           </tr>
@@ -349,7 +355,11 @@ export function MachineNvlPrintBatch({ reports }: { reports: MachineNvlPrintRepo
   );
 }
 
-export function savedReportToMachineNvlPrintReport(report: MachineNvlSavedReport): MachineNvlPrintReport {
+/** Dòng thiếu hệ số kg quy đổi (ĐVT ≠ kg) → lấy từ danh mục kho NVL nếu truyền vào. */
+export function savedReportToMachineNvlPrintReport(
+  report: MachineNvlSavedReport,
+  weightCatalog: WarehouseWeightCatalogItem[] = []
+): MachineNvlPrintReport {
   return {
     ngay: report.ngay,
     ca: report.ca,
@@ -364,7 +374,10 @@ export function savedReportToMachineNvlPrintReport(report: MachineNvlSavedReport
       tenNvl: line.tenNvl,
       donVi: line.donVi,
       loaiVatTu: line.loaiVatTu,
-      trongLuongQuyDoiKg: line.trongLuongQuyDoiKg,
+      trongLuongQuyDoiKg:
+        // Hệ số lưu trên dòng báo cáo đã bị làm tròn khi nhập (0,000844 → 0,001) → ưu tiên Tổng kg gốc ở kho NVL.
+        (isKgUnit(line.donVi) ? null : findMaterialTongKgPerUnit(line.maNvl, weightCatalog)) ??
+        line.trongLuongQuyDoiKg,
       soLuongTonCaTruoc: line.soLuongTonCaTruoc,
       soLuongTrongMay: line.soLuongTrongMay,
       soLuongTrongBonTron: line.soLuongTrongBonTron,

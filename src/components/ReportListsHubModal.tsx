@@ -25,6 +25,11 @@ import {
 } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import { normalizeProducts } from '../features/san-pham';
 import {
+  loadTonThanhPhamReport,
+  TonThanhPhamPrintSheet,
+  type TonThanhPhamReport
+} from '../features/ton-kho/TonKhoThanhPhamPrint';
+import {
   disablePortraitPrintPage,
   enablePortraitPrintPage,
   waitForPrintImagesReady
@@ -113,6 +118,9 @@ export default function ReportListsHubModal({
   const initialDate = getLocalTodayIso();
   const [printDate, setPrintDate] = useState(initialDate);
   const [printShift, setPrintShift] = useState(filters?.shift || '');
+  // Đến ngày (tuỳ chọn): có giá trị khác ngày → báo cáo tồn theo khoảng ngày; trống → báo cáo tồn 1 ngày.
+  const [printDateTo, setPrintDateTo] = useState('');
+  const [tonData, setTonData] = useState<TonThanhPhamReport | null>(null);
   const [printData, setPrintData] = useState<ProductionPlanRelatedReports | null>(null);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
@@ -126,9 +134,30 @@ export default function ReportListsHubModal({
     if (!open) return;
     setPrintDate(lockedPrintDate || getLocalTodayIso());
     setPrintShift(lockedPrintShift || '');
+    setPrintDateTo(hubFilters.dateFrom && hubFilters.dateTo && hubFilters.dateFrom !== hubFilters.dateTo ? hubFilters.dateTo : '');
     setPrintData(null);
+    setTonData(null);
     setPrintError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lockedPrintDate, lockedPrintShift]);
+
+  const tonRange = (date: string) => {
+    const to = printDateTo && printDateTo > date ? printDateTo : date;
+    return loadTonThanhPhamReport(date, to);
+  };
+
+  const prepareTonOnly = async () => {
+    if (!printDate) return;
+    setIsPreparingPrint(true);
+    setPrintError('');
+    try {
+      setTonData(await tonRange(printDate));
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : 'Không thể chuẩn bị bản in.');
+    } finally {
+      setIsPreparingPrint(false);
+    }
+  };
 
   const prepareAndPrint = async (dateOverride?: string, shiftOverride?: string) => {
     const date = dateOverride || printDate;
@@ -151,6 +180,7 @@ export default function ReportListsHubModal({
         setPrintError('Không có phiếu nào khớp ngày, ca và máy đã chọn để in.');
         return;
       }
+      setTonData(await tonRange(date));
       setPrintData(data);
     } catch (error) {
       setPrintError(error instanceof Error ? error.message : 'Không thể chuẩn bị bản in.');
@@ -166,13 +196,13 @@ export default function ReportListsHubModal({
   }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift, hubFilters.machineCode, hubFilters.machineName]);
 
   useEffect(() => {
-    if (!printData) return;
+    if (!printData && !tonData) return;
     document.body.classList.add('production-plan-related-print-active');
     // Tên file mặc định khi "Lưu dưới dạng PDF" lấy theo document.title.
     const previousTitle = document.title;
     const [y, m, d] = (lockedPrintDate || printDate).split('-');
     const machineLabel = hubFilters.machineName || hubFilters.machineCode || 'tất cả máy';
-    document.title = `Bảng tổng hợp ngày ${d}-${m}-${y}, ca ${lockedPrintShift || printShift}, máy ${machineLabel}`;
+    document.title = !printData ? `Báo cáo tồn thành phẩm ${d}-${m}-${y}` : `Bảng tổng hợp ngày ${d}-${m}-${y}, ca ${lockedPrintShift || printShift}, máy ${machineLabel}`;
     // Báo cáo kết quả theo từng lệnh SX có layout A4 dọc riêng. Khi được in
     // trong batch "Danh sách báo cáo", phải bật cùng ngữ cảnh với trang gốc
     // để giữ nguyên phân trang tự nhiên của mẫu (có thể kéo dài nhiều trang),
@@ -191,6 +221,7 @@ export default function ReportListsHubModal({
       document.body.classList.remove('bb-machine-report-print-active');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
       setPrintData(null);
+      setTonData(null);
       if (isAutoPrint) onClose();
     };
     window.addEventListener('afterprint', cleanup, { once: true });
@@ -203,7 +234,8 @@ export default function ReportListsHubModal({
       document.body.classList.remove('bb-machine-report-print-active');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     };
-  }, [printData, isAutoPrint, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printData, tonData, isAutoPrint, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -272,7 +304,7 @@ export default function ReportListsHubModal({
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">In báo cáo</p>
               <h3 className="mt-0.5 text-base font-black">Chọn ngày và ca</h3>
-              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối và sản lượng nếu có.</p>
+              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối, sản lượng và báo cáo tồn thành phẩm.</p>
               <p className="mt-1 text-[11px] font-bold text-zinc-600">Máy: {printMachineLabel}</p>
             </div>
             <button type="button" onClick={onClose} aria-label="Đóng" title="Đóng" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
@@ -281,6 +313,10 @@ export default function ReportListsHubModal({
             <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
               Ngày
               <input type="date" value={printDate} onChange={event => setPrintDate(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100" />
+            </label>
+            <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
+              Đến ngày (báo cáo tồn khoảng ngày, bỏ trống = 1 ngày)
+              <input type="date" value={printDateTo} min={printDate} onChange={event => setPrintDateTo(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-bold text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100" />
             </label>
             <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
               Ca
@@ -296,6 +332,7 @@ export default function ReportListsHubModal({
             {printError ? <p className="text-sm font-bold text-rose-600">{printError}</p> : null}
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={onClose} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50">Hủy</button>
+              <button type="button" onClick={() => void prepareTonOnly()} disabled={isPreparingPrint || !printDate} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">Chỉ in báo cáo tồn</button>
               <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !printDate || !printShift} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">
                 {isPreparingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                 {isPreparingPrint ? 'Đang chuẩn bị...' : 'In'}
@@ -307,7 +344,7 @@ export default function ReportListsHubModal({
       ),
       document.body
     )}
-    {printData ? createPortal(<div className="production-order-print-batch"><ProductionPlanRelatedPrintContent data={printData} /></div>, document.body) : null}
+    {printData || tonData ? createPortal(<div className="production-order-print-batch">{printData ? <ProductionPlanRelatedPrintContent data={printData} /> : null}{tonData ? <TonThanhPhamPrintSheet report={tonData} /> : null}</div>, document.body) : null}
   </>;
 
   return <>
@@ -498,6 +535,6 @@ export default function ReportListsHubModal({
     </div>,
     document.body
     )}
-    {printData ? createPortal(<div className="production-order-print-batch"><ProductionPlanRelatedPrintContent data={printData} /></div>, document.body) : null}
+    {printData || tonData ? createPortal(<div className="production-order-print-batch">{printData ? <ProductionPlanRelatedPrintContent data={printData} /> : null}{tonData ? <TonThanhPhamPrintSheet report={tonData} /> : null}</div>, document.body) : null}
   </>;
 }

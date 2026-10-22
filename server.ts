@@ -18911,8 +18911,15 @@ export function createApp() {
       }
 
       const data = results.flatMap(result => (Array.isArray(result.data) ? (result.data as TonKhoGopRow[]) : []));
-      // Trang tồn kho chỉ liệt kê mặt hàng thực sự còn tồn ở cuối khoảng ngày.
-      const records = groupTonKhoRowsByPrefix(data).filter(row => Number(row.ton_cuoi_ky) > 0);
+      // Trang tồn kho chỉ liệt kê mặt hàng thực sự còn tồn ở cuối khoảng ngày;
+      // `gom_het=1` (báo cáo tồn in) giữ cả mã có phát sinh nhưng tồn cuối = 0.
+      const keepAll = String(req.query.gom_het ?? '') === '1';
+      const records = groupTonKhoRowsByPrefix(data).filter(
+        row =>
+          keepAll
+            ? Number(row.ton_dau_ky) || Number(row.nhap_trong_ky) || Number(row.xuat_trong_ky) || Number(row.ton_cuoi_ky)
+            : Number(row.ton_cuoi_ky) > 0
+      );
       return res.json({ records, total: records.length, source: 'supabase' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải bảng tổng hợp tồn kho.' });

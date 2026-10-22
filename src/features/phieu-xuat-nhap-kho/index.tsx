@@ -1385,6 +1385,8 @@ export function WarehouseSlipPanel({
   const [shippingOrders, setShippingOrders] = useState<ShippingOrder[]>([]);
   const [shippingOrdersLoading, setShippingOrdersLoading] = useState(false);
   const [shippingOrderId, setShippingOrderId] = useState('');
+  /** Túi trong lệnh xuất không quét QR: thủ công chọn mã + nhập SL ở tab Lập phiếu (desktop). */
+  const [extraBagLines, setExtraBagLines] = useState<Array<{ code: string; quantity: string }>>([]);
   const [exportedByOrder, setExportedByOrder] = useState<Record<string, Record<string, number>>>({});
   const [exportedRefreshNonce, setExportedRefreshNonce] = useState(0);
   const [reason, setReason] = useState('');
@@ -2662,6 +2664,10 @@ export function WarehouseSlipPanel({
     }
   }, [shippingOrderId, shippingOrdersForDate]);
 
+  useEffect(() => {
+    setExtraBagLines([]);
+  }, [shippingOrderId, newSlipCode]);
+
   const shippingOrderItems = useMemo(() => {
     const order = shippingOrdersForDate.find(item => item.id === shippingOrderId);
     if (!order) return [];
@@ -2694,11 +2700,17 @@ export function WarehouseSlipPanel({
     Boolean(detail.savedAt) || savedProductBatchCodes.has(normalizeMaterialCodeKey(detail.fullCode));
   const savedQtyByOrderCode = countScansByOrderCode(scannedProductDetails.filter(isDetailSaved));
   const pendingQtyByOrderCode = countScansByOrderCode(scannedProductDetails.filter(detail => !isDetailSaved(detail)));
+  const bagOptions = shippingOrderItems.filter(item => /t[úu]i/i.test(item.name));
+  const extraBagQtyByCode = new Map<string, number>();
+  for (const bag of extraBagLines) {
+    const key = normalizeMaterialCodeKey(bag.code);
+    extraBagQtyByCode.set(key, (extraBagQtyByCode.get(key) || 0) + (Number(bag.quantity) || 0));
+  }
   const shippingOrderScanRows = shippingOrderItems.map(item => {
     const key = normalizeMaterialCodeKey(item.code);
     return {
       ...item,
-      scanned: (savedQtyByOrderCode.get(key) || 0) + (pendingQtyByOrderCode.get(key) || 0),
+      scanned: (savedQtyByOrderCode.get(key) || 0) + (pendingQtyByOrderCode.get(key) || 0) + (extraBagQtyByCode.get(key) || 0),
       pending: 0
     };
   });
@@ -3890,7 +3902,21 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const currentLines = linesRef.current;
+    const extraBagDrafts = showProductExportTabs && productExportView === 'lap-phieu'
+      ? extraBagLines.filter(bag => bag.code && Number(bag.quantity) > 0).map(bag => {
+          const item = shippingOrderItems.find(option => option.code === bag.code);
+          const catalogItem = productCatalogByKey.get(normalizeMaterialCodeKey(bag.code));
+          return {
+            ...createWarehouseLineDraft(),
+            code: bag.code,
+            name: item?.name || catalogItem?.name || '',
+            unit: catalogItem?.unit || '',
+            quantity: bag.quantity,
+            documentQuantity: bag.quantity
+          };
+        })
+      : [];
+    const currentLines = [...linesRef.current, ...extraBagDrafts];
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(currentLines) : currentLines;
     const mergedLines = isNvlExport && !editSlipCode ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
     if (slipType === 'xuat') setLines(mergedLines);
@@ -4938,6 +4964,16 @@ export function WarehouseSlipPanel({
                 ))}
               </div>
             ) : null}
+            {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound && slipType === 'xuat' && bagOptions.length > 0 && extraBagLines.length < bagOptions.length && (editSlipCode ? canEdit : canCreate) ? (
+              <button
+                type="button"
+                onClick={() => setExtraBagLines(current => [...current, { code: '', quantity: '' }])}
+                className="ml-auto hidden h-8 items-center gap-1 rounded-lg border border-[#ef1b2d] bg-white px-2.5 text-[11px] font-extrabold text-[#ef1b2d] hover:bg-red-50 md:flex"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Thêm túi
+              </button>
+            ) : null}
             {(editSlipCode ? canEdit : canCreate) && !(showProductExportTabs && productExportView === 'lap-phieu') ? (
               <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                 {showQrScanButtons ? (
@@ -5044,6 +5080,47 @@ export function WarehouseSlipPanel({
                   ) : null}
                 </tbody>
               </table>
+              {slipType === 'xuat' && bagOptions.length > 0 && (editSlipCode ? canEdit : canCreate) ? (
+                <div className="mt-2 hidden space-y-1.5 px-3 md:block">
+                  {extraBagLines.map((bag, index) => {
+                    const taken = new Set(extraBagLines.map((other, i) => (i === index ? '' : other.code)));
+                    const options = bagOptions.filter(option => !taken.has(option.code));
+                    const name = bagOptions.find(option => option.code === bag.code)?.name || '';
+                    return (
+                      <div key={index} className="grid grid-cols-[1fr_2fr_8rem_2rem] items-center gap-2">
+                        <SearchableSelect
+                          value={bag.code}
+                          onChange={code => setExtraBagLines(current => current.map((row, i) => (i === index ? { ...row, code } : row)))}
+                          options={options}
+                          placeholder="Chọn mã túi"
+                          preferValueMatch
+                          inputClassName={warehouseFieldClass}
+                          desktopAutoFlip
+                          getLabel={item => `${(item as (typeof options)[number]).code} · ${(item as (typeof options)[number]).name}`}
+                          getValue={item => (item as (typeof options)[number]).code}
+                        />
+                        <input value={name} readOnly placeholder="Tên túi" title={name} className={`${warehouseFieldClass} bg-zinc-50`} />
+                        <input
+                          type="number"
+                          min={0}
+                          value={bag.quantity}
+                          placeholder="Số lượng"
+                          onChange={event => setExtraBagLines(current => current.map((row, i) => (i === index ? { ...row, quantity: event.target.value } : row)))}
+                          className={warehouseFieldClass}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setExtraBagLines(current => current.filter((_, i) => i !== index))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-red-600 hover:bg-red-50"
+                          title="Xóa dòng túi"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               {useMachineBatchTable ? (
                 <p className="mt-2 px-3 text-[11px] font-semibold text-zinc-600">
                   {machineBatchSelectedCount} phiếu đã tick · tổng cuộn {formatNumber(machineBatchTotalQty, 0)}

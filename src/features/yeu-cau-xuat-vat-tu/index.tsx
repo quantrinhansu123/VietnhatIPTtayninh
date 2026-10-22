@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, Wand2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -49,6 +49,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
   const [settings, setSettings] = useState<ProductionOrderLookupSetting[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
   const [isAutofilling, setIsAutofilling] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
@@ -98,6 +99,36 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)));
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
+
+  const submit = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/yeu-cau-xuat-kho', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ngay: date,
+          ca: shift,
+          may: machine,
+          nguoi_yc: requester,
+          lines: lines.map(l => ({
+            ma_nvl: l.code,
+            ten_nvl: l.name,
+            don_vi: l.unit,
+            so_luong: Number(l.qty.replace(',', '.'))
+          }))
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không lưu được yêu cầu.'));
+      showAppToast(`Đã lưu yêu cầu ${data.ma_yeu_cau}. Thủ kho sẽ xác nhận ở Phiếu xuất nhập kho.`);
+      setLines([newLine()]);
+    } catch (error: unknown) {
+      showSaveFailure(error, 'Không lưu được yêu cầu.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const autofillFromWarehouseExport = async () => {
     if (!date || !shift || !machine.trim()) {
@@ -173,9 +204,24 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
     }
   };
 
+  const saveButton = (
+    <button
+      type="button"
+      onClick={() => void submit()}
+      disabled={isSaving || isAutofilling}
+      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-black text-white shadow-sm hover:bg-[#b30d1c] disabled:opacity-50"
+    >
+      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+      {isSaving ? 'Đang lưu...' : 'Lưu'}
+    </button>
+  );
+
   return (
     <section className="space-y-2 rounded-md border border-slate-200 bg-white p-2 shadow-card sm:p-2.5">
-      <h3 className="text-sm font-black text-zinc-900">Nhận vật tư về máy</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-black text-zinc-900">Nhận vật tư về máy</h3>
+        {saveButton}
+      </div>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         <label className={labelClass}>
           Ngày
@@ -300,23 +346,24 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
           onClick={() => setLines(prev => [...prev, newLine()])}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 px-2.5 text-[10px] font-bold text-zinc-700 hover:bg-zinc-50"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 px-2.5 text-[11px] font-bold text-zinc-700 hover:bg-zinc-50"
         >
           <Plus className="h-3.5 w-3.5" /> Thêm NVL
         </button>
         <button
           type="button"
           onClick={() => void autofillFromWarehouseExport()}
-          disabled={isAutofilling}
-          className="inline-flex h-7 items-center gap-1 rounded-md bg-[#ef1b2d] px-2.5 text-[10px] font-black text-white hover:bg-[#b30d1c] disabled:opacity-50"
+          disabled={isAutofilling || isSaving}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-[11px] font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
         >
           {isAutofilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
           Tự động điền từ Phiếu xuất kho NVL
         </button>
+        {saveButton}
       </div>
     </section>
   );

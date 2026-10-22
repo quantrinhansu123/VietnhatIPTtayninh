@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Eye, Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
+import { Ban, Copy, Eye, Loader2, Pencil, Plus, Printer, Save, Trash2, Truck } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatMoney, formatNumber } from '../../utils';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
@@ -109,7 +109,7 @@ type VehicleOption = {
   label: string;
 };
 
-const STATUS_OPTIONS = ['Chờ xuất', 'Đã xuất', 'Đang giao', 'Đã giao', 'Hủy'] as const;
+const STATUS_OPTIONS = ['Chờ xuất', 'Đã xuất', 'Đang giao', 'Đã giao', 'Bị hủy'] as const;
 const PAYMENT_OPTIONS = ['Tiền mặt', 'CK'] as const;
 
 const compactFieldClass =
@@ -419,7 +419,7 @@ function emptyForm(code = '', staffName = ''): ShippingOrderFormState {
 function statusBadgeColor(status: string): StatusBadgeColor {
   if (status === 'Đã giao' || status === 'Đã xuất') return 'emerald';
   if (status === 'Đang giao') return 'sky';
-  if (status === 'Hủy') return 'rose';
+  if (status === 'Hủy' || status === 'Bị hủy') return 'rose';
   return 'amber';
 }
 
@@ -896,6 +896,38 @@ export function ShippingOrdersPanel({
     }
   };
 
+  const handleCancel = async (order: ShippingOrder) => {
+    if (!order.id || !window.confirm(`Hủy lệnh xuất hàng ${order.ma_lenh}?`)) return;
+    try {
+      const payload = {
+        ma_lenh: order.ma_lenh,
+        ngay_xuat: order.ngay_xuat,
+        ma_khach_hang: order.ma_khach_hang,
+        ten_khach_hang: order.ten_khach_hang,
+        dia_chi_giao: order.dia_chi_giao,
+        so_dien_thoai: order.so_dien_thoai,
+        bsx: order.bsx || '',
+        so_km: order.so_km,
+        thanh_toan: order.thanh_toan || '',
+        nhan_vien: order.nhan_vien,
+        trang_thai: 'Bị hủy',
+        ghi_chu: order.ghi_chu,
+        chi_tiet: order.chi_tiet
+      };
+      const res = await fetch(`/api/lenh-xuat-hang/${encodeURIComponent(order.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể hủy lệnh xuất hàng.'));
+      showAppToast(`Đã hủy ${order.ma_lenh}.`);
+      await loadAll();
+    } catch (cancelError: unknown) {
+      setError(showSaveFailure(cancelError, 'Không thể hủy lệnh xuất hàng.'));
+    }
+  };
+
   const handleCopy = async (order: ShippingOrder) => {
     if (!canCreate || copyingId) return;
     const lines = order.chi_tiet.filter(line => line.ma_sp.trim() || line.ten_sp.trim() || line.so_luong > 0);
@@ -1139,6 +1171,16 @@ export function ShippingOrdersPanel({
                           title="Sửa"
                         >
                           <Pencil className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canEdit && order.trang_thai === 'Chờ xuất' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleCancel(order)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                          title="Hủy phiếu"
+                        >
+                          <Ban className="h-4 w-4" />
                         </button>
                       ) : null}
                       {canDelete ? (

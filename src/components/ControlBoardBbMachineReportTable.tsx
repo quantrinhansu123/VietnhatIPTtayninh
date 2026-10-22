@@ -569,7 +569,7 @@ function BbDauCaMaterialSplitTables({
         'bg-violet-50 text-violet-900',
         mixingLines,
         mixingTotalKg,
-        'Không có NVL trộn (nhựa có tỉ lệ ĐM).'
+        'Không có NVL trộn (ĐVT gốc kg).'
       )}
       {renderTable(
         'NVL còn lại',

@@ -5875,7 +5875,19 @@ function buildBbDauCaMaterialLinesForOrder(input: {
   return { lines: materialLines, productCount: productList.length };
 }
 
-/** Tách NVL tab tồn đầu/cuối: nhựa trộn (có tỉ lệ ĐM kg) vs vật tư còn lại. */
+/** NVL bên trộn: ĐVT gốc kg (hoặc thành phần % SP). Không bắt buộc có tỉ lệ ĐM. */
+function isBbDauCaMixingSideLine(row: BbDauCaProductLine): boolean {
+  if (row.amountType === 'percent') return true;
+  const originalUnit =
+    row.amountType === 'quantity' &&
+    String(row.dinhMucUnit || '').trim() &&
+    String(row.dinhMucUnit).trim() !== '%'
+      ? row.dinhMucUnit
+      : row.unit;
+  return isBbMixingRatioKgUnit(originalUnit, row.amountType);
+}
+
+/** Tách NVL tab tồn đầu/cuối: ĐVT gốc kg → NVL trộn; Cái/Cuộn/… → còn lại. */
 export function splitBbDauCaMaterialLinesByMixing(lines: BbDauCaProductLine[]): {
   mixingLines: BbDauCaProductLine[];
   otherLines: BbDauCaProductLine[];
@@ -5884,12 +5896,7 @@ export function splitBbDauCaMaterialLinesByMixing(lines: BbDauCaProductLine[]): 
   const otherLines: BbDauCaProductLine[] = [];
   for (const row of lines) {
     if (isNnsTronMaterial(row.itemCode, row.itemName)) continue;
-    const isMixing =
-      row.tiLeDinhMucPercent != null &&
-      Number.isFinite(row.tiLeDinhMucPercent) &&
-      row.tiLeDinhMucPercent > 0 &&
-      isBbMixingRatioKgUnit(row.unit, row.amountType);
-    if (isMixing) mixingLines.push(row);
+    if (isBbDauCaMixingSideLine(row)) mixingLines.push(row);
     else otherLines.push(row);
   }
   return { mixingLines, otherLines };

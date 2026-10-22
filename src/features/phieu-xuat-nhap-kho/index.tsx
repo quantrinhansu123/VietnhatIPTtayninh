@@ -3921,6 +3921,8 @@ export function WarehouseSlipPanel({
     const orderedLines = slipType === 'xuat' ? reorderExportLinesKgFirst(currentLines) : currentLines;
     const mergedLines = isNvlExport && !editSlipCode ? mergeWarehouseExportLineDrafts(orderedLines) : orderedLines;
     if (slipType === 'xuat') setLines(mergedLines);
+    // Túi đã gộp vào lines; xóa ô nhập túi để không bị đếm 2 lần (nhập 125 → hiện 250).
+    if (extraBagDrafts.length) setExtraBagLines([]);
     const linesForSave = isNvlExport && !editSlipCode
       ? mergedLines.map(line => ({ ...line, sourceInboundLineId: '', sourceInboundSlipCode: '' }))
       : orderedLines;

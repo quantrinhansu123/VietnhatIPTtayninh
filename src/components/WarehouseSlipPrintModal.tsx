@@ -458,12 +458,12 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
               Đơn vị tính
             </th>
             <th className="warehouse-nhap-kho-col-qty">Số lượng</th>
-            <th className="warehouse-nhap-kho-col-price">
-              Đơn giá
-            </th>
-            <th className="warehouse-nhap-kho-col-amount">
-              Thành tiền
-            </th>
+            {isTp ? null : (
+              <>
+                <th className="warehouse-nhap-kho-col-price">Đơn giá</th>
+                <th className="warehouse-nhap-kho-col-amount">Thành tiền</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -483,12 +483,16 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
                 )}
                 <td className="warehouse-slip-print-center">{line.unit || ''}</td>
                 <td className="warehouse-slip-print-right">{formatPrintQty(line.quantity, 2)}</td>
-                <td className="warehouse-slip-print-right">
-                  {line.unitPrice > 0 ? formatMoney(line.unitPrice, 0) : ''}
-                </td>
-                <td className="warehouse-slip-print-right">
-                  {line.lineAmount > 0 ? formatMoney(line.lineAmount, 0) : ''}
-                </td>
+                {isTp ? null : (
+                  <>
+                    <td className="warehouse-slip-print-right">
+                      {line.unitPrice > 0 ? formatMoney(line.unitPrice, 0) : ''}
+                    </td>
+                    <td className="warehouse-slip-print-right">
+                      {line.lineAmount > 0 ? formatMoney(line.lineAmount, 0) : ''}
+                    </td>
+                  </>
+                )}
               </tr>
           ))}
         </tbody>
@@ -500,10 +504,14 @@ function NhapKhoPrintBody({ data }: { data: WarehouseSlipPrintData }) {
             <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">
               {totalQuantity > 0 ? formatNumber(totalQuantity, 2) : ''}
             </td>
-            <td />
-            <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">
-              {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : ''}
-            </td>
+            {isTp ? null : (
+              <>
+                <td />
+                <td className="warehouse-slip-print-right warehouse-nhap-kho-total-value">
+                  {data.totalAmount > 0 ? formatMoney(data.totalAmount, 0) : ''}
+                </td>
+              </>
+            )}
           </tr>
         </tfoot>
       </table>

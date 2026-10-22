@@ -4055,36 +4055,36 @@ input[type="number"] {
 }
 
 .bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-stt { width: 4%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-code { width: 12%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-name { width: 21.5%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-unit { width: 4.5%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-qty-req { width: 4.8%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-w-req { width: 5.2%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-qty-ok { width: 4.8%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-w-actual { width: 5.2%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-ratio { width: 5.2%; }
-.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-lydo { width: 32.8%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-code { width: 11%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-name { width: 20%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-unit { width: 6%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-qty-req { width: 7%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-w-req { width: 9%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-qty-ok { width: 7%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-w-actual { width: 9%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-ratio { width: 8%; }
+.bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) col.bb-fg-col-lydo { width: 19%; }
 
 .bb-machine-report-print-product-table th:nth-child(1),
 .bb-machine-report-print-product-table td:nth-child(1) { width: 4%; min-width: 8mm; }
 .bb-machine-report-print-product-table th:nth-child(2),
-.bb-machine-report-print-product-table td:nth-child(2) { width: 12%; }
+.bb-machine-report-print-product-table td:nth-child(2) { width: 11%; }
 .bb-machine-report-print-product-table th:nth-child(3),
-.bb-machine-report-print-product-table td:nth-child(3) { width: 21.5%; }
+.bb-machine-report-print-product-table td:nth-child(3) { width: 20%; }
 .bb-machine-report-print-product-table th:nth-child(4),
-.bb-machine-report-print-product-table td:nth-child(4) { width: 4.5%; }
+.bb-machine-report-print-product-table td:nth-child(4) { width: 6%; }
 .bb-machine-report-print-product-table th:nth-child(5),
-.bb-machine-report-print-product-table td:nth-child(5) { width: 4.8%; }
+.bb-machine-report-print-product-table td:nth-child(5) { width: 7%; }
 .bb-machine-report-print-product-table th:nth-child(6),
-.bb-machine-report-print-product-table td:nth-child(6) { width: 5.2%; }
+.bb-machine-report-print-product-table td:nth-child(6) { width: 9%; }
 .bb-machine-report-print-product-table th:nth-child(7),
-.bb-machine-report-print-product-table td:nth-child(7) { width: 4.8%; }
+.bb-machine-report-print-product-table td:nth-child(7) { width: 7%; }
 .bb-machine-report-print-product-table th:nth-child(8),
-.bb-machine-report-print-product-table td:nth-child(8) { width: 5.2%; }
+.bb-machine-report-print-product-table td:nth-child(8) { width: 9%; }
 .bb-machine-report-print-product-table th:nth-child(9),
-.bb-machine-report-print-product-table td:nth-child(9) { width: 5.2%; }
+.bb-machine-report-print-product-table td:nth-child(9) { width: 8%; }
 .bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) th:nth-child(10),
-.bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) td:nth-child(10) { width: 32.8%; }
+.bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) td:nth-child(10) { width: 19%; }
 
 .bb-machine-report-print-product-table th:nth-child(1),
 .bb-machine-report-print-product-table td:nth-child(1) {
@@ -4506,23 +4506,23 @@ input[type="number"] {
   .bb-machine-report-print-product-table th:nth-child(1),
   .bb-machine-report-print-product-table td:nth-child(1) { width: 4%; min-width: 8mm; }
   .bb-machine-report-print-product-table th:nth-child(2),
-  .bb-machine-report-print-product-table td:nth-child(2) { width: 12%; }
+  .bb-machine-report-print-product-table td:nth-child(2) { width: 11%; }
   .bb-machine-report-print-product-table th:nth-child(3),
-  .bb-machine-report-print-product-table td:nth-child(3) { width: 21.5%; }
+  .bb-machine-report-print-product-table td:nth-child(3) { width: 20%; }
   .bb-machine-report-print-product-table th:nth-child(4),
-  .bb-machine-report-print-product-table td:nth-child(4) { width: 4.5%; }
+  .bb-machine-report-print-product-table td:nth-child(4) { width: 6%; }
   .bb-machine-report-print-product-table th:nth-child(5),
-  .bb-machine-report-print-product-table td:nth-child(5) { width: 4.8%; }
+  .bb-machine-report-print-product-table td:nth-child(5) { width: 7%; }
   .bb-machine-report-print-product-table th:nth-child(6),
-  .bb-machine-report-print-product-table td:nth-child(6) { width: 5.2%; }
+  .bb-machine-report-print-product-table td:nth-child(6) { width: 9%; }
   .bb-machine-report-print-product-table th:nth-child(7),
-  .bb-machine-report-print-product-table td:nth-child(7) { width: 4.8%; }
+  .bb-machine-report-print-product-table td:nth-child(7) { width: 7%; }
   .bb-machine-report-print-product-table th:nth-child(8),
-  .bb-machine-report-print-product-table td:nth-child(8) { width: 5.2%; }
+  .bb-machine-report-print-product-table td:nth-child(8) { width: 9%; }
   .bb-machine-report-print-product-table th:nth-child(9),
-  .bb-machine-report-print-product-table td:nth-child(9) { width: 5.2%; }
+  .bb-machine-report-print-product-table td:nth-child(9) { width: 8%; }
   .bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) th:nth-child(10),
-  .bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) td:nth-child(10) { width: 32.8%; }
+  .bb-machine-report-print-product-table:not(.bb-finished-goods-print-table-insulation) td:nth-child(10) { width: 19%; }
 
   .bb-machine-report-print-product-table th:nth-child(1),
   .bb-machine-report-print-product-table td:nth-child(1) {
@@ -7078,4 +7078,16 @@ input[type="number"] {
     width: calc(100% - 4mm) !important;
     max-width: calc(100% - 4mm) !important;
   }
+}
+
+/* Bảng thành phẩm đạt nhập kho: tiêu đề/số không bị cắt giữa chữ, cột Lý do thu hẹp. */
+.bb-machine-report-print-doc .bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) th {
+  overflow-wrap: normal !important;
+  word-break: keep-all !important;
+}
+
+.bb-machine-report-print-doc .bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) td.shift-summary-print-num,
+.bb-machine-report-print-doc .bb-finished-goods-print-table:not(.bb-finished-goods-print-table-insulation) td.shift-summary-print-center {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
 }

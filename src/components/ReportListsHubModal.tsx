@@ -168,6 +168,11 @@ export default function ReportListsHubModal({
   useEffect(() => {
     if (!printData) return;
     document.body.classList.add('production-plan-related-print-active');
+    // Tên file mặc định khi "Lưu dưới dạng PDF" lấy theo document.title.
+    const previousTitle = document.title;
+    const [y, m, d] = (lockedPrintDate || printDate).split('-');
+    const machineLabel = hubFilters.machineName || hubFilters.machineCode || 'tất cả máy';
+    document.title = `Bảng tổng hợp ngày ${d}-${m}-${y}, ca ${lockedPrintShift || printShift}, máy ${machineLabel}`;
     // Báo cáo kết quả theo từng lệnh SX có layout A4 dọc riêng. Khi được in
     // trong batch "Danh sách báo cáo", phải bật cùng ngữ cảnh với trang gốc
     // để giữ nguyên phân trang tự nhiên của mẫu (có thể kéo dài nhiều trang),
@@ -180,6 +185,7 @@ export default function ReportListsHubModal({
     }, 350);
     const cleanup = () => {
       window.clearTimeout(timer);
+      document.title = previousTitle;
       document.body.classList.remove('production-plan-related-print-active');
       document.body.classList.remove('shift-summary-print-active');
       document.body.classList.remove('bb-machine-report-print-active');
@@ -191,6 +197,7 @@ export default function ReportListsHubModal({
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', cleanup);
+      document.title = previousTitle;
       document.body.classList.remove('production-plan-related-print-active');
       document.body.classList.remove('shift-summary-print-active');
       document.body.classList.remove('bb-machine-report-print-active');

@@ -7037,7 +7037,7 @@ input[type="number"] {
 /* Báo cáo kết quả theo từng lệnh SX: tăng cỡ chữ, giữ nguyên độ rộng cột (chữ dài tự xuống dòng). */
 .bb-machine-report-print-doc .shift-summary-print-table th,
 .bb-machine-report-print-doc .shift-summary-print-table td {
-  font-size: 9.5pt !important;
+  font-size: 10pt !important;
   line-height: 1.2 !important;
   padding: 0.9mm 0.7mm !important;
 }
@@ -7065,4 +7065,17 @@ input[type="number"] {
 
 .bb-machine-report-print-doc .bb-machine-report-print-info-note {
   font-size: 10pt;
+}
+
+/* Khi in/xuất PDF, thu hẹp bảng 4mm để viền phải nằm gọn trong vùng in (không bị cắt mất kẻ dọc). */
+@media print {
+  .bb-machine-report-print-doc table,
+  .shift-summary-print-doc table,
+  .warehouse-slip-print-doc table,
+  .mixing-report-print-doc table,
+  .production-order-print-doc table,
+  .machine-nvl-print-doc table {
+    width: calc(100% - 4mm) !important;
+    max-width: calc(100% - 4mm) !important;
+  }
 }

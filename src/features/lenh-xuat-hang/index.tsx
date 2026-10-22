@@ -442,6 +442,7 @@ export function ShippingOrdersPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [copyingId, setCopyingId] = useState('');
+  const [cancelTarget, setCancelTarget] = useState<ShippingOrder | null>(null);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -897,7 +898,8 @@ export function ShippingOrdersPanel({
   };
 
   const handleCancel = async (order: ShippingOrder) => {
-    if (!order.id || !window.confirm(`Hủy lệnh xuất hàng ${order.ma_lenh}?`)) return;
+    if (!order.id) return;
+    setCancelTarget(null);
     try {
       const payload = {
         ma_lenh: order.ma_lenh,
@@ -1006,6 +1008,35 @@ export function ShippingOrdersPanel({
 
   return (
     <div className="space-y-3 pb-8">
+      {cancelTarget
+        ? createPortal(
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 shadow-xl">
+                <h3 className="text-base font-black text-zinc-900">Xác nhận hủy phiếu</h3>
+                <p className="text-sm text-zinc-700">
+                  Bạn có chắc muốn hủy lệnh xuất hàng <span className="font-black">{cancelTarget.ma_lenh}</span>? Trạng thái sẽ chuyển thành "Bị hủy".
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCancelTarget(null)}
+                    className="h-9 rounded-lg border border-zinc-200 px-4 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Không
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCancel(cancelTarget)}
+                    className="h-9 rounded-lg bg-[#ef1b2d] px-4 text-sm font-bold text-white hover:bg-[#b30d1c]"
+                  >
+                    Xác nhận hủy
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-0">
@@ -1176,7 +1207,7 @@ export function ShippingOrdersPanel({
                       {canEdit && order.trang_thai === 'Chờ xuất' ? (
                         <button
                           type="button"
-                          onClick={() => void handleCancel(order)}
+                          onClick={() => setCancelTarget(order)}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
                           title="Hủy phiếu"
                         >

@@ -4420,7 +4420,7 @@ input[type="number"] {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1.5mm 0 0 !important;
     font-size: 9pt !important;
     line-height: 1.15 !important;
     print-color-adjust: exact;
@@ -7037,9 +7037,16 @@ input[type="number"] {
 /* Báo cáo kết quả theo từng lệnh SX: tăng cỡ chữ, giữ nguyên độ rộng cột (chữ dài tự xuống dòng). */
 .bb-machine-report-print-doc .shift-summary-print-table th,
 .bb-machine-report-print-doc .shift-summary-print-table td {
-  font-size: 9.5pt;
-  line-height: 1.2;
-  padding: 0.9mm 0.7mm;
+  font-size: 9.5pt !important;
+  line-height: 1.2 !important;
+  padding: 0.9mm 0.7mm !important;
+}
+
+/* Tiêu đề cột bảng NVL (Tên NVL...) căn giữa. */
+.bb-machine-report-print-doc .bb-machine-report-print-material-table th,
+.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th {
+  text-align: center !important;
+  vertical-align: middle !important;
 }
 
 .bb-machine-report-print-doc .shift-summary-print-table td.shift-summary-print-num {

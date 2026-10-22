@@ -5514,7 +5514,7 @@ export function WarehouseHistoryPanel({
   onBack,
   onOpenSlip,
   initialFilters,
-  initialWarehouseTab = 'nvl',
+  initialWarehouseTab = 'san_pham',
   standaloneSlipCode
 }: {
   onBack: () => void;
@@ -5584,6 +5584,20 @@ export function WarehouseHistoryPanel({
   const [viewingHistoryImage, setViewingHistoryImage] = useState<WeighingPreviewImage | null>(null);
   const [weightCatalogMaterials, setWeightCatalogMaterials] = useState<WarehouseWeightCatalogItem[]>([]);
   const [weightCatalogProducts, setWeightCatalogProducts] = useState<WarehouseWeightCatalogItem[]>([]);
+  const [customerByOrderCode, setCustomerByOrderCode] = useState<Map<string, string>>(new Map());
+  /** Mã lệnh xuất hàng nằm trong ghi chú phiếu dạng [LXH:LXH291]. */
+  const orderCodeOfRow = (row?: WarehouseMovementRow) => row?.note?.match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim() || '';
+  const orderLabelOfRow = (row?: WarehouseMovementRow) => {
+    const code = orderCodeOfRow(row);
+    return code ? [code, customerByOrderCode.get(code)].filter(Boolean).join(' · ') : '';
+  };
+
+  useEffect(() => {
+    void fetch('/api/lenh-xuat-hang')
+      .then(res => (res.ok ? res.json() : {}))
+      .then(data => setCustomerByOrderCode(new Map(normalizeShippingOrders(data).map(order => [order.ma_lenh, order.ten_khach_hang.trim()] as const))))
+      .catch(() => {});
+  }, []);
 
   const loadWeightCatalog = async () => {
     try {
@@ -6651,6 +6665,9 @@ export function WarehouseHistoryPanel({
                           {shown.map(product => product.code).join(' · ')}
                           {slip.products.length > shown.length ? ` · +${slip.products.length - shown.length}` : ''}
                         </p>
+                        {orderLabelOfRow(slip.header) ? (
+                          <p className="truncate text-[11px] font-bold text-sky-700">Lệnh xuất: {orderLabelOfRow(slip.header)}</p>
+                        ) : null}
                         <p className="text-[11px] font-semibold text-zinc-500 md:hidden">
                           {formatWarehouseSlipSavedTime(slip.createdAt)}{hideShiftMachine ? '' : ` · ${slip.header.shift || '—'} · ${slip.header.machine || '—'}`} · {slip.header.createdBy || '—'}
                         </p>
@@ -6877,7 +6894,13 @@ export function WarehouseHistoryPanel({
                   ['Tổng trọng lượng', formatWarehouseWeightKg(viewingSlipTotalWeightKg > 0 ? viewingSlipTotalWeightKg : null)],
                   ['Lý do', viewingRows[0].reason || '-'],
                   ['Ghi chú', viewingRows[0].note || '-'],
-                  ['Người lập', viewingRows[0].createdBy || '-']
+                  ['Người lập', viewingRows[0].createdBy || '-'],
+                  ...(orderCodeOfRow(viewingRows[0])
+                    ? [
+                        ['Lệnh xuất hàng', orderCodeOfRow(viewingRows[0])],
+                        ['Khách hàng', customerByOrderCode.get(orderCodeOfRow(viewingRows[0])) || '-']
+                      ]
+                    : [])
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">
                     <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>

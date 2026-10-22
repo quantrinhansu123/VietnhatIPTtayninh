@@ -1402,14 +1402,14 @@ input[type="number"] {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1.5mm 0 0 !important;
     box-sizing: border-box;
   }
 
   .mixing-report-print-params-table,
   .mixing-report-print-table {
     width: 100% !important;
-    margin: 0 !important;
+    margin: 0 0 3mm !important;
   }
 
   .production-order-print-batch {
@@ -1563,7 +1563,7 @@ input[type="number"] {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1.5mm 0 0 !important;
     box-sizing: border-box !important;
   }
 
@@ -1577,7 +1577,7 @@ input[type="number"] {
     max-width: 100% !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
-    margin-bottom: 1mm !important;
+    margin-bottom: 3mm !important;
   }
 
   .shift-summary-print-section {
@@ -1587,7 +1587,7 @@ input[type="number"] {
     break-before: auto !important;
     page-break-after: auto !important;
     break-after: auto !important;
-    margin-bottom: 1.5mm !important;
+    margin-bottom: 3mm !important;
   }
 
   .shift-summary-print-page {
@@ -2153,7 +2153,7 @@ input[type="number"] {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1.5mm 0 0 !important;
   }
 
   .production-order-print-batch {
@@ -2364,13 +2364,13 @@ input[type="number"] {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0 1.5mm 0 0 !important;
   }
 
   body.mixing-report-print-active .mixing-report-print-params-table,
   body.mixing-report-print-active .mixing-report-print-table {
     width: 100% !important;
-    margin: 0 !important;
+    margin: 0 0 3mm !important;
   }
 
   body.production-plan-related-print-active #root {

@@ -1339,7 +1339,7 @@ export function ShippingOrdersPanel({
                       Xem trước · Biên bản giao xe
                     </h3>
                     <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                      {previewOrders.length} lệnh đã chọn · 3 lệnh/trang · A4 dọc
+                      {previewOrders.length} lệnh đã chọn · mỗi lệnh 1 trang · A4 dọc
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

@@ -135,7 +135,8 @@ function staffShortName(value: string) {
   return parts.length > 0 ? parts[parts.length - 1] : '—';
 }
 
-const ORDERS_PER_PAGE = 3;
+/** Mỗi lệnh xuất = 1 trang biên bản (không gộp nhiều lệnh trên cùng trang). */
+const ORDERS_PER_PAGE = 1;
 
 function chunkOrders(orders: ShippingOrder[], size: number) {
   const pages: ShippingOrder[][] = [];
@@ -159,18 +160,19 @@ export function ShippingDeliveryPrintSheet({
 
   const noteText = String(generalNote || '').trim();
   const pages = chunkOrders(orders, ORDERS_PER_PAGE);
-  const kmDisplay = (() => {
-    if (typeof totalKmText === 'string') {
+  const formatKmDisplay = (pageOrders: ShippingOrder[]) => {
+    // Một trang một lệnh: ưu tiên so_km của lệnh đó. Chỉ dùng ô Km tay khi in đúng 1 trang.
+    if (typeof totalKmText === 'string' && pages.length === 1) {
       const trimmed = totalKmText.trim();
       if (!trimmed) return '—';
       return /km/i.test(trimmed) ? trimmed : `${trimmed} KM`;
     }
-    const autoKm = orders.reduce(
+    const autoKm = pageOrders.reduce(
       (sum, order) => sum + (order.so_km != null && order.so_km > 0 ? order.so_km : 0),
       0
     );
     return autoKm > 0 ? `${formatNumber(autoKm, 1)} KM` : '—';
-  })();
+  };
 
   return (
     <div className="bb-gx-print-batch" aria-hidden>
@@ -194,6 +196,7 @@ export function ShippingDeliveryPrintSheet({
         const shipDate = uniqueJoined(pageOrders.map(order => formatDateVi(order.ngay_xuat)));
         const slipNo = formatCombinedSlipNumbers(pageOrders);
         const plates = uniqueJoined(pageOrders.map(order => order.bsx));
+        const kmDisplay = formatKmDisplay(pageOrders);
         return (
       <div className="bb-gx-print-page" key={`bb-gx-page-${pageIndex}`}>
         <div className="bb-gx-sheet">

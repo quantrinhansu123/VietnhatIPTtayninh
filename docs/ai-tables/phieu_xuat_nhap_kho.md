@@ -37,7 +37,7 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang
 **Loại phiếu** trên form có 2 lựa chọn: **Nhập kho** · **Xuất kho**. Tab **Xuất kho treo** đã bỏ khỏi UI.
 
 - Form **Xuất kho**:
-  - **Kho thành phẩm**: tab **Thực hiện** (quét) chọn **Ngày** rồi **Lệnh xuất hàng** trong ngày (`ngay_xuat` từ `/api/lenh-xuat-hang`). **Không** hiện ô «Chọn phiếu xuất chưa chốt». Bảng có **Mã / Mặt hàng / Số lượng / Đã quét**. Cột **Đã quét** đếm QR theo tiền tố mã hàng. Chưa quét đủ số lượng từng mã thì không **Lưu đợt** và không **Lưu phiếu**. **Lưu đợt** vẫn chặn mã đã xuất / đang ở phiếu xuất khác. **Tạm bỏ** bắt buộc mã QR đã có trong `nhap_kho` (có thể bật lại sau).
+  - **Kho thành phẩm**: tab **Thực hiện** (quét) chọn **Ngày** rồi **Lệnh xuất hàng** trong ngày (`ngay_xuat` từ `/api/lenh-xuat-hang`). **Không** hiện ô «Chọn phiếu xuất chưa chốt». Bảng có **Mã / Mặt hàng / Số lượng / Đã quét**. Cột **Đã quét** đếm QR theo tiền tố mã hàng (cộng cả SL phân số). Chưa quét đủ số lượng từng mã thì không **Lưu đợt** và không **Lưu phiếu**. **Xuất TP** cho phép SL không nguyên trên từng mã QR (`1/2`, `1/3`, `0.5`…) — ghi `xuat_kho.so_luong`. **Lưu đợt** vẫn chặn mã đã xuất / đang ở phiếu xuất khác. **Tạm bỏ** bắt buộc mã QR đã có trong `nhap_kho` (có thể bật lại sau).
   - **Kho NVL** (và kho vật tư khác): **không** hiện khối Lệnh xuất hàng; hiện form lập phiếu với nút **Thêm mới** để thêm dòng NVL thủ công / tự điền theo lệnh SX.
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 - **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).

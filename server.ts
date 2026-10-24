@@ -13149,8 +13149,25 @@ export function createApp() {
       const loaiPhieu = String(body.loai_phieu ?? '').trim().toLowerCase();
       const maPhieu = String(body.ma_phieu ?? '').trim();
       const allowDuplicate = body.cho_phep_trung === true || body.cho_phep_trung === 1 || body.cho_phep_trung === '1';
-      const itemsByCode = new Map<string, { fullCode: string; tenSp: string; donVi: string }>();
-      const duplicateItems: Array<{ fullCode: string; tenSp: string; donVi: string }> = [];
+      const parseItemQty = (raw: any, fallback = 1) => {
+        const text = String(raw?.so_luong ?? raw?.soLuong ?? raw?.quantity ?? '').trim();
+        if (text) {
+          const fraction = text.match(/^(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)$/);
+          if (fraction) {
+            const numerator = Number(String(fraction[1]).replace(',', '.'));
+            const denominator = Number(String(fraction[2]).replace(',', '.'));
+            if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0) {
+              return numerator / denominator;
+            }
+          }
+          const numeric = Number(text.replace(',', '.'));
+          if (Number.isFinite(numeric) && numeric > 0) return numeric;
+        }
+        const fromNumber = Number(raw?.so_luong ?? raw?.soLuong ?? raw?.quantity);
+        return Number.isFinite(fromNumber) && fromNumber > 0 ? fromNumber : fallback;
+      };
+      const itemsByCode = new Map<string, { fullCode: string; tenSp: string; donVi: string; soLuong: number }>();
+      const duplicateItems: Array<{ fullCode: string; tenSp: string; donVi: string; soLuong: number }> = [];
       const rawItems = Array.isArray(body.items) ? body.items : [];
       for (const raw of rawItems) {
         if (!raw || typeof raw !== 'object') continue;
@@ -13159,7 +13176,8 @@ export function createApp() {
         const item = {
           fullCode,
           tenSp: String((raw as any).ten_sp ?? '').trim(),
-          donVi: String((raw as any).don_vi ?? (raw as any).unit ?? '').trim()
+          donVi: String((raw as any).don_vi ?? (raw as any).unit ?? '').trim(),
+          soLuong: parseItemQty(raw, 1)
         };
         if (allowDuplicate) {
           duplicateItems.push(item);
@@ -13332,13 +13350,18 @@ export function createApp() {
           const separatorIndex = Math.min(...separators);
           const maSp = Number.isFinite(separatorIndex) ? item.fullCode.slice(0, separatorIndex).trim() : item.fullCode;
           const catalog = catalogNames.get(normalizeWarehouseMovementCode(maSp));
+          // Nhập TP: mỗi tem = 1. Xuất TP: cho phép phân số (1/2, 1/3…).
+          const soLuong =
+            loaiPhieu === 'xuat' && Number.isFinite(item.soLuong) && item.soLuong > 0
+              ? Math.round(item.soLuong * 10000) / 10000
+              : 1;
           return {
             ma_sp: maSp,
             ma_sp_quet: item.fullCode,
             ten_sp: item.tenSp || catalog?.ten_sp || null,
             don_vi: item.donVi || catalog?.don_vi || null,
             loai: 'san_pham',
-            so_luong: 1,
+            so_luong: soLuong,
             ma_phieu: maPhieu,
             ...(lineTable === 'nhap_kho'
               ? {

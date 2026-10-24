@@ -1990,6 +1990,8 @@ export function WarehouseSlipPanel({
   // Giữ mã QR đầy đủ trong phiếu nháp và chặn quét trùng tuyệt đối.
   const scannedFullCodesByPrefixRef = useRef<Map<string, Map<string, string>>>(new Map());
   const [scannedSavedAtByCode, setScannedSavedAtByCode] = useState<Record<string, string>>({});
+  /** SL từng mã QR đầy đủ (xuất TP cho phép phân số 1/2, 1/3…). */
+  const [scannedQtyByCode, setScannedQtyByCode] = useState<Record<string, string>>({});
   const [isLoadingExistingProductScans, setIsLoadingExistingProductScans] = useState(false);
   const [savedProductSummary, setSavedProductSummary] = useState<SavedProductSummaryRow[]>([]);
   const [loadingProductSummary, setLoadingProductSummary] = useState(false);
@@ -2007,13 +2009,45 @@ export function WarehouseSlipPanel({
         name: line.name,
         unit: line.unit,
         savedAt: scannedSavedAtByCode[fullCode] || '',
-        quantity: '1'
+        quantity: scannedQtyByCode[fullCode] || scannedQtyByCode[normalizeMaterialCodeKey(fullCode)] || '1'
       })).filter(detail => !isEditingProductInbound || !savedProductBatchCodes.has(normalizeMaterialCodeKey(detail.fullCode)));
     }
     return !isEditingProductInbound && line.code.trim()
       ? [{ key: line.key, baseCode: line.code, fullCode: line.code, name: line.name, unit: line.unit, savedAt: scannedSavedAtByCode[line.code] || '', quantity: line.quantity }]
       : [];
   });
+
+  const updateScannedProductQuantity = (fullCode: string, nextQtyText: string) => {
+    if (slipType !== 'xuat' || warehouseKind !== 'san_pham') return;
+    const codeKey = normalizeMaterialCodeKey(fullCode);
+    const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
+    setScannedQtyByCode(current => ({
+      ...current,
+      [fullCode]: nextQtyText,
+      [codeKey]: nextQtyText
+    }));
+    // Cập nhật tổng dòng gộp theo mã gốc ngay khi gõ (dùng giá trị mới).
+    const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
+    let total = 0;
+    if (codes?.size) {
+      for (const code of codes.values()) {
+        const text =
+          normalizeMaterialCodeKey(code) === codeKey
+            ? nextQtyText
+            : scannedQtyByCode[code] || scannedQtyByCode[normalizeMaterialCodeKey(code)] || '1';
+        const qty = parsePercentInput(text);
+        total += Number.isFinite(qty) && qty > 0 ? qty : 0;
+      }
+    }
+    const current = linesRef.current;
+    const lineIndex = current.findIndex(line => normalizeMaterialCodeKey(line.code) === prefixKey && line.isScanned);
+    if (lineIndex < 0) return;
+    const nextLines = current.map((line, index) =>
+      index === lineIndex ? { ...line, quantity: String(Math.round(total * 10000) / 10000) } : line
+    );
+    linesRef.current = nextLines;
+    setLines(nextLines);
+  };
   const pendingScannedProductDetails = scannedProductDetails.filter(
     detail => !savedProductBatchCodes.has(normalizeMaterialCodeKey(detail.fullCode))
   );
@@ -2057,6 +2091,7 @@ export function WarehouseSlipPanel({
     scannedFullCodesByPrefixRef.current.clear();
     setSavedProductBatchCodes(new Set());
     setScannedSavedAtByCode({});
+    setScannedQtyByCode({});
     const emptyLines = [createWarehouseLineDraft()];
     linesRef.current = emptyLines;
     setLines(emptyLines);
@@ -2090,16 +2125,21 @@ export function WarehouseSlipPanel({
     const grouped = new Map<string, WarehouseSlipLineDraft>();
     const codesByPrefix = new Map<string, Map<string, string>>();
     const savedAtByCode: Record<string, string> = {};
+    const qtyByCode: Record<string, string> = {};
     for (const row of records) {
       const fullCode = String(row.ma_sp_quet || row.ma_sp || '').trim();
       const baseCode = warehouseCodePrefix(String(row.ma_sp || fullCode));
       const prefixKey = normalizeMaterialCodeKey(baseCode);
       if (!fullCode || !prefixKey) continue;
       const fullCodeKey = normalizeMaterialCodeKey(fullCode);
+      const rowQty = Number(row.so_luong);
+      const qtyText = Number.isFinite(rowQty) && rowQty > 0 ? String(rowQty) : '1';
       let codes = codesByPrefix.get(prefixKey);
       if (!codes) codesByPrefix.set(prefixKey, (codes = new Map()));
       codes.set(fullCodeKey, fullCode);
       savedAtByCode[fullCode] = String(row.created_at || new Date().toISOString());
+      qtyByCode[fullCode] = qtyText;
+      qtyByCode[fullCodeKey] = qtyText;
       const item =
         productCatalogByKey.get(prefixKey) ||
         itemOptions.find(option => normalizeMaterialCodeKey(option.code) === prefixKey);
@@ -2125,6 +2165,7 @@ export function WarehouseSlipPanel({
     setLines(nextLines);
     setSavedProductBatchCodes(new Set([...codesByPrefix.values()].flatMap(codes => [...codes.values()]).map(normalizeMaterialCodeKey)));
     setScannedSavedAtByCode(savedAtByCode);
+    setScannedQtyByCode(qtyByCode);
     setProductExportView('lap-phieu');
     setSelectedProductSlipCode(slipCode);
     setNewSlipCode(slipCode);
@@ -2382,16 +2423,15 @@ export function WarehouseSlipPanel({
     scannedFullCodesByPrefixRef.current.clear();
     setSavedProductBatchCodes(new Set());
     setScannedSavedAtByCode({});
+    setScannedQtyByCode({});
   };
 
-  // Tổng SL trên modal: tổng số lượng đã quét trong phiên — mã cùng gốc khác hậu tố lô/serial
-  // cộng dồn vào 1 dòng nên đếm theo SL từng dòng, không phải số dòng.
+  // Tổng SL trên modal: cộng SL từng mã QR (xuất TP có thể là 1/2, 1/3…).
   const scannedItemCount = isEditingProductInbound
     ? scannedProductDetails.length
-    : lines.reduce((total, line) => {
-        if (!line.isScanned || !line.code.trim()) return total;
-        const qty = parsePercentInput(line.quantity);
-        return total + (Number.isFinite(qty) && qty > 0 ? qty : 1);
+    : scannedProductDetails.reduce((total, detail) => {
+        const qty = parsePercentInput(detail.quantity);
+        return total + (Number.isFinite(qty) && qty > 0 ? qty : 0);
       }, 0);
 
   /** Quét chỉ cập nhật phiếu nháp; mã QR sẽ được ghi vào DB kho khi bấm Lưu đợt. */
@@ -2437,12 +2477,17 @@ export function WarehouseSlipPanel({
       return 'duplicate';
     }
 
-    const patch ={ ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
+    const patch = { ...resolveLinePatchForCode(fullCode), quantity: '1', isScanned: true };
     if (scannedForPrefix) {
       scannedForPrefix.set(fullCodeKey, fullCode);
     } else {
       scannedFullCodesByPrefixRef.current.set(prefixKey, new Map([[fullCodeKey, fullCode]]));
     }
+    setScannedQtyByCode(currentQty => ({
+      ...currentQty,
+      [fullCode]: '1',
+      [fullCodeKey]: '1'
+    }));
 
     const canonicalCodeKey = normalizeMaterialCodeKey(patch.code);
     const existingIndex = canonicalCodeKey
@@ -2493,7 +2538,7 @@ export function WarehouseSlipPanel({
     return true;
   };
 
-  const removeScannedProduct = async (fullCode: string) => {
+  const removeScannedProduct = async (fullCode: string, qtyHint?: string) => {
     const prefixKey = normalizeMaterialCodeKey(warehouseCodePrefix(fullCode));
     const codes = scannedFullCodesByPrefixRef.current.get(prefixKey);
     if (!codes) return;
@@ -2517,9 +2562,18 @@ export function WarehouseSlipPanel({
 
     codes.delete(fullCodeKey);
     if (!codes.size) scannedFullCodesByPrefixRef.current.delete(prefixKey);
+    const removedQty = parsePercentInput(
+      qtyHint || scannedQtyByCode[fullCode] || scannedQtyByCode[fullCodeKey] || '1'
+    );
     setScannedSavedAtByCode(current => {
       const next = { ...current };
       delete next[fullCode];
+      return next;
+    });
+    setScannedQtyByCode(current => {
+      const next = { ...current };
+      delete next[fullCode];
+      delete next[fullCodeKey];
       return next;
     });
 
@@ -2528,8 +2582,10 @@ export function WarehouseSlipPanel({
     if (lineIndex < 0) return;
     const line = current[lineIndex];
     const quantity = parsePercentInput(line.quantity) || 0;
-    const nextLines = quantity > 1
-      ? current.map((item, index) => index === lineIndex ? { ...item, quantity: String(quantity - 1) } : item)
+    const subtract = Number.isFinite(removedQty) && removedQty > 0 ? removedQty : 1;
+    const nextQty = Math.round((quantity - subtract) * 10000) / 10000;
+    const nextLines = nextQty > 0
+      ? current.map((item, index) => index === lineIndex ? { ...item, quantity: String(nextQty) } : item)
       : current.filter((_, index) => index !== lineIndex);
     const withBlankLine = nextLines.length ? nextLines : [createWarehouseLineDraft()];
     linesRef.current = withBlankLine;
@@ -2740,6 +2796,7 @@ export function WarehouseSlipPanel({
       setIsLoadingExistingProductScans(true);
       setSavedProductBatchCodes(new Set());
       setScannedSavedAtByCode({});
+      setScannedQtyByCode({});
       scannedFullCodesByPrefixRef.current.clear();
       try {
         const records: SavedProductScanRow[] = [];
@@ -3761,7 +3818,7 @@ export function WarehouseSlipPanel({
     }
     if (blockOverShippingExport) {
       const over = shippingOrderScanOver
-        .map(item => `${item.code}: ${formatNumber(item.scanned + item.pending, 0)}/${formatNumber(item.qty, 0)}`)
+        .map(item => `${item.code}: ${formatNumber(item.scanned + item.pending, 3)}/${formatNumber(item.qty, 3)}`)
         .join('; ');
       const message = `Quét vượt số lượng lệnh xuất, không thể lưu đợt. Hãy xóa bớt mã đã quét. ${over}`;
       setFormError(message);
@@ -3774,12 +3831,26 @@ export function WarehouseSlipPanel({
     setActionMessage('');
     try {
       const candidates = [...new Map(
-        pendingScannedProductDetails.map(detail => [
-          normalizeMaterialCodeKey(detail.fullCode),
-          { fullCode: detail.fullCode, name: detail.name, unit: detail.unit }
-        ] as const)
+        pendingScannedProductDetails.map(detail => {
+          const qty = parsePercentInput(detail.quantity);
+          return [
+            normalizeMaterialCodeKey(detail.fullCode),
+            {
+              fullCode: detail.fullCode,
+              name: detail.name,
+              unit: detail.unit,
+              so_luong: Number.isFinite(qty) && qty > 0 ? qty : 1
+            }
+          ] as const;
+        })
       ).values()];
       if (!candidates.length) return;
+      if (slipType === 'xuat' && candidates.some(item => !(item.so_luong > 0))) {
+        const message = 'Số lượng xuất phải lớn hơn 0 (vd 1, 1/2, 1/3).';
+        setFormError(message);
+        showAppToast(message, 'error');
+        return;
+      }
       const maPhieu = ensureKhoScanMaPhieu();
       const response = await fetch('/api/kho/quet-dot', {
         method: 'POST',
@@ -3791,7 +3862,12 @@ export function WarehouseSlipPanel({
           nhan_su: createdBy.trim() || loginName,
           kho: warehouseName.trim(),
           ghi_chu: noteWithOrderTag,
-          items: candidates.map(item => ({ ma_sp_quet: item.fullCode, ten_sp: item.name, don_vi: item.unit }))
+          items: candidates.map(item => ({
+            ma_sp_quet: item.fullCode,
+            ten_sp: item.name,
+            don_vi: item.unit,
+            so_luong: item.so_luong
+          }))
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -4085,6 +4161,7 @@ export function WarehouseSlipPanel({
       setProductionOrderSearch('');
       scannedFullCodesByPrefixRef.current.clear();
       setScannedSavedAtByCode({});
+      setScannedQtyByCode({});
       const nextSlipCode = generateWarehouseSlipPreviewCode(printSlipType);
       setNewSlipCode(nextSlipCode);
       setSelectedProductSlipCode('');
@@ -5457,21 +5534,24 @@ export function WarehouseSlipPanel({
             {pendingScannedProductDetails.length ? (
               <div className="space-y-3 p-3">
                 {pendingScannedProductDetails.map((detail, index) => {
+                  const qtyNum = parsePercentInput(detail.quantity);
+                  const qtyForWeight = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1;
                   const weightKg = convertWarehouseQuantityToKg({
-                    quantity: 1,
+                    quantity: qtyForWeight,
                     unit: detail.unit,
                     itemCode: detail.baseCode,
                     warehouseKind: 'san_pham',
                     products: weightCatalog
                   });
                   const fieldClass = 'min-h-11 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800';
+                  const allowFractionQty = slipType === 'xuat' && warehouseKind === 'san_pham';
                   return (
                     <article key={detail.key} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h3 className="text-[11px] font-black uppercase tracking-wider text-zinc-400">Mã quét #{index + 1}</h3>
                         <button
                           type="button"
-                          onClick={() => removeScannedProduct(detail.fullCode)}
+                          onClick={() => removeScannedProduct(detail.fullCode, detail.quantity)}
                           disabled={isSaving}
                           aria-label={`Xóa mã quét ${detail.fullCode}`}
                           className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
@@ -5488,7 +5568,39 @@ export function WarehouseSlipPanel({
                           ĐV<div className={fieldClass}>{detail.unit || '—'}</div>
                         </label>
                         <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Số lượng<div className={fieldClass}>{detail.quantity}</div>
+                          Số lượng
+                          {allowFractionQty ? (
+                            <div className="space-y-1">
+                              <input
+                                value={detail.quantity}
+                                onChange={event => updateScannedProductQuantity(detail.fullCode, event.target.value)}
+                                disabled={isSaving}
+                                inputMode="decimal"
+                                placeholder="1 hoặc 1/2, 1/3"
+                                className={`${fieldClass} w-full outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 disabled:opacity-60`}
+                                title="Xuất không nguyên: nhập 1/2, 1/3 hoặc 0.5"
+                              />
+                              <div className="flex flex-wrap gap-1">
+                                {(['1', '1/2', '1/3'] as const).map(preset => (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => updateScannedProductQuantity(detail.fullCode, preset)}
+                                    className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold transition disabled:opacity-50 ${
+                                      detail.quantity.trim() === preset
+                                        ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                                        : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+                                    }`}
+                                  >
+                                    {preset}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={fieldClass}>{detail.quantity}</div>
+                          )}
                         </label>
                         <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
                           Trọng lượng<div className={fieldClass}>{weightKg == null ? '—' : formatWarehouseWeightKg(weightKg)}</div>

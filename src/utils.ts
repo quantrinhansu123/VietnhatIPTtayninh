@@ -122,6 +122,15 @@ export function parsePercentInput(value: string): number {
   const cleaned = String(value ?? '').trim().replace(/\s/g, '');
   if (!cleaned) return NaN;
 
+  // Phân số đơn giản: "1/2" → 0.5, "1/3" → 0.333..., "2/3" → 0.666...
+  const fraction = cleaned.match(/^(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)$/);
+  if (fraction) {
+    const numerator = Number(String(fraction[1]).replace(',', '.'));
+    const denominator = Number(String(fraction[2]).replace(',', '.'));
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return NaN;
+    return numerator / denominator;
+  }
+
   // vi-VN có cả dấu chấm nghìn + phẩy thập phân: "1.250,5" → 1250.5
   if (cleaned.includes('.') && cleaned.includes(',')) {
     return Number(cleaned.replace(/\./g, '').replace(',', '.'));

@@ -13271,41 +13271,8 @@ export function createApp() {
           if (exported) alreadyExportedCodes.push(item.fullCode);
           return !exported;
         });
-        // Xuất TP: mã QR phải đã có trong nhap_kho (phiếu nhập không treo) mới được xuất.
-        const importedKeys = new Set<string>();
-        for (let offset = 0; offset < pendingItems.length; offset += 100) {
-          const batch = pendingItems.slice(offset, offset + 100);
-          const { data: importedRows, error: importedError } = await khoDb
-            .from('nhap_kho')
-            .select('ma_sp_quet, ma_phieu')
-            .eq('loai', 'san_pham')
-            .in('ma_sp_quet', batch.map(item => item.fullCode));
-          if (importedError) {
-            return res.status(500).json({ error: importedError.message || 'Không kiểm tra được mã đã nhập kho.' });
-          }
-          const slipCodes = [...new Set((importedRows || []).map(row => String(row.ma_phieu ?? '')).filter(Boolean))];
-          const treoSlips = new Set<string>();
-          if (slipCodes.length) {
-            const { data: headers, error: headerError } = await khoDb
-              .from('phieu_nhap')
-              .select('ma_phieu, treo')
-              .in('ma_phieu', slipCodes);
-            if (headerError) {
-              return res.status(500).json({ error: headerError.message || 'Không kiểm tra được phiếu nhập kho.' });
-            }
-            for (const header of headers || []) if (header.treo) treoSlips.add(String(header.ma_phieu));
-          }
-          for (const row of importedRows || []) {
-            if (treoSlips.has(String(row.ma_phieu))) continue;
-            const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
-            if (key) importedKeys.add(key);
-          }
-        }
-        pendingItems = pendingItems.filter(item => {
-          const imported = importedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
-          if (!imported) notImportedCodes.push(item.fullCode);
-          return imported;
-        });
+        // Tạm bỏ: không bắt buộc mã QR đã có trong nhap_kho khi xuất TP.
+        // (notImportedCodes vẫn trả [] để UI cũ không lỗi.)
       }
       let header: any = null;
 

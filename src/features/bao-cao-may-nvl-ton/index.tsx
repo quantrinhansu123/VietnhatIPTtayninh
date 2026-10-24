@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
-import { Camera, ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
+import { ClipboardList, Loader2, Plus, Printer, Save, Trash2, Wand2, X } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { BackButton } from '../../components/layout/NavButtons';
-import { cloudinaryPreviewUrl, fileToOptimizedImageDataUrl, uploadImage } from '../_shared/recordHelpers';
-import WeighingImagePreviewModal, {
-  type WeighingPreviewImage
-} from '../../components/WeighingImagePreviewModal';
+import { uploadImage } from '../_shared/recordHelpers';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import {
@@ -469,7 +466,7 @@ export function MachineNvlReportPanel({
   const [machineRef, setMachineRef] = useState('');
   const [selectedStaffNames, setSelectedStaffNames] = useState<string[]>([]);
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState<MachineNvlReportLine[]>([]);
+  const [lines, setLines] = useState<MachineNvlReportLine[]>(() => [emptyMachineNvlLine()]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -482,8 +479,6 @@ export function MachineNvlReportPanel({
   const [pickerCa, setPickerCa] = useState('');
   const [pickerMachineRef, setPickerMachineRef] = useState('');
   const [pickerReportId, setPickerReportId] = useState('');
-  const [uploadingLineKey, setUploadingLineKey] = useState<string | null>(null);
-  const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
 
   const loadReports = async (kind: MachineNvlReportKind = activeKind) => {
     const res = await fetch(`/api/bao-cao-may-nvl-ton?limit=200&loai_bao_cao=${encodeURIComponent(kind)}`);
@@ -587,7 +582,7 @@ export function MachineNvlReportPanel({
     if (kind === activeKind) return;
     setActiveKind(kind);
     setEditingReportId(null);
-    setLines([]);
+    setLines([emptyMachineNvlLine()]);
     setSelectedStaffNames([]);
     setNote('');
     setMessage('');
@@ -897,27 +892,6 @@ export function MachineNvlReportPanel({
     });
   };
 
-  const handleLineImageUpload = async (lineKey: string, file?: File | null) => {
-    if (!file) return;
-
-    setUploadingLineKey(lineKey);
-    setMessage('');
-    try {
-      const dataUrl = await fileToOptimizedImageDataUrl(file, { maxEdge: 1200, quality: 0.76 });
-      updateLine(lineKey, { imagePreview: dataUrl, imageUrl: '', imagePublicId: '' });
-      const uploaded = await uploadImage(dataUrl, 'bao_cao_may_nvl_ton');
-      updateLine(lineKey, {
-        imageUrl: uploaded.imageUrl,
-        imagePublicId: uploaded.imagePublicId,
-        imagePreview: uploaded.imageUrl
-      });
-    } catch (error: unknown) {
-      setMessage(showSaveFailure(error, 'Không thể upload ảnh NVL tồn.'));
-    } finally {
-      setUploadingLineKey(null);
-    }
-  };
-
   const resolveLineImagesForSave = async (sourceLines: MachineNvlReportLine[]) => {
     const resolved: MachineNvlReportLine[] = [];
     for (const line of sourceLines) {
@@ -1084,7 +1058,7 @@ export function MachineNvlReportPanel({
       );
       setEditingReportId(null);
       if (isEdit) {
-        setLines([]);
+        setLines([emptyMachineNvlLine()]);
       }
       setNote('');
       try {
@@ -1104,7 +1078,7 @@ export function MachineNvlReportPanel({
 
   const cancelEditReport = () => {
     setEditingReportId(null);
-    setLines([]);
+    setLines([emptyMachineNvlLine()]);
     setSelectedStaffNames([]);
     setNote('');
     setMessage('');
@@ -1347,85 +1321,31 @@ export function MachineNvlReportPanel({
                   </button>
                 </div>
               ) : null}
-              <div className="divide-y divide-zinc-100">
-                {lines.map((line, index) => {
-                  const lineImageSrc = machineNvlLineImageSrc(line);
-                  const isUploadingLineImage = uploadingLineKey === line.key;
-                  const lineTitle = line.name || line.code || 'Chọn mã NVL';
-                  return (
-                    <div key={line.key} className="min-w-0 max-w-full px-2 py-2 sm:px-3">
-                      <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-500 text-[10px] font-black text-white">
-                          {index + 1}
-                        </span>
-                        <p
-                          className="min-w-0 flex-1 truncate text-[11px] font-bold leading-tight text-zinc-800 sm:text-xs"
-                          title={lineTitle}
-                        >
-                          {lineTitle}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setLines(prev => (prev.length > 1 ? prev.filter(item => item.key !== line.key) : prev))
-                          }
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                          title="Xóa dòng"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <div className="flex w-[42%] min-w-[128px] max-w-[220px] shrink-0 flex-col gap-1">
-                          {isDauCaTab ? null : (
-                          <div className="relative overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50">
-                            {lineImageSrc ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setViewingImage({
-                                    url: lineImageSrc,
-                                    title: `Ảnh ${line.code || line.name || index + 1}`
-                                  })
-                                }
-                                className="block h-[76px] w-full overflow-hidden"
-                                title="Xem ảnh"
-                              >
-                                <img
-                                  src={cloudinaryPreviewUrl(lineImageSrc, 240)}
-                                  alt={`Ảnh ${line.code || line.name || index + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-                              </button>
-                            ) : (
-                              <label className="flex h-[76px] w-full cursor-pointer flex-col items-center justify-center gap-1 text-[9px] font-bold text-zinc-400">
-                                <Camera className="h-4 w-4" />
-                                <span>Chụp ảnh</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  className="sr-only"
-                                  disabled={isUploadingLineImage}
-                                  onChange={event => {
-                                    void handleLineImageUpload(line.key, event.target.files?.[0]);
-                                    event.currentTarget.value = '';
-                                  }}
-                                />
-                              </label>
-                            )}
-                            {isUploadingLineImage ? (
-                              <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                                <Loader2 className="h-5 w-5 animate-spin text-[#ef1b2d]" />
-                              </div>
-                            ) : null}
-                          </div>
-                          )}
-
-                          <div className="grid grid-cols-1 gap-1 md:grid-cols-2">
-                            <label className="field-cell min-w-0">
-                              <span className="machine-nvl-line-mobile-label">Mã NVL</span>
+              {lines.length > 0 ? (
+                <div className="max-h-[60vh] overflow-auto">
+                  <table className="w-full min-w-[1100px] border-collapse text-[10px]">
+                    <thead className="sticky top-0 z-10 bg-zinc-100 text-[10px] font-black uppercase text-zinc-600 shadow-[0_1px_0_#e4e4e7]">
+                      <tr>
+                        {['STT', 'Mã NVL', 'Tên NVL', 'Loại vật tư', 'Tồn máy', 'Tồn bồn', 'Chưa trộn', 'Tồn ngoài', 'Tổng', 'KL định mức', 'SL thực tế (kg)', 'Ghi chú', ''].map(
+                          (title, i) => (
+                            <th key={i} className="whitespace-nowrap px-1.5 py-2 text-left">
+                              {title}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {lines.map((line, index) => {
+                        const unitWeightKg = resolveMachineNvlLineUnitWeightKg(line, materials);
+                        return (
+                          <tr key={line.key} className="align-top">
+                            <td className="px-1.5 py-1.5">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-500 text-[10px] font-black text-white">
+                                {index + 1}
+                              </span>
+                            </td>
+                            <td className="min-w-[150px] px-1.5 py-1.5">
                               <SearchableSelect
                                 value={line.code}
                                 onChange={value => {
@@ -1443,7 +1363,7 @@ export function MachineNvlReportPanel({
                                 displaySelectedAsValue
                                 dropdownMinWidth={460}
                                 autoFlip
-                                inputClassName="machine-nvl-line-mobile-input h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
+                                inputClassName="h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
                                 getLabel={item => (item as MaterialRow).code}
                                 getSearchText={item => {
                                   const material = item as MaterialRow;
@@ -1456,9 +1376,20 @@ export function MachineNvlReportPanel({
                                 getValue={item => (item as MaterialRow).code}
                                 onSelectOption={item => selectMaterial(line.key, item as MaterialRow | null)}
                               />
-                            </label>
-                            <label className="field-cell min-w-0">
-                              <span className="machine-nvl-line-mobile-label">Loại vật tư</span>
+                              <p className="mt-0.5 truncate text-[9px] font-semibold text-zinc-500">
+                                {line.unit ? `ĐVT: ${line.unit}` : 'ĐVT: —'}
+                              </p>
+                            </td>
+                            <td className="min-w-[180px] px-1.5 py-1.5">
+                              <input
+                                value={line.name}
+                                readOnly
+                                placeholder="Tự điền theo mã"
+                                title={line.name || undefined}
+                                className="h-8 w-full min-w-0 truncate rounded-md border border-zinc-200 bg-zinc-50 px-1.5 text-[10px] font-bold text-zinc-800 outline-none"
+                              />
+                            </td>
+                            <td className="min-w-[110px] px-1.5 py-1.5">
                               <select
                                 value={line.materialType}
                                 onChange={event =>
@@ -1466,7 +1397,7 @@ export function MachineNvlReportPanel({
                                     materialType: event.target.value as MachineNvlMaterialType | ''
                                   })
                                 }
-                                className="machine-nvl-line-mobile-input h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
+                                className="h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-1 text-[10px] font-bold outline-none focus:border-[#ef1b2d]"
                               >
                                 <option value="">-- Chọn --</option>
                                 {MACHINE_NVL_MATERIAL_TYPE_OPTIONS.map(option => (
@@ -1475,129 +1406,79 @@ export function MachineNvlReportPanel({
                                   </option>
                                 ))}
                               </select>
-                            </label>
-                          </div>
-
-                          <p className="truncate text-[9px] font-semibold text-zinc-500" title={line.name || undefined}>
-                            {line.unit ? `ĐVT: ${line.unit}` : 'ĐVT: —'}
-                            {line.name ? ` · ${line.name}` : ''}
-                          </p>
-
-                          {!isDauCaTab && lineImageSrc ? (
-                            <label className="inline-flex h-7 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-extrabold text-zinc-700 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]">
-                              Chụp lại
+                            </td>
+                            {(
+                              [
+                                ['inMachineQuantity', line.inMachineQuantity],
+                                ['inMixerQuantity', line.inMixerQuantity],
+                                ['unblendedQuantity', line.unblendedQuantity],
+                                ['outsideQuantity', line.outsideQuantity]
+                              ] as const
+                            ).map(([field, value]) => (
+                              <td key={field} className="min-w-[90px] px-1.5 py-1.5">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={value}
+                                  onChange={event => updateLine(line.key, { [field]: event.target.value })}
+                                  className={machineNvlLineMobileQtyClass}
+                                />
+                              </td>
+                            ))}
+                            <td className="min-w-[90px] px-1.5 py-1.5">
                               <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="sr-only"
-                                disabled={isUploadingLineImage}
-                                onChange={event => {
-                                  void handleLineImageUpload(line.key, event.target.files?.[0]);
-                                  event.currentTarget.value = '';
-                                }}
+                                value={formatMachineNvlQuantityValue(resolveMachineNvlLineQty(line))}
+                                readOnly
+                                className={machineNvlLineMobileQtyReadonlyClass}
                               />
-                            </label>
-                          ) : null}
-                        </div>
-
-                        <div className="machine-nvl-line-mobile-grid min-w-0 max-w-[1200px] flex-1 grid grid-cols-2 gap-1 md:grid-cols-4">
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">Tồn máy</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.inMachineQuantity}
-                              onChange={event => updateLine(line.key, { inMachineQuantity: event.target.value })}
-                              className={machineNvlLineMobileQtyClass}
-                            />
-                          </label>
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">Tồn bồn</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.inMixerQuantity}
-                              onChange={event => updateLine(line.key, { inMixerQuantity: event.target.value })}
-                              className={machineNvlLineMobileQtyClass}
-                            />
-                          </label>
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">Chưa trộn</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.unblendedQuantity}
-                              onChange={event => updateLine(line.key, { unblendedQuantity: event.target.value })}
-                              className={machineNvlLineMobileQtyClass}
-                            />
-                          </label>
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">Tồn ngoài</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.outsideQuantity}
-                              onChange={event => updateLine(line.key, { outsideQuantity: event.target.value })}
-                              className={machineNvlLineMobileQtyClass}
-                            />
-                          </label>
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">Tổng</span>
-                            <input
-                              value={formatMachineNvlQuantityValue(resolveMachineNvlLineQty(line))}
-                              readOnly
-                              className={machineNvlLineMobileQtyReadonlyClass}
-                            />
-                          </label>
-                          <label className="field-cell">
-                            <span className="machine-nvl-line-mobile-label">KL định mức</span>
-                            <input
-                              value={
-                                resolveMachineNvlLineUnitWeightKg(line, materials) > 0
-                                  ? formatMachineNvlQuantityValue(resolveMachineNvlLineUnitWeightKg(line, materials))
-                                  : line.unitWeightKg || '—'
-                              }
-                              readOnly
-                              title="Khối lượng định mức từ bảng kho NVL theo mã"
-                              className={machineNvlLineMobileQtyReadonlyClass}
-                            />
-                          </label>
-                          <label className="field-cell col-span-2">
-                            <span className="machine-nvl-line-mobile-label">SL thực tế (kg)</span>
-                            <input
-                              value={formatMachineNvlQuantityValue(resolveMachineNvlLineActualKg(line, materials))}
-                              readOnly
-                              title="Số lượng × Khối lượng định mức (kho NVL theo mã)"
-                              className={machineNvlLineMobileQtyReadonlyClass}
-                            />
-                            {line.code &&
-                            !isKgUnitValue(line.unit) &&
-                            resolveMachineNvlLineUnitWeightKg(line, materials) <= 0 ? (
-                              <span className="mt-1 block text-[10px] font-bold text-red-600">
-                                Chưa có KL quy đổi — cập nhật tại Kho hàng, nếu không SL thực tế = 0 kg.
-                              </span>
-                            ) : null}
-                          </label>
-                          <label className="field-cell col-span-2 md:col-span-4">
-                            <span className="machine-nvl-line-mobile-label">Ghi chú</span>
-                            <textarea
-                              value={line.note}
-                              onChange={event => updateLine(line.key, { note: event.target.value })}
-                              rows={2}
-                              className="machine-nvl-line-mobile-input min-h-[40px] w-full min-w-0 resize-y rounded-md border border-zinc-200 px-1 py-1 text-[10px] font-semibold outline-none focus:border-[#ef1b2d]"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                            </td>
+                            <td className="min-w-[90px] px-1.5 py-1.5">
+                              <input
+                                value={unitWeightKg > 0 ? formatMachineNvlQuantityValue(unitWeightKg) : line.unitWeightKg || '—'}
+                                readOnly
+                                title="Khối lượng định mức từ bảng kho NVL theo mã"
+                                className={machineNvlLineMobileQtyReadonlyClass}
+                              />
+                            </td>
+                            <td className="min-w-[100px] px-1.5 py-1.5">
+                              <input
+                                value={formatMachineNvlQuantityValue(resolveMachineNvlLineActualKg(line, materials))}
+                                readOnly
+                                title="Số lượng × Khối lượng định mức (kho NVL theo mã)"
+                                className={machineNvlLineMobileQtyReadonlyClass}
+                              />
+                              {line.code && !isKgUnitValue(line.unit) && unitWeightKg <= 0 ? (
+                                <span className="mt-1 block text-[9px] font-bold text-red-600">Chưa có KL quy đổi</span>
+                              ) : null}
+                            </td>
+                            <td className="min-w-[160px] px-1.5 py-1.5">
+                              <textarea
+                                value={line.note}
+                                onChange={event => updateLine(line.key, { note: event.target.value })}
+                                rows={1}
+                                className="min-h-[36px] w-full min-w-0 resize-y rounded-md border border-zinc-200 px-1 py-1 text-[10px] font-semibold outline-none focus:border-[#ef1b2d]"
+                              />
+                            </td>
+                            <td className="px-1.5 py-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLines(prev => (prev.length > 1 ? prev.filter(item => item.key !== line.key) : prev))
+                                }
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                                title="Xóa dòng"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
               {isDauCaTab && previousCuoiCaReport ? (
                 <p className="border-t border-zinc-100 bg-zinc-50 px-3 py-2 text-[11px] font-semibold text-zinc-500">
                   Tham chiếu cuối ca gần nhất: {previousCuoiCaReport.ngay} · {previousCuoiCaReport.ca} ·{' '}
@@ -1783,7 +1664,6 @@ export function MachineNvlReportPanel({
         </div>
       ) : null}
 
-      <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appTo
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import { shiftNamesMatch } from '../utils/shiftSettings';
+import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 const fieldClass =
   'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
@@ -276,6 +277,8 @@ function slipToPrintSlip(slip: MachineDowntimeSlip): MachineDowntimePrintSlip {
 }
 
 export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => void }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [settings, setSettings] = useState<SettingOption[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
@@ -333,6 +336,24 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
         label: order.name !== order.code ? `${order.code} · ${order.name}` : order.code
       }));
   }, [productionOrders, date, shift]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setDate(hubShared.ngay);
+    setShift(hubShared.ca);
+    setMachineRef(hubShared.selectedMachine?.code || hubShared.machine?.code || '');
+    setPreparedBy(hubShared.staffNames[0] || hubShared.staffText || '');
+    setNote(hubShared.ghiChu);
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.ca,
+    hubShared?.selectedMachine,
+    hubShared?.machine,
+    hubShared?.staffNames,
+    hubShared?.staffText,
+    hubShared?.ghiChu
+  ]);
 
   const lineStats = useMemo(() => {
     return lines.map(line => {
@@ -569,44 +590,48 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
             )}
 
             <div className="grid gap-1.5 md:grid-cols-3">
-              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Ngày *
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-0.5`} />
-              </label>
-              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Ca *
-                <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
-                  <option value="">Chọn ca</option>
-                  {shiftOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Máy *
-                <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
-                  <option value="">Chọn máy</option>
-                  {machines.map(machine => (
-                    <option key={machine.id} value={machine.code}>
-                      {machine.code ? `${machine.code} · ${machine.name}` : machine.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Người lập
-                <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
-                  <option value="">Chọn nhân sự sản xuất</option>
-                  {filteredStaffOptions.map(staff => (
-                    <option key={staff.id} value={staff.name}>
-                      {staff.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 md:col-span-2">
+              {!hideLocalHeader ? (
+                <>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    Ngày *
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-0.5`} />
+                  </label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    Ca *
+                    <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
+                      <option value="">Chọn ca</option>
+                      {shiftOptions.map(option => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    Máy *
+                    <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
+                      <option value="">Chọn máy</option>
+                      {machines.map(machine => (
+                        <option key={machine.id} value={machine.code}>
+                          {machine.code ? `${machine.code} · ${machine.name}` : machine.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    Người lập
+                    <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className={`${fieldClass} mt-0.5`} disabled={isLoading}>
+                      <option value="">Chọn nhân sự sản xuất</option>
+                      {filteredStaffOptions.map(staff => (
+                        <option key={staff.id} value={staff.name}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+              <label className={`text-[10px] font-black uppercase tracking-wider text-zinc-500 ${hideLocalHeader ? '' : 'md:col-span-2'}`}>
                 Lệnh SX liên quan
                 <select
                   value={productionOrder}
@@ -678,13 +703,15 @@ export default function MachineDowntimeReportPanel({ onBack }: { onBack: () => v
             </div>
 
             <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-              <p className="mb-2 text-xs font-semibold leading-5 text-zinc-600">
+              <p className={`text-xs font-semibold leading-5 text-zinc-600${hideLocalHeader ? '' : ' mb-2'}`}>
                 Ghi chú: Ghi nhận ngay khi phát sinh. Hệ thống tự trừ định mức thời gian và số cuộn sản phẩm để đo lường hiệu suất máy.
               </p>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Ghi chú chung
-                <input value={note} onChange={e => setNote(e.target.value)} className={`${fieldClass} mt-1`} placeholder="Ghi chú thêm (tuỳ chọn)" />
-              </label>
+              {!hideLocalHeader ? (
+                <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                  Ghi chú chung
+                  <input value={note} onChange={e => setNote(e.target.value)} className={`${fieldClass} mt-1`} placeholder="Ghi chú thêm (tuỳ chọn)" />
+                </label>
+              ) : null}
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

@@ -5,6 +5,8 @@ import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../comp
 import { REPORT_FORM_MENU_ITEMS, type MenuCardConfig } from '../../app/menus';
 import type { MachineNvlSavedReport } from '../../utils/machineNvlReports';
 import type { AppTab } from '../../routes';
+import { ReportFormsSharedProvider } from './ReportFormsSharedContext';
+import { ReportFormsSharedHeader } from './ReportFormsSharedHeader';
 
 const MachineNvlReportPanel = lazy(() =>
   import('../bao-cao-may-nvl-ton').then(m => ({ default: m.MachineNvlReportPanel }))
@@ -144,12 +146,18 @@ export function ReportFormsHub({
     setAcceptanceCreatePrefill(null);
   };
 
+  const hideSharedHeader =
+    activeHubTab === 'can-tu-dong' || activeHubTab === 'can-tu-dong-entry';
+
   return (
+    <ReportFormsSharedProvider>
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
         <div className="min-w-0">
           <h2 className="font-display text-sm font-semibold tracking-tight text-slate-900 sm:text-base">Nhập báo cáo</h2>
-          <p className="mt-0.5 text-[10px] leading-snug text-slate-500">Chọn tab phiếu — chỉ tải khi mở.</p>
+          <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
+            Điền thông tin chung phía trên — áp dụng khi đổi tab phiếu.
+          </p>
         </div>
         <button
           type="button"
@@ -160,6 +168,8 @@ export function ReportFormsHub({
           Quay lại
         </button>
       </div>
+
+      {!hideSharedHeader ? <ReportFormsSharedHeader /> : null}
 
       <div className="min-w-0">
         <div
@@ -291,6 +301,7 @@ export function ReportFormsHub({
         </div>
       </div>
     </div>
+    </ReportFormsSharedProvider>
   );
 }
 

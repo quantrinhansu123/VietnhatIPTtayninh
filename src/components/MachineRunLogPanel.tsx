@@ -18,6 +18,7 @@ import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appTo
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import { shiftNamesMatch } from '../utils/shiftSettings';
+import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 const fieldClass =
   'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
@@ -354,6 +355,8 @@ function logToPrintSlip(log: MachineRunLog): MachineRunLogPrintSlip {
 }
 
 export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [settings, setSettings] = useState<SettingOption[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
@@ -415,6 +418,24 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
         label: order.name !== order.code ? `${order.code} · ${order.name}` : order.code
       }));
   }, [productionOrders, date, shift]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setDate(hubShared.ngay);
+    setShift(hubShared.ca);
+    setMachineRef(hubShared.selectedMachine?.code || hubShared.machine?.code || '');
+    setMainOperator(hubShared.staffNames[0] || '');
+    setAssistantOperator(hubShared.staffNames[1] || '');
+    setNote(hubShared.ghiChu);
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.ca,
+    hubShared?.selectedMachine,
+    hubShared?.machine,
+    hubShared?.staffNames,
+    hubShared?.ghiChu
+  ]);
 
   const summary = useMemo(() => {
     const totalRolls = lines.reduce((sum, line) => sum + (parseLineNumber(line.rollsProduced) ?? 0), 0);
@@ -688,32 +709,36 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
             )}
 
             <div className="grid gap-3 md:grid-cols-4">
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Ngày sản xuất *
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-1`} />
-              </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Ca *
-                <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn ca</option>
-                  {shiftOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Máy *
-                <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn máy</option>
-                  {machines.map(machine => (
-                    <option key={machine.id} value={machine.code}>
-                      {machine.code ? `${machine.code} · ${machine.name}` : machine.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {!hideLocalHeader ? (
+                <>
+                  <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Ngày sản xuất *
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-1`} />
+                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Ca *
+                    <select value={shift} onChange={e => setShift(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                      <option value="">Chọn ca</option>
+                      {shiftOptions.map(option => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Máy *
+                    <select value={machineRef} onChange={e => setMachineRef(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                      <option value="">Chọn máy</option>
+                      {machines.map(machine => (
+                        <option key={machine.id} value={machine.code}>
+                          {machine.code ? `${machine.code} · ${machine.name}` : machine.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Lệnh sản xuất số
                 <select
@@ -741,28 +766,32 @@ export default function MachineRunLogPanel({ onBack }: { onBack: () => void }) {
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Thợ chính máy
-                <select value={mainOperator} onChange={e => setMainOperator(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn nhân sự</option>
-                  {filteredStaffOptions.map(staff => (
-                    <option key={staff.id} value={staff.name}>
-                      {staff.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Thợ phụ máy
-                <select value={assistantOperator} onChange={e => setAssistantOperator(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
-                  <option value="">Chọn nhân sự</option>
-                  {filteredStaffOptions.map(staff => (
-                    <option key={staff.id} value={staff.name}>
-                      {staff.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {!hideLocalHeader ? (
+                <>
+                  <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Thợ chính máy
+                    <select value={mainOperator} onChange={e => setMainOperator(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                      <option value="">Chọn nhân sự</option>
+                      {filteredStaffOptions.map(staff => (
+                        <option key={staff.id} value={staff.name}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                    Thợ phụ máy
+                    <select value={assistantOperator} onChange={e => setAssistantOperator(e.target.value)} className={`${fieldClass} mt-1`} disabled={isLoading}>
+                      <option value="">Chọn nhân sự</option>
+                      {filteredStaffOptions.map(staff => (
+                        <option key={staff.id} value={staff.name}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 Giờ chạy KH (giờ)
                 <input

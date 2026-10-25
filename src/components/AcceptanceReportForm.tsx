@@ -24,6 +24,7 @@ import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraC
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongWeights';
+import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 const productLineGridClass =
   'min-w-[50rem] grid-cols-[2.25rem_minmax(9rem,1.1fr)_minmax(12rem,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
@@ -507,6 +508,8 @@ export default function AcceptanceReportForm({
   createPrefill?: AcceptanceReportCreatePrefill | null;
   onCreatePrefillConsumed?: () => void;
 }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderOption[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<ProductSelectOption[]>([]);
@@ -610,6 +613,45 @@ export default function AcceptanceReportForm({
     const timer = window.setTimeout(() => setHighlightLine(null), 2600);
     return () => window.clearTimeout(timer);
   }, [highlightLine]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    const machine =
+      (hubShared.selectedMachine
+        ? machines.find(
+            item =>
+              item.id === hubShared.selectedMachine!.id ||
+              item.code === hubShared.selectedMachine!.code ||
+              item.name === hubShared.selectedMachine!.name
+          )
+        : null) ??
+      machines.find(
+        item =>
+          item.id === hubShared.machineRef ||
+          item.code === hubShared.machineRef ||
+          item.name === hubShared.machineRef ||
+          `${item.code} · ${item.name}` === hubShared.machineRef
+      );
+    setHeader(prev => ({
+      ...prev,
+      ngay: hubShared.ngay,
+      gio: hubShared.gio,
+      ca: hubShared.ca,
+      teamId: machine?.id || '',
+      machineRef: machine?.name || machine?.code || hubShared.machineRef,
+      ma_may: machine?.code || hubShared.machine?.code || '',
+      ten_may: machine?.name || hubShared.machine?.name || ''
+    }));
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.gio,
+    hubShared?.ca,
+    hubShared?.machineRef,
+    hubShared?.selectedMachine,
+    hubShared?.machine,
+    machines
+  ]);
 
   // Tự tăng "Lần" theo cùng ngày + cùng ca khi tạo phiếu mới
   useEffect(() => {
@@ -1531,68 +1573,9 @@ export default function AcceptanceReportForm({
         </div>
 
         <div className="space-y-2 bg-zinc-50 p-2 sm:p-2.5">
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-            <label className="field-cell">
-              <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" /> Ngày
-              </span>
-              <input type="date" value={header.ngay} onChange={e => handleDateChange(e.target.value)} className={inputClass} />
-            </label>
-            <label className="field-cell">
-              <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                <Cpu className="h-3.5 w-3.5 text-[#ef1b2d]" /> Máy
-              </span>
-              <ComboSelect
-                value={teamSelectValue}
-                onChange={handleTeamChange}
-                options={teamOptions}
-                placeholder="Chọn máy..."
-                inputClassName={inputClass}
-                comboboxMode
-                comboboxSearchable={false}
-                matchDropdownWidth
-                getValue={item => (item as MachineOption).id}
-                getLabel={item => {
-                  const team = item as MachineOption;
-                  return team.code && team.name && team.code !== team.name
-                    ? `${team.code} · ${team.name}`
-                    : team.name || team.code;
-                }}
-              />
-            </label>
-            <label className="field-cell">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Ca
-              </span>
-              <select
-                value={header.ca}
-                onChange={event => handleShiftChange(event.target.value)}
-                disabled={shiftSelectOptions.length === 0}
-                className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                <option value="">
-                  {shiftSelectOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
-                </option>
-                {shiftSelectOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label || option.value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex gap-3">
-              <label className="field-cell flex-1">
-                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                  <Clock3 className="h-3.5 w-3.5 text-[#ef1b2d]" /> Giờ
-                </span>
-                <input
-                  type="time"
-                  value={header.gio}
-                  onChange={e => setHeader(prev => ({ ...prev, gio: e.target.value }))}
-                  className={`${inputClass} h-9`}
-                />
-              </label>
-              <label className="field-cell flex-1">
+          {hideLocalHeader ? (
+            <div className="grid max-w-[8rem] grid-cols-1 gap-1.5">
+              <label className="field-cell">
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lần</span>
                 <input
                   value={header.lan}
@@ -1602,7 +1585,80 @@ export default function AcceptanceReportForm({
                 />
               </label>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <label className="field-cell">
+                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" /> Ngày
+                </span>
+                <input type="date" value={header.ngay} onChange={e => handleDateChange(e.target.value)} className={inputClass} />
+              </label>
+              <label className="field-cell">
+                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  <Cpu className="h-3.5 w-3.5 text-[#ef1b2d]" /> Máy
+                </span>
+                <ComboSelect
+                  value={teamSelectValue}
+                  onChange={handleTeamChange}
+                  options={teamOptions}
+                  placeholder="Chọn máy..."
+                  inputClassName={inputClass}
+                  comboboxMode
+                  comboboxSearchable={false}
+                  matchDropdownWidth
+                  getValue={item => (item as MachineOption).id}
+                  getLabel={item => {
+                    const team = item as MachineOption;
+                    return team.code && team.name && team.code !== team.name
+                      ? `${team.code} · ${team.name}`
+                      : team.name || team.code;
+                  }}
+                />
+              </label>
+              <label className="field-cell">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Ca
+                </span>
+                <select
+                  value={header.ca}
+                  onChange={event => handleShiftChange(event.target.value)}
+                  disabled={shiftSelectOptions.length === 0}
+                  className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <option value="">
+                    {shiftSelectOptions.length > 0 ? 'Chọn ca...' : 'Chưa có ca trong Cài đặt'}
+                  </option>
+                  {shiftSelectOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label || option.value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-3">
+                <label className="field-cell flex-1">
+                  <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    <Clock3 className="h-3.5 w-3.5 text-[#ef1b2d]" /> Giờ
+                  </span>
+                  <input
+                    type="time"
+                    value={header.gio}
+                    onChange={e => setHeader(prev => ({ ...prev, gio: e.target.value }))}
+                    className={`${inputClass} h-9`}
+                  />
+                </label>
+                <label className="field-cell flex-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lần</span>
+                  <input
+                    value={header.lan}
+                    onChange={e => setHeader(prev => ({ ...prev, lan: e.target.value }))}
+                    className={`${inputClass} h-9`}
+                    placeholder="VD: 1"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

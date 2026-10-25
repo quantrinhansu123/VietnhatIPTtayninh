@@ -23,6 +23,7 @@ import {
 import { COMPANY_BRANCH_NAME } from './layout/constants';
 import { formatNumber, parseMoneyInput } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
+import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 import SearchableMultiSelect from './SearchableMultiSelect';
 import { RowActionsMenu } from './shared/table';
 import MixingProductionOrderAutofillModal from './MixingProductionOrderAutofillModal';
@@ -1050,6 +1051,8 @@ export default function MixingReportForm({
   editReport?: MixingReport | null;
   onEditConsumed?: () => void;
 }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
   const [productionOrders, setProductionOrders] = useState<MixingProductionOrder[]>([]);
@@ -1493,11 +1496,16 @@ export default function MixingReportForm({
     setActualWeightDrafts({});
     setCollapsedRounds(new Set());
     autoCollapsedRoundsRef.current = new Set();
+    const nextCa =
+      resolveShiftName(normalizeMixingCaInput(report.ca), shiftOptions) || normalizeMixingCaInput(report.ca);
+    const nextNgay = report.ngay || todayIso();
+    const nextGio = report.gio || nowTimeValue();
+    const nextBranch = report.chi_nhanh || COMPANY_BRANCH_NAME;
     setForm({
-      ca: resolveShiftName(normalizeMixingCaInput(report.ca), shiftOptions) || normalizeMixingCaInput(report.ca),
-      ngay: report.ngay || todayIso(),
-      gio: report.gio || nowTimeValue(),
-      chi_nhanh: report.chi_nhanh || COMPANY_BRANCH_NAME,
+      ca: nextCa,
+      ngay: nextNgay,
+      gio: nextGio,
+      chi_nhanh: nextBranch,
       ma_may: report.ma_may,
       ten_may: report.ten_may,
       nhan_su: report.nhan_su,
@@ -1514,7 +1522,66 @@ export default function MixingReportForm({
     });
     setMessage('');
     setError('');
+    const editMachine =
+      machines.find(item => item.code === report.ma_may) ??
+      machines.find(item => item.name === report.ten_may);
+    hubShared?.applyFromForm({
+      ngay: nextNgay,
+      gio: nextGio,
+      ca: nextCa,
+      chiNhanh: nextBranch,
+      machineRef: editMachine
+        ? `${editMachine.code} · ${editMachine.name}`
+        : report.ten_may || report.ma_may || '',
+      staffNames: String(report.nhan_su || '')
+        .split(/[,;|/]+/)
+        .map(item => item.trim())
+        .filter(Boolean),
+      ghiChu: report.ghi_chu || ''
+    });
   };
+
+  useEffect(() => {
+    if (!hubShared) return;
+    const machine =
+      (hubShared.selectedMachine
+        ? machines.find(
+            item =>
+              item.id === hubShared.selectedMachine!.id ||
+              item.code === hubShared.selectedMachine!.code ||
+              item.name === hubShared.selectedMachine!.name
+          )
+        : null) ??
+      machines.find(
+        item =>
+          item.code === hubShared.machineRef ||
+          item.name === hubShared.machineRef ||
+          `${item.code} · ${item.name}` === hubShared.machineRef
+      );
+    setNhanSuManual(true);
+    setForm(prev => ({
+      ...prev,
+      ngay: hubShared.ngay,
+      gio: hubShared.gio,
+      ca: hubShared.ca,
+      chi_nhanh: hubShared.chiNhanh,
+      ma_may: machine?.code || hubShared.machine?.code || '',
+      ten_may: machine?.name || hubShared.machine?.name || '',
+      nhan_su: hubShared.staffText,
+      ghi_chu: hubShared.ghiChu
+    }));
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.gio,
+    hubShared?.ca,
+    hubShared?.chiNhanh,
+    hubShared?.machineRef,
+    hubShared?.staffText,
+    hubShared?.ghiChu,
+    hubShared?.selectedMachine,
+    machines
+  ]);
 
   useEffect(() => {
     if (!editReport) return;
@@ -2211,15 +2278,15 @@ export default function MixingReportForm({
               </div>
             </div>
           </div>
-          {headerFields}
+          {!hideLocalHeader ? headerFields : null}
         </section>
       )}
 
-      {(modalMode || embedded) && (
+      {(modalMode || embedded) && !hideLocalHeader ? (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
           {headerFields}
         </div>
-      )}
+      ) : null}
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

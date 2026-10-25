@@ -39,6 +39,7 @@ import {
   type ShiftHandoverSlip
 } from '../lib/shiftHandoverModel';
 import { normalizeProductionOrders, type ProductionOrderRow } from '../features/ke-hoach-san-xuat';
+import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 export type { ShiftHandoverSlip } from '../lib/shiftHandoverModel';
 export { normalizeShiftHandoverSlips } from '../lib/shiftHandoverModel';
@@ -128,6 +129,8 @@ function normalizeProductionStaff(data: unknown): StaffOption[] {
 }
 
 export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
@@ -263,6 +266,7 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
   }, [pendingPrint, printSlip]);
 
   useEffect(() => {
+    if (hubShared) return;
     if (!date || !shift || productionOrders.length === 0 || machines.length === 0) return;
     if (skipAutoPickRef.current) {
       skipAutoPickRef.current = false;
@@ -284,7 +288,26 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
       setMachineRef(picked.machineCode);
     }
     if (picked.operators) setOperators(picked.operators);
-  }, [date, shift, machineRef, productionOrders, machines]);
+  }, [date, shift, machineRef, productionOrders, machines, hubShared]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setDate(hubShared.ngay);
+    setShift(hubShared.ca);
+    setMachineRef(hubShared.selectedMachine?.code || hubShared.machine?.code || '');
+    setOperators(hubShared.staffText || '');
+    setNote(hubShared.ghiChu);
+    setTimeFrom(prev => (prev.trim() ? prev : hubShared.gio || ''));
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.ca,
+    hubShared?.selectedMachine,
+    hubShared?.machine,
+    hubShared?.staffText,
+    hubShared?.ghiChu,
+    hubShared?.gio
+  ]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
@@ -553,27 +576,31 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
               )}
 
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                  Ngày *
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-1`} />
-                </label>
-                <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                  Ca sản xuất *
-                  <div className="mt-1">
-                    <SearchableSelect
-                      value={shift}
-                      onChange={applyShiftTimes}
-                      options={shiftOptions}
-                      placeholder="Chọn ca"
-                      searchPlaceholder="Tìm ca..."
-                      isLoading={isLoading}
-                      inputClassName={fieldClass}
-                      comboboxMode
-                      getValue={item => String((item as { value?: string }).value ?? item)}
-                      getLabel={item => String((item as { label?: string }).label ?? item)}
-                    />
-                  </div>
-                </label>
+                {!hideLocalHeader ? (
+                  <>
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                      Ngày *
+                      <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`${fieldClass} mt-1`} />
+                    </label>
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                      Ca sản xuất *
+                      <div className="mt-1">
+                        <SearchableSelect
+                          value={shift}
+                          onChange={applyShiftTimes}
+                          options={shiftOptions}
+                          placeholder="Chọn ca"
+                          searchPlaceholder="Tìm ca..."
+                          isLoading={isLoading}
+                          inputClassName={fieldClass}
+                          comboboxMode
+                          getValue={item => String((item as { value?: string }).value ?? item)}
+                          getLabel={item => String((item as { label?: string }).label ?? item)}
+                        />
+                      </div>
+                    </label>
+                  </>
+                ) : null}
                 <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
                   Từ giờ
                   <input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className={`${fieldClass} mt-1`} />
@@ -582,52 +609,56 @@ export default function ShiftHandoverPanel({ onBack }: { onBack: () => void }) {
                   Đến giờ
                   <input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className={`${fieldClass} mt-1`} />
                 </label>
-                <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                  Máy
-                  <div className="mt-1">
-                    <SearchableSelect
-                      value={machineRef}
-                      onChange={setMachineRef}
-                      options={machines}
-                      placeholder="Chọn máy"
-                      searchPlaceholder="Tìm mã hoặc tên máy..."
-                      isLoading={isLoading}
-                      inputClassName={fieldClass}
-                      comboboxMode
-                      getValue={item => (item as MachineOption).code}
-                      getLabel={item => {
-                        const machine = item as MachineOption;
-                        return machine.code ? `${machine.code} · ${machine.name}` : machine.name;
-                      }}
-                      getSearchText={item => {
-                        const machine = item as MachineOption;
-                        return `${machine.code} ${machine.name}`.trim();
-                      }}
-                    />
-                  </div>
-                </label>
-                <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                  Người thực hiện *
-                  <div className="mt-1">
-                    <SearchableSelect
-                      value={operators}
-                      onChange={setOperators}
-                      options={filteredStaffOptions}
-                      placeholder="Chọn hoặc nhập tên"
-                      searchPlaceholder="Tìm người thực hiện..."
-                      isLoading={isLoading}
-                      inputClassName={fieldClass}
-                      comboboxMode
-                      allowCustomValue
-                      getValue={item => (item as StaffOption).name}
-                      getLabel={item => (item as StaffOption).name}
-                      getSearchText={item => {
-                        const staff = item as StaffOption;
-                        return `${staff.name} ${staff.shift}`.trim();
-                      }}
-                    />
-                  </div>
-                </label>
+                {!hideLocalHeader ? (
+                  <>
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                      Máy
+                      <div className="mt-1">
+                        <SearchableSelect
+                          value={machineRef}
+                          onChange={setMachineRef}
+                          options={machines}
+                          placeholder="Chọn máy"
+                          searchPlaceholder="Tìm mã hoặc tên máy..."
+                          isLoading={isLoading}
+                          inputClassName={fieldClass}
+                          comboboxMode
+                          getValue={item => (item as MachineOption).code}
+                          getLabel={item => {
+                            const machine = item as MachineOption;
+                            return machine.code ? `${machine.code} · ${machine.name}` : machine.name;
+                          }}
+                          getSearchText={item => {
+                            const machine = item as MachineOption;
+                            return `${machine.code} ${machine.name}`.trim();
+                          }}
+                        />
+                      </div>
+                    </label>
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                      Người thực hiện *
+                      <div className="mt-1">
+                        <SearchableSelect
+                          value={operators}
+                          onChange={setOperators}
+                          options={filteredStaffOptions}
+                          placeholder="Chọn hoặc nhập tên"
+                          searchPlaceholder="Tìm người thực hiện..."
+                          isLoading={isLoading}
+                          inputClassName={fieldClass}
+                          comboboxMode
+                          allowCustomValue
+                          getValue={item => (item as StaffOption).name}
+                          getLabel={item => (item as StaffOption).name}
+                          getSearchText={item => {
+                            const staff = item as StaffOption;
+                            return `${staff.name} ${staff.shift}`.trim();
+                          }}
+                        />
+                      </div>
+                    </label>
+                  </>
+                ) : null}
               </div>
 
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2">

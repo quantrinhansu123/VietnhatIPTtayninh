@@ -24,6 +24,7 @@ import {
   TableRow,
   TableEmptyRow
 } from '../../components/shared/table';
+import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
 
 export type TraKhoNvlHeader = {
   id?: string;
@@ -111,6 +112,8 @@ export function TraKhoNvlPanel({
   currentUser?: { id: string; name: string } | null;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('tra-kho-nvl');
+  const hubShared = useReportFormsSharedOptional();
+  const hideSharedFields = Boolean(hubShared);
   const [records, setRecords] = useState<TraKhoNvlHeader[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,6 +132,14 @@ export function TraKhoNvlPanel({
   const [tenKho, setTenKho] = useState('');
   const [ghiChu, setGhiChu] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([newDraftLine()]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setNgay(hubShared.ngay);
+    setCa(hubShared.ca);
+    setMay(hubShared.machineRef);
+    setGhiChu(hubShared.ghiChu);
+  }, [hubShared, hubShared?.ngay, hubShared?.ca, hubShared?.machineRef, hubShared?.ghiChu]);
 
   const [warehouses, setWarehouses] = useState<string[]>([]);
   const [machines, setMachines] = useState<string[]>([]);
@@ -505,7 +516,9 @@ export function TraKhoNvlPanel({
             </button>
           </div>
 
-          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className={`grid gap-1.5 sm:grid-cols-2 ${hideSharedFields ? 'lg:grid-cols-1' : 'lg:grid-cols-4'}`}>
+            {!hideSharedFields ? (
+              <>
             <label className="block space-y-0.5">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
               <input type="date" value={ngay} onChange={e => setNgay(e.target.value)} className={inputClass} />
@@ -543,6 +556,8 @@ export function TraKhoNvlPanel({
                 onChange={value => setMay(value === 'all' ? '' : value)}
               />
             </div>
+              </>
+            ) : null}
             <div className="space-y-1">
               <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Kho</span>
               <FilterCombobox
@@ -560,6 +575,7 @@ export function TraKhoNvlPanel({
             </div>
           </div>
 
+          {!hideSharedFields ? (
           <label className="block space-y-1">
             <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Ghi chú</span>
             <input
@@ -569,6 +585,7 @@ export function TraKhoNvlPanel({
               placeholder="Ghi chú (không bắt buộc)"
             />
           </label>
+          ) : null}
 
           <div className="overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full text-left text-xs">

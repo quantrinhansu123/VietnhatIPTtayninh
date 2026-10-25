@@ -18,6 +18,7 @@ import {
   type ProductionOrderRow
 } from '../ke-hoach-san-xuat';
 import { normalizeWarehouseMovements } from '../phieu-xuat-nhap-kho';
+import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
 
 type Line = { key: string; code: string; name: string; unit: string; qty: string };
 
@@ -39,6 +40,8 @@ function collectOrderStaffNames(order: ProductionOrderRow): string[] {
 }
 
 export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | null }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [shift, setShift] = useState('');
   const [machine, setMachine] = useState('');
@@ -84,6 +87,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
   }, [date, machine, machines, productionOrders, shift]);
 
   useEffect(() => {
+    if (hubShared) return;
     if (!date) {
       setRequester('');
       return;
@@ -93,7 +97,22 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
       return;
     }
     setRequester(prev => (prev && staffOptions.includes(prev) ? prev : ''));
-  }, [date, staffOptions]);
+  }, [date, hubShared, staffOptions]);
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setDate(hubShared.ngay);
+    setShift(hubShared.ca);
+    setMachine(hubShared.machineRef);
+    setRequester(hubShared.staffNames[0] || hubShared.staffText || '');
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.ca,
+    hubShared?.machineRef,
+    hubShared?.staffNames,
+    hubShared?.staffText
+  ]);
 
   const updateLine = (key: string, patch: Partial<Line>) =>
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)));
@@ -222,6 +241,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
         <h3 className="text-sm font-black text-zinc-900">Nhận vật tư về máy</h3>
         {saveButton}
       </div>
+      {!hideLocalHeader ? (
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         <label className={labelClass}>
           Ngày
@@ -272,6 +292,12 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
           </select>
         </label>
       </div>
+      ) : (
+        <p className="text-[11px] font-semibold text-zinc-500">
+          Người yêu cầu: <span className="font-bold text-zinc-800">{requester || '—'}</span>
+          <span className="text-zinc-400"> · lấy từ thông tin chung</span>
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <div className="min-w-[700px] space-y-1.5">

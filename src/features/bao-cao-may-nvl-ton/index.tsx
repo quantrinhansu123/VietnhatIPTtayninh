@@ -46,6 +46,7 @@ import {
   type ProductionOrderRow
 } from '../ke-hoach-san-xuat';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
+import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
 
 export const MACHINE_NVL_REPORT_TABS: { id: MachineNvlReportKind; label: string; hint: string }[] = [
   { id: 'dau_ca', label: 'Báo cáo đầu ca', hint: 'Kiểm kê NVL tồn khi bắt đầu ca' },
@@ -453,6 +454,8 @@ export function MachineNvlReportPanel({
   editReport?: MachineNvlSavedReport | null;
   onEditConsumed?: () => void;
 }) {
+  const hubShared = useReportFormsSharedOptional();
+  const hideLocalHeader = Boolean(hubShared);
   const [activeKind, setActiveKind] = useState<MachineNvlReportKind>('dau_ca');
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
@@ -559,18 +562,43 @@ export function MachineNvlReportPanel({
   const applyEditReport = (report: MachineNvlSavedReport) => {
     const found =
       findMachineByRef(machines, report.maMay) ?? findMachineByRef(machines, report.tenMay);
+    const nextMachineRef = found ? machineSelectValue(found) : report.tenMay || report.maMay;
+    const nextStaff = splitProductionOrderStaffNames(report.nhanSu);
     setActiveKind(report.reportKind);
     setEditingReportId(report.id);
     setDate(report.ngay || machineNvlToday());
     setShift(report.ca);
-    setMachineRef(found ? machineSelectValue(found) : report.tenMay || report.maMay);
-    setSelectedStaffNames(splitProductionOrderStaffNames(report.nhanSu));
+    setMachineRef(nextMachineRef);
+    setSelectedStaffNames(nextStaff);
     setNote(report.note);
     setLines(
       report.lines.length > 0 ? report.lines.map(savedMachineNvlLineToFormLine) : [emptyMachineNvlLine()]
     );
     setMessage('');
+    hubShared?.applyFromForm({
+      ngay: report.ngay || machineNvlToday(),
+      ca: report.ca,
+      machineRef: nextMachineRef,
+      staffNames: nextStaff,
+      ghiChu: report.note
+    });
   };
+
+  useEffect(() => {
+    if (!hubShared) return;
+    setDate(hubShared.ngay);
+    setShift(hubShared.ca);
+    setMachineRef(hubShared.machineRef);
+    setSelectedStaffNames(hubShared.staffNames);
+    setNote(hubShared.ghiChu);
+  }, [
+    hubShared,
+    hubShared?.ngay,
+    hubShared?.ca,
+    hubShared?.machineRef,
+    hubShared?.staffNames,
+    hubShared?.ghiChu
+  ]);
 
   useEffect(() => {
     if (!editReport || machines.length === 0) return;
@@ -623,6 +651,8 @@ export function MachineNvlReportPanel({
   }, [date, machines, machineRef, productionOrders, selectedMachine, shift]);
 
   useEffect(() => {
+    // Hub shared header owns staff selection when embedded.
+    if (hubShared) return;
     if (!date || !shift || !machineRef.trim()) {
       if (selectedStaffNames.length > 0) setSelectedStaffNames([]);
       return;
@@ -639,7 +669,7 @@ export function MachineNvlReportPanel({
       const next = prev.filter(name => staffOptions.includes(name));
       return next.length === prev.length ? prev : next;
     });
-  }, [date, machineRef, shift, staffOptions]);
+  }, [date, hubShared, machineRef, shift, staffOptions]);
 
   const toggleStaffName = (name: string) => {
     setSelectedStaffNames(prev =>
@@ -1195,6 +1225,7 @@ export function MachineNvlReportPanel({
                 Đang sửa {activeTabMeta.label.toLowerCase()} · bấm Cập nhật để lưu
               </p>
             ) : null}
+            {!hideLocalHeader ? (
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
               <label className={machineNvlFormLabelClass}>
                 Ngày
@@ -1272,6 +1303,7 @@ export function MachineNvlReportPanel({
                 />
               </label>
             </div>
+            ) : null}
 
             {isDauCaTab ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-sky-200 bg-sky-50/80 px-2 py-1">

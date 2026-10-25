@@ -66,6 +66,27 @@ function HubPanelFallback() {
   );
 }
 
+/** Giữ panel đã mở mounted (ẩn CSS) để đổi tab không mất draft chưa lưu. */
+function KeepAliveSlot({
+  tabId,
+  activeTab,
+  mountedTabs,
+  children
+}: {
+  tabId: ReportFormsHubTabId;
+  activeTab: ReportFormsHubTabId;
+  mountedTabs: ReadonlySet<ReportFormsHubTabId>;
+  children: React.ReactNode;
+}) {
+  if (!mountedTabs.has(tabId)) return null;
+  const isActive = activeTab === tabId;
+  return (
+    <div role="tabpanel" hidden={!isActive} aria-hidden={!isActive} className={isActive ? undefined : 'hidden'}>
+      <Suspense fallback={<HubPanelFallback />}>{children}</Suspense>
+    </div>
+  );
+}
+
 type Props = {
   menuItems: MenuCardConfig[];
   onBack: () => void;
@@ -125,6 +146,19 @@ export function ReportFormsHub({
     return hubItems[0]?.hubId ?? 'machine-nvl-report';
   });
 
+  const [mountedTabs, setMountedTabs] = useState<ReadonlySet<ReportFormsHubTabId>>(
+    () => new Set<ReportFormsHubTabId>([activeHubTab])
+  );
+
+  useEffect(() => {
+    setMountedTabs(prev => {
+      if (prev.has(activeHubTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeHubTab);
+      return next;
+    });
+  }, [activeHubTab]);
+
   useEffect(() => {
     if (hubItems.length === 0) return;
     if (!hubItems.some(item => item.hubId === activeHubTab)) {
@@ -156,7 +190,7 @@ export function ReportFormsHub({
         <div className="min-w-0">
           <h2 className="font-display text-sm font-semibold tracking-tight text-slate-900 sm:text-base">Nhập báo cáo</h2>
           <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
-            Điền thông tin chung phía trên — áp dụng khi đổi tab phiếu.
+            Header chung áp dụng mọi tab · đổi tab giữ draft chưa lưu.
           </p>
         </div>
         <button
@@ -209,95 +243,102 @@ export function ReportFormsHub({
           })}
         </div>
 
-        <div
-          role="tabpanel"
-          className="relative z-0 min-h-0 rounded-b-xl rounded-tr-xl border border-slate-200 bg-white p-1.5 shadow-card sm:p-2"
-        >
-          <Suspense fallback={<HubPanelFallback />}>
-            {activeHubTab === 'machine-nvl-report' ? (
-              <MachineNvlReportPanel
-                onBack={onBack}
-                onOpenList={() => onOpenList('machine-nvl-report-list')}
-                initialMachine={machineNvlReportPrefill}
-                onInitialMachineConsumed={onMachineNvlPrefillConsumed}
-                editReport={machineNvlEditReport}
-                onEditConsumed={onMachineNvlEditConsumed}
+        <div className="relative z-0 min-h-0 rounded-b-xl rounded-tr-xl border border-slate-200 bg-white p-1.5 shadow-card sm:p-2">
+          <KeepAliveSlot tabId="machine-nvl-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <MachineNvlReportPanel
+              onBack={onBack}
+              onOpenList={() => onOpenList('machine-nvl-report-list')}
+              initialMachine={machineNvlReportPrefill}
+              onInitialMachineConsumed={onMachineNvlPrefillConsumed}
+              editReport={machineNvlEditReport}
+              onEditConsumed={onMachineNvlEditConsumed}
+            />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="material-request" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <YeuCauXuatVatTuPanel currentUser={currentUser} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="tra-kho-nvl" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <TraKhoNvlPanel onBack={onBack} currentUser={currentUser} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="mixing-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <MixingReportListView
+              initialTab="form"
+              onBack={onBack}
+              initialMachine={mixingReportMachinePrefill}
+              onInitialMachineConsumed={onMixingPrefillConsumed}
+            />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="can-tu-dong" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <CanTuDongPanel onBack={onBack} currentUser={currentUser} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="can-tu-dong-entry" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <CanTuDongEntryForm onClose={onBack} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="can-kiem-kho" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <CanKiemKhoPilotPanel />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="machine-downtime-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <MachineDowntimeReportPanel onBack={onBack} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="machine-run-log" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <MachineRunLogPanel onBack={onBack} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="acceptance-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            {acceptanceShowForm ||
+            acceptanceEditReport ||
+            acceptanceEditReportGroup ||
+            acceptanceCreatePrefill ? (
+              <AcceptanceReportForm
+                onBack={resetAcceptanceForm}
+                onOpenList={resetAcceptanceForm}
+                editReport={acceptanceEditReport}
+                onEditConsumed={onAcceptanceEditConsumed}
+                editReportGroup={acceptanceEditReportGroup}
+                onEditGroupConsumed={onAcceptanceEditGroupConsumed}
+                createPrefill={acceptanceCreatePrefill}
+                onCreatePrefillConsumed={onAcceptanceCreatePrefillConsumed}
               />
-            ) : null}
-
-            {activeHubTab === 'material-request' ? <YeuCauXuatVatTuPanel currentUser={currentUser} /> : null}
-
-            {activeHubTab === 'tra-kho-nvl' ? (
-              <TraKhoNvlPanel onBack={onBack} currentUser={currentUser} />
-            ) : null}
-
-            {activeHubTab === 'mixing-report' ? (
-              <MixingReportListView
-                initialTab="form"
+            ) : (
+              <AcceptanceReportListView
                 onBack={onBack}
-                initialMachine={mixingReportMachinePrefill}
-                onInitialMachineConsumed={onMixingPrefillConsumed}
+                onCreate={prefill => {
+                  setAcceptanceEditReport(null);
+                  setAcceptanceEditReportGroup(null);
+                  setAcceptanceCreatePrefill(prefill ?? null);
+                  setAcceptanceShowForm(true);
+                }}
+                onEdit={report => {
+                  setAcceptanceCreatePrefill(null);
+                  setAcceptanceEditReportGroup(null);
+                  setAcceptanceEditReport(report);
+                  setAcceptanceShowForm(true);
+                }}
+                onEditGroup={reports => {
+                  setAcceptanceCreatePrefill(null);
+                  setAcceptanceEditReport(null);
+                  setAcceptanceEditReportGroup(reports);
+                  setAcceptanceShowForm(true);
+                }}
               />
-            ) : null}
+            )}
+          </KeepAliveSlot>
 
-            {activeHubTab === 'can-tu-dong' ? (
-              <CanTuDongPanel onBack={onBack} currentUser={currentUser} />
-            ) : null}
+          <KeepAliveSlot tabId="shift-handover-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <ShiftHandoverPanel onBack={onBack} />
+          </KeepAliveSlot>
 
-            {activeHubTab === 'can-tu-dong-entry' ? <CanTuDongEntryForm onClose={onBack} /> : null}
-
-            {activeHubTab === 'can-kiem-kho' ? <CanKiemKhoPilotPanel /> : null}
-
-            {activeHubTab === 'machine-downtime-report' ? (
-              <MachineDowntimeReportPanel onBack={onBack} />
-            ) : null}
-
-            {activeHubTab === 'machine-run-log' ? <MachineRunLogPanel onBack={onBack} /> : null}
-
-            {activeHubTab === 'acceptance-report' ? (
-              acceptanceShowForm ||
-              acceptanceEditReport ||
-              acceptanceEditReportGroup ||
-              acceptanceCreatePrefill ? (
-                <AcceptanceReportForm
-                  onBack={resetAcceptanceForm}
-                  onOpenList={resetAcceptanceForm}
-                  editReport={acceptanceEditReport}
-                  onEditConsumed={onAcceptanceEditConsumed}
-                  editReportGroup={acceptanceEditReportGroup}
-                  onEditGroupConsumed={onAcceptanceEditGroupConsumed}
-                  createPrefill={acceptanceCreatePrefill}
-                  onCreatePrefillConsumed={onAcceptanceCreatePrefillConsumed}
-                />
-              ) : (
-                <AcceptanceReportListView
-                  onBack={onBack}
-                  onCreate={prefill => {
-                    setAcceptanceEditReport(null);
-                    setAcceptanceEditReportGroup(null);
-                    setAcceptanceCreatePrefill(prefill ?? null);
-                    setAcceptanceShowForm(true);
-                  }}
-                  onEdit={report => {
-                    setAcceptanceCreatePrefill(null);
-                    setAcceptanceEditReportGroup(null);
-                    setAcceptanceEditReport(report);
-                    setAcceptanceShowForm(true);
-                  }}
-                  onEditGroup={reports => {
-                    setAcceptanceCreatePrefill(null);
-                    setAcceptanceEditReport(null);
-                    setAcceptanceEditReportGroup(reports);
-                    setAcceptanceShowForm(true);
-                  }}
-                />
-              )
-            ) : null}
-
-            {activeHubTab === 'shift-handover-report' ? <ShiftHandoverPanel onBack={onBack} /> : null}
-
-            {activeHubTab === 'doi-soat' ? <DoiSoatPanel onBack={onBack} currentUser={currentUser} /> : null}
-          </Suspense>
+          <KeepAliveSlot tabId="doi-soat" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <DoiSoatPanel onBack={onBack} currentUser={currentUser} />
+          </KeepAliveSlot>
         </div>
       </div>
     </div>

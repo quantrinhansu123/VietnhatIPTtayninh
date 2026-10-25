@@ -22,6 +22,7 @@
 - **Ẩn** với 2 tab cân AI: `can-tu-dong` (Danh sách cân AI), `can-tu-dong-entry` (Trạm cân AI).
 - Hợp field: Ngày · Giờ · Ca · Chi nhánh · Máy · Nhân sự (tick nhiều theo ngày+ca+máy / LSX) · Ghi chú.
 - Form trong hub: `useReportFormsSharedOptional()` → sync state + ẩn header local trùng; route độc lập giữ header riêng.
+- **Keep-alive tab:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab **không** mất draft chưa lưu; chỉ tải lazy lần đầu mở từng tab.
 
 ## Tab (theo quyền menu)
 

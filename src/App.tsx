@@ -83,6 +83,7 @@ import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { TraKhoNvlPanel } from './features/tra-kho-nvl';
+import { TimMaLoiPanel } from './features/tim-ma-loi';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
 import { ReportFormsHub } from './features/report-forms';
 import { BieuDoThPanel } from './features/bieu-do-th';
@@ -1192,6 +1193,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <KiemKhoPanel onBack={() => goBack('factory-kho')} currentUser={authUser} />
+              </motion.div>
+            ) : resolvedTab === 'tim-ma-loi' ? (
+              <motion.div
+                key="tim-ma-loi"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <TimMaLoiPanel onBack={() => goBack('factory-kho')} />
               </motion.div>
             ) : resolvedTab === 'kiem-kho-chenh-lech' ? (
               <motion.div

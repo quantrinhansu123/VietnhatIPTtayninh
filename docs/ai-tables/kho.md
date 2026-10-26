@@ -15,6 +15,7 @@
 | GET | `/api/kho/phieu?loai_phieu=nhap|xuat&kho=...&ngay=&status=` | Mặc định phiếu `chua_chot`. `ngay` lọc đúng ngày. `status=all` lấy cả chưa chốt và đã chốt |
 | GET | `/api/kho/lich-su` | Ghép header `phieu_nhap`/`phieu_xuat` với dòng `nhap_kho`/`xuat_kho` theo `ma_phieu`. Mặc định chỉ `da_chot` hoặc `status` null. `status=all` gồm cả phiếu `chua_chot` đã có dòng; trang lịch sử `/lich-su-xuat-nhap-kho` không gửi `status=all` nên chỉ hiện phiếu đã chốt |
 | POST | `/api/kho/kiem-tra-ma-quet` | Trả `matches` (`ma_sp_quet`, `ma_phieu`) nếu mã đã có dòng. `duplicateCodes` luôn rỗng: cùng một QR được ghi thêm dòng mới. |
+| POST | `/api/kho/tra-cuu-qr` | Tra 1 mã QR trong `nhap_kho` — body `{ ma_sp_quet }`. Trả `found` + `rows` (phiếu, tên SP…). Dùng tab **Tìm mã lỗi** `/tim-ma-loi`. |
 | POST | `/api/kho/quet-dot` | Lưu cả đợt QR thành phẩm bằng một lệnh insert nhiều dòng, kèm ĐVT. Mã đã có trên phiếu khác vẫn được ghi thêm. Chỉ bỏ mã đã có đúng trên phiếu đang lưu. **Xuất TP:** nhận `so_luong` từng item (mặc định 1; cho phép phân số `1/2`, `1/3`); không bắt buộc mã đã có trong `nhap_kho`; vẫn chặn mã đã xuất / đang ở phiếu xuất khác. `cho_phep_trung` (nút Nhập kho của cân AI) ghi từng dòng kể cả mã lặp trong đợt. Cho bổ sung phiếu nhập đã chốt nhưng chưa in |
 | POST | `/api/kho/quet` | Mỗi lần quét máy → insert 1 dòng `nhap_kho` hoặc `xuat_kho` (`so_luong=1`), upsert header `phieu_nhap`/`phieu_xuat`, cập nhật tồn `kho`; cả hai bảng dòng lưu `ma_sp` gốc, `ma_sp_quet` đầy đủ, `ten_sp`, `don_vi` |
 | POST | `/api/kho/phieu` | Tạo/cập nhật header (`status` `chua_chot`/`da_chot`); nhận thêm `items` NVL hoặc hàng hỏng nhập tay để ghi `nhap_kho`/`xuat_kho` không cần `ma_sp_quet`; tính lại tồn NVL; không còn đồng bộ sang bảng QR riêng, tồn tính trực tiếp từ nhập/xuất kho |
@@ -27,6 +28,7 @@ Body `/api/kho/quet`: `loai_phieu` (`nhap`\|`xuat`), `ma_sp` (mã đầy đủ v
 | File | Nội dung |
 |------|----------|
 | `src/features/phieu-xuat-nhap-kho/index.tsx` | Phiếu thành phẩm nhập/xuất QR (**Lưu đợt** tạo `chua_chot`, **Lưu phiếu** chốt `da_chot`) và phiếu NVL/hàng hỏng nhập tay lưu sang DB kho |
+| `src/features/tim-ma-loi/index.tsx` | Tab **Tìm mã lỗi** (`/tim-ma-loi`): quét/gõ QR → `POST /api/kho/tra-cuu-qr`; không có trong `nhap_kho` → cảnh báo |
 | `src/components/ProductQrScanner.tsx` | Hỗ trợ `onScan` async; feedback “Đã ghi nhận” |
 
 ## Ghi chú

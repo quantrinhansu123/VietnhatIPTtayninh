@@ -717,6 +717,12 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'kiem-kho'
   },
   {
+    title: 'Tìm mã lỗi',
+    desc: 'Quét QR và đối chiếu nhap_kho — cảnh báo nếu tem chưa nhập kho.',
+    icon: ScanBarcode,
+    tab: 'tim-ma-loi'
+  },
+  {
     title: 'Cân kiểm kho',
     desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
     icon: Scale,
@@ -1058,6 +1064,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Phiếu xuất nhập kho', tab: 'warehouse-slip' },
       { label: 'Trả kho NVL', tab: 'tra-kho-nvl' },
       { label: 'Kiểm kho', tab: 'kiem-kho' },
+      { label: 'Tìm mã lỗi', tab: 'tim-ma-loi' },
       { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
       { label: 'Tồn kho', tab: 'ton-kho' },
@@ -1093,6 +1100,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'can-tu-dong-pilot': { group: 'Sản xuất', sub: 'Trạm cân QR' },
   'can-kiem-kho': { group: 'Kho', sub: 'Cân kiểm kho' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },
+  'tim-ma-loi': { group: 'Kho', sub: 'Tìm mã lỗi' },
   'quan-ly-kho': { group: 'Kho', sub: 'Danh mục kho' },
   'damaged-goods-report': { group: 'Sản xuất', sub: 'Báo cáo hàng hư' },
   'damaged-goods-report-list': { group: 'QC', sub: 'Kiểm soát hàng hỏng' },

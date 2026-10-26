@@ -13094,6 +13094,48 @@ export function createApp() {
     return res.json({ duplicateCodes: [], matches, unavailableCodes: [] });
   });
 
+  /** Tra cứu 1 mã QR trong `nhap_kho` — dùng tab Tìm mã lỗi (cảnh báo nếu chưa nhập kho). */
+  app.post('/api/kho/tra-cuu-qr', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `DB kho chưa cấu hình (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+    const code = String(req.body?.ma_sp_quet ?? req.body?.ma_qr ?? req.body?.code ?? '').trim();
+    if (!code) {
+      return res.status(400).json({ error: 'Cần ma_sp_quet.' });
+    }
+
+    const selectCols = 'id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, ma_phieu, created_at';
+    let { data, error } = await supabaseKho
+      .from('nhap_kho')
+      .select(selectCols)
+      .eq('ma_sp_quet', code)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    // Một số tem có thể lệch hoa/thường — thử thêm nếu exact miss.
+    if (!error && (!data || data.length === 0) && code !== code.toUpperCase()) {
+      const retry = await supabaseKho
+        .from('nhap_kho')
+        .select(selectCols)
+        .eq('ma_sp_quet', code.toUpperCase())
+        .order('created_at', { ascending: false })
+        .limit(20);
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      return res.status(500).json({ error: error.message || 'Không tra cứu được mã QR trong nhap_kho.' });
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    return res.json({
+      found: rows.length > 0,
+      ma_sp_quet: code,
+      rows
+    });
+  });
+
   // Số lượng thành phẩm đã xuất (phiếu đã chốt) theo lệnh xuất hàng; phiếu gắn lệnh qua thẻ [LXH:<mã lệnh>] trong ghi_chu.
   app.get('/api/kho/lenh-xuat-da-xuat', async (_req, res) => {
     const khoDb = supabaseKho;

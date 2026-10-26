@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  AlertTriangle,
   CheckCircle2,
   Loader2,
   ScanBarcode,
@@ -70,6 +69,31 @@ function formatCreatedAt(value?: string | null) {
   }
 }
 
+function notifyLookupResult(entry: LookupResult, opts?: { duplicate?: boolean }) {
+  const prefix = opts?.duplicate ? 'Đã quét — ' : '';
+  if (entry.error) {
+    showAppToast(`${prefix}${entry.error}`, 'error');
+    return;
+  }
+  if (!entry.found) {
+    const bad = looksLikeBadCode(entry.code);
+    showAppToast(
+      bad
+        ? `${prefix}mã "${entry.code}" giống mã lỗi đọc QR — chưa có trong nhap_kho.`
+        : `${prefix}mã "${entry.code}" chưa có trong nhap_kho.`,
+      'error'
+    );
+    return;
+  }
+  const phieu = entry.rows.map(r => String(r.ma_phieu || '').trim()).filter(Boolean);
+  const uniquePhieu = [...new Set(phieu)];
+  showAppToast(
+    uniquePhieu.length
+      ? `${prefix}đã có trong nhap_kho (${uniquePhieu.join(', ')}).`
+      : `${prefix}đã có trong nhap_kho.`
+  );
+}
+
 export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
   const [manualCode, setManualCode] = useState('');
   const [checking, setChecking] = useState(false);
@@ -78,14 +102,27 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
   const [results, setResults] = useState<LookupResult[]>([]);
   const [lastResult, setLastResult] = useState<LookupResult | null>(null);
   const checkingRef = useRef(false);
+  const resultsRef = useRef<LookupResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const lookupCode = useCallback(async (raw: string): Promise<boolean> => {
+  resultsRef.current = results;
+
+  const lookupCode = useCallback(async (raw: string): Promise<boolean | 'duplicate'> => {
     const code = String(raw || '').trim();
     if (!code) {
       showAppToast('Nhập hoặc quét mã QR trước.', 'error');
       return false;
     }
+
+    const existing = resultsRef.current.find(
+      item => item.code.localeCompare(code, undefined, { sensitivity: 'accent' }) === 0
+    );
+    if (existing) {
+      setLastResult(existing);
+      notifyLookupResult(existing, { duplicate: true });
+      return 'duplicate';
+    }
+
     if (checkingRef.current) return false;
     checkingRef.current = true;
     setChecking(true);
@@ -107,27 +144,21 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
         rows,
         checkedAt: Date.now()
       };
-      setLastResult(entry);
-      setResults(prev => [entry, ...prev.filter(item => item.code !== entry.code)].slice(0, 100));
-
-      if (!found) {
-        const bad = looksLikeBadCode(entry.code);
-        showAppToast(
-          bad
-            ? `Cảnh báo: mã "${entry.code}" giống mã lỗi đọc QR — không có trong nhap_kho.`
-            : `Cảnh báo: mã "${entry.code}" chưa có trong nhap_kho.`,
-          'error'
-        );
-        return false;
+      // Chặn race: cùng mã quét 2 lần trước khi state kịp cập nhật.
+      if (resultsRef.current.some(item => item.code === entry.code)) {
+        setLastResult(entry);
+        notifyLookupResult(entry, { duplicate: true });
+        return 'duplicate';
       }
-
-      const phieu = rows.map(r => String(r.ma_phieu || '').trim()).filter(Boolean);
-      const uniquePhieu = [...new Set(phieu)];
-      showAppToast(
-        uniquePhieu.length
-          ? `OK — đã có trong nhap_kho (${uniquePhieu.join(', ')}).`
-          : 'OK — đã có trong nhap_kho.'
-      );
+      setLastResult(entry);
+      setResults(prev => {
+        if (prev.some(item => item.code === entry.code)) return prev;
+        const next = [entry, ...prev].slice(0, 100);
+        resultsRef.current = next;
+        return next;
+      });
+      notifyLookupResult(entry);
+      // Trả true cả khi chưa có trong kho — vẫn ghi nhận 1 lần trong phiên quét.
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Không tra cứu được mã QR.';
@@ -138,10 +169,20 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
         checkedAt: Date.now(),
         error: message
       };
+      if (resultsRef.current.some(item => item.code === entry.code)) {
+        setLastResult(entry);
+        notifyLookupResult(entry, { duplicate: true });
+        return 'duplicate';
+      }
       setLastResult(entry);
-      setResults(prev => [entry, ...prev].slice(0, 100));
-      showAppToast(message, 'error');
-      return false;
+      setResults(prev => {
+        if (prev.some(item => item.code === entry.code)) return prev;
+        const next = [entry, ...prev].slice(0, 100);
+        resultsRef.current = next;
+        return next;
+      });
+      notifyLookupResult(entry);
+      return true;
     } finally {
       checkingRef.current = false;
       setChecking(false);
@@ -150,8 +191,8 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
 
   const handleManualSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const ok = await lookupCode(manualCode);
-    if (ok) setManualCode('');
+    const result = await lookupCode(manualCode);
+    if (result === true || result === 'duplicate') setManualCode('');
     inputRef.current?.focus();
   };
 
@@ -164,7 +205,7 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
         <div>
           <h1 className="font-display text-lg font-bold tracking-tight text-zinc-900 sm:text-xl">Tìm mã lỗi</h1>
           <p className="mt-1 text-sm text-zinc-600">
-            Quét QR rồi đối chiếu với <span className="font-semibold">nhap_kho</span>. Nếu chưa có dòng nhập → cảnh báo.
+            Quét QR đối chiếu <span className="font-semibold">nhap_kho</span>: xanh = đã có, đỏ = chưa có. Mỗi mã chỉ ghi nhận 1 lần.
           </p>
         </div>
         <button
@@ -228,22 +269,22 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
           className={`rounded-2xl border-2 p-4 ${
             lastResult.found
               ? 'border-emerald-300 bg-emerald-50'
-              : 'border-amber-400 bg-amber-50'
+              : 'border-rose-400 bg-rose-50'
           }`}
         >
           <div className="flex items-start gap-3">
             {lastResult.found ? (
               <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
             ) : (
-              <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-amber-600" />
+              <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
             )}
             <div className="min-w-0 flex-1">
-              <p className={`text-sm font-black ${lastResult.found ? 'text-emerald-900' : 'text-amber-950'}`}>
+              <p className={`text-sm font-black ${lastResult.found ? 'text-emerald-900' : 'text-rose-950'}`}>
                 {lastResult.found
                   ? 'Mã đã có trong nhap_kho'
                   : looksLikeBadCode(lastResult.code)
-                    ? 'Cảnh báo — mã giống lỗi đọc QR / chưa nhập kho'
-                    : 'Cảnh báo — mã chưa có trong nhap_kho'}
+                    ? 'Chưa có — mã giống lỗi đọc QR / chưa nhập kho'
+                    : 'Chưa có trong nhap_kho'}
               </p>
               <p className="mt-1 break-all font-mono text-base font-bold text-zinc-900">{lastResult.code}</p>
               {lastResult.error ? (
@@ -306,16 +347,16 @@ export function TimMaLoiPanel({ onBack }: { onBack: () => void }) {
                 {item.found ? (
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                 ) : (
-                  <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                  <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="break-all font-mono text-sm font-bold text-zinc-900">{item.code}</div>
-                  <div className={`text-xs font-semibold ${item.found ? 'text-emerald-700' : 'text-amber-800'}`}>
+                  <div className={`text-xs font-semibold ${item.found ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {item.found
-                      ? `Có trong nhap_kho${
+                      ? `Đã có trong nhap_kho${
                           item.rows[0]?.ma_phieu ? ` · ${item.rows.map(r => r.ma_phieu).filter(Boolean).slice(0, 3).join(', ')}` : ''
                         }`
-                      : item.error || 'Không có trong nhap_kho'}
+                      : item.error || 'Chưa có trong nhap_kho'}
                   </div>
                 </div>
                 <span className="shrink-0 text-[11px] font-medium text-zinc-400">{formatCheckedAt(item.checkedAt)}</span>

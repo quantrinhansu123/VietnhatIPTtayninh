@@ -54,7 +54,7 @@ import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, PackageMinus, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
-  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode
+  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode, BadgeCheck
   , X
 } from 'lucide-react';
 import type { AppTab } from '../routes';
@@ -725,7 +725,7 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
   {
     title: 'Kiểm định tem',
     desc: 'Quét QR tem, xem ngày/ca/người sản xuất, đối chiếu trạm cân AI và lập biên bản.',
-    icon: ScanBarcode,
+    icon: BadgeCheck,
     tab: 'kiem-dinh-tem'
   },
   {

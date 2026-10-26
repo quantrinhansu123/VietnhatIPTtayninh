@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Printer, ScanBarcode, Search, Trash2, XCircle } from 'lucide-react';
+import { Loader2, Printer, ScanBarcode, Search, Trash2 } from 'lucide-react';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { BienBanPrintModal, formatBbDate, type BienBanRecord } from './BienBanPrint';
@@ -227,11 +227,6 @@ export function KiemDinhTemPanel({
           }`}
         >
           <div className="flex items-start gap-3">
-            {tem.da_len_tram_can ? (
-              <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
-            ) : (
-              <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
-            )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black text-zinc-900">
                 {tem.da_len_tram_can ? 'Tem đã được đưa lên trạm cân AI' : 'Tem CHƯA có dữ liệu trên trạm cân AI'}
@@ -240,9 +235,9 @@ export function KiemDinhTemPanel({
               {tem.da_len_tram_can && (
                 <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
                   {previewRows.map(([k, v]) => (
-                    <div key={k} className="flex gap-2">
-                      <dt className="w-36 shrink-0 font-semibold text-zinc-500">{k}</dt>
-                      <dd className="font-semibold text-zinc-900">{v}</dd>
+                    <div key={k} className="flex flex-col gap-0 sm:flex-row sm:gap-2">
+                      <dt className="text-xs font-semibold text-zinc-500 sm:w-36 sm:shrink-0 sm:text-sm">{k}</dt>
+                      <dd className="min-w-0 break-words font-semibold text-zinc-900">{v}</dd>
                     </div>
                   ))}
                 </dl>
@@ -276,11 +271,11 @@ export function KiemDinhTemPanel({
               <input className={`${fieldCls} mt-1`} value={ghiChu} onChange={e => setGhiChu(e.target.value)} />
             </label>
           </div>
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={() => setTem(null)}
-              className="h-10 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700"
+              className="h-11 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700 sm:h-10"
             >
               Hủy
             </button>
@@ -288,7 +283,7 @@ export function KiemDinhTemPanel({
               type="button"
               onClick={save}
               disabled={saving}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white disabled:opacity-60 sm:h-10"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Lập biên bản
             </button>
@@ -305,9 +300,9 @@ export function KiemDinhTemPanel({
         ) : (
           <ul className="divide-y divide-zinc-100">
             {records.map(r => (
-              <li key={r.ma_bien_ban} className="flex items-center gap-3 px-3 py-3 sm:px-4">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-zinc-900">
+              <li key={r.ma_bien_ban} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-4">
+                <div className="min-w-0 flex-1 basis-full sm:basis-0">
+                  <div className="break-words text-sm font-bold text-zinc-900">
                     {r.ma_bien_ban}{' '}
                     <span className={r.ket_luan === 'khong_dat' ? 'text-rose-600' : 'text-emerald-600'}>
                       · {r.ket_luan === 'khong_dat' ? 'Không đạt' : 'Đạt'}

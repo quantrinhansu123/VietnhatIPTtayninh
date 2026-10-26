@@ -257,8 +257,8 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-db-kho.sql', 'supabase-phieu-nhap-san-pham-ma-chi-tiet.sql'],
     apiPrefix: '/api/kho',
     serverLines: 'API /api/kho/* trong server.ts',
-    appTab: 'warehouse-slip | warehouse-history | tim-ma-loi',
-    appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx, src/features/tim-ma-loi/index.tsx',
+    appTab: 'warehouse-slip | warehouse-history | tim-ma-loi | kiem-dinh-tem',
+    appLines: 'src/features/phieu-xuat-nhap-kho/index.tsx, src/features/tim-ma-loi/index.tsx, src/features/kiem-dinh-tem/index.tsx',
     components: ['src/components/WarehouseSlipPrintModal.tsx', 'src/components/ProductQrPrintModal.tsx', 'src/components/ProductQrScanner.tsx'],
     utils: ['scripts/sync-kho-nvl-from-phieu.mjs']
   },

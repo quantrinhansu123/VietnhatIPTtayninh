@@ -13136,6 +13136,124 @@ export function createApp() {
     });
   });
 
+  /** Kiểm định tem: tra QR trong can_tu_dong (trạm cân AI) → ngày / ca / máy / lệnh SX / người sản xuất. */
+  app.post('/api/kiem-dinh-tem/tra-cuu', async (req, res) => {
+    if (!supabaseWeighing) {
+      return res.status(503).json({ error: `Chưa cấu hình DB cân tự động (${SUPABASE_WEIGHING_DB_LABEL}).` });
+    }
+    const code = String(req.body?.ma_qr ?? req.body?.ma_sp_quet ?? '').trim();
+    if (!code) return res.status(400).json({ error: 'Cần ma_qr.' });
+    try {
+      const { data, error } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('*')
+        .eq('qr_code', code)
+        .order('captured_at', { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (error) return res.status(500).json({ error: error.message || 'Không đọc được can_tu_dong.' });
+      const row = (data?.[0] ?? null) as Record<string, unknown> | null;
+      const base = { ma_qr: code, ma_sp: code.split(/[+_]/)[0]?.trim() || null };
+      if (!row) return res.json({ ...base, da_len_tram_can: false });
+
+      const shiftWindows = await loadCanTuDongShiftWindows();
+      const lenhSx = resolveCanTuDongProductionOrder(row);
+      let nguoiSanXuat = '';
+      if (supabase && lenhSx) {
+        const { data: orders } = await supabase
+          .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
+          .select('*')
+          .eq('ma_lenh_sx', lenhSx)
+          .limit(1);
+        const order = (orders?.[0] ?? null) as Record<string, unknown> | null;
+        if (order) {
+          nguoiSanXuat = [
+            ['Trưởng ca', order.truong_ca],
+            ['Nhân sự chính', order.nhan_su_chinh],
+            ['Thợ phụ', order.tho_phu],
+            ['Học việc', order.hoc_viec]
+          ]
+            .filter(([, v]) => String(v ?? '').trim())
+            .map(([label, v]) => `${label}: ${String(v).trim()}`)
+            .join('; ');
+          if (!nguoiSanXuat) nguoiSanXuat = String(order.nhan_su ?? order.cong_nhan ?? '').trim();
+        }
+      }
+      return res.json({
+        ...base,
+        da_len_tram_can: true,
+        ngay: resolveCanTuDongNgayColumn(row),
+        ca: resolveCanTuDongCa(row, shiftWindows),
+        may: resolveCanTuDongMachine(row),
+        lenh_sx: lenhSx,
+        nguoi_san_xuat: nguoiSanXuat || null,
+        captured_at: row.captured_at ?? null,
+        device_id: row.device_id ?? null,
+        can_loi: asFiniteNumber(row.tare_weight),
+        can_san_pham: asFiniteNumber(row.weight),
+        khoi_luong_thuc: resolveCanTuDongNetWeight(row)
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tra cứu tem.' });
+    }
+  });
+
+  app.get('/api/bien-ban', async (_req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const { data, error } = await supabase
+      .from('bien_ban')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) {
+      return res.status(500).json({ error: error.message || 'Không đọc được bảng bien_ban. Hãy chạy supabase-bien-ban.sql.' });
+    }
+    return res.json({ records: data || [] });
+  });
+
+  app.post('/api/bien-ban', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const text = (v: unknown) => String(v ?? '').trim() || null;
+    const maQr = text(b.ma_qr);
+    if (!maQr) return res.status(400).json({ error: 'Cần ma_qr.' });
+    const stamp = new Date()
+      .toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
+      .replace(/[-: ]/g, '');
+    const ketLuan = b.ket_luan === 'khong_dat' ? 'khong_dat' : 'dat';
+    const { data, error } = await supabase
+      .from('bien_ban')
+      .insert({
+        ma_bien_ban: `BB-KDT-${stamp.slice(0, 8)}-${stamp.slice(8)}`,
+        ma_qr: maQr,
+        ma_sp: text(b.ma_sp),
+        ngay_sx: text(b.ngay_sx),
+        ca: text(b.ca),
+        may: text(b.may),
+        lenh_sx: text(b.lenh_sx),
+        nguoi_san_xuat: text(b.nguoi_san_xuat),
+        da_len_tram_can: Boolean(b.da_len_tram_can),
+        thoi_diem_can: text(b.thoi_diem_can),
+        du_lieu_can: b.du_lieu_can && typeof b.du_lieu_can === 'object' ? b.du_lieu_can : null,
+        ket_luan: ketLuan,
+        noi_dung: text(b.noi_dung),
+        ghi_chu: text(b.ghi_chu),
+        nguoi_lap: text(b.nguoi_lap)
+      })
+      .select('*')
+      .single();
+    if (error) {
+      return res.status(500).json({ error: error.message || 'Không lưu được biên bản. Hãy chạy supabase-bien-ban.sql.' });
+    }
+    return res.json({ success: true, record: data });
+  });
+
+  app.delete('/api/bien-ban/:ma_bien_ban', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    const { error } = await supabase.from('bien_ban').delete().eq('ma_bien_ban', String(req.params.ma_bien_ban || '').trim());
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
+  });
+
   // Số lượng thành phẩm đã xuất (phiếu đã chốt) theo lệnh xuất hàng; phiếu gắn lệnh qua thẻ [LXH:<mã lệnh>] trong ghi_chu.
   app.get('/api/kho/lenh-xuat-da-xuat', async (_req, res) => {
     const khoDb = supabaseKho;

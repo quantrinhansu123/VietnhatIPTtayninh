@@ -91,6 +91,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'warehouse-slip-thanh-pham', label: 'Phiếu xuất nhập kho - Thành phẩm' },
       { tab: 'kiem-kho', label: 'Kiểm kho' },
       { tab: 'tim-ma-loi', label: 'Tìm mã lỗi' },
+      { tab: 'kiem-dinh-tem', label: 'Kiểm định tem' },
       { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'kiem-kho-chenh-lech', label: 'Xử lý chênh lệch' },
       { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },

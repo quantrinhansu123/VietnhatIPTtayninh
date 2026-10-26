@@ -49,6 +49,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `ma_qr_nvl` | `/kho-hang` (QR đã cấp của NVL) | [kho_nvl.md](./kho_nvl.md) |
 | `kho` *(DB kho mới)* | `/phieu-xuat-nhap-kho` (quét máy) | [kho.md](./kho.md) |
 | *(hub)* `tim-ma-loi` | `/tim-ma-loi` — quét QR ↔ `nhap_kho` | [tim_ma_loi.md](./tim_ma_loi.md) |
+| `bien_ban` | `/kiem-dinh-tem` — quét QR tem ↔ `can_tu_dong`, lập biên bản | [bien_ban.md](./bien_ban.md) |
 | `phieu_kho` | `/phieu-xuat-nhap-kho` | [phieu_xuat_nhap_kho.md](./phieu_xuat_nhap_kho.md) |
 | `ton_kho` *(tổng hợp)* | `/ton-kho` | [ton_kho.md](./ton_kho.md) |
 | `don_hang` | `/don-hang` | [don_hang.md](./don_hang.md) |

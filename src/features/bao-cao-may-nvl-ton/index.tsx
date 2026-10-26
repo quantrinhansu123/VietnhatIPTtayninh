@@ -645,9 +645,17 @@ export function MachineNvlReportPanel({
       return machineNvlOrderMatchesMachine(resolveProductionOrderMachine(order, machines), selectedMachine, machineRef);
     });
 
-    return Array.from(new Set<string>(matchedOrders.flatMap(order => splitProductionOrderStaffNames(order.staff)))).sort((a, b) =>
-      a.localeCompare(b, 'vi')
-    );
+    return Array.from(
+      new Set<string>(
+        matchedOrders.flatMap(order => [
+          ...splitProductionOrderStaffNames(order.staff),
+          ...splitProductionOrderStaffNames(order.shiftLead),
+          ...splitProductionOrderStaffNames(order.mainStaff),
+          ...splitProductionOrderStaffNames(order.assistantStaff),
+          ...splitProductionOrderStaffNames(order.traineeStaff)
+        ])
+      )
+    ).sort((a, b) => a.localeCompare(b, 'vi'));
   }, [date, machines, machineRef, productionOrders, selectedMachine, shift]);
 
   useEffect(() => {

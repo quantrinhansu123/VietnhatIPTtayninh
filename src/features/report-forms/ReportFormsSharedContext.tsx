@@ -52,6 +52,17 @@ function orderMatchesMachine(orderMachine: string, selectedMachine: MachineRow |
   );
 }
 
+/** Gom đủ nhân sự LSX: nhân sự + trưởng ca + thợ chính/phụ + học việc. */
+function collectProductionOrderStaffNames(order: ProductionOrderRow): string[] {
+  return [
+    ...splitProductionOrderStaffNames(order.staff),
+    ...splitProductionOrderStaffNames(order.shiftLead),
+    ...splitProductionOrderStaffNames(order.mainStaff),
+    ...splitProductionOrderStaffNames(order.assistantStaff),
+    ...splitProductionOrderStaffNames(order.traineeStaff)
+  ];
+}
+
 export type ReportFormsSharedMachine = {
   id: string;
   code: string;
@@ -168,9 +179,9 @@ export function ReportFormsSharedProvider({ children }: { children: ReactNode })
         machineRef
       );
     });
-    return Array.from(
-      new Set(matchedOrders.flatMap(order => splitProductionOrderStaffNames(order.staff)))
-    ).sort((a, b) => a.localeCompare(b, 'vi'));
+    return Array.from(new Set(matchedOrders.flatMap(collectProductionOrderStaffNames))).sort((a, b) =>
+      a.localeCompare(b, 'vi')
+    );
   }, [ca, machineRef, machines, ngay, productionOrders, selectedMachine]);
 
   useEffect(() => {

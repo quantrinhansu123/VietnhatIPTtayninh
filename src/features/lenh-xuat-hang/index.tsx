@@ -6,6 +6,7 @@ import { formatMoney, formatNumber } from '../../utils';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { RepeatableLineRow, RepeatableLinesBlock } from '../../components/RepeatableLinesBlock';
 import { ShippingDeliveryPrintSheet } from '../../components/ShippingDeliveryPrintSheet';
+import { ShippingWarehouseExportPrintSheet } from '../../components/ShippingWarehouseExportPrintSheet';
 import {
   waitForPrintImagesReady,
   enablePortraitPrintPage,
@@ -461,6 +462,8 @@ export function ShippingOrdersPanel({
   const [printTotalKm, setPrintTotalKm] = useState('');
   const [printingOrders, setPrintingOrders] = useState<ShippingOrder[]>([]);
   const [pendingPrint, setPendingPrint] = useState(false);
+  const [printingWarehouseOrders, setPrintingWarehouseOrders] = useState<ShippingOrder[]>([]);
+  const [pendingWarehousePrint, setPendingWarehousePrint] = useState(false);
   const loadAll = async () => {
     setIsLoading(true);
     setError('');
@@ -576,6 +579,16 @@ export function ShippingOrdersPanel({
     setPreviewOpen(true);
   };
 
+  const handlePrintWarehouseExport = () => {
+    const rowsToPrint = filteredOrders.filter(order => selectedIds.includes(order.id));
+    if (rowsToPrint.length === 0) {
+      showAppToast('Chọn ít nhất một lệnh xuất hàng để in biên bản xuất kho.');
+      return;
+    }
+    setPrintingWarehouseOrders(rowsToPrint);
+    setPendingWarehousePrint(true);
+  };
+
   const closePrintPreview = () => {
     if (pendingPrint) return;
     setPreviewOpen(false);
@@ -613,11 +626,39 @@ export function ShippingOrdersPanel({
   }, [pendingPrint, printingOrders]);
 
   useEffect(() => {
+    if (!pendingWarehousePrint || printingWarehouseOrders.length === 0) return;
+    let cancelled = false;
+    document.body.classList.add('shipping-warehouse-export-print-active');
+    enablePortraitPrintPage('shipping-warehouse-export-print-page-a4', '6mm 8mm 6mm');
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        try {
+          window.print();
+        } finally {
+          setPendingWarehousePrint(false);
+          disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
+        }
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('shipping-warehouse-export-print-active');
+      disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
+    };
+  }, [pendingWarehousePrint, printingWarehouseOrders]);
+
+  useEffect(() => {
     const handleAfterPrint = () => {
       document.body.classList.remove('shipping-delivery-print-active');
+      document.body.classList.remove('shipping-warehouse-export-print-active');
       disablePortraitPrintPage('shipping-delivery-print-page-a4');
+      disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
       setPrintingOrders([]);
       setPendingPrint(false);
+      setPrintingWarehouseOrders([]);
+      setPendingWarehousePrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
     return () => window.removeEventListener('afterprint', handleAfterPrint);
@@ -1064,6 +1105,21 @@ export function ShippingOrdersPanel({
             <Printer className="h-4 w-4" />
             In biên bản{selectedVisibleIds.length > 0 ? ` (${selectedVisibleIds.length})` : ''}
           </button>
+          <button
+            type="button"
+            onClick={handlePrintWarehouseExport}
+            disabled={selectedVisibleIds.length === 0 || pendingWarehousePrint}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 text-xs font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title={
+              selectedVisibleIds.length > 0
+                ? `In biên bản xuất kho — tổng hợp mã hàng từ ${selectedVisibleIds.length} lệnh`
+                : 'Tick chọn lệnh xuất hàng rồi in checklist xuất kho'
+            }
+          >
+            {pendingWarehousePrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            In biên bản xuất kho
+            {selectedVisibleIds.length > 0 ? ` (${selectedVisibleIds.length})` : ''}
+          </button>
           {canCreate ? (
             <button
               type="button"
@@ -1413,6 +1469,13 @@ export function ShippingOrdersPanel({
               generalNote={printGeneralNote}
               totalKmText={printTotalKm}
             />,
+            document.body
+          )
+        : null}
+
+      {printingWarehouseOrders.length > 0
+        ? createPortal(
+            <ShippingWarehouseExportPrintSheet orders={printingWarehouseOrders} />,
             document.body
           )
         : null}

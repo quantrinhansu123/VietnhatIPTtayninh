@@ -7144,3 +7144,256 @@ input[type="number"] {
   overflow-wrap: normal !important;
   word-break: keep-all !important;
 }
+
+/* —— Biên b?n xu?t kho (checklist t? l?nh xu?t hàng) —— */
+.bb-xk-print-batch {
+  display: none;
+}
+
+.bb-xk-sheet {
+  --bb-xk-red: #d71920;
+  --bb-xk-muted: #555;
+  box-sizing: border-box;
+  width: 210mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 8mm 10mm;
+  background: #fff;
+  color: #111;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.bb-xk-sheet *,
+.bb-xk-sheet *::before,
+.bb-xk-sheet *::after {
+  box-sizing: border-box;
+}
+
+.bb-xk-top {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+
+.bb-xk-brand-cell {
+  width: 62%;
+  vertical-align: middle;
+  padding: 0;
+}
+
+.bb-xk-meta-cell {
+  width: 38%;
+  vertical-align: middle;
+  padding: 0 0 0 8px;
+}
+
+.bb-xk-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bb-xk-logo {
+  width: 42mm;
+  height: 21mm;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.bb-xk-brand-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.bb-xk-company {
+  font-size: 9pt;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #222;
+}
+
+.bb-xk-title {
+  margin: 2px 0 0;
+  font-size: 18pt;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--bb-xk-red);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.bb-xk-sub {
+  margin-top: 2px;
+  font-size: 9pt;
+  font-weight: 700;
+  text-align: center;
+  color: #333;
+}
+
+.bb-xk-meta {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #222;
+}
+
+.bb-xk-meta td {
+  border: 1px solid #222;
+  padding: 4px 6px;
+  font-size: 11pt;
+  line-height: 1.2;
+}
+
+.bb-xk-meta-label {
+  width: 38%;
+  background: #f3f4f6;
+  font-weight: 700;
+}
+
+.bb-xk-meta-value {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.bb-xk-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-top: 4px;
+}
+
+.bb-xk-table th,
+.bb-xk-table td {
+  border: 1px solid #222;
+  padding: 6px 5px;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 11pt;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.bb-xk-table th {
+  background: #f3f4f6;
+  font-size: 10.5pt;
+}
+
+.bb-xk-left {
+  text-align: left !important;
+  padding-left: 6px !important;
+}
+
+.bb-xk-code {
+  font-family: ui-monospace, 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.bb-xk-qty {
+  white-space: nowrap;
+}
+
+.bb-xk-blank {
+  min-height: 28px;
+  background: #fff;
+}
+
+.bb-xk-empty {
+  padding: 16px !important;
+  color: var(--bb-xk-muted);
+  font-style: italic;
+}
+
+.bb-xk-total-label {
+  text-align: right !important;
+  padding-right: 8px !important;
+  background: #f8fafc;
+}
+
+.bb-xk-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.bb-xk-sign {
+  position: relative;
+  min-height: 78px;
+  border: 1px solid #222;
+}
+
+.bb-xk-sign-head {
+  text-align: center;
+  padding: 4px 3px;
+  border-bottom: 1px solid #222;
+  font-weight: 700;
+  background: #f3f4f6;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.bb-xk-sign-hint {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--bb-xk-muted);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+@media print {
+  @page shipping-warehouse-export-print-page-a4 {
+    size: 210mm 297mm;
+    margin: 6mm 8mm 6mm;
+  }
+
+  body.shipping-warehouse-export-print-active #root {
+    display: none !important;
+  }
+
+  body.shipping-warehouse-export-print-active > :not(.bb-xk-print-batch) {
+    display: none !important;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-print-batch,
+  body.shipping-warehouse-export-print-active .bb-xk-print-batch * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-print-batch {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-print-page,
+  body.shipping-warehouse-export-print-active .bb-xk-sheet {
+    page: shipping-warehouse-export-print-page-a4 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-family: 'Times New Roman', Times, serif !important;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-blank {
+    min-height: 9mm !important;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-table th,
+  body.shipping-warehouse-export-print-active .bb-xk-table td {
+    padding: 3.5mm 1.5mm !important;
+  }
+}

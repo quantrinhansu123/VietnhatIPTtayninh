@@ -306,7 +306,10 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     serverLines: '11689–11780',
     appTab: 'shipping-orders',
     appLines: 'src/features/lenh-xuat-hang/index.tsx',
-    components: [],
+    components: [
+      'src/components/ShippingDeliveryPrintSheet.tsx',
+      'src/components/ShippingWarehouseExportPrintSheet.tsx'
+    ],
     utils: []
   },
   phieu_ban_hang: {

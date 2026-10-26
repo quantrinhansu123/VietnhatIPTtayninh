@@ -517,6 +517,7 @@ export function ProductionOrderDetailPage() {
         trackProductPrint={false}
         trackGoodsCatalogPrint
         showPayload={false}
+        showPrintDetails
         title="Mã QR thành phẩm"
         description={`${qrPrintLabels.length} tem theo số lượng thành phẩm của lệnh sản xuất`}
         onClose={() => setQrPrintLabels([])}

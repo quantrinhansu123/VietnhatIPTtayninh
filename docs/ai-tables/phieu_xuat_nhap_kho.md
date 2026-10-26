@@ -26,7 +26,7 @@
 
 | File | Nội dung |
 |------|----------|
-| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Header trang có nút **Làm mới** (chỉ tab này): tải lại danh mục kho, máy, lệnh SX và danh sách phiếu, không xóa phiếu đang nhập. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho`. Tab **Lập phiếu** nhập TP: không còn dropdown **Chọn phiếu chưa chốt** — chọn phiếu qua **Phiếu chưa chốt theo máy** (Máy + Ngày + Ca, tick, tổng Mã TP, **Lưu tất cả**) |
+| `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Header trang có nút **Làm mới** (chỉ tab này): tải lại danh mục kho, máy, lệnh SX và danh sách phiếu, không xóa phiếu đang nhập. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho`. Tab **Lập phiếu** nhập TP: dropdown **Phiếu nhập chưa chốt** hỗ trợ **tick nhiều / chọn tất cả**, hiện số đã chọn, nút **Chốt N phiếu** (chốt hàng loạt `da_chot`) |
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 

@@ -71,6 +71,8 @@ export type MenuCardConfig = {
   tab: AppTab;
   /** Mục chưa có trang — hiển thị tên/icon nhưng không cho bấm vào (làm sau). */
   disabled?: boolean;
+  /** Tạm ẩn khỏi lưới menu (vẫn giữ trong danh sách để bật lại dễ). */
+  hidden?: boolean;
   /** Mở nội dung nhúng trong modal thay vì điều hướng sang tab khác. */
   modalUrl?: string;
   /** Form nhập tay, không mở trạm cân ngoài. */
@@ -719,13 +721,17 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
     icon: Scale,
     icon3d: scale3d,
-    tab: 'can-kiem-kho'
+    tab: 'can-kiem-kho',
+    // Tạm ẩn trên /nha-may/kho
+    hidden: true
   },
   {
     title: 'Xử lý chênh lệch',
     desc: 'Đối chiếu số lượng kiểm kê với tồn cuối và tạo phiếu điều chỉnh.',
     icon: ArrowLeftRight,
-    tab: 'kiem-kho-chenh-lech'
+    tab: 'kiem-kho-chenh-lech',
+    // Tạm ẩn trên /nha-may/kho
+    hidden: true
   },
   {
     title: 'Lịch sử xuất nhập',
@@ -739,7 +745,9 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Xem tổng hợp tồn kho theo kho, loại và khoảng ngày.',
     icon: BarChart3,
     icon3d: chartIncreasing3d,
-    tab: 'ton-kho'
+    tab: 'ton-kho',
+    // Tạm ẩn trên /nha-may/kho
+    hidden: true
   },
   {
     title: 'Chuẩn bị xuất hàng',
@@ -747,7 +755,9 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     icon: Truck,
     icon3d: handshake3d,
     tab: 'factory-kho',
-    disabled: true
+    disabled: true,
+    // Tạm ẩn trên /nha-may/kho
+    hidden: true
   }
 ];
 
@@ -759,10 +769,11 @@ export function MenuCardGrid({
   onNavigate: (tab: AppTab) => void;
 }) {
   const [modalItem, setModalItem] = React.useState<MenuCardConfig | null>(null);
+  const visibleItems = items.filter(item => !item.hidden);
   return (
     <>
     <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map(item => {
+      {visibleItems.map(item => {
         const Icon = item.icon;
         const disabled = item.disabled;
         return (

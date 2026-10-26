@@ -1377,6 +1377,8 @@ export function WarehouseSlipPanel({
   const [machineBatchSummaryError, setMachineBatchSummaryError] = useState('');
   const [isSavingAllMachineSlips, setIsSavingAllMachineSlips] = useState(false);
   const [machineBatchListOpen, setMachineBatchListOpen] = useState(false);
+  /** Dropdown «Phiếu nhập chưa chốt» — tick nhiều để chốt hàng loạt. */
+  const [openSlipPickerOpen, setOpenSlipPickerOpen] = useState(false);
   const [isLoadingProductSlips, setIsLoadingProductSlips] = useState(false);
   const [isDeletingProductSlip, setIsDeletingProductSlip] = useState(false);
   /** true = đang ở tab "Xuất kho treo" — form chờ nhận dữ liệu báo cáo hàng hỏng; bấm Lưu sẽ tạo phiếu xuất chính thức. */
@@ -2955,11 +2957,36 @@ export function WarehouseSlipPanel({
     });
   }, [showMachineBatchInbound, machineMatchedSlipCodesKey, machineMatchedOpenSlips]);
 
+  const bulkSelectableOpenSlips = useMemo(
+    () => (showMachineBatchInbound ? machineMatchedOpenSlips : openProductSlips),
+    [showMachineBatchInbound, machineMatchedOpenSlips, openProductSlips]
+  );
+
+  const bulkSelectableSlipCodesKey = bulkSelectableOpenSlips.map(slip => slip.ma_phieu).join('|');
+
   useEffect(() => {
-    if (!showMachineBatchInbound || machineMatchedOpenSlips.length === 0) {
-      setMachineSlipSummaries({});
-      setMachineBatchSummaryError('');
-      setLoadingMachineBatchSummaries(false);
+    setSelectedMachineSlipCodes(prev => {
+      const allowed = new Set(bulkSelectableOpenSlips.map(slip => slip.ma_phieu));
+      let changed = false;
+      const next = new Set<string>();
+      for (const code of prev) {
+        if (allowed.has(code)) next.add(code);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [bulkSelectableSlipCodesKey, bulkSelectableOpenSlips]);
+
+  useEffect(() => {
+    const slipsToLoad = showMachineBatchInbound
+      ? machineMatchedOpenSlips
+      : openProductSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu));
+    if (slipsToLoad.length === 0) {
+      if (!showMachineBatchInbound) {
+        setMachineSlipSummaries({});
+        setMachineBatchSummaryError('');
+        setLoadingMachineBatchSummaries(false);
+      }
       return;
     }
     let cancelled = false;
@@ -2968,7 +2995,7 @@ export function WarehouseSlipPanel({
     void (async () => {
       try {
         const entries = await Promise.all(
-          machineMatchedOpenSlips.map(async slip => {
+          slipsToLoad.map(async slip => {
             const response = await fetch(
               `/api/kho/chi-tiet?loai_phieu=nhap&ma_phieu=${encodeURIComponent(slip.ma_phieu)}&summary=true`
             );
@@ -2989,7 +3016,7 @@ export function WarehouseSlipPanel({
       } catch (error: any) {
         if (cancelled) return;
         setMachineSlipSummaries({});
-        setMachineBatchSummaryError(error?.message || 'Không tải được tổng hợp theo máy.');
+        setMachineBatchSummaryError(error?.message || 'Không tải được tổng hợp phiếu đã chọn.');
       } finally {
         if (!cancelled) setLoadingMachineBatchSummaries(false);
       }
@@ -2997,7 +3024,15 @@ export function WarehouseSlipPanel({
     return () => {
       cancelled = true;
     };
-  }, [showMachineBatchInbound, machineMatchedSlipCodesKey, machineMatchedOpenSlips, machineImportNonce, pageRefreshNonce]);
+  }, [
+    showMachineBatchInbound,
+    machineMatchedSlipCodesKey,
+    machineMatchedOpenSlips,
+    openProductSlips,
+    selectedMachineSlipCodes,
+    machineImportNonce,
+    pageRefreshNonce
+  ]);
 
   const machineBatchTotals = useMemo(() => {
     const byCode = new Map<string, SavedProductSummaryRow>();
@@ -3029,9 +3064,13 @@ export function WarehouseSlipPanel({
   }, [machineMatchedOpenSlips, selectedMachineSlipCodes, machineSlipSummaries, productCatalogByKey, itemOptions]);
 
   const machineBatchSelectedCount = useMemo(
-    () => machineMatchedOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu)).length,
-    [machineMatchedOpenSlips, selectedMachineSlipCodes]
+    () => bulkSelectableOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu)).length,
+    [bulkSelectableOpenSlips, selectedMachineSlipCodes]
   );
+
+  const bulkOpenSlipsAllSelected =
+    bulkSelectableOpenSlips.length > 0 &&
+    bulkSelectableOpenSlips.every(slip => selectedMachineSlipCodes.has(slip.ma_phieu));
 
   const machineBatchTotalQty = useMemo(
     () => machineBatchTotals.reduce((sum, row) => sum + (Number(row.so_luong) || 0), 0),
@@ -3057,7 +3096,7 @@ export function WarehouseSlipPanel({
   };
 
   const toggleAllMachineSlipSelection = () => {
-    const codes = machineMatchedOpenSlips.map(slip => slip.ma_phieu);
+    const codes = bulkSelectableOpenSlips.map(slip => slip.ma_phieu);
     const allSelected = codes.length > 0 && codes.every(code => selectedMachineSlipCodes.has(code));
     setSelectedMachineSlipCodes(allSelected ? new Set() : new Set(codes));
   };
@@ -4190,14 +4229,14 @@ export function WarehouseSlipPanel({
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    if (!machine.trim() || selectedShifts.length === 0) {
+    if (showMachineBatchInbound && (!machine.trim() || selectedShifts.length === 0)) {
       setFormError(showSaveFailure('Chọn Máy và Ca trước khi lưu tất cả phiếu theo máy.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    const slipsToSave = machineMatchedOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu));
+    const slipsToSave = bulkSelectableOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu));
     if (slipsToSave.length === 0) {
-      setFormError(showSaveFailure('Hãy tick ít nhất một phiếu để lưu tất cả.'));
+      setFormError(showSaveFailure('Hãy tick ít nhất một phiếu để chốt.'));
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -4212,7 +4251,26 @@ export function WarehouseSlipPanel({
 
     for (const slip of slipsToSave) {
       const slipCode = String(slip.ma_phieu || '').trim();
-      const summaryRows = machineSlipSummaries[slipCode] || [];
+      let summaryRows = machineSlipSummaries[slipCode] || [];
+      if (summaryRows.length === 0) {
+        try {
+          const summaryRes = await fetch(
+            `/api/kho/chi-tiet?loai_phieu=nhap&ma_phieu=${encodeURIComponent(slipCode)}&summary=true`
+          );
+          const summaryData = await summaryRes.json().catch(() => ({}));
+          if (!summaryRes.ok) {
+            throw new Error(
+              readApiErrorMessage(summaryRes, summaryData, `Không tải được tổng hợp phiếu ${slipCode}.`)
+            );
+          }
+          summaryRows = Array.isArray(summaryData?.records)
+            ? (summaryData.records as SavedProductSummaryRow[])
+            : [];
+        } catch (error: any) {
+          errors.push(`${slipCode}: ${error?.message || 'Không tải được tổng hợp.'}`);
+          continue;
+        }
+      }
       const draftLines = summaryRows.map(row => {
         const code = String(row.ma_sp || '').trim();
         const codeKey = normalizeMaterialCodeKey(warehouseCodePrefix(code));
@@ -4315,9 +4373,12 @@ export function WarehouseSlipPanel({
     setPageRefreshNonce(n => n + 1);
 
     if (savedCodes.length > 0 && errors.length === 0) {
-      const okMsg = `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu theo máy ${machine.trim()}.`;
+      const okMsg = showMachineBatchInbound
+        ? `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu theo máy ${machine.trim()}.`
+        : `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu nhập.`;
       setActionMessage(okMsg);
       showAppToast(okMsg, 'success');
+      setOpenSlipPickerOpen(false);
     } else if (savedCodes.length > 0) {
       const warnMsg = `Đã chốt ${savedCodes.length}/${slipsToSave.length} phiếu. Lỗi: ${errors.join(' | ')}`;
       setActionMessage(warnMsg);
@@ -4510,25 +4571,121 @@ export function WarehouseSlipPanel({
             </label>
             {/* Xuất TP: bỏ «Chọn phiếu xuất chưa chốt» — chỉ giữ Lệnh xuất hàng + quét. Nhập TP vẫn chọn phiếu chưa chốt. */}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
-              <label className="block min-w-0 space-y-0.5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                  Phiếu nhập chưa chốt
-                </span>
-                <SearchableSelect
-                  value={selectedProductSlipCode}
-                  onChange={handleProductSlipSelection}
-                  options={openProductSlips}
-                  getValue={item => (item as OpenProductSlip).ma_phieu}
-                  getLabel={item => `${(item as OpenProductSlip).ma_phieu} · Chưa chốt`}
-                  placeholder="+ Tạo phiếu nhập"
-                  disabled={isLoadingProductSlips}
-                  inputClassName={warehouseFieldClass}
-                  comboboxMode
-                  comboboxSearchable={false}
-                  matchDropdownWidth
-                  autoFlip
-                />
-              </label>
+              <div className="block min-w-0 space-y-0.5">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                    Phiếu nhập chưa chốt
+                  </span>
+                  {machineBatchSelectedCount > 0 ? (
+                    <span className="text-[10px] font-bold text-[#ef1b2d]">
+                      Đã chọn {machineBatchSelectedCount}/{openProductSlips.length}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="relative min-w-0">
+                  <button
+                    type="button"
+                    disabled={isLoadingProductSlips}
+                    onClick={() => setOpenSlipPickerOpen(open => !open)}
+                    className={`${warehouseFieldClass} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <span className="min-w-0 truncate font-semibold text-zinc-800">
+                      {selectedProductSlipCode
+                        ? `${selectedProductSlipCode} · Chưa chốt`
+                        : '+ Tạo phiếu nhập'}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition ${openSlipPickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openSlipPickerOpen ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Đóng danh sách phiếu"
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={() => setOpenSlipPickerOpen(false)}
+                      />
+                      <div className="absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
+                        <div className="flex items-center gap-2 border-b border-zinc-100 px-2 py-1.5">
+                          <label className="inline-flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-[11px] font-bold text-zinc-700">
+                            <input
+                              type="checkbox"
+                              checked={bulkOpenSlipsAllSelected}
+                              onChange={toggleAllMachineSlipSelection}
+                              disabled={openProductSlips.length === 0}
+                              className="h-3.5 w-3.5 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                            />
+                            Chọn tất cả ({openProductSlips.length})
+                          </label>
+                          {machineBatchSelectedCount > 0 && canCreate ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveAllMachineSlips()}
+                              disabled={isSaving || isSavingAllMachineSlips || loadingMachineBatchSummaries}
+                              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-[#ef1b2d] px-2 text-[10px] font-extrabold text-white hover:bg-[#b30d1c] disabled:opacity-60"
+                            >
+                              {isSavingAllMachineSlips ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Save className="h-3 w-3" />
+                              )}
+                              Chốt {machineBatchSelectedCount}
+                            </button>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleProductSlipSelection('');
+                            setOpenSlipPickerOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2 border-b border-zinc-100 px-2 py-2 text-left text-[11px] font-extrabold text-[#ef1b2d] hover:bg-red-50"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Tạo phiếu nhập
+                        </button>
+                        <div className="max-h-56 overflow-y-auto py-0.5">
+                          {openProductSlips.length === 0 ? (
+                            <p className="px-3 py-3 text-[11px] font-semibold text-zinc-400">Chưa có phiếu chưa chốt.</p>
+                          ) : (
+                            openProductSlips.map(slip => {
+                              const checked = selectedMachineSlipCodes.has(slip.ma_phieu);
+                              const active = slip.ma_phieu === selectedProductSlipCode;
+                              return (
+                                <div
+                                  key={slip.ma_phieu}
+                                  className={`flex items-center gap-2 px-2 py-1.5 ${
+                                    active ? 'bg-red-50' : 'hover:bg-zinc-50'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleMachineSlipSelection(slip.ma_phieu)}
+                                    className="h-3.5 w-3.5 shrink-0 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
+                                    aria-label={`Chọn ${slip.ma_phieu}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleProductSlipSelection(slip.ma_phieu);
+                                      setOpenSlipPickerOpen(false);
+                                    }}
+                                    className={`min-w-0 flex-1 truncate text-left text-[11px] font-semibold ${
+                                      active ? 'text-[#b30d1c]' : 'text-zinc-800'
+                                    }`}
+                                  >
+                                    {slip.ma_phieu} · Chưa chốt
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
           </div>
           {shippingOrderPicker}
@@ -5428,7 +5585,10 @@ export function WarehouseSlipPanel({
             Phiếu chỉ cập nhật tồn kho sau khi bấm nút lưu.
           </p>
           <>
-            {canCreate && showMachineBatchInbound && machineBatchSelectedCount > 0 ? (
+            {canCreate &&
+            showProductExportTabs &&
+            slipType === 'nhap' &&
+            machineBatchSelectedCount > 0 ? (
               <button
                 type="button"
                 onClick={() => void handleSaveAllMachineSlips()}
@@ -5436,7 +5596,9 @@ export function WarehouseSlipPanel({
                 className="flex h-11 items-center gap-1.5 rounded-xl border border-[#ef1b2d] bg-white px-5 text-xs font-extrabold text-[#ef1b2d] transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSavingAllMachineSlips ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {isSavingAllMachineSlips ? 'Đang lưu tất cả...' : `Lưu tất cả (${machineBatchSelectedCount})`}
+                {isSavingAllMachineSlips
+                  ? 'Đang chốt...'
+                  : `Chốt ${machineBatchSelectedCount} phiếu`}
               </button>
             ) : null}
             {(editSlipCode ? canEdit : canCreate) ? (

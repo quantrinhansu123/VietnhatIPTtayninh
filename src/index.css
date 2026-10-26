@@ -5722,6 +5722,19 @@ input[type="number"] {
   animation: line-added-flash 0.45s ease-in-out 5;
 }
 
+.qr-scanner-region {
+  position: relative;
+  overflow: hidden !important;
+  background: #09090b;
+}
+
+.qr-scanner-region video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: inherit;
+  object-fit: cover !important;
+}
+
 @media (max-width: 640px) {
   .qr-scanner-region {
     min-height: 220px !important;
@@ -5735,8 +5748,7 @@ input[type="number"] {
   .qr-scanner-region video {
     width: 100% !important;
     max-height: 48dvh !important;
-    object-fit: cover;
-    /* iOS Safari: video trong modal cần playsinline */
+    object-fit: cover !important;
   }
 }
 

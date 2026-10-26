@@ -134,8 +134,7 @@ function focusManualInput(ref: React.RefObject<HTMLInputElement>) {
   });
 }
 
-/** iOS cần xin quyền trước rồi mới enumerate được camera ổn định. */
-async function ensureCameraPermission() {
+function assertCameraContext() {
   if (typeof window !== 'undefined' && !window.isSecureContext) {
     throw new Error(
       'Camera trên iPhone cần HTTPS (hoặc localhost). Đang mở bằng HTTP LAN nên Safari chặn camera.'
@@ -144,12 +143,6 @@ async function ensureCameraPermission() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('Trình duyệt không hỗ trợ camera.');
   }
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: { ideal: 'environment' } }
-  });
-  stream.getTracks().forEach(track => track.stop());
 }
 
 /**
@@ -157,16 +150,12 @@ async function ensureCameraPermission() {
  * string, HOẶC một object đúng 1 key (`{ facingMode }` hoặc `{ deviceId }`) — object có thêm
  * width/height sẽ bị nó throw "should have exactly 1 key" và camera không mở được. Độ phân giải
  * phải giới hạn SAU khi start() thành công, qua applyVideoConstraints() (xem sau scanner.start()).
+ *
+ * Không gọi getUserMedia rồi stop trước khi start — sẽ mở cam “trôi” ngoài khung rồi mở lại
+ * trong region. Chỉ mở một lần qua scanner.start() gắn vào khung quét.
  */
 async function pickCameraConfig(Html5QrcodeCtor: Html5QrcodeStatic): Promise<string | MediaTrackConstraints> {
-  try {
-    await ensureCameraPermission();
-  } catch (err) {
-    // Vẫn thử facingMode — một số máy sẽ hiện prompt khi start().
-    if (err instanceof Error && /HTTPS|localhost|không hỗ trợ/i.test(err.message)) {
-      throw err;
-    }
-  }
+  assertCameraContext();
 
   // Trên iPhone, facingMode ổn định hơn deviceId (label camera thường trống).
   if (isAppleMobile()) {
@@ -346,12 +335,17 @@ export default function ProductQrScanner({
     if (!open) return;
     setSessionScannedCount(0);
     setScannedItems([]);
+    // Quét ĐT: luôn bật cam trong khung ngay khi mở — không để preference cũ tắt cam / phải bấm lại.
+    if (!hardwareOnly) {
+      setCameraEnabled(true);
+      saveCameraPreference(true);
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [open]);
+  }, [open, hardwareOnly]);
 
   // Camera chạy nền tốn pin/CPU/RAM — tắt hẳn khi màn hình ẩn (khoá máy, chuyển app) thay vì
   // để nó tiếp tục decode trong nền, tránh dồn tải khiến máy cấu hình thấp bị treo/sập sau
@@ -580,12 +574,21 @@ export default function ProductQrScanner({
             await stopScannerSafely(scanner);
             return;
           }
-          // Đảm bảo video playsInline trên iOS
+          // Giữ preview trong khung region — không để Safari/Android fullscreen cam hệ thống.
           const video = region.querySelector('video');
           if (video) {
             video.setAttribute('playsinline', 'true');
             video.setAttribute('webkit-playsinline', 'true');
+            video.setAttribute('playsInline', 'true');
+            video.removeAttribute('autoplay');
+            video.playsInline = true;
             video.muted = true;
+            video.disablePictureInPicture = true;
+            try {
+              video.disableRemotePlayback = true;
+            } catch {
+              // Một số WebView không có API này.
+            }
             void video.play().catch(() => {});
           }
           void applyLowPowerResolution(scanner);

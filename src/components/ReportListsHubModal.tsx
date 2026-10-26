@@ -85,6 +85,30 @@ function getLocalTodayIso(): string {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 }
 
+type PrintMachineOption = { code: string; name: string };
+
+function normalizePrintMachines(data: unknown): PrintMachineOption[] {
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { records?: unknown }).records)
+      ? (data as { records: unknown[] }).records
+      : data && typeof data === 'object' && Array.isArray((data as { machines?: unknown }).machines)
+        ? (data as { machines: unknown[] }).machines
+        : [];
+  const seen = new Set<string>();
+  const out: PrintMachineOption[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const rec = row as Record<string, unknown>;
+    const code = String(rec.code ?? rec.ma_may ?? rec.ma ?? '').trim();
+    const name = String(rec.name ?? rec.ten_may ?? rec.ten ?? '').trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    out.push({ code, name: name || code });
+  }
+  return out.sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+}
+
 export default function ReportListsHubModal({
   open,
   onClose,
@@ -103,7 +127,6 @@ export default function ReportListsHubModal({
   }, [allowedTabs]);
 
   const hubFilters = useMemo(() => normalizeHubFilters(filters), [filters]);
-  const printMachineLabel = hubFilters.machineName || hubFilters.machineCode || 'Tất cả máy';
   const filtersKey = [
     hubFilters.dateFrom || '',
     hubFilters.dateTo || '',
@@ -118,6 +141,8 @@ export default function ReportListsHubModal({
   const initialDate = getLocalTodayIso();
   const [printDate, setPrintDate] = useState(initialDate);
   const [printShift, setPrintShift] = useState(filters?.shift || '');
+  const [printMachineCode, setPrintMachineCode] = useState(hubFilters.machineCode || '');
+  const [printMachines, setPrintMachines] = useState<PrintMachineOption[]>([]);
   // Đến ngày (tuỳ chọn): có giá trị khác ngày → báo cáo tồn theo khoảng ngày; trống → báo cáo tồn 1 ngày.
   const [printDateTo, setPrintDateTo] = useState('');
   const [tonData, setTonData] = useState<TonThanhPhamReport | null>(null);
@@ -125,21 +150,58 @@ export default function ReportListsHubModal({
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
 
-  // Bộ lọc trang chi tiết đã biết đúng 1 ngày + 1 ca (vd. mở từ Biểu đồ TH) → in gộp luôn, khỏi hỏi lại.
+  // Bộ lọc trang chi tiết đã biết đúng 1 ngày + 1 ca + 1 máy (vd. mở từ Biểu đồ TH) → in gộp luôn, khỏi hỏi lại.
   const lockedPrintDate = filters?.dateFrom && filters.dateFrom === filters.dateTo ? filters.dateFrom : '';
   const lockedPrintShift = filters?.shift && filters.shift !== 'all' ? filters.shift : '';
-  const isAutoPrint = Boolean(lockedPrintDate && lockedPrintShift);
+  const lockedPrintMachine = hubFilters.machineCode || '';
+  const isAutoPrint = Boolean(lockedPrintDate && lockedPrintShift && lockedPrintMachine);
+
+  const selectedPrintMachine = useMemo(() => {
+    const code = String(printMachineCode || '').trim();
+    if (!code) return null;
+    const found = printMachines.find(machine => machine.code === code);
+    if (found) return found;
+    if (hubFilters.machineCode === code) {
+      return { code, name: hubFilters.machineName || code };
+    }
+    return { code, name: code };
+  }, [printMachineCode, printMachines, hubFilters.machineCode, hubFilters.machineName]);
+
+  const printMachineLabel = selectedPrintMachine
+    ? selectedPrintMachine.name && selectedPrintMachine.name !== selectedPrintMachine.code
+      ? `${selectedPrintMachine.code} · ${selectedPrintMachine.name}`
+      : selectedPrintMachine.code
+    : 'Chưa chọn máy';
 
   useEffect(() => {
     if (!open) return;
     setPrintDate(lockedPrintDate || getLocalTodayIso());
     setPrintShift(lockedPrintShift || '');
+    setPrintMachineCode(lockedPrintMachine || hubFilters.machineCode || '');
     setPrintDateTo(hubFilters.dateFrom && hubFilters.dateTo && hubFilters.dateFrom !== hubFilters.dateTo ? hubFilters.dateTo : '');
     setPrintData(null);
     setTonData(null);
     setPrintError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lockedPrintDate, lockedPrintShift]);
+  }, [open, lockedPrintDate, lockedPrintShift, lockedPrintMachine, hubFilters.machineCode]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/danh-sach-may');
+        const data = await res.json().catch(() => ([]));
+        if (!res.ok || cancelled) return;
+        setPrintMachines(normalizePrintMachines(data));
+      } catch {
+        if (!cancelled) setPrintMachines([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const tonRange = (date: string) => {
     const to = printDateTo && printDateTo > date ? printDateTo : date;
@@ -159,11 +221,26 @@ export default function ReportListsHubModal({
     }
   };
 
-  const prepareAndPrint = async (dateOverride?: string, shiftOverride?: string) => {
+  const prepareAndPrint = async (
+    dateOverride?: string,
+    shiftOverride?: string,
+    machineOverride?: { code?: string; name?: string }
+  ) => {
     const date = dateOverride || printDate;
     const shift = shiftOverride || printShift;
+    const machineCode = String(machineOverride?.code || printMachineCode || '').trim();
+    const machineName = String(
+      machineOverride?.name ||
+        printMachines.find(machine => machine.code === machineCode)?.name ||
+        (hubFilters.machineCode === machineCode ? hubFilters.machineName : '') ||
+        ''
+    ).trim();
     if (!date || !shift) {
       setPrintError('Vui lòng chọn ngày và ca trước khi in.');
+      return;
+    }
+    if (!machineCode) {
+      setPrintError('Vui lòng chọn máy trước khi in.');
       return;
     }
     setIsPreparingPrint(true);
@@ -173,8 +250,8 @@ export default function ReportListsHubModal({
       const productJson = await productRes.json().catch(() => []);
       const catalog = productRes.ok ? normalizeProducts(productJson) : [];
       const data = await loadProductionPlanRelatedReports(date, [shift], catalog, {
-        code: hubFilters.machineCode,
-        name: hubFilters.machineName
+        code: machineCode,
+        name: machineName || machineCode
       });
       if (data.isEmpty) {
         setPrintError('Không có phiếu nào khớp ngày, ca và máy đã chọn để in.');
@@ -191,9 +268,12 @@ export default function ReportListsHubModal({
 
   useEffect(() => {
     if (!open || !isAutoPrint) return;
-    void prepareAndPrint(lockedPrintDate, lockedPrintShift);
+    void prepareAndPrint(lockedPrintDate, lockedPrintShift, {
+      code: lockedPrintMachine,
+      name: hubFilters.machineName
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift, hubFilters.machineCode, hubFilters.machineName]);
+  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift, lockedPrintMachine, hubFilters.machineName]);
 
   useEffect(() => {
     if (!printData && !tonData) return;
@@ -201,7 +281,13 @@ export default function ReportListsHubModal({
     // Tên file mặc định khi "Lưu dưới dạng PDF" lấy theo document.title.
     const previousTitle = document.title;
     const [y, m, d] = (lockedPrintDate || printDate).split('-');
-    const machineLabel = hubFilters.machineName || hubFilters.machineCode || 'tất cả máy';
+    const machineLabel =
+      selectedPrintMachine?.name ||
+      selectedPrintMachine?.code ||
+      printMachineCode ||
+      hubFilters.machineName ||
+      hubFilters.machineCode ||
+      'máy';
     document.title = !printData ? `Báo cáo tồn thành phẩm ${d}-${m}-${y}` : `Bảng tổng hợp ngày ${d}-${m}-${y}, ca ${lockedPrintShift || printShift}, máy ${machineLabel}`;
     // Báo cáo kết quả theo từng lệnh SX có layout A4 dọc riêng. Khi được in
     // trong batch "Danh sách báo cáo", phải bật cùng ngữ cảnh với trang gốc
@@ -267,12 +353,15 @@ export default function ReportListsHubModal({
     ...hubFilters,
     dateFrom: printDate || hubFilters.dateFrom,
     dateTo: printDate || hubFilters.dateTo,
-    shift: printShift || undefined
-  }), [hubFilters, printDate, printShift]);
+    shift: printShift || undefined,
+    machineCode: printMachineCode || undefined,
+    machineName: selectedPrintMachine?.name || undefined
+  }), [hubFilters, printDate, printShift, printMachineCode, selectedPrintMachine]);
   if (!open) return null;
 
   const activeItem = menuItems.find(item => item.tab === activeTab) ?? menuItems[0];
-  const panelKey = `${activeTab}:${filtersKey}:${printDate}:${printShift}`;
+  const panelKey = `${activeTab}:${filtersKey}:${printDate}:${printShift}:${printMachineCode}`;
+  const canPreparePrint = Boolean(printDate && printShift && printMachineCode);
 
   // Trang phân tích tự động chỉ cần popup chọn phạm vi để in gộp; không hiển thị
   // lại trung tâm các danh sách báo cáo ở đây.
@@ -303,9 +392,8 @@ export default function ReportListsHubModal({
           <div className="flex items-start justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-3.5 text-zinc-950">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">In báo cáo</p>
-              <h3 className="mt-0.5 text-base font-black">Chọn ngày và ca</h3>
-              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối, sản lượng và báo cáo tồn thành phẩm.</p>
-              <p className="mt-1 text-[11px] font-bold text-zinc-600">Máy: {printMachineLabel}</p>
+              <h3 className="mt-0.5 text-base font-black">Chọn ngày · ca · máy</h3>
+              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối, sản lượng và báo cáo tồn thành phẩm theo đúng máy đã chọn.</p>
             </div>
             <button type="button" onClick={onClose} aria-label="Đóng" title="Đóng" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
           </div>
@@ -329,11 +417,34 @@ export default function ReportListsHubModal({
                 <option value="HC3">HC3 (22:00 - 06:00)</option>
               </select>
             </label>
+            <label className="block text-[11px] font-black uppercase tracking-wide text-zinc-500">
+              Máy
+              <select
+                value={printMachineCode}
+                onChange={event => {
+                  setPrintMachineCode(event.target.value);
+                  setPrintError('');
+                }}
+                className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100"
+              >
+                <option value="">— Chọn máy —</option>
+                {printMachines.map(machine => (
+                  <option key={machine.code} value={machine.code}>
+                    {machine.name && machine.name !== machine.code
+                      ? `${machine.code} · ${machine.name}`
+                      : machine.code}
+                  </option>
+                ))}
+                {printMachineCode && !printMachines.some(machine => machine.code === printMachineCode) ? (
+                  <option value={printMachineCode}>{printMachineLabel}</option>
+                ) : null}
+              </select>
+            </label>
             {printError ? <p className="text-sm font-bold text-rose-600">{printError}</p> : null}
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={onClose} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50">Hủy</button>
               <button type="button" onClick={() => void prepareTonOnly()} disabled={isPreparingPrint || !printDate} className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">Chỉ in báo cáo tồn</button>
-              <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !printDate || !printShift} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !canPreparePrint} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">
                 {isPreparingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                 {isPreparingPrint ? 'Đang chuẩn bị...' : 'In'}
               </button>
@@ -406,7 +517,7 @@ export default function ReportListsHubModal({
         </div>
 
         <div className="shrink-0 border-b border-red-100 bg-white px-4 py-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] sm:items-end">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(160px,1fr)_minmax(140px,0.9fr)_minmax(180px,1.1fr)_auto] sm:items-end">
             <label className="text-xs font-black uppercase tracking-wide text-zinc-500">
               Ngày
               <input type="date" value={printDate} onChange={event => setPrintDate(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-base font-bold text-zinc-900" />
@@ -422,7 +533,30 @@ export default function ReportListsHubModal({
                 <option value="HC3">HC3 (22:00 - 06:00)</option>
               </select>
             </label>
-            <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !printDate || !printShift} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <label className="text-xs font-black uppercase tracking-wide text-zinc-500">
+              Máy
+              <select
+                value={printMachineCode}
+                onChange={event => {
+                  setPrintMachineCode(event.target.value);
+                  setPrintError('');
+                }}
+                className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-base font-bold text-zinc-900"
+              >
+                <option value="">— Chọn máy —</option>
+                {printMachines.map(machine => (
+                  <option key={machine.code} value={machine.code}>
+                    {machine.name && machine.name !== machine.code
+                      ? `${machine.code} · ${machine.name}`
+                      : machine.code}
+                  </option>
+                ))}
+                {printMachineCode && !printMachines.some(machine => machine.code === printMachineCode) ? (
+                  <option value={printMachineCode}>{printMachineLabel}</option>
+                ) : null}
+              </select>
+            </label>
+            <button type="button" onClick={() => void prepareAndPrint()} disabled={isPreparingPrint || !canPreparePrint} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
               {isPreparingPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
               {isPreparingPrint ? 'Đang chuẩn bị...' : 'In tất cả phiếu'}
             </button>

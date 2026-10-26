@@ -167,7 +167,7 @@ export function KiemDinhTemPanel({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+          className="hidden rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 sm:block"
         >
           Quay lại
         </button>
@@ -187,7 +187,7 @@ export function KiemDinhTemPanel({
             onChange={e => setManualCode(e.target.value)}
             placeholder="Dán hoặc gõ mã, Enter để tra cứu…"
             autoComplete="off"
-            className="h-11 flex-1 rounded-xl border border-zinc-200 px-3 font-mono text-sm font-semibold outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+            className="h-11 w-full rounded-xl border border-zinc-200 px-3 font-mono text-sm font-semibold outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 sm:flex-1"
           />
           <button
             type="submit"

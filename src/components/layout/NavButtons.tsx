@@ -92,6 +92,8 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'damaged-goods-warehouse': 'factory-kho',
   'quan-ly-kho': 'factory-kho',
   'kiem-kho': 'factory-kho',
+  'tim-ma-loi': 'factory-kho',
+  'kiem-dinh-tem': 'factory-kho',
   'kiem-kho-chenh-lech': 'factory-kho',
   'ton-kho': 'factory-kho',
   'hr': 'hcns',

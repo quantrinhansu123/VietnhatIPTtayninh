@@ -1097,6 +1097,13 @@ input[type="number"] {
     color: #111111;
   }
 
+  .qr-print-tag-date {
+    margin: 0 0 1.5mm;
+    font-size: 9pt;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
   .qr-print-code {
     position: relative;
     width: 45mm;
@@ -1132,6 +1139,14 @@ input[type="number"] {
     font-weight: 900;
     line-height: 1.15;
     word-break: break-word;
+  }
+
+  .qr-print-tag-detail {
+    margin: 1.5mm 0 0;
+    font-size: 8pt;
+    font-weight: 700;
+    line-height: 1.1;
+    word-break: break-all;
   }
 
   .order-print-sheet,

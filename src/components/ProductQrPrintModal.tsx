@@ -42,14 +42,17 @@ function ProductQrCards({
   labels,
   images,
   printLayout = false,
-  showPayload = true
+  showPayload = true,
+  showPrintDetails = false
 }: {
   labels: ProductQrPrintLabel[];
   images: Record<string, string>;
   printLayout?: boolean;
   /** Chỉ dùng mã gốc trên tem; nội dung QR vẫn là payload đầy đủ. */
   showPayload?: boolean;
+  showPrintDetails?: boolean;
 }) {
+  const printDateTime = showPrintDetails ? new Date() : null;
   if (printLayout) {
     return (
       <div className="qr-print-page">
@@ -59,12 +62,29 @@ function ProductQrCards({
               {images[label.payload] ? <img src={images[label.payload]} alt={`QR ${label.payload}`} /> : null}
             </div>
             <div className="qr-print-tag-info">
+              {printDateTime ? (
+                <p className="qr-print-tag-date">
+                  {printDateTime.toLocaleTimeString('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hourCycle: 'h23'
+                  })}{' '}
+                  {printDateTime.toLocaleDateString('vi-VN', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                  })}
+                </p>
+              ) : null}
               <p className="qr-print-tag-label">{label.itemLabel || 'Tên sản phẩm'}</p>
               <p className="qr-print-tag-name">{label.productName || '-'}</p>
               {label.quantity !== undefined ? (
                 <p className="qr-print-tag-quantity">Số lượng: {label.quantity}{label.unit ? ` ${label.unit}` : ''}</p>
               ) : null}
               <p className="qr-print-tag-code">{showPayload ? label.payload : label.productCode || '-'}</p>
+              {showPrintDetails && !showPayload ? (
+                <p className="qr-print-tag-detail">{label.payload}</p>
+              ) : null}
             </div>
           </div>
         ))}
@@ -98,6 +118,7 @@ export default function ProductQrPrintModal({
   trackGoodsCatalogPrint = false,
   trackMaterialPrint = false,
   showPayload = true,
+  showPrintDetails = false,
   title = 'Mã QR sản phẩm nhập kho',
   description,
   onClose
@@ -112,6 +133,7 @@ export default function ProductQrPrintModal({
   trackMaterialPrint?: boolean;
   /** Ẩn hậu tố trên tem/khung xem trước, không làm thay đổi dữ liệu được mã hóa trong QR. */
   showPayload?: boolean;
+  showPrintDetails?: boolean;
   title?: string;
   description?: string;
   onClose: () => void;
@@ -209,7 +231,13 @@ export default function ProductQrPrintModal({
   return createPortal(
     <>
       <div className="qr-print-sheet">
-        <ProductQrCards labels={labels} images={images} printLayout showPayload={showPayload} />
+        <ProductQrCards
+          labels={labels}
+          images={images}
+          printLayout
+          showPayload={showPayload}
+          showPrintDetails={showPrintDetails}
+        />
       </div>
       <div className="fixed inset-0 z-[70] flex items-end justify-center bg-zinc-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
         <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">

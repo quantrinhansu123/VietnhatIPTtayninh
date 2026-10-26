@@ -4859,6 +4859,7 @@ export function ProductsPanel({
         trackProductPrint={false}
         trackGoodsCatalogPrint
         showPayload={false}
+        showPrintDetails
         title="Mã QR sản phẩm"
         description={`${catalogQrPrintLabels.length} tem có mã QR duy nhất, đã được lưu trong CSDL`}
         onClose={() => {

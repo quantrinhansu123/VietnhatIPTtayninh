@@ -3036,7 +3036,7 @@ export function WarehouseSlipPanel({
 
   const machineBatchTotals = useMemo(() => {
     const byCode = new Map<string, SavedProductSummaryRow>();
-    for (const slip of machineMatchedOpenSlips) {
+    for (const slip of bulkSelectableOpenSlips) {
       if (!selectedMachineSlipCodes.has(slip.ma_phieu)) continue;
       for (const row of machineSlipSummaries[slip.ma_phieu] || []) {
         const code = String(row.ma_sp || '').trim();
@@ -3061,7 +3061,7 @@ export function WarehouseSlipPanel({
       }
     }
     return [...byCode.values()].sort((a, b) => a.ma_sp.localeCompare(b.ma_sp, 'vi', { numeric: true }));
-  }, [machineMatchedOpenSlips, selectedMachineSlipCodes, machineSlipSummaries, productCatalogByKey, itemOptions]);
+  }, [bulkSelectableOpenSlips, selectedMachineSlipCodes, machineSlipSummaries, productCatalogByKey, itemOptions]);
 
   const machineBatchSelectedCount = useMemo(
     () => bulkSelectableOpenSlips.filter(slip => selectedMachineSlipCodes.has(slip.ma_phieu)).length,
@@ -5267,14 +5267,13 @@ export function WarehouseSlipPanel({
           {showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound ? (
             <div className="w-full min-w-0 overflow-x-hidden">
               {(() => {
-                const useMachineBatchTable = showMachineBatchInbound && machineMatchedOpenSlips.length > 0;
-                const summaryRows = useMachineBatchTable ? machineBatchTotals : savedProductSummary;
-                const loadingSummary = useMachineBatchTable ? loadingMachineBatchSummaries : loadingProductSummary;
-                const summaryError = useMachineBatchTable ? machineBatchSummaryError : productSummaryError;
-                const emptyLabel = useMachineBatchTable
-                  ? machineBatchSelectedCount === 0
-                    ? 'Hãy tick ít nhất một phiếu để xem tổng.'
-                    : 'Các phiếu đã tick chưa có sản phẩm.'
+                // Tick ≥1 phiếu → bảng hạch toán gộp tất cả phiếu đã chọn; không tick → theo phiếu đang mở.
+                const useBulkSlipTotals = machineBatchSelectedCount > 0;
+                const summaryRows = useBulkSlipTotals ? machineBatchTotals : savedProductSummary;
+                const loadingSummary = useBulkSlipTotals ? loadingMachineBatchSummaries : loadingProductSummary;
+                const summaryError = useBulkSlipTotals ? machineBatchSummaryError : productSummaryError;
+                const emptyLabel = useBulkSlipTotals
+                  ? 'Các phiếu đã tick chưa có sản phẩm.'
                   : 'Chưa có sản phẩm đã quét cho phiếu này.';
                 return (
                   <>
@@ -5300,7 +5299,7 @@ export function WarehouseSlipPanel({
                       productCatalogByKey.get(codeKey) ||
                       itemOptions.find(option => normalizeMaterialCodeKey(option.code) === codeKey);
                     return (
-                      <tr key={row.ma_sp} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                      <tr key={`${row.ma_sp}-${index}`} className="border-b border-zinc-100 even:bg-zinc-50/70">
                         <td className="px-1 py-2 text-center text-zinc-500">{index + 1}</td>
                         <td className="px-1 py-2 text-center font-bold break-all text-zinc-800">{row.ma_sp}</td>
                         <td className="px-1.5 py-2 align-top">
@@ -5313,7 +5312,7 @@ export function WarehouseSlipPanel({
                     );
                   })}
                   {!summaryRows.length ? (
-                    <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-500">{loadingSummary ? 'Đang tải danh sách…' : summaryError || emptyLabel}</td></tr>
+                    <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-500">{loadingSummary ? 'Đang tải hạch toán…' : summaryError || emptyLabel}</td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -5358,9 +5357,11 @@ export function WarehouseSlipPanel({
                   })}
                 </div>
               ) : null}
-              {useMachineBatchTable ? (
+              {useBulkSlipTotals ? (
                 <p className="mt-2 px-3 text-[11px] font-semibold text-zinc-600">
-                  {machineBatchSelectedCount} phiếu đã tick · tổng cuộn {formatNumber(machineBatchTotalQty, 0)}
+                  Hạch toán {machineBatchSelectedCount} phiếu đã tick · {summaryRows.length} mã TP · tổng cuộn{' '}
+                  {formatNumber(machineBatchTotalQty, 0)}
+                  {loadingSummary ? ' · đang tải…' : ''}
                 </p>
               ) : null}
                   </>

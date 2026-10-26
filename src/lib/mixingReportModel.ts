@@ -1142,3 +1142,42 @@ export function applyMixingRoundAutofill(
     [...chi_tiet]
   );
 }
+
+export function listMixingRoundCopySources(
+  reports: Array<Pick<MixingReport, 'id' | 'lan_thu' | 'so_lan' | 'so_phieu' | 'chi_tiet'>>,
+  beforeSession: number
+) {
+  return reports.flatMap(report => MIXING_ROUND_KEYS.slice(0, report.so_lan).flatMap((roundKey, index) => {
+    const session = getMixingReportSessionStart(report) + index;
+    if (session >= beforeSession || !listRoundMaterialEntries(report.chi_tiet, roundKey).length) return [];
+    return [{
+      value: `${report.id}:${roundKey}`,
+      label: `${mixingSessionLabel(session)}${report.so_phieu ? ` · ${report.so_phieu}` : ''}`,
+      session, roundKey, lines: report.chi_tiet
+    }];
+  })).sort((left, right) => right.session - left.session);
+}
+
+export function copyMixingRoundFromLines(
+  targetLines: MixingReportLine[],
+  targetKey: MixingRoundKey,
+  sourceLines: MixingReportLine[],
+  sourceKey: MixingRoundKey
+): MixingReportLine[] {
+  const items = listRoundMaterialEntries(sourceLines, sourceKey).map(entry => ({ ...entry.item }));
+  if (!items.length) return targetLines;
+  const batchWeight = getRoundBatchWeightFromLines(sourceLines, sourceKey);
+  const lines = applyMixingRoundAutofill(clearRoundFromLines(targetLines, targetKey), targetKey, items);
+  return lines.map(line => {
+    // Gắn KL mẻ sau khi chép để giữ nguyên KL ĐM/TT của nguồn, không tính lại theo %.
+    const lan_su_dung = {
+      ...line.lan_su_dung,
+      khoi_luong_me: { ...line.lan_su_dung.khoi_luong_me, [targetKey]: batchWeight }
+    };
+    return {
+      ...line, lan_su_dung,
+      tong_nhua_tron: sumMixingRounds(lan_su_dung),
+      kl_thuc_te: resolveLineKlThucTe({ lan_su_dung })
+    };
+  });
+}

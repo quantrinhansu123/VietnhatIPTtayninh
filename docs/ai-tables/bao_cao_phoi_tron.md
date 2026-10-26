@@ -24,6 +24,8 @@
 
 - `MixingProductionOrderAutofillModal.tsx` — nút **Tự động điền** NVL theo Lệnh SX (ngày · ca · máy) trong từng Lần
 
+- Trong từng Lần, sổ **Sao chép NVL từ lần...** lấy các lần trước cùng ngày · ca · máy (phiếu đã lưu và các lần đang nhập). Sao chép mã/tên NVL, ĐVT, %, KL ĐM, KL TT và KL 1 mẻ; thay NVL của lần đích sau khi xác nhận nếu đã có dữ liệu. Lý do, giải trình và ảnh xác nhận không sao chép. Logic/test: `lib/mixingReportModel.ts`, `lib/mixingReportModel.test.ts`.
+
 
 
 **Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts` (`resolveMixingMaterialDisplayName` — nếu BOM để tên = mã thì lấy `ten_npl` từ kho NVL), `utils/mixingNormSuggestion.ts`

@@ -38,11 +38,13 @@ import {
   applyMixingRoundAutofill,
   calcNormQuantityFromPercent,
   computeNextMixingSessionStart,
+  copyMixingRoundFromLines,
   deriveLineUnit,
   formatNormWeight,
   formatMixingReasonsExplanation,
   getRoundBatchWeightFromLines,
   listRoundMaterialEntries,
+  listMixingRoundCopySources,
   MAX_MIXING_SESSIONS_PER_SHIFT,
   mixingSessionColumnLabel,
   mixingSessionLabel,
@@ -1060,6 +1062,8 @@ export default function MixingReportForm({
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [activeRoundCount, setActiveRoundCount] = useState(1);
   const [sessionRoundStart, setSessionRoundStart] = useState(1);
+  const [previousReports, setPreviousReports] = useState<MixingReport[]>([]);
+  const [previousReportsLoading, setPreviousReportsLoading] = useState(false);
   const [roundBatchWeightDrafts, setRoundBatchWeightDrafts] = useState<Partial<Record<RoundKey, string>>>({});
   const [autofillRoundKey, setAutofillRoundKey] = useState<RoundKey | null>(null);
   const [roundItemModal, setRoundItemModal] = useState<{
@@ -1436,13 +1440,15 @@ export default function MixingReportForm({
   };
 
   useEffect(() => {
-    if (editingId) return;
+    setPreviousReports([]);
     if (!form.ca.trim() || !form.ngay.trim() || !form.ma_may.trim()) {
-      setSessionRoundStart(1);
+      if (!editingId) setSessionRoundStart(1);
+      setPreviousReportsLoading(false);
       return;
     }
 
     let cancelled = false;
+    setPreviousReportsLoading(true);
     (async () => {
       try {
         const params = new URLSearchParams({
@@ -1453,15 +1459,21 @@ export default function MixingReportForm({
         });
         const res = await fetch(`/api/bao-cao-phoi-tron?${params.toString()}`);
         const data = await res.json().catch(() => ({}));
-        if (cancelled || !res.ok) return;
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || 'Không tải được các lần trước để sao chép NVL.');
         const reports = Array.isArray(data.reports)
           ? data.reports.map((item: Record<string, unknown>) => normalizeMixingReport(item))
           : [];
-        const nextStart = computeNextMixingSessionStart(reports);
-        setSessionRoundStart(nextStart);
+        setPreviousReports(reports);
+        if (!editingId) setSessionRoundStart(computeNextMixingSessionStart(reports));
         setActiveRoundCount(prev => Math.max(prev, 1));
-      } catch {
-        if (!cancelled) setSessionRoundStart(1);
+      } catch (err) {
+        if (!cancelled) {
+          if (!editingId) setSessionRoundStart(1);
+          setError(err instanceof Error ? err.message : 'Không tải được các lần trước để sao chép NVL.');
+        }
+      } finally {
+        if (!cancelled) setPreviousReportsLoading(false);
       }
     })();
 
@@ -1599,6 +1611,11 @@ export default function MixingReportForm({
     );
     return Math.min(MIXING_MAX_ROUNDS, Math.max(activeRoundCount, fromLines));
   }, [activeRoundCount, computedLines]);
+
+  const roundCopySources = useMemo(() => listMixingRoundCopySources([
+    ...previousReports.filter(report => report.id !== editingId),
+    { id: 'draft', lan_thu: sessionRoundStart, so_lan: displayedRoundCount, so_phieu: 'Đang nhập', chi_tiet: form.chi_tiet }
+  ], sessionRoundStart + displayedRoundCount), [previousReports, editingId, sessionRoundStart, displayedRoundCount, form.chi_tiet]);
 
   useEffect(() => {
     const fromLines = form.chi_tiet.reduce(
@@ -1791,6 +1808,23 @@ export default function MixingReportForm({
         String(text)
       );
     }, lines);
+
+  const copyPreviousRound = (targetKey: RoundKey, sourceValue: string) => {
+    const source = roundCopySources.find(option => option.value === sourceValue);
+    const targetSession = sessionRoundStart + ROUND_KEYS.indexOf(targetKey);
+    if (!source || source.session >= targetSession) return;
+    if (listRoundMaterialEntries(form.chi_tiet, targetKey).length && !window.confirm(
+      `${mixingSessionLabel(targetSession)} đã có NVL. Sao chép sẽ thay toàn bộ NVL và KL 1 mẻ bằng ${source.label}. Tiếp tục?`
+    )) return;
+    const currentLines = applyActualWeightDrafts(form.chi_tiet);
+    const sourceLines = source.value.startsWith('draft:') ? currentLines : source.lines;
+    const batchWeight = getRoundBatchWeightFromLines(sourceLines, source.roundKey);
+    setForm(prev => ({ ...prev, chi_tiet: copyMixingRoundFromLines(currentLines, targetKey, sourceLines, source.roundKey) }));
+    setRoundBatchWeightDrafts(prev => ({ ...prev, [targetKey]: batchWeight !== null ? quantityInputText(batchWeight) : '' }));
+    setActualWeightDrafts({});
+    setError('');
+    setMessage(`Đã sao chép NVL từ ${source.label} sang ${mixingSessionLabel(targetSession)}.`);
+  };
 
   const openRoundMaterialModal = (roundKey: RoundKey, edit?: { lineIndex: number; itemIndex: number }) => {
     const existing =
@@ -2332,6 +2366,7 @@ export default function MixingReportForm({
             <div className="relative z-10 space-y-2 p-2 sm:space-y-3 sm:p-4">
             {ROUND_KEYS.slice(0, displayedRoundCount).map((roundKey, roundIndex) => {
               const entries = listRoundMaterialEntries(form.chi_tiet, roundKey);
+              const copyOptions = roundCopySources.filter(source => source.session < sessionRoundStart + roundIndex);
               const isLastRound = roundIndex === displayedRoundCount - 1;
               const canRemoveRound = displayedRoundCount > 1 && isLastRound;
               const roundComplete = isRoundComplete(roundKey);
@@ -2406,6 +2441,17 @@ export default function MixingReportForm({
                           <ClipboardCheck className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
                           Tự động điền
                         </button>
+                        <select
+                          aria-label={`Sao chép NVL vào ${roundColumnLabel(sessionRoundStart, roundIndex)}`}
+                          title="Sao chép đầy đủ NVL và KL 1 mẻ từ lần trước cùng ngày · ca · máy"
+                          value=""
+                          onChange={event => copyPreviousRound(roundKey, event.target.value)}
+                          disabled={copyOptions.length === 0}
+                          className="h-7 max-w-full rounded-md border border-zinc-200 bg-white px-2 text-[9px] font-extrabold text-zinc-700 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-100 disabled:opacity-50 sm:h-8 sm:rounded-lg sm:px-3 sm:text-[11px]"
+                        >
+                          <option value="" disabled>{previousReportsLoading && !copyOptions.length ? 'Đang tải lần trước...' : 'Sao chép NVL từ lần...'}</option>
+                          {copyOptions.map(source => <option key={source.value} value={source.value}>{source.label}</option>)}
+                        </select>
                       </div>
                     ) : null}
                   </div>

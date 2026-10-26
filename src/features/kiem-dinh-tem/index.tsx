@@ -26,10 +26,8 @@ const scanBtn =
   'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-800 hover:bg-zinc-50';
 
 export function KiemDinhTemPanel({
-  onBack,
   currentUser
 }: {
-  onBack: () => void;
   currentUser?: { name?: string | null } | null;
 }) {
   const [manualCode, setManualCode] = useState('');
@@ -165,13 +163,6 @@ export function KiemDinhTemPanel({
             Quét QR tem → xem ngày, ca, người sản xuất và dữ liệu trạm cân AI → lập biên bản.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="hidden rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 sm:block"
-        >
-          Quay lại
-        </button>
       </div>
 
       <form

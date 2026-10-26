@@ -1213,7 +1213,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <KiemDinhTemPanel onBack={() => goBack('factory-kho')} currentUser={authUser} />
+                <KiemDinhTemPanel currentUser={authUser} />
               </motion.div>
             ) : resolvedTab === 'kiem-kho-chenh-lech' ? (
               <motion.div

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Printer, ScanBarcode, Search, Trash2 } from 'lucide-react';
+import { Loader2, Printer, ScanBarcode, Search, Trash2, X } from 'lucide-react';
 import ProductQrScanner from '../../components/ProductQrScanner';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { BienBanPrintModal, formatBbDate, type BienBanRecord } from './BienBanPrint';
@@ -43,6 +43,7 @@ export function KiemDinhTemPanel({
   const [saving, setSaving] = useState(false);
   const [records, setRecords] = useState<BienBanRecord[]>([]);
   const [printing, setPrinting] = useState<BienBanRecord | null>(null);
+  const [detail, setDetail] = useState<BienBanRecord | null>(null);
 
   const loadRecords = useCallback(async () => {
     try {
@@ -300,7 +301,11 @@ export function KiemDinhTemPanel({
         ) : (
           <ul className="divide-y divide-zinc-100">
             {records.map(r => (
-              <li key={r.ma_bien_ban} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-4">
+              <li
+                key={r.ma_bien_ban}
+                onClick={() => setDetail(r)}
+                className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 hover:bg-zinc-50 sm:px-4"
+              >
                 <div className="min-w-0 flex-1 basis-full sm:basis-0">
                   <div className="break-words text-sm font-bold text-zinc-900">
                     {r.ma_bien_ban}{' '}
@@ -315,14 +320,20 @@ export function KiemDinhTemPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPrinting(r)}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setPrinting(r);
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
                 >
                   <Printer className="h-3.5 w-3.5" /> In
                 </button>
                 <button
                   type="button"
-                  onClick={() => void remove(r)}
+                  onClick={e => {
+                    e.stopPropagation();
+                    void remove(r);
+                  }}
                   className="inline-flex items-center rounded-lg border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-50"
                   aria-label="Xóa biên bản"
                 >
@@ -349,6 +360,90 @@ export function KiemDinhTemPanel({
         scannedCount={tem ? 1 : 0}
       />
       <BienBanPrintModal data={printing} onClose={() => setPrinting(null)} />
+      {detail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4 backdrop-blur-sm"
+          onClick={() => setDetail(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-zinc-950">Chi tiết biên bản</h3>
+                <p className="break-all text-xs font-medium text-zinc-500">{detail.ma_bien_ban}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetail(null)}
+                aria-label="Đóng"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <dl className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3 text-sm">
+              {(
+                [
+                  ['Ngày lập', formatBbDate(detail.ngay_lap)],
+                  ['Mã QR tem', detail.ma_qr],
+                  ['Mã SP', detail.ma_sp],
+                  ['Ngày sản xuất', formatBbDate(detail.ngay_sx)],
+                  ['Ca', detail.ca],
+                  ['Máy', detail.may],
+                  ['Lệnh SX', detail.lenh_sx],
+                  ['Người sản xuất', detail.nguoi_san_xuat],
+                  [
+                    'Trạm cân AI',
+                    detail.da_len_tram_can
+                      ? `Đã lên trạm cân${
+                          detail.thoi_diem_can
+                            ? ` (${new Date(detail.thoi_diem_can).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })})`
+                            : ''
+                        }`
+                      : 'Chưa có dữ liệu trên trạm cân'
+                  ],
+                  [
+                    'Cân lõi / SP / thực',
+                    detail.da_len_tram_can
+                      ? `${detail.du_lieu_can?.can_loi ?? '—'} / ${detail.du_lieu_can?.can_san_pham ?? '—'} / ${detail.du_lieu_can?.khoi_luong_thuc ?? '—'} kg`
+                      : ''
+                  ],
+                  ['Kết luận', detail.ket_luan === 'khong_dat' ? 'Không đạt' : 'Đạt'],
+                  ['Nội dung', detail.noi_dung],
+                  ['Ghi chú', detail.ghi_chu],
+                  ['Người lập', detail.nguoi_lap]
+                ] as Array<[string, string | null | undefined]>
+              ).map(([k, v]) => (
+                <div key={k} className="flex flex-col sm:flex-row sm:gap-2">
+                  <dt className="text-xs font-semibold text-zinc-500 sm:w-36 sm:shrink-0 sm:text-sm">{k}</dt>
+                  <dd className="min-w-0 break-words font-semibold text-zinc-900">{v || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex gap-2 border-t border-zinc-200 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setDetail(null)}
+                className="h-10 flex-1 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700 sm:flex-none"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrinting(detail);
+                  setDetail(null);
+                }}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-sm font-extrabold text-white sm:flex-none"
+              >
+                <Printer className="h-4 w-4" /> In biên bản
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

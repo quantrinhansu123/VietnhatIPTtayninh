@@ -127,6 +127,19 @@ function todayIso() {
   return `${y}-${m}-${d}`;
 }
 
+/** Mặc định danh sách: từ N ngày trước → hôm nay (giảm payload lần mở trang). */
+function daysAgoIso(days: number) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - Math.max(0, days));
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+const SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS = 2;
+
 function formatDateVi(value: string) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value || '—';
@@ -437,8 +450,10 @@ export function ShippingOrdersPanel({
   const [products, setProducts] = useState<OrderProductOption[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(
+    () => daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS)
+  );
+  const [dateTo, setDateTo] = useState(() => todayIso());
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -464,41 +479,43 @@ export function ShippingOrdersPanel({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [printingWarehouseOrders, setPrintingWarehouseOrders] = useState<ShippingOrder[]>([]);
   const [pendingWarehousePrint, setPendingWarehousePrint] = useState(false);
-  const loadAll = async () => {
+  const defaultDateFrom = daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS);
+  const defaultDateTo = todayIso();
+
+  const applyExportedStatus = (
+    list: ShippingOrder[],
+    exported: Record<string, Record<string, number>>
+  ) =>
+    list.map(order => {
+      const done = exported[order.ma_lenh];
+      const need = new Map<string, number>();
+      for (const line of order.chi_tiet) {
+        const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
+        if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
+      }
+      const full = Boolean(done) && need.size > 0 && [...need].every(([key, qty]) => (done[key] || 0) >= qty);
+      return full && order.trang_thai === 'Chờ xuất' ? { ...order, trang_thai: 'Đã xuất' } : order;
+    });
+
+  const loadOrders = async (from = dateFrom, to = dateTo) => {
     setIsLoading(true);
     setError('');
     try {
-      const [orderRes, customerRes, productRes, vehicleRes] = await Promise.all([
-        fetch('/api/lenh-xuat-hang'),
-        fetch('/api/khach-hang'),
-        fetch('/api/san-pham?format=table'),
-        fetch('/api/danh-sach-xe')
+      const params = new URLSearchParams();
+      if (from.trim()) params.set('tu_ngay', from.trim());
+      if (to.trim()) params.set('den_ngay', to.trim());
+      const query = params.toString();
+      const [orderRes, exportedData] = await Promise.all([
+        fetch(`/api/lenh-xuat-hang${query ? `?${query}` : ''}`),
+        fetch('/api/kho/lenh-xuat-da-xuat')
+          .then(r => (r.ok ? r.json() : {}))
+          .catch(() => ({}))
       ]);
-      const exportedData: any = await fetch('/api/kho/lenh-xuat-da-xuat').then(r => (r.ok ? r.json() : {})).catch(() => ({}));
-      const exported: Record<string, Record<string, number>> = exportedData?.exported || {};
+      const exported: Record<string, Record<string, number>> =
+        (exportedData as { exported?: Record<string, Record<string, number>> })?.exported || {};
       const orderData = await orderRes.json().catch(() => ({}));
-      const customerData = await customerRes.json().catch(() => ({}));
-      const productData = await productRes.json().catch(() => ({}));
-      const vehicleData = await vehicleRes.json().catch(() => ({}));
       if (!orderRes.ok) throw new Error(orderData.error || 'Không thể tải lệnh xuất hàng.');
-      if (!customerRes.ok) throw new Error(customerData.error || 'Không thể tải khách hàng.');
-      if (!vehicleRes.ok) {
-        console.warn('Không tải được danh sách xe:', vehicleData.error || vehicleRes.status);
-      }
-      // Lệnh "Chờ xuất" mà phiếu xuất kho đã chốt đủ mọi mặt hàng → hiện "Đã xuất".
-      setOrders(normalizeShippingOrders(orderData).map(order => {
-        const done = exported[order.ma_lenh];
-        const need = new Map<string, number>();
-        for (const line of order.chi_tiet) {
-          const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
-          if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
-        }
-        const full = Boolean(done) && need.size > 0 && [...need].every(([key, qty]) => (done[key] || 0) >= qty);
-        return full && order.trang_thai === 'Chờ xuất' ? { ...order, trang_thai: 'Đã xuất' } : order;
-      }));
-      setCustomers(normalizeCustomerDetails(customerData));
-      setProducts(normalizeOrderProducts(productData));
-      setVehicles(normalizeVehicles(vehicleData));
+      setOrders(applyExportedStatus(normalizeShippingOrders(orderData), exported));
     } catch (loadError: unknown) {
       setOrders([]);
       setError(showSaveFailure(loadError, 'Không thể tải dữ liệu lệnh xuất hàng.'));
@@ -507,17 +524,51 @@ export function ShippingOrdersPanel({
     }
   };
 
+  const loadLookups = async () => {
+    try {
+      const [customerRes, productRes, vehicleRes] = await Promise.all([
+        fetch('/api/khach-hang'),
+        fetch('/api/san-pham?format=table'),
+        fetch('/api/danh-sach-xe')
+      ]);
+      const customerData = await customerRes.json().catch(() => ({}));
+      const productData = await productRes.json().catch(() => ({}));
+      const vehicleData = await vehicleRes.json().catch(() => ({}));
+      if (!customerRes.ok) throw new Error(customerData.error || 'Không thể tải khách hàng.');
+      if (!vehicleRes.ok) {
+        console.warn('Không tải được danh sách xe:', vehicleData.error || vehicleRes.status);
+      }
+      setCustomers(normalizeCustomerDetails(customerData));
+      setProducts(normalizeOrderProducts(productData));
+      setVehicles(normalizeVehicles(vehicleData));
+    } catch (loadError: unknown) {
+      setError(showSaveFailure(loadError, 'Không thể tải dữ liệu lệnh xuất hàng.'));
+    }
+  };
+
+  const loadAll = async () => {
+    await Promise.all([loadOrders(dateFrom, dateTo), loadLookups()]);
+  };
+
   useEffect(() => {
-    void loadAll();
+    void loadLookups();
   }, []);
 
-  const hasActiveFilters = selectedStatus !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
+  useEffect(() => {
+    void loadOrders(dateFrom, dateTo);
+  }, [dateFrom, dateTo]);
+
+  const hasActiveFilters =
+    selectedStatus !== 'all' ||
+    Boolean(searchText) ||
+    dateFrom !== defaultDateFrom ||
+    dateTo !== defaultDateTo;
 
   const resetFilters = () => {
     setSelectedStatus('all');
     setSearchText('');
-    setDateFrom('');
-    setDateTo('');
+    setDateFrom(daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS));
+    setDateTo(todayIso());
   };
 
   const filteredOrders = useMemo(() => {

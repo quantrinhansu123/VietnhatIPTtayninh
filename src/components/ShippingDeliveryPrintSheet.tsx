@@ -359,12 +359,17 @@ export function ShippingDeliveryPrintSheet({
 
           <section className="bb-gx-general-note">
             <div className="bb-gx-general-note-head">GHI CHÚ CHUNG</div>
-            <div className="bb-gx-general-note-body">{noteText}</div>
+            <div className="bb-gx-general-note-body">
+              <div className="bb-gx-general-note-fixed">
+                Số lượng hàng thực tế và tem lột phải khớp nhau. Vui lòng kiểm tra trước khi giao.
+              </div>
+              {noteText ? <div className="bb-gx-general-note-extra">{noteText}</div> : null}
+              <div className="bb-gx-general-note-blank-lines" aria-hidden>
+                <div className="bb-gx-general-note-blank-line" />
+                <div className="bb-gx-general-note-blank-line" />
+              </div>
+            </div>
           </section>
-
-          <p className="bb-gx-footer-warning">
-            Số lượng hàng thực tế và tem lột phải khớp nhau. Vui lòng kiểm tra trước khi giao.
-          </p>
         </div>
       </div>
         );

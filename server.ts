@@ -11876,17 +11876,30 @@ export function createApp() {
     }
   });
 
-  app.get('/api/lenh-xuat-hang', async (_req, res) => {
+  app.get('/api/lenh-xuat-hang', async (req, res) => {
     if (!supabase) {
       return res.json({ orders: [], total: 0, source: 'local' });
     }
 
     try {
-      const { data, error } = await supabase
+      const fromDate = parseWarehouseSlipDate(req.query.from ?? req.query.tu_ngay);
+      const toDate = parseWarehouseSlipDate(req.query.to ?? req.query.den_ngay);
+
+      let query = supabase
         .from(SUPABASE_SHIPPING_ORDERS_TABLE)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
         .order('id', { ascending: false });
+
+      if (fromDate && toDate) {
+        query = query.gte('ngay_xuat', fromDate).lte('ngay_xuat', toDate);
+      } else if (fromDate) {
+        query = query.gte('ngay_xuat', fromDate);
+      } else if (toDate) {
+        query = query.lte('ngay_xuat', toDate);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         return respondSupabaseReadError(res, error, SUPABASE_SHIPPING_ORDERS_TABLE, {

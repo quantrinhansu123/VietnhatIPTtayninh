@@ -1,7 +1,5 @@
-import { Fragment } from 'react';
 import { formatMoney, formatNumber } from '../utils';
 import { vietNhatLogoUrl } from './layout/constants';
-import { ShippingWarehouseExportSheet } from './ShippingWarehouseExportPrintSheet';
 import type { ShippingOrder, ShippingOrderLine } from '../features/lenh-xuat-hang';
 
 type PrintRow = {
@@ -200,8 +198,7 @@ export function ShippingDeliveryPrintSheet({
         const plates = uniqueJoined(pageOrders.map(order => order.bsx));
         const kmDisplay = formatKmDisplay(pageOrders);
         return (
-      <Fragment key={`bb-gx-wrap-${pageIndex}`}>
-      <div className="bb-gx-print-page">
+      <div className="bb-gx-print-page" key={`bb-gx-wrap-${pageIndex}`}>
         <div className="bb-gx-sheet">
           <table className="bb-gx-top">
             <tbody>
@@ -366,12 +363,6 @@ export function ShippingDeliveryPrintSheet({
           </section>
         </div>
       </div>
-
-        {/* Trang riêng — mỗi lệnh 1 phiếu xuất kho, không gộp */}
-        <div className="bb-gx-print-page bb-gx-xk-page">
-          <ShippingWarehouseExportSheet orders={pageOrders} embedded />
-        </div>
-      </Fragment>
         );
       })}
     </div>

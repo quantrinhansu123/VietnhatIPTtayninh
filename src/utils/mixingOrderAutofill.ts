@@ -1,6 +1,7 @@
 import { parsePercentInput } from '../utils';
 import { shiftNamesMatch } from './shiftSettings';
 import { isWarehouseKgUnit } from './warehouseWeight';
+import { compareMaterialMisaCode } from './materialMisaSortOrder';
 import type { MixingPhoiTron, MixingReportLine, MixingRoundItem } from '../components/MixingReportForm';
 
 export type MixingBomItem = {
@@ -658,7 +659,8 @@ function bomToRoundItems(
         so_luong: item.amountType === 'quantity' ? item.quantity : null,
         kl_thuc_te: null
       };
-    });
+    })
+    .sort((left, right) => compareMaterialMisaCode(left.ma_nvl, right.ma_nvl));
 }
 
 export function buildMixingLinesFromOrderProducts(
@@ -710,7 +712,9 @@ export function buildMixingLinesFromOrderProducts(
       });
     });
 
-  return lines;
+  return lines
+    .sort((left, right) => compareMaterialMisaCode(left.ma_nvl, right.ma_nvl))
+    .map((line, index) => ({ ...line, stt: startStt + index }));
 }
 
 export function formatMixingBomSummary(items: MixingBomItem[]) {

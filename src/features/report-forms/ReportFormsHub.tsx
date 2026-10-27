@@ -5,6 +5,7 @@ import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../comp
 import { REPORT_FORM_MENU_ITEMS, type MenuCardConfig } from '../../app/menus';
 import type { MachineNvlSavedReport } from '../../utils/machineNvlReports';
 import type { AppTab } from '../../routes';
+import type { MaterialRequestRow } from '../yeu-cau-xuat-vat-tu/MaterialRequestListView';
 import { ReportFormsSharedProvider } from './ReportFormsSharedContext';
 import { ReportFormsSharedHeader } from './ReportFormsSharedHeader';
 
@@ -22,9 +23,6 @@ const CanTuDongPanel = lazy(() => import('../can-tu-dong').then(m => ({ default:
 const CanTuDongEntryForm = lazy(() =>
   import('../can-tu-dong/entry-form').then(m => ({ default: m.CanTuDongEntryForm }))
 );
-const CanKiemKhoPilotPanel = lazy(() =>
-  import('../can-tu-dong/pilot').then(m => ({ default: m.CanKiemKhoPilotPanel }))
-);
 const MachineDowntimeReportPanel = lazy(() => import('../../components/MachineDowntimeReportPanel'));
 const MachineRunLogPanel = lazy(() => import('../../components/MachineRunLogPanel'));
 const AcceptanceReportForm = lazy(() => import('../../components/AcceptanceReportForm'));
@@ -39,7 +37,6 @@ export type ReportFormsHubTabId =
   | 'mixing-report'
   | 'can-tu-dong'
   | 'can-tu-dong-entry'
-  | 'can-kiem-kho'
   | 'machine-downtime-report'
   | 'machine-run-log'
   | 'acceptance-report'
@@ -98,6 +95,8 @@ type Props = {
   onMachineNvlPrefillConsumed: () => void;
   machineNvlEditReport: MachineNvlSavedReport | null;
   onMachineNvlEditConsumed: () => void;
+  materialRequestEdit?: MaterialRequestRow | null;
+  onMaterialRequestEditConsumed?: () => void;
   acceptanceEditReport: AcceptanceReport | null;
   onAcceptanceEditConsumed: () => void;
   acceptanceEditReportGroup: AcceptanceReport[] | null;
@@ -123,6 +122,8 @@ export function ReportFormsHub({
   onMachineNvlPrefillConsumed,
   machineNvlEditReport,
   onMachineNvlEditConsumed,
+  materialRequestEdit = null,
+  onMaterialRequestEditConsumed,
   acceptanceEditReport,
   onAcceptanceEditConsumed,
   acceptanceEditReportGroup,
@@ -172,6 +173,13 @@ export function ReportFormsHub({
       setActiveHubTab(initialHubTab);
     }
   }, [initialHubTab, hubItems]);
+
+  useEffect(() => {
+    if (!materialRequestEdit) return;
+    if (hubItems.some(item => item.hubId === 'material-request')) {
+      setActiveHubTab('material-request');
+    }
+  }, [materialRequestEdit, hubItems]);
 
   const resetAcceptanceForm = () => {
     setAcceptanceShowForm(false);
@@ -256,7 +264,12 @@ export function ReportFormsHub({
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="material-request" activeTab={activeHubTab} mountedTabs={mountedTabs}>
-            <YeuCauXuatVatTuPanel currentUser={currentUser} />
+            <YeuCauXuatVatTuPanel
+              currentUser={currentUser}
+              editRequest={materialRequestEdit}
+              onEditConsumed={onMaterialRequestEditConsumed}
+              onOpenList={() => onOpenList('material-request-list')}
+            />
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="tra-kho-nvl" activeTab={activeHubTab} mountedTabs={mountedTabs}>
@@ -278,10 +291,6 @@ export function ReportFormsHub({
 
           <KeepAliveSlot tabId="can-tu-dong-entry" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <CanTuDongEntryForm onClose={onBack} />
-          </KeepAliveSlot>
-
-          <KeepAliveSlot tabId="can-kiem-kho" activeTab={activeHubTab} mountedTabs={mountedTabs}>
-            <CanKiemKhoPilotPanel />
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="machine-downtime-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>

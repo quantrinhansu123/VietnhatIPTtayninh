@@ -40,7 +40,12 @@ import { MachineNvlPrintSheet, savedReportToMachineNvlPrintReport } from '../../
 import { MixingReportPrintSheet } from '../../components/MixingReportPrintSheet';
 import { WeighingSlipPrintSheet, type WeighingSlipPrintData } from '../../components/WeighingSlipPrintSheet';
 import { MachineDowntimePrintSheet, buildMachineDowntimePrintSlip } from '../../components/MachineDowntimePrintSheet';
-import { AcceptanceReportPrintSheet, buildAcceptancePrintSlips, buildAcceptanceFilmKgByProductCode } from '../../components/AcceptanceReportPrintSheet';
+import {
+  AcceptanceReportPrintSheet,
+  buildAcceptancePrintSlips,
+  buildAcceptanceFilmKgByProductCode,
+  buildAcceptanceProductNormByCode
+} from '../../components/AcceptanceReportPrintSheet';
 import {
   buildCanTuDongPrintData,
   CanTuDongPrintSheet,
@@ -147,6 +152,62 @@ export type ProductionPlanReportDiagnostic = {
   dayTotal: number;
 };
 
+export type RelatedMaterialRequestLine = {
+  ma_nvl: string;
+  ten_nvl: string;
+  don_vi: string;
+  so_luong: number;
+};
+
+export type RelatedMaterialRequest = {
+  ma_yeu_cau: string;
+  ngay: string;
+  ca: string;
+  may: string;
+  trang_thai: string;
+  lines: RelatedMaterialRequestLine[];
+};
+
+function normalizeRelatedMaterialRequests(data: unknown): RelatedMaterialRequest[] {
+  const list = data && typeof data === 'object' && Array.isArray((data as { requests?: unknown }).requests)
+    ? (data as { requests: unknown[] }).requests
+    : Array.isArray(data)
+      ? data
+      : [];
+  return list
+    .map((entry): RelatedMaterialRequest | null => {
+      if (!entry || typeof entry !== 'object') return null;
+      const record = entry as Record<string, unknown>;
+      const code = String(record.ma_yeu_cau ?? '').trim();
+      if (!code) return null;
+      const linesRaw = Array.isArray(record.lines) ? record.lines : [];
+      const lines = linesRaw
+        .map((line): RelatedMaterialRequestLine | null => {
+          if (!line || typeof line !== 'object') return null;
+          const row = line as Record<string, unknown>;
+          const maNvl = String(row.ma_nvl ?? '').trim();
+          if (!maNvl) return null;
+          const qty = Number(row.so_luong);
+          return {
+            ma_nvl: maNvl,
+            ten_nvl: String(row.ten_nvl ?? '').trim(),
+            don_vi: String(row.don_vi ?? '').trim() || 'kg',
+            so_luong: Number.isFinite(qty) ? qty : 0
+          };
+        })
+        .filter((line): line is RelatedMaterialRequestLine => Boolean(line));
+      return {
+        ma_yeu_cau: code,
+        ngay: String(record.ngay ?? '').trim(),
+        ca: String(record.ca ?? '').trim(),
+        may: String(record.may ?? '').trim(),
+        trang_thai: String(record.trang_thai ?? '').trim() || 'cho_xu_ly',
+        lines
+      };
+    })
+    .filter((row): row is RelatedMaterialRequest => Boolean(row));
+}
+
 export type ProductionPlanRelatedReports = {
   productCatalog: ProductRow[];
   materialCatalog: ReturnType<typeof normalizeMaterialsInventory>;
@@ -161,6 +222,7 @@ export type ProductionPlanRelatedReports = {
   damaged: WeighingRecord[];
   acceptance: AcceptanceReport[];
   acceptanceFilmKgByProductCode: Map<string, number>;
+  acceptanceProductNormByCode: ReturnType<typeof buildAcceptanceProductNormByCode>;
   shiftHandovers: ShiftHandoverSlip[];
   canTuDong: CanTuDongPrintData | null;
   warehouseExportSlips: WarehouseSlipPrintData[];
@@ -168,6 +230,11 @@ export type ProductionPlanRelatedReports = {
   warehouseSlips: WarehouseSlipPrintData[];
   /** Nguồn phiếu kho thô để mẫu Báo cáo kết quả theo lệnh SX tính đúng cột chi tiết/đơn giá. */
   warehouseMovements: WarehouseMovementRow[];
+  /**
+   * Phiếu nhận NVL về máy (`yeu_cau_xuat_kho` + `nvl_yeu_cau`) — nguồn cột «Lấy trong kho»
+   * khi phiếu xuất kho không khớp máy / thiếu may.
+   */
+  materialRequests: RelatedMaterialRequest[];
   shiftOptions: ShiftOption[];
   totalReport: BbBaoCaoTinhToanPayload | null;
   totalReportGiaiTrinh: BbGiaiTrinhPrintReport | null;
@@ -417,7 +484,7 @@ export async function loadProductionPlanRelatedReports(
     includeAllMachines: true
   });
 
-  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, machineRunLogRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, canTuDongProductCatalogRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
+  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, machineRunLogRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, canTuDongProductCatalogRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, materialRequestRes, totalReportRes, giaiTrinhRes] =
     await Promise.all([
       fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
       fetchJson('/api/lenh-sx'),
@@ -435,6 +502,9 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/kho/lich-su?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
       fetchJson(`/api/kho/lich-su?loai=nhap&loai_kho=san_pham&from=${encodedDate}&to=${encodedDate}`),
       fetchJson('/api/kho-nvl'),
+      fetchJson(
+        `/api/yeu-cau-xuat-kho?tu_ngay=${encodedDate}&den_ngay=${encodedDate}`
+      ),
       fetchJson(`/api/bb-bao-cao-tinh-toan?khoa_on_dinh=${encodeURIComponent(totalReportKey)}`),
       fetchJson(`/api/bb-giai-trinh?dateFrom=${encodedDate}&dateTo=${encodedDate}`)
     ]);
@@ -643,6 +713,15 @@ export async function loadProductionPlanRelatedReports(
   const warehouseExportSlips = warehouseSlips.filter(slip => slip.slipType === 'xuat');
   const warehouseInboundSlips = warehouseSlips.filter(slip => slip.slipType === 'nhap');
 
+  const materialRequestsAll = materialRequestRes.ok
+    ? normalizeRelatedMaterialRequests(materialRequestRes.data)
+    : [];
+  const materialRequests = materialRequestsAll.filter(
+    row =>
+      shouldIncludeRelatedReport(row.ca, shifts, shiftOptions) && matchesSelectedMachine(row.may)
+  );
+  if (!materialRequestRes.ok) errors.push('Phiếu nhận NVL');
+
   const rawTotalReport = (totalReportRes.data as { item?: { payload?: unknown } } | null)?.item?.payload;
   const totalReport = isBbBaoCaoTinhToanPayload(rawTotalReport) ? rawTotalReport : null;
   const giaiTrinhMap: Record<string, BbGiaiTrinhFields> = {};
@@ -666,6 +745,7 @@ export async function loadProductionPlanRelatedReports(
     : null;
 
   const acceptanceFilmKgByProductCode = buildAcceptanceFilmKgByProductCode(productCatalog);
+  const acceptanceProductNormByCode = buildAcceptanceProductNormByCode(productCatalog);
 
   const isEmpty =
     productionPlans.length === 0 &&
@@ -679,7 +759,8 @@ export async function loadProductionPlanRelatedReports(
     acceptance.length === 0 &&
     shiftHandovers.length === 0 &&
     canTuDong === null &&
-    warehouseSlips.length === 0;
+    warehouseSlips.length === 0 &&
+    materialRequests.length === 0;
 
   const diagnostics: ProductionPlanReportDiagnostic[] = [
     { label: 'Kế hoạch sản xuất', matched: productionPlans.length, dayTotal: planSummaries.length },
@@ -693,7 +774,8 @@ export async function loadProductionPlanRelatedReports(
     { label: 'Báo cáo sản lượng', matched: acceptance.length, dayTotal: acceptanceAll.length },
     { label: 'Phiếu giao ca', matched: shiftHandovers.length, dayTotal: shiftHandoversAll.length },
     { label: 'Phiếu cân tự động', matched: canTuDongRecords.length, dayTotal: canTuDongAll.length },
-    { label: 'Phiếu xuất vật tư', matched: warehouseMovements.length, dayTotal: warehouseMovementsAll.length }
+    { label: 'Phiếu xuất vật tư', matched: warehouseMovements.length, dayTotal: warehouseMovementsAll.length },
+    { label: 'Phiếu nhận NVL', matched: materialRequests.length, dayTotal: materialRequestsAll.length }
   ];
 
   return {
@@ -709,18 +791,327 @@ export async function loadProductionPlanRelatedReports(
     damaged,
     acceptance,
     acceptanceFilmKgByProductCode,
+    acceptanceProductNormByCode,
     shiftHandovers,
     canTuDong,
     warehouseExportSlips,
     warehouseInboundSlips,
     warehouseSlips,
     warehouseMovements,
+    materialRequests,
     shiftOptions,
     totalReport,
     totalReportGiaiTrinh,
     isEmpty,
     errors,
     diagnostics
+  };
+}
+
+/**
+ * In nhật ký SX / phiếu giao — chỉ 3 API (sản lượng + SP + ca).
+ * Không gọi gói related reports (~18 API, cân AI 10k dòng) nên mở in nhanh hơn nhiều.
+ */
+export type SanLuongNkSxPrintData = {
+  acceptance: AcceptanceReport[];
+  acceptanceFilmKgByProductCode: Map<string, number>;
+  acceptanceProductNormByCode: ReturnType<typeof buildAcceptanceProductNormByCode>;
+  shiftOptions: ShiftOption[];
+};
+
+export async function loadSanLuongNkSxPrintData(
+  planDate: string,
+  shift: string,
+  selectedMachine: { code?: string; name?: string } = {}
+): Promise<SanLuongNkSxPrintData> {
+  if (!planDate) throw new Error('Chưa chọn ngày để in báo cáo sản lượng.');
+  const encodedDate = encodeURIComponent(planDate);
+  const shifts = [String(shift || '').trim()].filter(Boolean);
+  const machineMatchers = buildMachineMatchers([
+    selectedMachine.code || '',
+    selectedMachine.name || ''
+  ]);
+  const matchesSelectedMachine = (...candidates: Array<string | undefined | null>) =>
+    machineMatchers.size === 0 || machineMatches(machineMatchers, ...candidates);
+
+  const [acceptanceRes, productRes, settingRes, materialRes] = await Promise.all([
+    fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
+    fetchJson('/api/san-pham?format=table'),
+    fetchJson('/api/cai-dat'),
+    // Tên SP lỗi / SP rác (vd. NHUAKM) lấy từ kho_nvl.
+    fetchJson('/api/kho-nvl')
+  ]);
+
+  if (!acceptanceRes.ok) {
+    throw new Error('Không tải được báo cáo sản lượng.');
+  }
+
+  const shiftOptions = settingRes.ok
+    ? getProductionShiftOptions(normalizeShiftSettings(settingRes.data))
+    : [];
+  const productCatalog = productRes.ok ? normalizeProducts(productRes.data) : [];
+  const acceptanceAll = addAcceptanceProductNamesForPrint(
+    normalizeAcceptanceReports(acceptanceRes.data),
+    productCatalog,
+    materialRes.ok ? materialRes.data : undefined
+  );
+  const acceptance = acceptanceAll.filter(
+    report =>
+      shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+      matchesSelectedMachine(report.ma_may, report.ten_may)
+  );
+
+  return {
+    acceptance,
+    acceptanceFilmKgByProductCode: buildAcceptanceFilmKgByProductCode(productCatalog),
+    acceptanceProductNormByCode: buildAcceptanceProductNormByCode(productCatalog),
+    shiftOptions
+  };
+}
+
+/**
+ * In bảng theo dõi vật tư (+ trang sản lượng kèm theo): bỏ các API nặng không dùng
+ * (cân AI, phiếu cân, dừng máy, nhật ký chạy máy, BB tổng hợp…).
+ */
+export async function loadMachineShiftChecklistPrintData(
+  planDate: string,
+  shiftList: string[],
+  productCatalog: ProductRow[] = [],
+  selectedMachine: { code?: string; name?: string } = {}
+): Promise<ProductionPlanRelatedReports> {
+  if (!planDate) {
+    throw new Error('Chưa có ngày kế hoạch để in các phiếu liên quan.');
+  }
+
+  const shifts = Array.from(new Set((shiftList ?? []).map(s => s.trim()).filter(Boolean)));
+  const machineMatchers = buildMachineMatchers([selectedMachine.code || '', selectedMachine.name || '']);
+  const matchesSelectedMachine = (...candidates: Array<string | undefined | null>) =>
+    machineMatchers.size === 0 || machineMatches(machineMatchers, ...candidates);
+  const errors: string[] = [];
+  const encodedDate = encodeURIComponent(planDate);
+  const shiftOptions = await loadShiftOptions();
+
+  const [
+    planRes,
+    productionOrderRes,
+    nvlRes,
+    mixingRes,
+    acceptanceRes,
+    shiftHandoverRes,
+    warehouseRes,
+    materialCatalogRes,
+    materialRequestRes,
+    productCatalogRes
+  ] = await Promise.all([
+    fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
+    fetchJson('/api/lenh-sx'),
+    fetchJson(`/api/bao-cao-may-nvl-ton?ngay=${encodedDate}`),
+    fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
+    fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
+    fetchJson(`/api/phieu-giao-ca?ngay=${encodedDate}&limit=300`),
+    fetchJson(`/api/kho/lich-su?loai=xuat&loai_kho=nvl&from=${encodedDate}&to=${encodedDate}`),
+    fetchJson('/api/kho-nvl'),
+    fetchJson(`/api/yeu-cau-xuat-kho?tu_ngay=${encodedDate}&den_ngay=${encodedDate}`),
+    productCatalog.length > 0
+      ? Promise.resolve({ ok: true, data: null as unknown })
+      : fetchJson('/api/san-pham?format=table')
+  ]);
+
+  const resolvedCatalog =
+    productCatalog.length > 0
+      ? productCatalog
+      : productCatalogRes.ok
+        ? normalizeProducts(productCatalogRes.data)
+        : [];
+
+  const productionOrdersAll = productionOrderRes.ok ? normalizeProductionOrders(productionOrderRes.data) : [];
+  const productionOrdersForPrint = productionOrdersAll.filter(
+    order =>
+      matchesIsoPrintDate(order.startDate, planDate) &&
+      shouldIncludeRelatedReport(order.shift, shifts, shiftOptions) &&
+      matchesSelectedMachine(order.machine)
+  );
+  const productionOrdersLoaded = await Promise.all(
+    productionOrdersForPrint.map(async order => {
+      const [{ materials, product }, machineLabel] = await Promise.all([
+        loadProductionOrderPrintMaterials(order),
+        resolveProductionOrderMachineLabel(order.machine)
+      ]);
+      return { order, materials, product, machineLabel } as PrintableProductionOrder;
+    })
+  );
+  if (!productionOrderRes.ok) errors.push('Lệnh sản xuất');
+
+  const planSummaries = planRes.ok ? normalizeProductionPlanHistory(planRes.data) : [];
+  const planDetails = await Promise.all(
+    planSummaries
+      .filter(plan => matchesIsoPrintDate(plan.planDate, planDate))
+      .map(async plan => ({
+        plan,
+        detail: await fetchJson(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`)
+      }))
+  );
+  const productionPlans = planDetails
+    .filter(({ detail }) => detail.ok)
+    .map(({ plan, detail }) => {
+      const lines = normalizeProductionPlanHistoryLines(detail.data)
+        .map(line => ({
+          line,
+          source: productionOrdersAll.find(
+            order =>
+              (line.productionOrderId && order.id === line.productionOrderId) ||
+              (line.orderCode && order.code === line.orderCode)
+          )
+        }))
+        .filter(
+          ({ line, source }) =>
+            shouldIncludeRelatedReport(line.shift, shifts, shiftOptions) &&
+            matchesSelectedMachine(line.machine, line.position, source?.machine)
+        )
+        .map(({ line, source }) => {
+          if (source) return productionOrderToPlanLine(source, line.priority);
+          const firstProduct = line.products[0];
+          return {
+            id: line.productionOrderId || line.id,
+            code: line.orderCode,
+            name: line.orderCode,
+            productCode: firstProduct?.productCode || '',
+            productName: firstProduct?.productName || '',
+            quantity: firstProduct?.quantity || '',
+            unit: firstProduct?.unit || '',
+            products: line.products,
+            status: '',
+            orderRef: line.orderRef,
+            position: line.machine !== '-' ? line.machine : line.position,
+            staff: line.staff,
+            shiftLead: line.shiftLead,
+            mainStaff: line.mainStaff,
+            assistantStaff: line.assistantStaff,
+            traineeStaff: line.traineeStaff,
+            shift: line.shift,
+            priority: line.priority,
+            note: line.note
+          } as ProductionPlanLine;
+        });
+      return { id: plan.id, planDate, lines, note: plan.note };
+    })
+    .filter(plan => plan.lines.length > 0);
+  if (!planRes.ok) errors.push('Kế hoạch sản xuất');
+
+  const machineNvlAll = nvlRes.ok ? normalizeMachineNvlReports(nvlRes.data) : [];
+  const machineNvl = machineNvlAll.filter(
+    report =>
+      shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+      matchesSelectedMachine(report.maMay, report.tenMay)
+  );
+  if (!nvlRes.ok) errors.push('Báo cáo tồn NVL');
+
+  const mixingReportsRaw = (mixingRes.data as { reports?: unknown })?.reports;
+  const mixingAll =
+    mixingRes.ok && Array.isArray(mixingReportsRaw)
+      ? mixingReportsRaw.map((item: Record<string, unknown>) => normalizeMixingReport(item))
+      : [];
+  const mixing = mixingAll.filter(
+    report =>
+      shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+      matchesSelectedMachine(report.ma_may, report.ten_may)
+  );
+  if (!mixingRes.ok) errors.push('Trộn nguyên vật liệu');
+
+  const materialCatalog = materialCatalogRes.ok
+    ? normalizeMaterialsInventory(materialCatalogRes.data)
+    : [];
+  const materialWeightCatalog = materialCatalog.map(mapMaterialToWeightCatalogItem);
+
+  const acceptanceAllRaw = acceptanceRes.ok ? normalizeAcceptanceReports(acceptanceRes.data) : [];
+  const acceptanceAll = addAcceptanceProductNamesForPrint(acceptanceAllRaw, resolvedCatalog);
+  const acceptance = acceptanceAll.filter(
+    report =>
+      shouldIncludeRelatedReport(report.ca, shifts, shiftOptions) &&
+      matchesSelectedMachine(report.ma_may, report.ten_may)
+  );
+  if (!acceptanceRes.ok) errors.push('Báo cáo sản lượng');
+
+  const shiftHandoversAll = shiftHandoverRes.ok
+    ? normalizeShiftHandoverSlips(shiftHandoverRes.data)
+    : [];
+  const shiftHandovers = shiftHandoversAll.filter(
+    slip =>
+      shouldIncludeRelatedReport(slip.shift, shifts, shiftOptions) &&
+      matchesSelectedMachine(slip.machineCode, slip.machineName)
+  );
+  if (!shiftHandoverRes.ok) errors.push('Phiếu giao ca');
+
+  const warehouseMovementsAll = warehouseRes.ok
+    ? normalizeWarehouseMovements(warehouseRes.data)
+    : [];
+  const warehouseMovements = warehouseMovementsAll.filter(
+    row =>
+      shouldIncludeRelatedReport(row.shift, shifts, shiftOptions) &&
+      matchesSelectedMachine(row.machine)
+  );
+  if (!warehouseRes.ok) errors.push('Phiếu xuất vật tư');
+
+  const warehouseSlips = buildWarehouseExportSlips(warehouseMovements, materialWeightCatalog);
+  const warehouseExportSlips = warehouseSlips.filter(slip => slip.slipType === 'xuat');
+  const warehouseInboundSlips = warehouseSlips.filter(slip => slip.slipType === 'nhap');
+
+  const materialRequestsAll = materialRequestRes.ok
+    ? normalizeRelatedMaterialRequests(materialRequestRes.data)
+    : [];
+  const materialRequests = materialRequestsAll.filter(
+    row =>
+      shouldIncludeRelatedReport(row.ca, shifts, shiftOptions) && matchesSelectedMachine(row.may)
+  );
+  if (!materialRequestRes.ok) errors.push('Phiếu nhận NVL');
+
+  const productionOrders = applyWarehouseActualQuantities(
+    productionOrdersLoaded,
+    warehouseExportSlips,
+    materialCatalog
+  );
+
+  const emptyWeighing: WeighingRecord[] = [];
+  const acceptanceFilmKgByProductCode = buildAcceptanceFilmKgByProductCode(resolvedCatalog);
+  const acceptanceProductNormByCode = buildAcceptanceProductNormByCode(resolvedCatalog);
+
+  const isEmpty =
+    productionPlans.length === 0 &&
+    productionOrders.length === 0 &&
+    machineNvl.length === 0 &&
+    mixing.length === 0 &&
+    acceptance.length === 0 &&
+    shiftHandovers.length === 0 &&
+    warehouseSlips.length === 0 &&
+    materialRequests.length === 0;
+
+  return {
+    productCatalog: resolvedCatalog,
+    materialCatalog,
+    productionPlans,
+    productionOrders,
+    machineNvl,
+    mixing,
+    weighing: emptyWeighing,
+    downtime: [],
+    machineRunLogs: [],
+    damaged: emptyWeighing,
+    acceptance,
+    acceptanceFilmKgByProductCode,
+    acceptanceProductNormByCode,
+    shiftHandovers,
+    canTuDong: null,
+    warehouseExportSlips,
+    warehouseInboundSlips,
+    warehouseSlips,
+    warehouseMovements,
+    materialRequests,
+    shiftOptions,
+    totalReport: null,
+    totalReportGiaiTrinh: null,
+    isEmpty,
+    errors,
+    diagnostics: []
   };
 }
 
@@ -927,14 +1318,33 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
         </div>
       ))}
 
-      {acceptanceSlips.map((slip, index) => (
-        <div key={`acceptance-ordered-${index}`} className="production-order-print-page">
+      {acceptanceSlips.map((slip, index) => {
+        const performedBy =
+          data.productionOrders
+            .map(item => String(item.order?.shiftLead || '').trim())
+            .find(name => name && name !== '-') ||
+          data.productionPlans
+            .flatMap(plan => plan.lines.map(line => String(line.shiftLead || '').trim()))
+            .find(name => name && name !== '-') ||
+          data.shiftHandovers
+            .map(handover => String(handover.operators || '').trim())
+            .find(name => name && name !== '-') ||
+          '';
+        return (
+        <div key={`acceptance-ordered-${index}`} className="production-order-print-page acceptance-nk-sx-print-page">
           <AcceptanceReportPrintSheet
             slip={slip}
             filmKgByProductCode={data.acceptanceFilmKgByProductCode}
+            productNormByCode={data.acceptanceProductNormByCode}
+            shiftSettings={data.shiftOptions}
+            performedBy={performedBy}
+            machineCode={slip.ma_may}
+            machineName={slip.ten_may || slip.machineLabel}
+            shift={slip.ca}
           />
         </div>
-      ))}
+        );
+      })}
 
       {/* 7. Phiếu cân kiểm tra */}
       {weighingSlips.map((slip, index) => (

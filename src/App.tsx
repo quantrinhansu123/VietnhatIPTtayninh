@@ -13,6 +13,11 @@ import WeighingReportForm from './components/WeighingReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from './lib/weighingSlipConfig';
 import MixingReportListView from './components/MixingReportListView';
 import MachineNvlReportListView from './components/MachineNvlReportListView';
+import {
+  MaterialRequestListView,
+  type MaterialRequestRow
+} from './features/yeu-cau-xuat-vat-tu/MaterialRequestListView';
+import { YeuCauXuatVatTuPanel } from './features/yeu-cau-xuat-vat-tu';
 import AcceptanceReportForm, {
   normalizeAcceptanceReports,
   type AcceptanceReport,
@@ -225,6 +230,7 @@ export default function App() {
     name: string;
   } | null>(null);
   const [machineNvlEditReport, setMachineNvlEditReport] = useState<MachineNvlSavedReport | null>(null);
+  const [materialRequestEdit, setMaterialRequestEdit] = useState<MaterialRequestRow | null>(null);
   const navigateToTab = (tab: AppTab, options?: { replace?: boolean }) => {
     // /phan-tich đã bỏ — mọi điều hướng dashboard cũ → Báo cáo mới.
     let nextTab: AppTab = tab === 'dashboard' ? 'dashboard-auto' : tab;
@@ -903,6 +909,8 @@ export default function App() {
                   onMachineNvlPrefillConsumed={() => setMachineNvlReportPrefill(null)}
                   machineNvlEditReport={machineNvlEditReport}
                   onMachineNvlEditConsumed={() => setMachineNvlEditReport(null)}
+                  materialRequestEdit={materialRequestEdit}
+                  onMaterialRequestEditConsumed={() => setMaterialRequestEdit(null)}
                   acceptanceEditReport={acceptanceEditReport}
                   onAcceptanceEditConsumed={() => setAcceptanceEditReport(null)}
                   acceptanceEditReportGroup={acceptanceEditReportGroup}
@@ -1297,7 +1305,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <MixingReportListView
-                  initialTab="norms"
+                  initialTab="reports"
                   onBack={() => goBack('report-lists')}
                 />
               </motion.div>
@@ -1318,6 +1326,45 @@ export default function App() {
                   onEdit={report => {
                     setMachineNvlEditReport(report);
                     navigateToTab('machine-nvl-report');
+                  }}
+                />
+              </motion.div>
+            ) : activeTab === 'material-request-list' ? (
+              <motion.div
+                key="material-request-list"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <MaterialRequestListView
+                  onBack={() => goBack('report-lists')}
+                  onCreate={() => {
+                    setMaterialRequestEdit(null);
+                    navigateToTab('material-request');
+                  }}
+                  onEdit={row => {
+                    setMaterialRequestEdit(row);
+                    navigateToTab('material-request');
+                  }}
+                />
+              </motion.div>
+            ) : activeTab === 'material-request' ? (
+              <motion.div
+                key="material-request"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <YeuCauXuatVatTuPanel
+                  currentUser={authUser}
+                  editRequest={materialRequestEdit}
+                  onEditConsumed={() => setMaterialRequestEdit(null)}
+                  onBack={() => goBack('report-forms')}
+                  onOpenList={() => {
+                    setMaterialRequestEdit(null);
+                    navigateToTab('material-request-list');
                   }}
                 />
               </motion.div>
@@ -1723,6 +1770,10 @@ export default function App() {
                   onEditMachineNvlReport={report => {
                     setMachineNvlEditReport(report);
                     navigateToTab('machine-nvl-report');
+                  }}
+                  onEditMaterialRequest={row => {
+                    setMaterialRequestEdit(row);
+                    navigateToTab('material-request');
                   }}
                   onEditAcceptanceReport={report => {
                     setAcceptanceCreatePrefill(null);

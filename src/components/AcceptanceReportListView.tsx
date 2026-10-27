@@ -9,9 +9,11 @@ import {
   buildAcceptancePrintSlips,
   buildAcceptanceScreenSlips,
   buildAcceptanceFilmKgByProductCode,
+  buildAcceptanceProductNormByCode,
   AcceptanceReportSlipStack
 } from './AcceptanceReportPrintSheet';
 import type { AcceptanceScreenSlip } from './AcceptanceReportPrintSheet';
+import { normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import { normalizeReportFromApi } from './AcceptanceReportForm';
 import {
@@ -50,7 +52,12 @@ type ProductCatalogEntry = {
   code: string;
   name: string;
   unit: string;
+  amisCode: string;
+  newCode: string;
   totalWeightKg: number | null;
+  plasticWeightKg: number | null;
+  coreWeightKg: number | null;
+  bagWeightKg: number | null;
   nplItems: ProductNplItem[];
 };
 
@@ -290,21 +297,47 @@ function normalizeProductCatalog(data: unknown): Map<string, ProductCatalogEntry
     const nplItems = parseProductNplItems(
       record.npl_phan_tram ?? record.nplPhanTram ?? record.nplItems ?? record.thanh_phan ?? record.dinh_muc
     );
+    const totalWeightKg = resolveProductTotalWeightKg(
+      unit,
+      record.tong_trong_luong ?? record.totalWeight,
+      name
+    );
+    const coreWeightKg = (() => {
+      const n = Number(String(record.trong_luong_loi ?? record.coreWeight ?? '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })();
+    const bagWeightKg = (() => {
+      const n = Number(String(record.trong_luong_tui ?? record.bagWeight ?? '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })();
+    let plasticWeightKg = (() => {
+      const n = Number(String(record.trong_luong_nhua ?? record.plasticWeight ?? '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })();
+    if (plasticWeightKg == null && totalWeightKg != null) {
+      const derived = totalWeightKg - (coreWeightKg ?? 0) - (bagWeightKg ?? 0);
+      if (derived > 0) plasticWeightKg = Math.round(derived * 100) / 100;
+    }
     const entry: ProductCatalogEntry = {
       code,
       name: name || code,
       unit,
-      totalWeightKg: resolveProductTotalWeightKg(
-        unit,
-        record.tong_trong_luong ?? record.totalWeight,
-        name
-      ),
+      amisCode: String(record.ma_amis ?? record.amisCode ?? '').trim(),
+      newCode: String(record.ma_sp_moi ?? record.newCode ?? '').trim(),
+      totalWeightKg,
+      plasticWeightKg,
+      coreWeightKg,
+      bagWeightKg,
       nplItems
     };
     const key = normalizeProductKey(code);
     if (key) map.set(key, entry);
     const nameKey = normalizeProductKey(name);
     if (nameKey && !map.has(nameKey)) map.set(nameKey, entry);
+    for (const alt of [entry.amisCode, entry.newCode]) {
+      const altKey = normalizeProductKey(alt);
+      if (altKey && !map.has(altKey)) map.set(altKey, entry);
+    }
   }
   return map;
 }
@@ -473,6 +506,7 @@ export default function AcceptanceReportListView({
   const [productCatalogByKey, setProductCatalogByKey] = useState<Map<string, ProductCatalogEntry>>(
     () => new Map()
   );
+  const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [materialWeightCatalog, setMaterialWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
   const [isSyncingNvl, setIsSyncingNvl] = useState(false);
@@ -527,7 +561,26 @@ export default function AcceptanceReportListView({
       buildAcceptanceFilmKgByProductCode(
         [...productCatalogByKey.values()].map(entry => ({
           code: entry.code,
+          newCode: entry.newCode,
+          amisCode: entry.amisCode,
           nplItems: entry.nplItems
+        }))
+      ),
+    [productCatalogByKey]
+  );
+
+  const productNormByCode = useMemo(
+    () =>
+      buildAcceptanceProductNormByCode(
+        [...productCatalogByKey.values()].map(entry => ({
+          code: entry.code,
+          newCode: entry.newCode,
+          amisCode: entry.amisCode,
+          name: entry.name,
+          totalWeightKg: entry.totalWeightKg,
+          plasticWeightKg: entry.plasticWeightKg,
+          coreWeight: entry.coreWeightKg,
+          bagWeight: entry.bagWeightKg
         }))
       ),
     [productCatalogByKey]
@@ -680,13 +733,15 @@ export default function AcceptanceReportListView({
     let cancelled = false;
     (async () => {
       try {
-        const [catalog, materialRes] = await Promise.all([
+        const [catalog, materialRes, settingRes] = await Promise.all([
           fetch('/api/san-pham?format=table'),
-          fetch('/api/kho-nvl')
+          fetch('/api/kho-nvl'),
+          fetch('/api/cai-dat')
         ]);
         if (cancelled) return;
         const productData = await catalog.json().catch(() => ({}));
         const materialData = await materialRes.json().catch(() => ({}));
+        const settingData = await settingRes.json().catch(() => ({}));
         if (!catalog.ok) throw new Error(productData.error || 'Không thể tải danh mục sản phẩm.');
         applyProductCatalogData(productData, materialRes.ok ? materialData : undefined);
         if (materialRes.ok) {
@@ -694,6 +749,7 @@ export default function AcceptanceReportListView({
             normalizeMaterialsInventory(materialData).map(mapMaterialToWeightCatalogItem)
           );
         }
+        if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
       } catch {
         if (!cancelled) {
           setProductNameByCode(new Map());
@@ -1421,6 +1477,8 @@ export default function AcceptanceReportListView({
           <AcceptanceReportPrintBatch
             slips={activePrintSlips}
             filmKgByProductCode={filmKgByProductCode}
+            productNormByCode={productNormByCode}
+            shiftSettings={shiftSettings}
           />,
           document.body
         )}

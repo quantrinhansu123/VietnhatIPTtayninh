@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  ClipboardList,
   Loader2,
   Plus,
   RefreshCw,
@@ -11,7 +12,22 @@ import {
 import { useTabAccess } from '../../app/useTabAccess';
 import { formatNumber } from '../../utils';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
-import { getProductionShiftOptions, normalizeShiftSettings } from '../../utils/shiftSettings';
+import {
+  getProductionShiftOptions,
+  normalizeShiftSettings,
+  shiftNamesMatch
+} from '../../utils/shiftSettings';
+import {
+  compareMaterialMisaCode,
+  MATERIAL_MISA_SORT_ORDER,
+  materialMisaSortRank,
+  sortByMaterialMisaCode
+} from '../../utils/materialMisaSortOrder';
+import {
+  normalizeMachineNvlReports,
+  type MachineNvlSavedReport
+} from '../../utils/machineNvlReports';
+import { normalizeProductCodeKey } from '../san-pham/types';
 import {
   FilterCombobox,
   TableToolbar,
@@ -84,6 +100,99 @@ function newDraftLine(): DraftLine {
     don_vi: '',
     so_luong: ''
   };
+}
+
+function draftLineKey(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isPriorityMisaMaterial(code: string) {
+  return materialMisaSortRank(code) < MATERIAL_MISA_SORT_ORDER.length;
+}
+
+function machineRefMatches(report: MachineNvlSavedReport, machineRef: string) {
+  const needle = String(machineRef || '').trim();
+  if (!needle) return true;
+  const candidates = [report.maMay, report.tenMay, `${report.maMay} · ${report.tenMay}`]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+  const needleKey = needle.toLowerCase().replace(/\s+/g, '');
+  return candidates.some(value => {
+    const key = value.toLowerCase().replace(/\s+/g, '');
+    return key === needleKey || key.includes(needleKey) || needleKey.includes(key);
+  });
+}
+
+/** Danh sách mã NVL theo đúng thứ tự mẫu Tồn đầu / Tồn cuối (MISA). */
+export function buildTraKhoPresetLines(materials: MaterialOption[]): DraftLine[] {
+  const priority = sortByMaterialMisaCode(
+    materials.filter(row => isPriorityMisaMaterial(row.ma_npl)),
+    row => row.ma_npl
+  );
+  const source =
+    priority.length > 0
+      ? priority
+      : sortByMaterialMisaCode(materials, row => row.ma_npl);
+  if (source.length === 0) return [newDraftLine()];
+  return source.map(row => ({
+    key: draftLineKey(row.ma_npl),
+    ma_npl: row.ma_npl,
+    ten_npl: row.ten_npl,
+    don_vi: row.don_vi,
+    so_luong: ''
+  }));
+}
+
+/** Gom mã NVL từ phiếu tồn (ưu tiên cuối ca), giữ thứ tự MISA như form Tồn. */
+export function buildTraKhoLinesFromTonReports(input: {
+  reports: MachineNvlSavedReport[];
+  ngay: string;
+  ca: string;
+  may: string;
+  materials: MaterialOption[];
+}): DraftLine[] {
+  const dateIso = String(input.ngay || '').slice(0, 10);
+  const shift = String(input.ca || '').trim();
+  if (!dateIso) return [];
+
+  const matched = input.reports
+    .filter(report => String(report.ngay || '').slice(0, 10) === dateIso)
+    .filter(report => !shift || shiftNamesMatch(report.ca, shift))
+    .filter(report => machineRefMatches(report, input.may))
+    .sort((a, b) => {
+      const kindRank = (kind: string) => (kind === 'cuoi_ca' ? 0 : 1);
+      const byKind = kindRank(a.reportKind) - kindRank(b.reportKind);
+      if (byKind !== 0) return byKind;
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+
+  const byKey = new Map<string, DraftLine>();
+  const materialByCode = new Map(
+    input.materials.map(row => [normalizeProductCodeKey(row.ma_npl), row] as const)
+  );
+
+  for (const report of matched) {
+    for (const line of report.lines) {
+      const code = String(line.maNvl || '').trim();
+      const name = String(line.tenNvl || '').trim();
+      if (!code && !name) continue;
+      const key = normalizeProductCodeKey(code) || `name:${name.toLowerCase()}`;
+      if (byKey.has(key)) continue;
+      const catalog = materialByCode.get(normalizeProductCodeKey(code));
+      byKey.set(key, {
+        key: draftLineKey(code || name),
+        ma_npl: catalog?.ma_npl || code,
+        ten_npl: catalog?.ten_npl || name,
+        don_vi: catalog?.don_vi || String(line.donVi || '').trim(),
+        so_luong: ''
+      });
+    }
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) =>
+      compareMaterialMisaCode(a.ma_npl, b.ma_npl) || a.ten_npl.localeCompare(b.ten_npl, 'vi')
+  );
 }
 
 /** Ưu tiên đúng «Kho NVL», rồi tên chứa NVL / nguyên vật liệu. */
@@ -205,14 +314,25 @@ export function TraKhoNvlPanel({
           ? nvlData.records
           : [];
       setMaterials(
-        materialRows
-          .map((row: { ma_npl?: unknown; ten_npl?: unknown; don_vi?: unknown; code?: unknown; name?: unknown; unit?: unknown }) => ({
-            ma_npl: String(row.ma_npl || row.code || '').trim(),
-            ten_npl: String(row.ten_npl || row.name || '').trim(),
-            don_vi: String(row.don_vi || row.unit || '').trim()
-          }))
-          .filter((row: MaterialOption) => row.ma_npl)
-          .sort((a: MaterialOption, b: MaterialOption) => a.ma_npl.localeCompare(b.ma_npl, 'vi', { numeric: true }))
+        sortByMaterialMisaCode(
+          materialRows
+            .map(
+              (row: {
+                ma_npl?: unknown;
+                ten_npl?: unknown;
+                don_vi?: unknown;
+                code?: unknown;
+                name?: unknown;
+                unit?: unknown;
+              }) => ({
+                ma_npl: String(row.ma_npl || row.code || '').trim(),
+                ten_npl: String(row.ten_npl || row.name || '').trim(),
+                don_vi: String(row.don_vi || row.unit || '').trim()
+              })
+            )
+            .filter((row: MaterialOption) => row.ma_npl),
+          row => row.ma_npl
+        )
       );
 
       // Cùng nguồn /api/cai-dat như phiếu xuất nhập kho & yêu cầu xuất VT.
@@ -259,6 +379,53 @@ export function TraKhoNvlPanel({
     );
   }, [records, query]);
 
+  const [seedingTon, setSeedingTon] = useState(false);
+
+  const loadTonReportsForSeed = useCallback(async (dateIso: string) => {
+    const ngay = String(dateIso || '').slice(0, 10);
+    if (!ngay) return [] as MachineNvlSavedReport[];
+    const [cuoiRes, dauRes] = await Promise.all([
+      fetch(`/api/bao-cao-may-nvl-ton?ngay=${encodeURIComponent(ngay)}&loai_bao_cao=cuoi_ca&limit=100`),
+      fetch(`/api/bao-cao-may-nvl-ton?ngay=${encodeURIComponent(ngay)}&loai_bao_cao=dau_ca&limit=100`)
+    ]);
+    const [cuoiData, dauData] = await Promise.all([
+      cuoiRes.json().catch(() => ({})),
+      dauRes.json().catch(() => ({}))
+    ]);
+    const cuoi = cuoiRes.ok ? normalizeMachineNvlReports(cuoiData) : [];
+    const dau = dauRes.ok ? normalizeMachineNvlReports(dauData) : [];
+    return [...cuoi, ...dau];
+  }, []);
+
+  const seedLinesFromTonOrPreset = useCallback(
+    async (opts: { ngay: string; ca: string; may: string; materials: MaterialOption[]; quiet?: boolean }) => {
+      const preset = buildTraKhoPresetLines(opts.materials);
+      try {
+        const reports = await loadTonReportsForSeed(opts.ngay);
+        const fromTon = buildTraKhoLinesFromTonReports({
+          reports,
+          ngay: opts.ngay,
+          ca: opts.ca,
+          may: opts.may,
+          materials: opts.materials
+        });
+        if (fromTon.length > 0) {
+          if (!opts.quiet) {
+            showAppToast(`Đã điền ${fromTon.length} mã NVL theo thứ tự Tồn đầu/cuối.`);
+          }
+          return fromTon;
+        }
+      } catch {
+        // Fallback preset below.
+      }
+      if (!opts.quiet && preset.length > 0 && preset[0]?.ma_npl) {
+        showAppToast(`Đã điền ${preset.filter(line => line.ma_npl).length} mã NVL theo thứ tự Tồn đầu/cuối.`);
+      }
+      return preset;
+    },
+    [loadTonReportsForSeed]
+  );
+
   const resetForm = () => {
     setShowForm(false);
     setEditingMaPhieu('');
@@ -272,15 +439,49 @@ export function TraKhoNvlPanel({
   };
 
   const openCreate = () => {
+    const nextNgay = hubShared?.ngay || localIsoDateToday();
+    const nextCa = hubShared?.ca || '';
+    const nextMay = hubShared?.machineRef || '';
     setEditingMaPhieu('');
     setFormLocked(false);
-    setNgay(localIsoDateToday());
-    setCa('');
-    setMay('');
+    setNgay(nextNgay);
+    setCa(nextCa);
+    setMay(nextMay);
     setTenKho(pickDefaultNvlWarehouse(warehouses));
-    setGhiChu('');
-    setLines([newDraftLine()]);
+    setGhiChu(hubShared?.ghiChu || '');
+    setLines(buildTraKhoPresetLines(materials));
     setShowForm(true);
+    void (async () => {
+      setSeedingTon(true);
+      try {
+        const seeded = await seedLinesFromTonOrPreset({
+          ngay: nextNgay,
+          ca: nextCa,
+          may: nextMay,
+          materials,
+          quiet: true
+        });
+        setLines(seeded);
+      } finally {
+        setSeedingTon(false);
+      }
+    })();
+  };
+
+  const handleSeedFromTon = async () => {
+    if (formLocked) return;
+    setSeedingTon(true);
+    try {
+      const seeded = await seedLinesFromTonOrPreset({
+        ngay,
+        ca,
+        may,
+        materials
+      });
+      setLines(seeded);
+    } finally {
+      setSeedingTon(false);
+    }
   };
 
   const openEdit = async (row: TraKhoNvlHeader) => {
@@ -442,7 +643,10 @@ export function TraKhoNvlPanel({
     }
   };
 
-  const materialCodes = useMemo(() => materials.map(row => row.ma_npl), [materials]);
+  const materialCodes = useMemo(
+    () => sortByMaterialMisaCode(materials, row => row.ma_npl).map(row => row.ma_npl),
+    [materials]
+  );
 
   return (
     <div className="w-full max-w-none space-y-2">
@@ -587,6 +791,9 @@ export function TraKhoNvlPanel({
           </label>
           ) : null}
 
+          <p className="text-[11px] font-semibold text-zinc-500">
+            Mã NVL tự theo thứ tự Tồn đầu / Tồn cuối. Nút <span className="font-black text-emerald-800">Tự điền theo tồn</span> lấy phiếu tồn cùng Ngày·Ca·Máy (ưu tiên cuối ca).
+          </p>
           <div className="overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full text-left text-xs">
               <thead className="bg-zinc-50 text-[11px] font-black uppercase text-zinc-500">
@@ -671,6 +878,20 @@ export function TraKhoNvlPanel({
               >
                 <Plus className="h-3.5 w-3.5" />
                 Thêm dòng
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSeedFromTon()}
+                disabled={seedingTon}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                title="Điền mã NVL theo thứ tự Tồn đầu / Tồn cuối (ưu tiên phiếu tồn cùng Ngày·Ca·Máy)"
+              >
+                {seedingTon ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ClipboardList className="h-3.5 w-3.5" />
+                )}
+                Tự điền theo tồn
               </button>
               <div className="ml-auto flex flex-wrap gap-2">
                 <button

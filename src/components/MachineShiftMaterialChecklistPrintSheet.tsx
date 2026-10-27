@@ -13,10 +13,25 @@ import {
   visibleRoundCount
 } from '../lib/mixingReportModel';
 import type { MixingReport } from './MixingReportForm';
-import type { ProductionPlanRelatedReports } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
+import type {
+  ProductionPlanRelatedReports,
+  RelatedMaterialRequest
+} from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import type { ProductionOrderMaterialLine } from '../features/ke-hoach-san-xuat';
 import type { WarehouseSlipPrintData } from './WarehouseSlipPrintModal';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
+import { compareMaterialMisaCode } from '../utils/materialMisaSortOrder';
+import {
+  convertWarehouseQuantityToKg,
+  mapMaterialToWeightCatalogItem
+} from '../utils/warehouseWeight';
+import {
+  formatChecklistMachineHeader,
+  formatChecklistShiftLabel,
+  resolveAcceptanceShiftHours
+} from '../utils/printShiftMeta';
+
+export { formatChecklistMachineHeader, formatChecklistShiftLabel } from '../utils/printShiftMeta';
 
 export type MachineShiftMaterialChecklistLine = {
   key: string;
@@ -90,31 +105,6 @@ export function summarizeMachineRunLogHours(
     runMinutes: runMinutes > 0 ? runMinutes : null,
     stopMinutes: stopMinutes > 0 ? stopMinutes : null
   };
-}
-
-/** «Máy Bao bì Số: 16» nếu nhận diện được; không thì hiện tên/mã máy. */
-export function formatChecklistMachineHeader(code = '', name = '') {
-  const rawCode = String(code || '').trim();
-  const rawName = String(name || '').trim();
-  const hay = `${rawName} ${rawCode}`.trim();
-  const isBaoBi = /bao\s*b[iì]|mbb/i.test(hay);
-  const numMatch = hay.match(/(?:s[oố]|so|#)?\s*(\d+)\s*$/i) || rawCode.match(/(\d+)/);
-  if (isBaoBi && numMatch?.[1]) return `Máy Bao bì Số: ${numMatch[1]}`;
-  if (rawName && rawName !== '-' && rawName !== rawCode) return rawName;
-  return rawCode || '—';
-}
-
-/** Ca trên form giấy thường ghi 1 / 2; map 12C1→1, HC1→1 khi khớp. */
-export function formatChecklistShiftLabel(shift = '') {
-  const raw = String(shift || '').trim();
-  if (!raw) return '—';
-  const twelve = raw.match(/^12\s*C\s*(\d+)$/i);
-  if (twelve) return twelve[1];
-  const hc = raw.match(/^HC\s*(\d+)$/i);
-  if (hc) return hc[1];
-  const caNum = raw.match(/^ca\s*(\d+)$/i);
-  if (caNum) return caNum[1];
-  return raw;
 }
 
 function materialMergeKey(code: string, unit: string) {
@@ -202,6 +192,33 @@ function warehouseExportByCode(slips: WarehouseSlipPrintData[]) {
           ? Number(line.weightKg)
           : Number(line.quantity) || 0;
       addToQtyMap(map, code, qty);
+    }
+  }
+  return map;
+}
+
+/** Lấy trong kho từ phiếu nhận NVL (`yeu_cau_xuat_kho` / `nvl_yeu_cau`), quy đổi kg khi có catalog. */
+function materialRequestTakeByCode(
+  requests: RelatedMaterialRequest[],
+  materials: ReturnType<typeof mapMaterialToWeightCatalogItem>[]
+) {
+  const map = new Map<string, number>();
+  for (const request of requests || []) {
+    for (const line of request.lines || []) {
+      const code = String(line.ma_nvl || '').trim();
+      if (!code) continue;
+      const qty = Number(line.so_luong);
+      if (!Number.isFinite(qty) || qty === 0) continue;
+      const unit = String(line.don_vi || '').trim() || 'kg';
+      const kg = convertWarehouseQuantityToKg({
+        quantity: qty,
+        unit,
+        itemCode: code,
+        warehouseKind: 'nvl',
+        materials,
+        products: []
+      });
+      addToQtyMap(map, code, kg != null && Number.isFinite(kg) ? kg : qty);
     }
   }
   return map;
@@ -388,6 +405,8 @@ export function buildMachineShiftMaterialChecklist(
   }
   const tonCuoiMap = closingStockByCode(data.machineNvl || []);
   const xuatMap = warehouseExportByCode(data.warehouseExportSlips || []);
+  const materialWeightCatalog = (data.materialCatalog || []).map(mapMaterialToWeightCatalogItem);
+  const yeuCauMap = materialRequestTakeByCode(data.materialRequests || [], materialWeightCatalog);
   const mixingAgg = mixingActualBySessions(data.mixing || []);
 
   for (const report of data.machineNvl || []) {
@@ -416,6 +435,18 @@ export function buildMachineShiftMaterialChecklist(
       ensureMaterialRow(lines, code, String(line.name || '').trim(), String(line.unit || '').trim() || 'kg');
     }
   }
+  for (const request of data.materialRequests || []) {
+    for (const line of request.lines || []) {
+      const code = String(line.ma_nvl || '').trim();
+      if (!code) continue;
+      ensureMaterialRow(
+        lines,
+        code,
+        String(line.ten_nvl || '').trim(),
+        String(line.don_vi || '').trim() || 'kg'
+      );
+    }
+  }
   for (const material of mixingAgg.materials) {
     ensureMaterialRow(lines, material.code, material.name, material.unit);
   }
@@ -424,7 +455,12 @@ export function buildMachineShiftMaterialChecklist(
     const codeKey = normalizeProductCodeKey(row.maVatTu);
     row.tonDauCaKg = positiveOrNull(tonDauMap.get(codeKey));
     row.tonCuoiCaKg = positiveOrNull(tonCuoiMap.get(codeKey));
-    row.layTrongKhoKg = positiveOrNull(xuatMap.get(codeKey));
+    // Ưu tiên phiếu xuất kho NVL; thiếu thì lấy từ phiếu nhận NVL (`yeu_cau_xuat_kho`).
+    const fromXuat = xuatMap.get(codeKey);
+    const fromYeuCau = yeuCauMap.get(codeKey);
+    row.layTrongKhoKg = positiveOrNull(
+      fromXuat != null && fromXuat > 0 ? fromXuat : fromYeuCau
+    );
     row.thucTronKg = positiveOrNull(mixingAgg.totals.get(codeKey));
     const perSession = mixingAgg.byCodeSession.get(codeKey);
     row.thucTronByLan = {};
@@ -449,7 +485,7 @@ export function buildMachineShiftMaterialChecklist(
   }
 
   return {
-    lines: lines.sort((a, b) => a.maVatTu.localeCompare(b.maVatTu, 'vi')),
+    lines: lines.sort((a, b) => compareMaterialMisaCode(a.maVatTu, b.maVatTu)),
     mixingSessions: mixingAgg.sessions.length > 0 ? mixingAgg.sessions : [1]
   };
 }
@@ -487,6 +523,28 @@ export function MachineShiftMaterialChecklistPrintSheet({
   const machineHeader = formatChecklistMachineHeader(machineCode, machineName);
   const shiftLabel = formatChecklistShiftLabel(shift);
   const dateParts = formatPrintDateParts(date);
+  const shiftHours = resolveAcceptanceShiftHours(shift, data.shiftOptions || []);
+  const performedBy = (() => {
+    const clean = (value: string) => {
+      const text = String(value || '').trim();
+      return !text || text === '-' ? '' : text;
+    };
+    for (const item of data.productionOrders || []) {
+      const name = clean(item.order?.shiftLead || '');
+      if (name) return name;
+    }
+    for (const plan of data.productionPlans || []) {
+      for (const line of plan.lines || []) {
+        const name = clean(line.shiftLead || '');
+        if (name) return name;
+      }
+    }
+    for (const slip of data.shiftHandovers || []) {
+      const name = clean(slip.operators || '');
+      if (name) return name;
+    }
+    return '';
+  })();
   const tronColCount = displaySessions.length;
   const totalDinhMuc = sumCol(lines, row => row.dinhMucKg);
   const totalTonDau = sumCol(lines, row => row.tonDauCaKg);
@@ -519,10 +577,17 @@ export function MachineShiftMaterialChecklistPrintSheet({
               <div className="bb-nvl-checklist-title">NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO CA</div>
               <div className="bb-nvl-checklist-subtitle">(BẢNG TRỘN VẬT TƯ)</div>
               <div className="bb-nvl-checklist-date">
-                Ca sản xuất từ ..... Đến ..... ngày {dateParts.day} tháng {dateParts.month} năm{' '}
-                {dateParts.year}
+                Ca sản xuất từ{' '}
+                <span className="bb-nvl-checklist-meta-value">{shiftHours.from || '…..'}</span> Đến{' '}
+                <span className="bb-nvl-checklist-meta-value">{shiftHours.to || '…..'}</span> ngày{' '}
+                {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
               </div>
-              <div className="bb-nvl-checklist-date">Người thực hiện: ....................</div>
+              <div className="bb-nvl-checklist-date">
+                Người thực hiện:{' '}
+                <span className="bb-nvl-checklist-meta-value">
+                  {performedBy || '……………………'}
+                </span>
+              </div>
             </div>
             <div className="bb-nvl-checklist-header-right">
               <div className="bb-nvl-checklist-meta-compact">

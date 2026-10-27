@@ -920,6 +920,11 @@ input[type="number"] {
     margin: 8mm;
   }
 
+  @page acceptance-nk-sx-print-page {
+    size: A4 landscape;
+    margin: 6mm;
+  }
+
   @page shift-summary-page {
     size: 210mm 297mm;
     margin: 5mm;
@@ -4922,6 +4927,284 @@ input[type="number"] {
   color: #444444;
 }
 
+/* M?u gi?y: NH?T KÝ S?N XU?T KIÊM PHI?U GIAO */
+.acceptance-nk-sx-print-page {
+  page: acceptance-nk-sx-print-page;
+}
+
+.acceptance-nk-sx-print-sheet {
+  width: 100%;
+  color: #111;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.acceptance-nk-sx-print-doc {
+  width: 100%;
+}
+
+.acceptance-nk-sx-print-header {
+  display: grid;
+  grid-template-columns: minmax(42mm, 0.95fr) minmax(0, 1.8fr) minmax(38mm, 0.9fr);
+  align-items: start;
+  column-gap: 3mm;
+  margin-bottom: 2.5mm;
+  padding-bottom: 2mm;
+  border-bottom: 0.35pt solid #111;
+}
+
+.acceptance-nk-sx-print-header-left {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  min-width: 0;
+}
+
+.acceptance-nk-sx-print-brand {
+  min-width: 0;
+}
+
+.acceptance-nk-sx-print-logo {
+  width: 10mm;
+  height: 10mm;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.acceptance-nk-sx-print-company {
+  margin: 0;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.acceptance-nk-sx-print-subtitle {
+  margin: 0.5mm 0 0;
+  font-size: 7.5pt;
+  color: #444;
+}
+
+.acceptance-nk-sx-print-header-center {
+  text-align: center;
+  min-width: 0;
+  padding: 0 2mm;
+}
+
+.acceptance-nk-sx-print-title {
+  margin: 0;
+  text-align: center;
+  font-size: 12.5pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.acceptance-nk-sx-print-date-line {
+  margin-top: 1.2mm;
+  font-size: 9pt;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.acceptance-nk-sx-print-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1mm;
+  text-align: right;
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1.25;
+  min-width: 0;
+  padding-top: 1mm;
+}
+
+.acceptance-nk-sx-print-meta-machine-label {
+  white-space: nowrap;
+}
+
+.acceptance-nk-sx-print-fill {
+  display: inline-block;
+  min-width: 7mm;
+  font-weight: 700;
+  border-bottom: 0.3pt solid #222;
+  padding: 0 1.2mm;
+  text-align: center;
+  vertical-align: baseline;
+}
+
+.acceptance-nk-sx-print-time {
+  min-width: 11mm;
+}
+
+.acceptance-nk-sx-print-performer {
+  min-width: 28mm;
+  max-width: 48mm;
+  text-align: left;
+  padding-left: 1mm;
+}
+
+.acceptance-nk-sx-print-machine {
+  min-width: 7mm;
+  font-size: 11pt;
+}
+
+.acceptance-nk-sx-print-shift {
+  min-width: 6mm;
+  font-size: 11pt;
+}
+
+.acceptance-nk-sx-print-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58mm;
+  gap: 2.5mm;
+  align-items: start;
+}
+
+.acceptance-nk-sx-print-section-label {
+  margin: 0 0 1.5mm;
+  font-size: 9.5pt;
+  font-weight: 700;
+}
+
+.acceptance-nk-sx-print-table,
+.acceptance-nk-sx-print-side-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 7.5pt;
+}
+
+.acceptance-nk-sx-print-table th,
+.acceptance-nk-sx-print-table td,
+.acceptance-nk-sx-print-side-table th,
+.acceptance-nk-sx-print-side-table td {
+  border: 0.35pt solid #111;
+  padding: 1mm 0.8mm;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.acceptance-nk-sx-print-table th,
+.acceptance-nk-sx-print-side-table th {
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+  background: #f7f7f7;
+}
+
+.acceptance-nk-sx-print-table .col-stt { width: 6mm; }
+.acceptance-nk-sx-print-table .col-amis { width: 18mm; }
+.acceptance-nk-sx-print-table .col-sp { width: auto; }
+.acceptance-nk-sx-print-table .col-blank { width: 10mm; }
+.acceptance-nk-sx-print-table .col-qty { width: 12mm; }
+.acceptance-nk-sx-print-table .col-roll { width: 14mm; }
+.acceptance-nk-sx-print-table .col-norm { width: 12mm; }
+.acceptance-nk-sx-print-table .col-total { width: 16mm; }
+.acceptance-nk-sx-print-table .col-eval { width: 16mm; }
+
+.acceptance-nk-sx-print-table td.center,
+.acceptance-nk-sx-print-side-table td.center {
+  text-align: center;
+}
+
+.acceptance-nk-sx-print-table td.right,
+.acceptance-nk-sx-print-side-table td.right,
+.acceptance-nk-sx-print-table .right,
+.acceptance-nk-sx-print-side-table .right {
+  text-align: right;
+}
+
+.acceptance-nk-sx-print-table .strong,
+.acceptance-nk-sx-print-total-row td {
+  font-weight: 700;
+}
+
+.acceptance-nk-sx-print-table tbody tr {
+  height: 6.2mm;
+}
+
+.acceptance-nk-sx-print-side-table .col-side-qty {
+  width: 16mm;
+}
+
+.acceptance-nk-sx-print-side-table tbody tr {
+  height: 6.2mm;
+}
+
+.acceptance-nk-sx-print-summary {
+  margin-top: 2.5mm;
+  border: 0.35pt solid #111;
+  font-size: 7.5pt;
+}
+
+.acceptance-nk-sx-print-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  padding: 1.4mm 1.5mm;
+  border-bottom: 0.35pt solid #111;
+}
+
+.acceptance-nk-sx-print-summary-row span {
+  flex: 1;
+}
+
+.acceptance-nk-sx-print-summary-row strong {
+  white-space: nowrap;
+}
+
+.acceptance-nk-sx-print-summary-note {
+  padding: 1.2mm 1.5mm;
+  font-size: 6.5pt;
+  line-height: 1.25;
+  color: #333;
+  border-bottom: 0.35pt solid #111;
+}
+
+.acceptance-nk-sx-print-summary-result {
+  padding: 2mm 1.5mm;
+  text-align: right;
+  font-size: 10pt;
+}
+
+.acceptance-nk-sx-print-signatures {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3mm;
+  margin-top: 5mm;
+  text-align: center;
+  font-size: 9pt;
+}
+
+.acceptance-nk-sx-print-signatures p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.acceptance-nk-sx-print-signatures span {
+  display: block;
+  margin-top: 14mm;
+  font-size: 8pt;
+  font-style: italic;
+  color: #444;
+}
+
+@media print {
+  body.acceptance-report-print-active .acceptance-nk-sx-print-batch,
+  body.acceptance-report-print-active .acceptance-nk-sx-print-sheet,
+  body.acceptance-report-print-active .acceptance-nk-sx-print-page {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .acceptance-nk-sx-print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+}
+
 .machine-nvl-print-table th,
 .machine-nvl-print-table td {
   padding-left: 0.8mm;
@@ -7762,24 +8045,37 @@ input[type="number"] {
     display: none !important;
   }
 
-  body.machine-shift-nvl-checklist-print-active > :not(.bb-nvl-checklist-print-batch) {
+  /* Cho phép batch b?ng v?t t? + batch phi?u s?n l??ng (trang sau) */
+  body.machine-shift-nvl-checklist-print-active
+    > :not(.bb-nvl-checklist-print-batch):not(.acceptance-nk-sx-print-batch):not(.production-order-print-batch) {
     display: none !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch,
-  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch * {
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch *,
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-batch,
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-batch *,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-batch,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-batch * {
     visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch {
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch,
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-batch,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-batch {
     display: block !important;
     position: static !important;
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-page {
+    break-after: page;
+    page-break-after: always;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-page,
@@ -7792,6 +8088,30 @@ input[type="number"] {
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-page,
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-sheet,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-page,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-sheet {
+    page: machine-shift-nvl-checklist-page-a4-landscape !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    position: static !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-page,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .acceptance-nk-sx-print-page:last-child,
+  body.machine-shift-nvl-checklist-print-active .production-order-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet {

@@ -28,6 +28,7 @@ import {
 } from '../../utils/shiftSettings';
 import { waitForPrintImagesReady } from '../../utils/printReady';
 import { normalizeAcceptanceReports, type AcceptanceReport } from '../../components/AcceptanceReportForm';
+import type { MaterialRequestRow } from '../yeu-cau-xuat-vat-tu/MaterialRequestListView';
 import { normalizeMixingReport } from '../../lib/mixingReportModel';
 import type { MixingReport } from '../../components/MixingReportForm';
 import {
@@ -168,6 +169,7 @@ export function ControlBoardPanel({
   onMachineReport,
   onEditWeighing,
   onEditMachineNvlReport,
+  onEditMaterialRequest,
   onEditAcceptanceReport,
   onEditAcceptanceReportGroup,
   mode = 'full'
@@ -176,6 +178,7 @@ export function ControlBoardPanel({
   onMachineReport: (machine: MachineRow, type: 'mixing' | 'nvl') => void;
   onEditWeighing?: (pending: WeighingPendingAdd) => void;
   onEditMachineNvlReport?: (report: MachineNvlSavedReport) => void;
+  onEditMaterialRequest?: (row: MaterialRequestRow) => void;
   onEditAcceptanceReport?: (report: AcceptanceReport) => void;
   onEditAcceptanceReportGroup?: (reports: AcceptanceReport[]) => void;
   /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (mọi máy; sản lượng = cột Trọng lượng nhựa `can_tu_dong` / `/can-tu-dong`). */
@@ -1661,6 +1664,7 @@ export function ControlBoardPanel({
               .join(' · ')
           }
           onEditMachineNvlReport={onEditMachineNvlReport}
+          onEditMaterialRequest={onEditMaterialRequest}
           onEditAcceptanceReport={onEditAcceptanceReport}
           onEditAcceptanceReportGroup={onEditAcceptanceReportGroup}
         />

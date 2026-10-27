@@ -8,11 +8,13 @@
 **Components (đã tách):**
 - `AcceptanceReportForm.tsx`
 - `AcceptanceReportListView.tsx`
-- `AcceptanceReportPrintSheet.tsx`
+- `AcceptanceReportPrintSheet.tsx` — nút **In** dùng mẫu giấy **NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO** (1 phiếu / ngày·ca·máy); cột (4)(5)(6) lấy ĐM từ `san_pham` (`tong_trong_luong`, `trong_luong_nhua`); panel II: ĐM TP SX / nhựa thực dùng / hao hụt
 
 Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc, lấy từ số mặt hàng đã quét/điền trong danh sách hiện tại; đóng/mở lại modal vẫn giữ đúng tổng, mã trùng/lỗi không làm tăng.
 
-Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.don_vi` (cột **Đơn vị** trên `/kho-hang`), khớp **tiền tố** Mã SP từ QR — không lấy `unit` của `can_tu_dong`.
+Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.don_vi` (cột **Đơn vị** trên `/kho-hang`), khớp **tiền tố** Mã SP từ QR — không lấy `unit` của `can_tu_dong`. Tự động gán **Số AI điền** = **Số công nhân điền**.
+
+**Sửa tay / không thừa kế trạm cân AI:** mỗi dòng có **Số AI điền** (`so_luong_ai`, chỉ đọc) · **Số công nhân điền** (`so_luong`) · **Ghi chú** (`ghi_chu`). Nếu không có số AI hoặc SL CN ≠ SL AI thì **bắt buộc ghi chú** mới lưu (validate form + API).
 
 Modal **Tự động báo cáo sản lượng** bắt buộc chọn **Ngày + Ca + Máy**, mặc định theo phiếu đang nhập. Chỉ cộng số lượng/trọng lượng của máy đã chọn (khớp chính xác mã hoặc tên máy), đồng bộ máy về đầu phiếu sau khi điền. Tải đủ phiếu cân trong ngày với `all=1&images=0` để tránh thiếu dữ liệu do giới hạn 2.000 bản ghi.
 

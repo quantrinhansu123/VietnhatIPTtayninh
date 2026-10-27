@@ -266,7 +266,10 @@ export default function MixingReportListView({
   onInitialMachineConsumed?: () => void;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('mixing-report-list');
-  const [listTab, setListTab] = useState<MixingReportHubTab>(initialTab);
+  // Chỉ còn nhập báo cáo trộn trên UI; norms/actual/reports chỉ mở qua initialTab (menu QC / danh sách).
+  const [listTab, setListTab] = useState<MixingReportHubTab>(
+    initialTab === 'norms' || initialTab === 'actual' || initialTab === 'reports' ? initialTab : 'form'
+  );
   const [filters, setFilters] = useState<MixingReportFilters>(() => {
     const shift = initialFilters?.shift?.trim() || '';
     return {
@@ -605,7 +608,9 @@ export default function MixingReportListView({
   };
 
   useEffect(() => {
-    setListTab(initialTab);
+    setListTab(
+      initialTab === 'norms' || initialTab === 'actual' || initialTab === 'reports' ? initialTab : 'form'
+    );
   }, [initialTab]);
 
   const renderReportActions = (report: MixingReport) => (
@@ -671,6 +676,15 @@ export default function MixingReportListView({
     const roundReasons = resolveMixingReportRoundReasons(report);
     const roundExplanations = resolveMixingReportRoundExplanations(report);
     const showQtyColumns = roundCount > 1;
+    const roundKeys = MIXING_ROUND_KEYS.slice(0, roundCount);
+    const roundGridClass =
+      roundCount <= 1
+        ? 'grid grid-cols-1 gap-2'
+        : roundCount === 2
+          ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
+          : roundCount === 3
+            ? 'grid grid-cols-1 gap-2 sm:grid-cols-3'
+            : 'grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4';
 
     if (report.chi_tiet.length === 0) {
       return (
@@ -679,69 +693,65 @@ export default function MixingReportListView({
     }
 
     return (
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:w-[min(100%,280px)]">
-          <div className="max-h-[min(48vh,420px)] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-            {showQtyColumns ? (
-              <div className="space-y-4">
-                {MIXING_ROUND_KEYS.slice(0, roundCount).map((roundKey, roundIndex) => {
-                  const roundLabel = `Ảnh · ${mixingSessionColumnLabel(sessionStart, roundIndex)}`;
-                  return (
-                    <div key={`expand-photos-${report.id}-${roundKey}`}>
-                      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                        {roundLabel}
-                      </p>
-                      {renderPhotoGallery(
-                        roundPhotos[roundKey] ?? [],
-                        'Chưa có ảnh xác nhận',
-                        'detail',
-                        roundLabel
-                      )}
-                      <div className="mt-3 space-y-2 rounded-lg border border-zinc-200 bg-white p-2.5">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lý do</p>
-                          <div className="mt-1">{renderReasonList(roundReasons[roundKey])}</div>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                            Giải trình
-                          </p>
-                          <div className="mt-1">{renderExplanationText(roundExplanations[roundKey])}</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  Ảnh · {mixingSessionColumnLabel(sessionStart, 0)}
-                </p>
+      <div className="space-y-3">
+        <div className={roundGridClass}>
+          {roundKeys.map((roundKey, roundIndex) => {
+            const roundLabel = mixingSessionColumnLabel(sessionStart, roundIndex);
+            const roundNorm = report.chi_tiet.reduce(
+              (sum, line) => sum + sumLineRoundNormQuantity(line, roundKey),
+              0
+            );
+            const roundActualRaw = report.chi_tiet.reduce(
+              (sum, line) => sum + sumRoundActualQuantity(line.lan_su_dung, roundKey),
+              0
+            );
+            const roundHasActual = report.chi_tiet.some(line =>
+              getRoundItems(line.lan_su_dung, roundKey).some(
+                item =>
+                  item.kl_thuc_te !== null &&
+                  item.kl_thuc_te !== undefined &&
+                  !Number.isNaN(item.kl_thuc_te)
+              )
+            );
+            return (
+              <div
+                key={`expand-round-card-${report.id}-${roundKey}`}
+                className="min-w-0 rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm"
+              >
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 border-b border-zinc-100 pb-2">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-[#ef1b2d]">
+                    {roundLabel}
+                  </p>
+                  <p className="font-mono text-[11px] font-bold text-zinc-600">
+                    ĐM {formatNormWeight(roundNorm) || '—'}
+                    <span className="mx-1 text-zinc-300">·</span>
+                    TT {roundHasActual ? formatOptionalNumber(roundActualRaw) : '—'}
+                  </p>
+                </div>
                 {renderPhotoGallery(
-                  MIXING_ROUND_KEYS.slice(0, roundCount).flatMap(roundKey => roundPhotos[roundKey] ?? []),
+                  roundPhotos[roundKey] ?? [],
                   'Chưa có ảnh xác nhận',
-                  'detail',
-                  `Ảnh · ${mixingSessionColumnLabel(sessionStart, 0)}`
+                  'thumb',
+                  `Ảnh · ${roundLabel}`
                 )}
-                <div className="mt-3 space-y-2 rounded-lg border border-zinc-200 bg-white p-2.5">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lý do</p>
-                    <div className="mt-1">{renderReasonList(roundReasons[MIXING_ROUND_KEYS[0]])}</div>
+                <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-2">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Lý do</p>
+                    <div className="mt-1 max-h-16 overflow-y-auto">{renderReasonList(roundReasons[roundKey])}</div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Giải trình</p>
-                    <div className="mt-1">
-                      {renderExplanationText(roundExplanations[MIXING_ROUND_KEYS[0]])}
+                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-2">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Giải trình</p>
+                    <div className="mt-1 max-h-16 overflow-y-auto">
+                      {renderExplanationText(roundExplanations[roundKey])}
                     </div>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        </aside>
+            );
+          })}
+        </div>
 
-        <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-zinc-900 text-[10px] uppercase tracking-wider text-white">
               <tr>
@@ -753,16 +763,20 @@ export default function MixingReportListView({
                   className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
                   title="Tỉ lệ trộn định mức (%) từ phiếu phối trộn"
                 >
-                  Tỉ lệ trộn<br />Định mức
+                  Tỉ lệ trộn
+                  <br />
+                  Định mức
                 </th>
                 <th
                   className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
                   title="Tỉ lệ trộn thực tế (%) = KL thực tế NVL ÷ tổng KL thực tế phiếu × 100"
                 >
-                  Tỉ lệ trộn<br />Thực tế
+                  Tỉ lệ trộn
+                  <br />
+                  Thực tế
                 </th>
                 {showQtyColumns
-                  ? MIXING_ROUND_KEYS.slice(0, roundCount).map((_, roundIndex) => (
+                  ? roundKeys.map((_, roundIndex) => (
                       <th
                         key={`expand-head-${report.id}-${roundIndex}`}
                         className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
@@ -777,24 +791,6 @@ export default function MixingReportListView({
                 <th className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black">
                   KL thực tế
                 </th>
-                {MIXING_ROUND_KEYS.slice(0, roundCount).flatMap((roundKey, roundIndex) => {
-                  const roundLabel = mixingSessionColumnLabel(sessionStart, roundIndex);
-                  const suffix = roundCount > 1 ? ` · ${roundLabel}` : '';
-                  return [
-                    <th
-                      key={`expand-reason-head-${report.id}-${roundKey}`}
-                      className="min-w-[120px] px-2 py-2 font-black"
-                    >
-                      Lý do{suffix}
-                    </th>,
-                    <th
-                      key={`expand-explain-head-${report.id}-${roundKey}`}
-                      className="min-w-[160px] px-2 py-2 font-black"
-                    >
-                      Giải trình{suffix}
-                    </th>
-                  ];
-                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -832,7 +828,7 @@ export default function MixingReportListView({
                         {formatPercentCell(tiLeThucTe)}
                       </td>
                       {showQtyColumns
-                        ? MIXING_ROUND_KEYS.slice(0, roundCount).map(roundKey => (
+                        ? roundKeys.map(roundKey => (
                             <td
                               key={`${line.stt}-${roundKey}`}
                               className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-700"
@@ -847,24 +843,6 @@ export default function MixingReportListView({
                       <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-[#ef1b2d]">
                         {klThucTe !== null ? formatOptionalNumber(klThucTe) : '-'}
                       </td>
-                      {index === 0
-                        ? MIXING_ROUND_KEYS.slice(0, roundCount).flatMap(roundKey => [
-                            <td
-                              key={`expand-reason-${report.id}-${roundKey}`}
-                              rowSpan={report.chi_tiet.length}
-                              className="min-w-[120px] max-w-[220px] align-top px-2 py-2"
-                            >
-                              {renderReasonList(roundReasons[roundKey])}
-                            </td>,
-                            <td
-                              key={`expand-explain-${report.id}-${roundKey}`}
-                              rowSpan={report.chi_tiet.length}
-                              className="min-w-[160px] max-w-[280px] align-top px-2 py-2"
-                            >
-                              {renderExplanationText(roundExplanations[roundKey])}
-                            </td>
-                          ])
-                        : null}
                     </tr>
                   );
                 });
@@ -882,9 +860,28 @@ export default function MixingReportListView({
                     : '-'}
                 </td>
                 {showQtyColumns
-                  ? MIXING_ROUND_KEYS.slice(0, roundCount).map(roundKey => (
-                      <td key={`expand-foot-round-${report.id}-${roundKey}`} className="px-2 py-2" />
-                    ))
+                  ? roundKeys.map(roundKey => {
+                      const total = report.chi_tiet.reduce(
+                        (sum, line) => sum + sumRoundActualQuantity(line.lan_su_dung, roundKey),
+                        0
+                      );
+                      const hasActual = report.chi_tiet.some(line =>
+                        getRoundItems(line.lan_su_dung, roundKey).some(
+                          item =>
+                            item.kl_thuc_te !== null &&
+                            item.kl_thuc_te !== undefined &&
+                            !Number.isNaN(item.kl_thuc_te)
+                        )
+                      );
+                      return (
+                        <td
+                          key={`expand-foot-round-${report.id}-${roundKey}`}
+                          className="whitespace-nowrap px-2 py-2 text-right font-mono text-[#ef1b2d]"
+                        >
+                          {hasActual ? formatOptionalNumber(total) : '—'}
+                        </td>
+                      );
+                    })
                   : null}
                 <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
                   {formatNormWeight(sumReportNormTotal(report.chi_tiet)) || '-'}
@@ -904,7 +901,6 @@ export default function MixingReportListView({
                       : '-';
                   })()}
                 </td>
-                <td colSpan={2 * roundCount} />
               </tr>
             </tfoot>
           </table>
@@ -962,73 +958,6 @@ export default function MixingReportListView({
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="grid gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
-          <button
-            type="button"
-            onClick={() => {
-              setPendingEditReport(null);
-              setFormModalMode('create');
-              setListTab('form');
-            }}
-            aria-pressed={listTab === 'form'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'form'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Nhập báo cáo trộn</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Ngày · ca · máy · lần phối trộn
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('norms')}
-            aria-pressed={listTab === 'norms'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'norms'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Bảng trộn định mức</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Lệnh SX → Sản phẩm → NVL (BOM / tỷ lệ)
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('actual')}
-            aria-pressed={listTab === 'actual'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'actual'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Phiếu trộn thực tế</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Chọn ngày + ca, nhập % thực tế
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('reports')}
-            aria-pressed={listTab === 'reports'}
-            className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-              listTab === 'reports'
-                ? 'border-[#ef1b2d] bg-red-50'
-                : 'border-zinc-200 bg-white hover:border-zinc-300'
-            }`}
-          >
-            <span className="block text-sm font-black text-zinc-950">Danh sách phiếu</span>
-            <span className="mt-0.5 block text-[11px] font-semibold text-zinc-500">
-              Báo cáo đã lưu theo ngày · ca · máy
-            </span>
-          </button>
         </div>
 
         {listTab === 'reports' ? (
@@ -1234,46 +1163,52 @@ export default function MixingReportListView({
                       {group.reports.flatMap(report => {
                         const rounds = expandReportRounds(report);
                         const isExpanded = viewingReportId === report.id;
-                        const roundRows = rounds.map(round => (
+                        const totalNorm = rounds.reduce((sum, round) => sum + round.normTotal, 0);
+                        const totalActual = rounds.every(round => round.actualTotal === null)
+                          ? null
+                          : rounds.reduce((sum, round) => sum + (round.actualTotal ?? 0), 0);
+                        const summaryRow = (
                           <tr
-                            key={`${report.id}-${round.session}`}
+                            key={report.id}
                             onClick={() => toggleExpandedReport(report.id)}
                             className={`cursor-pointer transition ${
                               isExpanded ? 'bg-emerald-50/70' : 'hover:bg-emerald-50/40'
                             }`}
-                            title={isExpanded ? 'Thu gọn chi tiết' : 'Bấm để xem đầy đủ dòng vật tư'}
+                            title={
+                              isExpanded
+                                ? 'Thu gọn chi tiết'
+                                : 'Bấm để xem tất cả lần · dòng vật tư trên 1 khung'
+                            }
                           >
-                            {round.session === rounds[0].session ? (
-                              <td
-                                className="whitespace-nowrap px-3 py-2 text-center"
-                                rowSpan={rounds.length}
-                                onClick={event => event.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedIds.has(report.id)}
-                                  onChange={() => toggleSelected(report.id)}
-                                  aria-label="Chọn phiếu"
-                                  className="h-4 w-4 accent-[#ef1b2d]"
-                                />
-                              </td>
-                            ) : null}
+                            <td
+                              className="whitespace-nowrap px-3 py-2 text-center"
+                              onClick={event => event.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(report.id)}
+                                onChange={() => toggleSelected(report.id)}
+                                aria-label="Chọn phiếu"
+                                className="h-4 w-4 accent-[#ef1b2d]"
+                              />
+                            </td>
                             <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-800">
                               <span className="inline-flex items-center gap-1">
-                                {round.session === rounds[0].session ? (
-                                  <ChevronDown
-                                    className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition ${
-                                      isExpanded ? 'rotate-180 text-emerald-700' : ''
-                                    }`}
-                                  />
-                                ) : (
-                                  <span className="inline-block w-3.5" />
-                                )}
+                                <ChevronDown
+                                  className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition ${
+                                    isExpanded ? 'rotate-180 text-emerald-700' : ''
+                                  }`}
+                                />
                                 {report.ca || '-'}
                               </span>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-800">
-                              {round.label}
+                              {formatMixingReportSessionLabel(report)}
+                              {rounds.length > 1 ? (
+                                <span className="ml-1 text-[10px] font-semibold text-zinc-400">
+                                  ({rounds.length} lần)
+                                </span>
+                              ) : null}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 font-mono text-zinc-600">
                               {report.gio || '-'}
@@ -1285,38 +1220,35 @@ export default function MixingReportListView({
                               {report.nhan_su || '-'}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-700">
-                              {round.lineCount}
+                              {report.chi_tiet.length}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-bold text-emerald-700">
-                              {formatNormWeight(round.normTotal) || '-'}
+                              {formatNormWeight(totalNorm) || '-'}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-bold text-[#ef1b2d]">
-                              {round.actualTotal !== null ? formatOptionalNumber(round.actualTotal) : '-'}
+                              {totalActual !== null ? formatOptionalNumber(totalActual) : '-'}
                             </td>
-                            {round.session === rounds[0].session ? (
-                              <td
-                                className="whitespace-nowrap px-3 py-2 text-center"
-                                rowSpan={rounds.length}
-                                onClick={event => event.stopPropagation()}
-                              >
-                                <RowActionsMenu label="Thao tác báo cáo phối trộn">
-                                  {renderReportActions(report)}
-                                </RowActionsMenu>
-                              </td>
-                            ) : null}
+                            <td
+                              className="whitespace-nowrap px-3 py-2 text-center"
+                              onClick={event => event.stopPropagation()}
+                            >
+                              <RowActionsMenu label="Thao tác báo cáo phối trộn">
+                                {renderReportActions(report)}
+                              </RowActionsMenu>
+                            </td>
                           </tr>
-                        ));
+                        );
 
-                        if (!isExpanded) return roundRows;
+                        if (!isExpanded) return [summaryRow];
 
                         return [
-                          ...roundRows,
+                          summaryRow,
                           <tr key={`${report.id}-detail`} className="bg-slate-50/80">
                             <td colSpan={10} className="px-3 py-3">
                               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-wider text-emerald-800">
-                                    Chi tiết dòng vật tư
+                                    Chi tiết tất cả lần
                                   </p>
                                   <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
                                     {report.ngay || '-'} · {report.ca || '-'} · {report.gio || '-'} ·{' '}

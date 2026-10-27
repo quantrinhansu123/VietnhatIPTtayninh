@@ -18,10 +18,16 @@ alter table public.bao_cao_nghiem_thu
   add column if not exists mat_hang text,
   add column if not exists don_vi text,
   add column if not exists so_luong numeric,
+  add column if not exists so_luong_ai numeric,
   add column if not exists trong_luong numeric,
   add column if not exists don_vi_trong_luong text default 'Kg',
+  add column if not exists ghi_chu text,
   add column if not exists hinh_anh text,
   add column if not exists hinh_anh_public_id text;
+
+comment on column public.bao_cao_nghiem_thu.so_luong is 'So cong nhan dien (SL chot tren phieu).';
+comment on column public.bao_cao_nghiem_thu.so_luong_ai is 'So AI dien tu tram can; null = khong thua ke tu AI.';
+comment on column public.bao_cao_nghiem_thu.ghi_chu is 'Bat buoc khi SL CN khac SL AI hoac khong thua ke tu tram can AI.';
 
 alter table public.bao_cao_nghiem_thu enable row level security;
 

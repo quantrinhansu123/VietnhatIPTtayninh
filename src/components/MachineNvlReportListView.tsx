@@ -160,11 +160,16 @@ function MachineNvlDetailLinesTable({
           {lines.length > 0 ? (
             <tfoot className="border-t border-zinc-200 bg-zinc-50">
               <tr>
-                <td colSpan={10} className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                  Tổng {title.toLowerCase()}
-                </td>
-                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
-                  {formatNumber(totalKg, 3)} kg
+                <td
+                  colSpan={11}
+                  className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500"
+                >
+                  <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0">
+                    <span>Tổng {title.toLowerCase()}</span>
+                    <span className="whitespace-nowrap font-mono text-sm font-black text-emerald-800">
+                      {formatNumber(totalKg, 3)} kg
+                    </span>
+                  </span>
                 </td>
               </tr>
             </tfoot>
@@ -233,22 +238,24 @@ function MachineNvlReportDetailModal({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 bg-white px-4 py-3 sm:grid-cols-4 sm:px-5">
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-            <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</p>
-            <p className="mt-0.5 font-mono text-sm font-bold text-zinc-800">{report.ngay || '—'}</p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-zinc-100 bg-white px-4 py-2.5 sm:px-5">
+          <div className="inline-flex min-w-0 items-baseline gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/80 px-2.5 py-1.5">
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>
+            <span className="font-mono text-sm font-bold text-zinc-800">{report.ngay || '—'}</span>
           </div>
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-            <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ca</p>
-            <p className="mt-0.5 text-sm font-bold text-zinc-800">{report.ca || '—'}</p>
+          <div className="inline-flex min-w-0 items-baseline gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/80 px-2.5 py-1.5">
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-400">Ca</span>
+            <span className="text-sm font-bold text-zinc-800">{report.ca || '—'}</span>
           </div>
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2">
-            <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Số dòng NVL</p>
-            <p className="mt-0.5 font-mono text-sm font-bold text-zinc-800">{report.lines.length}</p>
+          <div className="inline-flex min-w-0 items-baseline gap-1.5 rounded-lg border border-zinc-100 bg-zinc-50/80 px-2.5 py-1.5">
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-400">Số dòng NVL</span>
+            <span className="font-mono text-sm font-bold text-zinc-800">{report.lines.length}</span>
           </div>
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2">
-            <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng (kg)</p>
-            <p className="mt-0.5 font-mono text-sm font-black text-emerald-800">{formatNumber(totalKg, 3)}</p>
+          <div className="inline-flex min-w-0 items-baseline gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50/70 px-2.5 py-1.5">
+            <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng (kg)</span>
+            <span className="whitespace-nowrap font-mono text-sm font-black text-emerald-800">
+              {formatNumber(totalKg, 3)}
+            </span>
           </div>
         </div>
 

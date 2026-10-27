@@ -1505,8 +1505,52 @@ async function insertWeighingRecordsToTable(
 
 function registerWeighingSlipRoutes(app: express.Application, apiPath: string, cfg: WeighingSlipApiConfig) {
   const store = createWeighingLocalStore(cfg);
-  const db = cfg.client ?? supabase;
-  const dbLabel = cfg.dbLabel || SUPABASE_MAIN_DB_LABEL;
+  const primaryDb = cfg.client ?? supabase;
+  const primaryLabel = cfg.dbLabel || SUPABASE_MAIN_DB_LABEL;
+  // Giữ alias cho các handler POST/PATCH/DELETE bên dưới.
+  const db = primaryDb;
+  const dbLabel = primaryLabel;
+
+  const weighingDbCandidates = (): Array<{ client: SupabaseClient; label: string }> => {
+    const refs: Array<{ client: SupabaseClient; label: string }> = [];
+    const push = (client: SupabaseClient | null, label: string) => {
+      if (!client) return;
+      if (refs.some(item => item.client === client)) return;
+      refs.push({ client, label });
+    };
+    push(primaryDb, primaryLabel);
+    // Phiếu cân: thử phieu-can rồi he-thong nếu bảng thiếu trên DB ưu tiên.
+    if (cfg.supabaseTable === SUPABASE_WEIGHING_TABLE) {
+      push(supabaseWeighing, SUPABASE_WEIGHING_DB_LABEL);
+      push(supabase, SUPABASE_MAIN_DB_LABEL);
+    }
+    return refs;
+  };
+
+  const filterLocalWeighingRecords = (ngay: string, from: string, to: string) => {
+    let records = store.getReportsFromLocal();
+    if (ngay) {
+      records = records.filter(
+        record => record.productionDate === ngay || record.reportDate === ngay
+      );
+    } else {
+      if (from) {
+        records = records.filter(record => {
+          const d = record.productionDate || record.reportDate;
+          return d && d >= from;
+        });
+      }
+      if (to) {
+        records = records.filter(record => {
+          const d = record.productionDate || record.reportDate;
+          return d && d <= to;
+        });
+      }
+    }
+    return [...records].sort((left, right) =>
+      String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))
+    );
+  };
 
   app.get(apiPath, async (req, res) => {
     try {
@@ -1514,8 +1558,10 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
       const from = typeof req.query.from === 'string' ? req.query.from.trim() : parseWarehouseSlipDate(req.query.tu_ngay);
       const to = typeof req.query.to === 'string' ? req.query.to.trim() : parseWarehouseSlipDate(req.query.den_ngay);
 
-      if (db) {
-        let query = db
+      const candidates = weighingDbCandidates();
+      let lastError: { message?: string; code?: string } | null = null;
+      for (const { client, label } of candidates) {
+        let query = client
           .from(cfg.supabaseTable)
           .select('*')
           .order('created_at', { ascending: false, nullsFirst: false })
@@ -1534,41 +1580,28 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
         }
 
         const { data, error } = await query;
-        if (error) {
-          console.error(`Supabase[${dbLabel}] ${cfg.entityLabel} query error:`, error);
-          return res.status(500).json({
-            error: `Không thể tải ${cfg.entityLabel} từ ${cfg.supabaseTable} (${dbLabel}). ${error.message}`
-          });
+        if (!error) {
+          return res.json((data || []).map((row) => mapWeighingRow(row as Record<string, unknown>)));
         }
-
-        return res.json((data || []).map((row) => mapWeighingRow(row as Record<string, unknown>)));
+        lastError = error;
+        if (isMissingTableError(error)) {
+          console.warn(
+            `Supabase[${label}] thiếu bảng ${cfg.supabaseTable} — thử DB / local tiếp theo.`
+          );
+          continue;
+        }
+        console.error(`Supabase[${label}] ${cfg.entityLabel} query error:`, error);
+        return res.status(500).json({
+          error: `Không thể tải ${cfg.entityLabel} từ ${cfg.supabaseTable} (${label}). ${error.message}`
+        });
       }
 
-      let records = store.getReportsFromLocal();
-      if (ngay) {
-        records = records.filter(
-          record => record.productionDate === ngay || record.reportDate === ngay
+      if (lastError) {
+        console.warn(
+          `Supabase ${cfg.entityLabel}: không có bảng trên các DB đã thử — fallback local. ${lastError.message || ''}`
         );
-      } else {
-        if (from) {
-          records = records.filter(record => {
-            const d = record.productionDate || record.reportDate;
-            return d && d >= from;
-          });
-        }
-        if (to) {
-          records = records.filter(record => {
-            const d = record.productionDate || record.reportDate;
-            return d && d <= to;
-          });
-        }
       }
-
-      return res.json(
-        [...records].sort((left, right) =>
-          String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''))
-        )
-      );
+      return res.json(filterLocalWeighingRecords(ngay, from || '', to || ''));
     } catch (err: any) {
       return res.status(500).json({ error: err.message || `Lỗi khi tải ${cfg.entityLabel}.` });
     }
@@ -1620,12 +1653,31 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
         return res.status(400).json({ error: 'Vật tư khác cần có Mã vật tư và Số lượng.' });
       }
 
-      if (db) {
-        const insertResult = await insertWeighingRecordsToTable(cfg.supabaseTable, records, db);
+      {
+        const candidates = weighingDbCandidates();
+        let lastInsertError: { message?: string; code?: string } | null = null;
+        for (const { client, label } of candidates) {
+          const insertResult = await insertWeighingRecordsToTable(cfg.supabaseTable, records, client);
+          if (insertResult.ok) {
+            return res.status(201).json({
+              success: true,
+              inserted: records.length,
+              mode: 'supabase',
+              db: label,
+              rows: (insertResult.data || []).map((row) => mapWeighingRow(row as Record<string, unknown>))
+            });
+          }
 
-        if (!insertResult.ok) {
           const error = insertResult.error;
-          console.error(`Supabase[${dbLabel}] ${cfg.entityLabel} insert error:`, error);
+          lastInsertError = error;
+          if (isMissingTableError(error)) {
+            console.warn(
+              `Supabase[${label}] thiếu bảng ${cfg.supabaseTable} khi ghi — thử DB / local tiếp theo.`
+            );
+            continue;
+          }
+
+          console.error(`Supabase[${label}] ${cfg.entityLabel} insert error:`, error);
 
           if (isSupabaseNetworkError(error)) {
             const savedLocally = await store.savePayloadLocally(payload, rows);
@@ -1654,13 +1706,9 @@ function registerWeighingSlipRoutes(app: express.Application, apiPath: string, c
           });
         }
 
-        return res.status(201).json({
-          success: true,
-          inserted: records.length,
-          mode: 'supabase',
-          db: dbLabel,
-          rows: (insertResult.data || []).map((row) => mapWeighingRow(row as Record<string, unknown>))
-        });
+        if (lastInsertError && !candidates.length) {
+          // no-op: fall through to local
+        }
       }
 
       const savedLocally = await store.savePayloadLocally(payload, rows);
@@ -6000,6 +6048,12 @@ function parseAcceptanceNumber(value: unknown) {
   return Number.isFinite(num) ? Math.round(num * 100) / 100 : null;
 }
 
+function acceptanceQtyNeedsNote(soLuongAi: number | null, soLuongCongNhan: number) {
+  // Không thừa kế từ trạm cân AI, hoặc sửa tay lệch số AI → bắt buộc ghi chú.
+  if (soLuongAi === null || !Number.isFinite(soLuongAi)) return true;
+  return Math.abs(soLuongAi - soLuongCongNhan) > 1e-9;
+}
+
 function parseAcceptanceReportBody(body: unknown): { error: string } | { record: Record<string, unknown> } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const ngay = String(source.ngay ?? '').trim();
@@ -6007,8 +6061,12 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   const lan = String(source.lan ?? '').trim();
   const mat_hang = String(source.mat_hang ?? source.product ?? '').trim();
   const loai_vat_tu = String(source.loai_vat_tu ?? 'Thành phẩm').trim();
-  const so_luong = parseAcceptanceNumber(source.so_luong ?? source.quantity);
+  const so_luong = parseAcceptanceNumber(
+    source.so_luong_cong_nhan ?? source.so_luong ?? source.quantity
+  );
+  const so_luong_ai = parseAcceptanceNumber(source.so_luong_ai ?? source.aiQuantity);
   const trong_luong = parseAcceptanceNumber(source.trong_luong ?? source.weight);
+  const ghi_chu = String(source.ghi_chu ?? source.note ?? '').trim();
 
   if (!ngay) return { error: 'Vui lòng chọn ngày.' };
   if (!ca) return { error: 'Vui lòng chọn ca.' };
@@ -6020,7 +6078,12 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   if (!['Thành phẩm', 'Gia công', 'SP lỗi', 'SP rác'].includes(loai_vat_tu)) {
     return { error: 'Loại vật tư không hợp lệ.' };
   }
-  if (so_luong === null || so_luong <= 0) return { error: 'Số lượng phải lớn hơn 0.' };
+  if (so_luong === null || so_luong <= 0) return { error: 'Số công nhân điền phải lớn hơn 0.' };
+  if (acceptanceQtyNeedsNote(so_luong_ai, so_luong) && !ghi_chu) {
+    return {
+      error: `Mã ${mat_hang}: sửa tay / không thừa kế từ trạm cân AI thì phải nhập ghi chú.`
+    };
+  }
 
   const hinh_anh = String(source.hinh_anh ?? source.imageUrl ?? '').trim();
 
@@ -6036,8 +6099,10 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
       mat_hang,
       don_vi: String(source.don_vi ?? source.unit ?? '').trim() || null,
       so_luong,
+      so_luong_ai,
       trong_luong,
       don_vi_trong_luong: String(source.don_vi_trong_luong ?? source.weightUnit ?? 'Kg').trim() || 'Kg',
+      ghi_chu: ghi_chu || null,
       hinh_anh: hinh_anh || null,
       hinh_anh_public_id: hinh_anh
         ? String(source.hinh_anh_public_id ?? source.imagePublicId ?? '').trim() || null
@@ -14063,8 +14128,16 @@ export function createApp() {
   app.get('/api/yeu-cau-xuat-kho', async (req, res) => {
     if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
     const status = String(req.query.trang_thai ?? '').trim();
-    let q = supabaseKho.from('yeu_cau_xuat_kho').select('*').order('created_at', { ascending: false }).limit(200);
+    const tuNgay = String(req.query.tu_ngay ?? '').trim();
+    const denNgay = String(req.query.den_ngay ?? '').trim();
+    const ca = String(req.query.ca ?? '').trim();
+    const may = String(req.query.may ?? '').trim();
+    let q = supabaseKho.from('yeu_cau_xuat_kho').select('*').order('created_at', { ascending: false }).limit(300);
     if (status) q = q.eq('trang_thai', status);
+    if (tuNgay) q = q.gte('ngay', tuNgay);
+    if (denNgay) q = q.lte('ngay', denNgay);
+    if (ca) q = q.eq('ca', ca);
+    if (may) q = q.eq('may', may);
     const { data: heads, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     const codes = (heads || []).map(h => h.ma_yeu_cau);
@@ -14114,6 +14187,59 @@ export function createApp() {
       return res.status(500).json({ error: lineError.message });
     }
     return res.json({ ma_yeu_cau });
+  });
+
+  /** Sửa yêu cầu chờ xử lý (đầu phiếu + thay toàn bộ dòng NVL). */
+  app.put('/api/yeu-cau-xuat-kho/:ma', async (req, res) => {
+    if (!supabaseKho) return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    const ma = String(req.params.ma || '').trim();
+    if (!ma) return res.status(400).json({ error: 'Thiếu mã yêu cầu.' });
+    const { data: existing, error: existingError } = await supabaseKho
+      .from('yeu_cau_xuat_kho')
+      .select('ma_yeu_cau, trang_thai')
+      .eq('ma_yeu_cau', ma)
+      .maybeSingle();
+    if (existingError) return res.status(500).json({ error: existingError.message });
+    if (!existing) return res.status(404).json({ error: 'Không tìm thấy yêu cầu.' });
+    if (String(existing.trang_thai || '').toLowerCase() === 'da_xuat') {
+      return res.status(400).json({ error: 'Phiếu đã xuất kho — không sửa được.' });
+    }
+    const body = req.body || {};
+    const lines = (Array.isArray(body.lines) ? body.lines : [])
+      .map((l: any) => ({
+        ma_nvl: String(l?.ma_nvl ?? '').trim(),
+        ten_nvl: String(l?.ten_nvl ?? '').trim(),
+        don_vi: String(l?.don_vi ?? '').trim(),
+        so_luong: Number(l?.so_luong)
+      }))
+      .filter((l: any) => l.ma_nvl);
+    if (!body.ngay || !String(body.ca ?? '').trim() || !String(body.may ?? '').trim()) {
+      return res.status(400).json({ error: 'Chọn ngày, ca và máy.' });
+    }
+    if (!String(body.nguoi_yc ?? '').trim()) {
+      return res.status(400).json({ error: 'Nhập tên người yêu cầu.' });
+    }
+    if (!lines.length || lines.some((l: any) => !(l.so_luong > 0))) {
+      return res.status(400).json({ error: 'Nhập mã NVL và số lượng lớn hơn 0 cho từng dòng.' });
+    }
+    const { error: updateError } = await supabaseKho
+      .from('yeu_cau_xuat_kho')
+      .update({
+        ngay: body.ngay,
+        ca: String(body.ca).trim(),
+        may: String(body.may).trim(),
+        nguoi_yc: String(body.nguoi_yc ?? '').trim() || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('ma_yeu_cau', ma);
+    if (updateError) return res.status(500).json({ error: updateError.message });
+    const { error: deleteLinesError } = await supabaseKho.from('nvl_yeu_cau').delete().eq('ma_yeu_cau', ma);
+    if (deleteLinesError) return res.status(500).json({ error: deleteLinesError.message });
+    const { error: lineError } = await supabaseKho
+      .from('nvl_yeu_cau')
+      .insert(lines.map((l: any) => ({ ...l, ma_yeu_cau: ma })));
+    if (lineError) return res.status(500).json({ error: lineError.message });
+    return res.json({ ma_yeu_cau: ma });
   });
 
   /** Xóa yêu cầu (dòng nvl_yeu_cau xóa theo cascade). */
@@ -15217,7 +15343,7 @@ export function createApp() {
     });
   }
 
-  // Phiếu cân định kỳ dùng DB chính (he-thong) — bảng phieu_can_dinh_ki đã có sẵn.
+  // Phiếu cân định kỳ nằm trên DB phieu-can (SUPABASE_WEIGHING_*), không phải he-thong.
   registerWeighingSlipRoutes(app, '/api/phieu-can-dinh-ki', {
     localFilePath: WEIGHING_DB_FILE_PATH,
     supabaseTable: SUPABASE_WEIGHING_TABLE,
@@ -15225,8 +15351,8 @@ export function createApp() {
     entityLabel: 'phiếu cân',
     localEntryPrefix: 'pcdk_',
     requireAcceptanceStatus: true,
-    client: supabase,
-    dbLabel: SUPABASE_MAIN_DB_LABEL
+    client: supabaseWeighing || supabase,
+    dbLabel: supabaseWeighing ? SUPABASE_WEIGHING_DB_LABEL : SUPABASE_MAIN_DB_LABEL
   });
 
   app.get('/api/can-tu-dong', async (req, res) => {

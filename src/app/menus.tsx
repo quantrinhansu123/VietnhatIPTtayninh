@@ -183,12 +183,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'acceptance-report'
   },
   {
-    title: 'Phiếu giao ca',
-    desc: 'Nhật ký sản xuất kiêm phiếu giao ca QT-16-BM02: thành phẩm, hàng lỗi và báo cáo cuối ca.',
-    icon: ArrowLeftRight,
-    tab: 'shift-handover-report'
-  },
-  {
     title: 'Phiếu báo dừng máy',
     desc: 'Ghi nhận thời gian dừng, lý do và số cuộn ảnh hưởng theo ca.',
     icon: MachineDowntimeIcon,
@@ -201,35 +195,6 @@ export const REPORT_FORM_MENU_ITEMS: MenuCardConfig[] = [
     icon: Activity,
     icon3d: notebook3d,
     tab: 'machine-run-log'
-  },
-  {
-    title: 'Đối soát',
-    desc: 'Quét QR đối soát theo kho và đợt — tối ưu máy quét BT-A700.',
-    icon: ScanBarcode,
-    icon3d: cardIndexDividers3d,
-    tab: 'doi-soat'
-  },
-  {
-    title: 'Danh sách cân AI',
-    desc: 'Xem danh sách dữ liệu cân AI đã ghi nhận và ảnh cân ngay trong ứng dụng.',
-    icon: ClipboardList,
-    icon3d: cardIndexDividers3d,
-    tab: 'can-tu-dong'
-  },
-  {
-    title: 'Trạm cân AI',
-    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
-    icon: Scale,
-    icon3d: robot3d,
-    tab: 'can-tu-dong',
-    entryForm: 'can-tu-dong'
-  },
-  {
-    title: 'Cân kiểm kho',
-    desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
-    icon: Scale,
-    icon3d: scale3d,
-    tab: 'can-kiem-kho'
   },
   {
     title: 'Trả kho NVL',
@@ -324,6 +289,13 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'machine-nvl-report-list'
   },
   {
+    title: 'Danh sách phiếu nhận NVL',
+    desc: 'Xem yêu cầu nhận NVL về máy theo ngày, ca, máy và trạng thái xuất kho.',
+    icon: ClipboardList,
+    icon3d: cardIndex3d,
+    tab: 'material-request-list'
+  },
+  {
     title: 'Danh sách trộn nguyên vật liệu',
     desc: 'Lấy danh sách báo cáo phối trộn đã lưu theo ngày, ca và máy.',
     icon: Layers,
@@ -331,32 +303,11 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'mixing-report-list'
   },
   {
-    title: 'Phiếu cân ca',
-    desc: 'Xem danh sách phiếu cân và cộng dồn theo ca.',
-    icon: History,
-    icon3d: cardIndexDividers3d,
-    tab: 'weighing-summary-list'
-  },
-  {
     title: 'Danh sách cân',
     desc: 'Danh sách dữ liệu cân (can_tu_dong); bấm ảnh để xem trong app.',
     icon: Scale,
     icon3d: robot3d,
     tab: 'can-tu-dong'
-  },
-  {
-    title: 'Trạm cân QR',
-    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
-    icon: Scale,
-    icon3d: robot3d,
-    tab: 'can-tu-dong-pilot'
-  },
-  {
-    title: 'Cân kiểm kho',
-    desc: 'Mở trạm cân kiểm kho ngay trong app (không mở tab mới).',
-    icon: Scale,
-    icon3d: scale3d,
-    tab: 'can-kiem-kho'
   },
   {
     title: 'Báo cáo kiểm kho',
@@ -626,20 +577,6 @@ export const FACTORY_QC_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'can-tu-dong'
   },
   {
-    title: 'Trạm cân QR',
-    desc: 'Chụp ảnh cân, đẩy Cloudinary và ghi vào danh sách cân AI.',
-    icon: Scale,
-    icon3d: robot3d,
-    tab: 'can-tu-dong-pilot'
-  },
-  {
-    title: 'Cân kiểm kho',
-    desc: 'Mở trạm cân kiểm kho ngay trong app (không mở tab mới).',
-    icon: Scale,
-    icon3d: scale3d,
-    tab: 'can-kiem-kho'
-  },
-  {
     title: 'Kiểm tra kho thành phẩm',
     desc: 'Xem, sửa và in các phiếu báo cáo sản lượng đã lưu.',
     icon: ClipboardCheck,
@@ -727,15 +664,6 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Quét QR tem, xem ngày/ca/người sản xuất, đối chiếu trạm cân AI và lập biên bản.',
     icon: BadgeCheck,
     tab: 'kiem-dinh-tem'
-  },
-  {
-    title: 'Cân kiểm kho',
-    desc: 'Mở trạm cân kiểm kho để chụp, đọc khối lượng và lưu phiếu kiểm kho.',
-    icon: Scale,
-    icon3d: scale3d,
-    tab: 'can-kiem-kho',
-    // Tạm ẩn trên /nha-may/kho
-    hidden: true
   },
   {
     title: 'Xử lý chênh lệch',
@@ -1044,7 +972,6 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kiểm soát hàng hỏng', tab: 'damaged-goods-report-list' },
       { label: 'Phiếu cân ca', tab: 'weighing-summary-list' },
       { label: 'Danh sách cân', tab: 'can-tu-dong' },
-      { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Kiểm tra kho thành phẩm', tab: 'acceptance-report-list' },
       { label: 'Báo cáo chất lượng', tab: 'factory-qc', disabled: true }
     ]
@@ -1072,7 +999,6 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kiểm kho', tab: 'kiem-kho' },
       { label: 'Tìm mã lỗi', tab: 'tim-ma-loi' },
       { label: 'Kiểm định tem', tab: 'kiem-dinh-tem' },
-      { label: 'Cân kiểm kho', tab: 'can-kiem-kho' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
       { label: 'Tồn kho', tab: 'ton-kho' },
       { label: 'Chuẩn bị xuất hàng', tab: 'factory-kho', disabled: true }
@@ -1104,8 +1030,6 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
   'can-tu-dong': { group: 'Sản xuất', sub: 'Danh sách cân' },
-  'can-tu-dong-pilot': { group: 'Sản xuất', sub: 'Trạm cân QR' },
-  'can-kiem-kho': { group: 'Kho', sub: 'Cân kiểm kho' },
   'kiem-kho': { group: 'Kho', sub: 'Kiểm kho' },
   'tim-ma-loi': { group: 'Kho', sub: 'Tìm mã lỗi' },
   'kiem-dinh-tem': { group: 'Kho', sub: 'Kiểm định tem' },
@@ -1116,6 +1040,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'mixing-report-list': { group: 'QC', sub: 'BOM và tỷ lệ phối trộn' },
   'machine-nvl-report': { group: 'Sản xuất', sub: 'Báo cáo máy-NVL' },
   'machine-nvl-report-list': { group: 'Kho', sub: 'Báo cáo tồn máy' },
+  'material-request-list': { group: 'Kho', sub: 'Phiếu nhận NVL' },
   'acceptance-report': { group: 'Sản xuất', sub: 'Phiếu nghiệm thu' },
   'machine-downtime-report': { group: 'Sản xuất', sub: 'Báo cáo máy dừng' },
   'machine-downtime-list': { group: 'Quản Đốc', sub: 'DS máy dừng' },

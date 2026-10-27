@@ -17,6 +17,13 @@ function normalizeSearchText(value: string) {
     .replace(/đ/g, 'd');
 }
 
+function splitMultiSelectValues(value: string): string[] {
+  return String(value || '')
+    .split(/[,;]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+}
+
 export function SearchableSelect({
   value,
   onChange,
@@ -44,7 +51,9 @@ export function SearchableSelect({
   matchDropdownWidth = false,
   dropdownMinWidth = 0,
   searchPlaceholder,
-  preferValueMatch = true
+  preferValueMatch = true,
+  multiSelect = false,
+  onChangeMulti
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -81,33 +90,62 @@ export function SearchableSelect({
   searchPlaceholder?: string;
   /** Mã khớp từ khóa xếp trước, rồi mới đến kết quả khớp theo tên. */
   preferValueMatch?: boolean;
+  /** Cho phép chọn nhiều giá trị (checkbox); commit khi bấm Áp dụng hoặc blur. */
+  multiSelect?: boolean;
+  onChangeMulti?: (values: string[]) => void;
 }) {
   const fieldClass = inputClassName || orderFieldClass;
   const anchorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
+  const selectedValues = useMemo(
+    () => (multiSelect ? splitMultiSelectValues(value) : value ? [value] : []),
+    [multiSelect, value]
+  );
   const selectedItem = useMemo(() => {
-    if (!value) return null;
+    if (!value || multiSelect) return null;
     if (resolveSelectedItem) {
       return resolveSelectedItem(options, value);
     }
     return options.find(item => getValue(item) === value) ?? null;
-  }, [options, value, getValue, resolveSelectedItem]);
-  const selectedLabel = selectedItem
-    ? displaySelectedAsValue
-      ? getValue(selectedItem)
-      : getLabel(selectedItem)
-    : value;
+  }, [options, value, getValue, resolveSelectedItem, multiSelect]);
+  const selectedLabel = multiSelect
+    ? selectedValues.length === 1
+      ? (() => {
+          const item = options.find(opt => getValue(opt) === selectedValues[0]);
+          return item
+            ? displaySelectedAsValue
+              ? getValue(item)
+              : getLabel(item)
+            : selectedValues[0];
+        })()
+      : selectedValues.join(', ')
+    : selectedItem
+      ? displaySelectedAsValue
+        ? getValue(selectedItem)
+        : getLabel(selectedItem)
+      : value;
 
   const [query, setQuery] = useState(selectedLabel);
   const [open, setOpen] = useState(false);
+  const [pendingMulti, setPendingMulti] = useState<string[]>(selectedValues);
+  const pendingMultiRef = useRef(pendingMulti);
+  pendingMultiRef.current = pendingMulti;
 
   useEffect(() => {
     if (!open) {
       setQuery(selectedLabel);
+      setPendingMulti(selectedValues);
     }
-  }, [selectedLabel, open]);
+  }, [selectedLabel, selectedValues, open]);
+
+  useEffect(() => {
+    if (open && multiSelect) {
+      setPendingMulti(selectedValues);
+      setQuery('');
+    }
+  }, [open, multiSelect, selectedValues]);
 
   const filteredOptions = useMemo(() => {
     // Combobox không có ô tìm: luôn hiện đủ danh sách.
@@ -148,11 +186,25 @@ export function SearchableSelect({
     preferValueMatch
   ]);
 
+  const emitChange = (nextValues: string[], item: unknown | null = null) => {
+    const unique = [...new Set(nextValues.map(part => part.trim()).filter(Boolean))];
+    const nextValue = unique.join(', ');
+    if (nextValue !== value) {
+      onChange(nextValue);
+      onChangeMulti?.(unique);
+      onSelectOption?.(item);
+    } else if (multiSelect) {
+      onChangeMulti?.(unique);
+    }
+  };
+
   const commitValue = (nextValue: string, item: unknown | null = null) => {
     const trimmed = nextValue.trim();
-    onChange(trimmed);
-    onSelectOption?.(item);
-    if (item) {
+    emitChange(trimmed ? [trimmed] : [], item);
+    if (multiSelect) {
+      setQuery('');
+      setPendingMulti(trimmed ? [trimmed] : []);
+    } else if (item) {
       setQuery(getLabel(item));
     } else if (trimmed) {
       const match = options.find(opt => getValue(opt) === trimmed);
@@ -161,6 +213,19 @@ export function SearchableSelect({
       setQuery('');
     }
     setOpen(false);
+  };
+
+  const commitMultiValues = (nextValues: string[]) => {
+    emitChange(nextValues, null);
+    setPendingMulti(nextValues);
+    setQuery('');
+    setOpen(false);
+  };
+
+  const toggleMultiValue = (optionValue: string) => {
+    setPendingMulti(prev =>
+      prev.includes(optionValue) ? prev.filter(item => item !== optionValue) : [...prev, optionValue]
+    );
   };
 
   const suppressBlurRef = useRef(false);
@@ -172,10 +237,21 @@ export function SearchableSelect({
         return;
       }
 
+      if (multiSelect) {
+        commitMultiValues(pendingMultiRef.current);
+        return;
+      }
+
       const normalized = query.trim().toLowerCase();
       if (!normalized) {
         if (allowEmpty) {
-          commitValue('', null);
+          // Không xóa giá trị đang chọn khi blur ô trống (tránh nhảy số/SL khi click dòng khác).
+          if (!value) {
+            commitValue('', null);
+          } else {
+            setQuery(selectedLabel);
+            setOpen(false);
+          }
         } else {
           setQuery(selectedLabel);
           setOpen(false);
@@ -467,10 +543,10 @@ export function SearchableSelect({
       );
     }
 
-    if (filteredOptions.length > 0 || (allowCustomValue && queryTrimmed && !hasExactQueryMatch)) {
+    if (filteredOptions.length > 0 || (allowCustomValue && queryTrimmed && !hasExactQueryMatch) || multiSelect) {
       return createPortal(
         <div ref={menuRef} className={dropdownPanelClass} style={menuStyle} onMouseDown={keepFocusForSelection}>
-          {allowEmpty && !query.trim() && (
+          {allowEmpty && !query.trim() && !multiSelect && (
             <button
               type="button"
               onMouseDown={event => event.preventDefault()}
@@ -480,24 +556,82 @@ export function SearchableSelect({
               {placeholder}
             </button>
           )}
+          {multiSelect && (
+            <div className="border-b border-zinc-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+              Chọn một hoặc nhiều mã
+            </div>
+          )}
           {renderCustomAddOption()}
-          {filteredOptions.map((item, index) => {
-            const optionValue = getValue(item);
-            const optionLabel = (getOptionLabel ?? getLabel)(item);
-            return (
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((item, index) => {
+              const optionValue = getValue(item);
+              const optionLabel = (getOptionLabel ?? getLabel)(item);
+              const isSelected = multiSelect
+                ? pendingMulti.includes(optionValue)
+                : optionValue === value;
+              return (
+                <button
+                  key={`${optionValue}-${index}`}
+                  type="button"
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => {
+                    if (multiSelect) {
+                      toggleMultiValue(optionValue);
+                      return;
+                    }
+                    commitValue(optionValue, item);
+                  }}
+                  className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition hover:bg-red-50 ${
+                    isSelected ? 'bg-red-50 font-black text-[#ef1b2d]' : 'font-semibold text-zinc-800'
+                  }`}
+                >
+                  {multiSelect && (
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${
+                        isSelected
+                          ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
+                          : 'border-zinc-300 bg-white text-transparent'
+                      }`}
+                      aria-hidden
+                    >
+                      ✓
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">{optionLabel}</span>
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-3 py-2 text-xs font-semibold text-zinc-500">
+              {isLoading
+                ? 'Đang tải...'
+                : options.length === 0
+                  ? 'Không có dữ liệu'
+                  : query.trim()
+                    ? 'Không tìm thấy kết quả'
+                    : 'Không có lựa chọn phù hợp'}
+            </div>
+          )}
+          {multiSelect && (
+            <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-zinc-100 bg-white px-3 py-2">
               <button
-                key={`${optionValue}-${index}`}
                 type="button"
                 onMouseDown={event => event.preventDefault()}
-                onClick={() => commitValue(optionValue, item)}
-                className={`block w-full px-3 py-2 text-left text-sm transition hover:bg-red-50 ${
-                  optionValue === value ? 'bg-red-50 font-black text-[#ef1b2d]' : 'font-semibold text-zinc-800'
-                }`}
+                onClick={() => commitMultiValues([])}
+                className="text-xs font-bold text-zinc-500 transition hover:text-zinc-800"
               >
-                {optionLabel}
+                Bỏ chọn
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => commitMultiValues(pendingMulti)}
+                className="rounded-lg bg-[#ef1b2d] px-3 py-1.5 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+              >
+                Áp dụng{pendingMulti.length > 0 ? ` (${pendingMulti.length})` : ''}
+              </button>
+            </div>
+          )}
         </div>,
         document.body
       );

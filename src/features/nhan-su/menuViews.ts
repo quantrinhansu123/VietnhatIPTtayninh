@@ -66,8 +66,6 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'damaged-goods-report-list', label: 'Kiểm soát hàng hỏng' },
       { tab: 'weighing-summary-list', label: 'Phiếu cân ca' },
       { tab: 'can-tu-dong', label: 'Danh sách cân' },
-      { tab: 'can-tu-dong-pilot', label: 'Trạm cân QR' },
-      { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'acceptance-report-list', label: 'Kiểm tra kho thành phẩm' }
     ]
   },
@@ -92,7 +90,6 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'kiem-kho', label: 'Kiểm kho' },
       { tab: 'tim-ma-loi', label: 'Tìm mã lỗi' },
       { tab: 'kiem-dinh-tem', label: 'Kiểm định tem' },
-      { tab: 'can-kiem-kho', label: 'Cân kiểm kho' },
       { tab: 'kiem-kho-chenh-lech', label: 'Xử lý chênh lệch' },
       { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },
       { tab: 'ton-kho', label: 'Tồn kho' }

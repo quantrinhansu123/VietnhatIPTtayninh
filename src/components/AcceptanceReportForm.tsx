@@ -27,7 +27,7 @@ import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongW
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 const productLineGridClass =
-  'min-w-[50rem] grid-cols-[2.25rem_minmax(9rem,1.1fr)_minmax(12rem,1.3fr)_4rem_6rem_7rem_4rem_2.5rem]';
+  'min-w-[68rem] grid-cols-[2.25rem_minmax(8rem,1fr)_minmax(9rem,1.1fr)_3.5rem_5rem_5.5rem_minmax(8rem,1fr)_6rem_3.5rem_2.5rem]';
 
 const mobileProductColumnLabelClass =
   'block text-[9px] font-black uppercase tracking-wider text-zinc-500';
@@ -45,9 +45,13 @@ export type AcceptanceReport = {
   /** Tên SP — điền thêm khi in / hiển thị nếu khác mat_hang */
   ten_sp?: string;
   don_vi: string;
+  /** Số công nhân điền (SL chốt). */
   so_luong: number | null;
+  /** Số AI điền từ trạm cân; null = không thừa kế AI. */
+  so_luong_ai: number | null;
   trong_luong: number | null;
   don_vi_trong_luong: string;
+  ghi_chu: string;
   hinh_anh: string;
   hinh_anh_public_id?: string;
   created_at?: string;
@@ -410,9 +414,14 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     don_vi: String(record.don_vi ?? ''),
     so_luong:
       record.so_luong === null || record.so_luong === undefined ? null : Number(record.so_luong),
+    so_luong_ai:
+      record.so_luong_ai === null || record.so_luong_ai === undefined
+        ? null
+        : Number(record.so_luong_ai),
     trong_luong:
       record.trong_luong === null || record.trong_luong === undefined ? null : Number(record.trong_luong),
     don_vi_trong_luong: String(record.don_vi_trong_luong ?? 'Kg'),
+    ghi_chu: String(record.ghi_chu ?? record.note ?? ''),
     hinh_anh: String(record.hinh_anh ?? ''),
     hinh_anh_public_id: String(record.hinh_anh_public_id ?? ''),
     created_at: String(record.created_at ?? ''),
@@ -420,13 +429,29 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
   };
 }
 
+/** Không thừa kế AI hoặc SL CN lệch AI → bắt buộc ghi chú. */
+export function acceptanceLineNeedsNote(soLuongAi: string, soLuongCongNhan: string) {
+  const aiRaw = String(soLuongAi ?? '').trim();
+  const workerRaw = String(soLuongCongNhan ?? '').trim();
+  if (!aiRaw) return true;
+  const ai = Number(aiRaw.replace(',', '.'));
+  const worker = Number(workerRaw.replace(',', '.'));
+  if (!Number.isFinite(ai)) return true;
+  if (!Number.isFinite(worker)) return true;
+  return Math.abs(ai - worker) > 1e-9;
+}
+
 interface ProductLine {
   id: string;
   mat_hang: string;
   don_vi: string;
+  /** Số công nhân điền (SL chốt). */
   so_luong: string;
+  /** Số AI điền — chỉ set khi Tự động BC từ trạm cân. */
+  so_luong_ai: string;
   trong_luong: string;
   don_vi_trong_luong: string;
+  ghi_chu: string;
 }
 
 function newProductLine(): ProductLine {
@@ -435,8 +460,23 @@ function newProductLine(): ProductLine {
     mat_hang: '',
     don_vi: '',
     so_luong: '',
+    so_luong_ai: '',
     trong_luong: '',
-    don_vi_trong_luong: 'Kg'
+    don_vi_trong_luong: 'Kg',
+    ghi_chu: ''
+  };
+}
+
+function productLineFromReport(report: AcceptanceReport): ProductLine {
+  return {
+    id: report.id,
+    mat_hang: report.mat_hang,
+    don_vi: report.don_vi,
+    so_luong: report.so_luong === null ? '' : String(report.so_luong),
+    so_luong_ai: report.so_luong_ai === null || report.so_luong_ai === undefined ? '' : String(report.so_luong_ai),
+    trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
+    don_vi_trong_luong: report.don_vi_trong_luong || 'Kg',
+    ghi_chu: report.ghi_chu || ''
   };
 }
 
@@ -534,6 +574,7 @@ export default function AcceptanceReportForm({
   const [isLoadingAutoReport, setIsLoadingAutoReport] = useState(false);
   const [autoReportFilter, setAutoReportFilter] = useState({ ngay: todayIso(), ca: '', machineId: '' });
   const [highlightLine, setHighlightLine] = useState<{ type: MaterialType; lineId: string } | null>(null);
+  const [activeMaterialTab, setActiveMaterialTab] = useState<MaterialType>('Thành phẩm');
   const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const cameraInputRefs = useRef<Record<MaterialType, HTMLInputElement | null>>({
     'Thành phẩm': null,
@@ -691,6 +732,11 @@ export default function AcceptanceReportForm({
       cancelled = true;
     };
   }, [header.ngay, header.ca, editingId]);
+
+  useEffect(() => {
+    if (!highlightLine) return;
+    setActiveMaterialTab(highlightLine.type);
+  }, [highlightLine]);
 
   const ordersForSelectedDay = useMemo(
     () => productionOrders.filter(order => order.startDate === header.ngay),
@@ -853,6 +899,13 @@ export default function AcceptanceReportForm({
         const product = findProductOption(line.mat_hang, productOptionsByType[type]);
         return { ...line, so_luong, trong_luong: calculateProductWeight(product, so_luong) };
       })
+    }));
+  };
+
+  const handleLineNoteChange = (type: MaterialType, lineId: string, ghi_chu: string) => {
+    updateSection(type, section => ({
+      ...section,
+      lines: section.lines.map(line => (line.id === lineId ? { ...line, ghi_chu } : line))
     }));
   };
 
@@ -1026,6 +1079,7 @@ export default function AcceptanceReportForm({
     setEditingGroupIds(null);
     setHeader(newHeaderState());
     setSections(newSectionsState());
+    setActiveMaterialTab('Thành phẩm');
     setMessage('');
     setError('');
   };
@@ -1041,6 +1095,7 @@ export default function AcceptanceReportForm({
 
     setEditingId(report.id);
     setEditingType(type);
+    setActiveMaterialTab(type);
     setEditingGroupIds(null);
     setHeader({
       ngay: report.ngay || todayIso(),
@@ -1055,16 +1110,7 @@ export default function AcceptanceReportForm({
     setSections(prev => ({
       ...newSectionsState(),
       [type]: {
-        lines: [
-          {
-            id: report.id,
-            mat_hang: report.mat_hang,
-            don_vi: report.don_vi,
-            so_luong: report.so_luong === null ? '' : String(report.so_luong),
-            trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
-            don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
-          }
-        ],
+        lines: [productLineFromReport(report)],
         hinh_anh: report.hinh_anh,
         hinh_anh_public_id: report.hinh_anh_public_id || '',
         imagePreview: report.hinh_anh
@@ -1089,14 +1135,7 @@ export default function AcceptanceReportForm({
       if (typeReports.length === 0) continue;
       const imageReport = typeReports.find(report => report.hinh_anh) ?? typeReports[0];
       nextSections[type] = {
-        lines: typeReports.map(report => ({
-          id: report.id,
-          mat_hang: report.mat_hang,
-          don_vi: report.don_vi,
-          so_luong: report.so_luong === null ? '' : String(report.so_luong),
-          trong_luong: report.trong_luong === null ? '' : String(report.trong_luong),
-          don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
-        })),
+        lines: typeReports.map(report => productLineFromReport(report)),
         hinh_anh: imageReport.hinh_anh,
         hinh_anh_public_id: imageReport.hinh_anh_public_id || '',
         imagePreview: imageReport.hinh_anh
@@ -1106,6 +1145,10 @@ export default function AcceptanceReportForm({
     setEditingId(first.id);
     setEditingType(null);
     setEditingGroupIds(reports.map(report => report.id));
+    const firstFilledType =
+      MATERIAL_TYPES.find(type => nextSections[type].lines.some(line => !isBlankProductLine(line))) ||
+      'Thành phẩm';
+    setActiveMaterialTab(firstFilledType);
     setHeader({
       ngay: first.ngay || todayIso(),
       ca: first.ca,
@@ -1132,14 +1175,20 @@ export default function AcceptanceReportForm({
     return null;
   };
 
-  type PreparedLine = ProductLine & { soLuong: number; trongLuong: number | null };
+  type PreparedLine = ProductLine & {
+    soLuong: number;
+    soLuongAi: number | null;
+    trongLuong: number | null;
+  };
 
   const validateSectionLines = (type: MaterialType, section: SectionState): PreparedLine[] | string => {
     const validLines = section.lines
       .map(line => {
         const soLuong = parseLineQuantity(line.so_luong);
+        const soLuongAiRaw = line.so_luong_ai.trim();
+        const soLuongAi = soLuongAiRaw ? parseLineQuantity(soLuongAiRaw) : null;
         const trongLuong = line.trong_luong.trim() ? parseLineQuantity(line.trong_luong) : null;
-        return { ...line, soLuong, trongLuong };
+        return { ...line, soLuong, soLuongAi, trongLuong };
       })
       .filter(line => line.mat_hang.trim() || line.so_luong.trim());
 
@@ -1152,15 +1201,28 @@ export default function AcceptanceReportForm({
         return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chọn mã SP cho từng dòng.`;
       }
       if (!Number.isFinite(line.soLuong) || line.soLuong <= 0) {
-        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: số lượng phải lớn hơn 0 (${line.mat_hang}).`;
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: số công nhân điền phải lớn hơn 0 (${line.mat_hang}).`;
       }
       if (line.trongLuong !== null && (!Number.isFinite(line.trongLuong) || line.trongLuong < 0)) {
         return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: trọng lượng không hợp lệ (${line.mat_hang}).`;
+      }
+      if (acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong) && !line.ghi_chu.trim()) {
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: ${line.mat_hang} — sửa tay / không thừa kế từ trạm cân AI thì phải nhập ghi chú.`;
       }
     }
 
     return validLines;
   };
+
+  const buildLineSavePayload = (line: PreparedLine) => ({
+    mat_hang: line.mat_hang,
+    don_vi: line.don_vi,
+    so_luong: line.soLuong,
+    so_luong_ai: line.soLuongAi,
+    trong_luong: line.trongLuong,
+    don_vi_trong_luong: line.don_vi_trong_luong || 'Kg',
+    ghi_chu: line.ghi_chu.trim() || null
+  });
 
   const handleUpdateSingle = async () => {
     if (!editingId || !editingType) return;
@@ -1198,11 +1260,7 @@ export default function AcceptanceReportForm({
           loai_vat_tu: editingType,
           hinh_anh: resolvedImage.hinh_anh || null,
           hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
-          mat_hang: line.mat_hang,
-          don_vi: line.don_vi,
-          so_luong: line.soLuong,
-          trong_luong: line.trongLuong,
-          don_vi_trong_luong: 'Kg'
+          ...buildLineSavePayload(line)
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -1279,11 +1337,7 @@ export default function AcceptanceReportForm({
                 loai_vat_tu: type,
                 hinh_anh: image.hinh_anh || null,
                 hinh_anh_public_id: image.hinh_anh_public_id || null,
-                mat_hang: line.mat_hang,
-                don_vi: line.don_vi,
-                so_luong: line.soLuong,
-                trong_luong: line.trongLuong,
-                don_vi_trong_luong: line.don_vi_trong_luong || 'Kg'
+                ...buildLineSavePayload(line)
               })
             }
           );
@@ -1369,11 +1423,7 @@ export default function AcceptanceReportForm({
               loai_vat_tu: type,
               hinh_anh: resolvedImage.hinh_anh || null,
               hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
-              mat_hang: line.mat_hang,
-              don_vi: line.don_vi,
-              so_luong: line.soLuong,
-              trong_luong: line.trongLuong,
-              don_vi_trong_luong: 'Kg'
+              ...buildLineSavePayload(line)
             })
           });
           const data = await res.json().catch(() => ({}));
@@ -1474,6 +1524,8 @@ export default function AcceptanceReportForm({
         mat_hang: code,
         don_vi: unit,
         so_luong: String(quantity),
+        so_luong_ai: String(quantity),
+        ghi_chu: '',
         // Trọng lượng cuộn = tổng cột «Cân sản phẩm» (cả lõi, chưa trừ bì)
         trong_luong: rollWeightKg > 0 ? formatAutoWeight(rollWeightKg) : ''
       }));
@@ -1494,7 +1546,8 @@ export default function AcceptanceReportForm({
   };
 
   const isIndividualEdit = Boolean(editingId && editingType && !editingGroupIds);
-  const visibleTypes = isIndividualEdit && editingType ? [editingType] : MATERIAL_TYPES;
+  const visibleTypes = isIndividualEdit && editingType ? ([editingType] as MaterialType[]) : [...MATERIAL_TYPES];
+  const activeType = visibleTypes.includes(activeMaterialTab) ? activeMaterialTab : visibleTypes[0];
 
   return (
     <div className="space-y-2 pb-1">
@@ -1662,19 +1715,74 @@ export default function AcceptanceReportForm({
         </div>
       </section>
 
-      {visibleTypes.map(type => {
+      {(() => {
+        const type = activeType;
         const section = sections[type];
         const productSelectOptions = productOptionsByType[type];
         const isUploading = uploadingType === type;
         return (
-          <section key={type} className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
-              <h3 className="min-w-0 flex-1 text-sm font-black text-zinc-950">
-                Phiếu {MATERIAL_TYPE_TITLE_LABELS[type]}
-              </h3>
-            </div>
+          <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
+            {visibleTypes.length > 1 ? (
+              <div
+                role="tablist"
+                aria-label="Loại phiếu báo cáo sản lượng"
+                className="flex items-end gap-1 overflow-x-auto border-b border-zinc-200 bg-zinc-50 px-1.5 pt-1.5 scrollbar-thin"
+              >
+                {visibleTypes.map((tabType, index) => {
+                  const active = tabType === type;
+                  const filledCount = sections[tabType].lines.filter(line => !isBlankProductLine(line)).length;
+                  const hasImage = Boolean(sections[tabType].imagePreview || sections[tabType].hinh_anh);
+                  return (
+                    <button
+                      key={tabType}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setActiveMaterialTab(tabType)}
+                      className={`relative shrink-0 rounded-t-lg px-2.5 pt-2 text-left transition sm:px-3 ${
+                        active
+                          ? 'z-10 -mb-px border border-b-white border-zinc-200 bg-white pb-2.5 text-zinc-900'
+                          : 'z-0 mb-px border border-transparent bg-zinc-100/90 pb-2 text-zinc-600 hover:bg-zinc-200/80 hover:text-zinc-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded px-1 text-[10px] font-black tabular-nums leading-none ${
+                            active ? 'bg-[#ef1b2d] text-white' : 'bg-zinc-200/90 text-zinc-600'
+                          }`}
+                        >
+                          {index + 1}
+                        </span>
+                        <span className="text-[12px] font-bold leading-tight">
+                          {MATERIAL_TYPE_LABELS[tabType]}
+                        </span>
+                        {filledCount > 0 ? (
+                          <span
+                            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-black tabular-nums ${
+                              active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'
+                            }`}
+                            title={`${filledCount} dòng · ${hasImage ? 'đã có ảnh' : 'chưa có ảnh'}`}
+                          >
+                            {filledCount}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2.5 sm:px-4 sm:py-3">
+                <h3 className="min-w-0 flex-1 text-sm font-black text-zinc-950">
+                  Phiếu {MATERIAL_TYPE_TITLE_LABELS[type]}
+                </h3>
+              </div>
+            )}
 
-            <div className="border-t border-zinc-100 bg-white p-3 sm:p-4">
+            <div role="tabpanel" className="bg-white p-3 sm:p-4">
+              <p className="mb-2 text-[11px] font-semibold leading-4 text-zinc-500">
+                Số AI = trạm cân AI (Tự động BC). Số CN = công nhân điền. Lệch AI hoặc không thừa kế từ trạm cân → phải có ghi chú mới lưu.
+              </p>
               <RepeatableLinesBlock
                 title="Mã SP & số lượng"
                 required
@@ -1692,7 +1800,9 @@ export default function AcceptanceReportForm({
                     <span className={mobileProductColumnLabelClass}>Mã SP *</span>
                     <span className={mobileProductColumnLabelClass}>Tên SP</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>ĐVT</span>
-                    <span className={`${mobileProductColumnLabelClass} text-center`}>SL *</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>Số AI</span>
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>Số CN *</span>
+                    <span className={mobileProductColumnLabelClass}>Ghi chú</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>Trọng lượng</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>Đơn vị</span>
                     <span />
@@ -1736,7 +1846,15 @@ export default function AcceptanceReportForm({
                   { key: 'mat_hang', label: 'Mã SP', required: true },
                   { key: 'ten_sp', label: 'Tên SP' },
                   { key: 'don_vi', label: 'ĐVT' },
-                  { key: 'so_luong', label: 'SL', required: true },
+                  { key: 'so_luong_ai', label: 'Số AI' },
+                  { key: 'so_luong', label: 'Số CN', required: true },
+                  {
+                    key: 'ghi_chu',
+                    label: 'Ghi chú',
+                    required: section.lines.some(line =>
+                      acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong)
+                    )
+                  },
                   { key: 'trong_luong', label: 'Trọng lượng' },
                   { key: 'don_vi_trong_luong', label: 'Đơn vị' },
                   { key: 'actions', label: '' }
@@ -1745,6 +1863,7 @@ export default function AcceptanceReportForm({
                 {section.lines.map((line, index) => {
                   const matchedProduct = findProductOption(line.mat_hang, productSelectOptions);
                   const productName = matchedProduct?.name || '';
+                  const needsNote = acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong);
                   return (
                     <RepeatableLineRow
                       key={line.id}
@@ -1803,12 +1922,37 @@ export default function AcceptanceReportForm({
                       </div>
                       <div className="min-w-0">
                         <input
+                          value={line.so_luong_ai}
+                          readOnly
+                          className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
+                          placeholder="—"
+                          aria-label="Số AI điền"
+                          title="Số AI điền từ trạm cân"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <input
                           value={line.so_luong}
                           onChange={e => handleLineQuantityChange(type, line.id, e.target.value)}
-                          className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left`}
+                          className={`${inputClass} px-1.5 text-center sm:px-3 sm:text-left ${
+                            needsNote ? 'border-amber-300' : ''
+                          }`}
                           inputMode="decimal"
                           placeholder="0"
-                          aria-label="Số lượng"
+                          aria-label="Số công nhân điền"
+                          title="Số công nhân điền"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <input
+                          value={line.ghi_chu}
+                          onChange={e => handleLineNoteChange(type, line.id, e.target.value)}
+                          className={`${inputClass} px-1.5 sm:px-2 ${
+                            needsNote && !line.ghi_chu.trim() ? 'border-rose-300 bg-rose-50' : ''
+                          }`}
+                          placeholder={needsNote ? 'Bắt buộc ghi chú' : 'Ghi chú'}
+                          aria-label="Ghi chú"
+                          required={needsNote}
                         />
                       </div>
                       <div className="min-w-0">
@@ -1910,7 +2054,7 @@ export default function AcceptanceReportForm({
             ) : null}
           </section>
         );
-      })}
+      })()}
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

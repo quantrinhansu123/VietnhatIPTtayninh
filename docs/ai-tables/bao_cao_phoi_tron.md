@@ -38,13 +38,9 @@
 
 
 
-**Một trang nhiều tab:** Cả `mixing-report` và `mixing-report-list` đều mở `MixingReportListView` với 4 tab:
-1. **Nhập báo cáo trộn** (`bao_cao_phoi_tron` form)
-2. **Bảng trộn định mức** (`bang_tron_vat_tu_dinh_muc`)
-3. **Phiếu trộn thực tế**
-4. **Danh sách phiếu** (`bao_cao_phoi_tron`)
+**UI:** Chỉ giữ **Nhập báo cáo trộn** (form `bao_cao_phoi_tron`). Đã bỏ tab Bảng trộn định mức / Phiếu trộn thực tế / Danh sách phiếu trên trang bảng trộn.
 
-Menu Sản xuất → Trộn NVL mở tab nhập; QC → BOM mở tab định mức. Khi mở chi tiết phiếu hiện **Tỉ lệ trộn Định mức** / **Thực tế**.
+Khi mở chi tiết phiếu vẫn hiện **Tỉ lệ trộn Định mức** / **Thực tế**.
 
 
 

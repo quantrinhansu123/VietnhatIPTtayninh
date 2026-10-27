@@ -1,4 +1,5 @@
 import { shiftNamesMatch } from './shiftSettings';
+import { compareMaterialMisaCode } from './materialMisaSortOrder';
 
 /** Khớp MixingRoundItem trên form báo cáo phối trộn (tránh import vòng từ MixingReportForm). */
 export type MixingNormRoundItemDraft = {
@@ -243,7 +244,7 @@ export function mixingNormToRoundItems(norm: MixingNormSuggestion): MixingNormRo
     }
   }
 
-  return [...merged.values()].filter(
-    item => item.ma_nvl.trim() || item.ten_vat_tu.trim() || item.so_luong !== null
-  );
+  return [...merged.values()]
+    .filter(item => item.ma_nvl.trim() || item.ten_vat_tu.trim() || item.so_luong !== null)
+    .sort((left, right) => compareMaterialMisaCode(left.ma_nvl, right.ma_nvl));
 }

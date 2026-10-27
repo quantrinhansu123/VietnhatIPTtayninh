@@ -9,8 +9,9 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'damaged-goods-report': 'damaged-goods-report-list',
   'mixing-report': 'mixing-report-list',
   'machine-nvl-report': 'machine-nvl-report-list',
-  /** Yêu cầu xuất vật tư dùng chung quyền Báo cáo tồn. */
+  /** Yêu cầu xuất vật tư / danh sách phiếu nhận NVL dùng chung quyền Báo cáo tồn. */
   'material-request': 'machine-nvl-report-list',
+  'material-request-list': 'machine-nvl-report-list',
   'machine-downtime-report': 'machine-downtime-list',
   'shift-handover-report': 'shift-handover-list',
   'acceptance-report': 'acceptance-report-list',
@@ -39,7 +40,6 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'tra-kho-nvl',
     'mixing-report',
     'can-tu-dong',
-    'can-kiem-kho',
     'machine-downtime-report',
     'shift-handover-report',
     'machine-run-log',
@@ -59,11 +59,9 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
   ],
   'report-lists': [
     'machine-nvl-report-list',
+    'material-request-list',
     'mixing-report-list',
-    'weighing-summary-list',
     'can-tu-dong',
-    'can-tu-dong-pilot',
-    'can-kiem-kho',
     'kiem-kho',
     'damaged-goods-report-list',
     'acceptance-report-list',

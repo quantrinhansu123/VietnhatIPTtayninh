@@ -1,13 +1,15 @@
 import React from 'react';
 import { renderMachineSelect } from '../danh-sach-may';
-import { useReportFormsShared } from './ReportFormsSharedContext';
+import { useReportFormsSharedOptional } from './ReportFormsSharedContext';
 
 const fieldClass =
   'mt-0.5 h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 const labelClass = 'block min-w-0 text-[10px] font-black uppercase tracking-wider text-zinc-500';
 
 export function ReportFormsSharedHeader() {
-  const shared = useReportFormsShared();
+  const shared = useReportFormsSharedOptional();
+  // HMR / render ngoài hub: không crash cả trang.
+  if (!shared) return null;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-2 shadow-card sm:p-2.5">

@@ -4712,12 +4712,30 @@ export function toDatetimeLocalInputValue(value: string) {
   if (!raw || raw === '-') return '';
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return raw;
 
+  // Giữ đúng giờ đã lưu khi chuỗi local không có timezone (tránh parseDate → T08:00).
+  const localMatch = raw.match(
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/
+  );
+  if (localMatch) {
+    return `${localMatch[1]}T${localMatch[2]}:${localMatch[3]}`;
+  }
+
+  // Chỉ ngày (không có giờ) → mặc định 08:00; không dùng `new Date('YYYY-MM-DD')` vì lệch TZ.
+  const hasTimeComponent = /\d{1,2}:\d{2}/.test(raw);
   const isoDate = parseProductionOrderDateToIso(raw);
-  if (isoDate) return `${isoDate}T08:00`;
+  if (isoDate && !hasTimeComponent) return `${isoDate}T08:00`;
+
+  // ISO có Z / offset → đổi sang giờ máy local cho input datetime-local / time.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const parsedTz = new Date(raw);
+    if (!Number.isNaN(parsedTz.getTime())) return toDatetimeLocalValue(parsedTz);
+  }
 
   const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return toDatetimeLocalValue(parsed);
+  if (!Number.isNaN(parsed.getTime())) return toDatetimeLocalValue(parsed);
+
+  if (isoDate) return `${isoDate}T08:00`;
+  return '';
 }
 
 export function todayIsoDate(date = new Date()) {
@@ -4832,10 +4850,13 @@ export function getOrderProductQuantity(orders: OrderRow[], orderRef: string, pr
 export function getAllocatedProductionQuantity(
   productionOrders: ProductionOrderRow[],
   orderRef: string,
-  productCode: string
+  productCode: string,
+  excludeProductionOrderId = ''
 ): number {
   const orderRefs = new Set(splitProductionOrderRefs(orderRef));
+  const excludeId = String(excludeProductionOrderId || '').trim();
   return productionOrders
+    .filter(po => !excludeId || po.id !== excludeId)
     .reduce((sum, po) => {
       return (
         sum +
@@ -4853,10 +4874,16 @@ export function getRemainingProductionQuantity(
   orders: OrderRow[],
   productionOrders: ProductionOrderRow[],
   orderRef: string,
-  productCode: string
+  productCode: string,
+  excludeProductionOrderId = ''
 ): number {
   const ordered = getOrderProductQuantity(orders, orderRef, productCode);
-  const allocated = getAllocatedProductionQuantity(productionOrders, orderRef, productCode);
+  const allocated = getAllocatedProductionQuantity(
+    productionOrders,
+    orderRef,
+    productCode,
+    excludeProductionOrderId
+  );
   return Math.max(0, ordered - allocated);
 }
 
@@ -4875,15 +4902,49 @@ export function buildProductionEntryLine(
   orderRef: string,
   productCode: string,
   productName = '',
-  unit = ''
+  unit = '',
+  excludeProductionOrderId = ''
 ): Pick<ProductionOrderEntryLine, 'productCode' | 'productName' | 'quantity' | 'unit'> {
-  const remaining = getRemainingProductionQuantity(orders, productionOrders, orderRef, productCode);
+  const remaining = getRemainingProductionQuantity(
+    orders,
+    productionOrders,
+    orderRef,
+    productCode,
+    excludeProductionOrderId
+  );
   return {
     productCode,
     productName,
     quantity: remaining > 0 ? String(remaining) : '',
     unit: unit || getOrderProductUnit(orders, orderRef, productCode)
   };
+}
+
+export type ProductionOrderCodeOption = {
+  code: string;
+  searchText: string;
+};
+
+/** Mã đơn kèm text tìm theo tên/mã SP trong đơn. */
+export function listProductionOrderCodeOptions(orders: OrderRow[]): ProductionOrderCodeOption[] {
+  const byCode = new Map<string, ProductionOrderCodeOption>();
+
+  for (const order of orders) {
+    const code = String(order.orderCode || '').trim();
+    if (!code || code === '-') continue;
+
+    const lines = getOrderProductLines(order);
+    const productText = lines.map(line => `${line.productCode} ${line.productName}`).join(' ');
+    const searchText = `${code} ${order.customer || ''} ${productText} ${formatOrderProductsSummary(lines)}`;
+    const existing = byCode.get(code);
+    if (existing) {
+      existing.searchText = `${existing.searchText} ${searchText}`;
+    } else {
+      byCode.set(code, { code, searchText });
+    }
+  }
+
+  return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }));
 }
 
 function parseProductionEntryQuantity(value: string): number {
@@ -5488,11 +5549,7 @@ export function AddProductionOrderModal({
     setAutofillSearch('');
   }, [form.startDate]);
 
-  const orderCodeOptions = useMemo(() => {
-    return [...new Set(orders.map(order => order.orderCode).filter(code => code && code !== '-'))].sort((a, b) =>
-      String(a).localeCompare(String(b), 'vi', { numeric: true })
-    );
-  }, [orders]);
+  const orderCodeOptions = useMemo(() => listProductionOrderCodeOptions(orders), [orders]);
 
   const shiftOptions = useMemo(() => {
     const fromSettings = settings
@@ -5737,7 +5794,12 @@ export function AddProductionOrderModal({
 
   const confirmAddLine = () => {
     const orderRef = lineDraftOrderRef.trim();
-    const productCode = lineDraftProductCode.trim();
+    const productCodes = [...new Set(
+      String(lineDraftProductCode || '')
+        .split(/[,;]+/)
+        .map(code => code.trim())
+        .filter(Boolean)
+    )];
     const quantityRaw = lineDraftQuantity.trim();
     const quantity = Number(quantityRaw);
 
@@ -5745,38 +5807,56 @@ export function AddProductionOrderModal({
       setLineDraftError('Vui lòng chọn mã đơn hàng.');
       return;
     }
-    if (!productCode) {
+    if (productCodes.length === 0) {
       setLineDraftError('Vui lòng chọn mã hàng.');
       return;
     }
-    if (!quantityRaw || !Number.isFinite(quantity) || quantity <= 0) {
+    if (productCodes.length === 1 && (!quantityRaw || !Number.isFinite(quantity) || quantity <= 0)) {
       setLineDraftError('Số lượng phải lớn hơn 0.');
       return;
     }
 
-    const built = buildProductionEntryLine(
+    const productOptions = listProductOptionsForOrder(
       orders,
       productionOrders,
-      orderRef,
-      productCode,
-      '',
-      ''
+      catalogProducts,
+      orderRef
     );
 
-    const newLine: ProductionOrderEntryLine = {
-      key: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      orderRef,
-      productCode,
-      productName: built.productName || built.productCode,
-      quantity: String(quantity),
-      unit: built.unit || built.productCode
-    };
+    const newLines: ProductionOrderEntryLine[] = productCodes.map((productCode, index) => {
+      const product = productOptions.find(item => item.code === productCode);
+      const built = buildProductionEntryLine(
+        orders,
+        productionOrders,
+        orderRef,
+        productCode,
+        product?.name || '',
+        product?.unit || ''
+      );
+      const lineQty =
+        productCodes.length === 1 && quantityRaw
+          ? String(quantity)
+          : built.quantity || (product?.remainingQty ? String(product.remainingQty) : '');
+      return {
+        key: `entry-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        orderRef,
+        productCode,
+        productName: built.productName || product?.name || productCode,
+        quantity: lineQty,
+        unit: built.unit || product?.unit || ''
+      };
+    });
+
+    if (newLines.some(line => !Number(line.quantity) || Number(line.quantity) <= 0)) {
+      setLineDraftError('Số lượng phải lớn hơn 0 cho mọi mã hàng đã chọn.');
+      return;
+    }
 
     setForm(prev => ({
       ...prev,
       entryLines: mergeProductionOrderEntryLinesByProductCode([
         ...prev.entryLines.filter(line => line.orderRef.trim() || line.productCode.trim()),
-        newLine
+        ...newLines
       ])
     }));
     setShowAddLine(false);
@@ -5818,18 +5898,90 @@ export function AddProductionOrderModal({
     updateEntryLine(key, patch);
   };
 
-  const handleEntryProductChange = (key: string, orderRef: string, productCode: string) => {
-    const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
-    const product = options.find(item => item.code === productCode);
-    const built = buildProductionEntryLine(
-      orders,
-      productionOrders,
-      orderRef,
-      productCode,
-      product?.name || '',
-      product?.unit || ''
-    );
-    updateEntryLine(key, built);
+  const handleEntryProductChange = (key: string, orderRef: string, productCodesRaw: string) => {
+    const productCodes = [...new Set(
+      String(productCodesRaw || '')
+        .split(/[,;]+/)
+        .map(code => code.trim())
+        .filter(Boolean)
+    )];
+
+    setForm(prev => {
+      const lineIndex = prev.entryLines.findIndex(line => line.key === key);
+      if (lineIndex < 0) return prev;
+
+      const currentLine = prev.entryLines[lineIndex];
+      const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
+
+      if (productCodes.length === 0) {
+        return {
+          ...prev,
+          entryLines: prev.entryLines.map(line =>
+            line.key === key
+              ? { ...line, productCode: '', productName: '', quantity: '', unit: '' }
+              : line
+          )
+        };
+      }
+
+      // Cùng một mã: chỉ đồng bộ tên/ĐV, giữ nguyên SL (tránh nhảy số khi blur/click).
+      if (
+        productCodes.length === 1 &&
+        currentLine.productCode.trim() === productCodes[0]
+      ) {
+        const product = options.find(item => item.code === productCodes[0]);
+        return {
+          ...prev,
+          entryLines: prev.entryLines.map(line =>
+            line.key === key
+              ? {
+                  ...line,
+                  productName: product?.name || line.productName,
+                  unit: product?.unit || line.unit
+                }
+              : line
+          )
+        };
+      }
+
+      const builtLines = productCodes.map((productCode, index) => {
+        const product = options.find(item => item.code === productCode);
+        const built = buildProductionEntryLine(
+          orders,
+          productionOrders,
+          orderRef,
+          productCode,
+          product?.name || '',
+          product?.unit || ''
+        );
+        const keepQty =
+          index === 0 &&
+          currentLine.productCode.trim() === productCode &&
+          currentLine.quantity.trim();
+        return {
+          key:
+            index === 0
+              ? currentLine.key
+              : `entry-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+          orderRef: orderRef || currentLine.orderRef,
+          productCode: built.productCode,
+          productName: built.productName || product?.name || productCode,
+          quantity: keepQty ? currentLine.quantity : built.quantity,
+          unit: built.unit || product?.unit || ''
+        };
+      });
+
+      const nextLines = [
+        ...prev.entryLines.slice(0, lineIndex),
+        ...builtLines,
+        ...prev.entryLines.slice(lineIndex + 1)
+      ];
+
+      return {
+        ...prev,
+        entryLines: mergeProductionOrderEntryLinesByProductCode(nextLines)
+      };
+    });
   };
 
   const toggleShift = (shift: string) => {
@@ -6103,11 +6255,12 @@ export function AddProductionOrderModal({
                       onChange={orderRef => handleEntryOrderChange(line.key, orderRef)}
                       options={orderCodeOptions}
                       maxResults={Math.max(orderCodeOptions.length, 1)}
-                      placeholder="Gõ để tìm mã đơn"
+                      placeholder="Gõ mã đơn / tên SP"
                       isLoading={isLoadingLookups}
                       inputClassName={orderFieldClass}
-                      getLabel={item => String(item)}
-                      getValue={item => String(item)}
+                      getLabel={item => (item as ProductionOrderCodeOption).code}
+                      getValue={item => (item as ProductionOrderCodeOption).code}
+                      getSearchText={item => (item as ProductionOrderCodeOption).searchText}
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.1]">
@@ -6115,10 +6268,12 @@ export function AddProductionOrderModal({
                       value={line.productCode}
                       onChange={productCode => handleEntryProductChange(line.key, line.orderRef, productCode)}
                       options={productOptions}
-                      placeholder={line.orderRef ? 'Gõ để tìm mã hàng' : 'Chọn đơn trước'}
+                      placeholder={line.orderRef ? 'Gõ mã / tên SP (chọn nhiều)' : 'Chọn đơn trước'}
+                      emptyInputText={!line.orderRef ? 'Chọn đơn trước' : undefined}
                       disabled={!line.orderRef}
                       isLoading={isLoadingLookups}
                       inputClassName={orderFieldClass}
+                      multiSelect
                       getLabel={item => {
                         const product = item as (typeof productOptions)[number];
                         const remaining =
@@ -6130,6 +6285,10 @@ export function AddProductionOrderModal({
                         return product.code ? `${product.code} · ${product.name}${remaining}` : product.name;
                       }}
                       getValue={item => (item as (typeof productOptions)[number]).code}
+                      getSearchText={item => {
+                        const product = item as (typeof productOptions)[number];
+                        return `${product.code} ${product.name}`;
+                      }}
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.8]">
@@ -6596,15 +6755,31 @@ export function AddProductionOrderModal({
                   value={lineDraftOrderRef}
                   onChange={orderRef => {
                     setLineDraftOrderRef(orderRef);
-                    setLineDraftProductCode('');
+                    const productOptions = listProductOptionsForOrder(
+                      orders,
+                      productionOrders,
+                      catalogProducts,
+                      orderRef
+                    );
+                    if (productOptions.length === 1) {
+                      const product = productOptions[0];
+                      setLineDraftProductCode(product.code);
+                      setLineDraftQuantity(
+                        product.remainingQty > 0 ? String(product.remainingQty) : ''
+                      );
+                    } else {
+                      setLineDraftProductCode('');
+                      setLineDraftQuantity('');
+                    }
                   }}
                   options={orderCodeOptions}
                   maxResults={Math.max(orderCodeOptions.length, 1)}
-                  placeholder="Gõ để tìm mã đơn"
+                  placeholder="Gõ mã đơn / tên SP"
                   isLoading={isLoadingLookups}
                   inputClassName="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-                  getLabel={item => String(item)}
-                  getValue={item => String(item)}
+                  getLabel={item => (item as ProductionOrderCodeOption).code}
+                  getValue={item => (item as ProductionOrderCodeOption).code}
+                  getSearchText={item => (item as ProductionOrderCodeOption).searchText}
                 />
               </label>
 
@@ -6612,16 +6787,35 @@ export function AddProductionOrderModal({
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Mã hàng *</span>
                 <SearchableSelect
                   value={lineDraftProductCode}
-                  onChange={setLineDraftProductCode}
+                  onChange={productCode => {
+                    setLineDraftProductCode(productCode);
+                    const codes = String(productCode || '')
+                      .split(/[,;]+/)
+                      .map(code => code.trim())
+                      .filter(Boolean);
+                    if (codes.length === 1) {
+                      const product = listProductOptionsForOrder(
+                        orders,
+                        productionOrders,
+                        catalogProducts,
+                        lineDraftOrderRef
+                      ).find(item => item.code === codes[0]);
+                      if (product && product.remainingQty > 0 && !lineDraftQuantity.trim()) {
+                        setLineDraftQuantity(String(product.remainingQty));
+                      }
+                    }
+                  }}
                   options={listProductOptionsForOrder(
                     orders,
                     productionOrders,
                     catalogProducts,
                     lineDraftOrderRef
                   )}
-                  placeholder={lineDraftOrderRef ? 'Gõ để tìm mã hàng' : 'Chọn đơn trước'}
+                  placeholder={lineDraftOrderRef ? 'Gõ mã / tên SP (chọn nhiều)' : 'Chọn đơn trước'}
+                  emptyInputText={!lineDraftOrderRef ? 'Chọn đơn trước' : undefined}
                   disabled={!lineDraftOrderRef}
                   isLoading={isLoadingLookups}
+                  multiSelect
                   inputClassName="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
                   getLabel={item => {
                     const product = item as { code: string; name: string; orderQty: number; remainingQty: number };
@@ -6630,6 +6824,10 @@ export function AddProductionOrderModal({
                       : product.name;
                   }}
                   getValue={item => (item as { code: string }).code}
+                  getSearchText={item => {
+                    const product = item as { code: string; name: string };
+                    return `${product.code} ${product.name}`;
+                  }}
                 />
               </label>
 
@@ -6898,11 +7096,8 @@ export function EditProductionOrderModal({
     [staffRoles]
   );
 
-  const orderCodeOptions = useMemo(() => {
-    return [...new Set(orders.map(order => order.orderCode).filter(code => code && code !== '-'))].sort((a, b) =>
-      a.localeCompare(b, 'vi', { numeric: true })
-    );
-  }, [orders]);
+  const orderCodeOptions = useMemo(() => listProductionOrderCodeOptions(orders), [orders]);
+  const excludeProductionOrderId = row?.id || '';
 
   const statusOptions = useMemo(() => {
     const options = [...PRODUCTION_ORDER_EDIT_STATUS_OPTIONS];
@@ -6940,25 +7135,93 @@ export function EditProductionOrderModal({
           orderRef,
           product.code,
           product.name,
-          product.unit
+          product.unit,
+          excludeProductionOrderId
         )
       };
     }
     updateEntryLine(key, patch);
   };
 
-  const handleEntryProductChange = (key: string, orderRef: string, productCode: string) => {
-    const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
-    const product = options.find(item => item.code === productCode);
-    const built = buildProductionEntryLine(
-      orders,
-      productionOrders,
-      orderRef,
-      productCode,
-      product?.name || '',
-      product?.unit || ''
-    );
-    updateEntryLine(key, built);
+  const handleEntryProductChange = (key: string, orderRef: string, productCodesRaw: string) => {
+    const productCodes = [...new Set(
+      String(productCodesRaw || '')
+        .split(/[,;]+/)
+        .map(code => code.trim())
+        .filter(Boolean)
+    )];
+
+    setForm(prev => {
+      const lineIndex = prev.entryLines.findIndex(line => line.key === key);
+      if (lineIndex < 0) return prev;
+
+      const currentLine = prev.entryLines[lineIndex];
+      const options = listProductOptionsForOrder(orders, productionOrders, catalogProducts, orderRef);
+
+      if (productCodes.length === 0) {
+        return {
+          ...prev,
+          entryLines: prev.entryLines.map(line =>
+            line.key === key
+              ? { ...line, productCode: '', productName: '', quantity: '', unit: '' }
+              : line
+          )
+        };
+      }
+
+      if (productCodes.length === 1 && currentLine.productCode.trim() === productCodes[0]) {
+        const product = options.find(item => item.code === productCodes[0]);
+        return {
+          ...prev,
+          entryLines: prev.entryLines.map(line =>
+            line.key === key
+              ? {
+                  ...line,
+                  productName: product?.name || line.productName,
+                  unit: product?.unit || line.unit
+                }
+              : line
+          )
+        };
+      }
+
+      const builtLines = productCodes.map((productCode, index) => {
+        const product = options.find(item => item.code === productCode);
+        const built = buildProductionEntryLine(
+          orders,
+          productionOrders,
+          orderRef,
+          productCode,
+          product?.name || '',
+          product?.unit || '',
+          excludeProductionOrderId
+        );
+        const keepQty =
+          index === 0 &&
+          currentLine.productCode.trim() === productCode &&
+          currentLine.quantity.trim();
+        return {
+          key:
+            index === 0
+              ? currentLine.key
+              : `entry-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+          orderRef: orderRef || currentLine.orderRef,
+          productCode: built.productCode,
+          productName: built.productName || product?.name || productCode,
+          quantity: keepQty ? currentLine.quantity : built.quantity,
+          unit: built.unit || product?.unit || ''
+        };
+      });
+
+      return {
+        ...prev,
+        entryLines: mergeProductionOrderEntryLinesByProductCode([
+          ...prev.entryLines.slice(0, lineIndex),
+          ...builtLines,
+          ...prev.entryLines.slice(lineIndex + 1)
+        ])
+      };
+    });
   };
 
   if (!open || !row) return null;
@@ -7098,10 +7361,11 @@ export function EditProductionOrderModal({
                       onChange={orderRef => handleEntryOrderChange(line.key, orderRef)}
                       options={orderCodeOptions}
                       maxResults={Math.max(orderCodeOptions.length, 1)}
-                      placeholder="Gõ để tìm mã đơn"
+                      placeholder="Gõ mã đơn / tên SP"
                       inputClassName={orderFieldClass}
-                      getLabel={item => String(item)}
-                      getValue={item => String(item)}
+                      getLabel={item => (item as ProductionOrderCodeOption).code}
+                      getValue={item => (item as ProductionOrderCodeOption).code}
+                      getSearchText={item => (item as ProductionOrderCodeOption).searchText}
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.35]">
@@ -7109,14 +7373,20 @@ export function EditProductionOrderModal({
                       value={line.productCode}
                       onChange={productCode => handleEntryProductChange(line.key, line.orderRef, productCode)}
                       options={productOptions}
-                      placeholder={line.orderRef ? 'Gõ để tìm mã hàng' : 'Chọn đơn trước'}
+                      placeholder={line.orderRef ? 'Gõ mã / tên SP (chọn nhiều)' : 'Chọn đơn trước'}
+                      emptyInputText={!line.orderRef ? 'Chọn đơn trước' : undefined}
                       disabled={!line.orderRef}
                       inputClassName={orderFieldClass}
+                      multiSelect
                       getLabel={item => {
                         const product = item as (typeof productOptions)[number];
                         return product.code ? `${product.code} · ${product.name}` : product.name;
                       }}
                       getValue={item => (item as (typeof productOptions)[number]).code}
+                      getSearchText={item => {
+                        const product = item as (typeof productOptions)[number];
+                        return `${product.code} ${product.name}`;
+                      }}
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.1]">

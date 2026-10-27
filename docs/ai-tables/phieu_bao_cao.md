@@ -19,13 +19,14 @@
 ## Header chung
 
 - Nằm **phía trên** tab strip; áp dụng khi đổi tab phiếu.
-- **Ẩn** với 2 tab cân AI: `can-tu-dong` (Danh sách cân AI), `can-tu-dong-entry` (Trạm cân AI).
 - Hợp field: Ngày · Giờ · Ca · Chi nhánh · Máy · Nhân sự (tick nhiều theo ngày+ca+máy / LSX) · Ghi chú.
 - Form trong hub: `useReportFormsSharedOptional()` → sync state + ẩn header local trùng; route độc lập giữ header riêng.
 - **Keep-alive tab:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab **không** mất draft chưa lưu; chỉ tải lazy lần đầu mở từng tab.
 
 ## Tab (theo quyền menu)
 
-Báo cáo tồn · Nhận VT · Bảng trộn · Báo cáo sản lượng · Phiếu giao ca · Dừng máy · Nhật ký chạy máy · Đối soát · Danh sách cân AI · Trạm cân AI · Cân kiểm kho · Trả kho NVL
+Báo cáo tồn · Nhận VT · Bảng trộn · Báo cáo sản lượng · Dừng máy · Nhật ký chạy máy · Trả kho NVL
+
+**Đã bỏ khỏi hub:** Phiếu giao ca · Đối soát · Danh sách cân AI · Trạm cân AI · Cân kiểm kho (vào từ menu/route riêng nếu cần).
 
 URL riêng từng phiếu (`/bao-cao-phoi-tron`, …) vẫn mở trang độc lập khi vào từ link/menu khác.

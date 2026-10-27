@@ -1142,12 +1142,17 @@ function BbMachineOrderPrintSheet({
   const lineActualQtyTotal = productRows.reduce((sum, row) => sum + row.actualQuantity, 0);
   const lineActualWeightTotal = productRows.reduce((sum, row) => sum + (row.actualWeight || 0), 0);
   // Cân tự động: tổng = mọi lần cân ngày/ca/máy lệnh (cùng thẻ SỐ SP / TL nhựa khi 1 lệnh khớp bộ lọc).
+  // Chỉ dùng tổng cân khi > 0 — nếu = 0 (không có phiếu cân / không khớp) thì lấy Σ dòng «Số lượng đạt».
   const orderCanTuDongTotals = useCanTuDong
     ? canTuDongActualForOrder(order, props.canTuDongRecords || [])
     : null;
-  const actualQtyTotal =
-    orderCanTuDongTotals?.quantity ??
-    (lineActualQtyTotal || inbound?.acceptedRolls || 0);
+  const canTuDongQty =
+    orderCanTuDongTotals != null &&
+    Number.isFinite(orderCanTuDongTotals.quantity) &&
+    orderCanTuDongTotals.quantity > 0
+      ? orderCanTuDongTotals.quantity
+      : null;
+  const actualQtyTotal = canTuDongQty ?? (lineActualQtyTotal || inbound?.acceptedRolls || 0);
   const tongNhuaThanhPhamCatalogKg = resolveOrderSanLuongPlasticKg(order, props);
   const tongMangThanhPhamKg = resolveOrderSanLuongFilmKg(order, props);
   const tongCuonThanhPhamKg = showInsulationWeightCols ? resolveOrderSanLuongRollKg(order, props) : 0;

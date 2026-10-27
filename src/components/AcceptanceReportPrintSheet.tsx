@@ -6,6 +6,18 @@ import {
   resolveCanTuDongFilmKgPerRoll,
   type InsulationProductAlias
 } from '../utils/canTuDongWeights';
+import {
+  formatAcceptanceShiftLabel,
+  formatChecklistMachineHeader,
+  resolveAcceptanceShiftHours
+} from '../utils/printShiftMeta';
+
+export {
+  formatAcceptanceShiftLabel,
+  formatChecklistMachineHeader,
+  formatChecklistShiftLabel,
+  resolveAcceptanceShiftHours
+} from '../utils/printShiftMeta';
 
 export type AcceptanceReportSource = {
   id: string;
@@ -31,6 +43,8 @@ export type AcceptancePrintLine = {
   so_luong: number | null;
   trong_luong?: number | null;
   don_vi_trong_luong?: string;
+  /** Thành phẩm / Gia công / SP lỗi / SP rác — dùng tách bảng lỗi hỏng. */
+  loai_vat_tu?: string;
 };
 
 export type AcceptancePrintSlip = {
@@ -39,10 +53,76 @@ export type AcceptancePrintSlip = {
   ca: string;
   lan: string;
   gio: string;
+  ma_may: string;
+  ten_may: string;
   machineLabel: string;
   thanhPhamLines: AcceptancePrintLine[];
   hangLoiHongLines: AcceptancePrintLine[];
 };
+
+/** Định mức SP cho mẫu in Nhật ký SX — TL cuộn (4) + ĐM nhựa (5). */
+export type AcceptanceProductNorm = {
+  code: string;
+  amisCode: string;
+  name: string;
+  totalWeightKg: number | null;
+  plasticWeightKg: number | null;
+};
+
+function parsePositiveKg(value: unknown): number | null {
+  if (value === null || value === undefined || value === '' || value === '-') return null;
+  const n = Number(String(value).trim().replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function buildAcceptanceProductNormByCode(
+  products: Array<{
+    code?: string | null;
+    newCode?: string | null;
+    amisCode?: string | null;
+    name?: string | null;
+    totalWeight?: string | number | null;
+    plasticWeight?: string | number | null;
+    coreWeight?: string | number | null;
+    bagWeight?: string | number | null;
+    totalWeightKg?: number | null;
+    plasticWeightKg?: number | null;
+  }>
+): Map<string, AcceptanceProductNorm> {
+  const map = new Map<string, AcceptanceProductNorm>();
+  for (const product of products) {
+    const code = String(product.code || '').trim();
+    if (!code) continue;
+    const totalWeightKg =
+      product.totalWeightKg != null && Number.isFinite(product.totalWeightKg) && product.totalWeightKg > 0
+        ? product.totalWeightKg
+        : parsePositiveKg(product.totalWeight);
+    let plasticWeightKg =
+      product.plasticWeightKg != null &&
+      Number.isFinite(product.plasticWeightKg) &&
+      product.plasticWeightKg > 0
+        ? product.plasticWeightKg
+        : parsePositiveKg(product.plasticWeight);
+    if (plasticWeightKg == null && totalWeightKg != null) {
+      const core = parsePositiveKg(product.coreWeight) ?? 0;
+      const bag = parsePositiveKg(product.bagWeight) ?? 0;
+      const derived = totalWeightKg - core - bag;
+      if (derived > 0) plasticWeightKg = Math.round(derived * 100) / 100;
+    }
+    const norm: AcceptanceProductNorm = {
+      code,
+      amisCode: String(product.amisCode || '').trim(),
+      name: String(product.name || '').trim(),
+      totalWeightKg,
+      plasticWeightKg
+    };
+    for (const candidate of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(String(candidate || ''));
+      if (key && key !== '-') map.set(key, norm);
+    }
+  }
+  return map;
+}
 
 function normalizeLoaiVatTuKey(loaiVatTu: string | undefined) {
   return String(loaiVatTu ?? 'Thành phẩm')
@@ -53,14 +133,23 @@ function normalizeLoaiVatTuKey(loaiVatTu: string | undefined) {
     .replace(/đ/g, 'd');
 }
 
-/** Thành phẩm + Gia công — bảng 1. Còn lại (SP lỗi, SP rác) — bảng Hàng lỗi hỏng nhập kho. */
+/** Thành phẩm + Gia công — bảng I. */
 export function isAcceptanceThanhPhamLoai(loaiVatTu: string | undefined) {
   const key = normalizeLoaiVatTuKey(loaiVatTu);
   return key === 'thanh pham' || key === 'gia cong';
 }
 
+/** SP lỗi / SP rác — bảng II «Tên lỗi hỏng / phế». */
 export function isAcceptanceHangLoiHongLoai(loaiVatTu: string | undefined) {
-  return !isAcceptanceThanhPhamLoai(loaiVatTu);
+  const key = normalizeLoaiVatTuKey(loaiVatTu);
+  return (
+    key === 'sp loi' ||
+    key === 'sp rac' ||
+    key.includes('loi hong') ||
+    key.includes('hang hong') ||
+    key.includes('hang rac') ||
+    key.includes('phe')
+  );
 }
 
 function formatPrintDate(iso: string) {
@@ -68,6 +157,49 @@ function formatPrintDate(iso: string) {
   const [year, month, day] = iso.split('-');
   if (!year || !month || !day) return iso;
   return `${day}/${month}/${year}`;
+}
+
+const VN_MONTH_NAMES = [
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+  '12'
+];
+
+function formatPrintDateLong(iso: string) {
+  if (!iso) return '…… Tháng …… Năm ……';
+  const [year, month, day] = iso.split('-');
+  if (!year || !month || !day) return iso;
+  const monthNum = Number(month);
+  const monthLabel = Number.isFinite(monthNum) ? VN_MONTH_NAMES[monthNum - 1] || month : month;
+  return `${Number(day)} Tháng ${monthLabel} Năm ${year}`;
+}
+
+function formatPrintDateParts(iso: string) {
+  if (!iso) return { day: '……', month: '……', year: '……' };
+  const [year, month, day] = iso.split('-');
+  if (!year || !month || !day) return { day: '……', month: '……', year: '……' };
+  return {
+    day: String(Number(day)),
+    month: String(Number(month)),
+    year
+  };
+}
+
+/** Tách «Máy Bao bì Số: 5» → label + số để gạch chân đúng như bảng vật tư. */
+function splitChecklistMachineHeader(header: string): { label: string; value: string } {
+  const text = String(header || '').trim();
+  const match = text.match(/^(Máy\s+Bao\s+bì\s+Số:\s*)(.+)$/i);
+  if (match) return { label: match[1].trimEnd(), value: match[2].trim() };
+  return { label: '', value: text || '……' };
 }
 
 function machineLabelFromReport(report: AcceptanceReportSource) {
@@ -129,6 +261,45 @@ function resolveAcceptanceProductCodeKey(matHang: string) {
   return normalizeProductCodeKey(code) || code;
 }
 
+function lookupAcceptanceProductNorm(
+  matHang: string,
+  productNormByCode?: Map<string, AcceptanceProductNorm>
+): AcceptanceProductNorm | null {
+  if (!productNormByCode?.size) return null;
+  const key = resolveAcceptanceProductCodeKey(matHang);
+  if (!key) return null;
+  return productNormByCode.get(key) || null;
+}
+
+function resolveRollWeightKg(
+  line: AcceptancePrintLine,
+  norm: AcceptanceProductNorm | null
+): number | null {
+  if (norm?.totalWeightKg != null && norm.totalWeightKg > 0) return norm.totalWeightKg;
+  const qty = line.so_luong ?? 0;
+  const total = Number(line.trong_luong);
+  if (qty > 0 && Number.isFinite(total) && total > 0) {
+    return Math.round((total / qty) * 100) / 100;
+  }
+  return null;
+}
+
+function resolvePlasticNormKg(
+  line: AcceptancePrintLine,
+  norm: AcceptanceProductNorm | null,
+  filmKgByProductCode?: Map<string, number>
+): number | null {
+  if (norm?.plasticWeightKg != null && norm.plasticWeightKg > 0) return norm.plasticWeightKg;
+  const rollKg = resolveRollWeightKg(line, norm);
+  if (rollKg == null) return null;
+  const key = resolveAcceptanceProductCodeKey(line.mat_hang);
+  const filmPerRoll = key && filmKgByProductCode ? filmKgByProductCode.get(key) : undefined;
+  if (filmPerRoll != null && filmPerRoll > 0 && rollKg > filmPerRoll) {
+    return Math.round((rollKg - filmPerRoll) * 100) / 100;
+  }
+  return null;
+}
+
 export function resolveAcceptanceLineFilmKg(
   matHang: string,
   soLuong: number | null,
@@ -153,11 +324,6 @@ export function resolveAcceptanceLineNhuaKg(
   return weight - (filmKg ?? 0);
 }
 
-function formatWeightKgCell(value: number | null, unit = 'Kg') {
-  if (value == null || !(value > 0)) return '-';
-  return `${formatNumber(value, 2)} ${unit}`;
-}
-
 type LineBucketAcc = {
   lineMap: Map<string, AcceptancePrintLine>;
   lineOrder: string[];
@@ -180,6 +346,7 @@ function mergeReportIntoLineBucket(acc: LineBucketAcc, report: AcceptanceReportS
     existing.so_luong = (existing.so_luong ?? 0) + (report.so_luong ?? 0);
     existing.trong_luong = (existing.trong_luong ?? 0) + weightKg;
     if (!existing.ten_sp && report.ten_sp) existing.ten_sp = report.ten_sp;
+    if (!existing.loai_vat_tu && report.loai_vat_tu) existing.loai_vat_tu = report.loai_vat_tu;
     return;
   }
   const line: AcceptancePrintLine = {
@@ -188,10 +355,45 @@ function mergeReportIntoLineBucket(acc: LineBucketAcc, report: AcceptanceReportS
     don_vi: report.don_vi,
     so_luong: report.so_luong,
     trong_luong: weightKg > 0 ? weightKg : null,
-    don_vi_trong_luong: report.don_vi_trong_luong || 'Kg'
+    don_vi_trong_luong: report.don_vi_trong_luong || 'Kg',
+    loai_vat_tu: report.loai_vat_tu
   };
   acc.lineMap.set(lineKey, line);
   acc.lineOrder.push(lineKey);
+}
+
+function formatDefectLineName(line: AcceptancePrintLine) {
+  const name = String(line.ten_sp || '').trim();
+  const code = String(line.mat_hang || '').trim();
+  if (name && code && name.toLowerCase() !== code.toLowerCase()) return name;
+  return name || code || '';
+}
+
+function formatDefectLineQty(line: AcceptancePrintLine) {
+  const qty = line.so_luong;
+  if (qty != null && Number.isFinite(qty) && qty !== 0) {
+    const unit = String(line.don_vi || '').trim();
+    const qtyText = formatQtyPlain(qty);
+    if (!qtyText) return '';
+    return unit && unit !== '-' ? `${qtyText} ${unit}` : qtyText;
+  }
+  const weight = Number(line.trong_luong);
+  if (Number.isFinite(weight) && weight > 0) {
+    return `${formatKgPlain(weight)} ${line.don_vi_trong_luong || 'Kg'}`;
+  }
+  return '';
+}
+
+/** Nhựa không màng / đầu keo — gom TL từ dòng lỗi hỏng khớp tên/mã. */
+function isNhuaKhongMangOrDauKeoLine(line: AcceptancePrintLine) {
+  const hay = `${line.mat_hang || ''} ${line.ten_sp || ''}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/g, 'd');
+  return (
+    /nhua\s*km|nhuakm|khong\s*mang|khongmang|dau\s*keo|daukeo|nhua\s*dau/.test(hay)
+  );
 }
 
 function linesFromBucket(acc: LineBucketAcc) {
@@ -204,16 +406,19 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     ngay: string;
     ca: string;
     gio: string;
+    ma_may: string;
+    ten_may: string;
     lanSet: Set<string>;
-    machineSet: Set<string>;
+    machineLabel: string;
     thanhPham: LineBucketAcc;
     hangLoiHong: LineBucketAcc;
   };
   const grouped = new Map<string, AcceptanceSlipAcc>();
 
-  // Gộp các dòng cùng NGÀY + CA thành 1 phiếu in, tách 2 bảng Thành phẩm / Hàng lỗi hỏng.
+  // 1 phiếu in = 1 máy / ngày / ca (khớp mẫu giấy Nhật ký SX kiêm phiếu giao).
   reports.forEach(report => {
-    const key = [report.ngay, report.ca].join('|');
+    const machineKey = String(report.ma_may || report.ten_may || '-').trim() || '-';
+    const key = [report.ngay, report.ca, machineKey].join('|');
     let acc = grouped.get(key);
     if (!acc) {
       acc = {
@@ -221,8 +426,10 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
         ngay: report.ngay,
         ca: report.ca || '-',
         gio: report.gio || '-',
+        ma_may: report.ma_may || '',
+        ten_may: report.ten_may || '',
         lanSet: new Set<string>(),
-        machineSet: new Set<string>(),
+        machineLabel: machineLabelFromReport(report),
         thanhPham: createLineBucketAcc(),
         hangLoiHong: createLineBucketAcc()
       };
@@ -230,10 +437,16 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     }
 
     if (report.lan) acc.lanSet.add(report.lan);
-    const machineLabel = machineLabelFromReport(report);
-    if (machineLabel && machineLabel !== '-') acc.machineSet.add(machineLabel);
+    if (!acc.ma_may && report.ma_may) acc.ma_may = report.ma_may;
+    if (!acc.ten_may && report.ten_may) acc.ten_may = report.ten_may;
 
-    const bucket = isAcceptanceThanhPhamLoai(report.loai_vat_tu) ? acc.thanhPham : acc.hangLoiHong;
+    // Thành phẩm/Gia công → bảng I; SP lỗi/SP rác → bảng II lỗi hỏng.
+    const bucket = isAcceptanceThanhPhamLoai(report.loai_vat_tu)
+      ? acc.thanhPham
+      : isAcceptanceHangLoiHongLoai(report.loai_vat_tu)
+        ? acc.hangLoiHong
+        : null;
+    if (!bucket) return;
     mergeReportIntoLineBucket(bucket, report);
 
     if (report.gio && (acc.gio === '-' || !acc.gio || report.gio < acc.gio)) {
@@ -251,171 +464,342 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
           ? [...acc.lanSet].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })).join(', ')
           : '-',
       gio: acc.gio,
-      machineLabel:
-        acc.machineSet.size > 0
-          ? [...acc.machineSet].sort((a, b) => a.localeCompare(b, 'vi')).join(', ')
-          : '-',
+      ma_may: acc.ma_may,
+      ten_may: acc.ten_may,
+      machineLabel: acc.machineLabel || '-',
       thanhPhamLines: linesFromBucket(acc.thanhPham),
       hangLoiHongLines: linesFromBucket(acc.hangLoiHong)
     }))
     .sort((a, b) => {
       const byDate = a.ngay.localeCompare(b.ngay, 'vi');
       if (byDate !== 0) return byDate;
-      return a.ca.localeCompare(b.ca, 'vi');
+      const byCa = a.ca.localeCompare(b.ca, 'vi');
+      if (byCa !== 0) return byCa;
+      return a.machineLabel.localeCompare(b.machineLabel, 'vi');
     });
 }
 
-function AcceptancePrintLinesTable({
-  title,
-  lines,
-  filmKgByProductCode
-}: {
-  title: string;
-  lines: AcceptancePrintLine[];
-  filmKgByProductCode?: Map<string, number>;
-}) {
-  if (lines.length === 0) return null;
+const ACCEPTANCE_PRINT_MIN_ROWS = 12;
 
-  const totalsByUnit = sumByUnit(lines);
-  const totalTrongLuongKg = sumTrongLuongKg(lines);
-  const totalFilmKg = lines.reduce((sum, line) => {
-    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
-    return sum + (film ?? 0);
-  }, 0);
-  const totalNhuaKg = lines.reduce((sum, line) => {
-    const film = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
-    const nhua = resolveAcceptanceLineNhuaKg(line.trong_luong, film);
-    return sum + (nhua ?? 0);
-  }, 0);
+function formatKgPlain(value: number | null | undefined, digits = 2) {
+  if (value == null || !Number.isFinite(value)) return '';
+  return formatNumber(value, digits);
+}
 
-  return (
-    <>
-      <h2 className="production-order-print-section-title">{title}</h2>
-      <table className="production-order-print-grid-table acceptance-report-print-table">
-        <thead>
-          <tr>
-            <th>STT</th>
-            <th>Mặt hàng</th>
-            <th>Tên SP</th>
-            <th>ĐVT</th>
-            <th>Số lượng</th>
-            <th>Trọng lượng</th>
-            <th>Trọng lượng màng</th>
-            <th>Trọng lượng nhựa</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((line, index) => {
-            const filmKg = resolveAcceptanceLineFilmKg(
-              line.mat_hang,
-              line.so_luong,
-              filmKgByProductCode
-            );
-            const nhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
-            return (
-              <tr key={`${line.mat_hang}-${index}`}>
-                <td className="production-order-print-center">{index + 1}</td>
-                <td>{line.mat_hang || '-'}</td>
-                <td>{line.ten_sp || '-'}</td>
-                <td className="production-order-print-center">{line.don_vi || '-'}</td>
-                <td className="production-order-print-right">
-                  {line.so_luong === null ? '-' : formatNumber(line.so_luong, 2)}
-                </td>
-                <td className="production-order-print-right">
-                  {formatWeightKgCell(
-                    line.trong_luong != null && line.trong_luong > 0 ? line.trong_luong : null,
-                    line.don_vi_trong_luong || 'Kg'
-                  )}
-                </td>
-                <td className="production-order-print-right">{formatWeightKgCell(filmKg)}</td>
-                <td className="production-order-print-right">{formatWeightKgCell(nhuaKg)}</td>
-              </tr>
-            );
-          })}
-          {totalsByUnit.map(([unit, total]) => (
-            <tr key={unit}>
-              <td colSpan={4} className="production-order-print-right" style={{ fontWeight: 700 }}>
-                Tổng cộng ({unit})
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {formatNumber(total, 2)}
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {totalTrongLuongKg > 0 ? `${formatNumber(totalTrongLuongKg, 2)} Kg` : '-'}
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {totalFilmKg > 0 ? `${formatNumber(totalFilmKg, 2)} Kg` : '-'}
-              </td>
-              <td className="production-order-print-right" style={{ fontWeight: 700 }}>
-                {totalNhuaKg > 0 ? `${formatNumber(totalNhuaKg, 2)} Kg` : '-'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  );
+function formatQtyPlain(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '';
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : formatNumber(rounded, 2);
 }
 
 export function AcceptanceReportPrintSheet({
   slip,
-  filmKgByProductCode
+  filmKgByProductCode,
+  productNormByCode,
+  shiftSettings,
+  performedBy = '',
+  machineCode,
+  machineName,
+  shift
 }: {
   slip: AcceptancePrintSlip;
   filmKgByProductCode?: Map<string, number>;
+  productNormByCode?: Map<string, AcceptanceProductNorm>;
+  shiftSettings?: Array<{
+    code?: string;
+    name?: string;
+    value?: string;
+    label?: string;
+    startTime?: string;
+    endTime?: string;
+    timeFrame?: string;
+  }>;
+  /** Trưởng ca — hiện ở «Người thực hiện». */
+  performedBy?: string;
+  /** Ưu tiên Máy/Ca đã chọn khi in (y hệt bảng vật tư). */
+  machineCode?: string;
+  machineName?: string;
+  shift?: string;
 }) {
+  const resolvedShift = String(shift || slip.ca || '').trim();
+  const resolvedMachineCode = String(machineCode || slip.ma_may || '').trim();
+  const resolvedMachineName = String(machineName || slip.ten_may || slip.machineLabel || '').trim();
+  const hours = resolveAcceptanceShiftHours(resolvedShift, shiftSettings);
+  const machineHeader = formatChecklistMachineHeader(resolvedMachineCode, resolvedMachineName);
+  const machineParts = splitChecklistMachineHeader(machineHeader);
+  const shiftLabel = formatAcceptanceShiftLabel(resolvedShift);
+  const performer = String(performedBy || '').trim();
+  const dateParts = formatPrintDateParts(slip.ngay);
+  const lines = slip.thanhPhamLines;
+  const paddedCount = Math.max(ACCEPTANCE_PRINT_MIN_ROWS, lines.length);
+
+  type ComputedRow = {
+    key: string;
+    stt: number;
+    amisCode: string;
+    tenSp: string;
+    soLuong: number | null;
+    rollWeightKg: number | null;
+    plasticNormKg: number | null;
+    totalNormKg: number | null;
+    actualNhuaKg: number | null;
+  };
+
+  const computedRows: ComputedRow[] = [];
+  for (let i = 0; i < paddedCount; i += 1) {
+    const line = lines[i];
+    if (!line) {
+      computedRows.push({
+        key: `empty-${i}`,
+        stt: i + 1,
+        amisCode: '',
+        tenSp: '',
+        soLuong: null,
+        rollWeightKg: null,
+        plasticNormKg: null,
+        totalNormKg: null,
+        actualNhuaKg: null
+      });
+      continue;
+    }
+    const norm = lookupAcceptanceProductNorm(line.mat_hang, productNormByCode);
+    const rollWeightKg = resolveRollWeightKg(line, norm);
+    const plasticNormKg = resolvePlasticNormKg(line, norm, filmKgByProductCode);
+    const qty = line.so_luong;
+    const totalNormKg =
+      qty != null && qty > 0 && plasticNormKg != null && plasticNormKg > 0
+        ? Math.round(qty * plasticNormKg * 100) / 100
+        : null;
+    const filmKg = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
+    const actualNhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
+    computedRows.push({
+      key: `${line.mat_hang}-${i}`,
+      stt: i + 1,
+      amisCode: norm?.amisCode || '',
+      tenSp: line.ten_sp || norm?.name || line.mat_hang || '',
+      soLuong: qty,
+      rollWeightKg,
+      plasticNormKg,
+      totalNormKg,
+      actualNhuaKg
+    });
+  }
+
+  const totalQty = lines.reduce((sum, line) => sum + (line.so_luong ?? 0), 0);
+  const totalNormKg = computedRows.reduce(
+    (sum, row) => sum + (row.totalNormKg != null && row.totalNormKg > 0 ? row.totalNormKg : 0),
+    0
+  );
+  const nhuaThucDungKg = computedRows.reduce(
+    (sum, row) => sum + (row.actualNhuaKg != null && Number.isFinite(row.actualNhuaKg) ? row.actualNhuaKg : 0),
+    0
+  );
+  // Bảng II: dòng SP lỗi / SP rác từ báo cáo sản lượng.
+  const defectLines = slip.hangLoiHongLines.filter(
+    line => isAcceptanceHangLoiHongLoai(line.loai_vat_tu) || !line.loai_vat_tu
+  );
+  const defectPadded = Math.max(4, defectLines.length);
+  const nhuaKhongMangKg = defectLines.reduce((sum, line) => {
+    if (!isNhuaKhongMangOrDauKeoLine(line)) return sum;
+    const weight = Number(line.trong_luong);
+    if (Number.isFinite(weight) && weight > 0) return sum + weight;
+    const qty = Number(line.so_luong);
+    const unit = String(line.don_vi || '').trim().toLowerCase();
+    if (Number.isFinite(qty) && qty > 0 && (unit === 'kg' || unit === 'kilogram')) return sum + qty;
+    return sum;
+  }, 0);
+  const haoHutKg = Math.round((totalNormKg + nhuaKhongMangKg - nhuaThucDungKg) * 100) / 100;
+
   return (
-    <div className="production-order-print-sheet">
-      <div className="production-order-print-doc">
-        <header className="production-order-print-letterhead">
-          <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="production-order-print-logo" />
-          <div className="production-order-print-company">
-            <p className="production-order-print-company-name">{PRINT_COMPANY_NAME}</p>
+    <div className="production-order-print-sheet acceptance-nk-sx-print-sheet">
+      <div className="acceptance-nk-sx-print-doc">
+        <header className="acceptance-nk-sx-print-header">
+          <div className="acceptance-nk-sx-print-header-left">
+            <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="acceptance-nk-sx-print-logo" />
+            <div className="acceptance-nk-sx-print-brand">
+              <p className="acceptance-nk-sx-print-company">{PRINT_COMPANY_NAME}</p>
+            </div>
+          </div>
+          <div className="acceptance-nk-sx-print-header-center">
+            <h1 className="acceptance-nk-sx-print-title">
+              NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO NHẬN SẢN PHẨM
+            </h1>
+            <div className="acceptance-nk-sx-print-date-line">
+              Ca sản xuất từ{' '}
+              <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-time">
+                {hours.from || '…..'}
+              </span>{' '}
+              Đến{' '}
+              <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-time">
+                {hours.to || '…..'}
+              </span>{' '}
+              ngày {dateParts.day} tháng {dateParts.month} năm {dateParts.year}
+            </div>
+            <div className="acceptance-nk-sx-print-date-line">
+              Người thực hiện:{' '}
+              <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-performer">
+                {performer || '……………………'}
+              </span>
+            </div>
+          </div>
+          <div className="acceptance-nk-sx-print-header-right">
+            <span className="acceptance-nk-sx-print-meta-machine-label">
+              {machineParts.label ? (
+                <>
+                  {machineParts.label}{' '}
+                  <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-machine">
+                    {machineParts.value}
+                  </span>
+                </>
+              ) : (
+                <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-machine">
+                  {machineParts.value}
+                </span>
+              )}
+            </span>
+            <span>
+              Ca:{' '}
+              <span className="acceptance-nk-sx-print-fill acceptance-nk-sx-print-shift">{shiftLabel || '…'}</span>
+            </span>
           </div>
         </header>
 
-        <h1 className="production-order-print-title">BÁO CÁO SẢN LƯỢNG</h1>
+        <div className="acceptance-nk-sx-print-body">
+          <div className="acceptance-nk-sx-print-main">
+            <p className="acceptance-nk-sx-print-section-label">I. THÀNH PHẨM</p>
+            <table className="acceptance-nk-sx-print-table">
+              <thead>
+                <tr>
+                  <th rowSpan={2} className="col-stt">
+                    STT
+                  </th>
+                  <th rowSpan={2} className="col-amis">
+                    Mã Thành phẩm trên MISA
+                  </th>
+                  <th rowSpan={2} className="col-sp">
+                    THÀNH PHẨM (2)
+                  </th>
+                  <th colSpan={2}>
+                    TRỌNG LƯỢNG THÀNH PHẨM TRẢ KHO - gồm lõi, túi, màng (KG) (Cuộn)
+                  </th>
+                  <th rowSpan={2} className="col-qty">
+                    SỐ LƯỢNG (Cuộn) (3)
+                  </th>
+                  <th rowSpan={2} className="col-roll">
+                    TRỌNG LƯỢNG CUỘN BAO GỒM CẢ TÚI, LÕI (4)
+                  </th>
+                  <th rowSpan={2} className="col-norm">
+                    ĐỊNH MỨC NHỰA (5)
+                  </th>
+                  <th rowSpan={2} className="col-total">
+                    TỔNG TRỌNG LƯỢNG THEO ĐỊNH MỨC NHỰA (6) = (3) × (5)
+                  </th>
+                  <th rowSpan={2} className="col-eval">
+                    ĐÁNH GIÁ ĐẠT / KHÔNG ĐẠT SO VỚI ĐỊNH MỨC
+                  </th>
+                </tr>
+                <tr>
+                  <th className="col-blank">KG</th>
+                  <th className="col-blank">Cuộn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {computedRows.map(row => (
+                  <tr key={row.key}>
+                    <td className="center">{row.stt}</td>
+                    <td>{row.amisCode}</td>
+                    <td>{row.tenSp}</td>
+                    <td />
+                    <td />
+                    <td className="right">{formatQtyPlain(row.soLuong)}</td>
+                    <td className="right">{formatKgPlain(row.rollWeightKg)}</td>
+                    <td className="right">{formatKgPlain(row.plasticNormKg)}</td>
+                    <td className="right">{formatKgPlain(row.totalNormKg)}</td>
+                    <td />
+                  </tr>
+                ))}
+                <tr className="acceptance-nk-sx-print-total-row">
+                  <td colSpan={5} className="right strong">
+                    TỔNG CỘNG
+                  </td>
+                  <td className="right strong">{formatQtyPlain(totalQty || null)}</td>
+                  <td />
+                  <td />
+                  <td className="right strong">{formatKgPlain(totalNormKg > 0 ? totalNormKg : null)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-        <div className="production-order-print-meta">
-          <span>Ngày: {formatPrintDate(slip.ngay)}</span>
-          <span>Giờ: {slip.gio || '-'}</span>
+          <aside className="acceptance-nk-sx-print-side">
+            <p className="acceptance-nk-sx-print-section-label">II. BÁO CÁO SX CUỐI CA</p>
+            <table className="acceptance-nk-sx-print-side-table">
+              <thead>
+                <tr>
+                  <th>TÊN LỖI HỎNG / PHẾ / SỰ CỐ SẢN XUẤT</th>
+                  <th className="col-side-qty">SỐ LƯỢNG</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: defectPadded }, (_, index) => {
+                  const line = defectLines[index];
+                  return (
+                    <tr key={line ? `${line.mat_hang}-${index}` : `defect-empty-${index}`}>
+                      <td>{line ? formatDefectLineName(line) : ''}</td>
+                      <td className="right">{line ? formatDefectLineQty(line) : ''}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <div className="acceptance-nk-sx-print-summary">
+              <div className="acceptance-nk-sx-print-summary-row">
+                <span>1. ĐỊNH MỨC THÀNH PHẨM SX</span>
+                <strong>{totalNormKg > 0 ? `${formatKgPlain(totalNormKg)} KG` : '…… KG'}</strong>
+              </div>
+              <div className="acceptance-nk-sx-print-summary-row">
+                <span>2. Nhựa không màng, Nhựa đầu keo</span>
+                <strong>
+                  {nhuaKhongMangKg > 0 ? `${formatKgPlain(nhuaKhongMangKg)} KG` : '…… KG'}
+                </strong>
+              </div>
+              <div className="acceptance-nk-sx-print-summary-row">
+                <span>3. NHỰA THỰC DÙNG</span>
+                <strong>
+                  {nhuaThucDungKg > 0 ? `${formatKgPlain(nhuaThucDungKg)} KG` : '…… KG'}
+                </strong>
+              </div>
+              <div className="acceptance-nk-sx-print-summary-note">
+                (1) + (2) − (3) · Nhựa thực dùng − Định mức TP SX + nhựa không màng (ÂM là hao hụt)
+              </div>
+              <div className="acceptance-nk-sx-print-summary-result">
+                <strong>
+                  {totalNormKg > 0 || nhuaThucDungKg > 0
+                    ? `${formatKgPlain(haoHutKg)} KG`
+                    : '…… KG'}
+                </strong>
+              </div>
+            </div>
+          </aside>
         </div>
 
-        <table className="production-order-print-grid-table production-order-print-params-table">
-          <thead>
-            <tr>
-              <th>Ca</th>
-              <th>Lần</th>
-              <th>Tổ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="production-order-print-center">{slip.ca}</td>
-              <td className="production-order-print-center">{slip.lan}</td>
-              <td>{slip.machineLabel}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <AcceptancePrintLinesTable
-          title="Thành phẩm"
-          lines={slip.thanhPhamLines}
-          filmKgByProductCode={filmKgByProductCode}
-        />
-        <AcceptancePrintLinesTable
-          title="Hàng lỗi hỏng nhập kho"
-          lines={slip.hangLoiHongLines}
-          filmKgByProductCode={filmKgByProductCode}
-        />
-
-        <div className="acceptance-report-print-signatures">
+        <div className="acceptance-nk-sx-print-signatures">
           <div>
-            <p>Người ghi nhận</p>
+            <p>Thủ kho</p>
             <span>(Ký, họ tên)</span>
           </div>
           <div>
             <p>Trưởng ca sản xuất</p>
+            <span>(Ký, họ tên)</span>
+          </div>
+          <div>
+            <p>Thợ máy</p>
+            <span>(Ký, họ tên)</span>
+          </div>
+          <div>
+            <p>Giao ca sau</p>
             <span>(Ký, họ tên)</span>
           </div>
           <div>
@@ -430,18 +814,49 @@ export function AcceptanceReportPrintSheet({
 
 export function AcceptanceReportPrintBatch({
   slips,
-  filmKgByProductCode
+  filmKgByProductCode,
+  productNormByCode,
+  shiftSettings,
+  performedBy = '',
+  machineCode,
+  machineName,
+  shift
 }: {
   slips: AcceptancePrintSlip[];
   filmKgByProductCode?: Map<string, number>;
+  productNormByCode?: Map<string, AcceptanceProductNorm>;
+  shiftSettings?: Array<{
+    code?: string;
+    name?: string;
+    value?: string;
+    label?: string;
+    startTime?: string;
+    endTime?: string;
+    timeFrame?: string;
+  }>;
+  /** Trưởng ca — điền «Người thực hiện» trên mỗi phiếu. */
+  performedBy?: string;
+  /** Máy/Ca đã chọn khi in — y hệt bảng vật tư trang trước. */
+  machineCode?: string;
+  machineName?: string;
+  shift?: string;
 }) {
   if (slips.length === 0) return null;
 
   return (
-    <div className="production-order-print-batch">
+    <div className="production-order-print-batch acceptance-nk-sx-print-batch">
       {slips.map(slip => (
-        <div key={slip.id} className="production-order-print-page">
-          <AcceptanceReportPrintSheet slip={slip} filmKgByProductCode={filmKgByProductCode} />
+        <div key={slip.id} className="production-order-print-page acceptance-nk-sx-print-page">
+          <AcceptanceReportPrintSheet
+            slip={slip}
+            filmKgByProductCode={filmKgByProductCode}
+            productNormByCode={productNormByCode}
+            shiftSettings={shiftSettings}
+            performedBy={performedBy}
+            machineCode={machineCode}
+            machineName={machineName}
+            shift={shift}
+          />
         </div>
       ))}
     </div>

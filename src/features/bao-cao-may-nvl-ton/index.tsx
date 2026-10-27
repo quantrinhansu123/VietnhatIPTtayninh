@@ -28,6 +28,7 @@ import {
 } from '../../utils/machineNvlReports';
 import { shiftNamesMatch } from '../../utils/shiftSettings';
 import { normalizeProductCodeKey } from '../san-pham/types';
+import { compareMaterialMisaCode } from '../../utils/materialMisaSortOrder';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
 import {
   findMachineByRef,
@@ -436,7 +437,7 @@ export function buildCuoiCaSuggestionLinesFromDauCa(input: {
   }
 
   return [...byKey.values()].sort(
-    (a, b) => a.code.localeCompare(b.code, 'vi') || a.name.localeCompare(b.name, 'vi')
+    (a, b) => compareMaterialMisaCode(a.code, b.code) || a.name.localeCompare(b.name, 'vi')
   );
 }
 export function MachineNvlReportPanel({

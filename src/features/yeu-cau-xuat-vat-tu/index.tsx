@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Save, Trash2, Wand2 } from 'lucide-react';
+import { ChevronLeft, ClipboardList, Loader2, Plus, Save, Trash2, Wand2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
@@ -19,6 +19,7 @@ import {
 } from '../ke-hoach-san-xuat';
 import { normalizeWarehouseMovements } from '../phieu-xuat-nhap-kho';
 import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
+import type { MaterialRequestRow } from './MaterialRequestListView';
 
 type Line = { key: string; code: string; name: string; unit: string; qty: string };
 
@@ -39,7 +40,24 @@ function collectOrderStaffNames(order: ProductionOrderRow): string[] {
   ];
 }
 
-export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | null }) {
+function rowDateKey(ngay: string | null | undefined) {
+  const match = String(ngay || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+export function YeuCauXuatVatTuPanel({
+  currentUser,
+  editRequest,
+  onEditConsumed,
+  onBack,
+  onOpenList
+}: {
+  currentUser: AuthUser | null;
+  editRequest?: MaterialRequestRow | null;
+  onEditConsumed?: () => void;
+  onBack?: () => void;
+  onOpenList?: () => void;
+}) {
   const hubShared = useReportFormsSharedOptional();
   const hideLocalHeader = Boolean(hubShared);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -47,6 +65,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
   const [machine, setMachine] = useState('');
   const [requester, setRequester] = useState('');
   const [lines, setLines] = useState<Line[]>(() => [newLine()]);
+  const [editingCode, setEditingCode] = useState<string | null>(null);
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);
   const [settings, setSettings] = useState<ProductionOrderLookupSetting[]>([]);
@@ -87,7 +106,7 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
   }, [date, machine, machines, productionOrders, shift]);
 
   useEffect(() => {
-    if (hubShared) return;
+    if (hubShared || editingCode) return;
     if (!date) {
       setRequester('');
       return;
@@ -97,15 +116,16 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
       return;
     }
     setRequester(prev => (prev && staffOptions.includes(prev) ? prev : ''));
-  }, [date, hubShared, staffOptions]);
+  }, [date, editingCode, hubShared, staffOptions]);
 
   useEffect(() => {
-    if (!hubShared) return;
+    if (!hubShared || editingCode) return;
     setDate(hubShared.ngay);
     setShift(hubShared.ca);
     setMachine(hubShared.machineRef);
     setRequester(hubShared.staffNames[0] || hubShared.staffText || '');
   }, [
+    editingCode,
     hubShared,
     hubShared?.ngay,
     hubShared?.ca,
@@ -114,34 +134,74 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
     hubShared?.staffText
   ]);
 
+  useEffect(() => {
+    if (!editRequest) return;
+    const code = String(editRequest.ma_yeu_cau || '').trim();
+    if (!code) return;
+    setEditingCode(code);
+    setDate(rowDateKey(editRequest.ngay) || new Date().toISOString().slice(0, 10));
+    setShift(String(editRequest.ca || '').trim());
+    setMachine(String(editRequest.may || '').trim());
+    setRequester(String(editRequest.nguoi_yc || '').trim());
+    const nextLines = (Array.isArray(editRequest.lines) ? editRequest.lines : [])
+      .map(line => ({
+        key: `${code}-${line.ma_nvl}-${Math.random().toString(36).slice(2, 7)}`,
+        code: String(line.ma_nvl || '').trim(),
+        name: String(line.ten_nvl || '').trim(),
+        unit: String(line.don_vi || '').trim(),
+        qty: line.so_luong != null && Number.isFinite(Number(line.so_luong)) ? String(line.so_luong) : ''
+      }))
+      .filter(line => line.code);
+    setLines(nextLines.length > 0 ? nextLines : [newLine()]);
+    onEditConsumed?.();
+  }, [editRequest, onEditConsumed]);
+
   const updateLine = (key: string, patch: Partial<Line>) =>
     setLines(prev => prev.map(l => (l.key === key ? { ...l, ...patch } : l)));
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
 
+  const resetForm = () => {
+    setEditingCode(null);
+    setLines([newLine()]);
+  };
+
   const submit = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch('/api/yeu-cau-xuat-kho', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ngay: date,
-          ca: shift,
-          may: machine,
-          nguoi_yc: requester,
-          lines: lines.map(l => ({
-            ma_nvl: l.code,
-            ten_nvl: l.name,
-            don_vi: l.unit,
-            so_luong: Number(l.qty.replace(',', '.'))
-          }))
-        })
-      });
+      const payload = {
+        ngay: date,
+        ca: shift,
+        may: machine,
+        nguoi_yc: requester,
+        lines: lines.map(l => ({
+          ma_nvl: l.code,
+          ten_nvl: l.name,
+          don_vi: l.unit,
+          so_luong: Number(l.qty.replace(',', '.'))
+        }))
+      };
+      const res = await fetch(
+        editingCode
+          ? `/api/yeu-cau-xuat-kho/${encodeURIComponent(editingCode)}`
+          : '/api/yeu-cau-xuat-kho',
+        {
+          method: editingCode ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không lưu được yêu cầu.'));
-      showAppToast(`Đã lưu yêu cầu ${data.ma_yeu_cau}. Thủ kho sẽ xác nhận ở Phiếu xuất nhập kho.`);
-      setLines([newLine()]);
+      const wasEditing = Boolean(editingCode);
+      const code = String(data.ma_yeu_cau || editingCode || '').trim();
+      showAppToast(
+        wasEditing
+          ? `Đã cập nhật yêu cầu ${code}.`
+          : `Đã lưu yêu cầu ${code}. Thủ kho sẽ xác nhận ở Phiếu xuất nhập kho.`
+      );
+      resetForm();
+      if (wasEditing && onOpenList) onOpenList();
     } catch (error: unknown) {
       showSaveFailure(error, 'Không lưu được yêu cầu.');
     } finally {
@@ -231,15 +291,44 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
       className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-black text-white shadow-sm hover:bg-[#b30d1c] disabled:opacity-50"
     >
       {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-      {isSaving ? 'Đang lưu...' : 'Lưu'}
+      {isSaving ? 'Đang lưu...' : editingCode ? 'Cập nhật' : 'Lưu'}
     </button>
   );
 
   return (
     <section className="space-y-2 rounded-md border border-slate-200 bg-white p-2 shadow-card sm:p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-black text-zinc-900">Nhận vật tư về máy</h3>
-        {saveButton}
+        <div className="min-w-0">
+          <h3 className="text-sm font-black text-zinc-900">
+            {editingCode ? `Sửa phiếu nhận NVL · ${editingCode}` : 'Nhận vật tư về máy'}
+          </h3>
+          {editingCode ? (
+            <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">Chỉ sửa được phiếu còn chờ xử lý.</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {onOpenList ? (
+            <button
+              type="button"
+              onClick={onOpenList}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              Danh sách
+            </button>
+          ) : null}
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Quay lại
+            </button>
+          ) : null}
+          {saveButton}
+        </div>
       </div>
       {!hideLocalHeader ? (
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -280,10 +369,13 @@ export function YeuCauXuatVatTuPanel({ currentUser }: { currentUser: AuthUser | 
             <option value="">
               {!date
                 ? 'Chọn ngày trước'
-                : staffOptions.length === 0
+                : staffOptions.length === 0 && !requester
                   ? 'Không có nhân sự theo ngày'
                   : 'Chọn người yêu cầu...'}
             </option>
+            {requester && !staffOptions.includes(requester) ? (
+              <option value={requester}>{requester}</option>
+            ) : null}
             {staffOptions.map(name => (
               <option key={name} value={name}>
                 {name}

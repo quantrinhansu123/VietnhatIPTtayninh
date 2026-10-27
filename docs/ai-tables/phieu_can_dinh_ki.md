@@ -5,20 +5,20 @@
 | **Bảng** | `phieu_can_dinh_ki` |
 | **Tab** | `weighing-summary` → `/tong-hop-ca` |
 | **SQL** | `supabase-phieu-can-dinh-ki.sql` |
-| **DB** | Chính — label `he-thong` (`SUPABASE_URL` / `SUPABASE_SERVICE_KEY`). |
+| **DB** | `phieu-can` (`SUPABASE_WEIGHING_*`) — fallback `he-thong` / local nếu thiếu bảng. |
 
 ## Env
 
 | Label | Biến | Dùng cho |
 |-------|------|----------|
-| `he-thong` | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | `/api/phieu-can-dinh-ki` + hệ thống còn lại |
-| `phieu-can` | `SUPABASE_WEIGHING_*` | `can_tu_dong`, `kiem_kho` (không dùng cho phiếu cân) |
+| `phieu-can` | `SUPABASE_WEIGHING_*` | `/api/phieu-can-dinh-ki`, `can_tu_dong`, … |
+| `he-thong` | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Fallback nếu bảng chưa có trên `phieu-can` |
 
 ## API (`server.ts`)
 
 | Path | Dòng |
 |------|------|
-| `/api/phieu-can-dinh-ki/*` | `registerWeighingSlipRoutes`, client `supabase` (he-thong) |
+| `/api/phieu-can-dinh-ki/*` | `registerWeighingSlipRoutes`, client `supabaseWeighing` (ưu tiên) |
 
 ## Frontend
 

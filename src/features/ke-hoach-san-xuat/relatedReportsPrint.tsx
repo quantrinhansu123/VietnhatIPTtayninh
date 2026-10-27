@@ -27,6 +27,10 @@ import {
   type MachineDowntimeSlip
 } from '../../components/MachineDowntimeReportPanel';
 import {
+  normalizeMachineRunLogs,
+  type MachineRunLog
+} from '../../components/MachineRunLogPanel';
+import {
   normalizeAcceptanceReports,
   type AcceptanceReport
 } from '../../components/AcceptanceReportForm';
@@ -152,6 +156,8 @@ export type ProductionPlanRelatedReports = {
   mixing: MixingReport[];
   weighing: WeighingRecord[];
   downtime: MachineDowntimeSlip[];
+  /** Nhật ký chạy máy (BM-SX-11) theo ngày + ca + máy. */
+  machineRunLogs: MachineRunLog[];
   damaged: WeighingRecord[];
   acceptance: AcceptanceReport[];
   acceptanceFilmKgByProductCode: Map<string, number>;
@@ -411,7 +417,7 @@ export async function loadProductionPlanRelatedReports(
     includeAllMachines: true
   });
 
-  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, canTuDongProductCatalogRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
+  const [planRes, productionOrderRes, nvlRes, mixingRes, weighingRes, downtimeRes, machineRunLogRes, damagedRes, acceptanceRes, shiftHandoverRes, canTuDongRes, canTuDongProductCatalogRes, warehouseRes, finishedGoodsInboundRes, materialCatalogRes, totalReportRes, giaiTrinhRes] =
     await Promise.all([
       fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
       fetchJson('/api/lenh-sx'),
@@ -419,6 +425,7 @@ export async function loadProductionPlanRelatedReports(
       fetchJson(`/api/bao-cao-phoi-tron?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-can-dinh-ki?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-bao-dung-may?ngay=${encodedDate}`),
+      fetchJson(`/api/nhat-ky-chay-may?ngay=${encodedDate}&limit=100`),
       fetchJson(`/api/bao-cao-hang-hong?ngay=${encodedDate}`),
       fetchJson(`/api/bao-cao-nghiem-thu?ngay=${encodedDate}`),
       fetchJson(`/api/phieu-giao-ca?ngay=${encodedDate}&limit=300`),
@@ -533,6 +540,14 @@ export async function loadProductionPlanRelatedReports(
     matchesSelectedMachine(slip.machineCode, slip.machineName)
   );
   if (!downtimeRes.ok) errors.push('Phiếu báo dừng máy');
+
+  const machineRunLogsAll = machineRunLogRes.ok ? normalizeMachineRunLogs(machineRunLogRes.data) : [];
+  const machineRunLogs = machineRunLogsAll.filter(
+    log =>
+      shouldIncludeRelatedReport(log.shift, shifts, shiftOptions) &&
+      matchesSelectedMachine(log.machineCode, log.machineName)
+  );
+  if (!machineRunLogRes.ok) errors.push('Nhật ký chạy máy');
 
   const damagedAll = damagedRes.ok ? normalizeWeighingRecords(damagedRes.data) : [];
   const damaged = damagedAll.filter(record =>
@@ -659,6 +674,7 @@ export async function loadProductionPlanRelatedReports(
     mixing.length === 0 &&
     getWeighingDataRows(weighing).length === 0 &&
     downtime.length === 0 &&
+    machineRunLogs.length === 0 &&
     getWeighingDataRows(damaged).length === 0 &&
     acceptance.length === 0 &&
     shiftHandovers.length === 0 &&
@@ -672,6 +688,7 @@ export async function loadProductionPlanRelatedReports(
     { label: 'Trộn nguyên vật liệu', matched: mixing.length, dayTotal: mixingAll.length },
     { label: 'Phiếu cân', matched: getWeighingDataRows(weighing).length, dayTotal: getWeighingDataRows(weighingAll).length },
     { label: 'Phiếu báo dừng máy', matched: downtime.length, dayTotal: downtimeAll.length },
+    { label: 'Nhật ký chạy máy', matched: machineRunLogs.length, dayTotal: machineRunLogsAll.length },
     { label: 'Báo cáo hàng hỏng', matched: getWeighingDataRows(damaged).length, dayTotal: getWeighingDataRows(damagedAll).length },
     { label: 'Báo cáo sản lượng', matched: acceptance.length, dayTotal: acceptanceAll.length },
     { label: 'Phiếu giao ca', matched: shiftHandovers.length, dayTotal: shiftHandoversAll.length },
@@ -688,6 +705,7 @@ export async function loadProductionPlanRelatedReports(
     mixing,
     weighing,
     downtime,
+    machineRunLogs,
     damaged,
     acceptance,
     acceptanceFilmKgByProductCode,

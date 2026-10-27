@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { formatMoney, formatNumber } from '../utils';
 import { vietNhatLogoUrl } from './layout/constants';
 import { ShippingWarehouseExportSheet } from './ShippingWarehouseExportPrintSheet';
@@ -199,7 +200,8 @@ export function ShippingDeliveryPrintSheet({
         const plates = uniqueJoined(pageOrders.map(order => order.bsx));
         const kmDisplay = formatKmDisplay(pageOrders);
         return (
-      <div className="bb-gx-print-page" key={`bb-gx-page-${pageIndex}`}>
+      <Fragment key={`bb-gx-wrap-${pageIndex}`}>
+      <div className="bb-gx-print-page">
         <div className="bb-gx-sheet">
           <table className="bb-gx-top">
             <tbody>
@@ -363,12 +365,13 @@ export function ShippingDeliveryPrintSheet({
             <div className="bb-gx-general-note-body">{noteText}</div>
           </section>
         </div>
+      </div>
 
-          {/* Biên bản xuất kho theo từng lệnh — không gộp mã hàng giữa các lệnh đã tick */}
-          <div className="bb-gx-xk-follow">
-            <ShippingWarehouseExportSheet orders={pageOrders} embedded />
-          </div>
+        {/* Trang riêng — mỗi lệnh 1 phiếu xuất kho, không gộp */}
+        <div className="bb-gx-print-page bb-gx-xk-page">
+          <ShippingWarehouseExportSheet orders={pageOrders} embedded />
         </div>
+      </Fragment>
         );
       })}
     </div>

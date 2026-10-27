@@ -604,48 +604,51 @@ export function ShippingOrdersPanel({
   useEffect(() => {
     if (!pendingPrint || printingOrders.length === 0) return;
     let cancelled = false;
+    let printed = false;
     document.body.classList.add('shipping-delivery-print-active');
     enablePortraitPrintPage('shipping-delivery-print-page-a4', '4mm 4mm 4mm');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        try {
-          window.print();
-        } finally {
-          setPendingPrint(false);
-          disablePortraitPrintPage('shipping-delivery-print-page-a4');
-        }
+        printed = true;
+        window.print();
+        // Giữ class + portal đến afterprint — gỡ sớm dễ ra trang trắng.
+        setPendingPrint(false);
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      document.body.classList.remove('shipping-delivery-print-active');
-      disablePortraitPrintPage('shipping-delivery-print-page-a4');
+      if (!printed) {
+        document.body.classList.remove('shipping-delivery-print-active');
+        disablePortraitPrintPage('shipping-delivery-print-page-a4');
+      }
     };
   }, [pendingPrint, printingOrders]);
 
   useEffect(() => {
     if (!pendingWarehousePrint || printingWarehouseOrders.length === 0) return;
     let cancelled = false;
+    let printed = false;
     document.body.classList.add('shipping-warehouse-export-print-active');
     enablePortraitPrintPage('shipping-warehouse-export-print-page-a4', '6mm 8mm 6mm');
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
         if (cancelled) return;
-        try {
-          window.print();
-        } finally {
-          setPendingWarehousePrint(false);
-          disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
-        }
+        printed = true;
+        window.print();
+        // Giữ class + portal đến afterprint — gỡ sớm sẽ làm preview/PDF trắng.
+        setPendingWarehousePrint(false);
       });
     }, 150);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
-      document.body.classList.remove('shipping-warehouse-export-print-active');
-      disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
+      // Chỉ gỡ khi chưa kịp in (unmount / đổi lựa chọn). Sau khi in, afterprint dọn.
+      if (!printed) {
+        document.body.classList.remove('shipping-warehouse-export-print-active');
+        disablePortraitPrintPage('shipping-warehouse-export-print-page-a4');
+      }
     };
   }, [pendingWarehousePrint, printingWarehouseOrders]);
 

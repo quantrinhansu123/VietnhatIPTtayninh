@@ -43,7 +43,9 @@ export type MachineShiftMaterialChecklistBuild = {
 
 /** Mẫu giấy QT 11-BM04: cố định Lần 1–5; nếu phiếu có nhiều hơn thì mở rộng. */
 const FORM_MIXING_ROUND_COUNT = 5;
-const MIN_BODY_ROWS = 20;
+/** Chỉ đệm ít hàng trống để vừa 1 trang A4 ngang. */
+const MIN_BODY_ROWS = 12;
+const MAX_PAD_BLANK_ROWS = 2;
 
 function formatPrintDateParts(iso: string) {
   const match = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -71,6 +73,23 @@ function formatPercent(value: number | null | undefined) {
 function positiveOrNull(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   return value;
+}
+
+function formatHoursFromMinutes(minutes: number | null | undefined) {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
+  return formatNumber(minutes / 60, 2);
+}
+
+/** Cộng giờ chạy / dừng từ các nhật ký chạy máy đã lọc theo ngày·ca·máy. */
+export function summarizeMachineRunLogHours(
+  logs: Array<{ actualRunMinutes?: number; totalDowntimeMinutes?: number }>
+) {
+  const runMinutes = logs.reduce((sum, log) => sum + (Number(log.actualRunMinutes) || 0), 0);
+  const stopMinutes = logs.reduce((sum, log) => sum + (Number(log.totalDowntimeMinutes) || 0), 0);
+  return {
+    runMinutes: runMinutes > 0 ? runMinutes : null,
+    stopMinutes: stopMinutes > 0 ? stopMinutes : null
+  };
 }
 
 /** «Máy Bao bì Số: 16» nếu nhận diện được; không thì hiện tên/mã máy. */
@@ -453,10 +472,15 @@ export function MachineShiftMaterialChecklistPrintSheet({
   machineName?: string;
 }) {
   const { lines, mixingSessions } = useMemo(() => buildMachineShiftMaterialChecklist(data), [data]);
+  const runLogHours = useMemo(
+    () => summarizeMachineRunLogHours(data.machineRunLogs || []),
+    [data.machineRunLogs]
+  );
   const displaySessions = useMemo(() => buildDisplayMixingSessions(mixingSessions), [mixingSessions]);
   const bodyRows = useMemo(() => {
     const rows: Array<MachineShiftMaterialChecklistLine | null> = [...lines];
-    while (rows.length < MIN_BODY_ROWS) rows.push(null);
+    const target = Math.min(MIN_BODY_ROWS, lines.length + MAX_PAD_BLANK_ROWS);
+    while (rows.length < target) rows.push(null);
     return rows;
   }, [lines]);
 
@@ -501,19 +525,15 @@ export function MachineShiftMaterialChecklistPrintSheet({
               <div className="bb-nvl-checklist-date">Người thực hiện: ....................</div>
             </div>
             <div className="bb-nvl-checklist-header-right">
-              <div className="bb-nvl-checklist-doc-meta">
-                <div>Ký hiệu: QT 11-BM04</div>
-                <div>Lần ban hành: 04</div>
-                <div>Ngày hiệu lực: 01/04/2023</div>
+              <div className="bb-nvl-checklist-meta-compact">
+                <span className="bb-nvl-checklist-meta-machine">{machineHeader}</span>
+                <span className="bb-nvl-checklist-meta-sep">·</span>
+                <span>
+                  Ca: <span className="bb-nvl-checklist-meta-value">{shiftLabel}</span>
+                </span>
+                <span className="bb-nvl-checklist-meta-sep">·</span>
+                <span className="bb-nvl-checklist-meta-codes">CK XK NK</span>
               </div>
-              <div className="bb-nvl-checklist-meta-line">
-                <span className="bb-nvl-checklist-meta-label">{machineHeader}</span>
-              </div>
-              <div className="bb-nvl-checklist-meta-line">
-                <span className="bb-nvl-checklist-meta-label">Ca:</span>
-                <span className="bb-nvl-checklist-meta-value">{shiftLabel}</span>
-              </div>
-              <div className="bb-nvl-checklist-meta-codes">CK &nbsp; XK &nbsp; NK</div>
             </div>
           </header>
 
@@ -626,21 +646,33 @@ export function MachineShiftMaterialChecklistPrintSheet({
             </tfoot>
           </table>
 
-          <div className="bb-nvl-checklist-usage">
-            <span className="bb-nvl-checklist-usage-label">THỰC TẾ SỬ DỤNG:</span>
-            <span className="bb-nvl-checklist-usage-value">
-              {totalSuDung > 0 ? formatNumber(totalSuDung, 2) : ''}
-            </span>
-            <span className="bb-nvl-checklist-usage-line" />
+          <div className="bb-nvl-checklist-footer-bar">
+            <div className="bb-nvl-checklist-footer-item">
+              <span className="bb-nvl-checklist-footer-label">THỰC TẾ SỬ DỤNG:</span>
+              <span className="bb-nvl-checklist-footer-value">
+                {totalSuDung > 0 ? formatNumber(totalSuDung, 2) : ''}
+              </span>
+            </div>
+            <div className="bb-nvl-checklist-footer-item">
+              <span className="bb-nvl-checklist-footer-label">Giờ máy chạy:</span>
+              <span className="bb-nvl-checklist-footer-value">
+                {formatHoursFromMinutes(runLogHours.runMinutes)}
+              </span>
+              <span className="bb-nvl-checklist-footer-unit">giờ</span>
+            </div>
+            <div className="bb-nvl-checklist-footer-item">
+              <span className="bb-nvl-checklist-footer-label">Giờ máy dừng:</span>
+              <span className="bb-nvl-checklist-footer-value">
+                {formatHoursFromMinutes(runLogHours.stopMinutes)}
+              </span>
+              <span className="bb-nvl-checklist-footer-unit">giờ</span>
+            </div>
           </div>
 
           <div className="bb-nvl-checklist-notes">
             <p>
-              <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới được lấy vật tư đúng theo kế hoạch / định mức.
-              Phân chia pallet: 1L = 25 kg/bao; 2L = 25 kg/bao.
-            </p>
-            <p>
-              <b>Ghi chú:</b> Thực tế sử dụng = Vật tư tồn đầu ca + Thực tế trộn trong ca − Tồn cuối ca.
+              <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới lấy vật tư đúng định mức. Pallet: 1L/2L = 25 kg/bao.
+              <b> Ghi chú:</b> TT SD = Tồn đầu + Thực tế trộn − Tồn cuối. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
             </p>
           </div>
 

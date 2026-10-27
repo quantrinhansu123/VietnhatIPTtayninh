@@ -26,11 +26,21 @@ import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, typ
 import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongWeights';
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
-const productLineGridClass =
+/** Lưới dòng Thành phẩm — có cột Số AI + ghi chú đối chiếu. */
+const productLineGridClassAi =
   'min-w-[68rem] grid-cols-[2.25rem_minmax(8rem,1fr)_minmax(9rem,1.1fr)_3.5rem_5rem_5.5rem_minmax(8rem,1fr)_6rem_3.5rem_2.5rem]';
+
+/** Lưới dòng Gia công / SP lỗi / SP rác — không đối chiếu AI. */
+const productLineGridClassSimple =
+  'min-w-[52rem] grid-cols-[2.25rem_minmax(8rem,1fr)_minmax(9rem,1.1fr)_3.5rem_5.5rem_minmax(8rem,1fr)_6rem_3.5rem_2.5rem]';
 
 const mobileProductColumnLabelClass =
   'block text-[9px] font-black uppercase tracking-wider text-zinc-500';
+
+/** Chỉ phiếu Thành phẩm (báo cáo sản lượng từ trạm cân AI) mới đối chiếu Số AI / bắt buộc ghi chú. */
+function acceptanceUsesAiCompare(type: string) {
+  return type === 'Thành phẩm';
+}
 
 export type AcceptanceReport = {
   id: string;
@@ -429,7 +439,10 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
   };
 }
 
-/** Không thừa kế AI hoặc SL CN lệch AI → bắt buộc ghi chú. */
+/**
+ * Không thừa kế AI hoặc SL CN lệch AI → bắt buộc ghi chú.
+ * Chỉ dùng cho dòng Thành phẩm (báo cáo sản lượng).
+ */
 export function acceptanceLineNeedsNote(soLuongAi: string, soLuongCongNhan: string) {
   const aiRaw = String(soLuongAi ?? '').trim();
   const workerRaw = String(soLuongCongNhan ?? '').trim();
@@ -1201,12 +1214,18 @@ export default function AcceptanceReportForm({
         return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: vui lòng chọn mã SP cho từng dòng.`;
       }
       if (!Number.isFinite(line.soLuong) || line.soLuong <= 0) {
-        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: số công nhân điền phải lớn hơn 0 (${line.mat_hang}).`;
+        return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: ${
+          acceptanceUsesAiCompare(type) ? 'số công nhân điền' : 'số lượng'
+        } phải lớn hơn 0 (${line.mat_hang}).`;
       }
       if (line.trongLuong !== null && (!Number.isFinite(line.trongLuong) || line.trongLuong < 0)) {
         return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: trọng lượng không hợp lệ (${line.mat_hang}).`;
       }
-      if (acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong) && !line.ghi_chu.trim()) {
+      if (
+        acceptanceUsesAiCompare(type) &&
+        acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong) &&
+        !line.ghi_chu.trim()
+      ) {
         return `Phiếu ${MATERIAL_TYPE_LABELS[type]}: ${line.mat_hang} — sửa tay / không thừa kế từ trạm cân AI thì phải nhập ghi chú.`;
       }
     }
@@ -1214,11 +1233,11 @@ export default function AcceptanceReportForm({
     return validLines;
   };
 
-  const buildLineSavePayload = (line: PreparedLine) => ({
+  const buildLineSavePayload = (type: MaterialType, line: PreparedLine) => ({
     mat_hang: line.mat_hang,
     don_vi: line.don_vi,
     so_luong: line.soLuong,
-    so_luong_ai: line.soLuongAi,
+    so_luong_ai: acceptanceUsesAiCompare(type) ? line.soLuongAi : null,
     trong_luong: line.trongLuong,
     don_vi_trong_luong: line.don_vi_trong_luong || 'Kg',
     ghi_chu: line.ghi_chu.trim() || null
@@ -1260,7 +1279,7 @@ export default function AcceptanceReportForm({
           loai_vat_tu: editingType,
           hinh_anh: resolvedImage.hinh_anh || null,
           hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
-          ...buildLineSavePayload(line)
+          ...buildLineSavePayload(editingType, line)
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -1337,7 +1356,7 @@ export default function AcceptanceReportForm({
                 loai_vat_tu: type,
                 hinh_anh: image.hinh_anh || null,
                 hinh_anh_public_id: image.hinh_anh_public_id || null,
-                ...buildLineSavePayload(line)
+                ...buildLineSavePayload(type, line)
               })
             }
           );
@@ -1423,7 +1442,7 @@ export default function AcceptanceReportForm({
               loai_vat_tu: type,
               hinh_anh: resolvedImage.hinh_anh || null,
               hinh_anh_public_id: resolvedImage.hinh_anh_public_id || null,
-              ...buildLineSavePayload(line)
+              ...buildLineSavePayload(type, line)
             })
           });
           const data = await res.json().catch(() => ({}));
@@ -1720,6 +1739,8 @@ export default function AcceptanceReportForm({
         const section = sections[type];
         const productSelectOptions = productOptionsByType[type];
         const isUploading = uploadingType === type;
+        const usesAiCompare = acceptanceUsesAiCompare(type);
+        const productLineGridClass = usesAiCompare ? productLineGridClassAi : productLineGridClassSimple;
         return (
           <section className="overflow-hidden rounded-md border border-zinc-200 bg-white shadow-sm">
             {visibleTypes.length > 1 ? (
@@ -1780,9 +1801,15 @@ export default function AcceptanceReportForm({
             )}
 
             <div role="tabpanel" className="bg-white p-3 sm:p-4">
-              <p className="mb-2 text-[11px] font-semibold leading-4 text-zinc-500">
-                Số AI = trạm cân AI (Tự động BC). Số CN = công nhân điền. Lệch AI hoặc không thừa kế từ trạm cân → phải có ghi chú mới lưu.
-              </p>
+              {usesAiCompare ? (
+                <p className="mb-2 text-[11px] font-semibold leading-4 text-zinc-500">
+                  Số AI = trạm cân AI (Tự động BC). Số CN = công nhân điền. Lệch AI hoặc không thừa kế từ trạm cân → phải có ghi chú mới lưu.
+                </p>
+              ) : (
+                <p className="mb-2 text-[11px] font-semibold leading-4 text-zinc-500">
+                  Phiếu này không đối chiếu trạm cân AI — chỉ nhập số lượng (và ghi chú nếu cần).
+                </p>
+              )}
               <RepeatableLinesBlock
                 title="Mã SP & số lượng"
                 required
@@ -1800,8 +1827,12 @@ export default function AcceptanceReportForm({
                     <span className={mobileProductColumnLabelClass}>Mã SP *</span>
                     <span className={mobileProductColumnLabelClass}>Tên SP</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>ĐVT</span>
-                    <span className={`${mobileProductColumnLabelClass} text-center`}>Số AI</span>
-                    <span className={`${mobileProductColumnLabelClass} text-center`}>Số CN *</span>
+                    {usesAiCompare ? (
+                      <span className={`${mobileProductColumnLabelClass} text-center`}>Số AI</span>
+                    ) : null}
+                    <span className={`${mobileProductColumnLabelClass} text-center`}>
+                      {usesAiCompare ? 'Số CN *' : 'SL *'}
+                    </span>
                     <span className={mobileProductColumnLabelClass}>Ghi chú</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>Trọng lượng</span>
                     <span className={`${mobileProductColumnLabelClass} text-center`}>Đơn vị</span>
@@ -1846,14 +1877,22 @@ export default function AcceptanceReportForm({
                   { key: 'mat_hang', label: 'Mã SP', required: true },
                   { key: 'ten_sp', label: 'Tên SP' },
                   { key: 'don_vi', label: 'ĐVT' },
-                  { key: 'so_luong_ai', label: 'Số AI' },
-                  { key: 'so_luong', label: 'Số CN', required: true },
+                  ...(usesAiCompare
+                    ? [{ key: 'so_luong_ai', label: 'Số AI' } as const]
+                    : []),
+                  {
+                    key: 'so_luong',
+                    label: usesAiCompare ? 'Số CN' : 'SL',
+                    required: true
+                  },
                   {
                     key: 'ghi_chu',
                     label: 'Ghi chú',
-                    required: section.lines.some(line =>
-                      acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong)
-                    )
+                    required:
+                      usesAiCompare &&
+                      section.lines.some(line =>
+                        acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong)
+                      )
                   },
                   { key: 'trong_luong', label: 'Trọng lượng' },
                   { key: 'don_vi_trong_luong', label: 'Đơn vị' },
@@ -1863,7 +1902,8 @@ export default function AcceptanceReportForm({
                 {section.lines.map((line, index) => {
                   const matchedProduct = findProductOption(line.mat_hang, productSelectOptions);
                   const productName = matchedProduct?.name || '';
-                  const needsNote = acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong);
+                  const needsNote =
+                    usesAiCompare && acceptanceLineNeedsNote(line.so_luong_ai, line.so_luong);
                   return (
                     <RepeatableLineRow
                       key={line.id}
@@ -1920,16 +1960,18 @@ export default function AcceptanceReportForm({
                           aria-label="ĐVT"
                         />
                       </div>
-                      <div className="min-w-0">
-                        <input
-                          value={line.so_luong_ai}
-                          readOnly
-                          className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
-                          placeholder="—"
-                          aria-label="Số AI điền"
-                          title="Số AI điền từ trạm cân"
-                        />
-                      </div>
+                      {usesAiCompare ? (
+                        <div className="min-w-0">
+                          <input
+                            value={line.so_luong_ai}
+                            readOnly
+                            className={`${inputClass} bg-zinc-50 px-1.5 text-center text-zinc-600 sm:px-3 sm:text-left`}
+                            placeholder="—"
+                            aria-label="Số AI điền"
+                            title="Số AI điền từ trạm cân"
+                          />
+                        </div>
+                      ) : null}
                       <div className="min-w-0">
                         <input
                           value={line.so_luong}
@@ -1939,8 +1981,8 @@ export default function AcceptanceReportForm({
                           }`}
                           inputMode="decimal"
                           placeholder="0"
-                          aria-label="Số công nhân điền"
-                          title="Số công nhân điền"
+                          aria-label={usesAiCompare ? 'Số công nhân điền' : 'Số lượng'}
+                          title={usesAiCompare ? 'Số công nhân điền' : 'Số lượng'}
                         />
                       </div>
                       <div className="min-w-0">

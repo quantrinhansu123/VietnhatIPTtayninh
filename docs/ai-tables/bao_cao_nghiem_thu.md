@@ -14,7 +14,7 @@ Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng 
 
 Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.don_vi` (cột **Đơn vị** trên `/kho-hang`), khớp **tiền tố** Mã SP từ QR — không lấy `unit` của `can_tu_dong`. Tự động gán **Số AI điền** = **Số công nhân điền**.
 
-**Sửa tay / không thừa kế trạm cân AI:** mỗi dòng có **Số AI điền** (`so_luong_ai`, chỉ đọc) · **Số công nhân điền** (`so_luong`) · **Ghi chú** (`ghi_chu`). Nếu không có số AI hoặc SL CN ≠ SL AI thì **bắt buộc ghi chú** mới lưu (validate form + API).
+**Đối chiếu AI chỉ áp dụng tab Thành phẩm** (báo cáo sản lượng từ trạm cân): **Số AI** (`so_luong_ai`) · **Số CN** (`so_luong`) · **Ghi chú** (`ghi_chu`) — thiếu AI hoặc lệch CN thì bắt buộc ghi chú (form + API). Tab **Gia công / SP lỗi / SP rác** không đối chiếu AI, chỉ nhập số lượng (+ ghi chú tùy chọn).
 
 Modal **Tự động báo cáo sản lượng** bắt buộc chọn **Ngày + Ca + Máy**, mặc định theo phiếu đang nhập. Chỉ cộng số lượng/trọng lượng của máy đã chọn (khớp chính xác mã hoặc tên máy), đồng bộ máy về đầu phiếu sau khi điền. Tải đủ phiếu cân trong ngày với `all=1&images=0` để tránh thiếu dữ liệu do giới hạn 2.000 bản ghi.
 

@@ -6078,8 +6078,16 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   if (!['Thành phẩm', 'Gia công', 'SP lỗi', 'SP rác'].includes(loai_vat_tu)) {
     return { error: 'Loại vật tư không hợp lệ.' };
   }
-  if (so_luong === null || so_luong <= 0) return { error: 'Số công nhân điền phải lớn hơn 0.' };
-  if (acceptanceQtyNeedsNote(so_luong_ai, so_luong) && !ghi_chu) {
+  if (so_luong === null || so_luong <= 0) {
+    return {
+      error:
+        loai_vat_tu === 'Thành phẩm'
+          ? 'Số công nhân điền phải lớn hơn 0.'
+          : 'Số lượng phải lớn hơn 0.'
+    };
+  }
+  // Chỉ Thành phẩm (báo cáo sản lượng từ trạm cân AI) mới bắt buộc đối chiếu AI / ghi chú.
+  if (loai_vat_tu === 'Thành phẩm' && acceptanceQtyNeedsNote(so_luong_ai, so_luong) && !ghi_chu) {
     return {
       error: `Mã ${mat_hang}: sửa tay / không thừa kế từ trạm cân AI thì phải nhập ghi chú.`
     };

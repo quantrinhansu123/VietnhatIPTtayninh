@@ -62,13 +62,20 @@ export function disablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID)
 
 const LANDSCAPE_PRINT_PAGE_STYLE_ID = 'app-print-page-landscape-override';
 
-/** Inject @page A4 ngang (297×210mm) — dùng cho biên bản giao xe. */
-export function enableLandscapePrintPage(styleId = LANDSCAPE_PRINT_PAGE_STYLE_ID) {
+/** Inject @page A4 ngang (297×210mm). */
+export function enableLandscapePrintPage(
+  styleId = LANDSCAPE_PRINT_PAGE_STYLE_ID,
+  marginMm: number | string = 6
+) {
   document.getElementById(styleId)?.remove();
   const style = document.createElement('style');
   style.id = styleId;
   style.media = 'print';
-  style.textContent = '@page { size: 297mm 210mm; margin: 6mm; }';
+  const margin =
+    typeof marginMm === 'string' && marginMm.trim()
+      ? marginMm.trim()
+      : `${Number.isFinite(marginMm) ? marginMm : 6}mm`;
+  style.textContent = `@page { size: 297mm 210mm; margin: ${margin}; }`;
   document.head.appendChild(style);
 }
 

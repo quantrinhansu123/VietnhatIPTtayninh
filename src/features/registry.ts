@@ -677,7 +677,9 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/components/ControlBoardBbMachineReportPrintSheet.tsx',
       'src/components/ControlBoardShiftDetailModal.tsx',
       'src/components/ControlBoardShiftSummaryPrintSheet.tsx',
-      'src/components/ControlBoardShiftSummaryChart.tsx'
+      'src/components/ControlBoardShiftSummaryChart.tsx',
+      'src/components/ReportListsHubModal.tsx',
+      'src/components/MachineShiftMaterialChecklistPrintSheet.tsx'
     ],
     utils: [
       'src/utils/controlBoardShiftSummary.ts',

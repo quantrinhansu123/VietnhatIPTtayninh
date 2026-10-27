@@ -198,11 +198,30 @@ function normalizeMachineKey(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/** Bỏ tiền tố máy thông dụng để so «MBB16» với «Máy bao bì 16». */
+function compactMachineKey(value: string): string {
+  return normalizeMachineKey(value)
+    .replace(/\b(may|máy)\b/g, '')
+    .replace(/\b(bao\s*bi|bao\s*bì|mbb|bb)\b/g, '')
+    .replace(/\b(cach\s*nhiet|cách\s*nhiệt|mcn|cn)\b/g, '')
+    .replace(/\b(so|số|#)\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function machineTrailingNumber(value: string): string {
+  const nums = normalizeMachineKey(value).match(/\d+/g);
+  return nums && nums.length > 0 ? nums[nums.length - 1] : '';
+}
+
 function buildMachineMatchers(planMachines: string[]): Set<string> {
   const matchers = new Set<string>();
   planMachines.forEach(machine => {
     const key = normalizeMachineKey(machine);
     if (key && key !== '-') matchers.add(key);
+    const compact = compactMachineKey(machine);
+    if (compact) matchers.add(compact);
+    const num = machineTrailingNumber(machine);
+    if (num) matchers.add(`#${num}`);
   });
   return matchers;
 }
@@ -216,8 +235,18 @@ function machineMatches(
   if (normalizedCandidates.length === 0) return false;
 
   for (const candidate of normalizedCandidates) {
+    const candidateCompact = compactMachineKey(candidate);
+    const candidateNum = machineTrailingNumber(candidate);
     for (const matcher of machineMatchers) {
       if (candidate === matcher || candidate.includes(matcher) || matcher.includes(candidate)) {
+        return true;
+      }
+      const matcherCompact = matcher.startsWith('#') ? matcher.slice(1) : compactMachineKey(matcher);
+      if (candidateCompact && matcherCompact && candidateCompact === matcherCompact) {
+        return true;
+      }
+      // Cùng số máy (MBB16 ↔ Máy bao bì 16) khi một phía mang token #16.
+      if (candidateNum && (matcher === `#${candidateNum}` || matcherCompact === candidateNum)) {
         return true;
       }
     }

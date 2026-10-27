@@ -20,7 +20,6 @@ import { KiemKhoPanel } from '../features/kiem-kho';
 import { WarehouseHistoryPanel } from '../features/phieu-xuat-nhap-kho';
 import {
   loadProductionPlanRelatedReports,
-  ProductionPlanRelatedPrintContent,
   type ProductionPlanRelatedReports
 } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import { normalizeProducts } from '../features/san-pham';
@@ -29,8 +28,11 @@ import {
   TonThanhPhamPrintSheet,
   type TonThanhPhamReport
 } from '../features/ton-kho/TonKhoThanhPhamPrint';
+import { MachineShiftMaterialChecklistPrintSheet } from './MachineShiftMaterialChecklistPrintSheet';
 import {
+  disableLandscapePrintPage,
   disablePortraitPrintPage,
+  enableLandscapePrintPage,
   enablePortraitPrintPage,
   waitForPrintImagesReady
 } from '../utils/printReady';
@@ -253,11 +255,8 @@ export default function ReportListsHubModal({
         code: machineCode,
         name: machineName || machineCode
       });
-      if (data.isEmpty) {
-        setPrintError('Không có phiếu nào khớp ngày, ca và máy đã chọn để in.');
-        return;
-      }
-      setTonData(await tonRange(date));
+      // Mẫu 1 tờ: vẫn in được khung form khi chưa có dữ liệu (điền tay cột trống).
+      setTonData(null);
       setPrintData(data);
     } catch (error) {
       setPrintError(error instanceof Error ? error.message : 'Không thể chuẩn bị bản in.');
@@ -277,8 +276,6 @@ export default function ReportListsHubModal({
 
   useEffect(() => {
     if (!printData && !tonData) return;
-    document.body.classList.add('production-plan-related-print-active');
-    // Tên file mặc định khi "Lưu dưới dạng PDF" lấy theo document.title.
     const previousTitle = document.title;
     const [y, m, d] = (lockedPrintDate || printDate).split('-');
     const machineLabel =
@@ -288,23 +285,28 @@ export default function ReportListsHubModal({
       hubFilters.machineName ||
       hubFilters.machineCode ||
       'máy';
-    document.title = !printData ? `Báo cáo tồn thành phẩm ${d}-${m}-${y}` : `Bảng tổng hợp ngày ${d}-${m}-${y}, ca ${lockedPrintShift || printShift}, máy ${machineLabel}`;
-    // Báo cáo kết quả theo từng lệnh SX có layout A4 dọc riêng. Khi được in
-    // trong batch "Danh sách báo cáo", phải bật cùng ngữ cảnh với trang gốc
-    // để giữ nguyên phân trang tự nhiên của mẫu (có thể kéo dài nhiều trang),
-    // không bị Chrome thu nhỏ để dồn nội dung.
-    document.body.classList.add('shift-summary-print-active');
-    document.body.classList.add('bb-machine-report-print-active');
-    enablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
+    const shiftLabel = lockedPrintShift || printShift;
+    document.title = !printData
+      ? `Báo cáo tồn thành phẩm ${d}-${m}-${y}`
+      : `Bang theo doi vat tu ${d}-${m}-${y}, ca ${shiftLabel}, may ${machineLabel}`;
+
+    if (printData) {
+      document.body.classList.add('machine-shift-nvl-checklist-print-active');
+      enableLandscapePrintPage('machine-shift-nvl-checklist-page-a4-landscape');
+    } else {
+      document.body.classList.add('production-plan-related-print-active');
+      enablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
+    }
+
     const timer = window.setTimeout(() => {
       void waitForPrintImagesReady().then(() => window.print());
     }, 350);
     const cleanup = () => {
       window.clearTimeout(timer);
       document.title = previousTitle;
+      document.body.classList.remove('machine-shift-nvl-checklist-print-active');
       document.body.classList.remove('production-plan-related-print-active');
-      document.body.classList.remove('shift-summary-print-active');
-      document.body.classList.remove('bb-machine-report-print-active');
+      disableLandscapePrintPage('machine-shift-nvl-checklist-page-a4-landscape');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
       setPrintData(null);
       setTonData(null);
@@ -315,9 +317,9 @@ export default function ReportListsHubModal({
       window.clearTimeout(timer);
       window.removeEventListener('afterprint', cleanup);
       document.title = previousTitle;
+      document.body.classList.remove('machine-shift-nvl-checklist-print-active');
       document.body.classList.remove('production-plan-related-print-active');
-      document.body.classList.remove('shift-summary-print-active');
-      document.body.classList.remove('bb-machine-report-print-active');
+      disableLandscapePrintPage('machine-shift-nvl-checklist-page-a4-landscape');
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,7 +395,7 @@ export default function ReportListsHubModal({
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-red-600">In báo cáo</p>
               <h3 className="mt-0.5 text-base font-black">Chọn ngày · ca · máy</h3>
-              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In gộp KHSX, LSX, xuất kho, tồn đầu, tồn cuối, sản lượng và báo cáo tồn thành phẩm theo đúng máy đã chọn.</p>
+              <p className="mt-1 max-w-sm text-[11px] font-semibold leading-4 text-zinc-500">In 1 tờ bảng theo dõi vật tư theo máy (định mức, tỉ lệ %, tồn đầu ca — cột lấy kho / sử dụng để trống).</p>
             </div>
             <button type="button" onClick={onClose} aria-label="Đóng" title="Đóng" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
           </div>
@@ -455,7 +457,24 @@ export default function ReportListsHubModal({
       ),
       document.body
     )}
-    {printData || tonData ? createPortal(<div className="production-order-print-batch">{printData ? <ProductionPlanRelatedPrintContent data={printData} /> : null}{tonData ? <TonThanhPhamPrintSheet report={tonData} /> : null}</div>, document.body) : null}
+    {printData || tonData
+      ? createPortal(
+          printData ? (
+            <MachineShiftMaterialChecklistPrintSheet
+              data={printData}
+              date={lockedPrintDate || printDate}
+              shift={lockedPrintShift || printShift}
+              machineCode={selectedPrintMachine?.code || printMachineCode}
+              machineName={selectedPrintMachine?.name || hubFilters.machineName}
+            />
+          ) : tonData ? (
+            <div className="production-order-print-batch">
+              <TonThanhPhamPrintSheet report={tonData} />
+            </div>
+          ) : null,
+          document.body
+        )
+      : null}
   </>;
 
   return <>
@@ -669,6 +688,23 @@ export default function ReportListsHubModal({
     </div>,
     document.body
     )}
-    {printData || tonData ? createPortal(<div className="production-order-print-batch">{printData ? <ProductionPlanRelatedPrintContent data={printData} /> : null}{tonData ? <TonThanhPhamPrintSheet report={tonData} /> : null}</div>, document.body) : null}
+    {printData || tonData
+      ? createPortal(
+          printData ? (
+            <MachineShiftMaterialChecklistPrintSheet
+              data={printData}
+              date={lockedPrintDate || printDate}
+              shift={lockedPrintShift || printShift}
+              machineCode={selectedPrintMachine?.code || printMachineCode}
+              machineName={selectedPrintMachine?.name || hubFilters.machineName}
+            />
+          ) : tonData ? (
+            <div className="production-order-print-batch">
+              <TonThanhPhamPrintSheet report={tonData} />
+            </div>
+          ) : null,
+          document.body
+        )
+      : null}
   </>;
 }

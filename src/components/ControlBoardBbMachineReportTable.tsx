@@ -67,6 +67,8 @@ import {
   buildBbOrderCodeOptions,
   buildBbWarehouseExportLineRows,
   groupBbWarehouseExportLines,
+  buildBbDauCaLineRows,
+  groupBbDauCaLines,
   buildBbPlasticSummaryDetailView,
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
@@ -86,6 +88,7 @@ import {
   isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
   resolveBbLoiHongNhuakmNcTotalKg,
+  isBbMachineText,
   sumBbDauCaMaterialLinesTonKg,
   syncBbThucDungRowsXuatTrongNgayFromExportTab,
   syncBbThucDungRowsTonCuoiFromCuoiCaTab,
@@ -1721,8 +1724,45 @@ export default function ControlBoardBbMachineReportTable({
   const damagedGroups = activeSnapshot.damagedGroups;
   const cuoiCaRows = activeSnapshot.cuoiCaRows;
   const cuoiCaGroups = activeSnapshot.cuoiCaGroups;
-  const dauCaRows = activeSnapshot.dauCaRows;
-  const dauCaGroups = activeSnapshot.dauCaGroups;
+  /** Tab tồn đầu: luôn đọc phiếu tồn đầu mới nhất (không dùng snapshot cũ đã chia NNS/BOM). */
+  const dauCaRows = useMemo(
+    () =>
+      buildBbDauCaLineRows({
+        productionOrders,
+        machineNvlReports,
+        machines,
+        materials,
+        shiftSettings,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine,
+        includeAllMachines
+      }),
+    [
+      productionOrders,
+      machineNvlReports,
+      machines,
+      materials,
+      shiftSettings,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
+    ]
+  );
+  const dauCaGroups = useMemo(
+    () =>
+      groupBbDauCaLines(dauCaRows, productionOrders, products, materials, {
+        machines,
+        mixingReports,
+        shiftSettings
+      }),
+    [dauCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
+  );
   /** Snapshot cũ vẫn phủ đủ npl_phan_tram ngay sau khi bấm Áp dụng. */
   const sanLuongGroups = useMemo(
     () => overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials),
@@ -1913,10 +1953,26 @@ export default function ControlBoardBbMachineReportTable({
     return damagedGroups.map(group => {
       const groupIsInsulation =
         isInsulationMachine || isInsulationMachineText(group.machine);
-      // Cột Lỗi hỏng (kg) + cơ sở chia % mã chính = NHUAKM + NC + RMN.
+      // Lấy mọi dòng SP lỗi/rác cùng ngày·ca·máy từ BC sản lượng (không phụ thuộc gắn mã lệnh).
+      const shiftOpts = getProductionShiftOptions(shiftSettings);
+      const linesForBucket = damagedRows.filter(row => {
+        if (group.ngay && row.ngay && row.ngay !== group.ngay) return false;
+        if (group.shift && row.shift && !shiftNamesMatch(row.shift, group.shift, shiftOpts)) {
+          return false;
+        }
+        if (
+          group.machine &&
+          row.machine &&
+          !machineValueMatchesFilter(group.machine, null, row.machine) &&
+          !(isBbMachineText(group.machine) && isBbMachineText(row.machine))
+        ) {
+          return false;
+        }
+        return true;
+      });
+      // Cột Lỗi hỏng (kg): Σ SP lỗi (hoặc NHUAKM+NC+RMN) từ Hàng lỗi hỏng trên BC sản lượng.
       const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
-        damagedRecords,
-        damagedLines: group.lines || [],
+        damagedLines: linesForBucket,
         ngay: group.ngay,
         shift: group.shift,
         machine: group.machine,
@@ -1928,8 +1984,7 @@ export default function ControlBoardBbMachineReportTable({
         products,
         materials,
         mixingReports,
-        damagedRecords,
-        damagedLines: group.lines || [],
+        damagedLines: linesForBucket,
         plasticLoiHongKg,
         ngay: group.ngay,
         shift: group.shift,
@@ -1948,11 +2003,12 @@ export default function ControlBoardBbMachineReportTable({
           ngay: group.ngay,
           shift: group.shift,
           orderCode: group.orderCode,
-          damagedLines: group.lines
+          damagedLines: linesForBucket
         }) ||
         undefined;
       return {
         ...group,
+        lines: linesForBucket.length > 0 ? linesForBucket : group.lines,
         mixingLines,
         mixingLineCount: mixingLines.length,
         filmScrapMaterial
@@ -1960,11 +2016,11 @@ export default function ControlBoardBbMachineReportTable({
     });
   }, [
     damagedGroups,
+    damagedRows,
     productionOrders,
     products,
     materials,
     mixingReports,
-    damagedRecords,
     warehouseMovements,
     shiftSettings,
     isInsulationMachine
@@ -2083,20 +2139,30 @@ export default function ControlBoardBbMachineReportTable({
     return resolveBbLoiHongCardWeightByKind({
       damagedGroups,
       damagedRows,
-      damagedRecords,
       acceptanceReports,
       materials,
       shiftSettings,
-      isInsulationMachine
+      isInsulationMachine,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
     });
   }, [
     damagedGroups,
     damagedRows,
-    damagedRecords,
     acceptanceReports,
     materials,
     shiftSettings,
-    isInsulationMachine
+    isInsulationMachine,
+    dateFrom,
+    dateTo,
+    shiftFilter,
+    machineFilter,
+    selectedMachine,
+    includeAllMachines
   ]);
   const damagedTotalKg = damagedWeightByKind.totalKg;
   const cuoiCaTotalKg = useMemo(() => {
@@ -2105,20 +2171,10 @@ export default function ControlBoardBbMachineReportTable({
     }
     return sumBbCuoiCaWeightKg(cuoiCaRows);
   }, [reportSnapshot, cuoiCaRows]);
-  const cuoiCaWeightByKind = useMemo(() => {
-    if (reportSnapshot?.summary?.cuoiCaWeightByKind) return reportSnapshot.summary.cuoiCaWeightByKind;
-    return sumBbCuoiCaWeightKgByKind(cuoiCaRows);
-  }, [reportSnapshot, cuoiCaRows]);
-  const dauCaTotalKg = useMemo(() => {
-    if (reportSnapshot?.summary && Number.isFinite(reportSnapshot.summary.dauCaTotalKg)) {
-      return reportSnapshot.summary.dauCaTotalKg;
-    }
-    return sumBbDauCaWeightKg(dauCaRows);
-  }, [reportSnapshot, dauCaRows]);
-  const dauCaWeightByKind = useMemo(() => {
-    if (reportSnapshot?.summary?.dauCaWeightByKind) return reportSnapshot.summary.dauCaWeightByKind;
-    return sumBbDauCaWeightKgByKind(dauCaRows);
-  }, [reportSnapshot, dauCaRows]);
+  /** Luôn tính lại từ dòng tồn cuối — tránh snapshot cũ xếp nhầm NHUA-*-BB vào vật tư khác. */
+  const cuoiCaWeightByKind = useMemo(() => sumBbCuoiCaWeightKgByKind(cuoiCaRows), [cuoiCaRows]);
+  const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
+  const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
   const scopedCanTuDongRecords = useMemo(() => {
     if (sanLuongSource !== 'can-tu-dong') return [];
@@ -3199,8 +3255,8 @@ export default function ControlBoardBbMachineReportTable({
             className="flex h-full min-h-[102px] flex-col rounded-xl border border-red-200/80 bg-white p-2.5 shadow-xs transition hover:border-red-300 hover:bg-red-50/20"
                 title={
                   isInsulationMachine
-                    ? 'Tổng = Lỗi hỏng (NHUAKM+NC+RMN) + Tổng rác màng (RAC MANG + MT-HANG RAC)'
-                    : 'Lấy từ Báo cáo sản lượng: SP lỗi (hàng lỗi hỏng) + SP rác trừ rác màng'
+                    ? 'Từ Hàng lỗi hỏng trên BC sản lượng: SP lỗi + RAC MANG / MT-HANG RAC'
+                    : 'Từ Hàng lỗi hỏng trên BC sản lượng: SP lỗi + SP rác (trừ rác màng)'
                 }
           >
             <p className="whitespace-nowrap text-[11px] font-black uppercase tracking-tight text-red-700">
@@ -3491,10 +3547,10 @@ export default function ControlBoardBbMachineReportTable({
           {activeTab === 'ton_dau_ca' ? (
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-wider text-indigo-700">
-                Tỉ lệ theo định mức
+                Số liệu theo phiếu tồn đầu ca
               </p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Cột Tỉ lệ thực tế và phân bổ NNS-TRON đều lấy tỉ lệ ĐM máy / thành phần SP
+                Mã NVL · SL · kg lấy nguyên từ phiếu tồn đầu (máy + bồn + chưa trộn + ngoài). Cột tỉ lệ ĐM chỉ tham chiếu.
               </p>
             </div>
           ) : activeTab === 'danh_gia_tong_hop' ? (

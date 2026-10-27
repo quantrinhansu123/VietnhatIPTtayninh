@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Factory,
+  FileDown,
   FilePlus2,
   History,
   ImagePlus,
@@ -31,6 +32,18 @@ import {
 } from 'lucide-react';
 import { formatNumber, formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { machineSlipCodeToken, warehouseSlipCodeGroupPrefix } from '../../utils/warehouseSlipCode';
+import {
+  DEFAULT_WAREHOUSE_OUTBOUND_ACCOUNTING,
+  downloadWarehouseOutboundAccountingExcel,
+  type WarehouseOutboundAccountingDefaults,
+  type WarehouseOutboundAccountingLine
+} from '../../utils/warehouseOutboundAccountingExcel';
+import {
+  DEFAULT_WAREHOUSE_INBOUND_ACCOUNTING,
+  downloadWarehouseInboundAccountingExcel,
+  type WarehouseInboundAccountingDefaults,
+  type WarehouseInboundAccountingLine
+} from '../../utils/warehouseInboundAccountingExcel';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -1967,16 +1980,94 @@ export function WarehouseSlipPanel({
     };
   };
 
-  const pickItem = (key: string, code: string) => {
-    const materialCode = code.trim();
+  /**
+   * Chọn mã cho 1 dòng. Hỗ trợ chọn hàng loạt (SearchableSelect multiSelect):
+   * tick nhiều mã → Áp dụng → tạo thêm các dòng tương ứng ngay sau dòng đang sửa.
+   */
+  const pickItem = (key: string, codeRaw: string) => {
+    const codes = [
+      ...new Set(
+        String(codeRaw || '')
+          .split(/[,;]+/)
+          .map(part => part.trim())
+          .filter(Boolean)
+      )
+    ];
     const isExportNvl = (warehouseKind === 'nvl' || warehouseKind === 'tai_che') && slipType === 'xuat';
-    updateLine(key, resolveLinePatchForCode(materialCode));
-    if (isExportNvl && materialCode) {
-      void loadNvlAvgInboundPrice(materialCode, slipDate, {
-        lineKey: key,
-        applySuggestion: true,
-        forceOverwrite: true
+
+    if (codes.length === 0) {
+      updateLine(key, resolveLinePatchForCode(''));
+      return;
+    }
+
+    if (codes.length === 1) {
+      const materialCode = codes[0];
+      setLines(current => {
+        const lineIndex = current.findIndex(line => line.key === key);
+        if (lineIndex < 0) return current;
+        const currentLine = current[lineIndex];
+        const patch = resolveLinePatchForCode(materialCode);
+        // Cùng mã: chỉ đồng bộ tên/ĐVT, giữ SL (tránh nhảy số khi blur/click dòng khác).
+        if (currentLine.code.trim() === patch.code) {
+          return current.map((line, index) =>
+            index === lineIndex
+              ? {
+                  ...line,
+                  code: patch.code,
+                  name: patch.name || line.name,
+                  unit: patch.unit || line.unit,
+                  ...(isExportNvl && 'unitPrice' in patch ? { unitPrice: patch.unitPrice || line.unitPrice } : {})
+                }
+              : line
+          );
+        }
+        return current.map((line, index) => (index === lineIndex ? { ...line, ...patch } : line));
       });
+      if (isExportNvl && materialCode) {
+        void loadNvlAvgInboundPrice(materialCode, slipDate, {
+          lineKey: key,
+          applySuggestion: true,
+          forceOverwrite: true
+        });
+      }
+      return;
+    }
+
+    setLines(current => {
+      const lineIndex = current.findIndex(line => line.key === key);
+      if (lineIndex < 0) return current;
+      const currentLine = current[lineIndex];
+      const builtLines = codes.map((materialCode, index) => {
+        const patch = resolveLinePatchForCode(materialCode);
+        const keepQty =
+          index === 0 && currentLine.code.trim() === patch.code && Boolean(currentLine.quantity.trim());
+        if (index === 0) {
+          return {
+            ...currentLine,
+            ...patch,
+            quantity: keepQty ? currentLine.quantity : '',
+            documentQuantity: keepQty ? currentLine.documentQuantity || '' : '',
+            unitPrice: isExportNvl ? patch.unitPrice || (keepQty ? currentLine.unitPrice : '') : currentLine.unitPrice
+          };
+        }
+        return {
+          ...createWarehouseLineDraft(),
+          ...patch
+        };
+      });
+      return [...current.slice(0, lineIndex), ...builtLines, ...current.slice(lineIndex + 1)];
+    });
+
+    if (isExportNvl) {
+      // Gọi tuần tự: API giá BQ abort request trước đó nếu fire song song.
+      void (async () => {
+        for (const materialCode of codes) {
+          await loadNvlAvgInboundPrice(materialCode, slipDate, {
+            applySuggestion: true,
+            forceOverwrite: true
+          });
+        }
+      })();
     }
   };
 
@@ -2607,7 +2698,13 @@ export function WarehouseSlipPanel({
   useEffect(() => {
     if (!showMaterialRequests) return;
     let cancelled = false;
-    void fetch('/api/yeu-cau-xuat-kho?trang_thai=cho_xu_ly')
+    const params = new URLSearchParams({ trang_thai: 'cho_xu_ly' });
+    const day = slipDate.trim().slice(0, 10);
+    if (day) {
+      params.set('tu_ngay', day);
+      params.set('den_ngay', day);
+    }
+    void fetch(`/api/yeu-cau-xuat-kho?${params.toString()}`)
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         if (!cancelled && data) setMaterialRequests(Array.isArray(data.requests) ? data.requests : []);
@@ -2616,7 +2713,37 @@ export function WarehouseSlipPanel({
     return () => {
       cancelled = true;
     };
-  }, [showMaterialRequests, pageRefreshNonce, exportedRefreshNonce]);
+  }, [showMaterialRequests, pageRefreshNonce, exportedRefreshNonce, slipDate]);
+
+  /** Duyệt theo Ngày / Ca / Máy đang chọn phía trên phiếu. */
+  const filteredMaterialRequests = useMemo(() => {
+    const day = slipDate.trim().slice(0, 10);
+    const formShift = String(selectedShifts[0] || '').trim();
+    const formMachine = machine.trim().toLowerCase();
+    return materialRequests.filter(request => {
+      const reqDay = String(request.ngay || '').trim().slice(0, 10);
+      if (day && reqDay && reqDay !== day) return false;
+      if (formShift) {
+        const reqCa = String(request.ca || '').trim();
+        if (!reqCa) return false;
+        if (!shiftNamesMatch(formShift, reqCa) && formShift !== reqCa) return false;
+      }
+      if (formMachine) {
+        const reqMay = String(request.may || '').trim().toLowerCase();
+        if (!reqMay) return false;
+        if (reqMay !== formMachine && !reqMay.includes(formMachine) && !formMachine.includes(reqMay)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [materialRequests, slipDate, selectedShifts, machine]);
+
+  useEffect(() => {
+    if (!activeRequestCode) return;
+    if (filteredMaterialRequests.some(request => request.ma_yeu_cau === activeRequestCode)) return;
+    setActiveRequestCode('');
+  }, [filteredMaterialRequests, activeRequestCode]);
 
   const handleDeleteMaterialRequest = async (code: string) => {
     if (!window.confirm(`Xóa yêu cầu ${code}? Thao tác này không thể hoàn tác.`)) return;
@@ -4973,23 +5100,33 @@ export function WarehouseSlipPanel({
           {showMaterialRequests ? (
             <div className="col-span-2 min-w-0 space-y-1 sm:col-span-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Yêu cầu xuất vật tư chờ xử lý ({materialRequests.length})
+                Yêu cầu xuất vật tư chờ xử lý ({filteredMaterialRequests.length}
+                {filteredMaterialRequests.length !== materialRequests.length
+                  ? ` / ${materialRequests.length}`
+                  : ''}
+                )
               </span>
-              {materialRequests.length === 0 ? (
-                <p className="text-xs font-semibold text-zinc-400">Chưa có yêu cầu nào.</p>
+              {filteredMaterialRequests.length === 0 ? (
+                <p className="text-xs font-semibold text-zinc-400">
+                  {materialRequests.length === 0
+                    ? 'Chưa có yêu cầu nào trong ngày phiếu.'
+                    : 'Không có yêu cầu khớp Ngày / Ca / Máy đang chọn.'}
+                </p>
               ) : (
                 <div className="flex w-full items-center gap-2">
                   <select
                     value={activeRequestCode}
                     onChange={event => {
-                      const request = materialRequests.find(item => item.ma_yeu_cau === event.target.value);
+                      const request = filteredMaterialRequests.find(
+                        item => item.ma_yeu_cau === event.target.value
+                      );
                       if (request) applyMaterialRequest(request);
                       else setActiveRequestCode('');
                     }}
                     className={`${warehouseFieldClass} min-w-0 flex-1`}
                   >
                     <option value="">Chọn yêu cầu xuất vật tư...</option>
-                    {materialRequests.map(request => (
+                    {filteredMaterialRequests.map(request => (
                       <option key={request.ma_yeu_cau} value={request.ma_yeu_cau}>
                         {request.ma_yeu_cau} · {request.ngay} · {[request.ca, request.may, request.nguoi_yc].filter(Boolean).join(' · ')} · {request.lines.length} NVL
                       </option>
@@ -5451,18 +5588,30 @@ export function WarehouseSlipPanel({
                       value={line.code}
                       onChange={code => pickItem(line.key, code)}
                       options={itemOptions}
-                      placeholder=""
+                      placeholder={
+                        warehouseKind !== 'san_pham' ? 'Gõ mã / tên (tick nhiều)' : ''
+                      }
                       preferValueMatch
                       emptyInputText=""
                       isLoading={isLoadingItems}
                       disabled={isLoadingItems}
                       inputClassName={warehouseLineFieldClass}
                       desktopAutoFlip
+                      multiSelect={warehouseKind !== 'san_pham'}
+                      maxResults={
+                        warehouseKind !== 'san_pham'
+                          ? Math.min(Math.max(itemOptions.length, 50), 400)
+                          : 50
+                      }
                       getLabel={item => {
                         const option = item as MaterialOption;
                         return `${option.code} · ${option.name}`;
                       }}
                       getValue={item => (item as MaterialOption).code}
+                      getSearchText={item => {
+                        const option = item as MaterialOption;
+                        return `${option.code} ${option.name}`;
+                      }}
                     />
                   </div>
                   <div className="min-w-0">
@@ -5928,6 +6077,14 @@ export function WarehouseHistoryPanel({
       return next;
     });
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [excelExportOpen, setExcelExportOpen] = useState(false);
+  const [excelExportDraft, setExcelExportDraft] = useState<WarehouseOutboundAccountingDefaults>(() => ({
+    ...DEFAULT_WAREHOUSE_OUTBOUND_ACCOUNTING
+  }));
+  const [excelInboundDraft, setExcelInboundDraft] = useState<WarehouseInboundAccountingDefaults>(() => ({
+    ...DEFAULT_WAREHOUSE_INBOUND_ACCOUNTING
+  }));
+  const [excelExportDonGiaText, setExcelExportDonGiaText] = useState('0');
   const [historyPrintSlips, setHistoryPrintSlips] = useState<WarehouseSlipPrintData[]>([]);
   const [historyPrintOpen, setHistoryPrintOpen] = useState(false);
   const [historyPrintAutoTrigger, setHistoryPrintAutoTrigger] = useState(false);
@@ -6527,6 +6684,172 @@ export function WarehouseHistoryPanel({
     setHistoryPrintOpen(true);
   };
 
+  const resolveAccountingMaHang = (row: WarehouseMovementRow) => {
+    const rawCode = (row.itemCode || '').trim();
+    if (!rawCode) return '';
+    return row.warehouseKind === 'san_pham' || isFinishedGoodsHistory
+      ? warehouseCodePrefix(rawCode).trim() || rawCode
+      : rawCode;
+  };
+
+  const buildSelectedOutboundAccountingLines = (): WarehouseOutboundAccountingLine[] => {
+    const byKey = new Map<string, WarehouseOutboundAccountingLine>();
+    for (const row of filteredMovements) {
+      if (!selectedSlipCodes.has(row.slipCode)) continue;
+      if (row.slipType !== 'xuat') continue;
+      const maHang = resolveAccountingMaHang(row);
+      if (!maHang) continue;
+      const key = `${normalizeMaterialCodeKey(maHang)}|${(row.unit || '').trim().toLowerCase()}`;
+      const qty = Number(row.quantity);
+      if (!Number.isFinite(qty) || qty === 0) continue;
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.soLuong += qty;
+        if (!existing.tenHang && row.itemName.trim() && row.itemName.trim() !== '-') {
+          existing.tenHang = row.itemName.trim();
+        }
+        continue;
+      }
+      byKey.set(key, {
+        maHang,
+        tenHang: row.itemName.trim() && row.itemName.trim() !== '-' ? row.itemName.trim() : '',
+        dvt: row.unit && row.unit !== '-' ? row.unit : '',
+        soLuong: qty
+      });
+    }
+    return [...byKey.values()].sort((a, b) => a.maHang.localeCompare(b.maHang, 'vi', { numeric: true }));
+  };
+
+  const buildSelectedInboundAccountingLines = (): WarehouseInboundAccountingLine[] => {
+    const byKey = new Map<string, WarehouseInboundAccountingLine>();
+    for (const row of filteredMovements) {
+      if (!selectedSlipCodes.has(row.slipCode)) continue;
+      if (row.slipType !== 'nhap') continue;
+      const maHang = resolveAccountingMaHang(row);
+      if (!maHang) continue;
+      const key = `${normalizeMaterialCodeKey(maHang)}|${(row.unit || '').trim().toLowerCase()}`;
+      const qty = Number(row.quantity);
+      if (!Number.isFinite(qty) || qty === 0) continue;
+      const lineAmount = Number(row.lineAmount);
+      const unitPrice = Number(row.unitPrice);
+      const amount = Number.isFinite(lineAmount)
+        ? lineAmount
+        : Number.isFinite(unitPrice)
+          ? Math.round(qty * unitPrice * 100) / 100
+          : 0;
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.soLuong += qty;
+        existing.thanhTien += amount;
+        existing.donGia =
+          existing.soLuong > 0 ? Math.round((existing.thanhTien / existing.soLuong) * 100) / 100 : existing.donGia;
+        if (!existing.tenHang && row.itemName.trim() && row.itemName.trim() !== '-') {
+          existing.tenHang = row.itemName.trim();
+        }
+        continue;
+      }
+      byKey.set(key, {
+        maHang,
+        tenHang: row.itemName.trim() && row.itemName.trim() !== '-' ? row.itemName.trim() : '',
+        dvt: row.unit && row.unit !== '-' ? row.unit : '',
+        soLuong: qty,
+        donGia: Number.isFinite(unitPrice) && unitPrice > 0
+          ? unitPrice
+          : qty > 0
+            ? Math.round((amount / qty) * 100) / 100
+            : 0,
+        thanhTien: amount
+      });
+    }
+    return [...byKey.values()].sort((a, b) => a.maHang.localeCompare(b.maHang, 'vi', { numeric: true }));
+  };
+
+  const suggestInboundTenDoiTuong = () => {
+    const machines = new Set<string>();
+    for (const row of filteredMovements) {
+      if (!selectedSlipCodes.has(row.slipCode) || row.slipType !== 'nhap') continue;
+      const machine = (row.machine || '').trim();
+      if (machine && machine !== '-') machines.add(machine);
+    }
+    if (machines.size === 1) return [...machines][0];
+    return '';
+  };
+
+  const openExcelExportPopup = () => {
+    if (selectedSlipCodes.size === 0) {
+      setError(`Vui lòng tích chọn ít nhất một phiếu ${selectedType === 'xuat' ? 'xuất' : 'nhập'} để tải Excel.`);
+      return;
+    }
+    if (selectedType === 'xuat') {
+      const lines = buildSelectedOutboundAccountingLines();
+      if (lines.length === 0) {
+        setError('Các phiếu đã chọn không có dòng hàng để xuất Excel.');
+        return;
+      }
+      setExcelExportDraft({ ...DEFAULT_WAREHOUSE_OUTBOUND_ACCOUNTING });
+      setExcelExportDonGiaText('0');
+    } else {
+      const lines = buildSelectedInboundAccountingLines();
+      if (lines.length === 0) {
+        setError('Các phiếu đã chọn không có dòng hàng để xuất Excel.');
+        return;
+      }
+      setExcelInboundDraft({
+        ...DEFAULT_WAREHOUSE_INBOUND_ACCOUNTING,
+        tenDoiTuong: suggestInboundTenDoiTuong()
+      });
+      setExcelExportDonGiaText('');
+    }
+    setError('');
+    setExcelExportOpen(true);
+  };
+
+  const handleConfirmExcelExport = () => {
+    const dayPart =
+      (fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate || '').replace(/-/g, '') || 'all';
+    if (selectedType === 'xuat') {
+      const lines = buildSelectedOutboundAccountingLines();
+      if (lines.length === 0) {
+        setError('Các phiếu đã chọn không có dòng hàng để xuất Excel.');
+        setExcelExportOpen(false);
+        return;
+      }
+      const donGia = Number.parseFloat(excelExportDonGiaText.replace(',', '.'));
+      const defaults: WarehouseOutboundAccountingDefaults = {
+        ...excelExportDraft,
+        donGia: Number.isFinite(donGia) ? donGia : 0
+      };
+      downloadWarehouseOutboundAccountingExcel(
+        lines,
+        defaults,
+        `danh-sach-xuat-kho_${dayPart}_${selectedCount}phieu.xlsx`
+      );
+      setExcelExportOpen(false);
+      setMessage(`Đã tải Excel ${lines.length} dòng từ ${selectedCount} phiếu xuất.`);
+      return;
+    }
+
+    const lines = buildSelectedInboundAccountingLines();
+    if (lines.length === 0) {
+      setError('Các phiếu đã chọn không có dòng hàng để xuất Excel.');
+      setExcelExportOpen(false);
+      return;
+    }
+    const overrideRaw = excelExportDonGiaText.trim();
+    const override = overrideRaw ? Number.parseFloat(overrideRaw.replace(',', '.')) : 0;
+    const defaults: WarehouseInboundAccountingDefaults = {
+      ...excelInboundDraft,
+      donGiaOverride: Number.isFinite(override) && override > 0 ? override : 0
+    };
+    downloadWarehouseInboundAccountingExcel(
+      lines,
+      defaults,
+      `danh-sach-nhap-kho_${dayPart}_${selectedCount}phieu.xlsx`
+    );
+    setExcelExportOpen(false);
+    setMessage(`Đã tải Excel ${lines.length} dòng từ ${selectedCount} phiếu nhập.`);
+  };
+
   const handlePrintSelectedSlips = async (autoPrint = true) => {
     const slips = slipGroups
       .filter(group => selectedSlipCodes.has(group.slipCode))
@@ -6800,18 +7123,14 @@ export function WarehouseHistoryPanel({
                 dropdownWidth="min-w-0 max-w-none"
               />
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
               <TableDateFilter
-                label="Từ"
-                value={fromDate}
-                onChange={setFromDate}
-                className="!h-9 !min-w-0 !px-1.5 !text-[10px]"
-                inputMinWidthClassName="min-w-0"
-              />
-              <TableDateFilter
-                label="Đến"
-                value={toDate}
-                onChange={setToDate}
+                label="Ngày"
+                value={fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate}
+                onChange={value => {
+                  setFromDate(value);
+                  setToDate(value);
+                }}
                 className="!h-9 !min-w-0 !px-1.5 !text-[10px]"
                 inputMinWidthClassName="min-w-0"
               />
@@ -6858,9 +7177,23 @@ export function WarehouseHistoryPanel({
           <p className="text-xs font-semibold text-zinc-600">
             {selectedCount > 0
               ? `Đã chọn ${selectedCount} phiếu`
-              : 'Tích chọn phiếu để in gộp' + (canDelete ? ' hoặc xóa nhiều' : '')}
+              : `Tích chọn phiếu để in gộp / tải Excel${canDelete ? ' hoặc xóa nhiều' : ''}`}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
+              onClick={openExcelExportPopup}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                selectedType === 'xuat'
+                  ? 'Tải Excel mẫu kế toán xuất kho'
+                  : 'Tải Excel mẫu kế toán nhập kho'
+              }
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              Tải Excel{selectedCount > 0 ? ` (${selectedCount})` : ''}
+            </button>
             <button
               type="button"
               disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
@@ -7395,6 +7728,201 @@ export function WarehouseHistoryPanel({
       />
 
       <WeighingImagePreviewModal image={viewingHistoryImage} onClose={() => setViewingHistoryImage(null)} />
+
+      {excelExportOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 className="text-base font-black text-zinc-950">
+                  {selectedType === 'xuat' ? 'Tải Excel xuất kho' : 'Tải Excel nhập kho'}
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho mọi dòng · {selectedCount} phiếu đã chọn
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExcelExportOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100"
+                aria-label="Đóng"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 px-4 py-4">
+              {selectedType === 'xuat' ? (
+                <>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Kho</span>
+                    <input
+                      value={excelExportDraft.kho}
+                      onChange={e => setExcelExportDraft(prev => ({ ...prev, kho: e.target.value }))}
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="KSX"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">TK Nợ</span>
+                      <input
+                        value={excelExportDraft.tkNo}
+                        onChange={e => setExcelExportDraft(prev => ({ ...prev, tkNo: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="154"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">TK Có</span>
+                      <input
+                        value={excelExportDraft.tkCo}
+                        onChange={e => setExcelExportDraft(prev => ({ ...prev, tkCo: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="152"
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đơn giá</span>
+                    <input
+                      value={excelExportDonGiaText}
+                      onChange={e => setExcelExportDonGiaText(e.target.value)}
+                      inputMode="decimal"
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="0"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đối tượng THCP</span>
+                      <input
+                        value={excelExportDraft.doiTuongThcp}
+                        onChange={e => setExcelExportDraft(prev => ({ ...prev, doiTuongThcp: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="168B"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Khoản mục CP</span>
+                      <input
+                        value={excelExportDraft.khoanMucCp}
+                        onChange={e => setExcelExportDraft(prev => ({ ...prev, khoanMucCp: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="NVLTT"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[11px] font-semibold text-zinc-500">
+                    Thành tiền = Số lượng × Đơn giá (mặc định 0). Các cột trên điền giống nhau trên mọi dòng Excel.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Kho</span>
+                    <input
+                      value={excelInboundDraft.kho}
+                      onChange={e => setExcelInboundDraft(prev => ({ ...prev, kho: e.target.value }))}
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="KTP"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">TK Nợ</span>
+                      <input
+                        value={excelInboundDraft.tkNo}
+                        onChange={e => setExcelInboundDraft(prev => ({ ...prev, tkNo: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="155"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">TK Có</span>
+                      <input
+                        value={excelInboundDraft.tkCo}
+                        onChange={e => setExcelInboundDraft(prev => ({ ...prev, tkCo: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="154"
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                      Đơn giá (để trống = lấy từ phiếu)
+                    </span>
+                    <input
+                      value={excelExportDonGiaText}
+                      onChange={e => setExcelExportDonGiaText(e.target.value)}
+                      inputMode="decimal"
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="Theo phiếu"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Lệnh sản xuất</span>
+                    <input
+                      value={excelInboundDraft.lenhSanXuat}
+                      onChange={e => setExcelInboundDraft(prev => ({ ...prev, lenhSanXuat: e.target.value }))}
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="(trống)"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Khoản mục CP</span>
+                      <input
+                        value={excelInboundDraft.khoanMucCp}
+                        onChange={e => setExcelInboundDraft(prev => ({ ...prev, khoanMucCp: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="(trống)"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đối tượng THCP</span>
+                      <input
+                        value={excelInboundDraft.doiTuongThcp}
+                        onChange={e => setExcelInboundDraft(prev => ({ ...prev, doiTuongThcp: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                        placeholder="12NP"
+                      />
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Tên đối tượng</span>
+                    <input
+                      value={excelInboundDraft.tenDoiTuong}
+                      onChange={e => setExcelInboundDraft(prev => ({ ...prev, tenDoiTuong: e.target.value }))}
+                      className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
+                      placeholder="Máy …"
+                    />
+                  </label>
+                  <p className="text-[11px] font-semibold text-zinc-500">
+                    Đơn giá / thành tiền mặc định lấy từ phiếu; điền đơn giá thì ghi đè mọi dòng. Các cột kho / TK / THCP điền giống nhau.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setExcelExportOpen(false)}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExcelExport}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white"
+              >
+                <FileDown className="h-4 w-4" />
+                Tải xuống
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

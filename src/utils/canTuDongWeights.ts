@@ -229,6 +229,33 @@ export function normalizeLenhSxKey(value: unknown): string {
     .replace(/\s+/g, '');
 }
 
+/**
+ * Tách mã lệnh thành token để khớp lệnh đơn ↔ lệnh ghép
+ * (vd `LSX-DH293` khớp `LSX-DH300,-DH294,-DH293,-DH290,-DH289`).
+ */
+export function extractLenhSxTokens(value: unknown): string[] {
+  const raw = normalizeLenhSxKey(value);
+  if (!raw) return [];
+  const tokens = new Set<string>([raw]);
+  for (const part of raw.split(',')) {
+    const token = part.trim();
+    if (!token) continue;
+    tokens.add(token);
+    const bare = token.replace(/^-+/, '');
+    if (!bare) continue;
+    tokens.add(bare);
+    if (/^DH\d+/i.test(bare)) tokens.add(`LSX-${bare}`);
+    if (/^LSX-/i.test(bare)) tokens.add(bare.replace(/^LSX-/i, ''));
+  }
+  return [...tokens];
+}
+
+function lenhSxTokenSetsOverlap(a: string, b: string): boolean {
+  const tokensA = extractLenhSxTokens(a);
+  const tokensB = new Set(extractLenhSxTokens(b));
+  return tokensA.some(token => tokensB.has(token));
+}
+
 export type LsxQtyCatalogOrder = {
   ma_lenh_sx?: string | null;
   so_luong?: number | string | null;
@@ -243,7 +270,7 @@ function readLsxLineQuantity(line: Record<string, unknown>): number | null {
 
 /**
  * Map `MA_LENH|MA_SP` → số lượng dòng trên lệnh SX.
- * Dùng cho cột «Số lượng trong LSX» trên `/can-tu-dong`.
+ * Dùng cho thanh «Số lượng LSX» và bảng Mã SP trên `/can-tu-dong`.
  */
 export function buildLsxQtyByLenhAndSp(orders: LsxQtyCatalogOrder[]): Map<string, number> {
   const map = new Map<string, number>();
@@ -289,7 +316,27 @@ export function lookupLsxQty(
     if (exact != null) return exact;
   }
   const totalOnly = qtyByLenhAndSp.get(`${lenhKey}|`);
-  return totalOnly != null ? totalOnly : null;
+  if (totalOnly != null) return totalOnly;
+
+  // Lệnh trên phiếu cân là mã đơn (LSX-DH293) trong khi danh mục lưu lệnh ghép chứa mã đó.
+  if (!maSpKey) return null;
+  let bestQty: number | null = null;
+  let bestOrderLen = -1;
+  for (const [key, qty] of qtyByLenhAndSp) {
+    const sep = key.lastIndexOf('|');
+    if (sep <= 0) continue;
+    const orderKey = key.slice(0, sep);
+    const spKey = key.slice(sep + 1);
+    if (spKey !== maSpKey) continue;
+    if (orderKey === lenhKey) continue;
+    if (!lenhSxTokenSetsOverlap(orderKey, lenhKey)) continue;
+    // Ưu tiên lệnh ghép dài hơn (cụ thể hơn) khi nhiều dòng khớp.
+    if (orderKey.length > bestOrderLen) {
+      bestOrderLen = orderKey.length;
+      bestQty = qty;
+    }
+  }
+  return bestQty;
 }
 
 /** Máy: metadata.machine / SOURCE_MACHINE, hoặc cột may/machine. */

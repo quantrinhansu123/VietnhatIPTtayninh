@@ -12,9 +12,11 @@ Snapshot **riêng** cho tab tồn đầu ca trên báo cáo BB.
 
 **Không** dùng / ghi đè [`bao_cao_may_nvl_ton`](./bao_cao_may_nvl_ton.md) (phiếu nguồn trên `/bao-cao-may-nvl-ton`).
 
+Nguồn kg = phiếu tồn đầu ca (`sumMachineNvlDauCaLineTotal`: máy + bồn + chưa trộn + ngoài). Tab hiển thị **đúng từng mã trên phiếu** — không map BOM, không chia NNS-TRON. Cột tỉ lệ ĐM chỉ tham chiếu. ĐVT Lít/Cái/Cuộn → «NVL còn lại».
+
 Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh` với `bb_bao_cao_tinh_toan`, `bc_lsx`, `du_lieu_xuat_kho`).
 
-1 dòng = 1 NVL trong `materialLines` của 1 lệnh (UI sổ xuống).
+1 dòng = 1 NVL trên phiếu tồn đầu (UI sổ xuống).
 
 ## Cột chính
 

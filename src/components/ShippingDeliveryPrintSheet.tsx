@@ -361,7 +361,7 @@ export function ShippingDeliveryPrintSheet({
             <div className="bb-gx-general-note-head">GHI CHÚ CHUNG</div>
             <div className="bb-gx-general-note-body">
               <div className="bb-gx-general-note-fixed">
-                Số lượng hàng thực tế và tem lột phải khớp nhau. Vui lòng kiểm tra trước khi giao.
+                Số lượng hàng thực xuất và tem lột phải khớp nhau. Vui lòng kiểm tra trước khi giao.
               </div>
               {noteText ? <div className="bb-gx-general-note-extra">{noteText}</div> : null}
               <div className="bb-gx-general-note-blank-lines" aria-hidden>

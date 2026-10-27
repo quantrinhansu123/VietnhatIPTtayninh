@@ -7,7 +7,6 @@ import {
   resolveCanTuDongBusinessDate,
   resolveCanTuDongMachine,
   resolveCanTuDongProductionOrder,
-  lookupLsxQty,
   resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
   resolveCanTuDongNhuaThucTeKg,
@@ -55,8 +54,6 @@ export type CanTuDongExcelExportOptions = {
   productCoreWeightByCode?: Map<string, number>;
   productPlasticWeightByCode?: Map<string, number>;
   productFilmWeightByCode?: Map<string, number>;
-  /** `MA_LENH|MA_SP` → so_luong dòng lệnh SX. */
-  lsxQtyByLenhAndSp?: Map<string, number>;
 };
 
 /** Xuất các dòng đang lọc trên `/can-tu-dong` ra file Excel. */
@@ -71,13 +68,11 @@ export function downloadCanTuDongExcel(
   const productPlasticWeightByCode =
     options.productPlasticWeightByCode ?? new Map<string, number>();
   const productFilmWeightByCode = options.productFilmWeightByCode ?? new Map<string, number>();
-  const lsxQtyByLenhAndSp = options.lsxQtyByLenhAndSp ?? new Map<string, number>();
   const data = records.map((row, index) => {
     const qr = String(row.qr_code ?? '').trim();
     const maSp = parseCanTuDongQrProductCode(qr) || qr;
     const nameKey = normalizeProductCodeKey(maSp);
     const lenhSx = resolveCanTuDongProductionOrder(row) || '';
-    const lsxQty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
     const unit = String(row.unit ?? 'kg').trim() || 'kg';
     const standardKg = nameKey ? productStandardWeightByCode.get(nameKey) : undefined;
     const coreKg = nameKey ? productCoreWeightByCode.get(nameKey) : undefined;
@@ -104,11 +99,10 @@ export function downloadCanTuDongExcel(
       Ca: String(row.ca ?? '').trim(),
       Máy: resolveCanTuDongMachine(row) || '',
       'Lệnh SX': lenhSx,
-      'Số lượng trong LSX': lsxQty != null ? lsxQty : '',
       'Mã QR': qr,
       'Mã SP': maSp,
       'Tên SP': nameKey ? productNameByCode.get(nameKey) || '' : '',
-      'Cân sản phẩm (kg)': roundKg(canSpKg),
+      'Trọng lượng TT (kg)': roundKg(canSpKg),
       'Trọng lượng tiêu chuẩn (kg)': standardOk ? roundKg(standardKg as number) : '',
       'Nhựa thực tế (kg)': roundKg(nhuaThucTe),
       'Nhựa định mức (kg)': roundKg(nhuaDinhMuc),
@@ -133,7 +127,6 @@ export function downloadCanTuDongExcel(
     { wch: 10 },
     { wch: 14 },
     { wch: 14 },
-    { wch: 18 },
     { wch: 28 },
     { wch: 14 },
     { wch: 28 },

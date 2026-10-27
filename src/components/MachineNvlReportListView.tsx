@@ -32,6 +32,7 @@ import {
   type ShiftSetting
 } from '../utils/shiftSettings';
 import { formatWeighingWeightField } from '../utils/weighingRecords';
+import { mapMaterialToWeightCatalogItem, type WarehouseWeightCatalogItem } from '../utils/warehouseWeight';
 import {
   FilterCombobox,
   TableToolbar,
@@ -55,14 +56,18 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function reportTotal(report: MachineNvlSavedReport) {
+function reportTotal(report: MachineNvlSavedReport, catalog?: WarehouseWeightCatalogItem[] | null) {
   return report.reportKind === 'dau_ca'
-    ? sumMachineNvlDauCaReportTotal(report)
-    : sumMachineNvlCuoiCaReportTotal(report);
+    ? sumMachineNvlDauCaReportTotal(report, catalog)
+    : sumMachineNvlCuoiCaReportTotal(report, catalog);
 }
 
-function lineQtyTotal(line: MachineNvlSavedLine, isDauCa: boolean) {
-  return isDauCa ? sumMachineNvlDauCaLineTotal(line) : sumMachineNvlCuoiCaLineTotal(line);
+function lineQtyTotal(
+  line: MachineNvlSavedLine,
+  isDauCa: boolean,
+  catalog?: WarehouseWeightCatalogItem[] | null
+) {
+  return isDauCa ? sumMachineNvlDauCaLineTotal(line, catalog) : sumMachineNvlCuoiCaLineTotal(line, catalog);
 }
 
 function materialTypeLabel(value: MachineNvlSavedLine['loaiVatTu']) {
@@ -84,8 +89,31 @@ function formatMachineNvlDiscrepancyTooltip(discrepancy: MachineNvlDiscrepancy) 
   return [header, ...lines].join('\n');
 }
 
-function sumLinesKg(lines: MachineNvlSavedLine[], isDauCa: boolean) {
-  return lines.reduce((sum, line) => sum + lineQtyTotal(line, isDauCa), 0);
+function sumLinesKg(
+  lines: MachineNvlSavedLine[],
+  isDauCa: boolean,
+  catalog?: WarehouseWeightCatalogItem[] | null
+) {
+  return lines.reduce((sum, line) => sum + lineQtyTotal(line, isDauCa, catalog), 0);
+}
+
+function khoNvlLightToWeightCatalog(data: unknown): WarehouseWeightCatalogItem[] {
+  const materials = (data as { materials?: unknown })?.materials;
+  if (!Array.isArray(materials)) return [];
+  return materials
+    .map(item => {
+      const row = item as Record<string, unknown>;
+      return mapMaterialToWeightCatalogItem({
+        code: String(row.ma_npl ?? row.code ?? ''),
+        name: String(row.ten_npl ?? row.name ?? ''),
+        unit: String(row.don_vi ?? row.unit ?? ''),
+        totalWeight: row.tong_trong_luong == null || row.tong_trong_luong === '' ? '' : String(row.tong_trong_luong),
+        bagWeight: row.trong_luong_tui == null ? '' : String(row.trong_luong_tui),
+        coreWeight: row.trong_luong_loi == null ? '' : String(row.trong_luong_loi),
+        plasticWeight: row.trong_luong_nhua == null ? '' : String(row.trong_luong_nhua)
+      });
+    })
+    .filter(item => item.code.trim());
 }
 
 function MachineNvlDetailLinesTable({
@@ -94,7 +122,8 @@ function MachineNvlDetailLinesTable({
   headerClass,
   lines,
   isDauCa,
-  emptyLabel
+  emptyLabel,
+  weightCatalog
 }: {
   title: string;
   accentClass: string;
@@ -102,15 +131,16 @@ function MachineNvlDetailLinesTable({
   lines: MachineNvlSavedLine[];
   isDauCa: boolean;
   emptyLabel: string;
+  weightCatalog?: WarehouseWeightCatalogItem[] | null;
 }) {
-  const totalKg = sumLinesKg(lines, isDauCa);
+  const totalKg = sumLinesKg(lines, isDauCa, weightCatalog);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200">
       <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${accentClass}`}>
         <p className="text-[10px] font-black uppercase tracking-wider">{title}</p>
         <p className="font-mono text-[11px] font-black">
-          {lines.length} dòng · {formatNumber(totalKg, 3)} kg
+          {lines.length} dòng · {formatNumber(totalKg, 6)} kg
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -151,7 +181,7 @@ function MachineNvlDetailLinesTable({
                   <td className="px-2.5 py-2 text-right font-mono text-zinc-700">{formatQty(line.soLuongTonNgoai)}</td>
                   <td className="px-2.5 py-2 text-right font-mono font-bold text-zinc-800">{formatQty(line.soLuongTon)}</td>
                   <td className="px-2.5 py-2 text-right font-mono font-black text-emerald-800">
-                    {formatNumber(lineQtyTotal(line, isDauCa), 3)}
+                    {formatNumber(lineQtyTotal(line, isDauCa, weightCatalog), 6)}
                   </td>
                 </tr>
               ))
@@ -167,7 +197,7 @@ function MachineNvlDetailLinesTable({
                   <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0">
                     <span>Tổng {title.toLowerCase()}</span>
                     <span className="whitespace-nowrap font-mono text-sm font-black text-emerald-800">
-                      {formatNumber(totalKg, 3)} kg
+                      {formatNumber(totalKg, 6)} kg
                     </span>
                   </span>
                 </td>
@@ -186,7 +216,8 @@ function MachineNvlReportDetailModal({
   onEdit,
   onPrint,
   canEdit = false,
-  discrepancy = null
+  discrepancy = null,
+  weightCatalog = null
 }: {
   report: MachineNvlSavedReport;
   onClose: () => void;
@@ -194,9 +225,10 @@ function MachineNvlReportDetailModal({
   onPrint: (report: MachineNvlSavedReport) => void;
   canEdit?: boolean;
   discrepancy?: MachineNvlDiscrepancy | null;
+  weightCatalog?: WarehouseWeightCatalogItem[] | null;
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
-  const totalKg = reportTotal(report);
+  const totalKg = reportTotal(report, weightCatalog);
   const { nvlTron, vatTuKhac } = useMemo(
     () => splitMachineNvlLinesByMaterialGroup(report.lines),
     [report.lines]
@@ -254,7 +286,7 @@ function MachineNvlReportDetailModal({
           <div className="inline-flex min-w-0 items-baseline gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50/70 px-2.5 py-1.5">
             <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng (kg)</span>
             <span className="whitespace-nowrap font-mono text-sm font-black text-emerald-800">
-              {formatNumber(totalKg, 3)}
+              {formatNumber(totalKg, 6)}
             </span>
           </div>
         </div>
@@ -289,6 +321,7 @@ function MachineNvlReportDetailModal({
               lines={nvlTron}
               isDauCa={isDauCa}
               emptyLabel="Không có vật tư trộn (nhựa)."
+              weightCatalog={weightCatalog}
             />
             <MachineNvlDetailLinesTable
               title="Vật tư không trộn"
@@ -297,16 +330,17 @@ function MachineNvlReportDetailModal({
               lines={vatTuKhac}
               isDauCa={isDauCa}
               emptyLabel="Không có vật tư không trộn (màng / lõi / bao bì)."
+              weightCatalog={weightCatalog}
             />
           </div>
 
           {report.lines.length > 0 ? (
             <p className="mt-3 text-right text-[11px] font-semibold text-zinc-500">
               Tổng cộng:{' '}
-              <span className="font-mono font-black text-emerald-800">{formatNumber(totalKg, 3)} kg</span>
+              <span className="font-mono font-black text-emerald-800">{formatNumber(totalKg, 6)} kg</span>
               <span className="ml-2 text-zinc-400">
-                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa), 3)} + không trộn{' '}
-                {formatNumber(sumLinesKg(vatTuKhac, isDauCa), 3)})
+                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa, weightCatalog), 6)} + không trộn{' '}
+                {formatNumber(sumLinesKg(vatTuKhac, isDauCa, weightCatalog), 6)})
               </span>
             </p>
           ) : null}
@@ -368,7 +402,8 @@ function MachineNvlSection({
   bulkDeleting,
   canEdit = false,
   canDelete = false,
-  discrepancies
+  discrepancies,
+  weightCatalog = null
 }: {
   kind: MachineNvlReportKind;
   title: string;
@@ -389,6 +424,7 @@ function MachineNvlSection({
   canEdit?: boolean;
   canDelete?: boolean;
   discrepancies?: Map<string, MachineNvlDiscrepancy>;
+  weightCatalog?: WarehouseWeightCatalogItem[] | null;
 }) {
   const reportIds = useMemo(
     () =>
@@ -455,7 +491,7 @@ function MachineNvlSection({
                   machineGroup.reports.map(report => ({ shiftGroup, machineGroup, report }))
                 )
               );
-              const dateTotal = dateRows.reduce((sum, { report }) => sum + reportTotal(report), 0);
+              const dateTotal = dateRows.reduce((sum, { report }) => sum + reportTotal(report, weightCatalog), 0);
               const dateDiscrepancyCount = discrepancies
                 ? dateRows.filter(({ report }) => discrepancies.has(report.id)).length
                 : 0;
@@ -478,7 +514,7 @@ function MachineNvlSection({
                     </div>
                     <div className="text-right">
                       <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Tổng ngày</p>
-                      <p className="font-mono text-sm font-black text-emerald-800">{formatNumber(dateTotal, 3)} kg</p>
+                      <p className="font-mono text-sm font-black text-emerald-800">{formatNumber(dateTotal, 6)} kg</p>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -541,7 +577,7 @@ function MachineNvlSection({
                             <td className="px-3 py-2.5 text-right font-mono font-bold text-zinc-700">{report.lines.length}</td>
                             <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
                               <div className="flex items-center justify-end gap-1.5">
-                                <span>{formatNumber(reportTotal(report), 3)}</span>
+                                <span>{formatNumber(reportTotal(report, weightCatalog), 6)}</span>
                                 {discrepancy ? (
                                   <span
                                     title={formatMachineNvlDiscrepancyTooltip(discrepancy)}
@@ -669,6 +705,7 @@ export default function MachineNvlReportListView({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [viewingReport, setViewingReport] = useState<MachineNvlSavedReport | null>(null);
   const [listTab, setListTab] = useState<MachineNvlReportKind>('dau_ca');
+  const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
@@ -770,10 +807,17 @@ export default function MachineNvlReportListView({
       setIsLoading(true);
       setError('');
       try {
-        const [settingsRes] = await Promise.all([fetch('/api/cai-dat')]);
+        const [settingsRes, catalogRes] = await Promise.all([
+          fetch('/api/cai-dat'),
+          fetch('/api/kho-nvl?light=1')
+        ]);
         const settingsData = await settingsRes.json().catch(() => ({}));
+        const catalogData = await catalogRes.json().catch(() => ({}));
         if (!cancelled && settingsRes.ok) {
           setShiftSettings(normalizeShiftSettings(settingsData));
+        }
+        if (!cancelled && catalogRes.ok) {
+          setWeightCatalog(khoNvlLightToWeightCatalog(catalogData));
         }
         await loadReports(filterFromDate, filterToDate);
         setSelectedDauCaIds(new Set());
@@ -916,7 +960,7 @@ export default function MachineNvlReportListView({
         body: JSON.stringify({ id: report.id })
       }).catch(() => {});
     }
-    setPrintReport(savedReportToMachineNvlPrintReport(report));
+    setPrintReport(savedReportToMachineNvlPrintReport(report, weightCatalog));
     setPendingPrint(true);
   };
 
@@ -1096,6 +1140,7 @@ export default function MachineNvlReportListView({
           canEdit={canEdit}
           canDelete={canDelete}
           discrepancies={dauCaDiscrepancies}
+          weightCatalog={weightCatalog}
         />
       ) : (
         <MachineNvlSection
@@ -1117,6 +1162,7 @@ export default function MachineNvlReportListView({
           bulkDeleting={bulkDeleting}
           canEdit={canEdit}
           canDelete={canDelete}
+          weightCatalog={weightCatalog}
         />
       )}
 
@@ -1127,6 +1173,7 @@ export default function MachineNvlReportListView({
           onEdit={onEdit}
           onPrint={handlePrint}
           canEdit={canEdit}
+          weightCatalog={weightCatalog}
           discrepancy={
             viewingReport.reportKind === 'dau_ca' ? dauCaDiscrepancies.get(viewingReport.id) ?? null : null
           }

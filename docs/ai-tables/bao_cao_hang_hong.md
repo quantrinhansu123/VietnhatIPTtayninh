@@ -13,4 +13,4 @@ Cấu trúc giống phiếu cân ca.
 
 **Form dòng (từ 2026-08):** không còn 5 ô kg cố định — dùng **Trạng thái vật tư** (sổ xuống) + **Đơn vị** + **Số lượng**. Khi ĐVT = kg vẫn ghi vào cột kg tương ứng để báo cáo BB.
 
-**Tổng hợp trên `/danh-sach-bao-cao-hang-hong`:** ngoài phiếu `bao_cao_hang_hong`, danh sách gộp thêm dòng **Hàng lỗi hỏng nhập kho** từ Báo cáo sản lượng (`bao_cao_nghiem_thu`, `loai_vat_tu` = SP lỗi / SP rác) theo ngày·ca·máy. Dòng tổng hợp (id `sl-hh-…`) chỉ xem/in — sửa/xóa tại `/danh-sach-bao-cao-san-luong`.
+**`/danh-sach-bao-cao-hang-hong` và tab Báo cáo lỗi hỏng (BB):** **chỉ** lấy dòng **Hàng lỗi hỏng** trên Báo cáo sản lượng (`bao_cao_nghiem_thu`, `loai_vat_tu` = SP lỗi / SP rác). Không gộp phiếu `bao_cao_hang_hong` nhập tay, không lấy Thành phẩm chỉ vì mã thuộc Kho hàng hỏng. Dòng tổng hợp (id `sl-hh-…`) chỉ xem/in — sửa/xóa tại `/danh-sach-bao-cao-san-luong`.

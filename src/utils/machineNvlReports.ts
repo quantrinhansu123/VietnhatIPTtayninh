@@ -1,4 +1,5 @@
 import { normalizeProductCodeKey } from '../features/san-pham/types';
+import { findMaterialTongKgPerUnit, type WarehouseWeightCatalogItem } from './warehouseWeight';
 
 export type MachineNvlReportKind = 'dau_ca' | 'cuoi_ca';
 
@@ -224,6 +225,21 @@ export function resolveMachineNvlLineKgFactor(
   return Number.isFinite(factor as number) && (factor as number) > 0 ? (factor as number) : null;
 }
 
+/**
+ * ĐVT khác kg: ưu tiên Tổng kg kho NVL (đủ số lẻ).
+ * Hệ số lưu trên phiếu bị làm tròn 3 số khi lưu cũ (0,000844 → 0,001) nên tab lệch phiếu.
+ */
+export function resolveMachineNvlLineKgFactorWithCatalog(
+  line: Pick<MachineNvlSavedLine, 'donVi' | 'maNvl' | 'trongLuongQuyDoiKg'>,
+  catalog?: WarehouseWeightCatalogItem[] | null
+): number | null {
+  if (!isKgUnit(line.donVi) && catalog && catalog.length > 0) {
+    const fromCatalog = findMaterialTongKgPerUnit(line.maNvl, catalog);
+    if (fromCatalog !== null && fromCatalog > 0) return fromCatalog;
+  }
+  return resolveMachineNvlLineKgFactor(line);
+}
+
 export function machineNvlQtyToKg(
   qty: number | null | undefined,
   line: Pick<MachineNvlSavedLine, 'donVi' | 'trongLuongQuyDoiKg'>
@@ -248,9 +264,10 @@ export function sumMachineNvlDauCaLineTotal(
     | 'soLuongTrongBonTron'
     | 'soLuongNlChuaTron'
     | 'soLuongTonNgoai'
-  >
+  >,
+  catalog?: WarehouseWeightCatalogItem[] | null
 ) {
-  let factor = resolveMachineNvlLineKgFactor(line);
+  let factor = resolveMachineNvlLineKgFactorWithCatalog(line, catalog);
   const hay = `${line.maNvl || ''} ${line.tenNvl || ''}`
     .trim()
     .toLowerCase()
@@ -287,9 +304,12 @@ export function sumMachineNvlDauCaLineTotal(
 }
 
 /** Tổng tồn đầu ca của 1 báo cáo = tổng SL tồn các dòng (trong máy + bồn trộn + NL chưa trộn). */
-export function sumMachineNvlDauCaReportTotal(report: Pick<MachineNvlSavedReport, 'reportKind' | 'total' | 'lines'>) {
+export function sumMachineNvlDauCaReportTotal(
+  report: Pick<MachineNvlSavedReport, 'reportKind' | 'total' | 'lines'>,
+  catalog?: WarehouseWeightCatalogItem[] | null
+) {
   if (report.reportKind !== 'dau_ca') return 0;
-  const fromLines = report.lines.reduce((sum, line) => sum + sumMachineNvlDauCaLineTotal(line), 0);
+  const fromLines = report.lines.reduce((sum, line) => sum + sumMachineNvlDauCaLineTotal(line, catalog), 0);
   if (fromLines > 0) return fromLines;
   return report.total > 0 ? report.total : 0;
 }
@@ -298,10 +318,20 @@ export function sumMachineNvlDauCaReportTotal(report: Pick<MachineNvlSavedReport
 export function sumMachineNvlCuoiCaLineTotal(
   line: Pick<
     MachineNvlSavedLine,
-    'donVi' | 'trongLuongQuyDoiKg' | 'soLuongTon' | 'loaiVatTu' | 'maNvl' | 'tenNvl' | 'soLuongTrongMay' | 'soLuongTrongBonTron' | 'soLuongNlChuaTron'
-  >
+    | 'donVi'
+    | 'trongLuongQuyDoiKg'
+    | 'soLuongTon'
+    | 'loaiVatTu'
+    | 'maNvl'
+    | 'tenNvl'
+    | 'soLuongTrongMay'
+    | 'soLuongTrongBonTron'
+    | 'soLuongNlChuaTron'
+    | 'soLuongTonNgoai'
+  >,
+  catalog?: WarehouseWeightCatalogItem[] | null
 ) {
-  let factor = resolveMachineNvlLineKgFactor(line);
+  let factor = resolveMachineNvlLineKgFactorWithCatalog(line, catalog);
   const hay = `${line.maNvl || ''} ${line.tenNvl || ''}`
     .trim()
     .toLowerCase()
@@ -319,16 +349,22 @@ export function sumMachineNvlCuoiCaLineTotal(
   if ((factor === null || factor <= 0) && (isLoi || isBaoBi)) factor = 1;
   if (factor === null || factor <= 0) return 0;
   const componentQty =
-    (line.soLuongTrongMay ?? 0) + (line.soLuongTrongBonTron ?? 0) + (line.soLuongNlChuaTron ?? 0);
+    (line.soLuongTrongMay ?? 0) +
+    (line.soLuongTrongBonTron ?? 0) +
+    (line.soLuongNlChuaTron ?? 0) +
+    (line.soLuongTonNgoai ?? 0);
   const base =
     Number.isFinite(line.soLuongTon) && line.soLuongTon > 0 ? line.soLuongTon : componentQty;
   return base > 0 ? base * factor : 0;
 }
 
 /** Tổng tồn cuối ca của 1 báo cáo = tổng SL tồn các dòng. */
-export function sumMachineNvlCuoiCaReportTotal(report: Pick<MachineNvlSavedReport, 'reportKind' | 'total' | 'lines'>) {
+export function sumMachineNvlCuoiCaReportTotal(
+  report: Pick<MachineNvlSavedReport, 'reportKind' | 'total' | 'lines'>,
+  catalog?: WarehouseWeightCatalogItem[] | null
+) {
   if (report.reportKind !== 'cuoi_ca') return 0;
-  const fromLines = report.lines.reduce((sum, line) => sum + sumMachineNvlCuoiCaLineTotal(line), 0);
+  const fromLines = report.lines.reduce((sum, line) => sum + sumMachineNvlCuoiCaLineTotal(line, catalog), 0);
   if (fromLines > 0) return fromLines;
   return report.total > 0 ? report.total : 0;
 }

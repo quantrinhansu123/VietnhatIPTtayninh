@@ -410,6 +410,20 @@ function generateNextShippingCode(existingCodes: Iterable<string>) {
   return `LXH${String(next).padStart(width, '0')}`;
 }
 
+async function fetchNextShippingCode(fallbackCodes: Iterable<string> = []) {
+  try {
+    const res = await fetch('/api/lenh-xuat-hang/next-ma-lenh');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const code = String((data as { ma_lenh?: string }).ma_lenh || '').trim().toUpperCase();
+      if (/^LXH\d+$/.test(code)) return code;
+    }
+  } catch {
+    /* fallback local */
+  }
+  return generateNextShippingCode(fallbackCodes);
+}
+
 function emptyForm(code = '', staffName = ''): ShippingOrderFormState {
   const khach = [createCustomerGroup({ nhan_vien: staffName })];
   return {
@@ -718,10 +732,11 @@ export function ShippingOrdersPanel({
     return () => window.removeEventListener('afterprint', handleAfterPrint);
   }, []);
 
-  const openCreate = () => {
+  const openCreate = async () => {
     if (!canCreate) return;
     setEditingId(null);
-    setForm(emptyForm(generateNextShippingCode(orders.map(order => order.ma_lenh)), currentUser?.name || ''));
+    const nextCode = await fetchNextShippingCode(orders.map(order => order.ma_lenh));
+    setForm(emptyForm(nextCode, currentUser?.name || ''));
     setFormOpen(true);
     setError('');
   };
@@ -941,7 +956,7 @@ export function ShippingOrdersPanel({
       const codes = [...new Set(groups.map(group => group.ma_khach_hang.trim()).filter(Boolean))];
       const payload = {
         ...form,
-        ma_lenh: form.ma_lenh.trim() || generateNextShippingCode(orders.map(order => order.ma_lenh)),
+        ma_lenh: (form.ma_lenh.trim() || (await fetchNextShippingCode(orders.map(order => order.ma_lenh)))).toUpperCase(),
         ma_khach_hang: codes.join(', '),
         ten_khach_hang: names.join(', '),
         dia_chi_giao: groups.map(group => group.dia_chi_giao.trim()).filter(Boolean).join('\n'),
@@ -1032,11 +1047,11 @@ export function ShippingOrdersPanel({
       setError(showSaveFailure('Lệnh này chưa đủ dữ liệu để sao chép.'));
       return;
     }
-    const nextCode = generateNextShippingCode(orders.map(item => item.ma_lenh));
     const rowKey = order.id || order.ma_lenh;
     setCopyingId(rowKey);
     setError('');
     try {
+      const nextCode = await fetchNextShippingCode(orders.map(item => item.ma_lenh));
       const payload = {
         ma_lenh: nextCode,
         ngay_xuat: order.ngay_xuat,
@@ -1556,7 +1571,18 @@ export function ShippingOrdersPanel({
               <div className="shrink-0 grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Mã lệnh</span>
-                  <input value={form.ma_lenh} readOnly className={`${compactFieldClass} bg-slate-50`} />
+                  <input
+                    value={form.ma_lenh}
+                    onChange={event =>
+                      setForm(prev => ({ ...prev, ma_lenh: event.target.value.toUpperCase() }))
+                    }
+                    placeholder="LXH001"
+                    className={`${compactFieldClass} font-mono`}
+                    title="Có thể sửa; phải liền mạch (max+1), không chèn số vào giữa dãy"
+                  />
+                  <span className="block text-[10px] font-semibold text-slate-400">
+                    Liền mạch theo ngày — chỉ dùng số kế tiếp, không chèn lệnh vào giữa
+                  </span>
                 </label>
                 <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ngày xuất *</span>

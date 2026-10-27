@@ -232,6 +232,7 @@ export function buildBbMachineReportSnapshot(input: {
     productionOrders: input.productionOrders,
     machineNvlReports: input.machineNvlReports,
     machines: input.machines,
+    materials: input.materials,
     shiftSettings: input.shiftSettings,
     ...filter
   });
@@ -245,6 +246,7 @@ export function buildBbMachineReportSnapshot(input: {
     productionOrders: input.productionOrders,
     machineNvlReports: input.machineNvlReports,
     machines: input.machines,
+    materials: input.materials,
     shiftSettings: input.shiftSettings,
     ...filter
   });
@@ -503,11 +505,16 @@ export function buildBbMachineReportSnapshot(input: {
   const damagedWeightByKind = resolveBbLoiHongCardWeightByKind({
     damagedGroups,
     damagedRows,
-    damagedRecords: input.damagedRecords,
     acceptanceReports: input.acceptanceReports,
     materials: input.materials,
     shiftSettings: input.shiftSettings,
-    isInsulationMachine
+    isInsulationMachine,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    shiftFilter: input.shiftFilter,
+    machineFilter: input.machineFilter,
+    selectedMachine: input.selectedMachine,
+    includeAllMachines: input.includeAllMachines
   });
   const exportWeightByKind = sumBbWarehouseExportWeightKgByKind(exportRows);
 

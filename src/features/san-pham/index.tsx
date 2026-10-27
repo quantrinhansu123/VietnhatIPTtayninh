@@ -1177,9 +1177,9 @@ export function ProductViewModal({
           const warehouse =
             product.warehouse && product.warehouse !== '-' ? String(product.warehouse).trim() : '';
 
-          // Tồn đầu ưu tiên Bảng tổng hợp Kiểm kho; không có thì lấy san_pham.ton_dau_ky.
+          // Tồn cuối ca = Tổng SL Bảng tổng hợp Kiểm kho (đã bỏ tồn đầu kỳ danh mục).
           let best: {
-            ton_dau_ky: number;
+            ton_cuoi_ca: number;
             chot_luc: string;
             dot_kiem_kho: string;
             confirmed: boolean;
@@ -1193,7 +1193,7 @@ export function ProductViewModal({
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-              throw new Error(data.error || 'Không thể tải tồn đầu từ kiểm kho.');
+              throw new Error(data.error || 'Không thể tải tồn cuối ca từ kiểm kho.');
             }
             // API trả null khi chưa có đợt — Number(null)===0 nên phải chặn source=empty / thiếu số.
             const rawQty = data.ton_dau_ky ?? data.tong_so_luong;
@@ -1202,7 +1202,7 @@ export function ProductViewModal({
             const qty = Number(rawQty);
             if (!Number.isFinite(qty)) continue;
             best = {
-              ton_dau_ky: qty,
+              ton_cuoi_ca: qty,
               chot_luc: String(data.chot_luc ?? '').trim(),
               dot_kiem_kho: String(data.dot_kiem_kho ?? '').trim(),
               confirmed: Boolean(data.confirmed)
@@ -1211,7 +1211,7 @@ export function ProductViewModal({
           }
 
           if (best) {
-            opening = best.ton_dau_ky;
+            opening = best.ton_cuoi_ca;
             chotAt = best.chot_luc;
             dot = best.dot_kiem_kho;
             confirmed = best.confirmed;
@@ -1219,14 +1219,7 @@ export function ProductViewModal({
         }
       } catch (error: any) {
         if (error?.name === 'AbortError') return;
-        openingError = error?.message || 'Không thể tải tồn đầu từ kiểm kho.';
-      }
-
-      if (opening === null) {
-        const catalogOpening = Number(String(product.openingStock ?? '').trim().replace(',', '.'));
-        if (Number.isFinite(catalogOpening)) {
-          opening = catalogOpening;
-        }
+        openingError = error?.message || 'Không thể tải tồn cuối ca từ kiểm kho.';
       }
 
       let inbound = 0;
@@ -1277,7 +1270,8 @@ export function ProductViewModal({
         return;
       }
 
-      const closing = opening !== null ? opening + inbound - outbound : null;
+      // Tồn cuối ca chỉ hiển thị — không tham gia Tồn cuối kỳ (= Nhập − Xuất).
+      const closing = inbound - outbound;
       setStockFromKiem({
         opening,
         inbound,
@@ -1292,7 +1286,7 @@ export function ProductViewModal({
     })();
 
     return () => controller.abort();
-  }, [product.amisCode, product.code, product.id, product.newCode, product.openingStock, product.warehouse, tab]);
+  }, [product.amisCode, product.code, product.id, product.newCode, product.warehouse, tab]);
 
   useEffect(() => {
     setSelectedDetailCodeIds(new Set());
@@ -1673,15 +1667,15 @@ export function ProductViewModal({
     ['Nguồn gốc', product.origin]
   ] as [string, string][]).filter(([, value]) => value && value !== '-');
 
-  // Tồn đầu kỳ ← Kiểm kho (fallback san_pham.ton_dau_ky); Nhập/Xuất ← phiếu kho.
+  // Tồn cuối ca ← Kiểm kho (chỉ hiển thị); Tồn cuối kỳ = Nhập − Xuất (không cộng tồn cuối ca).
   const openingStockNum = stockFromKiem.opening;
   const inboundNum = stockFromKiem.inbound;
   const outboundNum = stockFromKiem.outbound;
   const closingStockNum =
     stockFromKiem.closing !== null
       ? stockFromKiem.closing
-      : openingStockNum !== null && inboundNum !== null && outboundNum !== null
-        ? openingStockNum + inboundNum - outboundNum
+      : inboundNum !== null && outboundNum !== null
+        ? inboundNum - outboundNum
         : null;
 
   const formatStockCell = (value: number | null) => {
@@ -1720,10 +1714,7 @@ export function ProductViewModal({
           tab === 'nhap-kho' && prev.inbound !== null ? Math.max(0, prev.inbound - delta) : prev.inbound;
         const outbound =
           tab === 'xuat-kho' && prev.outbound !== null ? Math.max(0, prev.outbound - delta) : prev.outbound;
-        const closing =
-          prev.opening !== null && inbound !== null && outbound !== null
-            ? prev.opening + inbound - outbound
-            : prev.closing;
+        const closing = inbound !== null && outbound !== null ? inbound - outbound : prev.closing;
         return { ...prev, inbound, outbound, closing };
       });
       showAppToast('Đã xóa dòng phiếu.', 'success');
@@ -1739,14 +1730,14 @@ export function ProductViewModal({
     if (stockFromKiemError) return stockFromKiemError;
     const parts: string[] = [];
     if (stockFromKiem.opening === null) {
-      parts.push('Chưa có tồn đầu (kiểm kho / danh mục)');
-    } else if (stockFromKiem.chotAt || stockFromKiem.dot || stockFromKiem.confirmed) {
+      parts.push('Chưa có tồn cuối ca (Bảng tổng hợp Kiểm kho)');
+    } else {
       const chotLabel = stockFromKiem.chotAt
         ? new Date(stockFromKiem.chotAt).toLocaleString('vi-VN')
         : '';
       parts.push(
         [
-          'Tồn đầu = Tổng SL Bảng tổng hợp Kiểm kho',
+          'Tồn cuối ca = Tổng SL Bảng tổng hợp Kiểm kho',
           stockFromKiem.confirmed ? 'đã chốt' : 'chưa chốt',
           stockFromKiem.dot ? `đợt ${stockFromKiem.dot}` : '',
           chotLabel ? `· ${chotLabel}` : ''
@@ -1754,11 +1745,11 @@ export function ProductViewModal({
           .filter(Boolean)
           .join(' ')
       );
-    } else {
-      parts.push('Tồn đầu = Tồn đầu kỳ trên danh mục sản phẩm');
     }
     parts.push('Nhập/Xuất = tổng SL tab Nhập kho / Xuất kho');
-    parts.push('Bấm số Tồn đầu / Nhập / Xuất để xem chi tiết');
+    parts.push('Tồn cuối ca chỉ hiển thị — không tính vào Tồn cuối kỳ');
+    parts.push('Tồn cuối kỳ = Nhập − Xuất');
+    parts.push('Bấm số Tồn cuối ca / Nhập / Xuất để xem chi tiết');
     return parts.join(' · ');
   })();
 
@@ -1914,7 +1905,7 @@ export function ProductViewModal({
                     <thead>
                       <tr className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white">
                         <th className="whitespace-nowrap px-2 py-2 font-black">Mã SP</th>
-                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn đầu kỳ</th>
+                        <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn cuối ca</th>
                         <th className="whitespace-nowrap px-2 py-2 font-black text-right">Nhập trong kỳ</th>
                         <th className="whitespace-nowrap px-2 py-2 font-black text-right">Xuất trong kỳ</th>
                         <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn cuối kỳ</th>
@@ -1930,7 +1921,7 @@ export function ProductViewModal({
                             value={isLoadingStockFromKiem ? '…' : formatStockCell(openingStockNum)}
                             disabled={isLoadingStockFromKiem}
                             onClick={() => setTab('kiem-kho')}
-                            title="Xem chi tiết kiểm kho (tồn đầu kỳ)"
+                            title="Xem chi tiết kiểm kho (tồn cuối ca)"
                             className="font-bold text-zinc-900"
                           />
                         </td>
@@ -2404,7 +2395,7 @@ export function ProductViewModal({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-black text-zinc-950">Chi tiết kiểm kho — tồn đầu kỳ</p>
+                  <p className="text-sm font-black text-zinc-950">Chi tiết kiểm kho — tồn cuối ca</p>
                   <p className="mt-0.5 text-xs font-semibold text-zinc-500">
                     Mã SP {product.code}
                     {stockFromKiem.dot ? ` · đợt ${stockFromKiem.dot}` : ''}
@@ -2416,7 +2407,7 @@ export function ProductViewModal({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-black text-sky-900">
-                    Tồn đầu: {formatStockCell(openingStockNum)}
+                    Tồn cuối ca: {formatStockCell(openingStockNum)}
                     {product.unit && product.unit !== '-' ? ` ${product.unit}` : ''}
                   </span>
                   <button
@@ -2478,7 +2469,7 @@ export function ProductViewModal({
                   ) : null}
                   {!isLoadingKiemKho && kiemKhoRows.length === 0 ? (
                     <TableEmptyRow colSpan={9}>
-                      Chưa có dòng kiểm kho cho mã SP này. Tồn đầu lấy từ Bảng tổng hợp kiểm kho khi có đợt chốt.
+                      Chưa có dòng kiểm kho cho mã SP này. Tồn cuối ca lấy từ Bảng tổng hợp kiểm kho khi có đợt chốt.
                     </TableEmptyRow>
                   ) : null}
                 </TableBody>

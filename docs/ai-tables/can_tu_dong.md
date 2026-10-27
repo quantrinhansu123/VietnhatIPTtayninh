@@ -27,7 +27,7 @@
 | Chênh lệch nhựa (TT−ĐM) | (UI tính) | **Nhựa thực tế − Nhựa định mức** | +0,34 kg |
 | Phần trăm | (UI tính) | (Chênh lệch nhựa ÷ Nhựa thực tế) × 100% | +5,1% |
 | Nhựa tiêu chuẩn | (UI tổng) | Σ cột **Trọng lượng tiêu chuẩn** (`san_pham.tong_trong_luong` theo Mã SP) | |
-| Trọng lượng TT | (UI) | = cột **Cân sản phẩm**; tổng thanh trên = Σ Cân sản phẩm | |
+| Trọng lượng TT | (UI) | = `weight` / `can_san_pham`; tổng thanh trên = Σ cân sản phẩm. Bảng không còn cột **Cân sản phẩm** riêng | |
 | Lõi lý thuyết | (UI, từ `san_pham`) | `trong_luong_loi` khớp Mã SP từ QR; tổng thanh = **Tổng trọng lượng lõi lý thuyết** | 1,06 kg |
 | Tổng trọng lượng lõi | (UI tổng) | Σ cột **Cân lõi** (`tare_weight`) | |
 | Chênh lệch lõi | (UI tính) | **Cân lõi − Lõi lý thuyết** (cùng kiểu công thức Chênh lệch TT−LT) | +0,02 kg |
@@ -36,7 +36,7 @@
 | Ngày giờ | `captured_at` (UI) | Thời điểm cân thực tế — theo dõi khi nào ghi nhận | 20/08/2026, 14:32:05 |
 | Máy | `metadata.machine` / `SOURCE_MACHINE` (UI) | Máy sản xuất | Máy 01 |
 | Lệnh SX | `metadata.production_order` (UI) | `SOURCE_PRODUCTION_ORDER` trong `weight_raw` | LSX100 |
-| Số lượng trong LSX | (UI, từ `lenh_sx`) | `so_luong` dòng `san_pham` khớp **Lệnh SX + Mã SP**. Thanh tổng hợp xếp **3 dòng**: Thực tế · LSX/ĐM · Chênh lệch + % (Số lượng / Nhựa / Trọng lượng / Lõi / Màng). **Bên cạnh**: bảng **Mã SP · Số lượng** (SL thực tế / SL LSX / CL theo từng mã trong bộ lọc) | 109 |
+| Số lượng LSX | (thanh tổng, từ `lenh_sx`) | Không còn cột bảng. `so_luong` dòng `san_pham` khớp **Lệnh SX + Mã SP** (ưu tiên đúng mã; nếu phiếu ghi mã đơn mà danh mục là lệnh ghép chứa mã đó thì vẫn khớp token). Thanh tổng **3 dòng** + bảng phải **Mã SP · Số lượng** (SL / SL LSX / KL ĐM / KL TT / CL) | 109 |
 | Ảnh lõi | `core_image_*` | Ảnh chụp bước cân lõi | Cloudinary |
 | Ảnh sản phẩm | `product_image_*` | Ảnh chụp bước cân sản phẩm | Cloudinary |
 

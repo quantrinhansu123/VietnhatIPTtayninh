@@ -2236,17 +2236,21 @@ function vehicleWriteError(error: { code?: string; message?: string }, table: st
 }
 
 function shippingOrderWriteError(error: { code?: string; message?: string }, table: string) {
+  const message = String(error.message || '').trim();
+  if (/liền mạch|dạng LXH|Thiếu mã lệnh|đã tồn tại/i.test(message) && !isMissingTableError(error) && !isMissingColumnError(error)) {
+    return message;
+  }
   if (isMissingTableError(error)) {
     return `Bảng ${table} chưa tồn tại. Hãy chạy file supabase-lenh-xuat-hang.sql trong Supabase SQL Editor.`;
   }
   if (isMissingColumnError(error)) {
-    const detail = String(error.message || '').trim();
+    const detail = message;
     return `Bảng ${table} đang thiếu cột (thường là bsx / so_km). Hãy chạy file supabase-lenh-xuat-hang-bsx.sql trên đúng project he-thong (bfnsopyvgvhaegqijpum), rồi Settings → API → Reload schema. Chi tiết: ${detail}`.trim();
   }
   if (error.code === '23505') {
     return 'Mã lệnh xuất hàng đã tồn tại.';
   }
-  return `Không thể lưu lệnh xuất hàng vào ${table}. ${error.message || ''}`.trim();
+  return `Không thể lưu lệnh xuất hàng vào ${table}. ${message}`.trim();
 }
 
 const SHIPPING_ORDER_OPTIONAL_COLUMNS = ['bsx', 'so_km'] as const;
@@ -2278,43 +2282,110 @@ function stripShippingOrderOptionalColumns(
 }
 
 /** Cùng quy tắc với generateNextShippingCode ở màn lệnh xuất hàng: LXH + STT, lấy max rồi +1. */
-function nextShippingOrderCode(existingCodes: Iterable<string>) {
-  let max = 0;
-  for (const raw of existingCodes) {
-    const code = String(raw || '').trim().toUpperCase();
-    const match = code.match(/^LXH(\d+)$/);
-    if (!match) continue;
-    const num = Number(match[1]);
-    if (Number.isFinite(num) && num > max) max = num;
-  }
-  const next = max + 1;
+function parseShippingOrderStt(code: unknown): number | null {
+  const match = String(code ?? '')
+    .trim()
+    .toUpperCase()
+    .match(/^LXH(\d+)$/);
+  if (!match) return null;
+  const num = Number(match[1]);
+  return Number.isFinite(num) ? num : null;
+}
+
+function formatShippingOrderCode(stt: number) {
+  const next = Math.max(1, Math.trunc(stt));
   const width = Math.max(3, String(next).length);
   return `LXH${String(next).padStart(width, '0')}`;
 }
 
-async function listShippingOrderCodes() {
-  if (!supabase) return [] as string[];
-  const codes: string[] = [];
+function nextShippingOrderCode(existingCodes: Iterable<string>) {
+  let max = 0;
+  for (const raw of existingCodes) {
+    const num = parseShippingOrderStt(raw);
+    if (num != null && num > max) max = num;
+  }
+  return formatShippingOrderCode(max + 1);
+}
+
+async function listShippingOrderCodeRows() {
+  if (!supabase) return [] as Array<{ id: string; ma_lenh: string; ngay_xuat: string }>;
+  const rows: Array<{ id: string; ma_lenh: string; ngay_xuat: string }> = [];
   const pageSize = 1000;
   for (let from = 0; from < 50000; from += pageSize) {
     const { data, error } = await supabase
       .from(SUPABASE_SHIPPING_ORDERS_TABLE)
-      .select('ma_lenh')
+      .select('id, ma_lenh, ngay_xuat')
       .range(from, from + pageSize - 1);
     if (error) throw error;
-    const rows = data || [];
-    for (const row of rows) {
-      codes.push(String((row as { ma_lenh?: string }).ma_lenh || ''));
+    const batch = data || [];
+    for (const row of batch) {
+      rows.push({
+        id: String((row as { id?: unknown }).id ?? ''),
+        ma_lenh: String((row as { ma_lenh?: string }).ma_lenh || '').trim(),
+        ngay_xuat: String((row as { ngay_xuat?: string }).ngay_xuat || '').slice(0, 10)
+      });
     }
-    if (rows.length < pageSize) break;
+    if (batch.length < pageSize) break;
   }
-  return codes;
+  return rows;
+}
+
+async function listShippingOrderCodes() {
+  const rows = await listShippingOrderCodeRows();
+  return rows.map(row => row.ma_lenh);
+}
+
+/**
+ * Mã LXH phải liền mạch: tạo mới / đổi mã chỉ được lấy max+1.
+ * Không cho chèn số vào giữa dãy (kể cả lấp số đã xóa). Giữ nguyên mã khi sửa nội dung thì OK.
+ */
+async function validateShippingOrderCodeSequential(params: {
+  maLenh: string;
+  ngayXuat?: string | null;
+  excludeId?: string | null;
+  previousCode?: string | null;
+}) {
+  const code = String(params.maLenh || '').trim().toUpperCase();
+  const previous = String(params.previousCode || '').trim().toUpperCase();
+  if (!code) return 'Thiếu mã lệnh xuất hàng.';
+  const stt = parseShippingOrderStt(code);
+  if (stt == null) return 'Mã lệnh phải dạng LXH001, LXH002...';
+  if (previous && code === previous) return null;
+
+  const rows = await listShippingOrderCodeRows();
+  const excludeId = String(params.excludeId || '').trim();
+  const others = rows.filter(row => row.id && row.id !== excludeId);
+  const duplicate = others.find(row => row.ma_lenh.trim().toUpperCase() === code);
+  if (duplicate) return `Mã lệnh ${code} đã tồn tại.`;
+
+  const ngay = String(params.ngayXuat || '').trim().slice(0, 10);
+  // Liền mạch theo ngày xuất: STT của các lệnh cùng ngày phải nối đuôi max toàn hệ thống
+  // (tránh trùng unique toàn bảng) — chỉ cho max+1, không chèn số giữa ngày/toàn cục.
+  let globalMax = 0;
+  for (const row of others) {
+    const num = parseShippingOrderStt(row.ma_lenh);
+    if (num != null && num > globalMax) globalMax = num;
+  }
+  let dayMax = 0;
+  if (ngay) {
+    for (const row of others) {
+      if (row.ngay_xuat !== ngay) continue;
+      const num = parseShippingOrderStt(row.ma_lenh);
+      if (num != null && num > dayMax) dayMax = num;
+    }
+  }
+  const expected = formatShippingOrderCode(Math.max(globalMax, dayMax) + 1);
+  if (code !== expected) {
+    return `Mã lệnh phải liền mạch theo ngày: chỉ được dùng ${expected}, không chèn/đổi mã vào giữa dãy.`;
+  }
+  return null;
 }
 
 async function writeShippingOrderRecord(params: {
   mode: 'insert' | 'update';
   id?: string;
   record: Record<string, unknown>;
+  previousCode?: string | null;
 }) {
   if (!supabase) {
     return { error: { message: 'Supabase chưa được cấu hình.' } as { code?: string; message?: string }, data: null, warning: '' };
@@ -2336,6 +2407,30 @@ async function writeShippingOrderRecord(params: {
     'Đã lưu lệnh xuất nhưng DB chưa có cột bsx/so_km nên BSX và Số Km chưa được lưu. Chạy supabase-lenh-xuat-hang-bsx.sql trên project he-thong (bfnsopyvgvhaegqijpum) rồi Reload schema.';
 
   let record = { ...params.record };
+  if (!String(record.ma_lenh || '').trim()) {
+    record.ma_lenh = nextShippingOrderCode(await listShippingOrderCodes());
+  }
+
+  let previousCode = String(params.previousCode || '').trim();
+  if (params.mode === 'update' && !previousCode && params.id) {
+    const { data: current } = await supabase
+      .from(SUPABASE_SHIPPING_ORDERS_TABLE)
+      .select('ma_lenh')
+      .eq('id', params.id)
+      .maybeSingle();
+    previousCode = String((current as { ma_lenh?: string } | null)?.ma_lenh || '');
+  }
+
+  const sequenceError = await validateShippingOrderCodeSequential({
+    maLenh: String(record.ma_lenh || ''),
+    ngayXuat: record.ngay_xuat != null ? String(record.ngay_xuat) : null,
+    excludeId: params.mode === 'update' ? params.id : null,
+    previousCode: previousCode || null
+  });
+  if (sequenceError) {
+    return { error: { message: sequenceError }, data: null, warning: '' };
+  }
+
   const originalCode = String(record.ma_lenh || '').trim();
   let codeBumped = false;
   let columnWarning = '';
@@ -2371,9 +2466,7 @@ async function writeShippingOrderRecord(params: {
       const codes = await listShippingOrderCodes();
       let nextCode = nextShippingOrderCode(codes);
       if (nextCode === String(record.ma_lenh || '').trim().toUpperCase()) {
-        const current = String(record.ma_lenh || '').trim().toUpperCase().match(/^LXH(\d+)$/);
-        const num = current ? Number(current[1]) + 1 : 1;
-        nextCode = `LXH${String(num).padStart(Math.max(3, String(num).length), '0')}`;
+        nextCode = formatShippingOrderCode((parseShippingOrderStt(nextCode) || 0) + 1);
       }
       record = { ...record, ma_lenh: nextCode };
       codeBumped = true;
@@ -3265,6 +3358,92 @@ async function loadKiemKhoDotSourceRows(
     hasConfirmColumn: false,
     error: null
   };
+}
+
+/**
+ * Sau khi xóa/sửa dòng kiểm kho của đợt đã chốt — dựng lại `kiem_kho_tong_hop`
+ * từ RPC gộp (xóa hết dòng cũ của đợt rồi insert lại). Đợt chưa chốt: no-op.
+ */
+async function rebuildKiemKhoTongHopForDot(
+  db: any,
+  dotKiemKho: string,
+  options?: { nguoiChot?: string | null; chotLuc?: string | null; force?: boolean }
+): Promise<{ rebuilt: boolean; so_ma: number; warning?: string }> {
+  const dot = String(dotKiemKho || '').trim();
+  if (!dot) return { rebuilt: false, so_ma: 0 };
+
+  if (!options?.force) {
+    const { data: sample, error: sampleError } = await db
+      .from(SUPABASE_KIEM_KHO_TABLE)
+      .select('thoi_gian_xac_nhan')
+      .eq('dot_kiem_kho', dot)
+      .not('thoi_gian_xac_nhan', 'is', null)
+      .limit(1);
+    if (sampleError && !isMissingKiemKhoConfirmColumnError(sampleError)) {
+      return { rebuilt: false, so_ma: 0, warning: sampleError.message };
+    }
+    const stillConfirmed = Array.isArray(sample) && sample.length > 0;
+    if (!stillConfirmed && !options?.force) {
+      // Đợt trống hoặc chưa chốt — chỉ dọn tổng hợp nếu còn sót.
+      const { error: clearError } = await db
+        .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+        .delete()
+        .eq('dot_kiem_kho', dot);
+      if (clearError && !isMissingTableError(clearError)) {
+        return { rebuilt: false, so_ma: 0, warning: clearError.message };
+      }
+      return { rebuilt: true, so_ma: 0 };
+    }
+  }
+
+  const { data: aggregated, error: rpcError } = await db.rpc('kiem_kho_gop_theo_ma_nvl', {
+    p_dot: dot
+  });
+  if (rpcError) {
+    return { rebuilt: false, so_ma: 0, warning: rpcError.message || 'Không gộp được tổng hợp.' };
+  }
+
+  const { data: existingMeta } = await db
+    .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+    .select('chot_luc, nguoi_chot')
+    .eq('dot_kiem_kho', dot)
+    .limit(1);
+  const meta = Array.isArray(existingMeta) && existingMeta[0] ? existingMeta[0] : null;
+  const chotLuc =
+    options?.chotLuc ||
+    (meta?.chot_luc ? String(meta.chot_luc) : null) ||
+    new Date().toISOString();
+  const nguoiChot =
+    String(options?.nguoiChot ?? '').trim() ||
+    (meta?.nguoi_chot ? String(meta.nguoi_chot) : null) ||
+    null;
+
+  const { error: clearError } = await db
+    .from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE)
+    .delete()
+    .eq('dot_kiem_kho', dot);
+  if (clearError && !isMissingTableError(clearError)) {
+    return { rebuilt: false, so_ma: 0, warning: clearError.message };
+  }
+
+  const rows = (Array.isArray(aggregated) ? aggregated : []).map((row: any) => ({
+    dot_kiem_kho: dot,
+    ma_nvl: String(row.ma_nvl ?? '').trim() || '(không xác định)',
+    ten_sp: row.ten_sp != null ? String(row.ten_sp) : null,
+    loai_sp: row.loai_sp != null ? String(row.loai_sp) : null,
+    tong_so_luong: Number(row.tong_so_luong) || 0,
+    chot_luc: chotLuc,
+    nguoi_chot: nguoiChot
+  }));
+
+  if (rows.length) {
+    const { error: insertError } = await db.from(SUPABASE_KIEM_KHO_TONG_HOP_TABLE).insert(rows);
+    if (insertError) {
+      return { rebuilt: false, so_ma: 0, warning: insertError.message };
+    }
+  }
+
+  return { rebuilt: true, so_ma: rows.length };
 }
 
 const supabaseTableClientCache = new Map<string, SupabaseDbRef>();
@@ -4486,6 +4665,14 @@ function parseMachineNvlReportKind(value: unknown): 'dau_ca' | 'cuoi_ca' {
   return 'dau_ca';
 }
 
+/** Kg/1 ĐVT. Giữ 6 số thập phân — parseMixingNumber làm tròn 3 số (0,000844 → 0,001). */
+function parseMachineNvlUnitWeightKg(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.round(num * 1_000_000) / 1_000_000;
+}
+
 function parseMachineNvlReportLine(source: unknown, index: number) {
   if (!source || typeof source !== 'object') return null;
   const record = source as Record<string, unknown>;
@@ -4511,7 +4698,8 @@ function parseMachineNvlReportLine(source: unknown, index: number) {
   const so_luong_ton_ca_truoc = parseMixingNumber(
     record.so_luong_ton_ca_truoc ?? record.so_luong_ca_truoc ?? record.previousQuantity
   );
-  const trong_luong_quy_doi_kg = parseMixingNumber(
+  // Hệ số kg/ĐVT (vd băng keo 0,000844) — không làm tròn 3 số như số lượng, kẻo thành 0,001.
+  const trong_luong_quy_doi_kg = parseMachineNvlUnitWeightKg(
     record.trong_luong_quy_doi_kg ?? record.trong_luong_quy_doi ?? record.unitWeightKg
   );
   const loai_vat_tu_raw = String(record.loai_vat_tu ?? record.materialType ?? '').trim().toLowerCase();
@@ -11926,6 +12114,19 @@ export function createApp() {
     }
   });
 
+  /** Mã lệnh kế tiếp (LXH max+1) — dùng form tạo mới / gợi ý khi sửa. */
+  app.get('/api/lenh-xuat-hang/next-ma-lenh', async (_req, res) => {
+    if (!supabase) {
+      return res.json({ ma_lenh: 'LXH001', source: 'local' });
+    }
+    try {
+      const codes = await listShippingOrderCodes();
+      return res.json({ ma_lenh: nextShippingOrderCode(codes), source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Không lấy được mã lệnh kế tiếp.' });
+    }
+  });
+
   app.post('/api/lenh-xuat-hang', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
 
@@ -11937,7 +12138,8 @@ export function createApp() {
         record: parsed.record
       });
       if (error) {
-        return res.status(500).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
+        const status = /liền mạch|đã tồn tại|dạng LXH/i.test(String(error.message || '')) ? 400 : 500;
+        return res.status(status).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
       }
       return res.status(201).json({ success: true, order: data, warning: warning || undefined });
     } catch (err: any) {
@@ -11959,7 +12161,8 @@ export function createApp() {
         record: parsed.record
       });
       if (error) {
-        return res.status(500).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
+        const status = /liền mạch|đã tồn tại|dạng LXH/i.test(String(error.message || '')) ? 400 : 500;
+        return res.status(status).json({ error: shippingOrderWriteError(error, SUPABASE_SHIPPING_ORDERS_TABLE) });
       }
       return res.json({ success: true, order: data, warning: warning || undefined });
     } catch (err: any) {
@@ -17127,15 +17330,18 @@ export function createApp() {
 
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
     if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+    const maNvl = String(
+      req.query.maNvl ?? req.query.ma_nvl ?? req.query.maGoc ?? req.query.maSp ?? req.query.ma_sp ?? ''
+    ).trim();
     const limitRaw = Number(req.query.limit ?? 50);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500) : 50;
     const offsetRaw = Number(req.query.offset ?? 0);
     const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0;
 
     try {
-      const { data, error, count } = await db
-        .rpc('kiem_kho_gop_theo_ma_nvl', { p_dot: dotKiemKho }, { count: 'exact' })
-        .range(offset, offset + limit - 1);
+      let query = db.rpc('kiem_kho_gop_theo_ma_nvl', { p_dot: dotKiemKho }, { count: 'exact' });
+      if (maNvl) query = query.ilike('ma_nvl', `%${maNvl}%`);
+      const { data, error, count } = await query.range(offset, offset + limit - 1);
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không tổng hợp được đợt kiểm kho.',
@@ -17154,6 +17360,203 @@ export function createApp() {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi tổng hợp đợt kiểm kho.',
         db: dbLabel
+      });
+    }
+  });
+
+  /**
+   * Khớp data kiểm kho → nhap_kho:
+   * 1) Tạo phiếu nhập mới (ly_do = "Hệ thống khớp kiểm kho")
+   * 2) Tra từng mã QR (ma_sp) với nhap_kho — đã có thì bỏ qua + thống kê
+   * 3) Đẩy các mã chưa trùng vào nhap_kho
+   */
+  app.post('/api/kiem-kho/khop-data', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa có trên Supabase mới lẫn cũ.`
+      });
+    }
+    if (!supabaseKho) {
+      return res.status(503).json({ error: `Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).` });
+    }
+
+    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+    const dotKiemKho = String(body.dot_kiem_kho ?? body.dotKiemKho ?? '').trim();
+    const nguoiLap =
+      String(body.nguoi_lap ?? body.nguoiLap ?? body.nguoi_xac_nhan ?? '').trim() || 'Hệ thống';
+    if (!dotKiemKho) return res.status(400).json({ error: 'Thiếu đợt kiểm kho.' });
+
+    const normalizeQrKey = (value: unknown) =>
+      String(value ?? '')
+        .trim()
+        .replace(/\s+/g, '')
+        .toUpperCase();
+
+    try {
+      const pageSize = 1000;
+      const sourceRows: Array<{
+        ma_sp: string;
+        ma_nvl: string;
+        ten_sp: string;
+        ten_kho: string;
+      }> = [];
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await resolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('ma_sp, ma_nvl, ten_sp, ten_kho')
+          .eq('dot_kiem_kho', dotKiemKho)
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) {
+          return res.status(500).json({
+            error: error.message || 'Không đọc được dòng kiểm kho của đợt.',
+            db: resolved.label
+          });
+        }
+        const batch = Array.isArray(data) ? data : [];
+        for (const row of batch) {
+          const maSp = String(row.ma_sp ?? '').trim();
+          if (!maSp) continue;
+          sourceRows.push({
+            ma_sp: maSp,
+            ma_nvl: String(row.ma_nvl ?? '').trim() || warehouseProductCodePrefix(maSp) || maSp,
+            ten_sp: String(row.ten_sp ?? '').trim(),
+            ten_kho: String(row.ten_kho ?? '').trim()
+          });
+        }
+        if (batch.length < pageSize) break;
+      }
+
+      if (!sourceRows.length) {
+        return res.status(400).json({ error: 'Đợt kiểm kho này chưa có mã QR nào.' });
+      }
+
+      // Gộp theo mã QR đầy đủ trong đợt (1 tem = 1 dòng nhập).
+      const uniqueByQr = new Map<
+        string,
+        { ma_sp: string; ma_nvl: string; ten_sp: string; ten_kho: string }
+      >();
+      for (const row of sourceRows) {
+        const key = normalizeQrKey(row.ma_sp);
+        if (!key || uniqueByQr.has(key)) continue;
+        uniqueByQr.set(key, row);
+      }
+      const uniqueRows = [...uniqueByQr.values()];
+      const tenKho =
+        String(body.ten_kho ?? body.tenKho ?? '').trim() ||
+        uniqueRows.find(row => row.ten_kho)?.ten_kho ||
+        '';
+
+      const existingByKey = new Map<string, string>();
+      const qrList = uniqueRows.map(row => row.ma_sp);
+      for (let offset = 0; offset < qrList.length; offset += 100) {
+        const chunk = qrList.slice(offset, offset + 100);
+        const { data: found, error: foundError } = await supabaseKho
+          .from('nhap_kho')
+          .select('ma_sp_quet, ma_phieu')
+          .in('ma_sp_quet', chunk);
+        if (foundError) {
+          return res.status(500).json({
+            error: foundError.message || 'Không tra cứu được mã QR trong nhap_kho.'
+          });
+        }
+        for (const row of found || []) {
+          const code = String(row.ma_sp_quet ?? '').trim();
+          const key = normalizeQrKey(code);
+          if (key) existingByKey.set(key, String(row.ma_phieu || ''));
+        }
+      }
+
+      const skippedRows = uniqueRows.filter(row => existingByKey.has(normalizeQrKey(row.ma_sp)));
+      const pendingRows = uniqueRows.filter(row => !existingByKey.has(normalizeQrKey(row.ma_sp)));
+      const maDaCo = skippedRows.map(row => row.ma_sp);
+
+      if (!pendingRows.length) {
+        return res.json({
+          success: true,
+          ma_phieu: null,
+          tong: uniqueRows.length,
+          da_co: skippedRows.length,
+          da_day: 0,
+          ma_da_co: maDaCo,
+          message: 'Tất cả mã QR trong đợt đã có trong nhap_kho — không tạo phiếu mới.'
+        });
+      }
+
+      const catalogNames = await lookupSanPhamNamesByCodes(
+        pendingRows.filter(row => !row.ten_sp).map(row => row.ma_nvl || row.ma_sp)
+      );
+      const ngayPhieu = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+      const maPhieu = generateWarehouseSlipCode('nhap');
+      const lyDo = 'Hệ thống khớp kiểm kho';
+      const ghiChu = `Đợt ${dotKiemKho}`;
+
+      const { error: headerError } = await supabaseKho.from('phieu_nhap').insert({
+        ma_phieu: maPhieu,
+        ngay: ngayPhieu,
+        nhan_su: nguoiLap,
+        nguoi_lap: nguoiLap,
+        kho: tenKho || null,
+        ly_do: lyDo,
+        ghi_chu: ghiChu,
+        status: 'da_chot'
+      });
+      if (headerError) {
+        return res.status(500).json({
+          error: headerError.message || 'Không tạo được phiếu nhập khớp kiểm kho.'
+        });
+      }
+
+      const lineRows = pendingRows.map(row => {
+        const maSp = row.ma_nvl || warehouseProductCodePrefix(row.ma_sp) || row.ma_sp;
+        const catalog = catalogNames.get(normalizeWarehouseMovementCode(maSp));
+        return {
+          ma_sp: maSp,
+          ma_sp_quet: row.ma_sp,
+          ten_sp: row.ten_sp || catalog?.ten_sp || null,
+          don_vi: catalog?.don_vi || null,
+          loai: 'san_pham',
+          so_luong: 1,
+          ma_phieu: maPhieu
+        };
+      });
+
+      try {
+        for (let offset = 0; offset < lineRows.length; offset += 200) {
+          const chunk = lineRows.slice(offset, offset + 200);
+          const { error: insertError } = await supabaseKho.from('nhap_kho').insert(chunk);
+          if (insertError) {
+            throw new Error(insertError.message || 'Không ghi được dòng nhap_kho.');
+          }
+        }
+      } catch (insertErr: any) {
+        try {
+          await deleteKhoLinesBySlip('nhap_kho', maPhieu);
+          await supabaseKho.from('phieu_nhap').delete().eq('ma_phieu', maPhieu);
+        } catch (rollbackErr: any) {
+          console.error('[kiem-kho/khop-data] rollback error:', rollbackErr);
+        }
+        return res.status(500).json({
+          error: insertErr?.message || 'Không đẩy được mã sang nhap_kho — đã hoàn tác phiếu.'
+        });
+      }
+
+      return res.status(201).json({
+        success: true,
+        ma_phieu: maPhieu,
+        tong: uniqueRows.length,
+        da_co: skippedRows.length,
+        da_day: pendingRows.length,
+        ma_da_co: maDaCo,
+        ly_do: lyDo,
+        ten_kho: tenKho || null,
+        ngay: ngayPhieu,
+        message: `Đã tạo phiếu ${maPhieu}: đẩy ${pendingRows.length} mã mới, bỏ qua ${skippedRows.length} mã đã có.`
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi khớp data kiểm kho sang nhap_kho.'
       });
     }
   });
@@ -17333,31 +17736,45 @@ export function createApp() {
     if (!id) return res.status(400).json({ error: 'Thiếu ID kiểm kho.' });
 
     try {
+      let row: Record<string, unknown> | null = null;
+      {
+        const first = await resolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('id, dot_kiem_kho, thoi_gian_xac_nhan')
+          .eq('id', id)
+          .maybeSingle();
+        if (first.error && isMissingKiemKhoConfirmColumnError(first.error)) {
+          const fallback = await resolved.client
+            .from(SUPABASE_KIEM_KHO_TABLE)
+            .select('id, dot_kiem_kho')
+            .eq('id', id)
+            .maybeSingle();
+          if (fallback.error) {
+            return res.status(500).json({
+              error: fallback.error.message || 'Không đọc được dòng kiểm kho.',
+              db: resolved.label
+            });
+          }
+          row = fallback.data;
+        } else if (first.error) {
+          return res.status(500).json({
+            error: first.error.message || 'Không đọc được dòng kiểm kho.',
+            db: resolved.label
+          });
+        } else {
+          row = first.data;
+        }
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
+      }
+
       const { data, error } = await resolved.client
         .from(SUPABASE_KIEM_KHO_TABLE)
         .delete()
         .eq('id', id)
-        .is('thoi_gian_xac_nhan', null)
         .select('id')
         .maybeSingle();
-      if (error && isMissingKiemKhoConfirmColumnError(error)) {
-        const fallback = await resolved.client
-          .from(SUPABASE_KIEM_KHO_TABLE)
-          .delete()
-          .eq('id', id)
-          .select('id')
-          .maybeSingle();
-        if (fallback.error) {
-          return res.status(500).json({
-            error: fallback.error.message || 'Không xóa được dòng kiểm kho.',
-            db: resolved.label
-          });
-        }
-        if (!fallback.data) {
-          return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
-        }
-        return res.json({ success: true, db: resolved.label, confirmColumn: false });
-      }
       if (error) {
         return res.status(500).json({
           error: error.message || 'Không xóa được dòng kiểm kho.',
@@ -17365,15 +17782,163 @@ export function createApp() {
         });
       }
       if (!data) {
-        return res.status(409).json({
-          error: 'Chỉ được xóa sản phẩm thuộc đợt kiểm kho chưa chốt.',
-          db: resolved.label
+        return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
+      }
+
+      const dotKiemKho = String(row.dot_kiem_kho ?? '').trim();
+      const wasConfirmed = Boolean(row.thoi_gian_xac_nhan);
+      let tongHop: { rebuilt: boolean; so_ma: number; warning?: string } | null = null;
+      if (dotKiemKho) {
+        tongHop = await rebuildKiemKhoTongHopForDot(resolved.client, dotKiemKho, {
+          chotLuc: wasConfirmed && row.thoi_gian_xac_nhan ? String(row.thoi_gian_xac_nhan) : null,
+          force: wasConfirmed
         });
       }
-      return res.json({ success: true, db: resolved.label });
+
+      return res.json({
+        success: true,
+        db: resolved.label,
+        dot_kiem_kho: dotKiemKho || null,
+        tong_hop: tongHop
+      });
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi xóa kiểm kho.',
+        db: resolved.label
+      });
+    }
+  });
+
+  /** Sửa một dòng kiểm kho (kể cả đợt đã chốt) — cập nhật mã QR / tên / loại; rebuild tổng hợp nếu đợt đã chốt. */
+  app.patch('/api/kiem-kho/:id', async (req, res) => {
+    const resolved = await resolveSupabaseClientForTable(SUPABASE_KIEM_KHO_TABLE);
+    if (!resolved) {
+      return res.status(503).json({
+        error: `Bảng ${SUPABASE_KIEM_KHO_TABLE} chưa có trên Supabase mới lẫn cũ.`
+      });
+    }
+
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Thiếu ID kiểm kho.' });
+
+    const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+    const maSpRaw = body.ma_sp ?? body.maSp;
+    const maNvlRaw = body.ma_nvl ?? body.maNvl;
+    const tenSpRaw = body.ten_sp ?? body.tenSp;
+    const loaiSpRaw = body.loai_sp ?? body.loaiSp;
+    const nguoiRaw = body.nguoi_kiem_kho ?? body.nguoiKiemKho;
+
+    const patch: Record<string, unknown> = {};
+    if (maSpRaw !== undefined) patch.ma_sp = String(maSpRaw ?? '').trim();
+    if (maNvlRaw !== undefined) patch.ma_nvl = String(maNvlRaw ?? '').trim();
+    if (tenSpRaw !== undefined) patch.ten_sp = String(tenSpRaw ?? '').trim() || null;
+    if (loaiSpRaw !== undefined) patch.loai_sp = String(loaiSpRaw ?? '').trim() || null;
+    if (nguoiRaw !== undefined) patch.nguoi_kiem_kho = String(nguoiRaw ?? '').trim() || null;
+
+    if (patch.ma_sp !== undefined && !String(patch.ma_sp)) {
+      return res.status(400).json({ error: 'Mã quét / mã SP không được để trống.' });
+    }
+    // Nếu sửa mã quét mà không gửi ma_nvl → tự lấy tiền tố trước `_`.
+    if (patch.ma_sp !== undefined && patch.ma_nvl === undefined) {
+      const full = String(patch.ma_sp);
+      const us = full.indexOf('_');
+      patch.ma_nvl = us > 0 ? full.slice(0, us).trim() : full;
+    }
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ error: 'Không có trường nào để cập nhật.' });
+    }
+
+    try {
+      let existing: Record<string, unknown> | null = null;
+      {
+        const first = await resolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('id, dot_kiem_kho, ma_sp, thoi_gian_xac_nhan')
+          .eq('id', id)
+          .maybeSingle();
+        if (first.error && isMissingKiemKhoConfirmColumnError(first.error)) {
+          const fallback = await resolved.client
+            .from(SUPABASE_KIEM_KHO_TABLE)
+            .select('id, dot_kiem_kho, ma_sp')
+            .eq('id', id)
+            .maybeSingle();
+          if (fallback.error) {
+            return res.status(500).json({
+              error: fallback.error.message || 'Không đọc được dòng kiểm kho.',
+              db: resolved.label
+            });
+          }
+          existing = fallback.data;
+        } else if (first.error) {
+          return res.status(500).json({
+            error: first.error.message || 'Không đọc được dòng kiểm kho.',
+            db: resolved.label
+          });
+        } else {
+          existing = first.data;
+        }
+      }
+      if (!existing) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
+      }
+
+      const dotKiemKho = String(existing.dot_kiem_kho ?? '').trim();
+      const nextMaSp = patch.ma_sp !== undefined ? String(patch.ma_sp) : String(existing.ma_sp ?? '').trim();
+      if (dotKiemKho && nextMaSp && nextMaSp !== String(existing.ma_sp ?? '').trim()) {
+        const { data: dup, error: dupError } = await resolved.client
+          .from(SUPABASE_KIEM_KHO_TABLE)
+          .select('id')
+          .eq('dot_kiem_kho', dotKiemKho)
+          .eq('ma_sp', nextMaSp)
+          .neq('id', id)
+          .limit(1);
+        if (dupError) {
+          return res.status(500).json({
+            error: dupError.message || 'Không kiểm tra được mã trùng.',
+            db: resolved.label
+          });
+        }
+        if (Array.isArray(dup) && dup.length) {
+          return res.status(409).json({
+            error: `Mã "${nextMaSp}" đã có trong đợt kiểm kho này.`,
+            db: resolved.label
+          });
+        }
+      }
+
+      const { data, error } = await resolved.client
+        .from(SUPABASE_KIEM_KHO_TABLE)
+        .update(patch)
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+      if (error) {
+        return res.status(500).json({
+          error: error.message || 'Không cập nhật được dòng kiểm kho.',
+          db: resolved.label
+        });
+      }
+      if (!data) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng kiểm kho.', db: resolved.label });
+      }
+
+      const wasConfirmed = Boolean(existing.thoi_gian_xac_nhan || data.thoi_gian_xac_nhan);
+      let tongHop: { rebuilt: boolean; so_ma: number; warning?: string } | null = null;
+      if (dotKiemKho && wasConfirmed) {
+        tongHop = await rebuildKiemKhoTongHopForDot(resolved.client, dotKiemKho, {
+          chotLuc: data.thoi_gian_xac_nhan ? String(data.thoi_gian_xac_nhan) : null
+        });
+      }
+
+      return res.json({
+        success: true,
+        record: data,
+        db: resolved.label,
+        tong_hop: tongHop
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi sửa kiểm kho.',
         db: resolved.label
       });
     }
@@ -17809,6 +18374,9 @@ export function createApp() {
     const offsetRaw = Number(req.query.offset ?? 0);
     const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.trunc(offsetRaw)) : 0;
     const dotKiemKho = String(req.query.dotKiemKho ?? req.query.dot_kiem_kho ?? '').trim();
+    const maNvl = String(
+      req.query.maNvl ?? req.query.ma_nvl ?? req.query.maGoc ?? req.query.maSp ?? req.query.ma_sp ?? ''
+    ).trim();
 
     try {
       let query = db
@@ -17818,6 +18386,7 @@ export function createApp() {
         .order('id', { ascending: false });
 
       if (dotKiemKho) query = query.eq('dot_kiem_kho', dotKiemKho);
+      if (maNvl) query = query.ilike('ma_nvl', `%${maNvl}%`);
 
       const { data, error, count } = await query.range(offset, offset + limit - 1);
       if (error) {

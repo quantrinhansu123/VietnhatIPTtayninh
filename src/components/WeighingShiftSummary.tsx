@@ -39,7 +39,6 @@ import {
   isAcceptanceHangLoiHongWeighingId,
   isDamagedOtherMaterial,
   mapAcceptanceHangLoiHongToWeighingRecords,
-  mergeDamagedGoodsWeighingRecords,
   resolveDamagedGoodsEnteredQuantity,
   normalizeWeighingRecords,
   parseWeighRoundNumber,
@@ -868,37 +867,25 @@ export default function WeighingShiftSummary({
           ? new URLSearchParams({ ngay: dateFrom })
           : new URLSearchParams({ from: dateFrom, to: dateTo });
 
-      const [res, acceptanceRes] = await Promise.all([
-        fetch(`${config.apiBasePath}?${params.toString()}`),
-        isDamagedGoodsList
-          ? fetch(`/api/bao-cao-nghiem-thu?${acceptanceParams.toString()}`)
-          : Promise.resolve(null)
-      ]);
-      const data = await res.json().catch(() => ({}));
+      if (isDamagedGoodsList) {
+        // Danh sách / tab lỗi hỏng: chỉ lấy SP lỗi + SP rác từ Báo cáo sản lượng.
+        const acceptanceRes = await fetch(`/api/bao-cao-nghiem-thu?${acceptanceParams.toString()}`);
+        const acceptanceData = await acceptanceRes.json().catch(() => ({}));
+        if (!acceptanceRes.ok) {
+          throw new Error(
+            acceptanceData.error || 'Không thể tải Hàng lỗi hỏng từ báo cáo sản lượng.'
+          );
+        }
+        setRecords(mapAcceptanceHangLoiHongToWeighingRecords(acceptanceData));
+        return;
+      }
 
+      const res = await fetch(`${config.apiBasePath}?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || 'Không thể tải báo cáo cân.');
       }
-
-      const hangHongRows = normalizeWeighingRecords(data);
-      if (!isDamagedGoodsList || !acceptanceRes) {
-        setRecords(hangHongRows);
-        return;
-      }
-
-      const acceptanceData = await acceptanceRes.json().catch(() => ({}));
-      if (!acceptanceRes.ok) {
-        // Vẫn hiện phiếu hàng hỏng gốc nếu tải BC sản lượng lỗi.
-        setRecords(hangHongRows);
-        setError(
-          acceptanceData.error ||
-            'Đã tải báo cáo hàng hỏng; chưa gộp được SP lỗi/SP rác từ báo cáo sản lượng.'
-        );
-        return;
-      }
-
-      const fromSanLuong = mapAcceptanceHangLoiHongToWeighingRecords(acceptanceData);
-      setRecords(mergeDamagedGoodsWeighingRecords(hangHongRows, fromSanLuong));
+      setRecords(normalizeWeighingRecords(data));
     } catch (err: any) {
       setError(err.message || 'Không thể tải báo cáo cân.');
       setRecords([]);

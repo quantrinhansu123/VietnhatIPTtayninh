@@ -4,8 +4,10 @@ import {
   BarChart3,
   CheckCircle2,
   ClipboardCheck,
+  GitMerge,
   ListChecks,
   Loader2,
+  Pencil,
   Plus,
   Printer,
   Save,
@@ -267,7 +269,7 @@ export function KiemKhoPanel({
   onBack: () => void;
   currentUser?: { name?: string | null } | null;
 }) {
-  const { canCreate, canDelete } = useTabAccess('kiem-kho');
+  const { canCreate, canEdit, canDelete } = useTabAccess('kiem-kho');
   const loginName = String(currentUser?.name ?? '').trim();
   const [view, setView] = useState<'thuc-hien' | 'danh-sach' | 'tong-hop'>('thuc-hien');
   const [warehouses, setWarehouses] = useState<WarehouseCatalogItem[]>([]);
@@ -304,6 +306,9 @@ export function KiemKhoPanel({
   const [loadingDotDetail, setLoadingDotDetail] = useState(false);
   const [confirmingDot, setConfirmingDot] = useState(false);
   const [deletingDetailId, setDeletingDetailId] = useState<string | null>(null);
+  const [editingDetailId, setEditingDetailId] = useState<string | null>(null);
+  const [editDetailDraft, setEditDetailDraft] = useState({ maSp: '', tenSp: '' });
+  const [savingDetailId, setSavingDetailId] = useState<string | null>(null);
 
   // Tab "Bảng tổng hợp"
   const [summaryRows, setSummaryRows] = useState<KiemKhoTongHopRow[]>([]);
@@ -314,6 +319,17 @@ export function KiemKhoPanel({
   const [summaryError, setSummaryError] = useState('');
   const [selectedSummaryDot, setSelectedSummaryDot] = useState('');
   const [summaryDotTouched, setSummaryDotTouched] = useState(false);
+  const [summaryMaFilter, setSummaryMaFilter] = useState('');
+  const [summaryMaQuery, setSummaryMaQuery] = useState('');
+  const [matchingData, setMatchingData] = useState(false);
+  const [khopResult, setKhopResult] = useState<{
+    ma_phieu: string | null;
+    tong: number;
+    da_co: number;
+    da_day: number;
+    ma_da_co: string[];
+    message?: string;
+  } | null>(null);
   const [printReport, setPrintReport] = useState<KiemKhoPrintReport | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
 
@@ -479,10 +495,27 @@ export function KiemKhoPanel({
     setSelectedDot('');
     setSelectedSummaryDot('');
     setSummaryDotTouched(false);
+    setSummaryMaFilter('');
+    setSummaryMaQuery('');
   }, [selectedKho]);
+
+  // Debounce lọc mã SP gốc trên Bảng tổng hợp.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = summaryMaFilter.trim();
+      setSummaryMaQuery(prev => {
+        if (prev === next) return prev;
+        setSummaryPage(1);
+        return next;
+      });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [summaryMaFilter]);
 
   useEffect(() => {
     setDotDetailPage(1);
+    setEditingDetailId(null);
+    setEditDetailDraft({ maSp: '', tenSp: '' });
   }, [selectedDot]);
 
   useEffect(() => {
@@ -494,15 +527,77 @@ export function KiemKhoPanel({
     [allBatches, selectedDot]
   );
 
+  const startEditDetailLine = (line: KiemKhoDetailRow) => {
+    if (!canEdit) return;
+    setEditingDetailId(String(line.id ?? '').trim());
+    setEditDetailDraft({
+      maSp: String(line.ma_sp || line.ma_nvl || '').trim(),
+      tenSp: String(line.ten_sp || '').trim()
+    });
+  };
+
+  const cancelEditDetailLine = () => {
+    setEditingDetailId(null);
+    setEditDetailDraft({ maSp: '', tenSp: '' });
+  };
+
+  const handleSaveDetailLine = async (line: KiemKhoDetailRow) => {
+    if (!canEdit || !selectedDotGroup) return;
+    const id = String(line.id ?? '').trim();
+    if (!id) return;
+
+    const maSp = editDetailDraft.maSp.trim();
+    if (!maSp) {
+      showAppToast(hideMaQuet ? 'Nhập mã SP gốc.' : 'Nhập mã quét.', 'error');
+      return;
+    }
+
+    setSavingDetailId(id);
+    try {
+      const maNvl = hideMaQuet ? maSp : productPrefixBeforeUnderscore(maSp) || maSp;
+      const matched = findCatalogProduct(maNvl, products, selectedKho);
+      const res = await fetch(`/api/kiem-kho/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ma_sp: maSp,
+          ma_nvl: maNvl,
+          ten_sp: editDetailDraft.tenSp.trim() || matched?.name || null,
+          loai_sp: matched?.productType || line.loai_sp || null
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không sửa được dòng kiểm kho.'));
+
+      cancelEditDetailLine();
+      showAppToast(
+        selectedDotGroup.da_xac_nhan
+          ? 'Đã sửa dòng và cập nhật lại bảng tổng hợp.'
+          : 'Đã sửa dòng kiểm kho.',
+        'success'
+      );
+      if (data?.tong_hop?.warning) showAppToast(String(data.tong_hop.warning), 'error');
+      await Promise.all([loadDotDetail(selectedDot), loadAllBatches(selectedKho)]);
+    } catch (err: any) {
+      showAppToast(err?.message || 'Không sửa được dòng kiểm kho.', 'error');
+    } finally {
+      setSavingDetailId(null);
+    }
+  };
+
   const handleDeleteDetailLine = async (line: KiemKhoDetailRow) => {
-    if (!canDelete || !selectedDotGroup || selectedDotGroup.da_xac_nhan) return;
+    if (!canDelete || !selectedDotGroup) return;
     const id = String(line.id ?? '').trim();
     if (!id) return;
 
     const productCode = String(line.ma_sp || line.ma_nvl || '').trim() || 'sản phẩm này';
-    if (!window.confirm(`Xóa mã "${productCode}" khỏi đợt kiểm kho này?`)) return;
+    const confirmText = selectedDotGroup.da_xac_nhan
+      ? `Đợt đã chốt. Xóa mã "${productCode}" và cập nhật lại bảng tổng hợp?`
+      : `Xóa mã "${productCode}" khỏi đợt kiểm kho này?`;
+    if (!window.confirm(confirmText)) return;
 
     setDeletingDetailId(id);
+    if (editingDetailId === id) cancelEditDetailLine();
     try {
       const res = await fetch(`/api/kiem-kho/${encodeURIComponent(id)}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
@@ -511,7 +606,13 @@ export function KiemKhoPanel({
       const nextTotal = Math.max(0, dotDetailTotal - 1);
       const nextPage = Math.min(dotDetailPage, Math.max(1, Math.ceil(nextTotal / dotDetailPageSize)));
       setDotDetailPage(nextPage);
-      showAppToast(`Đã xóa mã "${productCode}" khỏi đợt kiểm kho.`, 'success');
+      showAppToast(
+        selectedDotGroup.da_xac_nhan
+          ? `Đã xóa mã "${productCode}" và cập nhật bảng tổng hợp.`
+          : `Đã xóa mã "${productCode}" khỏi đợt kiểm kho.`,
+        'success'
+      );
+      if (data?.tong_hop?.warning) showAppToast(String(data.tong_hop.warning), 'error');
       await Promise.all([
         loadDotDetail(selectedDot, nextPage, dotDetailPageSize),
         loadAllBatches(selectedKho),
@@ -551,7 +652,13 @@ export function KiemKhoPanel({
   // Tải tổng hợp CHỈ của 1 đợt (không tải cả lịch sử về rồi lọc client) — đợt đã
   // chốt đọc bảng kiem_kho_tong_hop có sẵn, đợt chưa chốt gộp "live" từ kiem_kho
   // (GROUP BY chạy trong Postgres qua RPC, xem docs/de-xuat-tong-hop-hien-thi-dot-chua-chot.md).
-  const loadSummary = useCallback(async (dot: string, daXacNhan: boolean, page = summaryPage, pageSize = summaryPageSize) => {
+  const loadSummary = useCallback(async (
+    dot: string,
+    daXacNhan: boolean,
+    page = summaryPage,
+    pageSize = summaryPageSize,
+    maNvl = summaryMaQuery
+  ) => {
     if (!dot) {
       setSummaryRows([]);
       setSummaryTotal(0);
@@ -561,7 +668,12 @@ export function KiemKhoPanel({
     setSummaryError('');
     try {
       const offset = (page - 1) * pageSize;
-      const params = `dotKiemKho=${encodeURIComponent(dot)}&limit=${pageSize}&offset=${offset}`;
+      const params = new URLSearchParams({
+        dotKiemKho: dot,
+        limit: String(pageSize),
+        offset: String(offset)
+      });
+      if (maNvl) params.set('maNvl', maNvl);
       const url = daXacNhan
         ? `/api/kiem-kho-tong-hop?${params}`
         : `/api/kiem-kho/dot-tong-hop-live?${params}`;
@@ -580,7 +692,7 @@ export function KiemKhoPanel({
     } finally {
       setLoadingSummary(false);
     }
-  }, [summaryPage, summaryPageSize]);
+  }, [summaryPage, summaryPageSize, summaryMaQuery]);
 
   // Liệt kê mọi đợt (đã chốt lẫn chưa chốt) — mới nhất trước, theo thứ tự allBatches trả về.
   const summaryDotOptions = useMemo(() => allBatches.map(b => b.dot_kiem_kho), [allBatches]);
@@ -598,12 +710,76 @@ export function KiemKhoPanel({
 
   useEffect(() => {
     if (view !== 'tong-hop') return;
-    void loadSummary(selectedSummaryDot, !!selectedSummaryDotGroup?.da_xac_nhan, summaryPage, summaryPageSize);
-  }, [view, selectedSummaryDot, selectedSummaryDotGroup, summaryPage, summaryPageSize, loadSummary]);
+    void loadSummary(
+      selectedSummaryDot,
+      !!selectedSummaryDotGroup?.da_xac_nhan,
+      summaryPage,
+      summaryPageSize,
+      summaryMaQuery
+    );
+  }, [view, selectedSummaryDot, selectedSummaryDotGroup, summaryPage, summaryPageSize, summaryMaQuery, loadSummary]);
 
   useEffect(() => {
     setSummaryPage(1);
+    setSummaryMaFilter('');
+    setSummaryMaQuery('');
+    setKhopResult(null);
   }, [selectedSummaryDot]);
+
+  const handleKhopData = async () => {
+    if (!selectedSummaryDot || !selectedSummaryDotGroup) {
+      showAppToast('Chọn đợt kiểm kho trước khi khớp data.', 'error');
+      return;
+    }
+    if (!selectedSummaryDotGroup.da_xac_nhan) {
+      showAppToast('Chỉ khớp data cho đợt đã xác nhận kiểm kê.', 'error');
+      return;
+    }
+    const ok = window.confirm(
+      `Khớp data đợt đang chọn sang nhập kho?\n\n` +
+        `• Tạo phiếu nhập mới (Hệ thống khớp kiểm kho)\n` +
+        `• Bỏ qua mã QR đã có trong nhap_kho\n` +
+        `• Đẩy các mã chưa trùng vào nhap_kho`
+    );
+    if (!ok) return;
+
+    setMatchingData(true);
+    setKhopResult(null);
+    try {
+      const res = await fetch('/api/kiem-kho/khop-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dot_kiem_kho: selectedSummaryDot,
+          ten_kho: selectedKho || selectedSummaryDotGroup.ten_kho || '',
+          nguoi_lap: (nguoiKiemKho || loginName).trim() || 'Hệ thống'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không khớp data được.'));
+
+      const result = {
+        ma_phieu: data?.ma_phieu ? String(data.ma_phieu) : null,
+        tong: Number(data?.tong) || 0,
+        da_co: Number(data?.da_co) || 0,
+        da_day: Number(data?.da_day) || 0,
+        ma_da_co: Array.isArray(data?.ma_da_co) ? data.ma_da_co.map((code: unknown) => String(code)) : [],
+        message: data?.message ? String(data.message) : undefined
+      };
+      setKhopResult(result);
+      showAppToast(
+        result.message ||
+          (result.ma_phieu
+            ? `Đã tạo ${result.ma_phieu}: đẩy ${result.da_day} mã, bỏ qua ${result.da_co} mã đã có.`
+            : `Không có mã mới — ${result.da_co}/${result.tong} mã đã có trong nhap_kho.`),
+        'success'
+      );
+    } catch (err: any) {
+      showAppToast(err?.message || 'Không khớp data được.', 'error');
+    } finally {
+      setMatchingData(false);
+    }
+  };
 
   const handlePrintSummary = async () => {
     if (!selectedSummaryDotGroup || !selectedSummaryDot) {
@@ -617,7 +793,12 @@ export function KiemKhoPanel({
       const allRows: KiemKhoTongHopRow[] = [];
       let total = 0;
       for (let offset = 0; offset === 0 || offset < total; offset += pageSize) {
-        const params = `dotKiemKho=${encodeURIComponent(selectedSummaryDot)}&limit=${pageSize}&offset=${offset}`;
+        const params = new URLSearchParams({
+          dotKiemKho: selectedSummaryDot,
+          limit: String(pageSize),
+          offset: String(offset)
+        });
+        if (summaryMaQuery) params.set('maNvl', summaryMaQuery);
         const url = selectedSummaryDotGroup.da_xac_nhan
           ? `/api/kiem-kho-tong-hop?${params}`
           : `/api/kiem-kho/dot-tong-hop-live?${params}`;
@@ -1647,44 +1828,132 @@ export function KiemKhoPanel({
             <TableHeadCell>Kho</TableHeadCell>
             <TableHeadCell>Người kiểm</TableHeadCell>
             <TableHeadCell>Thời điểm lưu</TableHeadCell>
-            {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
+            {(canEdit || canDelete) && selectedDotGroup ? (
               <TableHeadCell align="center">Thao tác</TableHeadCell>
             ) : null}
           </TableHead>
           <TableBody>
             {dotDetailLines.map((line, index) => {
-              const matched = findCatalogProduct(String(line.ma_nvl ?? ''), products, selectedKho);
+              const lineId = String(line.id);
+              const isEditing = editingDetailId === lineId;
+              const draftMa = isEditing ? editDetailDraft.maSp.trim() : String(line.ma_sp || line.ma_nvl || '').trim();
+              const draftPrefix = hideMaQuet
+                ? draftMa
+                : productPrefixBeforeUnderscore(draftMa) || String(line.ma_nvl || '').trim();
+              const matched = findCatalogProduct(draftPrefix || String(line.ma_nvl ?? ''), products, selectedKho);
+              const busy = deletingDetailId !== null || savingDetailId !== null;
               return (
-                <React.Fragment key={String(line.id)}>
+                <React.Fragment key={lineId}>
                   <TableRow>
                     <td className="px-4 py-3 font-bold text-zinc-500">{(dotDetailPage - 1) * dotDetailPageSize + index + 1}</td>
-                    <td className="px-4 py-3 font-mono font-bold text-zinc-800">{line.ma_nvl || '—'}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-zinc-800">
+                      {isEditing && hideMaQuet ? (
+                        <input
+                          value={editDetailDraft.maSp}
+                          onChange={event => setEditDetailDraft(prev => ({ ...prev, maSp: event.target.value }))}
+                          className="h-9 w-full min-w-[8rem] rounded-lg border border-zinc-200 px-2 font-mono text-sm font-bold outline-none focus:border-[#ef1b2d]"
+                          disabled={busy}
+                        />
+                      ) : (
+                        (isEditing ? draftPrefix : line.ma_nvl) || '—'
+                      )}
+                    </td>
                     {!hideMaQuet ? (
-                      <td className="px-4 py-3 font-mono font-bold text-zinc-900">{line.ma_sp || '—'}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-zinc-900">
+                        {isEditing ? (
+                          <input
+                            value={editDetailDraft.maSp}
+                            onChange={event => setEditDetailDraft(prev => ({ ...prev, maSp: event.target.value }))}
+                            className="h-9 w-full min-w-[12rem] rounded-lg border border-zinc-200 px-2 font-mono text-sm font-bold outline-none focus:border-[#ef1b2d]"
+                            disabled={busy}
+                          />
+                        ) : (
+                          line.ma_sp || '—'
+                        )}
+                      </td>
                     ) : null}
-                    <td className="px-4 py-3 font-semibold text-zinc-700">{line.ten_sp || '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-zinc-700">
+                      {isEditing ? (
+                        <input
+                          value={editDetailDraft.tenSp}
+                          onChange={event => setEditDetailDraft(prev => ({ ...prev, tenSp: event.target.value }))}
+                          className="h-9 w-full min-w-[10rem] rounded-lg border border-zinc-200 px-2 text-sm font-semibold outline-none focus:border-[#ef1b2d]"
+                          disabled={busy}
+                          placeholder={matched?.name || 'Tên SP'}
+                        />
+                      ) : (
+                        line.ten_sp || '—'
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-semibold text-zinc-600">{matched?.unit || '—'}</td>
                     <td className="px-4 py-3 font-semibold text-zinc-600">{selectedDotGroup?.ten_kho || selectedKho || '—'}</td>
                     <td className="px-4 py-3 font-semibold text-zinc-700">{line.nguoi_kiem_kho || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-700">
                       {formatDateTime(line.ngay_gio_kiem_kho)}
                     </td>
-                    {canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? (
+                    {(canEdit || canDelete) && selectedDotGroup ? (
                       <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteDetailLine(line)}
-                          disabled={deletingDetailId !== null}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          title={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
-                          aria-label={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
-                        >
-                          {deletingDetailId === String(line.id) ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                        <div className="inline-flex items-center gap-1.5">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveDetailLine(line)}
+                                disabled={busy}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Lưu"
+                                aria-label="Lưu dòng kiểm kho"
+                              >
+                                {savingDetailId === lineId ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditDetailLine}
+                                disabled={busy}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Hủy"
+                                aria-label="Hủy sửa"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </>
                           ) : (
-                            <Trash2 className="h-4 w-4" />
+                            <>
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditDetailLine(line)}
+                                  disabled={busy}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title={`Sửa ${line.ma_sp || line.ma_nvl || ''}`}
+                                  aria-label={`Sửa ${line.ma_sp || line.ma_nvl || ''}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                              ) : null}
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteDetailLine(line)}
+                                  disabled={busy}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
+                                  aria-label={`Xóa ${line.ma_sp || line.ma_nvl || ''}`}
+                                >
+                                  {deletingDetailId === lineId ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </button>
+                              ) : null}
+                            </>
                           )}
-                        </button>
+                        </div>
                       </td>
                     ) : null}
                   </TableRow>
@@ -1693,7 +1962,7 @@ export function KiemKhoPanel({
             })}
 
             {dotDetailLines.length === 0 && (
-              <TableEmptyRow colSpan={(hideMaQuet ? 7 : 8) + (canDelete && selectedDotGroup && !selectedDotGroup.da_xac_nhan ? 1 : 0)}>
+              <TableEmptyRow colSpan={(hideMaQuet ? 7 : 8) + ((canEdit || canDelete) && selectedDotGroup ? 1 : 0)}>
                 {loadingDotDetail
                   ? 'Đang tải dữ liệu...'
                   : 'Đợt này chưa có sản phẩm nào được quét.'}
@@ -1708,7 +1977,7 @@ export function KiemKhoPanel({
       <>
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
         <h2 className="mb-3 text-sm font-black text-zinc-900">Chọn kho và đợt kiểm kho</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
             Kho
             <div className="mt-1">
@@ -1760,6 +2029,17 @@ export function KiemKhoPanel({
               />
             </div>
           </label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Mã SP
+            <input
+              type="search"
+              value={summaryMaFilter}
+              onChange={event => setSummaryMaFilter(event.target.value)}
+              placeholder="Lọc theo mã SP gốc..."
+              disabled={!selectedSummaryDot}
+              className={`${inputClass} mt-1 font-mono disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400`}
+            />
+          </label>
         </div>
 
         {selectedSummaryDotGroup ? (
@@ -1790,10 +2070,24 @@ export function KiemKhoPanel({
           <div>
             <h2 className="text-sm font-black text-zinc-900">Danh sách sản phẩm</h2>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {summaryTotal} mã SP · gộp theo mã SP gốc của đợt đang chọn
+              {summaryTotal} mã SP
+              {summaryMaQuery ? ` · lọc “${summaryMaQuery}”` : ''}
+              {' · '}gộp theo mã SP gốc của đợt đang chọn
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {canCreate && selectedSummaryDotGroup?.da_xac_nhan ? (
+              <button
+                type="button"
+                onClick={() => void handleKhopData()}
+                disabled={matchingData || loadingSummary}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-45"
+                title="Tạo phiếu nhập và đẩy mã QR chưa có trong nhap_kho"
+              >
+                {matchingData ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitMerge className="h-3.5 w-3.5" />}
+                Khớp data
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handlePrintSummary}
@@ -1814,6 +2108,32 @@ export function KiemKhoPanel({
             </button>
           </div>
         </div>
+
+        {khopResult ? (
+          <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2.5 text-[11px] font-semibold text-emerald-800">
+            <p>
+              {khopResult.ma_phieu ? (
+                <>
+                  Phiếu <span className="font-mono font-black">{khopResult.ma_phieu}</span>
+                  {' · '}đẩy {khopResult.da_day}/{khopResult.tong} mã mới
+                </>
+              ) : (
+                <>Không tạo phiếu — {khopResult.da_co}/{khopResult.tong} mã đã có trong nhap_kho</>
+              )}
+              {khopResult.da_co > 0 ? ` · bỏ qua ${khopResult.da_co} mã đã có` : ''}
+            </p>
+            {khopResult.ma_da_co.length > 0 ? (
+              <details className="mt-1">
+                <summary className="cursor-pointer font-bold text-emerald-700">
+                  Xem {khopResult.ma_da_co.length} mã đã có trong nhap_kho
+                </summary>
+                <p className="mt-1 max-h-28 overflow-auto font-mono text-[10px] leading-relaxed text-emerald-900/80">
+                  {khopResult.ma_da_co.join(', ')}
+                </p>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
 
         {summaryError ? (
           <div className="border-b border-zinc-100 bg-rose-50 px-4 py-2.5 text-[11px] font-semibold text-rose-700">
@@ -1873,7 +2193,11 @@ export function KiemKhoPanel({
 
             {summaryRows.length === 0 && (
               <TableEmptyRow colSpan={7}>
-                {loadingSummary ? 'Đang tải dữ liệu...' : 'Đợt này chưa có sản phẩm nào được quét.'}
+                {loadingSummary
+                  ? 'Đang tải dữ liệu...'
+                  : summaryMaQuery
+                    ? `Không có mã SP khớp “${summaryMaQuery}”.`
+                    : 'Đợt này chưa có sản phẩm nào được quét.'}
               </TableEmptyRow>
             )}
           </TableBody>

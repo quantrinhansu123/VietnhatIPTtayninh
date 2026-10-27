@@ -139,7 +139,7 @@ export function isAcceptanceThanhPhamLoai(loaiVatTu: string | undefined) {
   return key === 'thanh pham' || key === 'gia cong';
 }
 
-/** SP lỗi / SP rác — bảng II «Tên lỗi hỏng / phế». */
+/** SP lỗi / SP rác — mục «Hàng lỗi hỏng nhập kho» trên danh sách. */
 export function isAcceptanceHangLoiHongLoai(loaiVatTu: string | undefined) {
   const key = normalizeLoaiVatTuKey(loaiVatTu);
   return (
@@ -150,6 +150,18 @@ export function isAcceptanceHangLoiHongLoai(loaiVatTu: string | undefined) {
     key.includes('hang rac') ||
     key.includes('phe')
   );
+}
+
+/** Tab «SP lỗi (Hàng hỏng)» trên báo cáo sản lượng — không gồm tab SP rác. */
+export function isAcceptanceHangLoiHongTabLoai(loaiVatTu: string | undefined) {
+  const key = normalizeLoaiVatTuKey(loaiVatTu);
+  if (!key || key.includes('sp rac') || key.includes('hang rac') || key.includes('kho rac')) return false;
+  return key === 'sp loi' || key.includes('sp loi') || key.includes('loi hong') || key.includes('hang hong') || key.includes('hang loi');
+}
+
+function isKgUnit(unit: string) {
+  const key = unit.trim().toLowerCase().replace(/\./g, '');
+  return key === 'kg' || key === 'kgs' || key === 'kilogram';
 }
 
 function formatPrintDate(iso: string) {
@@ -370,14 +382,18 @@ function formatDefectLineName(line: AcceptancePrintLine) {
 }
 
 function formatDefectLineQty(line: AcceptancePrintLine) {
+  const unit = String(line.don_vi || '').trim();
+  const weight = Number(line.trong_luong);
+  // Tab Hàng lỗi hỏng, ĐVT kg: công nhân để SL = 1 rồi gõ kg thật vào cột Trọng lượng.
+  if (isKgUnit(unit) && Number.isFinite(weight) && weight > 0) {
+    return `${formatKgPlain(weight)} ${line.don_vi_trong_luong || 'Kg'}`;
+  }
   const qty = line.so_luong;
   if (qty != null && Number.isFinite(qty) && qty !== 0) {
-    const unit = String(line.don_vi || '').trim();
     const qtyText = formatQtyPlain(qty);
     if (!qtyText) return '';
     return unit && unit !== '-' ? `${qtyText} ${unit}` : qtyText;
   }
-  const weight = Number(line.trong_luong);
   if (Number.isFinite(weight) && weight > 0) {
     return `${formatKgPlain(weight)} ${line.don_vi_trong_luong || 'Kg'}`;
   }
@@ -440,10 +456,10 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     if (!acc.ma_may && report.ma_may) acc.ma_may = report.ma_may;
     if (!acc.ten_may && report.ten_may) acc.ten_may = report.ten_may;
 
-    // Thành phẩm/Gia công → bảng I; SP lỗi/SP rác → bảng II lỗi hỏng.
+    // Thành phẩm/Gia công → bảng I; chỉ tab Hàng lỗi hỏng (SP lỗi) → bảng II.
     const bucket = isAcceptanceThanhPhamLoai(report.loai_vat_tu)
       ? acc.thanhPham
-      : isAcceptanceHangLoiHongLoai(report.loai_vat_tu)
+      : isAcceptanceHangLoiHongTabLoai(report.loai_vat_tu)
         ? acc.hangLoiHong
         : null;
     if (!bucket) return;
@@ -594,9 +610,9 @@ export function AcceptanceReportPrintSheet({
     (sum, row) => sum + (row.actualNhuaKg != null && Number.isFinite(row.actualNhuaKg) ? row.actualNhuaKg : 0),
     0
   );
-  // Bảng II: dòng SP lỗi / SP rác từ báo cáo sản lượng.
-  const defectLines = slip.hangLoiHongLines.filter(
-    line => isAcceptanceHangLoiHongLoai(line.loai_vat_tu) || !line.loai_vat_tu
+  // Bảng II: chỉ dòng tab Hàng lỗi hỏng (SP lỗi) trên báo cáo sản lượng.
+  const defectLines = slip.hangLoiHongLines.filter(line =>
+    isAcceptanceHangLoiHongTabLoai(line.loai_vat_tu)
   );
   const defectPadded = Math.max(4, defectLines.length);
   const nhuaKhongMangKg = defectLines.reduce((sum, line) => {

@@ -18,6 +18,7 @@
 | GET | `/api/kho/gia-tb-nhap` | (giá BQ nhập theo mã NVL + tháng) |
 | GET | `/api/bao-cao-hang-hong/cho-nhap-kho` | danh sách báo cáo hàng hỏng chờ thủ kho (dùng cho luồng nhập/xuất liên quan hàng hỏng) |
 | POST | `/api/kho/luu-phieu` | Lưu header + dòng trên DB kho mới; body có thể kèm `treo: true` |
+| POST | `/api/kiem-kho/khop-data` | Từ Kiểm kho (tab Bảng tổng hợp): tạo `phieu_nhap` «Hệ thống khớp kiểm kho» + đẩy mã QR chưa có vào `nhap_kho` — xem [kiem_kho.md](./kiem_kho.md) |
 | POST | `/api/kho/phieu/:slipCode/xac-nhan-treo` | Chốt phiếu xuất treo |
 | PUT | `/api/kho/luu-phieu/:slipCode` | Cập nhật phiếu chưa in; phiếu xuất chỉ hỗ trợ NVL và hàng hỏng |
 | DELETE | `/api/kho/phieu/:slipCode` hoặc `/api/kho/dong/:id` | Xóa phiếu: xóa hết dòng `nhap_kho` hoặc `xuat_kho` cùng `ma_phieu`, rồi xóa header. Lặp theo lô để không sót khi phiếu nhiều hơn 1000 dòng |
@@ -27,6 +28,13 @@
 | File | Nội dung |
 |------|----------|
 | `src/features/phieu-xuat-nhap-kho/index.tsx` | Panel / logic chính. Header trang có nút **Làm mới** (chỉ tab này): tải lại danh mục kho, máy, lệnh SX và danh sách phiếu, không xóa phiếu đang nhập. Phiếu nhập thành phẩm đã chọn có nút **Nhập từ máy**: hiện dòng `kho_cho` của phiếu, **Xác nhận nhập kho** ghi sang `nhap_kho`. Tab **Lập phiếu** nhập TP: dropdown **Phiếu nhập chưa chốt** hỗ trợ **tick nhiều / chọn tất cả**, hiện số đã chọn, nút **Chốt N phiếu** (chốt hàng loạt `da_chot`) |
+| `src/utils/warehouseOutboundAccountingExcel.ts` | Excel mẫu kế toán xuất kho (cột # / Mã hàng / Tên / Kho / TK Nợ / TK Có / ĐVT / SL / Đơn giá / Thành tiền / THCP / KMCP) |
+| `src/utils/warehouseInboundAccountingExcel.ts` | Excel mẫu kế toán nhập kho (thêm Lệnh SX, Tên đối tượng; Đơn giá/Thành tiền từ phiếu) |
+
+**Lịch sử — Tải Excel:** Lọc **Ngày**, tick phiếu (checkbox đầu ngày / từng phiếu). Nút **Tải Excel** mở popup rồi gom dòng theo mã hàng (+ ĐVT).
+
+- **Xuất kho:** Kho `KSX`, TK Nợ `154`, TK Có `152`, Đơn giá `0`, THCP `168B`, KMCP `NVLTT`.
+- **Nhập kho:** Kho `KTP`, TK Nợ `155`, TK Có `154`, Lệnh SX (trống), KMCP (trống), THCP `12NP`, Tên đối tượng (gợi ý máy nếu 1 máy); đơn giá/thành tiền lấy từ phiếu trừ khi ghi đè.
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 
@@ -38,7 +46,7 @@ Loại kho lịch sử: `nvl` · `san_pham` · `tai_che` · `hang_hong` · `hang
 
 - Form **Xuất kho**:
   - **Kho thành phẩm**: tab **Thực hiện** (quét) chọn **Ngày** rồi **Lệnh xuất hàng** trong ngày (`ngay_xuat` từ `/api/lenh-xuat-hang`). **Không** hiện ô «Chọn phiếu xuất chưa chốt». Bảng có **Mã / Mặt hàng / Số lượng / Đã quét**. Cột **Đã quét** đếm QR theo tiền tố mã hàng (cộng cả SL phân số). Chưa quét đủ số lượng từng mã thì không **Lưu đợt** và không **Lưu phiếu**. **Xuất TP** cho phép SL không nguyên trên từng mã QR (`1/2`, `1/3`, `0.5`…) — ghi `xuat_kho.so_luong`. **Lưu đợt** vẫn chặn mã đã xuất / đang ở phiếu xuất khác. **Tạm bỏ** bắt buộc mã QR đã có trong `nhap_kho` (có thể bật lại sau).
-  - **Kho NVL** (và kho vật tư khác): **không** hiện khối Lệnh xuất hàng; hiện form lập phiếu với nút **Thêm mới** để thêm dòng NVL thủ công / tự điền theo lệnh SX.
+  - **Kho NVL** (và kho vật tư khác): **không** hiện khối Lệnh xuất hàng; hiện form lập phiếu với nút **Thêm mới** để thêm dòng NVL thủ công / tự điền theo lệnh SX. Ô **Mã** hỗ trợ **tick nhiều mã** (SearchableSelect multiSelect) → **Áp dụng** tạo luôn nhiều dòng tương ứng các mã đã chọn.
 - Form phiếu: **một dropdown Tên kho** từ `/api/quan-ly-kho` (`ten_kho`); tự suy `loai_kho` theo tên (thành phẩm / tái chế / còn lại = NVL).
 - **Người lập** tự điền theo tên tài khoản đang đăng nhập (`currentUser.name`).
 - Form phiếu lưu **Ca** (`ca`) và **Máy** (`may`). Dữ liệu XK trên `/phan-tich-tu-dong` khớp theo **ngày** (bộ lọc ngày, không lọc ca) + máy (phiếu cũ không có `may` suy máy từ lệnh SX gắn trên lý do/ghi chú, giống `/lich-su-xuat-nhap-kho`). **Ca không bắt buộc** trên form (Nhập / Xuất).

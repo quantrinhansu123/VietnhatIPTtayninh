@@ -19,4 +19,4 @@
 
 - `src/features/yeu-cau-xuat-vat-tu/index.tsx` — form thêm/sửa (`/yeu-cau-xuat-vat-tu`)
 - `src/features/yeu-cau-xuat-vat-tu/MaterialRequestListView.tsx` — danh sách + lọc ngày/ca/máy + Thêm/Sửa/Xóa
-- `src/features/phieu-xuat-nhap-kho/index.tsx` — Xuất kho NVL: danh sách yêu cầu chờ xử lý (bấm để đổ ngày/ca/máy/dòng NVL vào phiếu, sửa được); đã bỏ **Tự điền theo lệnh SX** (`showOrderFields = false`)
+- `src/features/phieu-xuat-nhap-kho/index.tsx` — Xuất kho NVL: danh sách yêu cầu chờ xử lý **lọc theo Ngày / Ca / Máy** trên phiếu (API `tu_ngay`/`den_ngay` = ngày phiếu; Ca·Máy lọc client); bấm để đổ dòng NVL vào phiếu. Đã bỏ **Tự điền theo lệnh SX** (`showOrderFields = false`)

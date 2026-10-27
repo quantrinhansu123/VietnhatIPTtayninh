@@ -836,11 +836,14 @@ export function CanTuDongPanel({
     return { quantity: total, pairCount: seen.size };
   }, [visibleRecords, lsxQtyByLenhAndSp]);
 
-  /** Theo Mã SP trong bộ lọc: số cuộn thực tế + SL LSX (cộng unique Lệnh SX+Mã SP). */
+  /** Theo Mã SP trong bộ lọc: SL · SL LSX · KL TT · KL ĐM. */
   const summaryByMaSp = useMemo(() => {
     type Acc = {
       maSp: string;
       actual: number;
+      klTt: number;
+      klDm: number;
+      klDmCounted: number;
       lsxSeen: Map<string, number>;
     };
     const byKey = new Map<string, Acc>();
@@ -850,10 +853,17 @@ export function CanTuDongPanel({
       if (!key) continue;
       let acc = byKey.get(key);
       if (!acc) {
-        acc = { maSp, actual: 0, lsxSeen: new Map() };
+        acc = { maSp, actual: 0, klTt: 0, klDm: 0, klDmCounted: 0, lsxSeen: new Map() };
         byKey.set(key, acc);
       }
       acc.actual += 1;
+      const canSp = resolveCanSpKg(row);
+      if (canSp !== null) acc.klTt += canSp;
+      const standardKg = productStandardWeightByCode.get(key);
+      if (standardKg != null && Number.isFinite(standardKg) && standardKg > 0) {
+        acc.klDm += standardKg;
+        acc.klDmCounted += 1;
+      }
       const lenhSx = resolveRowLenhSx(row);
       const qty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
       if (qty == null) continue;
@@ -874,11 +884,13 @@ export function CanTuDongPanel({
           name: productNameByCode.get(normalizeProductCodeKey(acc.maSp)) || '',
           actual: acc.actual,
           lsx,
-          diff
+          diff,
+          klTt: acc.klTt,
+          klDm: acc.klDmCounted > 0 ? acc.klDm : null
         };
       })
       .sort((a, b) => b.actual - a.actual || a.maSp.localeCompare(b.maSp, 'vi', { numeric: true }));
-  }, [visibleRecords, lsxQtyByLenhAndSp, productNameByCode]);
+  }, [visibleRecords, lsxQtyByLenhAndSp, productNameByCode, productStandardWeightByCode]);
 
   const summaryMetricGroups = useMemo(() => {
     /** Chênh lệch = đúng số đang hiện ở dòng trên − dòng dưới; % = chênh / dòng trên. */
@@ -1336,8 +1348,7 @@ export function CanTuDongPanel({
         productStandardWeightByCode,
         productCoreWeightByCode,
         productPlasticWeightByCode,
-        productFilmWeightByCode,
-        lsxQtyByLenhAndSp
+        productFilmWeightByCode
       });
       showAppToast(`Đã tải Excel (${visibleRecords.length} dòng).`);
     } catch (err: unknown) {
@@ -2128,7 +2139,7 @@ export function CanTuDongPanel({
           </table>
         </div>
 
-        <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm xl:w-[22rem]">
+        <div className="w-full shrink-0 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm xl:w-[30rem]">
           <div className="border-b border-emerald-100 bg-emerald-100/80 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-emerald-900">
             Mã SP · Số lượng
           </div>
@@ -2136,22 +2147,28 @@ export function CanTuDongPanel({
             <table className="min-w-full border-collapse text-left text-xs">
               <thead className="sticky top-0 bg-emerald-50/95">
                 <tr className="border-b border-emerald-100 text-[10px] font-black uppercase tracking-wider text-emerald-900">
-                  <th className="px-3 py-2">Mã SP</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">SL</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">SL LSX</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right">CL</th>
+                  <th className="w-[5.5rem] max-w-[5.5rem] px-2 py-2">Mã SP</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right">SL LSX</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right">SL</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right" title="Σ Trọng lượng tiêu chuẩn">
+                    KL ĐM
+                  </th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right" title="Σ Trọng lượng TT">
+                    KL TT
+                  </th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right">CL</th>
                 </tr>
               </thead>
               <tbody className="font-mono text-sm font-black text-emerald-950">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-4 text-center text-zinc-400">
+                    <td colSpan={6} className="px-3 py-4 text-center text-zinc-400">
                       …
                     </td>
                   </tr>
                 ) : summaryByMaSp.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-400">
+                    <td colSpan={6} className="px-3 py-4 text-center text-[11px] font-semibold text-zinc-400">
                       Chưa có Mã SP trong bộ lọc
                     </td>
                   </tr>
@@ -2165,25 +2182,36 @@ export function CanTuDongPanel({
                           : row.diff < 0
                             ? 'text-rose-700'
                             : 'text-zinc-800';
+                    const nameTitle = row.name ? `${row.maSp} · ${row.name}` : row.maSp;
                     return (
                       <tr key={row.key} className="border-t border-emerald-50 hover:bg-emerald-50/50">
-                        <td className="max-w-[9rem] px-3 py-2 align-top">
-                          <div className="truncate font-mono text-xs font-black text-zinc-900" title={row.maSp}>
+                        <td className="w-[5.5rem] max-w-[5.5rem] px-2 py-2 align-top">
+                          <div
+                            className="truncate font-mono text-[11px] font-black text-zinc-900"
+                            title={nameTitle}
+                          >
                             {row.maSp}
                           </div>
-                          {row.name ? (
-                            <div className="truncate text-[10px] font-semibold text-zinc-500" title={row.name}>
-                              {row.name}
-                            </div>
-                          ) : null}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums align-top">
-                          {formatNumber(row.actual, 0)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums align-top text-indigo-900">
+                        <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums align-top text-indigo-900">
                           {row.lsx == null ? '—' : formatNumber(row.lsx, 0)}
                         </td>
-                        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums align-top ${diffClass}`}>
+                        <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums align-top">
+                          {formatNumber(row.actual, 0)}
+                        </td>
+                        <td
+                          className="whitespace-nowrap px-2 py-2 text-right tabular-nums align-top text-teal-900"
+                          title="KL ĐM = Σ Trọng lượng tiêu chuẩn"
+                        >
+                          {row.klDm == null ? '—' : formatNumber(row.klDm, 2)}
+                        </td>
+                        <td
+                          className="whitespace-nowrap px-2 py-2 text-right tabular-nums align-top text-violet-900"
+                          title="KL TT = Σ Trọng lượng TT"
+                        >
+                          {formatNumber(row.klTt, 2)}
+                        </td>
+                        <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums align-top ${diffClass}`}>
                           {row.diff == null
                             ? '—'
                             : `${row.diff > 0 ? '+' : ''}${formatNumber(row.diff, 0)}`}
@@ -2274,16 +2302,7 @@ export function CanTuDongPanel({
           >
             Mã SP
           </TableHeadCell>
-          <TableHeadCell
-            className="whitespace-nowrap"
-            title="so_luong dòng lệnh SX khớp Lệnh SX + Mã SP"
-          >
-            Số lượng trong LSX
-          </TableHeadCell>
           <TableHeadCell>QR</TableHeadCell>
-          <TableHeadCell title="weight — còn lõi" className="whitespace-nowrap">
-            Cân sản phẩm
-          </TableHeadCell>
           <TableHeadCell
             className="whitespace-nowrap"
             title="san_pham.tong_trong_luong (Tổng TL / Khối lượng) theo Mã SP từ QR"
@@ -2292,7 +2311,7 @@ export function CanTuDongPanel({
           </TableHeadCell>
           <TableHeadCell
             className="whitespace-nowrap"
-            title="Trọng lượng TT = cột Cân sản phẩm (weight / can_san_pham)"
+            title="Trọng lượng TT = weight / can_san_pham"
           >
             Trọng lượng TT
           </TableHeadCell>
@@ -2350,14 +2369,14 @@ export function CanTuDongPanel({
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={21}>
               <span className="inline-flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Đang tải cân tự động…
               </span>
             </TableEmptyRow>
           ) : visibleRecords.length === 0 ? (
-            <TableEmptyRow colSpan={23}>
+            <TableEmptyRow colSpan={21}>
               {records.length === 0
                 ? 'Không có bản ghi cân tự động.'
                 : hasDateFilters && recordsByDate.length === 0
@@ -2387,8 +2406,6 @@ export function CanTuDongPanel({
                 String(row.may ?? row.machine ?? '').trim() || resolveCanTuDongMachine(row) || '';
               const maSp = parseCanTuDongQrProductCode(row.qr_code);
               const maSpKey = normalizeProductCodeKey(maSp);
-              const lenhSx = resolveRowLenhSx(row);
-              const lsxQty = lookupLsxQty(lsxQtyByLenhAndSp, lenhSx, maSp);
               const filmKgPerRoll = maSpKey ? productFilmWeightByCode.get(maSpKey) : undefined;
               const trongLuongMang =
                 filmKgPerRoll != null && Number.isFinite(filmKgPerRoll) && filmKgPerRoll > 0
@@ -2443,18 +2460,6 @@ export function CanTuDongPanel({
                     {maSp || '—'}
                   </td>
                   <td
-                    className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold tabular-nums text-indigo-900"
-                    title={
-                      lenhSx
-                        ? lsxQty != null
-                          ? `Lệnh ${lenhSx} · Mã SP ${maSp || '—'}`
-                          : `Không tìm thấy SL trên lệnh ${lenhSx} cho Mã SP ${maSp || '—'}`
-                        : 'Chưa có Lệnh SX trên dòng cân'
-                    }
-                  >
-                    {lsxQty != null ? formatNumber(lsxQty, 0) : '—'}
-                  </td>
-                  <td
                     className={`whitespace-nowrap px-4 py-3 font-mono font-bold ${
                       isDuplicateQr
                         ? 'bg-amber-100 text-amber-950 ring-1 ring-inset ring-amber-300'
@@ -2468,9 +2473,6 @@ export function CanTuDongPanel({
                       '—'
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">
-                    {formatWeight(canSp, row.unit, 6)}
-                  </td>
                   <td
                     className="whitespace-nowrap px-4 py-3 font-semibold text-indigo-900"
                     title={maSp ? `Mã SP: ${maSp}` : undefined}
@@ -2481,7 +2483,7 @@ export function CanTuDongPanel({
                   </td>
                   <td
                     className="whitespace-nowrap px-4 py-3 font-semibold text-violet-900"
-                    title="Trọng lượng TT = Cân sản phẩm"
+                    title="Trọng lượng TT = weight / can_san_pham"
                   >
                     {formatWeight(canSp, row.unit, 6)}
                   </td>

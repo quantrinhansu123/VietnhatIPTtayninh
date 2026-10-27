@@ -307,11 +307,15 @@ export function buildWarehouseSlipDraftFromHistoryRows(
   const header = rows[0];
   if (!header) return null;
 
+  // Bỏ stub lịch sử (header không có mã NVL/SP) — không đưa vào form sửa.
+  const detailRows = rows.filter(row => String(row.itemCode || '').trim());
+  if (detailRows.length === 0) return null;
+
   const linkedOrderCodes = extractLinkedProductionOrderCodes(header.reason, header.note);
   const isProductInbound = header.slipType === 'nhap' && header.warehouseKind === 'san_pham';
   const productLines = new Map<string, { code: string; name: string; unit: string; quantity: number; weightedPrice: number }>();
   if (isProductInbound) {
-    for (const row of rows) {
+    for (const row of detailRows) {
       const code = warehouseCodePrefix(String(row.itemCode || '').trim());
       const key = normalizeMaterialCodeKey(code);
       if (!key) continue;
@@ -333,7 +337,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
         documentQuantity: '',
         unitPrice: line.quantity > 0 && line.weightedPrice > 0 ? String(line.weightedPrice / line.quantity) : ''
       }))
-    : rows.map(row => ({
+    : detailRows.map(row => ({
         code: row.itemCode,
         name: row.itemName,
         unit: row.unit,
@@ -350,6 +354,8 @@ export function buildWarehouseSlipDraftFromHistoryRows(
         actualWeightImageUrl: row.actualWeightImageUrl || '',
         actualWeightImagePublicId: row.actualWeightImagePublicId || ''
       }));
+
+  if (draftLines.length === 0) return null;
 
   return {
     slipType: header.slipType,
@@ -1021,10 +1027,12 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
       const tenNpl = String(record.ten_npl ?? record.materialName ?? '').trim();
       const warehouseKindRaw = String(record.loai_kho ?? record.warehouseKind ?? '').trim().toLowerCase();
       const warehouseName = String(record.ten_kho ?? record.warehouseName ?? '').trim();
-      // Có mã SP (không có mã NPL) → thành phẩm, kể cả bản ghi cũ thiếu/sai loai_kho
-      // Kho tái chế: loai_kho=tai_che hoặc tên kho chứa "tái chế"
+      // Không để heuristic ma_sp ghi đè loai_kho đã biết (vd nvl) — tránh lọc mất dòng khi sửa phiếu.
+      // Chỉ suy thành phẩm từ mã SP khi thiếu loai_kho.
       const warehouseKind: WarehouseKind =
-        warehouseKindRaw === 'san_pham' || (Boolean(maSp) && !maNpl)
+        warehouseKindRaw === 'nvl'
+          ? 'nvl'
+          : warehouseKindRaw === 'san_pham' || (!warehouseKindRaw && Boolean(maSp) && !maNpl)
           ? 'san_pham'
           : warehouseKindRaw === 'hang_hong' ||
               warehouseKindRaw === 'hang-hong' ||
@@ -1055,11 +1063,11 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
       const itemCode =
         warehouseKind === 'san_pham'
           ? maSp || String(record.itemCode ?? '').trim()
-          : maNpl || String(record.itemCode ?? '').trim();
+          : maNpl || maSp || String(record.itemCode ?? '').trim();
       const itemName =
         warehouseKind === 'san_pham'
           ? tenSp || String(record.itemName ?? '').trim()
-          : tenNpl || String(record.itemName ?? '').trim();
+          : tenNpl || tenSp || String(record.itemName ?? '').trim();
 
       return {
         id: String(record.id ?? '').trim(),
@@ -1620,6 +1628,7 @@ export function WarehouseSlipPanel({
     try {
       const draft = JSON.parse(rawDraft) as Partial<WarehouseSlipPrefillDraft>;
       if (!draft || !Array.isArray(draft.lines) || draft.lines.length === 0) return;
+      if (!draft.lines.some(line => String(line?.code || '').trim())) return;
       if (!draft.createdAt || Date.now() - draft.createdAt > WAREHOUSE_SLIP_DRAFT_MAX_AGE_MS) return;
       const editingCode = String(draft.editSlipCode || '').trim();
       const draftSlipType = draft.slipType === 'nhap' ? 'nhap' : 'xuat';
@@ -6927,37 +6936,110 @@ export function WarehouseHistoryPanel({
     }
   };
 
-  const handleEditSlip = (slipCode: string) => {
+  const handleEditSlip = async (slipCode: string) => {
     if (!canEdit) {
       setError('Bạn không có quyền sửa phiếu thuộc kho này.');
       return;
     }
-    const rows = filteredMovements.filter(row => row.slipCode === slipCode);
-    if (rows.length && !canEditWarehouseHistorySlip(rows[0].slipType, rows[0].warehouseKind)) {
+    const cachedRows = filteredMovements.filter(row => row.slipCode === slipCode);
+    const cachedHeader = cachedRows[0];
+    if (cachedHeader && !canEditWarehouseHistorySlip(cachedHeader.slipType, cachedHeader.warehouseKind)) {
       setError('Phiếu xuất kho không thể sửa.');
       return;
     }
-    if (rows.some(row => row.daIn)) {
+    if (cachedRows.some(row => row.daIn)) {
       setError('Phiếu đã in, không thể sửa nữa.');
       return;
     }
-    const productUnitByCode = new Map(
-      weightCatalogProducts.map(product => [normalizeMaterialCodeKey(product.code), product.unit] as const)
-    );
-    const rowsWithCatalogUnits = rows[0]?.warehouseKind === 'san_pham'
-      ? rows.map(row => ({
-          ...row,
-          unit: row.unit && row.unit !== '-'
-            ? row.unit
-            : productUnitByCode.get(normalizeMaterialCodeKey(warehouseCodePrefix(row.itemCode))) || row.unit
-        }))
-      : rows;
-    const draft = buildWarehouseSlipDraftFromHistoryRows(rowsWithCatalogUnits, slipCode);
-    if (!draft) return;
 
-    localStorage.setItem(STORAGE_WAREHOUSE_SLIP_DRAFT_KEY, JSON.stringify({ ...draft, createdAt: Date.now() }));
-    setViewingSlipCode(null);
-    onOpenSlip();
+    setError('');
+    setIsLoading(true);
+    try {
+      // Luôn tải lại đủ dòng theo mã phiếu (không lọc loai_kho) — tránh form sửa trống từ stub lịch sử.
+      const slipTypeHint =
+        cachedHeader?.slipType || (slipCode.toUpperCase().startsWith('PN-') ? 'nhap' : 'xuat');
+      const params = new URLSearchParams({
+        ma_phieu: slipCode,
+        loai: slipTypeHint,
+        status: 'all'
+      });
+      const res = await fetch(`/api/kho/lich-su?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Không tải được chi tiết phiếu để sửa.');
+
+      let rows = normalizeWarehouseMovements(data).filter(row => row.slipCode === slipCode);
+      if (!rows.some(row => String(row.itemCode || '').trim())) {
+        // Fallback: đọc trực tiếp bảng dòng nếu lich-su chỉ trả stub.
+        const header = rows[0] || cachedHeader;
+        if (!header) throw new Error(`Không tìm thấy phiếu ${slipCode}.`);
+        const detailRecords: Record<string, unknown>[] = [];
+        for (let offset = 0; ; offset += 100) {
+          const chiTietRes = await fetch(
+            `/api/kho/chi-tiet?ma_phieu=${encodeURIComponent(slipCode)}&loai_phieu=${encodeURIComponent(slipTypeHint)}&limit=100&offset=${offset}`
+          );
+          const chiTietData = await chiTietRes.json().catch(() => ({}));
+          if (!chiTietRes.ok) {
+            throw new Error(chiTietData.error || 'Không tải được chi tiết phiếu để sửa.');
+          }
+          const batch = Array.isArray(chiTietData.records) ? chiTietData.records : [];
+          detailRecords.push(...batch);
+          if (batch.length < 100) break;
+        }
+        if (detailRecords.length > 0) {
+          rows = detailRecords.map((record, index) => {
+            const code = String(record.ma_sp ?? record.ma_npl ?? '').trim();
+            return {
+              ...header,
+              id: String(record.id ?? `${slipCode}-${index}`),
+              itemCode: code,
+              itemName: String(record.ten_sp ?? record.ten_npl ?? '').trim(),
+              unit: String(record.don_vi ?? '-').trim() || '-',
+              quantity: Number(record.so_luong) || 0,
+              documentQuantity: undefined,
+              unitPrice: 0,
+              lineAmount: 0,
+              scannedCode: String(record.ma_sp_quet ?? '').trim() || undefined
+            } satisfies WarehouseMovementRow;
+          });
+        }
+      }
+
+      if (rows.some(row => row.daIn)) {
+        setError('Phiếu đã in, không thể sửa nữa.');
+        return;
+      }
+      if (rows.length && !canEditWarehouseHistorySlip(rows[0].slipType, rows[0].warehouseKind || warehouseTab)) {
+        setError('Phiếu xuất kho không thể sửa.');
+        return;
+      }
+
+      const productUnitByCode = new Map(
+        weightCatalogProducts.map(product => [normalizeMaterialCodeKey(product.code), product.unit] as const)
+      );
+      const rowsWithCatalogUnits = rows[0]?.warehouseKind === 'san_pham'
+        ? rows.map(row => ({
+            ...row,
+            unit: row.unit && row.unit !== '-'
+              ? row.unit
+              : productUnitByCode.get(normalizeMaterialCodeKey(warehouseCodePrefix(row.itemCode))) || row.unit
+          }))
+        : rows;
+      const draft = buildWarehouseSlipDraftFromHistoryRows(rowsWithCatalogUnits, slipCode);
+      if (!draft) {
+        setError(
+          `Phiếu ${slipCode} không còn dòng chi tiết trong hệ thống. Không mở sửa để tránh ghi đè mất dữ liệu.`
+        );
+        return;
+      }
+
+      localStorage.setItem(STORAGE_WAREHOUSE_SLIP_DRAFT_KEY, JSON.stringify({ ...draft, createdAt: Date.now() }));
+      setViewingSlipCode(null);
+      onOpenSlip();
+    } catch (editError: unknown) {
+      setError(editError instanceof Error ? editError.message : 'Không thể mở phiếu để sửa.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDeleteSlip = async (slipCode: string, lineCount: number) => {
@@ -7025,7 +7107,7 @@ export function WarehouseHistoryPanel({
       {!isStandalone && (
       <>
       <nav
-        aria-label="Loại phiếu xuất nhập kho"
+        aria-label="Loại phiếu xuất / nhập kho"
         className="grid grid-cols-2 gap-1.5 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-sm sm:gap-2 sm:p-2"
       >
         {WAREHOUSE_HISTORY_SLIP_TYPE_TABS.map(tab => {
@@ -7058,9 +7140,9 @@ export function WarehouseHistoryPanel({
         })}
       </nav>
 
-      <div className="space-y-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 [&_button]:!h-9 [&_button]:!w-full [&_button]:!justify-between [&_button]:!rounded-lg [&_button]:!px-2.5 [&_button]:!text-[11px]">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 [&_button]:!h-9 [&_button]:!rounded-lg [&_button]:!text-xs [&_label]:!h-9 [&_label]:!min-w-0 [&_label]:!rounded-lg [&_label]:!text-[11px] [&_input]:!text-xs">
+          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
             <FilterCombobox
               label="Chọn kho"
               options={warehouseOptions.map(option => option.name)}
@@ -7078,108 +7160,105 @@ export function WarehouseHistoryPanel({
               className="w-full"
             />
           </div>
-          {canCreate ? (
+          <TableSearchInput
+            value={searchText}
+            onChange={setSearchText}
+            placeholder="Tìm mã phiếu, mã hàng, tên..."
+            disabled={isLoading}
+            fullWidthOnMobile={false}
+          />
+          <TableDateFilter
+            label="Ngày"
+            value={fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate}
+            onChange={value => {
+              setFromDate(value);
+              setToDate(value);
+            }}
+            className="!h-9 !min-w-0 !px-2.5 !text-[11px]"
+            inputMinWidthClassName="min-w-0"
+          />
+          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+            <FilterCombobox
+              label="Ca"
+              options={shiftOptions}
+              value={filterShift || 'all'}
+              onChange={value => setFilterShift(value === 'all' ? '' : value)}
+              searchPlaceholder="Tìm ca..."
+              className="w-full"
+              matchButtonWidth
+              dropdownWidth="min-w-0 max-w-none"
+            />
+          </div>
+          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+            <FilterCombobox
+              label="Máy"
+              options={machineFilterOptions}
+              value={filterMachine || 'all'}
+              onChange={value => setFilterMachine(value === 'all' ? '' : value)}
+              searchPlaceholder="Tìm máy..."
+              className="w-full"
+              matchButtonWidth
+              dropdownWidth="min-w-0 max-w-none"
+            />
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
-              onClick={onOpenSlip}
-              className="flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-3 text-[11px] font-extrabold text-white transition hover:bg-[#b30d1c]"
+              onClick={resetFilters}
+              disabled={!hasActiveFilters}
+              className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-200 disabled:hover:text-zinc-600"
             >
-              <Plus className="h-3.5 w-3.5" />
-              Lập phiếu
+              Xóa lọc
             </button>
-          ) : null}
-        </div>
-
-        <section className="rounded-xl border border-zinc-200 bg-white p-2 shadow-sm">
-          <div className="space-y-1.5 [&_button]:!h-9 [&_button]:!gap-1 [&_button]:!rounded-lg [&_button]:!px-1.5 [&_button]:!text-[11px] [&_label]:!h-9 [&_label]:!min-w-0 [&_label]:!gap-1 [&_label]:!rounded-lg [&_label]:!px-1.5 [&_label]:!text-[10px] [&_input]:!text-[11px]">
-            <div className="grid grid-cols-[minmax(0,1.2fr)_auto_minmax(0,1.3fr)] items-center gap-1.5">
-              <TableSearchInput
-                value={searchText}
-                onChange={setSearchText}
-                placeholder="Tìm..."
-                disabled={isLoading}
-                fullWidthOnMobile={false}
-              />
-              <FilterCombobox
-                label="Ca"
-                options={shiftOptions}
-                value={filterShift || 'all'}
-                onChange={value => setFilterShift(value === 'all' ? '' : value)}
-                searchPlaceholder="Tìm ca..."
-                compact
-                className="shrink-0"
-                buttonClassName="!h-9 !px-1.5 !text-[11px]"
-              />
-              <FilterCombobox
-                label="Máy"
-                options={machineFilterOptions}
-                value={filterMachine || 'all'}
-                onChange={value => setFilterMachine(value === 'all' ? '' : value)}
-                searchPlaceholder="Tìm máy..."
-                compact
-                className="min-w-0"
-                buttonClassName="!h-9 !w-full !justify-between !px-1.5 !text-[11px]"
-                matchButtonWidth
-                dropdownWidth="min-w-0 max-w-none"
-              />
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
-              <TableDateFilter
-                label="Ngày"
-                value={fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate}
-                onChange={value => {
-                  setFromDate(value);
-                  setToDate(value);
-                }}
-                className="!h-9 !min-w-0 !px-1.5 !text-[10px]"
-                inputMinWidthClassName="min-w-0"
-              />
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-[10px] font-black text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d]"
-                >
-                  Xóa
-                </button>
-              ) : (
-                <span className="h-9 w-8" aria-hidden="true" />
-              )}
-            </div>
+            {canCreate ? (
+              <button
+                type="button"
+                onClick={onOpenSlip}
+                className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Lập phiếu
+              </button>
+            ) : null}
           </div>
-          {isLoading ? (
-            <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">Đang tải...</p>
-          ) : null}
-          {error ? (
-            <p className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] font-bold text-rose-700">{error}</p>
-          ) : null}
-          {message ? (
-            <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-amber-800">{message}</p>
-          ) : null}
-        </section>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">Số cuộn theo bộ lọc</p>
-          <p className="text-[11px] font-semibold text-sky-800/80">
-            {warehouseKindLabel(warehouseTab)} · {warehouseSlipTypeLabel(selectedType)}
-            {selectedWarehouseName ? ` · ${selectedWarehouseName}` : ''}
-          </p>
         </div>
-        <p className="font-mono text-2xl font-black tabular-nums text-sky-950">
-          {isLoading ? '…' : formatWarehouseRollTotal(productRollSummary.total)}
-        </p>
-      </div>
+        {isLoading ? (
+          <p className="mt-2 text-[11px] font-semibold text-zinc-500">Đang tải...</p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] font-bold text-rose-700">{error}</p>
+        ) : null}
+        {message ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-amber-800">{message}</p>
+        ) : null}
+      </section>
 
-      {selectableSlips.length > 0 && (
-        <section className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-2 border-zinc-900/10 bg-zinc-50 px-4 py-3 shadow-sm">
-          <p className="text-xs font-semibold text-zinc-600">
-            {selectedCount > 0
-              ? `Đã chọn ${selectedCount} phiếu`
-              : `Tích chọn phiếu để in gộp / tải Excel${canDelete ? ' hoặc xóa nhiều' : ''}`}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
+      <section className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 shadow-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex items-baseline gap-1.5 rounded-xl bg-sky-50 px-3 py-1.5 ring-1 ring-sky-200">
+            <span className="font-mono text-xl font-black tabular-nums text-sky-950">
+              {isLoading ? '…' : formatWarehouseRollTotal(productRollSummary.total)}
+            </span>
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-bold text-zinc-800">
+              {warehouseKindLabel(warehouseTab)} · {warehouseSlipTypeLabel(selectedType)}
+              {selectedWarehouseName && selectedWarehouseName !== warehouseKindLabel(warehouseTab)
+                ? ` · ${selectedWarehouseName}`
+                : ''}
+            </p>
+            {selectableSlips.length > 0 ? (
+              <p className="truncate text-[11px] font-semibold text-zinc-500">
+                {selectedCount > 0
+                  ? `Đã chọn ${selectedCount} phiếu`
+                  : `Tích chọn phiếu để in gộp / tải Excel${canDelete ? ' hoặc xóa nhiều' : ''}`}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {selectableSlips.length > 0 ? (
+            <>
             <button
               type="button"
               disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
@@ -7214,19 +7293,20 @@ export function WarehouseHistoryPanel({
                 Xóa đã chọn{selectedCount > 0 ? ` (${selectedCount})` : ''}
               </button>
             ) : null}
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={() => void loadMovements()}
-              title="Tải lại danh sách phiếu"
-              aria-label="Tải lại danh sách phiếu"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        </section>
-      )}
+            </>
+          ) : null}
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => void loadMovements()}
+            title="Tải lại danh sách phiếu"
+            aria-label="Tải lại danh sách phiếu"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </section>
 
       {isLoading ? (
         <TableShell minWidthClassName="min-w-[980px]">

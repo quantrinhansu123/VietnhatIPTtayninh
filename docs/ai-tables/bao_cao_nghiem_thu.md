@@ -8,7 +8,7 @@
 **Components (đã tách):**
 - `AcceptanceReportForm.tsx`
 - `AcceptanceReportListView.tsx`
-- `AcceptanceReportPrintSheet.tsx` — nút **In** dùng mẫu giấy **NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO** (1 phiếu / ngày·ca·máy); cột (4)(5)(6) lấy ĐM từ `san_pham` (`tong_trong_luong`, `trong_luong_nhua`); panel II: ĐM TP SX / nhựa thực dùng / hao hụt
+- `AcceptanceReportPrintSheet.tsx` — nút **In** dùng mẫu giấy **NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO** (1 phiếu / ngày·ca·máy); cột **(4)** = **tổng** trọng lượng SP theo mã trên báo cáo cân (`trong_luong` đã gom theo mã SP; fallback SL × `tong_trong_luong`); cột **(5)** ĐM nhựa = `san_pham.trong_luong_nhua`; cột **(6)** = số lượng (3) × định mức nhựa (5); panel II: ĐM TP SX / nhựa thực dùng / hao hụt
 
 Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc, lấy từ số mặt hàng đã quét/điền trong danh sách hiện tại; đóng/mở lại modal vẫn giữ đúng tổng, mã trùng/lỗi không làm tăng.
 

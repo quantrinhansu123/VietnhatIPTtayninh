@@ -26,6 +26,7 @@ import {
   buildBbInboundReportRows,
   buildBbLoiHongMaterialLinesForShift,
   ensureBbDamagedGroupsForOrderHeaders,
+  filterBbDamagedLinesForShiftBucket,
   resolveBbLoiHongFilmScrapMaterialForShift,
   resolveBbLoiHongNhuakmNcTotalKg,
   isInsulationMachineText,
@@ -275,9 +276,15 @@ export function buildBbMachineReportSnapshot(input: {
     damagedGroups: groupBbDamagedGoodsLines(damagedRows),
     orderGroups: groupBbProductionOrderLines(orderRowsBase)
   }).map(group => {
+    // Cùng ngày·ca·máy với tab lỗi hỏng — không phụ thuộc gắn mã lệnh trên phiếu SP lỗi.
+    const linesForBucket = filterBbDamagedLinesForShiftBucket(
+      damagedRows,
+      { ngay: group.ngay, shift: group.shift, machine: group.machine },
+      input.shiftSettings
+    );
     const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
       damagedRecords: input.damagedRecords,
-      damagedLines: group.lines || [],
+      damagedLines: linesForBucket,
       ngay: group.ngay,
       shift: group.shift,
       machine: group.machine,
@@ -289,7 +296,7 @@ export function buildBbMachineReportSnapshot(input: {
       materials: input.materials,
       mixingReports: input.mixingReports,
       damagedRecords: input.damagedRecords,
-      damagedLines: group.lines || [],
+      damagedLines: linesForBucket,
       plasticLoiHongKg,
       ngay: group.ngay,
       shift: group.shift,
@@ -306,10 +313,16 @@ export function buildBbMachineReportSnapshot(input: {
       ngay: group.ngay,
       shift: group.shift,
       orderCode: group.orderCode,
-      damagedLines: group.lines
+      damagedLines: linesForBucket
     });
     return {
       ...group,
+      lines: linesForBucket.length > 0 ? linesForBucket : group.lines,
+      lineCount: linesForBucket.length > 0 ? linesForBucket.length : group.lineCount,
+      totalWeightKg:
+        linesForBucket.length > 0
+          ? linesForBucket.reduce((sum, row) => sum + (row.weightKg > 0 ? row.weightKg : 0), 0)
+          : group.totalWeightKg,
       mixingLines,
       mixingLineCount: mixingLines.length,
       filmScrapMaterial: filmScrapMaterial ?? undefined

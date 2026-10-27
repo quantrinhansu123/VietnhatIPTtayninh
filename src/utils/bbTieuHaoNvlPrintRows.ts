@@ -26,6 +26,8 @@ import {
   isNnsTronMaterial,
   lookupBbMaterialKgByCodeOrName,
   lookupNnsTronTonDauKg,
+  enrichLoiHongMixingExtraWeights,
+  filterBbDamagedLinesForShiftBucket,
   resolveBbLoiHongMixingLineWeightKg,
   resolveBbLoiHongNhuakmNcTotalKg,
   sumBbDamagedFilmScrapKg,
@@ -40,7 +42,7 @@ import {
   type BbWarehouseExportGroup,
   type BbWarehouseExportLineRow
 } from './controlBoardBbMachineReport';
-import { shiftNamesMatch, type ShiftSetting } from './shiftSettings';
+import { type ShiftSetting } from './shiftSettings';
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000;
@@ -226,6 +228,7 @@ function buildMaterialRowsForOrder(input: {
   mixingGroups: BbMixingRatioGroup[];
   sanLuongGroups: BbSanLuongGroup[];
   selectedMachineName?: string | null;
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): MaterialBuildRow[] {
   const {
     order,
@@ -238,7 +241,8 @@ function buildMaterialRowsForOrder(input: {
     damagedGroups,
     mixingGroups,
     sanLuongGroups,
-    selectedMachineName
+    selectedMachineName,
+    shiftSettings
   } = input;
   const rows = new Map<string, MaterialBuildRow>();
   const orderBomKeys = buildOrderBomMaterialMatchKeys(order, products);
@@ -329,7 +333,12 @@ function buildMaterialRowsForOrder(input: {
   const nnsTronTonCuoiKg = lookupNnsTronTonDauKg(buildBbMaterialKgMapsFromTabLines(closingLines));
 
   const damagedGroup = findOrderGroup(damagedGroups, order);
-  const damagedLines = damagedGroup?.lines || [];
+  // Mọi phiếu SP lỗi cùng ngày·ca·máy (kể cả chưa gắn mã lệnh) — khớp tab lỗi hỏng.
+  const damagedLines = filterBbDamagedLinesForShiftBucket(
+    damagedGroups.flatMap(group => group.lines || []),
+    { ngay: order.ngay, shift: order.shift, machine: order.machine },
+    shiftSettings
+  );
   const groupIsInsulation = isInsulationMachineText(order.machine, selectedMachineName);
 
   const mixingGroup = findOrderGroup(mixingGroups, order);
@@ -346,9 +355,19 @@ function buildMaterialRowsForOrder(input: {
     damagedLines,
     ngay: order.ngay,
     shift: order.shift,
-    machine: order.machine
+    machine: order.machine,
+    shiftSettings
   });
-  for (const line of damagedGroup?.mixingLines || []) {
+  const mixingLines = enrichLoiHongMixingExtraWeights({
+    lines: damagedGroup?.mixingLines || [],
+    damagedLines,
+    plasticLoiHongKg,
+    ngay: order.ngay,
+    shift: order.shift,
+    machine: order.machine,
+    shiftSettings
+  });
+  for (const line of mixingLines) {
     const kg = resolveBbLoiHongMixingLineWeightKg(line, plasticLoiHongKg);
     if (kg == null || !(kg > 0)) continue;
     const row = ensure(line.materialCode, line.materialName, line.unit || 'kg');
@@ -574,7 +593,8 @@ export function buildBbTieuHaoNvlThucDungRows(input: {
       damagedGroups: input.damagedGroups,
       mixingGroups: input.mixingGroups,
       sanLuongGroups: input.sanLuongGroups,
-      selectedMachineName: input.selectedMachine?.name
+      selectedMachineName: input.selectedMachine?.name,
+      shiftSettings: input.shiftSettings
     });
     for (const row of materialRows) {
       rows.push(toThucDungRow(order, row, shiftLabel || order.shiftLabel || order.shift));

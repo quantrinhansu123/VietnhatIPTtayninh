@@ -7387,12 +7387,30 @@ async function enrichWarehouseProductNames<T extends { ma_sp?: string | null; ma
   });
 }
 
+function inferWarehouseKindFromKhoName(value: unknown): WarehouseStorageType {
+  const name = String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (name.includes('thanh pham') || name.includes('san pham')) return 'san_pham';
+  if (name.includes('hang hong')) return 'hang_hong';
+  if (name.includes('hang hoa')) return 'hang_hoa';
+  if (name.includes('cong cu') || name.includes('dung cu')) return 'cong_cu_dung_cu';
+  if (name.includes('gia cong')) return 'gia_cong';
+  if (name.includes('tai che')) return 'tai_che';
+  return 'nvl';
+}
+
 function mapKhoLineToMovement(
   line: Record<string, any>,
   header: Record<string, any>,
   loaiPhieu: 'nhap' | 'xuat'
 ) {
-  const loaiKho = parseWarehouseStorageType(line.loai) || parseWarehouseStorageType(header.kho) || 'nvl';
+  const kindFromHeader =
+    parseWarehouseStorageType(header.kho) || inferWarehouseKindFromKhoName(header.kho);
+  const kindFromLine = parseWarehouseStorageType(line.loai);
+  // Header Kho NVL thắng khi line.loai lệch (tránh phiếu xuất NVL bị coi thành phẩm).
+  const loaiKho =
+    kindFromHeader === 'nvl' && kindFromLine && kindFromLine !== 'nvl'
+      ? kindFromHeader
+      : kindFromLine || kindFromHeader || 'nvl';
   const isProduct = loaiKho === 'san_pham';
   return {
     id: line.id,
@@ -12958,7 +12976,9 @@ export function createApp() {
       const headerByCode = new Map(headers.map(header => [String(header.ma_phieu), header]));
       const codes = [...headerByCode.keys()];
       const movements: any[] = [];
-      const headersWithLines = new Set<string>();
+      // Phiếu đã có dòng trong DB: không tạo stub header rỗng (tránh Sửa phiếu mất CHI TIẾT NVL
+      // khi dòng bị lọc loai_kho lệch so với tab đang xem).
+      const headersWithAnyLines = new Set<string>();
       for (let index = 0; index < codes.length; index += 100) {
         const codeBatch = codes.slice(index, index + 100);
         for (let offset = 0; ; offset += pageSize) {
@@ -12974,9 +12994,16 @@ export function createApp() {
           for (const line of rows) {
             const header = headerByCode.get(String(line.ma_phieu));
             if (!header) continue;
-            const kind = parseWarehouseStorageType(line.loai) || inferKind(header.kho);
+            headersWithAnyLines.add(String(line.ma_phieu));
+            // Ưu tiên loại kho theo tên header (Kho NVL…) khi line.loai lệch / sai,
+            // để phiếu xuất NVL không bị lọc mất khỏi tab NVL rồi hiện stub rỗng.
+            const kindFromHeader = inferKind(header.kho);
+            const kindFromLine = parseWarehouseStorageType(line.loai);
+            const kind =
+              kindFromHeader === 'nvl' && kindFromLine && kindFromLine !== 'nvl'
+                ? kindFromHeader
+                : kindFromLine || kindFromHeader;
             if (kindFilter && kind !== kindFilter) continue;
-            headersWithLines.add(String(line.ma_phieu));
             const product = kind === 'san_pham';
             movements.push({
               id: line.id,
@@ -13019,7 +13046,7 @@ export function createApp() {
       }
       for (const header of headers) {
         const code = String(header.ma_phieu);
-        if (headersWithLines.has(code)) continue;
+        if (headersWithAnyLines.has(code)) continue;
         const headerStatus = String(header.status ?? '').trim();
         if (includeOpenSlips && headerStatus === 'chua_chot') continue;
         const kind = inferKind(header.kho);
@@ -14200,6 +14227,10 @@ export function createApp() {
         }
         if (parsed.loaiPhieu === 'xuat' && existingKind !== 'nvl' && existingKind !== 'hang_hong') {
           return res.status(409).json({ error: 'Chi cho phep sua phieu xuat kho NVL hoac hang hong.' });
+        }
+        // Chặn cập nhật rỗng ghi đè mất dòng đã chốt (form sửa từng bị load stub không có CHI TIẾT).
+        if (!parsed.items.length) {
+          return res.status(400).json({ error: 'Phieu cap nhat can it nhat mot dong chi tiet. Tu choi ghi de rong.' });
         }
         if (parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'nvl') {
           const lotError = await validateNvlExportLots(parsed.items, slipCode);

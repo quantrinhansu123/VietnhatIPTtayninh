@@ -88,6 +88,7 @@ import {
   isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
   resolveBbLoiHongNhuakmNcTotalKg,
+  filterBbDamagedLinesForShiftBucket,
   isBbMachineText,
   sumBbDauCaMaterialLinesTonKg,
   syncBbThucDungRowsXuatTrongNgayFromExportTab,
@@ -1954,22 +1955,11 @@ export default function ControlBoardBbMachineReportTable({
       const groupIsInsulation =
         isInsulationMachine || isInsulationMachineText(group.machine);
       // Lấy mọi dòng SP lỗi/rác cùng ngày·ca·máy từ BC sản lượng (không phụ thuộc gắn mã lệnh).
-      const shiftOpts = getProductionShiftOptions(shiftSettings);
-      const linesForBucket = damagedRows.filter(row => {
-        if (group.ngay && row.ngay && row.ngay !== group.ngay) return false;
-        if (group.shift && row.shift && !shiftNamesMatch(row.shift, group.shift, shiftOpts)) {
-          return false;
-        }
-        if (
-          group.machine &&
-          row.machine &&
-          !machineValueMatchesFilter(group.machine, null, row.machine) &&
-          !(isBbMachineText(group.machine) && isBbMachineText(row.machine))
-        ) {
-          return false;
-        }
-        return true;
-      });
+      const linesForBucket = filterBbDamagedLinesForShiftBucket(
+        damagedRows,
+        { ngay: group.ngay, shift: group.shift, machine: group.machine },
+        shiftSettings
+      );
       // Cột Lỗi hỏng (kg): Σ SP lỗi (hoặc NHUAKM+NC+RMN) từ Hàng lỗi hỏng trên BC sản lượng.
       const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
         damagedLines: linesForBucket,

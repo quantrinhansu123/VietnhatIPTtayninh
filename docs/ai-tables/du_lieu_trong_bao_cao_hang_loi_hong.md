@@ -25,6 +25,7 @@ Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh`).
 - **Chia %** chỉ cho mã NVL chính trên BOM (vd `NNS 1L`, `NTC`): `(NHUAKM+NC+RMN) × tỉ lệ %`.
 - **Tổng nhựa lỗi hỏng** = NHUAKM + NC + RMN.
 - Tab luôn tạo nhóm theo **lệnh SX** (kể cả khi chưa có phiếu Hàng hỏng) để gắn NHUAKM từ phiếu cân.
+- Dòng nguồn SP lỗi/rác gom theo **ngày · ca · máy** (`filterBbDamagedLinesForShiftBucket`) — phiếu chưa gắn mã lệnh vẫn vào đúng ca/máy; dòng **thiếu ca/máy không** vào bucket đã chọn (tránh nhân đôi TL); tiêu hao NVL dùng cùng bucket khi ghi `loi_hong_kg`.
 
 ## Cột chính
 

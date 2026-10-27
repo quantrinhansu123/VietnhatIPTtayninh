@@ -60,7 +60,11 @@ export type AcceptancePrintSlip = {
   hangLoiHongLines: AcceptancePrintLine[];
 };
 
-/** Định mức SP cho mẫu in Nhật ký SX — TL cuộn (4) + ĐM nhựa (5). */
+/**
+ * Định mức SP cho mẫu in Nhật ký SX.
+ * - (4) Tổng TL SP theo mã từ báo cáo cân (`trong_luong` đã gom); fallback SL × `totalWeightKg`.
+ * - (5) ĐM nhựa lấy `plasticWeightKg` (`san_pham.trong_luong_nhua`).
+ */
 export type AcceptanceProductNorm = {
   code: string;
   amisCode: string;
@@ -269,7 +273,10 @@ function resolveAcceptanceProductCodeKey(matHang: string) {
   const trimmed = String(matHang || '').trim();
   if (!trimmed) return '';
   const plusIdx = trimmed.indexOf('+');
-  const code = (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+  let code = (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+  // Tem QR: tiền tố trước `_` là mã SP gốc — gom tổng theo mã này.
+  const underscoreIdx = code.indexOf('_');
+  if (underscoreIdx > 0) code = code.slice(0, underscoreIdx).trim();
   return normalizeProductCodeKey(code) || code;
 }
 
@@ -283,33 +290,41 @@ function lookupAcceptanceProductNorm(
   return productNormByCode.get(key) || null;
 }
 
+/**
+ * (4) TL cuộn gồm túi/lõi — **tổng trọng lượng SP theo mã** trên báo cáo cân
+ * (`trong_luong` đã gom theo mã SP), không chia trung bình / cuộn.
+ */
 function resolveRollWeightKg(
   line: AcceptancePrintLine,
   norm: AcceptanceProductNorm | null
 ): number | null {
-  if (norm?.totalWeightKg != null && norm.totalWeightKg > 0) return norm.totalWeightKg;
-  const qty = line.so_luong ?? 0;
   const total = Number(line.trong_luong);
-  if (qty > 0 && Number.isFinite(total) && total > 0) {
-    return Math.round((total / qty) * 100) / 100;
+  if (Number.isFinite(total) && total > 0) {
+    return Math.round(total * 100) / 100;
+  }
+  // Không có TL trên phiếu → fallback SL × Trọng lượng tiêu chuẩn / cuộn.
+  const qty = line.so_luong ?? 0;
+  if (qty > 0 && norm?.totalWeightKg != null && norm.totalWeightKg > 0) {
+    return Math.round(qty * norm.totalWeightKg * 100) / 100;
   }
   return null;
 }
 
-function resolvePlasticNormKg(
-  line: AcceptancePrintLine,
-  norm: AcceptanceProductNorm | null,
-  filmKgByProductCode?: Map<string, number>
-): number | null {
+/** (5) Định mức nhựa / cuộn — chỉ lấy từ danh mục SP (`trong_luong_nhua`), không suy từ (4). */
+function resolvePlasticNormKg(norm: AcceptanceProductNorm | null): number | null {
   if (norm?.plasticWeightKg != null && norm.plasticWeightKg > 0) return norm.plasticWeightKg;
-  const rollKg = resolveRollWeightKg(line, norm);
-  if (rollKg == null) return null;
-  const key = resolveAcceptanceProductCodeKey(line.mat_hang);
-  const filmPerRoll = key && filmKgByProductCode ? filmKgByProductCode.get(key) : undefined;
-  if (filmPerRoll != null && filmPerRoll > 0 && rollKg > filmPerRoll) {
-    return Math.round((rollKg - filmPerRoll) * 100) / 100;
-  }
   return null;
+}
+
+/** (6) = (3) × (5): số lượng cuộn × định mức nhựa / cuộn. */
+function resolveTotalPlasticNormKg(
+  soLuong: number | null | undefined,
+  plasticNormKg: number | null
+): number | null {
+  const qty = Number(soLuong);
+  if (!Number.isFinite(qty) || !(qty > 0)) return null;
+  if (plasticNormKg == null || !(plasticNormKg > 0) || !Number.isFinite(plasticNormKg)) return null;
+  return Math.round(qty * plasticNormKg * 100) / 100;
 }
 
 export function resolveAcceptanceLineFilmKg(
@@ -346,7 +361,10 @@ function createLineBucketAcc(): LineBucketAcc {
 }
 
 function mergeReportIntoLineBucket(acc: LineBucketAcc, report: AcceptanceReportSource) {
-  const lineKey = [report.mat_hang, report.don_vi].join('|');
+  // Gom theo mã SP gốc (+ ĐVT) — cộng SL và tổng trọng lượng cùng mã.
+  const codeKey =
+    resolveAcceptanceProductCodeKey(report.mat_hang) || String(report.mat_hang || '').trim() || '-';
+  const lineKey = [codeKey, String(report.don_vi || '').trim()].join('|');
   const existing = acc.lineMap.get(lineKey);
   const weightKg =
     report.trong_luong !== null &&
@@ -580,12 +598,10 @@ export function AcceptanceReportPrintSheet({
     }
     const norm = lookupAcceptanceProductNorm(line.mat_hang, productNormByCode);
     const rollWeightKg = resolveRollWeightKg(line, norm);
-    const plasticNormKg = resolvePlasticNormKg(line, norm, filmKgByProductCode);
-    const qty = line.so_luong;
-    const totalNormKg =
-      qty != null && qty > 0 && plasticNormKg != null && plasticNormKg > 0
-        ? Math.round(qty * plasticNormKg * 100) / 100
-        : null;
+    // (3) số lượng · (5) ĐM nhựa · (6) = (3)×(5) — không dùng TL cuộn (4).
+    const soLuong = line.so_luong;
+    const plasticNormKg = resolvePlasticNormKg(norm);
+    const totalNormKg = resolveTotalPlasticNormKg(soLuong, plasticNormKg);
     const filmKg = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
     const actualNhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
     computedRows.push({
@@ -593,7 +609,7 @@ export function AcceptanceReportPrintSheet({
       stt: i + 1,
       amisCode: norm?.amisCode || '',
       tenSp: line.ten_sp || norm?.name || line.mat_hang || '',
-      soLuong: qty,
+      soLuong,
       rollWeightKg,
       plasticNormKg,
       totalNormKg,
@@ -695,7 +711,7 @@ export function AcceptanceReportPrintSheet({
                   <th rowSpan={2} className="col-sp">
                     THÀNH PHẨM (2)
                   </th>
-                  <th colSpan={2}>
+                  <th colSpan={2} className="col-tra-kho">
                     TRỌNG LƯỢNG THÀNH PHẨM TRẢ KHO - gồm lõi, túi, màng (KG) (Cuộn)
                   </th>
                   <th rowSpan={2} className="col-qty">

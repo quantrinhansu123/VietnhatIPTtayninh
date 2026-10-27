@@ -1994,7 +1994,12 @@ export function filterBbWarehouseExportLinesForOrder(
     if (!String(line.orderCode || '').trim()) {
       return Boolean(orderNgay && order.shift);
     }
-    return bbOrderCodesMatch(line.orderCode, order.orderCode);
+    if (bbOrderCodesMatch(line.orderCode, order.orderCode)) return true;
+    // Phiếu XK gắn sai / không khớp LSX tường minh — vẫn lấy theo ngày·ca·máy (tránh mất cột TL xuất).
+    if (line.matchedByOrder === false) {
+      return Boolean(orderNgay && order.shift);
+    }
+    return false;
   });
 }
 
@@ -3682,16 +3687,12 @@ export function sumLoiHongNhuakmNcKgFromDamagedRecords(input: {
   void input.damagedRecords;
   void input.shiftSettings;
 
-  for (const row of input.damagedLines || []) {
-    if (input.ngay && row.ngay && row.ngay !== input.ngay) continue;
-    if (input.shift && row.shift && !shiftNamesMatch(row.shift, input.shift)) continue;
-    if (
-      input.machine &&
-      !machineValueMatchesFilter(input.machine, null, row.machine) &&
-      !(isBbMachineText(input.machine) && isBbMachineText(row.machine))
-    ) {
-      continue;
-    }
+  const filteredLines = filterBbDamagedLinesForShiftBucket(
+    input.damagedLines || [],
+    { ngay: input.ngay, shift: input.shift, machine: input.machine },
+    input.shiftSettings
+  );
+  for (const row of filteredLines) {
     // NHUAKM/NC/RMN có thể là SP lỗi hoặc SP rác — không lấy RAC MANG / MT-HANG RAC.
     if (isLoiHongFilmScrapAliasCode(row.productCode || '', row.productName || row.materialName || '')) {
       continue;
@@ -3730,16 +3731,12 @@ export function resolveBbLoiHongNhuakmNcTotalKg(input: {
   if (namedTotal > 0) return roundQty(namedTotal, 4);
 
   let spLoiTotal = 0;
-  for (const row of input.damagedLines || []) {
-    if (input.ngay && row.ngay && row.ngay !== input.ngay) continue;
-    if (input.shift && row.shift && !shiftNamesMatch(row.shift, input.shift)) continue;
-    if (
-      input.machine &&
-      !machineValueMatchesFilter(input.machine, null, row.machine) &&
-      !(isBbMachineText(input.machine) && isBbMachineText(row.machine))
-    ) {
-      continue;
-    }
+  const filteredLines = filterBbDamagedLinesForShiftBucket(
+    input.damagedLines || [],
+    { ngay: input.ngay, shift: input.shift, machine: input.machine },
+    input.shiftSettings
+  );
+  for (const row of filteredLines) {
     if (isBbDamagedFilmScrapRow(row)) continue;
     if (!isDamagedRowKind(row, 'sp_loi')) continue;
     if (row.weightKg > 0) spLoiTotal += row.weightKg;
@@ -4559,6 +4556,58 @@ export function groupBbDamagedGoodsLines(rows: BbDamagedGoodsLineRow[]): BbDamag
 }
 
 /**
+ * Gom dòng Hàng lỗi hỏng / Hàng rác theo ngày · ca · máy (không bắt buộc khớp mã lệnh).
+ * Dùng chung tab «Báo cáo lỗi hỏng» và tiêu hao NVL — phiếu SP lỗi thường chưa gắn LXH.
+ */
+export function filterBbDamagedLinesForShiftBucket(
+  rows: BbDamagedGoodsLineRow[],
+  bucket: { ngay?: string; shift?: string; machine?: string },
+  shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[]
+): BbDamagedGoodsLineRow[] {
+  const shiftOpts = getProductionShiftOptions((shiftSettings || []) as ShiftSetting[]);
+  const ngay = String(bucket.ngay || '').trim();
+  const shift = String(bucket.shift || '').trim();
+  const machine = String(bucket.machine || '').trim();
+  const seen = new Set<string>();
+  const out: BbDamagedGoodsLineRow[] = [];
+  for (const row of rows || []) {
+    // Khi đã chọn ca/máy: bắt buộc dòng có ca/máy khớp — không nhận dòng trống ca
+    // (tránh cộng trùng / lẫn ca khác → TL lỗi hỏng bị nhân đôi).
+    if (ngay) {
+      const rowNgay = String(row.ngay || '').trim();
+      if (rowNgay && rowNgay !== ngay) continue;
+    }
+    if (shift) {
+      const rowShift = String(row.shift || '').trim();
+      if (!rowShift || !shiftNamesMatch(rowShift, shift, shiftOpts)) continue;
+    }
+    if (machine) {
+      const rowMachine = String(row.machine || '').trim();
+      if (
+        !rowMachine ||
+        (!machineValueMatchesFilter(machine, null, rowMachine) &&
+          !(isBbMachineText(machine) && isBbMachineText(rowMachine)))
+      ) {
+        continue;
+      }
+    }
+    const dedupeKey = String(row.key || '').trim() || [
+      row.ngay,
+      row.shift,
+      row.machine,
+      row.orderCode,
+      row.productCode,
+      row.materialCode,
+      row.weightKg
+    ].join('|');
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(row);
+  }
+  return out;
+}
+
+/**
  * Bảo đảm mỗi lệnh SX có nhóm tab lỗi hỏng (giống Cách nhiệt):
  * kể cả khi chưa có phiếu Hàng hỏng/Hàng rác — vẫn gắn NHUAKM/NC từ phiếu cân
  * và rác màng từ nghiệm thu theo ngày·ca·máy.
@@ -4827,9 +4876,9 @@ export type BbTongHopThucXuatGroup = {
 };
 
 function bbTabRowMatchesOrderHeader(
-  row: { ngay: string; shift: string; orderCode: string },
+  row: { ngay: string; shift: string; orderCode: string; matchedByOrder?: boolean },
   header: { ngay: string; shift: string; orderCode: string },
-  options?: { matchByDateOnly?: boolean }
+  options?: { matchByDateOnly?: boolean; includeUnmatchedExport?: boolean }
 ) {
   const rowNgay = parseProductionOrderFilterDate(row.ngay) || row.ngay;
   if (rowNgay !== header.ngay) return false;
@@ -4841,7 +4890,10 @@ function bbTabRowMatchesOrderHeader(
     .map(item => item.trim())
     .filter(Boolean);
   if (codes.length === 0) return true;
-  return codes.includes(target);
+  if (codes.includes(target)) return true;
+  // Xuất kho không khớp LSX tường minh → vẫn gom theo ngày·ca (không mất TL xuất).
+  if (options?.includeUnmatchedExport && row.matchedByOrder === false) return true;
+  return false;
 }
 
 /** Gom kg từ dòng tab nguồn (tồn đầu / xuất kho / tồn cuối) theo lệnh + mã NVL. */
@@ -4853,14 +4905,16 @@ function buildKgMapsFromBbTabRowsForHeader(
     itemCode?: string;
     itemName?: string;
     weightKg?: number | null;
+    matchedByOrder?: boolean;
   }>,
   header: { ngay: string; shift: string; orderCode: string },
-  matchByDateOnly = false
+  matchByDateOnly = false,
+  includeUnmatchedExport = false
 ) {
   const byCode = new Map<string, number>();
   const byName = new Map<string, number>();
   for (const row of rows) {
-    if (!bbTabRowMatchesOrderHeader(row, header, { matchByDateOnly })) continue;
+    if (!bbTabRowMatchesOrderHeader(row, header, { matchByDateOnly, includeUnmatchedExport })) continue;
     const kg = Number(row.weightKg);
     if (!Number.isFinite(kg) || kg <= 0) continue;
     const code = normalizeMaterialCodeKey(row.itemCode || '');
@@ -4942,7 +4996,7 @@ export function buildBbTongHopVatTuThucXuatDungGroups(input: {
 
     const tonDauMaps = buildKgMapsFromBbTabRowsForHeader(dauCaTabRows, header);
     const tonCuoiMaps = buildKgMapsFromBbTabRowsForHeader(cuoiCaTabRows, header);
-    const xuatThucTeMaps = buildKgMapsFromBbTabRowsForHeader(xuatKhoTabRows, header, false);
+    const xuatThucTeMaps = buildKgMapsFromBbTabRowsForHeader(xuatKhoTabRows, header, false, true);
 
     const shiftLabel = formatProductionOrderShiftLabel(header.shift, lookupSettings);
     const groupKey = header.orderCode.trim() || `unlinked|${header.ngay}|${header.shift}`;
@@ -9151,7 +9205,7 @@ export function buildBbThucDungLineRows(input: {
     const nnsTronTonDauKg = lookupNnsTronTonDauKg(tonDauMaps);
     const nnsTronTonCuoiKg = lookupNnsTronTonDauKg(tonCuoiMaps);
     /** Cùng nguồn tab «Phiếu xuất kho»: phiếu xuất ca đang chọn. */
-    const xuatThucTeMaps = buildKgMapsFromBbTabRowsForHeader(xuatKhoTabRows, header, false);
+    const xuatThucTeMaps = buildKgMapsFromBbTabRowsForHeader(xuatKhoTabRows, header, false, true);
     const headerRows: BbThucDungLineRow[] = [];
 
     // Bảng thực dùng phải hiện đủ NVL của báo cáo tồn cùng ngày + ca.
@@ -9474,7 +9528,8 @@ export function syncBbThucDungRowsXuatTrongNgayFromExportTab(input: {
       buildKgMapsFromBbTabRowsForHeader(
         xuatKhoTabRows,
         { ngay: row.ngay, shift: row.shift, orderCode: row.orderCode, machine: row.machine },
-        false
+        false,
+        true
       )
     );
   }
@@ -9483,8 +9538,10 @@ export function syncBbThucDungRowsXuatTrongNgayFromExportTab(input: {
     const headerKey = `${row.ngay}|${row.shift}|${row.orderCode}|${row.machine}`;
     const maps = xuatMapsByHeaderKey.get(headerKey);
     if (!maps) return row;
+    const lookedUp = lookupMachineNvlKgByMaterial(maps, row.materialCode, row.materialName);
+    // Live = 0 mà snapshot đã có TL xuất → giữ số cũ (tránh mất cột khi phiếu XK gắn lệch LSX).
     const xuatTrongCaKg = roundQty(
-      lookupMachineNvlKgByMaterial(maps, row.materialCode, row.materialName),
+      lookedUp > 0 ? lookedUp : Number.isFinite(row.xuatTrongCaKg) && row.xuatTrongCaKg > 0 ? row.xuatTrongCaKg : 0,
       4
     );
     const weightKg = roundQty(computeMaterialUsageKg(xuatTrongCaKg, row.tonDauKg, row.tonCuoiKg), 4);

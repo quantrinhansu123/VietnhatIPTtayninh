@@ -229,11 +229,10 @@ export default function ReportListsHubModal({
     PRINT_REPORT_KIND_OPTIONS.find(option => option.value === printReportKind) ||
     PRINT_REPORT_KIND_OPTIONS[0];
 
-  // Bộ lọc trang chi tiết đã biết đúng 1 ngày + 1 ca + 1 máy (vd. mở từ Biểu đồ TH) → in gộp luôn, khỏi hỏi lại.
+  // Prefill Ngày/Ca/Máy từ bộ lọc trang — luôn hiện dialog sổ xuống (không auto-in).
   const lockedPrintDate = filters?.dateFrom && filters.dateFrom === filters.dateTo ? filters.dateFrom : '';
   const lockedPrintShift = filters?.shift && filters.shift !== 'all' ? filters.shift : '';
   const lockedPrintMachine = hubFilters.machineCode || '';
-  const isAutoPrint = Boolean(lockedPrintDate && lockedPrintShift && lockedPrintMachine);
 
   const selectedPrintMachine = useMemo(() => {
     const code = String(printMachineCode || '').trim();
@@ -402,15 +401,6 @@ export default function ReportListsHubModal({
   };
 
   useEffect(() => {
-    if (!open || !isAutoPrint) return;
-    void prepareAndPrint(lockedPrintDate, lockedPrintShift, {
-      code: lockedPrintMachine,
-      name: hubFilters.machineName
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isAutoPrint, lockedPrintDate, lockedPrintShift, lockedPrintMachine, hubFilters.machineName]);
-
-  useEffect(() => {
     if (!printData && !tonData && !sanLuongPrintData) return;
     const previousTitle = document.title;
     const [y, m, d] = (lockedPrintDate || printDate).split('-');
@@ -458,7 +448,6 @@ export default function ReportListsHubModal({
       setPrintData(null);
       setSanLuongPrintData(null);
       setTonData(null);
-      if (isAutoPrint) onClose();
     };
     window.addEventListener('afterprint', cleanup, { once: true });
     return () => {
@@ -473,7 +462,7 @@ export default function ReportListsHubModal({
       disablePortraitPrintPage('production-plan-related-bb-machine-report-page-portrait');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printData, tonData, sanLuongPrintData, isAutoPrint, onClose, printReportKind]);
+  }, [printData, tonData, sanLuongPrintData, onClose, printReportKind]);
 
   useEffect(() => {
     if (!open) return;
@@ -571,30 +560,9 @@ export default function ReportListsHubModal({
     ? Boolean(printDate)
     : Boolean(printDate && printShift && printMachineCode);
 
-  // Trang phân tích tự động chỉ cần popup chọn phạm vi để in gộp; không hiển thị
-  // lại trung tâm các danh sách báo cáo ở đây.
-  // Đã biết đúng 1 ngày + 1 ca (mở từ Biểu đồ TH) → in gộp thẳng, không hỏi lại.
+  // Luôn hiện dialog sổ xuống Loại · Ngày · Ca · Máy (đã prefill từ bộ lọc trang).
   return <>
     {createPortal(
-      isAutoPrint ? (
-        <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Đang chuẩn bị bản in">
-          <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl">
-            {printError ? (
-              <>
-                <p className="text-sm font-bold text-rose-600">{printError}</p>
-                <div className="mt-3 flex justify-end">
-                  <button type="button" onClick={onClose} className="h-9 rounded-lg border border-zinc-200 px-4 text-xs font-black text-zinc-700 transition hover:bg-zinc-50">Đóng</button>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-2.5 text-zinc-700">
-                <Loader2 className="h-5 w-5 animate-spin text-red-600" />
-                <span className="text-sm font-bold">Đang chuẩn bị bản in {lockedPrintDate} · {lockedPrintShift} · {printMachineLabel}...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
       <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Chọn ngày và ca để in">
         <div className="w-full max-w-md overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-3.5 text-zinc-950">
@@ -687,8 +655,7 @@ export default function ReportListsHubModal({
             </div>
           </div>
         </div>
-      </div>
-      ),
+      </div>,
       document.body
     )}
     {printData || tonData || sanLuongPrintData

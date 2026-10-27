@@ -5097,7 +5097,19 @@ input[type="number"] {
 .acceptance-nk-sx-print-table .col-stt { width: 6mm; }
 .acceptance-nk-sx-print-table .col-amis { width: 18mm; }
 .acceptance-nk-sx-print-table .col-sp { width: auto; }
-.acceptance-nk-sx-print-table .col-blank { width: 10mm; }
+/* Cột trống «Trả kho» KG + Cuộn — rộng vừa, cân với các cột (3)–(6). */
+.acceptance-nk-sx-print-table .col-blank {
+  width: 8mm;
+  padding: 0.8mm 0.4mm;
+  font-size: 7.5pt;
+}
+.acceptance-nk-sx-print-table .col-tra-kho {
+  width: 16mm;
+  max-width: 16mm;
+  font-size: 6.8pt;
+  line-height: 1.12;
+  padding: 0.8mm 0.5mm;
+}
 .acceptance-nk-sx-print-table .col-qty { width: 12mm; }
 .acceptance-nk-sx-print-table .col-roll { width: 14mm; }
 .acceptance-nk-sx-print-table .col-norm { width: 12mm; }

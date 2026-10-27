@@ -82,7 +82,8 @@ import {
   Trash2,
   Printer,
   Loader2,
-  ChevronLeft
+  ChevronLeft,
+  ChevronDown
 } from 'lucide-react';
 
 function formatProductionOrderPanelDate(value: string): string {
@@ -1582,10 +1583,11 @@ export function ControlBoardPanel({
               type="button"
               onClick={() => setShowReportListsModal(true)}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-black text-red-700 shadow-xs transition hover:border-red-300 hover:bg-red-50"
-              title="Mở danh sách báo cáo như trang /danh-sach-bao-cao"
+              title="Chọn loại · ngày · ca · máy rồi in báo cáo"
             >
               <ClipboardList className="h-4 w-4 text-[#ef1b2d]" />
               Danh sách báo cáo
+              <ChevronDown className="h-3.5 w-3.5 text-[#ef1b2d]" />
             </button>
           </div>
         ) : null}

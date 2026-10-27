@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
-  CalendarDays,
   Loader2,
   Pencil,
   Plus,
@@ -25,6 +24,7 @@ import {
   getProductionShiftOptions,
   normalizeShiftSettings,
   resolveShiftName,
+  shiftNamesMatch,
   type ShiftOption,
   type ShiftSetting
 } from '../utils/shiftSettings';
@@ -36,7 +36,10 @@ import {
   formatWeighingNetWeight,
   formatWeighingWeightField,
   getWeighingDataRows,
+  isAcceptanceHangLoiHongWeighingId,
   isDamagedOtherMaterial,
+  mapAcceptanceHangLoiHongToWeighingRecords,
+  mergeDamagedGoodsWeighingRecords,
   resolveDamagedGoodsEnteredQuantity,
   normalizeWeighingRecords,
   parseWeighRoundNumber,
@@ -44,6 +47,8 @@ import {
   type WeighingPendingAdd,
   type WeighingRecord
 } from '../utils/weighingRecords';
+import { DAMAGED_GOODS_SLIP_CONFIG } from '../lib/weighingSlipConfig';
+import { FilterCombobox, TableDateFilter, TableToolbar } from './shared/table';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();
@@ -722,6 +727,8 @@ export default function WeighingShiftSummary({
   initialFilters?: {
     dateFrom?: string;
     dateTo?: string;
+    shift?: string;
+    machineCode?: string;
   };
 } = {}) {
   const splitPlasticFilmWeights = Boolean(config.splitPlasticFilmWeights);
@@ -734,6 +741,14 @@ export default function WeighingShiftSummary({
   const [dateTo, setDateTo] = useState(
     () => initialFilters?.dateTo?.trim() || new Date().toISOString().split('T')[0]
   );
+  const [filterCa, setFilterCa] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? '' : shift;
+  });
+  const [filterMachine, setFilterMachine] = useState(() => {
+    const machine = initialFilters?.machineCode?.trim() || '';
+    return !machine || machine === 'all' ? '' : machine;
+  });
   const [records, setRecords] = useState<WeighingRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -749,6 +764,49 @@ export default function WeighingShiftSummary({
   const [pendingPrint, setPendingPrint] = useState(false);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+
+  const machineOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const record of records) {
+      const may = resolveMachineName(record.machineName);
+      if (may !== '—') set.add(may);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [records]);
+
+  const caOptions = useMemo(() => {
+    if (shiftOptions.length > 0) return shiftOptions.map(option => option.value);
+    const set = new Set<string>();
+    for (const record of records) {
+      const ca = String(record.shiftName || '').trim();
+      if (ca) set.add(ca);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [records, shiftOptions]);
+
+  const filteredRecords = useMemo(() => {
+    return records.filter(record => {
+      if (filterCa) {
+        if (!shiftNamesMatch(filterCa, String(record.shiftName || ''), shiftOptions)) {
+          const ca = String(record.shiftName || '').trim();
+          if (ca !== filterCa) return false;
+        }
+      }
+      if (filterMachine) {
+        const key = filterMachine.trim().toLowerCase();
+        const may = resolveMachineName(record.machineName).toLowerCase();
+        if (may === '—' || (may !== key && !may.includes(key))) return false;
+      }
+      return true;
+    });
+  }, [records, filterCa, filterMachine, shiftOptions]);
+
+  const hasActiveFilters = Boolean(filterCa || filterMachine);
+
+  const resetFilters = () => {
+    setFilterCa('');
+    setFilterMachine('');
+  };
 
   useEffect(() => {
     if (!initialPendingAdd) return;
@@ -787,7 +845,10 @@ export default function WeighingShiftSummary({
     await loadReports();
   };
 
-  const dateGroups = useMemo(() => groupSlipsByDateAndShift(records, shiftOptions), [records, shiftOptions]);
+  const dateGroups = useMemo(
+    () => groupSlipsByDateAndShift(filteredRecords, shiftOptions),
+    [filteredRecords, shiftOptions]
+  );
   const viewingRowSlip = useMemo(
     () => (viewingRow ? findWeighingSlipInGroups(dateGroups, viewingRow) : null),
     [viewingRow, dateGroups]
@@ -801,14 +862,43 @@ export default function WeighingShiftSummary({
         dateFrom === dateTo
           ? new URLSearchParams({ ngay: dateFrom })
           : new URLSearchParams({ from: dateFrom, to: dateTo });
-      const res = await fetch(`${config.apiBasePath}?${params.toString()}`);
+      const isDamagedGoodsList = config.apiBasePath === DAMAGED_GOODS_SLIP_CONFIG.apiBasePath;
+      const acceptanceParams =
+        dateFrom === dateTo
+          ? new URLSearchParams({ ngay: dateFrom })
+          : new URLSearchParams({ from: dateFrom, to: dateTo });
+
+      const [res, acceptanceRes] = await Promise.all([
+        fetch(`${config.apiBasePath}?${params.toString()}`),
+        isDamagedGoodsList
+          ? fetch(`/api/bao-cao-nghiem-thu?${acceptanceParams.toString()}`)
+          : Promise.resolve(null)
+      ]);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         throw new Error(data.error || 'Không thể tải báo cáo cân.');
       }
 
-      setRecords(normalizeWeighingRecords(data));
+      const hangHongRows = normalizeWeighingRecords(data);
+      if (!isDamagedGoodsList || !acceptanceRes) {
+        setRecords(hangHongRows);
+        return;
+      }
+
+      const acceptanceData = await acceptanceRes.json().catch(() => ({}));
+      if (!acceptanceRes.ok) {
+        // Vẫn hiện phiếu hàng hỏng gốc nếu tải BC sản lượng lỗi.
+        setRecords(hangHongRows);
+        setError(
+          acceptanceData.error ||
+            'Đã tải báo cáo hàng hỏng; chưa gộp được SP lỗi/SP rác từ báo cáo sản lượng.'
+        );
+        return;
+      }
+
+      const fromSanLuong = mapAcceptanceHangLoiHongToWeighingRecords(acceptanceData);
+      setRecords(mergeDamagedGoodsWeighingRecords(hangHongRows, fromSanLuong));
     } catch (err: any) {
       setError(err.message || 'Không thể tải báo cáo cân.');
       setRecords([]);
@@ -916,6 +1006,10 @@ export default function WeighingShiftSummary({
 
   const handleDeleteRow = async (row: WeighingRecord) => {
     if (!canDelete) return;
+    if (isAcceptanceHangLoiHongWeighingId(row.id)) {
+      setActionMessage('Dòng tổng hợp từ Báo cáo sản lượng (SP lỗi/SP rác). Sửa/xóa tại danh sách báo cáo sản lượng.');
+      return;
+    }
     if (!row.id) {
       setActionMessage('Không tìm thấy ID dòng để xóa.');
       return;
@@ -945,6 +1039,10 @@ export default function WeighingShiftSummary({
 
   const handleEditRow = (slip: WeighingSlip, row: WeighingRecord) => {
     if (!canEdit) return;
+    if (isAcceptanceHangLoiHongWeighingId(row.id)) {
+      setActionMessage('Dòng tổng hợp từ Báo cáo sản lượng (SP lỗi/SP rác). Sửa tại danh sách báo cáo sản lượng.');
+      return;
+    }
     if (row.daIn) {
       setActionMessage('Phiếu đã in, không thể sửa nữa.');
       return;
@@ -964,6 +1062,10 @@ export default function WeighingShiftSummary({
 
   const handleEditSlip = (slip: WeighingSlip) => {
     if (!canEdit) return;
+    if (slip.rows.some(row => isAcceptanceHangLoiHongWeighingId(row.id))) {
+      setActionMessage('Phiếu có dòng từ Báo cáo sản lượng (SP lỗi/SP rác). Sửa phần đó tại danh sách báo cáo sản lượng.');
+      return;
+    }
     if (slip.rows.some(row => row.daIn)) {
       setActionMessage('Phiếu đã in, không thể sửa nữa.');
       return;
@@ -987,6 +1089,14 @@ export default function WeighingShiftSummary({
 
   const handleDeleteSlip = async (slip: WeighingSlip) => {
     if (!canDelete) return;
+    if (slip.rows.length > 0 && slip.rows.every(row => isAcceptanceHangLoiHongWeighingId(row.id))) {
+      setActionMessage('Phiếu tổng hợp từ Báo cáo sản lượng (SP lỗi/SP rác). Xóa tại danh sách báo cáo sản lượng.');
+      return;
+    }
+    if (slip.rows.some(row => isAcceptanceHangLoiHongWeighingId(row.id))) {
+      setActionMessage('Phiếu có dòng từ Báo cáo sản lượng — chỉ xóa được dòng nhập tay trên báo cáo hàng hỏng.');
+      return;
+    }
     const deletableRows = slip.rows.filter(row => row.id);
     if (deletableRows.length === 0) {
       setActionMessage('Không tìm thấy ID dòng trong phiếu để xóa.');
@@ -1041,33 +1151,11 @@ export default function WeighingShiftSummary({
   return (
     <div className="relative space-y-4 pb-28">
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-zinc-100 bg-zinc-50 p-3 sm:p-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="min-w-[140px] flex-1 space-y-1 sm:max-w-[180px]">
-              <span className="flex items-center gap-1 text-xs font-bold text-zinc-600">
-                <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" />
-                Từ ngày
-              </span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
-              />
-            </label>
-            <label className="min-w-[140px] flex-1 space-y-1 sm:max-w-[180px]">
-              <span className="flex items-center gap-1 text-xs font-bold text-zinc-600">
-                <CalendarDays className="h-3.5 w-3.5 text-[#ef1b2d]" />
-                Đến ngày
-              </span>
-              <input
-                type="date"
-                value={dateTo}
-                min={dateFrom}
-                onChange={e => setDateTo(e.target.value)}
-                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
-              />
-            </label>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50 px-3 py-3 sm:px-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">Danh sách</p>
+            <h2 className="text-base font-black text-zinc-900">{config.summaryTitle}</h2>
+            <p className="mt-0.5 text-xs font-semibold text-zinc-500">{config.summarySubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1080,16 +1168,39 @@ export default function WeighingShiftSummary({
               Làm mới
             </button>
             {canCreate ? (
-            <button
-              type="button"
-              onClick={() => handleOpenSlipSetup({ productionDate: dateTo })}
-              className="hidden h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#b30d1c] sm:flex"
-            >
-              <Plus className="h-4 w-4" />
-              Thêm báo cáo
-            </button>
+              <button
+                type="button"
+                onClick={() => handleOpenSlipSetup({ productionDate: dateTo })}
+                className="hidden h-10 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-4 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#b30d1c] sm:flex"
+              >
+                <Plus className="h-4 w-4" />
+                Thêm báo cáo
+              </button>
             ) : null}
           </div>
+        </div>
+        <div className="px-3 py-3 sm:px-4">
+          <TableToolbar isLoading={isLoading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
+            <TableDateFilter label="Từ ngày" value={dateFrom} onChange={setDateFrom} />
+            <TableDateFilter label="Đến ngày" value={dateTo} onChange={setDateTo} />
+            <FilterCombobox
+              label="Ca"
+              options={caOptions}
+              value={filterCa || 'all'}
+              onChange={value => setFilterCa(value === 'all' ? '' : value)}
+              formatOption={value => shiftOptions.find(option => option.value === value)?.label || value}
+              searchPlaceholder="Tìm ca..."
+              compact
+            />
+            <FilterCombobox
+              label="Máy"
+              options={machineOptions}
+              value={filterMachine || 'all'}
+              onChange={value => setFilterMachine(value === 'all' ? '' : value)}
+              searchPlaceholder="Tìm máy..."
+              compact
+            />
+          </TableToolbar>
         </div>
       </section>
 
@@ -1114,7 +1225,9 @@ export default function WeighingShiftSummary({
 
           {dateGroups.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-xs font-semibold text-zinc-400">
-              Chưa có phiếu cân nào trong khoảng ngày đã chọn.
+              {hasActiveFilters
+                ? 'Không có phiếu khớp bộ lọc Ngày / Máy / Ca.'
+                : 'Chưa có phiếu trong khoảng ngày đã chọn.'}
             </div>
           ) : (
             dateGroups.map(dateGroup => (

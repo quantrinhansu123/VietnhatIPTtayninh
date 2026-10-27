@@ -4927,7 +4927,7 @@ input[type="number"] {
   color: #444444;
 }
 
-/* M?u gi?y: NH?T KÝ S?N XU?T KIÊM PHI?U GIAO */
+/* M?u gi?y: NH?T Kï¿½ S?N XU?T KIï¿½M PHI?U GIAO */
 .acceptance-nk-sx-print-page {
   page: acceptance-nk-sx-print-page;
 }
@@ -7366,7 +7366,7 @@ input[type="number"] {
     page-break-after: auto;
   }
 
-  /* Trang biên b?n xu?t kho (cùng batch giao xe) */
+  /* Trang biï¿½n b?n xu?t kho (cï¿½ng batch giao xe) */
   body.shipping-delivery-print-active .bb-gx-xk-page,
   body.shipping-delivery-print-active .bb-gx-xk-page .bb-xk-sheet-embedded {
     display: block !important;
@@ -7507,7 +7507,7 @@ input[type="number"] {
   word-break: keep-all !important;
 }
 
-/* —— Biên b?n xu?t kho (checklist t? l?nh xu?t hàng) —— */
+/* ï¿½ï¿½ Biï¿½n b?n xu?t kho (checklist t? l?nh xu?t hï¿½ng) ï¿½ï¿½ */
 .bb-xk-print-batch {
   display: none;
 }
@@ -7721,7 +7721,7 @@ input[type="number"] {
     display: none !important;
   }
 
-  /* Ghi ?è body * { visibility:hidden } ? b?t bu?c có !important + specificity cao */
+  /* Ghi ?ï¿½ body * { visibility:hidden } ? b?t bu?c cï¿½ !important + specificity cao */
   body.shipping-warehouse-export-print-active .bb-xk-print-batch,
   body.shipping-warehouse-export-print-active .bb-xk-print-batch * {
     visibility: visible !important;
@@ -7779,7 +7779,7 @@ input[type="number"] {
   }
 }
 
-/* ?? B?ng theo dõi v?t t? theo máy (1 t? A4 ngang ? Danh sách báo cáo) ?? */
+/* ?? B?ng theo dï¿½i v?t t? theo mï¿½y (1 t? A4 ngang ? Danh sï¿½ch bï¿½o cï¿½o) ?? */
 .bb-nvl-checklist-print-batch {
   display: none;
 }
@@ -8045,7 +8045,7 @@ input[type="number"] {
     display: none !important;
   }
 
-  /* Cho phép batch b?ng v?t t? + batch phi?u s?n l??ng (trang sau) */
+  /* Cho phï¿½p batch b?ng v?t t? + batch phi?u s?n l??ng (trang sau) */
   body.machine-shift-nvl-checklist-print-active
     > :not(.bb-nvl-checklist-print-batch):not(.acceptance-nk-sx-print-batch):not(.production-order-print-batch) {
     display: none !important;

@@ -27,7 +27,7 @@ import {
   lookupBbMaterialKgByCodeOrName,
   lookupNnsTronTonDauKg,
   resolveBbLoiHongMixingLineWeightKg,
-  resolveBbLoiHongNnkmNcTotalKg,
+  resolveBbLoiHongNhuakmNcTotalKg,
   sumBbDamagedFilmScrapKg,
   type BbCuoiCaGroup,
   type BbDamagedGoodsGroup,
@@ -342,7 +342,7 @@ function buildMaterialRowsForOrder(input: {
 
   // Lỗi hỏng = cột «Trọng lượng lỗi» tab «Dữ liệu trong báo cáo hàng lỗi hỏng» — không phân bổ lại.
   for (const row of rows.values()) row.damagedKg = 0;
-  const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+  const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
     damagedLines,
     ngay: order.ngay,
     shift: order.shift,

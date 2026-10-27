@@ -3610,7 +3610,7 @@ const LOI_HONG_FILM_SCRAP_ALIAS_CODES = new Set([
   'MTHANGRACMANG'
 ]);
 /** Mã nhựa lỗi hỏng cộng vào cột «Lỗi hỏng (kg)» + NVL trộn (không chia %). */
-const LOI_HONG_MIXING_KG_EXTRA_CODES = new Set(['NNKM', 'NC', 'RMN']);
+const LOI_HONG_MIXING_KG_EXTRA_CODES = new Set(['NHUAKM', 'NC', 'RMN']);
 
 function compactLoiHongMaterialCode(code: string) {
   return String(code || '')
@@ -3654,27 +3654,27 @@ export function isLoiHongFilmScrapBomMaterialCode(code: string, name = '', unit 
   return false;
 }
 
-/** NNKM · NC · RMN — luôn đưa vào «NVL trộn · ĐVT kg» trên tab lỗi hỏng. */
+/** NHUAKM · NC · RMN — luôn đưa vào «NVL trộn · ĐVT kg» trên tab lỗi hỏng. */
 export function isLoiHongMixingKgExtraCode(code: string) {
   const key = compactLoiHongMaterialCode(code);
   return Boolean(key && LOI_HONG_MIXING_KG_EXTRA_CODES.has(key));
 }
 
 /**
- * KL tuyệt đối NNKM / NC / RMN:
- * - Báo cáo sản lượng / nghiệm thu: `mat_hang` = NNKM · NC · RMN (SP lỗi hoặc SP rác)
- * - Phiếu cân hàng hỏng: nhựa không màng → NNKM; nhựa chết · đầu nòng → NC
+ * KL tuyệt đối NHUAKM / NC / RMN:
+ * - Báo cáo sản lượng / nghiệm thu: `mat_hang` = NHUAKM · NC · RMN (SP lỗi hoặc SP rác)
+ * - Phiếu cân hàng hỏng: nhựa không màng → NHUAKM; nhựa chết · đầu nòng → NC
  */
-export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
+export function sumLoiHongNhuakmNcKgFromDamagedRecords(input: {
   damagedRecords?: WeighingRecord[];
   damagedLines?: BbDamagedGoodsLineRow[];
   ngay: string;
   shift: string;
   machine?: string;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
-}): { nnkmKg: number; ncKg: number; rmnKg: number } {
+}): { nhuakmKg: number; ncKg: number; rmnKg: number } {
   const shiftOptions = getProductionShiftOptions((input.shiftSettings || []) as ShiftSetting[]);
-  let nnkmKg = 0;
+  let nhuakmKg = 0;
   let ncKg = 0;
   let rmnKg = 0;
 
@@ -3688,7 +3688,7 @@ export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
     ) {
       continue;
     }
-    // NNKM/NC/RMN có thể là SP lỗi hoặc SP rác — không lấy RAC MANG / MT-HANG RAC.
+    // NHUAKM/NC/RMN có thể là SP lỗi hoặc SP rác — không lấy RAC MANG / MT-HANG RAC.
     if (isLoiHongFilmScrapAliasCode(row.productCode || '', row.productName || row.materialName || '')) {
       continue;
     }
@@ -3696,7 +3696,7 @@ export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
     if (!codeKey || !LOI_HONG_MIXING_KG_EXTRA_CODES.has(codeKey)) continue;
     const kg = row.weightKg > 0 ? row.weightKg : 0;
     if (!(kg > 0)) continue;
-    if (codeKey === 'NNKM') nnkmKg += kg;
+    if (codeKey === 'NHUAKM') nhuakmKg += kg;
     else if (codeKey === 'NC') ncKg += kg;
     else if (codeKey === 'RMN') rmnKg += kg;
   }
@@ -3723,7 +3723,7 @@ export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
     }
 
     const split = splitDamagedGoodsDefectWeights(record);
-    nnkmKg += split.nhuaKhongMang > 0 ? split.nhuaKhongMang : 0;
+    nhuakmKg += split.nhuaKhongMang > 0 ? split.nhuaKhongMang : 0;
     ncKg += split.nhuaCucDauNong > 0 ? split.nhuaCucDauNong : 0;
 
     const typeKey = compactLoiHongMaterialCode(
@@ -3734,10 +3734,10 @@ export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
         parseFloat(String(resolveDamagedGoodsEnteredQuantity(record) || '').replace(',', '.')) || 0;
       if (qty > 0 && split.nhuaCucDauNong <= 0) ncKg += qty;
     }
-    if (typeKey.includes('NHUAKHONGMANG') || typeKey === 'NNKM') {
+    if (typeKey.includes('NHUAKHONGMANG') || typeKey === 'NHUAKM') {
       const qty =
         parseFloat(String(resolveDamagedGoodsEnteredQuantity(record) || '').replace(',', '.')) || 0;
-      if (qty > 0 && split.nhuaKhongMang <= 0) nnkmKg += qty;
+      if (qty > 0 && split.nhuaKhongMang <= 0) nhuakmKg += qty;
     }
     if (typeKey === 'RMN') {
       const qty =
@@ -3746,14 +3746,14 @@ export function sumLoiHongNnkmNcKgFromDamagedRecords(input: {
     }
   }
   return {
-    nnkmKg: roundQty(nnkmKg, 4),
+    nhuakmKg: roundQty(nhuakmKg, 4),
     ncKg: roundQty(ncKg, 4),
     rmnKg: roundQty(rmnKg, 4)
   };
 }
 
-/** Cột «Lỗi hỏng (kg)» tab lỗi hỏng = NNKM + NC + RMN. */
-export function resolveBbLoiHongNnkmNcTotalKg(input: {
+/** Cột «Lỗi hỏng (kg)» tab lỗi hỏng = NHUAKM + NC + RMN. */
+export function resolveBbLoiHongNhuakmNcTotalKg(input: {
   damagedRecords?: WeighingRecord[];
   damagedLines?: BbDamagedGoodsLineRow[];
   ngay: string;
@@ -3761,11 +3761,11 @@ export function resolveBbLoiHongNnkmNcTotalKg(input: {
   machine?: string;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): number {
-  const { nnkmKg, ncKg, rmnKg } = sumLoiHongNnkmNcKgFromDamagedRecords(input);
-  return roundQty(nnkmKg + ncKg + rmnKg, 4);
+  const { nhuakmKg, ncKg, rmnKg } = sumLoiHongNhuakmNcKgFromDamagedRecords(input);
+  return roundQty(nhuakmKg + ncKg + rmnKg, 4);
 }
 
-/** Gán KL tuyệt đối cho NNKM / NC / RMN (không chia % với mã NVL chính). */
+/** Gán KL tuyệt đối cho NHUAKM / NC / RMN (không chia % với mã NVL chính). */
 export function enrichLoiHongMixingExtraWeights(input: {
   lines: BbDamagedMixingChildRow[];
   damagedRecords?: WeighingRecord[];
@@ -3776,7 +3776,7 @@ export function enrichLoiHongMixingExtraWeights(input: {
   plasticLoiHongKg?: number;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): BbDamagedMixingChildRow[] {
-  const { nnkmKg, ncKg, rmnKg } = sumLoiHongNnkmNcKgFromDamagedRecords({
+  const { nhuakmKg, ncKg, rmnKg } = sumLoiHongNhuakmNcKgFromDamagedRecords({
     damagedRecords: input.damagedRecords,
     damagedLines: input.damagedLines,
     ngay: input.ngay,
@@ -3788,7 +3788,7 @@ export function enrichLoiHongMixingExtraWeights(input: {
   return input.lines.map(row => {
     const codeKey = compactLoiHongMaterialCode(row.materialCode);
     let absKg: number | null = null;
-    if (codeKey === 'NNKM') absKg = nnkmKg > 0 ? nnkmKg : null;
+    if (codeKey === 'NHUAKM') absKg = nhuakmKg > 0 ? nhuakmKg : null;
     else if (codeKey === 'NC') absKg = ncKg > 0 ? ncKg : null;
     else if (codeKey === 'RMN') absKg = rmnKg > 0 ? rmnKg : null;
     else return row;
@@ -3804,7 +3804,7 @@ export function enrichLoiHongMixingExtraWeights(input: {
   });
 }
 
-/** KL lỗi trên dòng NVL trộn: NNKM/NC = KL tuyệt đối; mã chính = nhựa lỗi × %. */
+/** KL lỗi trên dòng NVL trộn: NHUAKM/NC = KL tuyệt đối; mã chính = nhựa lỗi × %. */
 export function resolveBbLoiHongMixingLineWeightKg(
   row: BbDamagedMixingChildRow,
   plasticLoiHongKg: number
@@ -3825,7 +3825,7 @@ export function resolveBbLoiHongMixingLineWeightKg(
 
 /** SP rác / dòng lỗi hỏng — rác màng (màng / film) không tính vào TL nhựa. */
 export function isBbDamagedFilmScrapRow(row: BbDamagedGoodsLineRow): boolean {
-  // NNKM / NC / RMN là nhựa lỗi hỏng — không xếp vào rác màng xi.
+  // NHUAKM / NC / RMN là nhựa lỗi hỏng — không xếp vào rác màng xi.
   if (
     isLoiHongMixingKgExtraCode(row.productCode) ||
     isLoiHongMixingKgExtraCode(row.materialCode)
@@ -4093,7 +4093,7 @@ export function sumBbDamagedGoodsWeightKgByKind(
 
 /**
  * Banner + footer «Báo cáo lỗi hỏng» — cùng công thức Cách nhiệt / Bao bì:
- * - TL nhựa / Lỗi hỏng (kg) = NNKM + NC + RMN
+ * - TL nhựa / Lỗi hỏng (kg) = NHUAKM + NC + RMN
  * - Vật tư khác / Tổng rác màng = RAC MANG + MT-HANG RAC
  * - Tổng hàng lỗi hỏng = hai cột trên
  */
@@ -4125,7 +4125,7 @@ export function resolveBbLoiHongCardWeightByKind(input: {
     const bucketKey = `${group.ngay}|${group.shift}|${group.machine}`;
     if (!plasticSeen.has(bucketKey)) {
       plasticSeen.add(bucketKey);
-      plasticKg += resolveBbLoiHongNnkmNcTotalKg({
+      plasticKg += resolveBbLoiHongNhuakmNcTotalKg({
         damagedRecords: input.damagedRecords,
         damagedLines: group.lines || input.damagedRows || [],
         ngay: group.ngay,
@@ -4153,9 +4153,9 @@ export function resolveBbLoiHongCardWeightByKind(input: {
     }
   }
 
-  // Không có nhóm lệnh — fallback: NNKM từ dòng + rác màng trên damagedRows.
+  // Không có nhóm lệnh — fallback: NHUAKM từ dòng + rác màng trên damagedRows.
   if (groups.length === 0) {
-    plasticKg = resolveBbLoiHongNnkmNcTotalKg({
+    plasticKg = resolveBbLoiHongNhuakmNcTotalKg({
       damagedRecords: input.damagedRecords,
       damagedLines: input.damagedRows || [],
       ngay: '',
@@ -4559,7 +4559,7 @@ export function groupBbDamagedGoodsLines(rows: BbDamagedGoodsLineRow[]): BbDamag
 
 /**
  * Bảo đảm mỗi lệnh SX có nhóm tab lỗi hỏng (giống Cách nhiệt):
- * kể cả khi chưa có phiếu Hàng hỏng/Hàng rác — vẫn gắn NNKM/NC từ phiếu cân
+ * kể cả khi chưa có phiếu Hàng hỏng/Hàng rác — vẫn gắn NHUAKM/NC từ phiếu cân
  * và rác màng từ nghiệm thu theo ngày·ca·máy.
  */
 export function ensureBbDamagedGroupsForOrderHeaders(input: {
@@ -4614,7 +4614,7 @@ export type BbDamagedMixingChildRow = {
   totalKlThucTe: number;
   batchCount: number;
   /**
-   * KL lỗi hỏng tuyệt đối (kg) — NNKM/NC lấy từ phiếu hàng hỏng
+   * KL lỗi hỏng tuyệt đối (kg) — NHUAKM/NC lấy từ phiếu hàng hỏng
    * (nhựa không màng / nhựa chết·đầu nòng), không chia theo % BOM.
    */
   trongLuongLoiKg?: number | null;
@@ -4655,7 +4655,7 @@ export function buildBbMixingMaterialLinesForShift(input: {
 
 /**
  * Dòng NVL tab lỗi hỏng: BOM lệnh SX → thành phần NVL trên Kho sản phẩm (`san_pham.nplItems`).
- * Bổ sung tỉ lệ từ BOM lệnh SX. NNKM / NC / RMN không liệt kê dòng — chỉ cộng cột «Lỗi hỏng (kg)».
+ * Bổ sung tỉ lệ từ BOM lệnh SX. NHUAKM / NC / RMN không liệt kê dòng — chỉ cộng cột «Lỗi hỏng (kg)».
  * Tỉ lệ trộn (%) lấy từ thành phần % trên BOM; NVL theo SL không có % phân bổ trọng lượng lỗi.
  */
 export function buildBbLoiHongMaterialLinesForShift(input: {
@@ -4724,7 +4724,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
         const name = String(item.name || item.code || '').trim();
         if (!code && !name) continue;
         if (isNnsTronMaterial(code, name)) continue;
-        // NNKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không liệt kê dòng NVL.
+        // NHUAKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không liệt kê dòng NVL.
         if (isLoiHongMixingKgExtraCode(code)) continue;
         const rate =
           item.amountType === 'quantity'
@@ -5911,7 +5911,7 @@ export function splitBbLoiHongMaterialLinesByMixing(lines: BbDamagedMixingChildR
   const otherMaterialLines: BbDamagedMixingChildRow[] = [];
   for (const row of lines) {
     if (isNnsTronMaterial(row.materialCode, row.materialName)) continue;
-    // NNKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không hiện dòng.
+    // NHUAKM / NC / RMN chỉ cộng cột «Lỗi hỏng (kg)» — không hiện dòng.
     if (isLoiHongMixingKgExtraCode(row.materialCode)) continue;
     // MX / RAC MANG / MT-HANG RAC hiện ở dòng «Rác màng xi», không liệt kê lại ở NVL còn lại.
     if (

@@ -85,7 +85,7 @@ import {
   buildBbLoiHongMaterialLinesForShift,
   isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
-  resolveBbLoiHongNnkmNcTotalKg,
+  resolveBbLoiHongNhuakmNcTotalKg,
   sumBbDauCaMaterialLinesTonKg,
   syncBbThucDungRowsXuatTrongNgayFromExportTab,
   syncBbThucDungRowsTonCuoiFromCuoiCaTab,
@@ -1913,8 +1913,8 @@ export default function ControlBoardBbMachineReportTable({
     return damagedGroups.map(group => {
       const groupIsInsulation =
         isInsulationMachine || isInsulationMachineText(group.machine);
-      // Cột Lỗi hỏng (kg) + cơ sở chia % mã chính = NNKM + NC + RMN.
-      const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+      // Cột Lỗi hỏng (kg) + cơ sở chia % mã chính = NHUAKM + NC + RMN.
+      const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
         damagedRecords,
         damagedLines: group.lines || [],
         ngay: group.ngay,
@@ -1922,7 +1922,7 @@ export default function ControlBoardBbMachineReportTable({
         machine: group.machine,
         shiftSettings
       });
-      // Luôn dựng lại NVL từ BOM (NNKM/NC/RMN không liệt kê dòng — chỉ cộng cột tổng).
+      // Luôn dựng lại NVL từ BOM (NHUAKM/NC/RMN không liệt kê dòng — chỉ cộng cột tổng).
       const mixingLines = buildBbLoiHongMaterialLinesForShift({
         productionOrders,
         products,
@@ -3199,7 +3199,7 @@ export default function ControlBoardBbMachineReportTable({
             className="flex h-full min-h-[102px] flex-col rounded-xl border border-red-200/80 bg-white p-2.5 shadow-xs transition hover:border-red-300 hover:bg-red-50/20"
                 title={
                   isInsulationMachine
-                    ? 'Tổng = Lỗi hỏng (NNKM+NC+RMN) + Tổng rác màng (RAC MANG + MT-HANG RAC)'
+                    ? 'Tổng = Lỗi hỏng (NHUAKM+NC+RMN) + Tổng rác màng (RAC MANG + MT-HANG RAC)'
                     : 'Lấy từ Báo cáo sản lượng: SP lỗi (hàng lỗi hỏng) + SP rác trừ rác màng'
                 }
           >
@@ -3218,7 +3218,7 @@ export default function ControlBoardBbMachineReportTable({
                 className="min-w-0"
                 title={
                   isInsulationMachine
-                    ? 'Σ NNKM + NC + RMN (= cột Lỗi hỏng (kg))'
+                    ? 'Σ NHUAKM + NC + RMN (= cột Lỗi hỏng (kg))'
                     : 'Σ trọng lượng phiếu Báo cáo sản lượng · loại SP lỗi (Hàng hỏng)'
                 }
               >
@@ -4475,7 +4475,7 @@ export default function ControlBoardBbMachineReportTable({
                 <th className="px-4 py-3.5 text-right font-black">Dòng NVL</th>
                 <th
                   className="px-4 py-3.5 text-right font-black text-rose-800"
-                  title="Tổng NNKM + NC + RMN"
+                  title="Tổng NHUAKM + NC + RMN"
                 >
                   Lỗi hỏng (kg)
                 </th>
@@ -4498,7 +4498,7 @@ export default function ControlBoardBbMachineReportTable({
               ) : damagedGroupsWithMixing.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center font-bold text-zinc-400">
-                    Chưa có lệnh SX trong bộ lọc để gắn hàng lỗi hỏng (NNKM/NC/RMN · rác màng).
+                    Chưa có lệnh SX trong bộ lọc để gắn hàng lỗi hỏng (NHUAKM/NC/RMN · rác màng).
                   </td>
                 </tr>
               ) : (
@@ -4532,7 +4532,7 @@ export default function ControlBoardBbMachineReportTable({
                           damagedLines: group.lines
                         })
                       : null);
-                  const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+                  const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
                     damagedRecords,
                     damagedLines: group.lines || [],
                     ngay: group.ngay,
@@ -4565,7 +4565,7 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                         <td
                           className="px-4 py-3 text-right font-mono font-bold text-rose-800"
-                          title="Tổng NNKM + NC + RMN"
+                          title="Tổng NHUAKM + NC + RMN"
                         >
                           {formatKg(plasticLoiHongKg, 2)}
                         </td>
@@ -4584,7 +4584,7 @@ export default function ControlBoardBbMachineReportTable({
                                 group.mixingLines
                               );
                               const resolveLoiHongTiLe = (row: (typeof mixingKgLines)[number]) => {
-                                // NNKM / NC / RMN chỉ cộng tổng — không chia % với mã NVL chính.
+                                // NHUAKM / NC / RMN chỉ cộng tổng — không chia % với mã NVL chính.
                                 if (isLoiHongMixingKgExtraCode(row.materialCode)) return null;
                                 return row.tiLeTronPercent != null && row.tiLeTronPercent > 0
                                   ? row.tiLeTronPercent
@@ -4592,7 +4592,7 @@ export default function ControlBoardBbMachineReportTable({
                               };
                               const resolveLoiHongWeightKg = (row: (typeof mixingKgLines)[number]) =>
                                 resolveBbLoiHongMixingLineWeightKg(row, plasticLoiHongKg);
-                              // Tổng nhựa lỗi hỏng = NNKM + NC + RMN (cột Lỗi hỏng).
+                              // Tổng nhựa lỗi hỏng = NHUAKM + NC + RMN (cột Lỗi hỏng).
                               const mixingLoiHongTotalKg = plasticLoiHongKg;
                               return (
                                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
@@ -4610,7 +4610,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2 text-right font-black">Tỉ lệ trộn (%)</th>
                                           <th
                                             className="px-3 py-2 text-right font-black"
-                                            title="Tổng nhựa lỗi hỏng (NNKM+NC+RMN) × Tỉ lệ BOM (%) — Bao bì giống Cách nhiệt"
+                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × Tỉ lệ BOM (%) — Bao bì giống Cách nhiệt"
                                           >
                                             Trọng lượng lỗi
                                           </th>
@@ -4641,7 +4641,7 @@ export default function ControlBoardBbMachineReportTable({
                                                   }`}
                                                   title={
                                                     isExtra
-                                                      ? 'NNKM/NC/RMN lấy KL tuyệt đối từ nghiệm thu / phiếu hàng hỏng — không chia % với mã NVL chính'
+                                                      ? 'NHUAKM/NC/RMN lấy KL tuyệt đối từ nghiệm thu / phiếu hàng hỏng — không chia % với mã NVL chính'
                                                       : undefined
                                                   }
                                                 >

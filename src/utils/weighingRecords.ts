@@ -665,6 +665,147 @@ export function normalizeWeighingRecords(data: unknown): WeighingRecord[] {
     .filter((item): item is WeighingRecord => item !== null);
 }
 
+/** Prefix ID dòng tổng hợp từ Báo cáo sản lượng (SP lỗi / SP rác) — không xóa qua API hàng hỏng. */
+export const ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX = 'sl-hh-';
+
+export function isAcceptanceHangLoiHongWeighingId(id: string | number | undefined | null) {
+  return String(id ?? '').startsWith(ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX);
+}
+
+function isAcceptanceHangLoiHongLoai(value: unknown) {
+  const key = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return (
+    key === 'sp loi' ||
+    key === 'sp rac' ||
+    key.includes('sp loi') ||
+    key.includes('sp rac') ||
+    key.includes('hang hong') ||
+    key.includes('hang loi')
+  );
+}
+
+/**
+ * Map dòng «Hàng lỗi hỏng nhập kho» (SP lỗi / SP rác trên bao_cao_nghiem_thu)
+ * → WeighingRecord để tổng hợp trên /danh-sach-bao-cao-hang-hong.
+ */
+export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): WeighingRecord[] {
+  const rows = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as { reports?: unknown }).reports)
+      ? ((data as { reports: unknown[] }).reports)
+      : [];
+
+  return rows
+    .map((item): WeighingRecord | null => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      const loai = String(row.loai_vat_tu ?? row.loaiVatTu ?? '').trim();
+      if (!isAcceptanceHangLoiHongLoai(loai)) return null;
+
+      const id = String(row.id ?? '').trim();
+      if (!id) return null;
+      const matHang = String(row.mat_hang ?? row.ma_sp ?? row.productCode ?? '').trim();
+      if (!matHang || matHang === '-') return null;
+
+      const ngay = String(row.ngay ?? row.report_date ?? '').trim().slice(0, 10);
+      const ca = String(row.ca ?? '').trim();
+      const lan = String(row.lan ?? '').trim();
+      const may = String(row.ten_may ?? row.ma_may ?? '').trim();
+      const soLuong = row.so_luong === null || row.so_luong === undefined ? '' : String(row.so_luong).trim();
+      const trongLuong =
+        row.trong_luong === null || row.trong_luong === undefined ? '' : String(row.trong_luong).trim();
+      const donVi = String(row.don_vi ?? '').trim() || 'kg';
+      const tenSp = String(row.ten_sp ?? row.ten_hang ?? '').trim();
+      const documentNo = [
+        'BCSL-HH',
+        ngay.replace(/-/g, ''),
+        ca || 'CA',
+        lan ? `L${lan}` : '',
+        may || ''
+      ]
+        .filter(Boolean)
+        .join('-');
+
+      return {
+        id: `${ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX}${id}`,
+        documentNo,
+        reportDate: ngay,
+        productionDate: ngay,
+        shiftName: ca,
+        worker1: '',
+        worker2: '',
+        weigherName: '',
+        productCode: '',
+        productName: '',
+        machineName: isRealMachineName(may) ? may : '',
+        weighNo: lan,
+        weighTime: String(row.gio ?? '').trim().slice(0, 5),
+        coreWeight: '',
+        shellWeight: '',
+        weight: trongLuong,
+        materialType: 'vat_tu_khac',
+        materialCode: matHang,
+        materialQuantity: soLuong || trongLuong,
+        materialUnit: donVi,
+        acceptanceStatus: '',
+        note: [`Từ BC sản lượng · ${loai}`, tenSp].filter(Boolean).join(' · '),
+        imageUrl: String(row.hinh_anh ?? '').trim() || undefined,
+        createdAt: String(row.created_at ?? '').trim() || undefined,
+        daIn: Boolean(row.da_in)
+      };
+    })
+    .filter((item): item is WeighingRecord => item !== null);
+}
+
+/** Gộp phiếu hàng hỏng gốc + dòng SP lỗi/SP rác từ BC sản lượng (không trùng document nếu cùng nguồn). */
+export function mergeDamagedGoodsWeighingRecords(
+  hangHongRows: WeighingRecord[],
+  acceptanceLoiHongRows: WeighingRecord[]
+) {
+  const existingKeys = new Set(
+    hangHongRows.map(row =>
+      [
+        row.documentNo,
+        row.productionDate || row.reportDate,
+        row.shiftName,
+        row.machineName,
+        row.materialCode,
+        row.materialQuantity,
+        row.weight
+      ]
+        .join('|')
+        .toLowerCase()
+    )
+  );
+
+  const extras = acceptanceLoiHongRows.filter(row => {
+    const key = [
+      row.documentNo,
+      row.productionDate || row.reportDate,
+      row.shiftName,
+      row.machineName,
+      row.materialCode,
+      row.materialQuantity,
+      row.weight
+    ]
+      .join('|')
+      .toLowerCase();
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+
+  return [...hangHongRows, ...extras].sort((left, right) =>
+    String(right.createdAt || right.productionDate || '').localeCompare(
+      String(left.createdAt || left.productionDate || '')
+    )
+  );
+}
+
 export function generateWeighingDocumentNo(productionDate?: string) {
   const now = new Date();
   const datePart = (productionDate || now.toISOString().split('T')[0]).replace(/-/g, '');

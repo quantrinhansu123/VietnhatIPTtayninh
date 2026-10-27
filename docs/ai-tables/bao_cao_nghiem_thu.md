@@ -20,6 +20,8 @@ Modal **Tự động báo cáo sản lượng** bắt buộc chọn **Ngày + Ca
 
 `/bao-cao-san-luong` và `/danh-sach-bao-cao-san-luong`: mỗi phiếu (ngày + ca + máy + lần) hiện thành **một bảng**, xếp chồng vuốt xuống — không cần chọn dòng để xem. **Thêm mới** / Sửa mới mở form nhập. Nút **Xem** mở modal **NVL theo định mức**; **Đồng bộ** lấy Thành phần Kho sản phẩm và **lưu snapshot** bảng `bao_cao_san_luong_nvl_dinh_muc` ([manifest](./bao_cao_san_luong_nvl_dinh_muc.md)). Ô **Trọng lượng** trên modal + nút **Đồng bộ trọng lượng** = tổng **Cân sản phẩm** từ `can_tu_dong` khớp ngày·ca·máy·mã SP (không dùng định mức `tong_trong_luong` × SL).
 
+Mục **Hàng lỗi hỏng nhập kho** (SP lỗi + SP rác) trên phiếu sản lượng được **tổng hợp** sang `/danh-sach-bao-cao-hang-hong` ([bao_cao_hang_hong](./bao_cao_hang_hong.md)).
+
 **Mã SP theo loại vật tư:** Thành phẩm / Gia công lấy `san_pham`. **SP lỗi** thêm mã `kho_nvl` thuộc Kho hàng hỏng (vd. NC). **SP rác** thêm mã kho rác. Vẫn gộp mã từ lệnh SX khớp ngày + ca + máy.
 
 Liên kết LSX ưu tiên ngày `lenh_sx.ngay`, lấy từng sản phẩm từ `lenh_sx_dong` (fallback `san_pham`, rồi dòng tổng cho dữ liệu cũ). Tải lỗi một API không chặn máy/ca từ các API còn lại; form hiển thị lỗi tải máy, ca hoặc LSX.

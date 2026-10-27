@@ -27,7 +27,7 @@ import {
   buildBbLoiHongMaterialLinesForShift,
   ensureBbDamagedGroupsForOrderHeaders,
   resolveBbLoiHongFilmScrapMaterialForShift,
-  resolveBbLoiHongNnkmNcTotalKg,
+  resolveBbLoiHongNhuakmNcTotalKg,
   isInsulationMachineText,
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
@@ -268,12 +268,12 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     ...filter
   });
-  /** Bao bì giống Cách nhiệt: luôn có nhóm theo lệnh SX để gắn NNKM/NC + rác màng. */
+  /** Bao bì giống Cách nhiệt: luôn có nhóm theo lệnh SX để gắn NHUAKM/NC + rác màng. */
   const damagedGroups = ensureBbDamagedGroupsForOrderHeaders({
     damagedGroups: groupBbDamagedGoodsLines(damagedRows),
     orderGroups: groupBbProductionOrderLines(orderRowsBase)
   }).map(group => {
-    const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+    const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
       damagedRecords: input.damagedRecords,
       damagedLines: group.lines || [],
       ngay: group.ngay,

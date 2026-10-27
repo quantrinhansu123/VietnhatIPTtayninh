@@ -5,7 +5,7 @@
 import {
   isInsulationMachineText,
   isLoiHongMixingKgExtraCode,
-  resolveBbLoiHongNnkmNcTotalKg,
+  resolveBbLoiHongNhuakmNcTotalKg,
   resolveBbLoiHongMixingLineWeightKg,
   splitBbLoiHongMaterialLinesByMixing,
   sumBbDamagedFilmScrapKg,
@@ -112,7 +112,7 @@ export function buildDuLieuTrongBaoCaoHangLoiHongRowsFromGroups(input: {
   for (const group of input.damagedGroups || []) {
     const groupIsInsulation =
       Boolean(input.isInsulationMachine) || isInsulationMachineText(group.machine);
-    const plasticLoiHongKg = resolveBbLoiHongNnkmNcTotalKg({
+    const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
       damagedLines: group.lines || [],
       ngay: group.ngay,
       shift: group.shift,

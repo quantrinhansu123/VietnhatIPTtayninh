@@ -6356,6 +6356,53 @@ input[type="number"] {
   border-top: 3px dashed #94a3b8;
 }
 
+/* Biên b?n xu?t kho nhúng d??i b?ng giao xe (xem tr??c) */
+.bb-gx-xk-follow {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 2px dashed #94a3b8;
+}
+
+.bb-gx-print-preview-wrap .bb-gx-xk-follow {
+  margin-top: 22px;
+  padding-top: 18px;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-sheet-embedded {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-logo {
+  width: 38mm;
+  height: 19mm;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-company {
+  font-size: 8.5pt;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-title {
+  font-size: 16pt;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-sub {
+  font-size: 8.5pt;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-table th,
+.bb-gx-print-preview-wrap .bb-xk-table td {
+  font-size: 10.5pt;
+  padding: 5px 4px;
+}
+
+.bb-gx-print-preview-wrap .bb-xk-sign {
+  min-height: 96px;
+}
+
 .bb-gx-sheet {
   --bb-gx-red: #d71920;
   --bb-gx-line: #d9dde3;
@@ -7046,6 +7093,44 @@ input[type="number"] {
     page-break-after: auto;
   }
 
+  /* Xu?t kho theo t?ng l?nh ? sang trang m?i ngay d??i biên b?n giao xe */
+  body.shipping-delivery-print-active .bb-gx-xk-follow {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
+
+  body.shipping-delivery-print-active .bb-xk-sheet-embedded {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-family: 'Times New Roman', Times, serif !important;
+  }
+
+  body.shipping-delivery-print-active .bb-xk-sheet-embedded,
+  body.shipping-delivery-print-active .bb-xk-sheet-embedded * {
+    visibility: visible !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.shipping-delivery-print-active .bb-xk-blank {
+    min-height: 9mm !important;
+  }
+
+  body.shipping-delivery-print-active .bb-xk-table th,
+  body.shipping-delivery-print-active .bb-xk-table td {
+    padding: 3.5mm 1.5mm !important;
+  }
+
   body.shipping-delivery-print-active .bb-gx-table thead {
     display: table-header-group;
   }
@@ -7388,6 +7473,16 @@ input[type="number"] {
     font-family: 'Times New Roman', Times, serif !important;
   }
 
+  body.shipping-warehouse-export-print-active .bb-xk-print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  body.shipping-warehouse-export-print-active .bb-xk-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
   body.shipping-warehouse-export-print-active .bb-xk-blank {
     min-height: 9mm !important;
   }
@@ -7395,5 +7490,310 @@ input[type="number"] {
   body.shipping-warehouse-export-print-active .bb-xk-table th,
   body.shipping-warehouse-export-print-active .bb-xk-table td {
     padding: 3.5mm 1.5mm !important;
+  }
+}
+
+/* ?? B?ng theo dõi v?t t? theo máy (1 t? A4 ngang ? Danh sách báo cáo) ?? */
+.bb-nvl-checklist-print-batch {
+  display: none;
+}
+
+.bb-nvl-checklist-sheet {
+  box-sizing: border-box;
+  width: 297mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 5mm 6mm;
+  background: #fff;
+  color: #111;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 9.5pt;
+  font-weight: 700;
+}
+
+.bb-nvl-checklist-sheet-landscape {
+  width: 297mm;
+}
+
+.bb-nvl-checklist-sheet *,
+.bb-nvl-checklist-sheet *::before,
+.bb-nvl-checklist-sheet *::after {
+  box-sizing: border-box;
+}
+
+.bb-nvl-checklist-header {
+  display: grid;
+  grid-template-columns: minmax(52mm, 1.1fr) minmax(0, 1.6fr) minmax(48mm, 1fr);
+  align-items: start;
+  column-gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1.5px solid #222;
+}
+
+.bb-nvl-checklist-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bb-nvl-checklist-logo {
+  width: 18mm;
+  height: 18mm;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.bb-nvl-checklist-brand-block {
+  min-width: 0;
+}
+
+.bb-nvl-checklist-brand {
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  color: #111;
+}
+
+.bb-nvl-checklist-brand-sub {
+  margin-top: 2px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #444;
+}
+
+.bb-nvl-checklist-header-center {
+  text-align: center;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.bb-nvl-checklist-title {
+  font-size: 13pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  color: #111;
+  text-align: center;
+}
+
+.bb-nvl-checklist-subtitle {
+  margin-top: 1px;
+  font-size: 11pt;
+  font-weight: 700;
+  text-align: center;
+}
+
+.bb-nvl-checklist-date {
+  margin-top: 3px;
+  font-size: 9.5pt;
+  text-align: center;
+}
+
+.bb-nvl-checklist-header-right {
+  text-align: right;
+  min-width: 0;
+}
+
+.bb-nvl-checklist-doc-meta {
+  margin-bottom: 5px;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #333;
+}
+
+.bb-nvl-checklist-meta-line {
+  font-size: 11.5pt;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.bb-nvl-checklist-meta-value {
+  margin-left: 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bb-nvl-checklist-meta-codes {
+  margin-top: 4px;
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.bb-nvl-checklist-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bb-nvl-checklist-table th,
+.bb-nvl-checklist-table td {
+  border: 1px solid #222;
+  padding: 2px 2px;
+  vertical-align: middle;
+  font-size: 8.5pt;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.bb-nvl-checklist-table th {
+  background: #f3f4f6;
+  text-align: center;
+  font-size: 7.5pt;
+}
+
+.bb-nvl-checklist-total-label {
+  text-align: right !important;
+  padding-right: 6px !important;
+  background: #f8fafc;
+}
+
+.bb-nvl-checklist-center { text-align: center; }
+.bb-nvl-checklist-left { text-align: left; padding-left: 4px !important; }
+.bb-nvl-checklist-num { text-align: right; padding-right: 4px !important; white-space: nowrap; }
+.bb-nvl-checklist-code {
+  text-align: left;
+  padding-left: 3px !important;
+  font-family: ui-monospace, 'Courier New', monospace;
+  word-break: break-all;
+  font-size: 8.5pt;
+}
+.bb-nvl-checklist-blank { min-height: 7mm; }
+
+.bb-nvl-checklist-usage {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.bb-nvl-checklist-usage-value {
+  min-width: 28mm;
+  text-align: right;
+  padding: 0 4px 1px;
+  border-bottom: 1px solid #222;
+}
+
+.bb-nvl-checklist-usage-line {
+  flex: 1;
+  border-bottom: 1px solid #222;
+  min-height: 18px;
+}
+
+.bb-nvl-checklist-notes {
+  margin-top: 6px;
+  font-size: 8.5pt;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.bb-nvl-checklist-notes p { margin: 2px 0; }
+
+.bb-nvl-checklist-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+}
+
+.bb-nvl-checklist-sign {
+  position: relative;
+  min-height: 88px;
+  border: 1px solid #222;
+}
+
+.bb-nvl-checklist-sign-head {
+  text-align: center;
+  padding: 4px 6px;
+  border-bottom: 1px solid #222;
+  background: #f3f4f6;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.bb-nvl-checklist-sign-hint {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  font-style: italic;
+  color: #555;
+  font-weight: 700;
+}
+
+@media print {
+  @page machine-shift-nvl-checklist-page-a4-landscape {
+    size: 297mm 210mm;
+    margin: 5mm 6mm;
+  }
+
+  body.machine-shift-nvl-checklist-print-active #root {
+    display: none !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active > :not(.bb-nvl-checklist-print-batch) {
+    display: none !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch,
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-batch {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-print-page,
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet {
+    page: machine-shift-nvl-checklist-page-a4-landscape !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table th,
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table td {
+    padding: 1.1mm 0.6mm !important;
+    font-size: 8pt !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-blank {
+    min-height: 5mm !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-logo {
+    width: 16mm !important;
+    height: 16mm !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-signatures {
+    gap: 3mm !important;
+    margin-top: 4mm !important;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sign {
+    min-height: 28mm !important;
   }
 }

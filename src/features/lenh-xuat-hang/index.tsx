@@ -1112,7 +1112,7 @@ export function ShippingOrdersPanel({
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 text-xs font-extrabold text-sky-900 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
             title={
               selectedVisibleIds.length > 0
-                ? `In biên bản xuất kho — tổng hợp mã hàng từ ${selectedVisibleIds.length} lệnh`
+                ? `In biên bản xuất kho — ${selectedVisibleIds.length} lệnh (mỗi lệnh 1 phiếu, không gộp mã hàng)`
                 : 'Tick chọn lệnh xuất hàng rồi in checklist xuất kho'
             }
           >

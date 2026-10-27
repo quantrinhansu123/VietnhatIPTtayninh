@@ -12,7 +12,8 @@ Một lệnh có nhiều khách (`khach` trên form). Mỗi khách chọn nhiề
 BSX: sổ xuống từ `GET /api/danh-sach-xe` (`danh_sach_xe.bsx`), gõ biển số mới rồi chọn **Thêm** để ghi vào lệnh (không tạo xe trong danh sách xe)  
 Số Km: cột `so_km`  
 In biên bản giao xe: A4 dọc, **mỗi lệnh 1 trang** (`ShippingDeliveryPrintSheet`, không gộp nhiều lệnh trên cùng trang). Phần đầu phiếu (logo, tiêu đề, ngày/số phiếu/biển số) nằm ngoài bảng để máy in không xé header; chỉ dòng tên cột lặp khi bảng sang trang. Cột **Tên-Địa chỉ** hiện tên khách rồi xuống dòng địa chỉ.  
-Tick nhiều lệnh → nút **In biên bản xuất kho** (`ShippingWarehouseExportPrintSheet`): tổng hợp mã hàng + SL theo `ma_sp`; cột **Số lượng thực** và **Ghi chú** để trống (checklist tay).  
+Dưới mỗi biên bản giao xe in kèm **Biên bản xuất kho** (`ShippingWarehouseExportSheet`, checklist mã hàng của **đúng lệnh đó** — không gộp giữa các lệnh đã tick); cột **Số lượng thực** / **Ghi chú** để trống.  
+Tick nhiều lệnh → nút **In biên bản xuất kho** (`ShippingWarehouseExportPrintSheet`): **mỗi lệnh 1 phiếu**, gộp `ma_sp` chỉ trong phạm vi lệnh đó.  
 Danh sách lọc theo khoảng **Từ ngày** / **Đến ngày** trên `ngay_xuat`.  
 Khi tạo mới bị trùng `ma_lenh` (người khác lưu trước), API tự lấy max STT dạng `LXH###` rồi lưu mã kế tiếp.  
 Nút **Xem** trên từng dòng mở chi tiết lệnh ở chế độ chỉ đọc: từng khách kèm thanh toán, người phụ trách, ghi chú và mặt hàng. Nút **Sao chép** trên từng dòng tạo lệnh mới giống hệt, chỉ đổi `ma_lenh` theo max STT.

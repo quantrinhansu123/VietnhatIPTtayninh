@@ -1,5 +1,6 @@
 import { formatMoney, formatNumber } from '../utils';
 import { vietNhatLogoUrl } from './layout/constants';
+import { ShippingWarehouseExportSheet } from './ShippingWarehouseExportPrintSheet';
 import type { ShippingOrder, ShippingOrderLine } from '../features/lenh-xuat-hang';
 
 type PrintRow = {
@@ -362,7 +363,12 @@ export function ShippingDeliveryPrintSheet({
             <div className="bb-gx-general-note-body">{noteText}</div>
           </section>
         </div>
-      </div>
+
+          {/* Biên bản xuất kho theo từng lệnh — không gộp mã hàng giữa các lệnh đã tick */}
+          <div className="bb-gx-xk-follow">
+            <ShippingWarehouseExportSheet orders={pageOrders} embedded />
+          </div>
+        </div>
         );
       })}
     </div>

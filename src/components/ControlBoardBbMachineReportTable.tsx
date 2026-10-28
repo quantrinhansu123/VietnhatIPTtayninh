@@ -17,7 +17,10 @@ import { computePercentRatio, machineValueMatchesFilter } from '../utils/control
 import type { WeighingRecord } from '../utils/weighingRecords';
 import type { MachineNvlSavedReport } from '../utils/machineNvlReports';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
-import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
+import ControlBoardBbMachineReportPrintBatch, {
+  bbPrintLyDoDraftRef,
+  bbPrintNoteDraftRef
+} from './ControlBoardBbMachineReportPrintSheet';
 import BbCanTuDongTongHopPanel from './BbCanTuDongTongHopPanel';
 import BbSanLuongReportPanel from './BbSanLuongReportPanel';
 import {
@@ -2833,6 +2836,8 @@ export default function ControlBoardBbMachineReportTable({
       });
       setPrintNoteByOrder(nextNotes);
       setPrintLyDoByLine(nextLyDo);
+      bbPrintLyDoDraftRef.current = { ...nextLyDo };
+      bbPrintNoteDraftRef.current = { ...nextNotes };
       setPrintOrderGroups(nextGroups);
       setPrintPreviewDataKey(key => key + 1);
       setPrintConfirmOpen(false);
@@ -2841,7 +2846,21 @@ export default function ControlBoardBbMachineReportTable({
     })();
   };
 
+  /** Flush ô lý do/ghi chú đang gõ trước khi lưu / in; lấy bản nháp mới nhất. */
+  const flushPrintDraftFields = () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active && typeof active.blur === 'function') active.blur();
+  };
+
+  const resolvePrintLyDo = (lineKey: string) =>
+    bbPrintLyDoDraftRef.current[lineKey] ?? printLyDoByLine[lineKey] ?? '';
+  const resolvePrintNote = (groupKey: string) =>
+    bbPrintNoteDraftRef.current[groupKey] ?? printNoteByOrder[groupKey] ?? '';
+
   const printFromPreview = () => {
+    flushPrintDraftFields();
+    setPrintLyDoByLine(prev => ({ ...prev, ...bbPrintLyDoDraftRef.current }));
+    setPrintNoteByOrder(prev => ({ ...prev, ...bbPrintNoteDraftRef.current }));
     setPrintPreviewOpen(false);
     setPendingPrint(true);
   };
@@ -2852,6 +2871,7 @@ export default function ControlBoardBbMachineReportTable({
     setSavingLyDo(true);
     setLyDoSaveMessage('');
     try {
+      flushPrintDraftFields();
       const items = groups.flatMap(group =>
         group.lines.map(line => {
           const lineKey = printLyDoLineKey(group.groupKey, line.key);
@@ -2864,8 +2884,8 @@ export default function ControlBoardBbMachineReportTable({
             ten_sp: line.productName,
             group_key: group.groupKey,
             line_key: line.key,
-            ly_do: printLyDoByLine[lineKey] || '',
-            ghi_chu: printNoteByOrder[group.groupKey] || '',
+            ly_do: resolvePrintLyDo(lineKey),
+            ghi_chu: resolvePrintNote(group.groupKey),
             khoa_on_dinh: buildBbLyDoStableKey({
               ngay: group.ngay,
               ca: group.shift,

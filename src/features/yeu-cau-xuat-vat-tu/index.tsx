@@ -425,26 +425,36 @@ export function YeuCauXuatVatTuPanel({
       )}
 
       {!editingCode ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Mẫu mã</span>
-          {MATERIAL_REQUEST_PRESET_TABS.map(tab => {
-            const active = presetKind === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => applyPreset(tab.id)}
-                disabled={isAutofilling || isSaving}
-                className={`inline-flex h-8 items-center rounded-md border px-3 text-[11px] font-bold transition disabled:opacity-50 ${
-                  active
-                    ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
-                    : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-1.5">
+          <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-500">Mẫu</span>
+          <div
+            className="inline-flex h-7 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50"
+            role="tablist"
+            aria-label="Mẫu mã theo máy"
+          >
+            {MATERIAL_REQUEST_PRESET_TABS.map((tab, index) => {
+              const active = presetKind === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => applyPreset(tab.id)}
+                  disabled={isAutofilling || isSaving}
+                  className={`inline-flex h-full items-center px-2 text-[10px] font-bold transition disabled:opacity-50 ${
+                    index > 0 ? 'border-l border-zinc-200' : ''
+                  } ${
+                    active
+                      ? 'bg-[#ef1b2d] text-white'
+                      : 'bg-transparent text-zinc-600 hover:bg-white hover:text-zinc-900'
+                  }`}
+                >
+                  {tab.id === 'bb' ? 'Máy BB' : tab.id === 'cn' ? 'Máy CN' : tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 

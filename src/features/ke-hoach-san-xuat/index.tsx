@@ -5379,6 +5379,28 @@ export function productionOrderFormToPayload(
   return productionOrderFormToCreatePayload(form, [line], staffText);
 }
 
+/** Tên hàng: 1 dòng khi nghỉ; nhấn/focus → 2 dòng hiện đủ tên. */
+function ProductionOrderProductNameField({ value }: { value: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <textarea
+      value={value}
+      readOnly
+      rows={expanded ? 2 : 1}
+      title={value || undefined}
+      placeholder="Tự điền theo mã hàng"
+      onFocus={() => setExpanded(true)}
+      onClick={() => setExpanded(true)}
+      onBlur={() => setExpanded(false)}
+      className={`${orderFieldClass} resize-none bg-white text-zinc-800 ${
+        expanded
+          ? 'h-auto min-h-[3.5rem] overflow-auto whitespace-normal break-words leading-snug py-1.5'
+          : 'overflow-hidden whitespace-nowrap'
+      }`}
+    />
+  );
+}
+
 export function AddProductionOrderModal({
   open,
   onClose,
@@ -6292,12 +6314,7 @@ export function AddProductionOrderModal({
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.8]">
-                    <input
-                      value={selectedProduct?.name || line.productName}
-                      readOnly
-                      className={`${orderFieldClass} bg-white text-zinc-800`}
-                      placeholder="Tự điền theo mã hàng"
-                    />
+                    <ProductionOrderProductNameField value={selectedProduct?.name || line.productName} />
                   </div>
                   <div className="col-span-1 md:w-16 md:shrink-0 sm:md:w-20">
                     <input
@@ -7390,12 +7407,7 @@ export function EditProductionOrderModal({
                     />
                   </div>
                   <div className="col-span-2 md:min-w-0 md:flex-[1.1]">
-                    <input
-                      value={selectedProduct?.name || line.productName}
-                      readOnly
-                      className={`${orderFieldClass} bg-white text-zinc-800`}
-                      placeholder="Tự điền theo mã hàng"
-                    />
+                    <ProductionOrderProductNameField value={selectedProduct?.name || line.productName} />
                   </div>
                   <div className="col-span-1 md:w-16 md:shrink-0 sm:md:w-20">
                     <input

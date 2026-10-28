@@ -53,7 +53,15 @@ const actionBtnClass =
   'inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-60';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+/** Mặc định 7 ngày gần nhất — tồn cuối ca thường được lưu sau / khác ngày với tồn đầu ca hôm nay. */
+function defaultListFromIso() {
+  const from = new Date();
+  from.setDate(from.getDate() - 6);
+  return `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
 }
 
 function reportTotal(report: MachineNvlSavedReport, catalog?: WarehouseWeightCatalogItem[] | null) {
@@ -679,9 +687,11 @@ export default function MachineNvlReportListView({
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('machine-nvl-report-list');
   const [filterFromDate, setFilterFromDate] = useState(
-    () => initialFilters?.dateFrom?.trim() || todayIso()
+    () => initialFilters?.dateFrom?.trim() || defaultListFromIso()
   );
-  const [filterToDate, setFilterToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
+  const [filterToDate, setFilterToDate] = useState(
+    () => initialFilters?.dateTo?.trim() || todayIso()
+  );
   const [filterCa, setFilterCa] = useState(() => {
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? '' : shift;

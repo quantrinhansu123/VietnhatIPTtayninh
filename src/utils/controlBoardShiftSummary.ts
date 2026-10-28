@@ -577,7 +577,7 @@ export function isWarehouseCoreExportItem(code: string, name: string) {
 }
 
 export function isWarehouseBagExportItem(code: string, name: string) {
-  // Hạt nhựa mã NHUA / NVLK (vd «NHUA-1L-BB … Chạy Bao Bì») không phải túi bao bì.
+  // Hạt nhựa mã NHUA / NVLK (vd «NHUA-1L-CN») không phải túi bao bì.
   if (/^(NHUA|NVLK)/i.test(String(code || '').trim())) return false;
   const hay = normalizeWarehouseItemHay(code, name);
   return (

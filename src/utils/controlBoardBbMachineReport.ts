@@ -3786,7 +3786,10 @@ export function enrichLoiHongMixingExtraWeights(input: {
   });
 }
 
-/** KL lỗi trên dòng NVL trộn: NHUAKM/NC = KL tuyệt đối; mã chính = nhựa lỗi × %. */
+/**
+ * KL lỗi trên dòng NVL trộn: NHUAKM/NC = KL tuyệt đối;
+ * mã chính = nhựa lỗi × tỉ lệ bảng trộn ngày·ca (tiLeTronPercent) — không fallback % ĐM/BOM.
+ */
 export function resolveBbLoiHongMixingLineWeightKg(
   row: BbDamagedMixingChildRow,
   plasticLoiHongKg: number
@@ -3797,10 +3800,7 @@ export function resolveBbLoiHongMixingLineWeightKg(
     }
     return null;
   }
-  const tiLe =
-    row.tiLeTronPercent != null && row.tiLeTronPercent > 0
-      ? row.tiLeTronPercent
-      : row.tiLeDinhMucPercent;
+  const tiLe = row.tiLeTronPercent;
   if (tiLe == null || !(tiLe > 0) || !(plasticLoiHongKg > 0)) return null;
   return Math.round(((plasticLoiHongKg * tiLe) / 100) * 100) / 100;
 }
@@ -4707,9 +4707,9 @@ export function buildBbMixingMaterialLinesForShift(input: {
 }
 
 /**
- * Dòng NVL tab lỗi hỏng: BOM lệnh SX → thành phần NVL trên Kho sản phẩm (`san_pham.nplItems`).
- * Bổ sung tỉ lệ từ BOM lệnh SX. NHUAKM / NC / RMN không liệt kê dòng — chỉ cộng cột «Lỗi hỏng (kg)».
- * Tỉ lệ trộn (%) lấy từ thành phần % trên BOM; NVL theo SL không có % phân bổ trọng lượng lỗi.
+ * Dòng NVL tab lỗi hỏng: seed mã từ BOM lệnh SX; tỉ lệ chia lỗi lấy từ
+ * báo cáo phối trộn (`bao_cao_phoi_tron`) đúng ngày · ca · máy — không dùng % ĐM máy/BOM.
+ * NHUAKM / NC / RMN không liệt kê dòng — chỉ cộng cột «Lỗi hỏng (kg)».
  */
 export function buildBbLoiHongMaterialLinesForShift(input: {
   productionOrders?: ProductionOrderRow[];
@@ -4727,7 +4727,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): BbDamagedMixingChildRow[] {
   const byKey = new Map<string, BbDamagedMixingChildRow>();
-  const upsert = (row: BbDamagedMixingChildRow) => {
+  const upsert = (row: BbDamagedMixingChildRow, opts?: { preferTiLeTron?: boolean }) => {
     const key =
       materialIdentityKey(row.materialCode, row.materialName) ||
       String(row.materialName || row.materialCode || '')
@@ -4742,7 +4742,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     if (!existing.materialCode && row.materialCode) existing.materialCode = row.materialCode;
     if (!existing.materialName && row.materialName) existing.materialName = row.materialName;
     if (!existing.unit && row.unit) existing.unit = row.unit;
-    if (existing.tiLeTronPercent == null && row.tiLeTronPercent != null) {
+    if (row.tiLeTronPercent != null && (opts?.preferTiLeTron || existing.tiLeTronPercent == null)) {
       existing.tiLeTronPercent = row.tiLeTronPercent;
     }
     if (existing.tiLeDinhMucPercent == null && row.tiLeDinhMucPercent != null) {
@@ -4802,11 +4802,36 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     }
   }
 
-  // Phân bổ trọng lượng lỗi theo % trên BOM.
-  for (const row of byKey.values()) {
-    if (row.tiLeTronPercent == null && row.tiLeDinhMucPercent != null && row.tiLeDinhMucPercent > 0) {
-      row.tiLeTronPercent = row.tiLeDinhMucPercent;
-    }
+  // Tỉ lệ chia lỗi = bảng trộn (báo cáo phối trộn) đúng ngày · ca · máy.
+  // Ưu tiên % theo KL thực tế; thiếu thì % đã nhập trên phiếu trộn ca đó — không lấy ĐM máy/BOM.
+  const mixLines = buildBbMixingMaterialLinesForShift({
+    mixingReports: input.mixingReports || [],
+    ngay: input.ngay,
+    shift: input.shift,
+    machine: input.machine || '',
+    shiftSettings: input.shiftSettings
+  });
+  for (const mix of mixLines) {
+    const tiLeFromBangTron =
+      mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0
+        ? mix.tiLeTronPercent
+        : mix.tiLeDinhMucPercent != null && mix.tiLeDinhMucPercent > 0
+          ? mix.tiLeDinhMucPercent
+          : null;
+    if (tiLeFromBangTron == null && !(mix.totalKlThucTe > 0)) continue;
+    upsert(
+      {
+        key: '',
+        materialCode: mix.materialCode,
+        materialName: mix.materialName,
+        unit: mix.unit || 'kg',
+        tiLeTronPercent: tiLeFromBangTron,
+        tiLeDinhMucPercent: mix.tiLeDinhMucPercent,
+        totalKlThucTe: mix.totalKlThucTe,
+        batchCount: mix.batchCount
+      },
+      { preferTiLeTron: true }
+    );
   }
 
   return [...byKey.values()].sort((a, b) => a.materialName.localeCompare(b.materialName, 'vi'));
@@ -5907,12 +5932,14 @@ export function splitBbLoiHongMaterialLinesByMixing(lines: BbDamagedMixingChildR
     ) {
       continue;
     }
-    const tiLe =
-      row.tiLeTronPercent != null && row.tiLeTronPercent > 0
-        ? row.tiLeTronPercent
-        : row.tiLeDinhMucPercent;
+    // Hiện ở NVL trộn nếu có % bảng trộn ngày·ca, hoặc còn % ĐM/BOM để đối chiếu (chia lỗi chỉ dùng % bảng trộn).
+    const tiLeTron =
+      row.tiLeTronPercent != null && row.tiLeTronPercent > 0 ? row.tiLeTronPercent : null;
+    const tiLeDm =
+      row.tiLeDinhMucPercent != null && row.tiLeDinhMucPercent > 0 ? row.tiLeDinhMucPercent : null;
     const isMixingKg =
-      tiLe != null && Number.isFinite(tiLe) && tiLe > 0 && isBbMixingRatioKgUnit(row.unit);
+      isBbMixingRatioKgUnit(row.unit) &&
+      ((tiLeTron != null && Number.isFinite(tiLeTron)) || (tiLeDm != null && Number.isFinite(tiLeDm)));
     if (isMixingKg) mixingKgLines.push(row);
     else otherMaterialLines.push(row);
   }
@@ -7809,8 +7836,29 @@ function materialIdentityKey(code: string, name: string) {
   return (String(code || '').trim() || String(name || '').trim()).toUpperCase();
 }
 
+/** Alias mã NVL đã đổi tên (BB → CN) — gộp khóa + hiển thị. */
+const BB_MATERIAL_CODE_ALIASES: Record<string, string> = {
+  'NHUA-1L-BB': 'NHUA-1L-CN'
+};
+
+function canonicalizeBbMaterialCode(code: string) {
+  const raw = String(code || '').trim();
+  if (!raw) return '';
+  const upper = raw.toUpperCase();
+  return BB_MATERIAL_CODE_ALIASES[upper] || raw;
+}
+
+function canonicalizeBbMaterialName(name: string, code?: string) {
+  const raw = String(name || '').trim();
+  const canonCode = canonicalizeBbMaterialCode(code || '');
+  if (canonCode === 'NHUA-1L-CN' || /h[aạ]t\s*nh[uư]a\s*ldpe\s*\(1l\)\s*ch[aạ]y\s*bao\s*b[iì]/i.test(raw)) {
+    if (!raw || /ch[aạ]y\s*bao\s*b[iì]/i.test(raw)) return 'Hạt nhựa LDPE (1L)';
+  }
+  return raw;
+}
+
 function normalizeMaterialCodeKey(code: string) {
-  return String(code || '').trim().toUpperCase();
+  return canonicalizeBbMaterialCode(code).toUpperCase();
 }
 
 /**
@@ -9117,15 +9165,18 @@ export function buildBbThucDungLineRows(input: {
     /** Key canonical của từng dòng tỉ lệ trộn máy — dùng để gộp tồn/xuất/trộn trùng mã|tên. */
     const machineRatioKeys = new Set<string>();
 
-    const ensureMaterialAgg = (code: string, name: string, unit: string): string | null => {
-      const codeKey = normalizeProductCodeKey(code);
+    const ensureMaterialAgg = (rawCode: string, rawName: string, unit: string): string | null => {
+      const code = canonicalizeBbMaterialCode(rawCode);
+      const name = canonicalizeBbMaterialName(rawName, rawCode || code);
+      const codeKey = normalizeMaterialCodeKey(code);
       const nameKey = (name || '').trim().toLowerCase();
       // Ưu tiên gộp vào dòng đã seed từ tỉ lệ trộn máy (tránh sót / trùng).
       if (codeKey) {
         for (const [key, agg] of byMaterial.entries()) {
           if (!machineRatioKeys.has(key)) continue;
-          if (normalizeProductCodeKey(agg.materialCode) === codeKey) {
+          if (normalizeMaterialCodeKey(agg.materialCode) === codeKey) {
             if (!agg.materialName && name) agg.materialName = name;
+            if (agg.materialCode !== code && code) agg.materialCode = code;
             if (!agg.unit && unit) agg.unit = unit;
             return key;
           }
@@ -9152,8 +9203,9 @@ export function buildBbThucDungLineRows(input: {
       }
       if (codeKey) {
         for (const [key, agg] of byMaterial.entries()) {
-          if (normalizeProductCodeKey(agg.materialCode) === codeKey) {
+          if (normalizeMaterialCodeKey(agg.materialCode) === codeKey) {
             if (!agg.materialName && name) agg.materialName = name;
+            if (agg.materialCode !== code && code) agg.materialCode = code;
             if (!agg.unit && unit) agg.unit = unit;
             return key;
           }

@@ -44,10 +44,10 @@ function numOrNull(value: number | null | undefined): number | null {
   return round4(value);
 }
 
+/** Tỉ lệ chia lỗi = bảng trộn ngày·ca (không fallback ĐM/BOM). */
 function resolveLoiHongTiLe(row: BbDamagedMixingChildRow): number | null {
   if (isLoiHongMixingKgExtraCode(row.materialCode)) return null;
   if (row.tiLeTronPercent != null && row.tiLeTronPercent > 0) return row.tiLeTronPercent;
-  if (row.tiLeDinhMucPercent != null && row.tiLeDinhMucPercent > 0) return row.tiLeDinhMucPercent;
   return null;
 }
 

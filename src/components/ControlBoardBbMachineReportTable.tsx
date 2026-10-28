@@ -718,6 +718,8 @@ export default function ControlBoardBbMachineReportTable({
   const [showPrintSheet, setShowPrintSheet] = useState(false);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [confirmingPrint, setConfirmingPrint] = useState(false);
+  const [printConfirmError, setPrintConfirmError] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [printPreviewSyncing, setPrintPreviewSyncing] = useState(false);
   const [printPreviewSyncMessage, setPrintPreviewSyncMessage] = useState('');
@@ -2004,7 +2006,7 @@ export default function ControlBoardBbMachineReportTable({
         machine: group.machine,
         shiftSettings
       });
-      // Luôn dựng lại NVL từ BOM (NHUAKM/NC/RMN không liệt kê dòng — chỉ cộng cột tổng).
+      // Seed mã từ BOM; tỉ lệ chia lỗi từ báo cáo phối trộn ngày·ca·máy.
       const mixingLines = buildBbLoiHongMaterialLinesForShift({
         productionOrders,
         products,
@@ -2679,6 +2681,8 @@ export default function ControlBoardBbMachineReportTable({
       };
     });
     setPrintStaffByOrder(initialStaff);
+    setPrintConfirmError('');
+    setConfirmingPrint(false);
     setPrintConfirmOpen(true);
     void (async () => {
       try {
@@ -2735,6 +2739,7 @@ export default function ControlBoardBbMachineReportTable({
     field: keyof BbPrintConfirmSelection,
     value: string
   ) => {
+    setPrintConfirmError('');
     setPrintStaffByOrder(prev => ({
       ...prev,
       [groupKey]: {
@@ -2748,17 +2753,26 @@ export default function ControlBoardBbMachineReportTable({
   };
 
   const confirmPrint = () => {
-    void (async () => {
-      let canRecords =
+    if (confirmingPrint) return;
+
+    const missingMain = orderGroups.filter(group => {
+      const selected = printStaffByOrder[group.groupKey];
+      const main = (selected?.staffMain || group.staffMain || '').trim();
+      return !main;
+    });
+    if (missingMain.length > 0) {
+      setPrintConfirmError(
+        `Chọn CN chính máy cho: ${missingMain.map(g => g.orderCode || g.groupKey).join(', ')}.`
+      );
+      return;
+    }
+
+    setPrintConfirmError('');
+    setConfirmingPrint(true);
+    try {
+      // Dùng bản cân đã tải trên bảng — không await API nặng (limit 10000) trước khi mở xem trước.
+      const canRecords =
         calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords;
-      if (sanLuongSource === 'can-tu-dong' && (dateFrom || dateTo)) {
-        try {
-          canRecords = await fetchCanTuDongSlimRecords({ from: dateFrom, to: dateTo });
-          setCalcCanTuDongRecords(canRecords);
-        } catch {
-          /* giữ bản đã tải */
-        }
-      }
 
       // Mục 2 in: ưu tiên SL đã gắn từ Báo cáo sản lượng (orderGroupsMerged);
       // Cân AI chỉ ghi đè khi khớp được cuộn > 0 — tránh in ra 0 khi QR/máy lệch.
@@ -2790,8 +2804,13 @@ export default function ControlBoardBbMachineReportTable({
         enrichBbProductionOrderRowsPlasticNormFromProducts(printLines, products)
       );
 
+      const resolveStaff = (group: BbProductionOrderGroup) =>
+        printStaffByOrder[group.groupKey] ||
+        Object.entries(printStaffByOrder).find(([key]) => key === group.orderCode)?.[1] ||
+        null;
+
       const nextGroups = baseGroups.map(group => {
-        const selected = printStaffByOrder[group.groupKey];
+        const selected = resolveStaff(group);
         if (!selected) return group;
         return {
           ...group,
@@ -2803,7 +2822,7 @@ export default function ControlBoardBbMachineReportTable({
       const nextNotes: Record<string, string> = {};
       const nextLyDo: Record<string, string> = {};
       baseGroups.forEach(group => {
-        const selected = printStaffByOrder[group.groupKey];
+        const selected = resolveStaff(group);
         const note = selected?.ghiChu?.trim() || '';
         const dbNote =
           group.lines
@@ -2843,7 +2862,11 @@ export default function ControlBoardBbMachineReportTable({
       setPrintConfirmOpen(false);
       setShowPrintSheet(true);
       setPrintPreviewOpen(true);
-    })();
+    } catch (error: any) {
+      setPrintConfirmError(error?.message || 'Không mở được xem trước. Thử lại.');
+    } finally {
+      setConfirmingPrint(false);
+    }
   };
 
   /** Flush ô lý do/ghi chú đang gõ trước khi lưu / in; lấy bản nháp mới nhất. */
@@ -2966,7 +2989,8 @@ export default function ControlBoardBbMachineReportTable({
   };
 
   const closePrintConfirm = () => {
-    if (pendingPrint) return;
+    if (pendingPrint || confirmingPrint) return;
+    setPrintConfirmError('');
     setPrintConfirmOpen(false);
   };
 
@@ -4728,10 +4752,11 @@ export default function ControlBoardBbMachineReportTable({
                               );
                               const resolveLoiHongTiLe = (row: (typeof mixingKgLines)[number]) => {
                                 // NHUAKM / NC / RMN chỉ cộng tổng — không chia % với mã NVL chính.
+                                // Chia lỗi: chỉ % bảng trộn ngày·ca (không fallback ĐM/BOM).
                                 if (isLoiHongMixingKgExtraCode(row.materialCode)) return null;
                                 return row.tiLeTronPercent != null && row.tiLeTronPercent > 0
                                   ? row.tiLeTronPercent
-                                  : row.tiLeDinhMucPercent;
+                                  : null;
                               };
                               const resolveLoiHongWeightKg = (row: (typeof mixingKgLines)[number]) =>
                                 resolveBbLoiHongMixingLineWeightKg(row, plasticLoiHongKg);
@@ -4753,7 +4778,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2 text-right font-black">Tỉ lệ trộn (%)</th>
                                           <th
                                             className="px-3 py-2 text-right font-black"
-                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × Tỉ lệ BOM (%) — Bao bì giống Cách nhiệt"
+                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × Tỉ lệ bảng trộn ngày·ca·máy (%)"
                                           >
                                             Trọng lượng lỗi
                                           </th>
@@ -4763,7 +4788,7 @@ export default function ControlBoardBbMachineReportTable({
                                         {mixingKgLines.length === 0 ? (
                                           <tr>
                                             <td colSpan={5} className="px-3 py-3 text-sm font-semibold text-zinc-400">
-                                              Chưa có NVL trộn ĐVT kg / Lít trên BOM lệnh SX.
+                                              Chưa có NVL trộn ĐVT kg / Lít (BOM hoặc bảng trộn ngày·ca).
                                             </td>
                                           </tr>
                                         ) : (
@@ -8668,168 +8693,208 @@ export default function ControlBoardBbMachineReportTable({
         </div>
       </div>
     ) : null}
-    {printConfirmOpen ? (
-      <div
-        className="fixed inset-0 z-[10040] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Xác nhận in ${machineReportTitle}`}
-        onMouseDown={event => {
-          if (event.target === event.currentTarget) closePrintConfirm();
-        }}
-      >
-        <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-sky-200 bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-sky-900 to-sky-700 px-5 py-4 text-white">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">Xác nhận trước khi in</p>
-              <h4 className="mt-1 text-base font-black">{machineReportTitle}</h4>
-              <p className="mt-1 text-xs font-semibold text-sky-50">
-                Chọn nhân sự, ghi chú — rồi xem trước trước khi in.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={closePrintConfirm}
-              className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-black hover:bg-white/20"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-            {orderGroups.map(group => {
-              const selection = printStaffByOrder[group.groupKey] || {
-                staffMain: group.staffMain || '',
-                staffAssistant: group.staffAssistant || '',
-                staffSupport: group.staffSupport || '',
-                ghiChu: ''
-              };
-              const staffSelectClass =
-                'h-10 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15';
-              const ensureOption = (value: string) => {
-                const trimmed = String(value ?? '').trim();
-                if (!trimmed) return printStaffOptions;
-                return printStaffOptions.includes(trimmed)
-                  ? printStaffOptions
-                  : [trimmed, ...printStaffOptions];
-              };
-              return (
-                <div
-                  key={group.groupKey}
-                  className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-sm"
-                >
-                  <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
-                    <p>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Số lệnh</span>
-                      <span className="mt-0.5 block font-mono font-black text-sky-900">{group.orderCode || '—'}</span>
-                    </p>
-                    <p>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ngày</span>
-                      <span className="mt-0.5 block font-semibold text-zinc-800">{group.ngay || '—'}</span>
-                    </p>
-                    <p>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ca</span>
-                      <span className="mt-0.5 block font-semibold text-zinc-800">
-                        {group.shiftLabel || group.shift || '—'}
-                      </span>
-                    </p>
-                    <p>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Máy</span>
-                      <span className="mt-0.5 block font-semibold text-zinc-800">{group.machine || '—'}</span>
-                    </p>
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <label className="space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                        CN chính máy *
-                      </span>
-                      <select
-                        value={selection.staffMain}
-                        onChange={event => updatePrintStaff(group.groupKey, 'staffMain', event.target.value)}
-                        className={staffSelectClass}
-                      >
-                        <option value="">Chọn nhân sự...</option>
-                        {ensureOption(selection.staffMain).map(name => (
-                          <option key={`main-${group.groupKey}-${name}`} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                        CN phụ máy
-                      </span>
-                      <select
-                        value={selection.staffAssistant}
-                        onChange={event => updatePrintStaff(group.groupKey, 'staffAssistant', event.target.value)}
-                        className={staffSelectClass}
-                      >
-                        <option value="">Chọn nhân sự...</option>
-                        {ensureOption(selection.staffAssistant).map(name => (
-                          <option key={`assistant-${group.groupKey}-${name}`} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                        CN hỗ trợ việc
-                      </span>
-                      <select
-                        value={selection.staffSupport}
-                        onChange={event => updatePrintStaff(group.groupKey, 'staffSupport', event.target.value)}
-                        className={staffSelectClass}
-                      >
-                        <option value="">Chọn nhân sự...</option>
-                        {ensureOption(selection.staffSupport).map(name => (
-                          <option key={`support-${group.groupKey}-${name}`} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <label className="mt-3 block space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                      Ghi chú
-                    </span>
-                    <textarea
-                      value={selection.ghiChu}
-                      onChange={event => updatePrintStaff(group.groupKey, 'ghiChu', event.target.value)}
-                      rows={3}
-                      placeholder="Nhập ghi chú hiển thị trên phiếu in..."
-                      className="min-h-[72px] w-full resize-y rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
-                    />
-                  </label>
+    {printConfirmOpen
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[10070] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Xác nhận in ${machineReportTitle}`}
+            onMouseDown={event => {
+              if (event.target === event.currentTarget && !confirmingPrint) closePrintConfirm();
+            }}
+          >
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-sky-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-sky-900 to-sky-700 px-5 py-4 text-white">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-100">
+                    Xác nhận trước khi in
+                  </p>
+                  <h4 className="mt-1 text-base font-black">{machineReportTitle}</h4>
+                  <p className="mt-1 text-xs font-semibold text-sky-50">
+                    Chọn nhân sự, ghi chú — rồi xem trước trước khi in.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={closePrintConfirm}
+                  disabled={confirmingPrint}
+                  className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-black hover:bg-white/20 disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <button
-              type="button"
-              onClick={closePrintConfirm}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-xs font-black text-slate-700"
-            >
-              Huỷ
-            </button>
-            <button
-              type="button"
-              onClick={confirmPrint}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-sky-700 px-4 text-xs font-extrabold text-white hover:bg-sky-800"
-            >
-              <Printer className="h-4 w-4" />
-              Xem trước
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : null}
+              <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+                {orderGroups.map(group => {
+                  const selection = printStaffByOrder[group.groupKey] || {
+                    staffMain: group.staffMain || '',
+                    staffAssistant: group.staffAssistant || '',
+                    staffSupport: group.staffSupport || '',
+                    ghiChu: ''
+                  };
+                  const staffSelectClass =
+                    'h-10 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15';
+                  const ensureOption = (value: string) => {
+                    const trimmed = String(value ?? '').trim();
+                    if (!trimmed) return printStaffOptions;
+                    return printStaffOptions.includes(trimmed)
+                      ? printStaffOptions
+                      : [trimmed, ...printStaffOptions];
+                  };
+                  return (
+                    <div
+                      key={group.groupKey}
+                      className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-sm"
+                    >
+                      <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
+                        <p>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Số lệnh
+                          </span>
+                          <span className="mt-0.5 block font-mono font-black text-sky-900">
+                            {group.orderCode || '—'}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Ngày
+                          </span>
+                          <span className="mt-0.5 block font-semibold text-zinc-800">
+                            {group.ngay || '—'}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Ca
+                          </span>
+                          <span className="mt-0.5 block font-semibold text-zinc-800">
+                            {group.shiftLabel || group.shift || '—'}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Máy
+                          </span>
+                          <span className="mt-0.5 block font-semibold text-zinc-800">
+                            {group.machine || '—'}
+                          </span>
+                        </p>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                            CN chính máy *
+                          </span>
+                          <select
+                            value={selection.staffMain}
+                            onChange={event =>
+                              updatePrintStaff(group.groupKey, 'staffMain', event.target.value)
+                            }
+                            className={staffSelectClass}
+                          >
+                            <option value="">Chọn nhân sự...</option>
+                            {ensureOption(selection.staffMain).map(name => (
+                              <option key={`main-${group.groupKey}-${name}`} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                            CN phụ máy
+                          </span>
+                          <select
+                            value={selection.staffAssistant}
+                            onChange={event =>
+                              updatePrintStaff(group.groupKey, 'staffAssistant', event.target.value)
+                            }
+                            className={staffSelectClass}
+                          >
+                            <option value="">Chọn nhân sự...</option>
+                            {ensureOption(selection.staffAssistant).map(name => (
+                              <option key={`assistant-${group.groupKey}-${name}`} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                            CN hỗ trợ việc
+                          </span>
+                          <select
+                            value={selection.staffSupport}
+                            onChange={event =>
+                              updatePrintStaff(group.groupKey, 'staffSupport', event.target.value)
+                            }
+                            className={staffSelectClass}
+                          >
+                            <option value="">Chọn nhân sự...</option>
+                            {ensureOption(selection.staffSupport).map(name => (
+                              <option key={`support-${group.groupKey}-${name}`} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="mt-3 block space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                          Ghi chú
+                        </span>
+                        <textarea
+                          value={selection.ghiChu}
+                          onChange={event =>
+                            updatePrintStaff(group.groupKey, 'ghiChu', event.target.value)
+                          }
+                          rows={3}
+                          placeholder="Nhập ghi chú hiển thị trên phiếu in..."
+                          className="min-h-[72px] w-full resize-y rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15"
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {printConfirmError ? (
+                <p className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">
+                  {printConfirmError}
+                </p>
+              ) : null}
+
+              <div className="relative z-10 flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={closePrintConfirm}
+                  disabled={confirmingPrint}
+                  className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:opacity-50"
+                >
+                  Huỷ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPrint}
+                  disabled={confirmingPrint || orderGroups.length === 0}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-sky-700 px-4 text-xs font-extrabold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {confirmingPrint ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4" />
+                  )}
+                  {confirmingPrint ? 'Đang mở...' : 'Xem trước'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null}
     {printPreviewOpen ? createPortal(
       <div
         className="fixed inset-0 z-[10050] flex flex-col bg-slate-950/70 backdrop-blur-sm"

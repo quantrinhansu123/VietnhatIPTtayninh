@@ -133,8 +133,12 @@ export function normalizeMachineNvlReports(data: unknown): MachineNvlSavedReport
         .map((line, index): MachineNvlSavedLine | null => {
           if (!line || typeof line !== 'object') return null;
           const detail = line as Record<string, unknown>;
-          const maNvl = String(detail.ma_nvl ?? detail.ma_npl ?? detail.code ?? '').trim();
-          const tenNvl = String(detail.ten_nvl ?? detail.ten_npl ?? detail.name ?? '').trim();
+          let maNvl = String(detail.ma_nvl ?? detail.ma_npl ?? detail.code ?? '').trim();
+          let tenNvl = String(detail.ten_nvl ?? detail.ten_npl ?? detail.name ?? '').trim();
+          if (maNvl.toUpperCase() === 'NHUA-1L-BB') {
+            maNvl = 'NHUA-1L-CN';
+            if (!tenNvl || /ch[aạ]y\s*bao\s*b[iì]/i.test(tenNvl)) tenNvl = 'Hạt nhựa LDPE (1L)';
+          }
           if (!maNvl && !tenNvl) return null;
           const amount = Number(String(detail.so_luong_ton ?? detail.so_luong ?? detail.quantity ?? 0).replace(',', '.'));
           const standardRaw =

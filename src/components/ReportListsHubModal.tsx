@@ -490,14 +490,19 @@ export default function ReportListsHubModal({
     onNavigate(tab);
   };
 
+  // Ngày/ca/máy in (printDate…) chỉ phục vụ dialog in — không ghi đè bộ lọc danh sách.
+  // Trước đây printDate mặc định = hôm nay làm trống tab tồn cuối ca khi phiếu nằm ở ngày trước.
   const selectedHubFilters = useMemo<ReportListHubFilters>(() => ({
     ...hubFilters,
-    dateFrom: printDate || hubFilters.dateFrom,
-    dateTo: printDate || hubFilters.dateTo,
-    shift: printShift || undefined,
-    machineCode: printMachineCode || undefined,
-    machineName: selectedPrintMachine?.name || undefined
-  }), [hubFilters, printDate, printShift, printMachineCode, selectedPrintMachine]);
+    dateFrom: hubFilters.dateFrom,
+    dateTo: hubFilters.dateTo,
+    shift: hubFilters.shift || (printShift && printShift !== 'all' ? printShift : undefined),
+    machineCode: hubFilters.machineCode || (printMachineCode || undefined),
+    machineName:
+      hubFilters.machineName ||
+      selectedPrintMachine?.name ||
+      (printMachineCode ? selectedPrintMachine?.name || printMachineCode : undefined)
+  }), [hubFilters, printShift, printMachineCode, selectedPrintMachine]);
 
   const acceptancePrintSlips = useMemo(() => {
     const acceptanceSource = sanLuongPrintData?.acceptance || printData?.acceptance;
@@ -554,7 +559,7 @@ export default function ReportListsHubModal({
   if (!open) return null;
 
   const activeItem = menuItems.find(item => item.tab === activeTab) ?? menuItems[0];
-  const panelKey = `${activeTab}:${filtersKey}:${printDate}:${printShift}:${printMachineCode}`;
+  const panelKey = `${activeTab}:${filtersKey}:${selectedHubFilters.shift || ''}:${selectedHubFilters.machineCode || ''}`;
   const needsShiftMachine = printReportKind !== 'ton';
   const canPreparePrint = printReportKind === 'ton'
     ? Boolean(printDate)

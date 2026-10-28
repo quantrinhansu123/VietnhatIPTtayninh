@@ -8,7 +8,7 @@
 
 Snapshot riêng. 1 dòng = 1 SP trong lệnh. Ghi khi **Tính toán**.
 
-**In mục 2** · SL đạt / TL thực tế: ưu tiên tab **Báo cáo sản lượng** (`sanLuongGroups` / nghiệm thu); Cân AI chỉ khi khớp được cuộn theo ngày·ca·máy·mã SP. Không lấy `phieu_nhap`.
+**In mục 2** · SL đạt: ưu tiên Báo cáo sản lượng / Cân AI (số cuộn). **Trọng lượng thực tế** = trọng lượng SP (`Σ Cân sản phẩm`), không lấy Nhựa TT. Không lấy `phieu_nhap`.
 
 ## API
 

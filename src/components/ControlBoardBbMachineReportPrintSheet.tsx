@@ -251,17 +251,65 @@ function sumMaterialPrintTotals(
   return totals;
 }
 
+function renderMaterialIdentityCell(code: string, name: string) {
+  return (
+    <td className="bb-machine-report-print-material-id">
+      <div className="bb-machine-report-print-material-code">{code || '-'}</div>
+      <div className="bb-machine-report-print-material-name">{name || '-'}</div>
+    </td>
+  );
+}
+
 function renderMaterialPrintTotalRow(
   label: string,
   totals: MaterialPrintTotals,
-  options?: { includeMixingRatioCols?: boolean; includeQtyCol?: boolean }
+  options?: {
+    includeMixingRatioCols?: boolean;
+    includeQtyCol?: boolean;
+    /** half = chỉ cột trái hoặc phải khi tách 2 bảng song song */
+    half?: 'left' | 'right';
+  }
 ) {
   const includeMixingRatioCols = options?.includeMixingRatioCols !== false;
   const includeQtyCol = options?.includeQtyCol === true;
+  const half = options?.half;
+  if (half === 'left') {
+    return (
+      <tr className="shift-summary-print-total-row">
+        <td className="shift-summary-print-center bb-machine-report-print-stt">&nbsp;</td>
+        <td colSpan={2} className="shift-summary-print-total-label">
+          {label}
+        </td>
+        {includeQtyCol ? <td className="shift-summary-print-num">—</td> : null}
+        {includeMixingRatioCols ? (
+          <>
+            <td className="shift-summary-print-num">&nbsp;</td>
+            <td className="shift-summary-print-num">&nbsp;</td>
+          </>
+        ) : null}
+        <td className="shift-summary-print-num">{printNumber(totals.openingKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.exportKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.finishedKg, 2)}</td>
+      </tr>
+    );
+  }
+  if (half === 'right') {
+    return (
+      <tr className="shift-summary-print-total-row">
+        <td className="shift-summary-print-center bb-machine-report-print-stt">&nbsp;</td>
+        <td className="shift-summary-print-total-label">Σ</td>
+        <td className="shift-summary-print-num">{printNumber(totals.damagedKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.closingKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.actualUsedKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.finishedAndDamagedKg, 2)}</td>
+        <td className="shift-summary-print-num">{printNumber(totals.varianceKg, 2)}</td>
+      </tr>
+    );
+  }
   return (
     <tr className="shift-summary-print-total-row">
       <td className="shift-summary-print-center bb-machine-report-print-stt">&nbsp;</td>
-      <td colSpan={3} className="shift-summary-print-total-label">
+      <td colSpan={2} className="shift-summary-print-total-label">
         {label}
       </td>
       {includeQtyCol ? <td className="shift-summary-print-num">—</td> : null}
@@ -663,31 +711,37 @@ function collectExtraSanLuongProductLines(
       const row = ensureExtra(info.code, '', 'Cuộn');
       if (!row) continue;
       row.actualQuantity = info.count;
-      const fromCan = canTuDongActualForProduct(
+      const scopedProduct = scopedCanTuDongForProduct(
         order,
         row.productCode,
         row.productName,
         props.canTuDongRecords || [],
         props.products
       );
-      if (fromCan.weightKg > 0) {
-        row.actualWeightKg = fromCan.weightKg;
-        row.actualPlasticWeightKg = fromCan.weightKg;
-      } else {
-        const catalog =
-          findCatalogProduct(props.products, row.productCode, row.productName) ||
-          findProduct(props.products, row.productCode);
-        if (catalog) {
+      const rollTotals = sumCanTuDongThucTeTotals(scopedProduct);
+      const nhuaTotals = sumCanTuDongSanLuongTotals(scopedProduct);
+      if (rollTotals.weightKg > 0) row.actualWeightKg = rollTotals.weightKg;
+      if (nhuaTotals.weightKg > 0) row.actualPlasticWeightKg = nhuaTotals.weightKg;
+      const catalog =
+        findCatalogProduct(props.products, row.productCode, row.productName) ||
+        findProduct(props.products, row.productCode);
+      if (catalog) {
+        if (!(row.actualPlasticWeightKg != null && row.actualPlasticWeightKg > 0)) {
           const plasticPer = resolveProductMaterialBaseKg(catalog);
           if (plasticPer > 0) {
             row.actualPlasticWeightKg = Math.round(plasticPer * info.count * 10000) / 10000;
-            row.actualWeightKg = row.actualPlasticWeightKg;
           }
-          if (isInsulationMachineReport(props, order)) {
-            const filmPer = resolveInsulationFilmKgPerRoll(catalog);
-            if (filmPer != null && filmPer > 0) {
-              row.actualFilmWeightKg = Math.round(filmPer * info.count * 10000) / 10000;
-            }
+        }
+        if (!(row.actualWeightKg != null && row.actualWeightKg > 0)) {
+          const perRoll = parsePositiveKg(catalog.totalWeight);
+          if (perRoll != null) {
+            row.actualWeightKg = Math.round(perRoll * info.count * 10000) / 10000;
+          }
+        }
+        if (isInsulationMachineReport(props, order)) {
+          const filmPer = resolveInsulationFilmKgPerRoll(catalog);
+          if (filmPer != null && filmPer > 0) {
+            row.actualFilmWeightKg = Math.round(filmPer * info.count * 10000) / 10000;
           }
         }
       }
@@ -1349,17 +1403,23 @@ function BbMachineOrderPrintSheet({
         ? line.actualFilmWeightKg
         : resolveProductSanLuongFilmKg(order, line.productCode, line.productName, props)
       : 0;
-    const rollWeight = showInsulationWeightCols
-      ? fromSanLuongWeight ??
-        fromLineWeight ??
-        resolveProductSanLuongRollKg(order, line.productCode, line.productName, props)
-      : null;
-    const actualWeight = showInsulationWeightCols
-      ? rollWeight ??
-        (actualPlasticWeight != null || actualFilmWeight > 0
-          ? (actualPlasticWeight || 0) + actualFilmWeight
-          : null)
-      : fromSanLuongWeight ?? fromLineWeight ?? actualPlasticWeight;
+    // «Trọng lượng thực tế» = trọng lượng SP (Σ Cân sản phẩm), không lấy Nhựa TT.
+    const rollWeight = resolveProductSanLuongRollKg(
+      order,
+      line.productCode,
+      line.productName,
+      props
+    );
+    const actualWeight =
+      rollWeight ??
+      (fromLineWeight != null && fromLineWeight > 0 && props.sanLuongSource !== 'can-tu-dong'
+        ? fromLineWeight
+        : null) ??
+      (fromSanLuongWeight != null &&
+      fromSanLuongWeight > 0 &&
+      props.sanLuongSource !== 'can-tu-dong'
+        ? fromSanLuongWeight
+        : null);
 
     // Trọng lượng theo ĐM = ĐM (kg/ĐVT) × số lượng đạt.
     const catalog =
@@ -1422,7 +1482,7 @@ function BbMachineOrderPrintSheet({
         : canTuDongQty ?? (inbound?.acceptedRolls || 0);
   const tongNhuaThanhPhamCatalogKg = resolveOrderSanLuongPlasticKg(order, props);
   const tongMangThanhPhamKg = resolveOrderSanLuongFilmKg(order, props);
-  const tongCuonThanhPhamKg = showInsulationWeightCols ? resolveOrderSanLuongRollKg(order, props) : 0;
+  const tongCuonThanhPhamKg = resolveOrderSanLuongRollKg(order, props);
   const lineActualPlasticTotal = productRows.reduce(
     (sum, row) => sum + (row.actualPlasticWeight || 0),
     0
@@ -1435,12 +1495,14 @@ function BbMachineOrderPrintSheet({
       : tongNhuaThanhPhamCatalogKg > 0
         ? tongNhuaThanhPhamCatalogKg
         : lineActualPlasticTotal;
+  /** Mục 4 vẫn dùng nhựa thành phẩm; mục 2 «Trọng lượng thực tế» = TL SP (Cân SP). */
   const actualWeightTotal = tongNhuaThanhPhamKg;
-  const productActualWeightTotal = showInsulationWeightCols
-    ? tongCuonThanhPhamKg > 0
-      ? tongCuonThanhPhamKg
-      : lineActualWeightTotal
-    : actualWeightTotal;
+  const productActualWeightTotal =
+    lineActualWeightTotal > 0
+      ? lineActualWeightTotal
+      : tongCuonThanhPhamKg > 0
+        ? tongCuonThanhPhamKg
+        : 0;
   const productPlasticWeightTotal = tongNhuaThanhPhamKg;
   const productFilmWeightTotal = tongMangThanhPhamKg > 0 ? tongMangThanhPhamKg : lineActualFilmTotal;
   /** 4.1 dòng 1–2: Hàng lỗi / Thành phẩm = tổng 2 dòng hao hụt nhựa + màng. */
@@ -1561,7 +1623,7 @@ function BbMachineOrderPrintSheet({
                 <th title="Trọng lượng định mức (kg/ĐVT) × số lượng đạt">
                   Trọng lượng<br />theo ĐM
                 </th>
-                <th title={showInsulationWeightCols ? 'Tổng trọng lượng cuộn = Σ Cân sản phẩm' : undefined}>
+                <th title="Trọng lượng SP = Σ Cân sản phẩm (không lấy Nhựa TT)">
                   Trọng lượng<br />thực tế
                 </th>
                 {showInsulationWeightCols ? (
@@ -1671,132 +1733,194 @@ function BbMachineOrderPrintSheet({
         <section className="shift-summary-print-section">
           <h2 className="production-order-print-section-title">3. BÁO CÁO TIÊU HAO NGUYÊN VẬT LIỆU</h2>
           <h3 className="production-order-print-section-subtitle">3.1. NVL nhựa và phụ gia trộn</h3>
-          <table className="shift-summary-print-table shift-summary-print-table-wide bb-machine-report-print-material-table">
-            <thead><tr>
-              <th className="bb-machine-report-print-stt">STT</th>
-              <th>Mã NVL</th>
-              <th>Tên NVL</th>
-              <th>ĐVT</th>
-              <th>Tỉ lệ trộn<br />Định mức</th>
-              <th>Tỉ lệ trộn<br />Thực tế</th>
-              <th>Trọng lượng<br />tồn đầu ca</th>
-              <th title="Tab «Dữ liệu xuất kho» · cột Tổng (kg) / trọng lượng xuất — lấy thẳng, không tính lại">
-                Trọng lượng<br />vật tư xuất kho
-              </th>
-              <th title="Tab «Báo cáo sản lượng» · TL thực tế (thiếu thì TL định mức); NVL khác thiếu TL thì dùng Số lượng thành phẩm">
-                Trọng lượng<br />vật tư nhập<br />thành phẩm
-              </th>
-              <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
-                Trọng lượng<br />vật tư lỗi hỏng
-              </th>
-              <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca» — lấy thẳng">
-                Trọng lượng<br />vật tư tồn<br />cuối ca
-              </th>
-              <th title="Xuất thực dùng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
-                Trọng lượng<br />Vật tư xuất<br />thực dùng
-              </th>
-              <th>Trọng lượng<br />thành phẩm +<br />Lỗi Hỏng<br />thực tế</th>
-              <th title="Chênh lệch = Tồn đầu + Xuất kho − Tồn cuối − Nhập thành phẩm − Lỗi hỏng">
-                Chênh lệch<br />(Xuất − Nhập)<br />(Kg)
-              </th>
-            </tr></thead>
-            <tbody>
-              {plasticMaterialRows.length === 0 ? (
-                <tr><td colSpan={14} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
-              ) : (
-                plasticMaterialRows.map((row, index) => {
-                  const norm = row.normPercents.length > 0
-                    ? row.normPercents.reduce((sum, value) => sum + value, 0) / row.normPercents.length
-                    : null;
-                  const actualUsedKg = row.actualUsedKg;
-                  const finishedAndDamagedKg = row.finishedAndDamagedKg;
-                  const varianceKg = row.varianceKg;
-                  return <tr key={row.key}>
-                    <td className="shift-summary-print-center bb-machine-report-print-stt">{index + 1}</td>
-                    <td>{row.code || '-'}</td>
-                    <td className="bb-machine-report-print-material-name">{row.name || '-'}</td>
-                    <td className="shift-summary-print-center">{row.unit || 'kg'}</td>
-                    <td className="shift-summary-print-num">{printPercent(norm)}</td>
-                    <td className="shift-summary-print-num">{printPercent(row.actualPercent)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(actualUsedKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(finishedAndDamagedKg, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(varianceKg, 2)}</td>
-                  </tr>;
-                })
-              )}
-              {renderMaterialPrintTotalRow('Tổng nhựa', plasticMaterialTotals)}
-            </tbody>
-          </table>
-
-          <h3 className="production-order-print-section-subtitle">3.2. NVL khác</h3>
-          <table className="shift-summary-print-table shift-summary-print-table-wide bb-machine-report-print-material-table bb-machine-report-print-material-table-other">
-            <thead><tr>
-              <th className="bb-machine-report-print-stt">STT</th>
-              <th>Mã NVL</th>
-              <th>Tên NVL</th>
-              <th>ĐVT</th>
-              <th>Số lượng<br />thành phẩm</th>
-              <th>Trọng lượng<br />tồn đầu ca</th>
-              <th title="Tab «Dữ liệu xuất kho» · cột Tổng (kg) / trọng lượng xuất — lấy thẳng, không tính lại">
-                Trọng lượng<br />vật tư xuất kho
-              </th>
-              <th title="Tab «Báo cáo sản lượng» · TL thực tế (thiếu thì TL định mức); NVL khác thiếu TL thì dùng Số lượng thành phẩm">
-                Trọng lượng<br />vật tư nhập<br />thành phẩm
-              </th>
-              <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
-                Trọng lượng<br />vật tư lỗi hỏng
-              </th>
-              <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca» — lấy thẳng">
-                Trọng lượng<br />vật tư tồn<br />cuối ca
-              </th>
-              <th title="Xuất thực dùng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
-                Trọng lượng<br />Vật tư xuất<br />thực dùng
-              </th>
-              <th>Trọng lượng<br />thành phẩm +<br />Lỗi Hỏng<br />thực tế</th>
-              <th title="Chênh lệch = Tồn đầu + Xuất kho − Tồn cuối − Nhập thành phẩm − Lỗi hỏng">
-                Chênh lệch<br />(Xuất − Nhập)<br />(Kg)
-              </th>
-            </tr></thead>
-            <tbody>
-              {otherMaterialRows.length === 0 ? (
-                <tr><td colSpan={13} className="shift-summary-print-center">Không có dữ liệu NVL.</td></tr>
-              ) : (
-                otherMaterialRows.map((row, index) => {
-                  const actualUsedKg = row.actualUsedKg;
-                  const finishedAndDamagedKg = row.finishedAndDamagedKg;
-                  const varianceKg = row.varianceKg;
-                  /** Số lượng thành phẩm = từ tab tiêu hao (finishedQty). */
-                  const soLuong = row.actualQty > 0 ? row.actualQty : null;
-                  return (
-                    <tr key={row.key}>
-                      <td className="shift-summary-print-center bb-machine-report-print-stt">{index + 1}</td>
-                      <td>{row.code || '-'}</td>
-                      <td className="bb-machine-report-print-material-name">{row.name || '-'}</td>
-                      <td className="shift-summary-print-center">{row.unit || '-'}</td>
-                      <td className="shift-summary-print-num">{printNumber(soLuong, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
+          <div className="bb-machine-report-print-material-dual">
+            <table className="shift-summary-print-table bb-machine-report-print-material-table bb-machine-report-print-material-half bb-machine-report-print-material-half-left">
+              <thead>
+                <tr>
+                  <th className="bb-machine-report-print-stt">STT</th>
+                  <th>Mã / Tên NVL</th>
+                  <th>ĐVT</th>
+                  <th>Tỉ lệ<br />ĐM</th>
+                  <th>Tỉ lệ<br />TT</th>
+                  <th>Tồn<br />đầu</th>
+                  <th title="Tab «Dữ liệu xuất kho»">Xuất<br />kho</th>
+                  <th title="Tab «Báo cáo sản lượng»">Nhập<br />TP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plasticMaterialRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="shift-summary-print-center">
+                      Không có dữ liệu NVL.
+                    </td>
+                  </tr>
+                ) : (
+                  plasticMaterialRows.map((row, index) => {
+                    const norm =
+                      row.normPercents.length > 0
+                        ? row.normPercents.reduce((sum, value) => sum + value, 0) /
+                          row.normPercents.length
+                        : null;
+                    return (
+                      <tr key={`L|${row.key}`}>
+                        <td className="shift-summary-print-center bb-machine-report-print-stt">
+                          {index + 1}
+                        </td>
+                        {renderMaterialIdentityCell(row.code, row.name)}
+                        <td className="shift-summary-print-center">{row.unit || 'kg'}</td>
+                        <td className="shift-summary-print-num">{printPercent(norm)}</td>
+                        <td className="shift-summary-print-num">{printPercent(row.actualPercent)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+                {renderMaterialPrintTotalRow('Tổng nhựa', plasticMaterialTotals, { half: 'left' })}
+              </tbody>
+            </table>
+            <table className="shift-summary-print-table bb-machine-report-print-material-table bb-machine-report-print-material-half bb-machine-report-print-material-half-right">
+              <thead>
+                <tr>
+                  <th className="bb-machine-report-print-stt">STT</th>
+                  <th>Mã</th>
+                  <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng»">Lỗi<br />hỏng</th>
+                  <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca»">Tồn<br />cuối</th>
+                  <th title="Xuất thực dùng = Tồn đầu + Xuất kho − Tồn cuối">Xuất<br />dùng</th>
+                  <th>
+                    TP +<br />Lỗi
+                  </th>
+                  <th title="Chênh lệch = Tồn đầu + Xuất − Cuối − Nhập TP − Lỗi">
+                    Chênh<br />lệch
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {plasticMaterialRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="shift-summary-print-center">
+                      —
+                    </td>
+                  </tr>
+                ) : (
+                  plasticMaterialRows.map((row, index) => (
+                    <tr key={`R|${row.key}`}>
+                      <td className="shift-summary-print-center bb-machine-report-print-stt">
+                        {index + 1}
+                      </td>
+                      <td className="bb-machine-report-print-material-code-only">{row.code || '-'}</td>
                       <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(actualUsedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(finishedAndDamagedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(varianceKg, 2)}</td>
+                      <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.finishedAndDamagedKg, 2)}
+                      </td>
+                      <td className="shift-summary-print-num">{printNumber(row.varianceKg, 2)}</td>
                     </tr>
-                  );
-                })
-              )}
-              {renderMaterialPrintTotalRow('Tổng vật tư khác', otherMaterialTotals, {
-                includeMixingRatioCols: false,
-                includeQtyCol: true
-              })}
-            </tbody>
-          </table>
+                  ))
+                )}
+                {renderMaterialPrintTotalRow('Tổng nhựa', plasticMaterialTotals, { half: 'right' })}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="production-order-print-section-subtitle">3.2. NVL khác</h3>
+          <div className="bb-machine-report-print-material-dual">
+            <table className="shift-summary-print-table bb-machine-report-print-material-table bb-machine-report-print-material-table-other bb-machine-report-print-material-half bb-machine-report-print-material-half-left">
+              <thead>
+                <tr>
+                  <th className="bb-machine-report-print-stt">STT</th>
+                  <th>Mã / Tên NVL</th>
+                  <th>ĐVT</th>
+                  <th>
+                    SL<br />TP
+                  </th>
+                  <th>Tồn<br />đầu</th>
+                  <th title="Tab «Dữ liệu xuất kho»">Xuất<br />kho</th>
+                  <th title="Tab «Báo cáo sản lượng»">Nhập<br />TP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otherMaterialRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="shift-summary-print-center">
+                      Không có dữ liệu NVL.
+                    </td>
+                  </tr>
+                ) : (
+                  otherMaterialRows.map((row, index) => {
+                    const soLuong = row.actualQty > 0 ? row.actualQty : null;
+                    return (
+                      <tr key={`L|${row.key}`}>
+                        <td className="shift-summary-print-center bb-machine-report-print-stt">
+                          {index + 1}
+                        </td>
+                        {renderMaterialIdentityCell(row.code, row.name)}
+                        <td className="shift-summary-print-center">{row.unit || '-'}</td>
+                        <td className="shift-summary-print-num">{printNumber(soLuong, 2)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
+                        <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+                {renderMaterialPrintTotalRow('Tổng VT khác', otherMaterialTotals, {
+                  includeMixingRatioCols: false,
+                  includeQtyCol: true,
+                  half: 'left'
+                })}
+              </tbody>
+            </table>
+            <table className="shift-summary-print-table bb-machine-report-print-material-table bb-machine-report-print-material-table-other bb-machine-report-print-material-half bb-machine-report-print-material-half-right">
+              <thead>
+                <tr>
+                  <th className="bb-machine-report-print-stt">STT</th>
+                  <th>Mã</th>
+                  <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng»">Lỗi<br />hỏng</th>
+                  <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca»">Tồn<br />cuối</th>
+                  <th title="Xuất thực dùng = Tồn đầu + Xuất kho − Tồn cuối">Xuất<br />dùng</th>
+                  <th>
+                    TP +<br />Lỗi
+                  </th>
+                  <th title="Chênh lệch = Tồn đầu + Xuất − Cuối − Nhập TP − Lỗi">
+                    Chênh<br />lệch
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {otherMaterialRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="shift-summary-print-center">
+                      —
+                    </td>
+                  </tr>
+                ) : (
+                  otherMaterialRows.map((row, index) => (
+                    <tr key={`R|${row.key}`}>
+                      <td className="shift-summary-print-center bb-machine-report-print-stt">
+                        {index + 1}
+                      </td>
+                      <td className="bb-machine-report-print-material-code-only">{row.code || '-'}</td>
+                      <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
+                      <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
+                      <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.finishedAndDamagedKg, 2)}
+                      </td>
+                      <td className="shift-summary-print-num">{printNumber(row.varianceKg, 2)}</td>
+                    </tr>
+                  ))
+                )}
+                {renderMaterialPrintTotalRow('Tổng VT khác', otherMaterialTotals, {
+                  includeMixingRatioCols: false,
+                  includeQtyCol: true,
+                  half: 'right'
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="shift-summary-print-section">

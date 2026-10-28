@@ -20,13 +20,18 @@ import {
 import { normalizeWarehouseMovements } from '../phieu-xuat-nhap-kho';
 import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
 import type { MaterialRequestRow } from './MaterialRequestListView';
-import { buildMaterialRequestPresetLines } from './materialRequestPreset';
+import {
+  buildMaterialRequestPresetLines,
+  MATERIAL_REQUEST_PRESET_TABS,
+  type MaterialRequestPresetKind
+} from './materialRequestPreset';
 
 type Line = { key: string; code: string; name: string; unit: string; qty: string };
 
 const lineKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const newLine = (): Line => ({ key: lineKey(), code: '', name: '', unit: '', qty: '' });
-const presetLines = (materials: MaterialRow[]): Line[] => buildMaterialRequestPresetLines(materials, lineKey);
+const presetLines = (materials: MaterialRow[], kind: MaterialRequestPresetKind): Line[] =>
+  buildMaterialRequestPresetLines(materials, lineKey, kind);
 const fieldClass =
   'mt-0.5 h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 const gridClass = 'grid grid-cols-[36px_minmax(130px,1.2fr)_minmax(140px,2fr)_60px_96px_96px_36px] items-center gap-1.5';
@@ -76,6 +81,7 @@ export function YeuCauXuatVatTuPanel({
   const [isAutofilling, setIsAutofilling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [presetApplied, setPresetApplied] = useState(false);
+  const [presetKind, setPresetKind] = useState<MaterialRequestPresetKind>('bb');
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
@@ -85,12 +91,12 @@ export function YeuCauXuatVatTuPanel({
     void get('/api/lenh-sx?light=1').then(d => d && setProductionOrders(normalizeProductionOrders(d)));
   }, []);
 
-  /** Phiếu mới: tự sổ mẫu mã đề xuất (chỉ điền SL). */
+  /** Phiếu mới: tự sổ mẫu mã đề xuất theo tab Order máy (chỉ điền SL). */
   useEffect(() => {
     if (editingCode || editRequest || presetApplied || materials.length === 0) return;
-    setLines(presetLines(materials));
+    setLines(presetLines(materials, presetKind));
     setPresetApplied(true);
-  }, [editingCode, editRequest, materials, presetApplied]);
+  }, [editingCode, editRequest, materials, presetApplied, presetKind]);
 
   const shiftOptions = useMemo(
     () =>
@@ -172,15 +178,17 @@ export function YeuCauXuatVatTuPanel({
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
 
-  const applyPreset = () => {
-    setLines(presetLines(materials));
+  const applyPreset = (kind: MaterialRequestPresetKind = presetKind) => {
+    setPresetKind(kind);
+    setLines(presetLines(materials, kind));
     setPresetApplied(true);
-    showAppToast('Đã sổ mẫu mã đề xuất — chỉ cần điền số lượng.');
+    const tabLabel = MATERIAL_REQUEST_PRESET_TABS.find(tab => tab.id === kind)?.label || kind;
+    showAppToast(`Đã sổ mẫu «${tabLabel}» — chỉ cần điền số lượng.`);
   };
 
   const resetForm = () => {
     setEditingCode(null);
-    setLines(materials.length > 0 ? presetLines(materials) : [newLine()]);
+    setLines(materials.length > 0 ? presetLines(materials, presetKind) : [newLine()]);
     setPresetApplied(materials.length > 0);
   };
 
@@ -416,6 +424,30 @@ export function YeuCauXuatVatTuPanel({
         </p>
       )}
 
+      {!editingCode ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Mẫu mã</span>
+          {MATERIAL_REQUEST_PRESET_TABS.map(tab => {
+            const active = presetKind === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => applyPreset(tab.id)}
+                disabled={isAutofilling || isSaving}
+                className={`inline-flex h-8 items-center rounded-md border px-3 text-[11px] font-bold transition disabled:opacity-50 ${
+                  active
+                    ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
+                    : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto">
         <div className="min-w-[700px] space-y-1.5">
           <div className={`${gridClass} rounded-md bg-[#ef1b2d] py-1.5 text-[10px] font-black uppercase tracking-wider text-white`}>
@@ -499,12 +531,12 @@ export function YeuCauXuatVatTuPanel({
         </button>
         <button
           type="button"
-          onClick={applyPreset}
+          onClick={() => applyPreset(presetKind)}
           disabled={isAutofilling || isSaving || Boolean(editingCode)}
           className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
         >
           <Wand2 className="h-3.5 w-3.5" />
-          Sổ mẫu mã đề xuất
+          Sổ lại mẫu đang chọn
         </button>
         <button
           type="button"

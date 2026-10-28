@@ -4215,57 +4215,89 @@ input[type="number"] {
   overflow: hidden;
 }
 
-/* Bảng 3.1 / 3.2 — preview màn hình cùng tỉ lệ cột với bản in. */
+/* Bảng 3.1 / 3.2 — 2 bảng song song (trái: mã/tên + đầu kỳ; phải: lỗi/cuối/chênh). */
+.bb-machine-report-print-material-dual {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 2.5mm;
+  align-items: start;
+  width: 100%;
+}
+
 .bb-machine-report-print-material-table,
 .bb-machine-report-print-material-table-other {
   table-layout: fixed;
   width: 100%;
 }
 
-.bb-machine-report-print-material-table th:nth-child(1),
-.bb-machine-report-print-material-table td:nth-child(1),
-.bb-machine-report-print-material-table-other th:nth-child(1),
-.bb-machine-report-print-material-table-other td:nth-child(1) {
-  width: 3.5%;
-  min-width: 7mm;
-}
-
-.bb-machine-report-print-material-table th:nth-child(2),
-.bb-machine-report-print-material-table td:nth-child(2),
-.bb-machine-report-print-material-table-other th:nth-child(2),
-.bb-machine-report-print-material-table-other td:nth-child(2) {
-  width: 9%;
-  min-width: 11mm;
-}
-
-.bb-machine-report-print-material-table th:nth-child(3),
-.bb-machine-report-print-material-table td:nth-child(3),
-.bb-machine-report-print-material-table-other th:nth-child(3),
-.bb-machine-report-print-material-table-other td:nth-child(3) {
-  width: 18%;
-  min-width: 24mm;
-}
-
-.bb-machine-report-print-material-table th,
-.bb-machine-report-print-material-table td,
-.bb-machine-report-print-material-table-other th,
-.bb-machine-report-print-material-table-other td {
+.bb-machine-report-print-material-half th,
+.bb-machine-report-print-material-half td {
   overflow-wrap: break-word;
   word-break: normal;
+  font-size: 8pt;
+  padding: 0.7mm 0.45mm;
 }
 
-.bb-machine-report-print-material-table td:nth-child(2),
-.bb-machine-report-print-material-table-other td:nth-child(2),
-.bb-machine-report-print-material-table td:nth-child(3),
-.bb-machine-report-print-material-table-other td:nth-child(3) {
-  white-space: normal;
+.bb-machine-report-print-material-half-left th:nth-child(1),
+.bb-machine-report-print-material-half-left td:nth-child(1),
+.bb-machine-report-print-material-half-right th:nth-child(1),
+.bb-machine-report-print-material-half-right td:nth-child(1) {
+  width: 6%;
+  text-align: center;
+}
+
+.bb-machine-report-print-material-half-left th:nth-child(2),
+.bb-machine-report-print-material-half-left td:nth-child(2) {
+  width: 34%;
   text-align: left;
   vertical-align: top;
-  line-height: 1.2;
+}
+
+.bb-machine-report-print-material-half-left th:nth-child(3),
+.bb-machine-report-print-material-half-left td:nth-child(3) {
+  width: 8%;
+  text-align: center;
+}
+
+.bb-machine-report-print-material-half-left th:nth-child(n+4),
+.bb-machine-report-print-material-half-left td:nth-child(n+4) {
+  width: auto;
+}
+
+.bb-machine-report-print-material-half-right th:nth-child(2),
+.bb-machine-report-print-material-half-right td:nth-child(2) {
+  width: 22%;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-all;
+}
+
+.bb-machine-report-print-material-id {
+  text-align: left !important;
+  vertical-align: top !important;
+  line-height: 1.15;
+}
+
+.bb-machine-report-print-material-code {
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 8pt;
+  line-height: 1.15;
 }
 
 .bb-machine-report-print-material-name {
+  font-weight: 500;
+  font-size: 7.2pt;
   line-height: 1.2;
+  color: #334155;
+}
+
+.bb-machine-report-print-material-code-only {
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 7.5pt;
+  text-align: left !important;
+  word-break: break-all;
 }
 
 .bb-machine-report-print-evaluation-summary-table th:nth-child(2),
@@ -4631,80 +4663,36 @@ input[type="number"] {
     padding-right: 0.5mm !important;
   }
 
-  .bb-machine-report-print-material-table th:nth-child(1),
-  .bb-machine-report-print-material-table td:nth-child(1),
-  .bb-machine-report-print-material-table-other th:nth-child(1),
-  .bb-machine-report-print-material-table-other td:nth-child(1) {
-    width: 3.5%;
-    min-width: 7mm;
-    text-align: center !important;
-    white-space: nowrap !important;
-    font-size: 7.5pt !important;
-    padding-left: 0.5mm !important;
-    padding-right: 0.5mm !important;
+  .bb-machine-report-print-material-dual {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) !important;
+    gap: 2mm !important;
+    width: 100% !important;
   }
-  .bb-machine-report-print-material-table th:nth-child(2),
-  .bb-machine-report-print-material-table td:nth-child(2),
-  .bb-machine-report-print-material-table-other th:nth-child(2),
-  .bb-machine-report-print-material-table-other td:nth-child(2) {
-    width: 9%;
-    min-width: 11mm;
+
+  .bb-machine-report-print-material-half th,
+  .bb-machine-report-print-material-half td {
+    font-size: 7pt !important;
+    padding: 0.55mm 0.35mm !important;
+  }
+
+  .bb-machine-report-print-material-half th {
     white-space: normal !important;
-    overflow-wrap: break-word !important;
-    word-break: normal !important;
-    line-height: 1.2 !important;
-    text-align: left !important;
-  }
-  .bb-machine-report-print-material-table th:nth-child(3),
-  .bb-machine-report-print-material-table td:nth-child(3),
-  .bb-machine-report-print-material-table-other th:nth-child(3),
-  .bb-machine-report-print-material-table-other td:nth-child(3) {
-    width: 18%;
-    min-width: 24mm;
-    white-space: normal !important;
-    overflow-wrap: break-word !important;
-    word-break: normal !important;
-    line-height: 1.2 !important;
-    text-align: left !important;
-    vertical-align: top !important;
-  }
-  .bb-machine-report-print-material-table th:nth-child(4),
-  .bb-machine-report-print-material-table td:nth-child(4),
-  .bb-machine-report-print-material-table-other th:nth-child(4),
-  .bb-machine-report-print-material-table-other td:nth-child(4) { width: 4%; }
-  .bb-machine-report-print-material-table th:nth-child(5),
-  .bb-machine-report-print-material-table td:nth-child(5),
-  .bb-machine-report-print-material-table th:nth-child(6),
-  .bb-machine-report-print-material-table td:nth-child(6) { width: 4%; }
-  .bb-machine-report-print-material-table th:nth-child(n+7):nth-child(-n+14),
-  .bb-machine-report-print-material-table td:nth-child(n+7):nth-child(-n+14) { width: 5.5%; }
-
-  /* 3.2 NVL khác — có cột Số lượng thành phẩm (ĐVT gốc) sau ĐVT, không có tỉ lệ trộn */
-  .bb-machine-report-print-material-table-other th:nth-child(5),
-  .bb-machine-report-print-material-table-other td:nth-child(5) { width: 5.5%; }
-  .bb-machine-report-print-material-table-other th:nth-child(n+6):nth-child(-n+13),
-  .bb-machine-report-print-material-table-other td:nth-child(n+6):nth-child(-n+13) { width: 6%; }
-
-  .bb-machine-report-print-material-table th:nth-child(4),
-  .bb-machine-report-print-material-table td:nth-child(4) {
-    text-align: center !important;
-    white-space: nowrap;
-  }
-
-  .bb-machine-report-print-material-table th:nth-child(n+5),
-  .bb-machine-report-print-material-table td:nth-child(n+5) {
-    white-space: nowrap;
-  }
-
-  .bb-machine-report-print-material-table th:nth-child(n+5) {
-    white-space: normal;
     line-height: 1.05 !important;
-    vertical-align: middle;
     text-align: center !important;
   }
 
-  .bb-machine-report-print-material-table td:nth-child(n+5) {
+  .bb-machine-report-print-material-half td.shift-summary-print-num {
+    white-space: nowrap !important;
     text-align: right !important;
+  }
+
+  .bb-machine-report-print-material-code {
+    font-size: 7pt !important;
+  }
+
+  .bb-machine-report-print-material-name {
+    font-size: 6.5pt !important;
   }
 
   .bb-machine-report-print-evaluation-table th:first-child,
@@ -7527,32 +7515,23 @@ input[type="number"] {
   overflow-wrap: normal !important;
 }
 
-/* Bảng 3.1 / 3.2 (NVL): cột chữ rộng vừa đủ, cột số không bẻ giữa số, tiêu đề cột không cắt giữa chữ (ĐVT, Cuộn...). */
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th:nth-child(1),
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th:nth-child(1) { width: 3% !important; min-width: 0 !important; }
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th:nth-child(2),
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th:nth-child(2) { width: 8.5% !important; min-width: 0 !important; }
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th:nth-child(3),
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th:nth-child(3) { width: 14% !important; min-width: 0 !important; }
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th:nth-child(4),
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th:nth-child(4) { width: 4.5% !important; min-width: 0 !important; }
-
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th,
-.bb-machine-report-print-doc .bb-machine-report-print-material-table td,
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th,
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other td {
-  font-size: 8.5pt !important;
-  padding: 0.8mm 0.5mm !important;
+/* Bảng 3.1 / 3.2 (NVL): 2 bảng song song — mã/tên gộp, cột số không bẻ. */
+.bb-machine-report-print-doc .bb-machine-report-print-material-dual {
+  width: 100% !important;
 }
 
-.bb-machine-report-print-doc .bb-machine-report-print-material-table th,
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other th {
+.bb-machine-report-print-doc .bb-machine-report-print-material-half th,
+.bb-machine-report-print-doc .bb-machine-report-print-material-half td {
+  font-size: 8pt !important;
+  padding: 0.7mm 0.4mm !important;
+}
+
+.bb-machine-report-print-doc .bb-machine-report-print-material-half th {
   overflow-wrap: normal !important;
   word-break: keep-all !important;
 }
 
-.bb-machine-report-print-doc .bb-machine-report-print-material-table td:nth-child(n+4),
-.bb-machine-report-print-doc .bb-machine-report-print-material-table-other td:nth-child(n+4) {
+.bb-machine-report-print-doc .bb-machine-report-print-material-half td.shift-summary-print-num {
   white-space: nowrap !important;
   overflow-wrap: normal !important;
   word-break: keep-all !important;

@@ -12,7 +12,7 @@ Snapshot **riêng** cho tab tồn đầu ca trên báo cáo BB.
 
 **Không** dùng / ghi đè [`bao_cao_may_nvl_ton`](./bao_cao_may_nvl_ton.md) (phiếu nguồn trên `/bao-cao-may-nvl-ton`).
 
-Nguồn kg = phiếu tồn đầu ca (`sumMachineNvlDauCaLineTotal`: máy + bồn + chưa trộn + ngoài). Tab hiển thị **đúng từng mã trên phiếu** — không map BOM, không chia NNS-TRON. Cột tỉ lệ ĐM chỉ tham chiếu. ĐVT Lít/Cái/Cuộn → «NVL còn lại».
+Nguồn kg = phiếu tồn đầu ca (`bao_cao_may_nvl_ton`). UI khớp Excel «Tồn đầu kỳ»: **Tỉ lệ thực tế** = `bao_cao_phoi_tron` (KL ÷ tổng KL, ngày·ca·máy); nguồn **Đã trộn** = **SL TỒN của NHUA-TRON** trên phiếu; từng mã Đã trộn = NHUA-TRON × tỉ lệ thực tế; **Tồn ngoài** = **SL TỒN / KL của từng mã** trên cùng CHI TIẾT TỒN ĐẦU CA (vd 700, 1675 — không dùng cột «Tồn ngoài» form khi = 0); **Tổng đầu** = Đã trộn + Tồn ngoài. ĐVT Lít/Cái/Cuộn → «NVL còn lại».
 
 Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh` với `bb_bao_cao_tinh_toan`, `bc_lsx`, `du_lieu_xuat_kho`).
 

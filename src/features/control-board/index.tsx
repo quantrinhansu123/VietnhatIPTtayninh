@@ -102,19 +102,18 @@ function compareProductionOrderByRecentDate(a: ProductionOrderRow, b: Production
 
 function buildPanelProductionOrderOptionLabel(
   order: ProductionOrderRow,
-  machines: MachineRow[],
+  _machines: MachineRow[],
   productionOrderSettings: ProductionOrderLookupSetting[]
 ): { code: string; label: string; ngay: string } {
   const code = String(order.code || '').trim();
   const ngay = parseProductionOrderFilterDate(order.startDate);
   const shiftLabel = formatProductionOrderShiftLabel(order.shift, productionOrderSettings);
-  const machineLabel = resolveProductionOrderMachine(order, machines);
+  // Khớp UI bộ lọc /phan-tich-tu-dong: «LSX-… - dd/mm/yyyy - Ca» (máy chọn riêng).
   const parts = [code];
   if (ngay) parts.push(formatProductionOrderPanelDate(ngay));
   else if (order.startDate && order.startDate !== '-') parts.push(String(order.startDate));
   if (shiftLabel && shiftLabel !== '-') parts.push(shiftLabel);
-  if (machineLabel && machineLabel !== '-') parts.push(machineLabel);
-  return { code, label: parts.join(' · '), ngay: ngay || '' };
+  return { code, label: parts.join(' - '), ngay: ngay || '' };
 }
 
 /** Mã máy từ lệnh SX (khớp danh sách máy). */

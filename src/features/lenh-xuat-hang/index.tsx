@@ -501,13 +501,29 @@ export function ShippingOrdersPanel({
     exported: Record<string, Record<string, number>>
   ) =>
     list.map(order => {
-      const done = exported[order.ma_lenh];
+      const orderKey = String(order.ma_lenh || '').replace(/\s+/g, '').toUpperCase();
+      const doneRaw =
+        exported[order.ma_lenh] ||
+        Object.entries(exported).find(([code]) => code.replace(/\s+/g, '').toUpperCase() === orderKey)?.[1];
+      const done: Record<string, number> = {};
+      for (const [code, qty] of Object.entries(doneRaw || {})) {
+        const prefix = code.includes('_') ? code.slice(0, code.indexOf('_')) : code.includes('+') ? code.slice(0, code.indexOf('+')) : code;
+        const key = prefix.replace(/\s+/g, '').toUpperCase();
+        const amount = Number(qty);
+        if (!key || !Number.isFinite(amount) || amount <= 0) continue;
+        done[key] = (done[key] || 0) + amount;
+      }
       const need = new Map<string, number>();
       for (const line of order.chi_tiet) {
-        const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
+        const raw = String(line.ma_sp || '').trim();
+        const prefix = raw.includes('_') ? raw.slice(0, raw.indexOf('_')) : raw.includes('+') ? raw.slice(0, raw.indexOf('+')) : raw;
+        const key = prefix.replace(/\s+/g, '').toUpperCase();
         if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
       }
-      const full = Boolean(done) && need.size > 0 && [...need].every(([key, qty]) => (done[key] || 0) >= qty);
+      const full =
+        Object.keys(done).length > 0 &&
+        need.size > 0 &&
+        [...need].every(([key, qty]) => (done[key] || 0) + 1e-9 >= qty);
       return full && order.trang_thai === 'Chờ xuất' ? { ...order, trang_thai: 'Đã xuất' } : order;
     });
 

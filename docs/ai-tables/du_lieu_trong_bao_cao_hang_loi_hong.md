@@ -22,7 +22,7 @@ Ghi khi bấm **Tính toán** (cùng `khoa_on_dinh`).
 - **Cột Tổng rác màng** = Σ trọng lượng phiếu `/danh-sach-bao-cao-san-luong` (`bao_cao_nghiem_thu`) mã **RAC MANG** + **MT-HANG RAC** (SP rác), khớp bộ lọc ngày · ca · máy.
 - **Tổng hàng lỗi hỏng** / banner **Báo cáo lỗi hỏng** = **Lỗi hỏng (kg)** + **Tổng rác màng** (TL nhựa + Vật tư khác).
 - Các mã `NHUAKM` / `NC` / `RMN` **không** liệt kê dòng trong «NVL trộn» — chỉ cộng cột tổng.
-- **Chia %** = cột **«Tỉ lệ trộn Thực tế»** trên `/danh-sach-bao-cao-phoi-tron` (KL NVL ÷ tổng KL × 100), gộp đúng ngày · ca · máy: `(NHUAKM+NC+RMN) × tỉ lệ TT`. Không dùng ĐM/BOM/form — mã TT = «-» → lỗi `0` / ẩn tiêu hao nếu không xuất/tồn.
+- **Chia % / cột Tỉ lệ trộn (%)** = **cùng công thức tab Tồn đầu ca «Tỉ lệ thực tế»**: KL NVL ÷ tổng KL `bao_cao_phoi_tron` × 100 (ngày · ca · máy, `resolveBbMixingShiftStatsForOrderHeader`). Trọng lượng lỗi = `(NHUAKM+NC+RMN) × tỉ lệ TT`. Không dùng ĐM/BOM — mã TT = «-» → lỗi `0`.
 - **Tổng nhựa lỗi hỏng** = NHUAKM + NC + RMN.
 - Tab luôn tạo nhóm theo **lệnh SX** (kể cả khi chưa có phiếu Hàng hỏng) để gắn NHUAKM từ phiếu cân.
 - Dòng nguồn SP lỗi/rác gom theo **ngày · ca · máy** (`filterBbDamagedLinesForShiftBucket`) — phiếu chưa gắn mã lệnh vẫn vào đúng ca/máy; dòng **thiếu ca/máy không** vào bucket đã chọn (tránh nhân đôi TL); tiêu hao NVL dùng cùng bucket khi ghi `loi_hong_kg`.

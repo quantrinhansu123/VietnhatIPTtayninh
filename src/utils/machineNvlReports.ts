@@ -264,6 +264,70 @@ export function machineNvlQtyToKg(
   return qty * factor;
 }
 
+/**
+ * Tách tồn đầu ca theo Excel «Tồn đầu kỳ»:
+ * - Đã trộn = trong máy + bồn trộn + NL chưa trộn
+ * - Tồn ngoài = tồn ngoài
+ * - Tổng đầu = Đã trộn + Tồn ngoài (khớp `sumMachineNvlDauCaLineTotal` khi có đủ phần)
+ */
+export function splitMachineNvlDauCaLineKg(
+  line: Pick<
+    MachineNvlSavedLine,
+    | 'donVi'
+    | 'trongLuongQuyDoiKg'
+    | 'soLuongTon'
+    | 'loaiVatTu'
+    | 'maNvl'
+    | 'tenNvl'
+    | 'soLuongTrongMay'
+    | 'soLuongTrongBonTron'
+    | 'soLuongNlChuaTron'
+    | 'soLuongTonNgoai'
+  >,
+  catalog?: WarehouseWeightCatalogItem[] | null
+): { daTronKg: number; tonNgoaiKg: number; tongDauKg: number } {
+  let factor = resolveMachineNvlLineKgFactorWithCatalog(line, catalog);
+  const hay = `${line.maNvl || ''} ${line.tenNvl || ''}`
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const isLoi =
+    line.loaiVatTu === 'loi' || hay.includes('loi') || /\bloi\b/.test(hay) || hay.startsWith('loi');
+  const isBaoBi =
+    line.loaiVatTu === 'bao_bi' ||
+    hay.includes('tui') ||
+    hay.includes('bao bi') ||
+    hay.includes('tai nilon') ||
+    hay.includes('bi nilon');
+  if ((factor === null || factor <= 0) && (isLoi || isBaoBi)) factor = 1;
+  const toKg = (qty: number) => {
+    if (!(qty > 0)) return 0;
+    if (factor === null || factor <= 0) return qty;
+    return qty * factor;
+  };
+
+  const daTronQty =
+    (line.soLuongTrongMay ?? 0) + (line.soLuongTrongBonTron ?? 0) + (line.soLuongNlChuaTron ?? 0);
+  const tonNgoaiQty = line.soLuongTonNgoai ?? 0;
+  let daTronKg = toKg(daTronQty);
+  let tonNgoaiKg = toKg(tonNgoaiQty);
+  const partsSum = daTronKg + tonNgoaiKg;
+  const tongDauKg = sumMachineNvlDauCaLineTotal(line, catalog);
+
+  // Phiếu chỉ ghi tổng (soLuongTon) mà không tách phần → gán hết vào Đã trộn.
+  if (!(partsSum > 0) && tongDauKg > 0) {
+    daTronKg = tongDauKg;
+    tonNgoaiKg = 0;
+  }
+
+  return {
+    daTronKg: Number.isFinite(daTronKg) ? daTronKg : 0,
+    tonNgoaiKg: Number.isFinite(tonNgoaiKg) ? tonNgoaiKg : 0,
+    tongDauKg: Number.isFinite(tongDauKg) ? tongDauKg : 0
+  };
+}
+
 /** Tổng tồn đầu ca 1 dòng NVL = tồn máy + bồn trộn + NL chưa trộn + tồn ngoài (hoặc soLuongTon đã lưu). */
 export function sumMachineNvlDauCaLineTotal(
   line: Pick<
@@ -361,7 +425,6 @@ export function sumMachineNvlCuoiCaLineTotal(
     hay.includes('bi nilon');
   // Lõi / bao bì thiếu hệ số quy đổi → mặc định 1 kg/đơn vị (khối lượng = SL tồn)
   if ((factor === null || factor <= 0) && (isLoi || isBaoBi)) factor = 1;
-  if (factor === null || factor <= 0) return 0;
   const componentQty =
     (line.soLuongTrongMay ?? 0) +
     (line.soLuongTrongBonTron ?? 0) +
@@ -369,6 +432,8 @@ export function sumMachineNvlCuoiCaLineTotal(
     (line.soLuongTonNgoai ?? 0);
   const base =
     Number.isFinite(line.soLuongTon) && line.soLuongTon > 0 ? line.soLuongTon : componentQty;
+  // Giống tồn đầu ca: thiếu hệ số vẫn lấy SL thô để hiện trên báo cáo BB.
+  if (factor === null || factor <= 0) return base > 0 ? base : 0;
   return base > 0 ? base * factor : 0;
 }
 

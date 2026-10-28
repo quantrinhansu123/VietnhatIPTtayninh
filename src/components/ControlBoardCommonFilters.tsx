@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import type { MachineRow } from '../features/danh-sach-may';
+import { DateInput } from './shared/DateInput';
 
 const inputClass =
   'h-8 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-800 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 sm:text-xs';
+
+const labelClass = 'text-[9px] font-black uppercase tracking-wider text-zinc-500';
 
 export type ControlBoardProductionOrderOption = {
   code: string;
@@ -210,19 +213,15 @@ export function ControlBoardCommonFilters({
 }) {
   const dateInputsDisabled = isLoading || dateScope === 'all';
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3">
+    <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-2.5 shadow-sm sm:p-3">
       <div className="flex flex-col gap-2.5 xl:flex-row xl:items-end">
-        <div className="flex shrink-0 items-center gap-1.5 xl:items-end">
+        <div className="flex shrink-0 items-center gap-1.5 xl:pb-0.5 xl:items-end">
           {deferApply ? (
             <button
               type="button"
               onClick={onApply}
               disabled={isLoading || !hasPendingChanges}
-              className={`h-8 rounded-lg px-2.5 text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                hasPendingChanges
-                  ? 'border border-red-300 bg-red-600 text-white shadow-sm hover:bg-red-700'
-                  : 'border border-zinc-200 bg-zinc-50 text-zinc-500'
-              }`}
+              className="h-8 rounded-lg border border-red-600 bg-red-600 px-3 text-[11px] font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-zinc-500"
             >
               Áp dụng
             </button>
@@ -231,93 +230,95 @@ export function ControlBoardCommonFilters({
             type="button"
             onClick={onClear}
             disabled={isLoading}
-            className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-black text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-8 shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Xóa lọc
           </button>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(126px,0.8fr)_minmax(126px,0.8fr)_minmax(170px,0.9fr)_minmax(180px,0.9fr)_minmax(230px,1.35fr)]">
-        <label className="space-y-0.5">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
-          <select
-            value={dateScope}
-            onChange={event => onDateScopeChange?.(event.target.value as ControlBoardDateScope)}
-            disabled={isLoading}
-            className={`${inputClass} w-full`}
-            title="Tất cả: lấy mọi dòng kể cả không có Ngày / không chênh lệch"
-          >
-            <option value="all">Tất cả</option>
-            <option value="range">Theo khoảng</option>
-          </select>
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={event => onDateFromChange(event.target.value)}
-            disabled={dateInputsDisabled}
-            className={`${inputClass} w-full disabled:bg-zinc-50 disabled:text-zinc-400`}
-          />
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={event => onDateToChange(event.target.value)}
-            disabled={dateInputsDisabled}
-            className={`${inputClass} w-full disabled:bg-zinc-50 disabled:text-zinc-400`}
-          />
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
-          <select
-            value={shift}
-            onChange={event => onShiftChange(event.target.value)}
-            disabled={isLoading}
-            className={`${inputClass} w-full`}
-          >
-            <option value="all">Tất cả ca</option>
-            {shiftOptions.map(shiftName => (
-              <option key={shiftName} value={shiftName}>
-                {formatShiftLabel ? formatShiftLabel(shiftName) : shiftName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="space-y-0.5">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Máy</span>
-          <select
-            value={machine}
-            onChange={event => onMachineChange(event.target.value)}
-            disabled={isLoading}
-            className={`${inputClass} w-full`}
-          >
-            <option value="all">Tất cả máy</option>
-            {machines
-              .filter(row => row.code && row.code !== '-')
-              .sort((a, b) => a.code.localeCompare(b.code, 'vi'))
-              .map(row => (
-                <option key={row.id || row.code} value={row.code}>
-                  {row.code}
-                  {row.name && row.name !== '-' ? ` · ${row.name}` : ''}
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-3 xl:grid-cols-[minmax(118px,0.7fr)_minmax(132px,0.85fr)_minmax(132px,0.85fr)_minmax(170px,0.95fr)_minmax(190px,1fr)_minmax(240px,1.4fr)]">
+          <label className="space-y-0.5">
+            <span className={labelClass}>Ngày</span>
+            <select
+              value={dateScope}
+              onChange={event => onDateScopeChange?.(event.target.value as ControlBoardDateScope)}
+              disabled={isLoading}
+              className={`${inputClass} w-full`}
+              title="Tất cả: lấy mọi dòng kể cả không có Ngày / không chênh lệch"
+            >
+              <option value="all">Tất cả</option>
+              <option value="range">Theo khoảng</option>
+            </select>
+          </label>
+          <label className="space-y-0.5">
+            <span className={labelClass}>Từ ngày</span>
+            <DateInput
+              value={dateFrom}
+              onChange={onDateFromChange}
+              disabled={dateInputsDisabled}
+              aria-label="Từ ngày"
+              wrapperClassName="relative block w-full"
+              className={`${inputClass} w-full pr-8 font-mono disabled:bg-zinc-100 disabled:text-zinc-400`}
+            />
+          </label>
+          <label className="space-y-0.5">
+            <span className={labelClass}>Đến ngày</span>
+            <DateInput
+              value={dateTo}
+              onChange={onDateToChange}
+              disabled={dateInputsDisabled}
+              aria-label="Đến ngày"
+              wrapperClassName="relative block w-full"
+              className={`${inputClass} w-full pr-8 font-mono disabled:bg-zinc-100 disabled:text-zinc-400`}
+            />
+          </label>
+          <label className="space-y-0.5">
+            <span className={labelClass}>Ca</span>
+            <select
+              value={shift}
+              onChange={event => onShiftChange(event.target.value)}
+              disabled={isLoading}
+              className={`${inputClass} w-full`}
+            >
+              <option value="all">Tất cả ca</option>
+              {shiftOptions.map(shiftName => (
+                <option key={shiftName} value={shiftName}>
+                  {formatShiftLabel ? formatShiftLabel(shiftName) : shiftName}
                 </option>
               ))}
-          </select>
-        </div>
-        <div className="col-span-2 space-y-0.5 lg:col-span-1 xl:col-span-1">
-          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Lệnh sản xuất</span>
-          <ProductionOrderSearchFilter
-            value={productionOrder}
-            query={productionOrderQuery}
-            onValueChange={onProductionOrderChange}
-            onQueryChange={onProductionOrderQueryChange}
-            options={productionOrderOptions}
-            disabled={isLoading}
-          />
-        </div>
+            </select>
+          </label>
+          <div className="space-y-0.5">
+            <span className={labelClass}>Máy</span>
+            <select
+              value={machine}
+              onChange={event => onMachineChange(event.target.value)}
+              disabled={isLoading}
+              className={`${inputClass} w-full`}
+            >
+              <option value="all">Tất cả máy</option>
+              {machines
+                .filter(row => row.code && row.code !== '-')
+                .sort((a, b) => a.code.localeCompare(b.code, 'vi'))
+                .map(row => (
+                  <option key={row.id || row.code} value={row.code}>
+                    {row.code}
+                    {row.name && row.name !== '-' ? ` - ${row.name}` : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="col-span-2 space-y-0.5 lg:col-span-1 xl:col-span-1">
+            <span className={labelClass}>Lệnh sản xuất</span>
+            <ProductionOrderSearchFilter
+              value={productionOrder}
+              query={productionOrderQuery}
+              onValueChange={onProductionOrderChange}
+              onQueryChange={onProductionOrderQueryChange}
+              options={productionOrderOptions}
+              disabled={isLoading}
+            />
+          </div>
         </div>
       </div>
     </section>

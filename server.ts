@@ -13571,6 +13571,7 @@ export function createApp() {
   });
 
   // Số lượng thành phẩm đã xuất (phiếu đã chốt) theo lệnh xuất hàng; phiếu gắn lệnh qua thẻ [LXH:<mã lệnh>] trong ghi_chu.
+  // SL gộp theo tiền tố mã SP (bỏ hậu tố tem `_…`) để khớp lệnh xuất / ẩn lệnh đã đủ.
   app.get('/api/kho/lenh-xuat-da-xuat', async (_req, res) => {
     const khoDb = supabaseKho;
     if (!khoDb) return res.json({ exported: {} });
@@ -13583,7 +13584,7 @@ export function createApp() {
       if (error) return res.status(500).json({ error: error.message });
       const orderBySlip = new Map<string, string>();
       for (const slip of slips || []) {
-        const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/)?.[1]?.trim();
+        const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
         if (code) orderBySlip.set(String(slip.ma_phieu), code);
       }
       const exported: Record<string, Record<string, number>> = {};
@@ -13593,14 +13594,18 @@ export function createApp() {
         for (let from = 0; ; from += 1000) {
           const { data: rows, error: lineError } = await khoDb
             .from('xuat_kho')
-            .select('ma_phieu, ma_sp, so_luong')
+            .select('ma_phieu, ma_sp, ma_sp_quet, so_luong')
             .eq('loai', 'san_pham')
             .in('ma_phieu', chunk)
             .range(from, from + 999);
           if (lineError) return res.status(500).json({ error: lineError.message });
           for (const row of rows || []) {
             const order = orderBySlip.get(String(row.ma_phieu));
-            const sp = String(row.ma_sp || '').replace(/\s+/g, '').toUpperCase();
+            const spRaw =
+              warehouseProductCodePrefix(row.ma_sp) ||
+              warehouseProductCodePrefix(row.ma_sp_quet) ||
+              String(row.ma_sp || row.ma_sp_quet || '').trim();
+            const sp = String(spRaw || '').replace(/\s+/g, '').toUpperCase();
             if (!order || !sp) continue;
             exported[order] ||= {};
             exported[order][sp] = (exported[order][sp] || 0) + (Number(row.so_luong) || 1);

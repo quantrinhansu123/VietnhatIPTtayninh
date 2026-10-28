@@ -19,7 +19,6 @@ import {
   resolveMixingReportRoundExplanations,
   resolveLineKlThucTe,
   resolveMixingTiLeThucTePercent,
-  sumLineNormQuantity,
   sumLineRoundNormQuantity,
   sumMixingRounds,
   sumRoundActualQuantity,
@@ -118,19 +117,6 @@ function formatFilterSummary(filters: MixingReportFilters, machines: MachineOpti
   const machine = machines.find(item => item.id === filters.machineId);
   if (machine) parts.push(`${machine.code} · ${machine.name}`);
   return parts.length > 0 ? parts.join(' · ') : 'tất cả';
-}
-
-/** Tỉ lệ trộn định mức (%) — trung bình `ti_le_phan_tram` trên các lần của dòng NVL. */
-function resolveLineTiLeDinhMucPercent(line: MixingReportLine): number | null {
-  const values: number[] = [];
-  for (const roundKey of MIXING_ROUND_KEYS) {
-    for (const item of getRoundItems(line.lan_su_dung, roundKey)) {
-      const pct = item.ti_le_phan_tram;
-      if (pct !== null && pct !== undefined && Number.isFinite(pct)) values.push(pct);
-    }
-  }
-  if (values.length === 0) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function isMixingListKgUnit(unit: string) {
@@ -744,14 +730,6 @@ export default function MixingReportListView({
                 <th className="px-2 py-2 font-black">ĐVT</th>
                 <th
                   className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
-                  title="Tỉ lệ trộn định mức (%) từ phiếu phối trộn"
-                >
-                  Tỉ lệ trộn
-                  <br />
-                  Định mức
-                </th>
-                <th
-                  className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
                   title="Tỉ lệ trộn thực tế (%) = KL thực tế NVL ÷ tổng KL thực tế phiếu × 100"
                 >
                   Tỉ lệ trộn
@@ -763,15 +741,16 @@ export default function MixingReportListView({
                       <th
                         key={`expand-head-${report.id}-${roundIndex}`}
                         className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
+                        title="KL thực tế từng lần (kl_thuc_te) — cộng các lần = cột KL thực tế"
                       >
                         {mixingSessionColumnLabel(sessionStart, roundIndex)}
                       </th>
                     ))
                   : null}
-                <th className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black">
-                  KL định mức
-                </th>
-                <th className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black">
+                <th
+                  className="min-w-[72px] whitespace-nowrap px-2 py-2 text-right font-black"
+                  title="Tổng KL thực tế mọi lần = Σ kl_thuc_te (Lần 1 + Lần 2 + …)"
+                >
                   KL thực tế
                 </th>
               </tr>
@@ -786,9 +765,7 @@ export default function MixingReportListView({
                   line => resolveMixingLineKgForRatio(line) !== null
                 );
                 return report.chi_tiet.map((line, index) => {
-                  const klDinhMuc = sumLineNormQuantity(line);
                   const klThucTe = resolveLineKlThucTe(line);
-                  const tiLeDinhMuc = resolveLineTiLeDinhMucPercent(line);
                   const lineKgForRatio = resolveMixingLineKgForRatio(line);
                   const tiLeThucTe =
                     hasReportActual && lineKgForRatio !== null
@@ -804,25 +781,29 @@ export default function MixingReportListView({
                       <td className="whitespace-nowrap px-2 py-2 text-zinc-600">
                         {deriveLineUnit(line.lan_su_dung)}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-sky-800">
-                        {formatPercentCell(tiLeDinhMuc)}
-                      </td>
                       <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-orange-800">
                         {formatPercentCell(tiLeThucTe)}
                       </td>
                       {showQtyColumns
-                        ? roundKeys.map(roundKey => (
-                            <td
-                              key={`${line.stt}-${roundKey}`}
-                              className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-700"
-                            >
-                              {formatNormWeight(sumLineRoundNormQuantity(line, roundKey)) || '-'}
-                            </td>
-                          ))
+                        ? roundKeys.map(roundKey => {
+                            const roundItems = getRoundItems(line.lan_su_dung, roundKey);
+                            const hasRoundActual = roundItems.some(
+                              item =>
+                                item.kl_thuc_te !== null &&
+                                item.kl_thuc_te !== undefined &&
+                                !Number.isNaN(item.kl_thuc_te)
+                            );
+                            const roundActual = sumRoundActualQuantity(line.lan_su_dung, roundKey);
+                            return (
+                              <td
+                                key={`${line.stt}-${roundKey}`}
+                                className="whitespace-nowrap px-2 py-2 text-right font-mono font-semibold text-[#ef1b2d]"
+                              >
+                                {hasRoundActual ? formatOptionalNumber(roundActual) : '-'}
+                              </td>
+                            );
+                          })
                         : null}
-                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
-                        {formatNormWeight(klDinhMuc) || '-'}
-                      </td>
                       <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-[#ef1b2d]">
                         {klThucTe !== null ? formatOptionalNumber(klThucTe) : '-'}
                       </td>
@@ -836,7 +817,6 @@ export default function MixingReportListView({
                 <td colSpan={4} className="px-2 py-2 text-right">
                   Thực tế sử dụng
                 </td>
-                <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-zinc-400">—</td>
                 <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-black text-orange-800">
                   {report.chi_tiet.some(line => resolveMixingLineKgForRatio(line) !== null)
                     ? '100%'
@@ -866,9 +846,6 @@ export default function MixingReportListView({
                       );
                     })
                   : null}
-                <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-emerald-800">
-                  {formatNormWeight(sumReportNormTotal(report.chi_tiet)) || '-'}
-                </td>
                 <td className="whitespace-nowrap px-2 py-2 text-right font-black text-[#ef1b2d]">
                   {(() => {
                     const fromLines = report.chi_tiet.reduce(
@@ -1137,7 +1114,6 @@ export default function MixingReportListView({
                         <th className="px-3 py-2 font-black">Máy</th>
                         <th className="px-3 py-2 font-black">Nhân sự</th>
                         <th className="px-3 py-2 font-black">Dòng VT</th>
-                        <th className="px-3 py-2 text-right font-black">KL định mức</th>
                         <th className="px-3 py-2 text-right font-black">KL thực tế</th>
                         <th className="px-3 py-2 text-center font-black">Thao tác</th>
                       </tr>
@@ -1146,7 +1122,6 @@ export default function MixingReportListView({
                       {group.reports.flatMap(report => {
                         const rounds = expandReportRounds(report);
                         const isExpanded = viewingReportId === report.id;
-                        const totalNorm = rounds.reduce((sum, round) => sum + round.normTotal, 0);
                         const totalActual = rounds.every(round => round.actualTotal === null)
                           ? null
                           : rounds.reduce((sum, round) => sum + (round.actualTotal ?? 0), 0);
@@ -1205,9 +1180,6 @@ export default function MixingReportListView({
                             <td className="whitespace-nowrap px-3 py-2 font-bold text-zinc-700">
                               {report.chi_tiet.length}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-bold text-emerald-700">
-                              {formatNormWeight(totalNorm) || '-'}
-                            </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-bold text-[#ef1b2d]">
                               {totalActual !== null ? formatOptionalNumber(totalActual) : '-'}
                             </td>
@@ -1227,7 +1199,7 @@ export default function MixingReportListView({
                         return [
                           summaryRow,
                           <tr key={`${report.id}-detail`} className="bg-slate-50/80">
-                            <td colSpan={10} className="px-3 py-3">
+                            <td colSpan={9} className="px-3 py-3">
                               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                   <p className="text-xs font-black uppercase tracking-wider text-emerald-800">

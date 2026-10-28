@@ -23,7 +23,7 @@ import {
   buildOrderBomMaterialMatchKeys,
   isInsulationMachineText,
   isMaterialInProductBom,
-  isNnsTronMaterial,
+  isBbExcludedTronAggregateMaterial,
   lookupBbMaterialKgByCodeOrName,
   lookupNnsTronTonDauKg,
   buildBbMixingMaterialLinesForShift,
@@ -265,6 +265,7 @@ function buildMaterialRowsForOrder(input: {
   const orderBomKeys = buildOrderBomMaterialMatchKeys(order, products);
   const isInOrderBom = (code: string, name: string) => isMaterialInProductBom(code, name, orderBomKeys);
   const ensure = (code: string, name: string, unit = 'kg') => {
+    if (isBbExcludedTronAggregateMaterial(code, name)) return null;
     const key = normalizeProductCodeKey(code || name) || `${rows.size}`;
     let row = rows.get(key);
     if (!row) {
@@ -299,6 +300,7 @@ function buildMaterialRowsForOrder(input: {
     );
     for (const item of product?.nplItems || []) {
       const row = ensure(item.code, item.name, item.amountType === 'percent' ? 'kg' : item.unit);
+      if (!row) continue;
       if (item.amountType === 'percent' && item.percent !== null) row.normPercents.push(item.percent);
       if (item.amountType === 'quantity') {
         const unit = String(item.unit || '').trim();
@@ -332,6 +334,7 @@ function buildMaterialRowsForOrder(input: {
   );
   for (const entry of exportMaterialTotals) {
     const row = ensure(entry.itemCode, entry.itemName, entry.unit);
+    if (!row) continue;
     if (entry.quantity > 0) row.exportQty = round4(row.exportQty + entry.quantity);
     if (entry.weightKg > 0) row.exportKg = round4(row.exportKg + entry.weightKg);
   }
@@ -341,7 +344,9 @@ function buildMaterialRowsForOrder(input: {
   const tonDauMaps = buildBbMaterialKgMapsFromTabLines(openingLines);
   const nnsTronTonDauKg = lookupNnsTronTonDauKg(tonDauMaps);
   for (const line of openingLines) {
-    ensure(line.itemCode, line.itemName, line.unit).openingKg += line.weightKg > 0 ? line.weightKg : 0;
+    const row = ensure(line.itemCode, line.itemName, line.unit);
+    if (!row) continue;
+    row.openingKg += line.weightKg > 0 ? line.weightKg : 0;
   }
 
   const closingGroups = findOrderGroups(cuoiCaGroups, order);
@@ -361,6 +366,7 @@ function buildMaterialRowsForOrder(input: {
   const mixingGroup = findOrderGroup(mixingGroups, order);
   for (const line of mixingGroup?.lines || []) {
     const row = ensure(line.materialCode, line.materialName, 'kg');
+    if (!row) continue;
     if (line.tiLeDinhMucPercent !== null) row.normPercents.push(line.tiLeDinhMucPercent);
     // Fallback nếu chưa có mixingReports — cùng cột Tỉ lệ trộn Thực tế.
     if (row.actualPercent == null && line.tiLeThucTeTbPercent != null && line.tiLeThucTeTbPercent > 0) {
@@ -380,6 +386,7 @@ function buildMaterialRowsForOrder(input: {
     });
     for (const mix of mixLines) {
       const row = ensure(mix.materialCode, mix.materialName, mix.unit || 'kg');
+      if (!row) continue;
       if (mix.tiLeDinhMucPercent != null) row.normPercents.push(mix.tiLeDinhMucPercent);
       if (mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0) {
         row.actualPercent = mix.tiLeTronPercent;
@@ -414,6 +421,7 @@ function buildMaterialRowsForOrder(input: {
     const kg = resolveBbLoiHongMixingLineWeightKg(line, plasticLoiHongKg);
     if (kg == null || !(kg > 0)) continue;
     const row = ensure(line.materialCode, line.materialName, line.unit || 'kg');
+    if (!row) continue;
     row.damagedKg = round4(row.damagedKg + kg);
   }
   if (groupIsInsulation) {
@@ -421,13 +429,13 @@ function buildMaterialRowsForOrder(input: {
     const filmMat = damagedGroup?.filmScrapMaterial;
     if (racMangKg > 0 && filmMat) {
       const row = ensure(filmMat.materialCode, filmMat.materialName, filmMat.unit || 'kg');
-      row.damagedKg = round4(row.damagedKg + racMangKg);
+      if (row) row.damagedKg = round4(row.damagedKg + racMangKg);
     }
   }
 
   if (nnsTronTonDauKg > 0) {
     for (const row of rows.values()) {
-      if (isNnsTronMaterial(row.code, row.name)) {
+      if (isBbExcludedTronAggregateMaterial(row.code, row.name)) {
         row.openingKg = 0;
         continue;
       }
@@ -447,13 +455,15 @@ function buildMaterialRowsForOrder(input: {
     for (const line of closingMaterialLines) {
       const kg = line.tonDauWeightKg;
       if (!(kg > 0)) continue;
-      ensure(line.itemCode, line.itemName, line.unit || 'kg').closingKg += kg;
+      const row = ensure(line.itemCode, line.itemName, line.unit || 'kg');
+      if (row) row.closingKg += kg;
     }
   } else {
     for (const line of closingLines) {
       const kg = line.weightKg;
       if (!(kg > 0)) continue;
-      ensure(line.itemCode, line.itemName, line.unit || 'kg').closingKg += kg;
+      const row = ensure(line.itemCode, line.itemName, line.unit || 'kg');
+      if (row) row.closingKg += kg;
     }
   }
 
@@ -485,6 +495,7 @@ function buildMaterialRowsForOrder(input: {
       if (!(weight > 0)) continue;
       const unit = line.amountType === 'percent' ? 'kg' : String(line.unit || '').trim() || 'Cái';
       const row = ensure(line.itemCode, line.itemName, unit);
+      if (!row) continue;
       row.finishedKg = round4(row.finishedKg + weight);
     }
   }
@@ -510,7 +521,7 @@ function buildMaterialRowsForOrder(input: {
       if (qtyPerSp == null) continue;
       const unit = String(item.unit || '').trim();
       const row = ensure(item.code, item.name, unit || 'Cái');
-      if (isPlasticNvl(row)) continue;
+      if (!row || isPlasticNvl(row)) continue;
       if (unit && unit !== '-' && !isWarehouseKgUnit(unit)) {
         row.actualQty = round4(row.actualQty + qtyPerSp * sl);
       }
@@ -547,12 +558,8 @@ function buildMaterialRowsForOrder(input: {
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
   return [...rows.values()]
     .filter(row => {
-      if (
-        isNnsTronMaterial(row.code, row.name) &&
-        (nnsTronTonDauKg > 0 || nnsTronTonCuoiKg > 0 || closingMaterialLines.length > 0)
-      ) {
-        return false;
-      }
+      // NHUA-TRON / NNS-TRON không vào bảng tiêu hao.
+      if (isBbExcludedTronAggregateMaterial(row.code, row.name)) return false;
       // NVL nhựa không có trên bảng trộn ca đó và không xuất/tồn → ẩn khỏi tiêu hao.
       if (isPlasticNvl(row)) {
         const onBangTron =

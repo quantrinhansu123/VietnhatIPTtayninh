@@ -902,15 +902,43 @@ function mergeWarehouseExportLineDrafts(lines: WarehouseSlipLineDraft[]): Wareho
  * Tem thực tế dùng dấu "_" làm ranh giới (VD "MN-BB332_CXIxxxx" → "MN-BB332"); bản thân mã gốc
  * có thể chứa dấu "-" nên KHÔNG được tách theo "-", chỉ tách theo "_".
  */
+/** Gộp SL đã xuất theo tiền tố mã SP (bỏ hậu tố `_…` trên tem QR). */
+function normalizeExportedProductQty(exported?: Record<string, number>): Record<string, number> {
+  if (!exported) return {};
+  const out: Record<string, number> = {};
+  for (const [code, qty] of Object.entries(exported)) {
+    const key = normalizeMaterialCodeKey(warehouseCodePrefix(code) || code);
+    const amount = Number(qty);
+    if (!key || !Number.isFinite(amount) || amount <= 0) continue;
+    out[key] = (out[key] || 0) + amount;
+  }
+  return out;
+}
+
+/** Tra map đã xuất theo mã lệnh (khớp bỏ khoảng trắng / hoa-thường). */
+function resolveExportedByOrderCode(
+  exportedByOrder: Record<string, Record<string, number>>,
+  maLenh: string
+): Record<string, number> | undefined {
+  const raw = String(maLenh || '').trim();
+  if (!raw) return undefined;
+  if (exportedByOrder[raw]) return exportedByOrder[raw];
+  const key = normalizeMaterialCodeKey(raw);
+  for (const [code, qtyBySp] of Object.entries(exportedByOrder)) {
+    if (normalizeMaterialCodeKey(code) === key) return qtyBySp;
+  }
+  return undefined;
+}
+
 /** Lệnh đã xuất đủ khi mọi mặt hàng đều có SL đã xuất (phiếu đã chốt) >= SL lệnh. */
 function isShippingOrderFullyExported(order: ShippingOrder, exported?: Record<string, number>) {
-  if (!exported) return false;
+  const byPrefix = normalizeExportedProductQty(exported);
   const need = new Map<string, number>();
   for (const line of order.chi_tiet) {
-    const key = line.ma_sp.replace(/\s+/g, '').toUpperCase();
+    const key = normalizeMaterialCodeKey(warehouseCodePrefix(line.ma_sp) || line.ma_sp);
     if (key) need.set(key, (need.get(key) || 0) + (Number(line.so_luong) || 0));
   }
-  return need.size > 0 && [...need].every(([key, qty]) => (exported[key] || 0) >= qty);
+  return need.size > 0 && [...need].every(([key, qty]) => (byPrefix[key] || 0) + 1e-9 >= qty);
 }
 
 function warehouseCodePrefix(raw: string) {
@@ -2838,9 +2866,13 @@ export function WarehouseSlipPanel({
     return shippingOrders
       .filter(order => order.ngay_xuat.slice(0, 10) === day)
       .filter(order => !/^(bị )?hủy$/i.test(order.trang_thai.trim()))
-      .filter(order => order.id === shippingOrderId || !isShippingOrderFullyExported(order, exportedByOrder[order.ma_lenh]))
+      // Đã xuất đủ (phiếu chốt) → ẩn khỏi sổ, kể cả đang chọn trước đó.
+      .filter(
+        order =>
+          !isShippingOrderFullyExported(order, resolveExportedByOrderCode(exportedByOrder, order.ma_lenh))
+      )
       .sort((a, b) => a.ma_lenh.localeCompare(b.ma_lenh, 'vi', { numeric: true }));
-  }, [shippingOrders, slipDate, exportedByOrder, shippingOrderId]);
+  }, [shippingOrders, slipDate, exportedByOrder]);
 
   useEffect(() => {
     const orderCode = selectedProductSlipCode && slipType === 'xuat'
@@ -4329,6 +4361,7 @@ export function WarehouseSlipPanel({
       setEditSlipCode(null);
       setReason('');
       setNote('');
+      setShippingOrderId('');
       setExportedRefreshNonce(n => n + 1);
       setDeliverer('');
       setCreatedBy(loginName);

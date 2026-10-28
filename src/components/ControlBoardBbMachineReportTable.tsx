@@ -71,7 +71,9 @@ import {
   buildBbWarehouseExportLineRows,
   groupBbWarehouseExportLines,
   buildBbDauCaLineRows,
+  buildBbCuoiCaLineRows,
   groupBbDauCaLines,
+  groupBbCuoiCaLines,
   buildBbPlasticSummaryDetailView,
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
@@ -82,6 +84,7 @@ import {
   formatProductCatalogPlasticWeight,
   groupBbProductionOrderLines,
   groupBbThucDungLines,
+  buildBbMixingLinesAllocatedNhuaTronByDm,
   splitBbDauCaMaterialLinesByMixing,
   splitBbLoiHongMaterialLinesByMixing,
   splitBbDanhGiaSummaryRowsBySection,
@@ -426,50 +429,48 @@ function ThucDungMetricButton({
   );
 }
 
+function sumBbDauCaLinesDaTronKg(lines: BbDauCaProductLine[]): number {
+  return lines.reduce((sum, row) => sum + (row.daTronKg > 0 ? row.daTronKg : 0), 0);
+}
+
+function sumBbDauCaLinesTonNgoaiKg(lines: BbDauCaProductLine[]): number {
+  return lines.reduce((sum, row) => sum + (row.tonNgoaiKg > 0 ? row.tonNgoaiKg : 0), 0);
+}
+
 function BbDauCaMaterialRow({
   row,
-  tonColumnLabel,
   onOpenTonFormula,
   showRatioColumns = true
 }: {
   row: BbDauCaProductLine;
-  tonColumnLabel: string;
   onOpenTonFormula: (formula: BbDauCaTonDauFormula) => void;
   showRatioColumns?: boolean;
 }) {
+  const openFormula = () => {
+    if (row.tonDauFormula) onOpenTonFormula(row.tonDauFormula);
+  };
   return (
     <tr className="border-b border-slate-50 bg-white font-semibold hover:bg-indigo-50/40">
       <td className="px-3 py-2 font-mono font-bold text-zinc-800">{row.itemCode || '—'}</td>
       <td className="px-3 py-2 text-zinc-700">{row.itemName || '—'}</td>
       <td className="px-3 py-2 text-zinc-600">{row.unit || '—'}</td>
       {showRatioColumns ? (
-        <>
-          <td className="px-3 py-2 text-right font-mono text-zinc-600">
-            {formatPercent(row.tiLeDinhMucPercent, 2)}
-          </td>
-          <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
-            {formatPercent(row.tiLeThucTeTbPercent, 2)}
-          </td>
-        </>
+        <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
+          {formatPercent(row.tiLeThucTeTbPercent, 2)}
+        </td>
       ) : null}
-      <td className="px-3 py-2 text-right font-mono text-zinc-700">
-        {row.dinhMucRate === null || row.dinhMucRate === undefined
-          ? '—'
-          : `${formatNumber(row.dinhMucRate, row.amountType === 'percent' ? 2 : 3)}${
-              row.dinhMucUnit ? ` ${row.dinhMucUnit}` : ''
-            }`}
+      <td className="border-l-2 border-sky-400 bg-amber-50/40 px-3 py-2 text-right font-mono font-bold text-sky-800">
+        {formatKg(row.daTronKg, 4)}
       </td>
-      <td
-        className="px-3 py-2 text-right font-mono font-bold text-indigo-700"
-        title={tonColumnLabel}
-      >
+      <td className="bg-amber-50/40 px-3 py-2 text-right font-mono font-bold text-sky-800">
+        {formatKg(row.tonNgoaiKg, 4)}
+      </td>
+      <td className="border-r-2 border-sky-400 bg-amber-50/60 px-3 py-2 text-right font-mono font-black text-zinc-900">
         {row.tonDauFormula ? (
           <ThucDungMetricButton
             label={formatKg(row.tonDauWeightKg, 4)}
-            className="font-mono font-bold text-indigo-700"
-            onOpen={() => {
-              if (row.tonDauFormula) onOpenTonFormula(row.tonDauFormula);
-            }}
+            className="font-mono font-black text-zinc-900"
+            onOpen={openFormula}
           />
         ) : (
           formatKg(row.tonDauWeightKg, 4)
@@ -481,16 +482,44 @@ function BbDauCaMaterialRow({
 
 function BbDauCaMaterialSplitTables({
   materialLines,
-  tonColumnLabel,
-  onOpenTonFormula
+  onOpenTonFormula,
+  tonKyLabel = 'Tồn đầu kỳ',
+  tongColumnLabel = 'Tổng đầu',
+  chiTietSlipLabel = 'CHI TIẾT TỒN ĐẦU CA'
 }: {
   materialLines: BbDauCaProductLine[];
-  tonColumnLabel: string;
   onOpenTonFormula: (formula: BbDauCaTonDauFormula) => void;
+  /** Excel group header: Tồn đầu kỳ / Tồn cuối kỳ */
+  tonKyLabel?: string;
+  tongColumnLabel?: string;
+  /** Nhãn phiếu nguồn trong chú thích (đầu ca / cuối ca). */
+  chiTietSlipLabel?: string;
 }) {
   const { mixingLines, otherLines } = splitBbDauCaMaterialLinesByMixing(materialLines);
-  const mixingTotalKg = sumBbDauCaMaterialLinesTonKg(mixingLines);
   const otherTotalKg = sumBbDauCaMaterialLinesTonKg(otherLines);
+  const alreadyAllocated = mixingLines.some(line => line.tonDauFormula?.fromNhuaTron);
+  const nhuaTronAllocated = alreadyAllocated
+    ? (() => {
+        const nhuaTronKg =
+          mixingLines
+            .map(line => line.tonDauFormula?.nhuaTronTonKg)
+            .find(kg => kg != null && Number.isFinite(kg) && kg > 0) ?? 0;
+        const footerTonNgoaiKg = mixingLines.reduce(
+          (sum, row) => sum + (row.tonNgoaiKg > 0 ? row.tonNgoaiKg : 0),
+          0
+        );
+        return {
+          lines: mixingLines,
+          nhuaTronKg,
+          totalKg: sumBbDauCaMaterialLinesTonKg(mixingLines),
+          footerDaTronKg: nhuaTronKg > 0 ? nhuaTronKg : mixingLines.reduce((s, r) => s + (r.daTronKg > 0 ? r.daTronKg : 0), 0),
+          footerTonNgoaiKg,
+          allocatedFromNhuaTron: nhuaTronKg > 0
+        };
+      })()
+    : buildBbMixingLinesAllocatedNhuaTronByDm(mixingLines);
+  const mixingDisplayLines = nhuaTronAllocated.lines;
+  const mixingTotalKg = nhuaTronAllocated.totalKg;
 
   const renderTable = (
     title: string,
@@ -499,40 +528,85 @@ function BbDauCaMaterialSplitTables({
     rows: BbDauCaProductLine[],
     totalKg: number,
     emptyText: string,
-    showRatioColumns = true
+    showRatioColumns = true,
+    subtitle?: string,
+    footerDaTronKg?: number,
+    footerTonNgoaiKg?: number,
+    /** Ghi nguồn NHUA-TRON ngay trong ô header Đã trộn. */
+    daTronHeaderNhuaTronKg?: number | null
   ) => {
-    const columnCount = showRatioColumns ? 7 : 5;
-    const totalLabelColSpan = showRatioColumns ? 6 : 4;
+    const columnCount = showRatioColumns ? 7 : 6;
+    const totalLabelColSpan = showRatioColumns ? 4 : 3;
+    const totalDaTron =
+      footerDaTronKg != null ? footerDaTronKg : sumBbDauCaLinesDaTronKg(rows);
+    const totalTonNgoai =
+      footerTonNgoaiKg != null ? footerTonNgoaiKg : sumBbDauCaLinesTonNgoaiKg(rows);
+    const showNhuaTronInHeader =
+      daTronHeaderNhuaTronKg != null &&
+      Number.isFinite(daTronHeaderNhuaTronKg) &&
+      daTronHeaderNhuaTronKg > 0;
     return (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className={`border-b px-3 py-2 text-xs font-black uppercase tracking-wider ${titleClass}`}>
-          {title}
-          {rows.length > 0 ? ` (${rows.length})` : ''}
+        <div className={`border-b px-3 py-2 ${titleClass}`}>
+          <p className="text-xs font-black uppercase tracking-wider">
+            {title}
+            {rows.length > 0 ? ` (${rows.length})` : ''}
+          </p>
+          {subtitle ? <p className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal opacity-80">{subtitle}</p> : null}
         </div>
         <table className="min-w-full text-left text-sm font-semibold">
           <thead className={`text-xs uppercase tracking-wider ${headerClass}`}>
             <tr>
-              <th className="px-3 py-2 font-black">Mã NVL</th>
-              <th className="px-3 py-2 font-black">Tên nguyên phụ liệu</th>
-              <th className="px-3 py-2 font-black">ĐVT</th>
+              <th rowSpan={2} className="px-3 py-2 font-black align-bottom">
+                Mã NVL
+              </th>
+              <th rowSpan={2} className="px-3 py-2 font-black align-bottom">
+                Tên nguyên phụ liệu
+              </th>
+              <th rowSpan={2} className="px-3 py-2 font-black align-bottom">
+                ĐVT
+              </th>
               {showRatioColumns ? (
-                <>
-                  <th
-                    className="px-3 py-2 text-right font-black"
-                    title="Từ thành phần % SP hoặc tỉ lệ trộn máy"
-                  >
-                    Tỉ lệ ĐM (%)
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right font-black"
-                    title="Bằng Tỉ lệ ĐM (%): thành phần SP hoặc tỉ lệ trộn máy"
-                  >
-                    Tỉ lệ thực tế (%)
-                  </th>
-                </>
+                <th
+                  rowSpan={2}
+                  className="px-3 py-2 text-right font-black align-bottom"
+                  title="Cột «Tỉ lệ trộn Thực tế» /danh-sach-bao-cao-phoi-tron = KL NVL ÷ tổng KL × 100 (ngày·ca·máy)"
+                >
+                  Tỉ lệ thực tế (%)
+                </th>
               ) : null}
-              <th className="px-3 py-2 text-right font-black">Thành phần</th>
-              <th className="px-3 py-2 text-right font-black">{tonColumnLabel}</th>
+              <th
+                colSpan={3}
+                className="border-x-2 border-sky-400 bg-amber-200 px-3 py-1.5 text-center font-black text-amber-950"
+                title={`${tongColumnLabel} = Đã trộn + Tồn ngoài (Excel)`}
+              >
+                {tonKyLabel}
+              </th>
+            </tr>
+            <tr>
+              <th
+                className="border-l-2 border-sky-400 bg-amber-100 px-2 py-1.5 text-right font-black text-amber-950"
+                title="Nguồn NHUA-TRON; từng dòng = NHUA-TRON × Tỉ lệ trộn thực tế (%)"
+              >
+                <div className="leading-tight">Đã trộn</div>
+                {showNhuaTronInHeader ? (
+                  <div className="mt-0.5 font-mono text-[11px] font-black normal-case tracking-normal text-violet-900">
+                    NHUA-TRON {formatKg(daTronHeaderNhuaTronKg, 4)}
+                  </div>
+                ) : null}
+              </th>
+              <th
+                className="bg-amber-100 px-3 py-1.5 text-right font-black text-amber-950"
+                title="SL TỒN / KL từng mã trên CHI TIẾT TỒN ĐẦU CA — không phân bổ từ NHUA-TRON"
+              >
+                Tồn ngoài
+              </th>
+              <th
+                className="border-r-2 border-sky-400 bg-amber-100 px-3 py-1.5 text-right font-black text-amber-950"
+                title="Đã trộn + Tồn ngoài"
+              >
+                {tongColumnLabel}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -547,7 +621,6 @@ function BbDauCaMaterialSplitTables({
                 <BbDauCaMaterialRow
                   key={row.key}
                   row={row}
-                  tonColumnLabel={tonColumnLabel}
                   onOpenTonFormula={onOpenTonFormula}
                   showRatioColumns={showRatioColumns}
                 />
@@ -560,7 +633,15 @@ function BbDauCaMaterialSplitTables({
                 <td colSpan={totalLabelColSpan} className="px-3 py-2 text-right uppercase tracking-wider">
                   Tổng
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-indigo-800">{formatKg(totalKg, 4)}</td>
+                <td className="border-l-2 border-sky-400 bg-amber-50 px-3 py-2 text-right font-mono text-sky-900">
+                  {formatKg(totalDaTron, 4)}
+                </td>
+                <td className="bg-amber-50 px-3 py-2 text-right font-mono text-sky-900">
+                  {formatKg(totalTonNgoai, 4)}
+                </td>
+                <td className="border-r-2 border-sky-400 bg-amber-100 px-3 py-2 text-right font-mono text-zinc-900">
+                  {formatKg(totalKg, 4)}
+                </td>
               </tr>
             </tfoot>
           ) : null}
@@ -570,24 +651,33 @@ function BbDauCaMaterialSplitTables({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-3 p-2 xl:grid-cols-2">
-      {renderTable(
-        'NVL trộn',
-        'text-violet-900 bg-violet-100 border-violet-200',
-        'bg-violet-50 text-violet-900',
-        mixingLines,
-        mixingTotalKg,
-        'Không có NVL trộn (ĐVT kg / Lít).'
-      )}
-      {renderTable(
-        'NVL còn lại',
-        'text-slate-800 bg-slate-100 border-slate-200',
-        'bg-slate-50 text-slate-800',
-        otherLines,
-        otherTotalKg,
-        'Không có NVL còn lại.',
-        false
-      )}
+    <div className="space-y-3 p-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {renderTable(
+          'NVL trộn',
+          'text-violet-900 bg-violet-100 border-violet-200',
+          'bg-violet-50 text-violet-900',
+          mixingDisplayLines,
+          mixingTotalKg,
+          'Không có NVL trộn (ĐVT kg / Lít).',
+          true,
+          nhuaTronAllocated.allocatedFromNhuaTron
+            ? `Đã trộn = NHUA-TRON (SL TỒN phiếu) × tỉ lệ trộn thực tế. Tồn ngoài = SL TỒN từng mã trên ${chiTietSlipLabel}. ${tongColumnLabel} = Đã trộn + Tồn ngoài.`
+            : `Chưa có mã NHUA-TRON trên phiếu — Đã trộn lấy máy + bồn + chưa trộn. Tồn ngoài = SL TỒN từng mã trên phiếu.`,
+          nhuaTronAllocated.footerDaTronKg,
+          nhuaTronAllocated.footerTonNgoaiKg,
+          nhuaTronAllocated.allocatedFromNhuaTron ? nhuaTronAllocated.nhuaTronKg : null
+        )}
+        {renderTable(
+          'NVL còn lại',
+          'text-slate-800 bg-slate-100 border-slate-200',
+          'bg-slate-50 text-slate-800',
+          otherLines,
+          otherTotalKg,
+          'Không có NVL còn lại.',
+          false
+        )}
+      </div>
     </div>
   );
 }
@@ -1729,9 +1819,7 @@ export default function ControlBoardBbMachineReportTable({
 
   const damagedRows = activeSnapshot.damagedRows;
   const damagedGroups = activeSnapshot.damagedGroups;
-  const cuoiCaRows = activeSnapshot.cuoiCaRows;
-  const cuoiCaGroups = activeSnapshot.cuoiCaGroups;
-  /** Tab tồn đầu: luôn đọc phiếu tồn đầu mới nhất (không dùng snapshot cũ đã chia NNS/BOM). */
+  /** Tab tồn đầu / cuối ca: luôn đọc phiếu mới nhất (không dùng snapshot cũ). */
   const dauCaRows = useMemo(
     () =>
       buildBbDauCaLineRows({
@@ -1769,6 +1857,44 @@ export default function ControlBoardBbMachineReportTable({
         shiftSettings
       }),
     [dauCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
+  );
+  const cuoiCaRows = useMemo(
+    () =>
+      buildBbCuoiCaLineRows({
+        productionOrders,
+        machineNvlReports,
+        machines,
+        materials,
+        shiftSettings,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine,
+        includeAllMachines
+      }),
+    [
+      productionOrders,
+      machineNvlReports,
+      machines,
+      materials,
+      shiftSettings,
+      dateFrom,
+      dateTo,
+      shiftFilter,
+      machineFilter,
+      selectedMachine,
+      includeAllMachines
+    ]
+  );
+  const cuoiCaGroups = useMemo(
+    () =>
+      groupBbCuoiCaLines(cuoiCaRows, productionOrders, products, materials, {
+        machines,
+        mixingReports,
+        shiftSettings
+      }),
+    [cuoiCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
   );
   /** Snapshot cũ vẫn phủ đủ npl_phan_tram ngay sau khi bấm Áp dụng. */
   const sanLuongGroups = useMemo(
@@ -2193,15 +2319,16 @@ export default function ControlBoardBbMachineReportTable({
     includeAllMachines
   ]);
   const damagedTotalKg = damagedWeightByKind.totalKg;
-  const cuoiCaTotalKg = useMemo(() => {
-    if (reportSnapshot?.summary && Number.isFinite(reportSnapshot.summary.cuoiCaTotalKg)) {
-      return reportSnapshot.summary.cuoiCaTotalKg;
-    }
-    return sumBbCuoiCaWeightKg(cuoiCaRows);
-  }, [reportSnapshot, cuoiCaRows]);
+  const cuoiCaTotalKg = useMemo(
+    () => cuoiCaGroups.reduce((sum, group) => sum + (group.totalWeightKg > 0 ? group.totalWeightKg : 0), 0),
+    [cuoiCaGroups]
+  );
   /** Luôn tính lại từ dòng tồn cuối — tránh snapshot cũ xếp nhầm NHUA-*-BB vào vật tư khác. */
   const cuoiCaWeightByKind = useMemo(() => sumBbCuoiCaWeightKgByKind(cuoiCaRows), [cuoiCaRows]);
-  const dauCaTotalKg = useMemo(() => sumBbDauCaWeightKg(dauCaRows), [dauCaRows]);
+  const dauCaTotalKg = useMemo(
+    () => dauCaGroups.reduce((sum, group) => sum + (group.totalWeightKg > 0 ? group.totalWeightKg : 0), 0),
+    [dauCaGroups]
+  );
   const dauCaWeightByKind = useMemo(() => sumBbDauCaWeightKgByKind(dauCaRows), [dauCaRows]);
   const sanLuongTotals = useMemo(() => sumBbSanLuongTotals(sanLuongGroups), [sanLuongGroups]);
   const scopedCanTuDongRecords = useMemo(() => {
@@ -3652,6 +3779,7 @@ export default function ControlBoardBbMachineReportTable({
 
       {activeGroupKeys.length > 0 ||
       activeTab === 'ton_dau_ca' ||
+      activeTab === 'kiem_ton_cuoi_ca' ||
       activeTab === 'danh_gia_tong_hop' ||
       activeTab === 'giai_trinh' ? (
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -3661,7 +3789,16 @@ export default function ControlBoardBbMachineReportTable({
                 Số liệu theo phiếu tồn đầu ca
               </p>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Mã NVL · SL · kg lấy nguyên từ phiếu tồn đầu (máy + bồn + chưa trộn + ngoài). Cột tỉ lệ ĐM chỉ tham chiếu.
+                «Tồn đầu kỳ»: Đã trộn từ SL TỒN NHUA-TRON × tỉ lệ trộn thực tế; Tồn ngoài = SL TỒN từng mã trên CHI TIẾT TỒN ĐẦU CA.
+              </p>
+            </div>
+          ) : activeTab === 'kiem_ton_cuoi_ca' ? (
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">
+                Số liệu theo phiếu kiểm tồn cuối ca
+              </p>
+              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                Cùng công thức tồn đầu ca — «Tồn cuối kỳ»: Đã trộn = NHUA-TRON × tỉ lệ trộn thực tế; Tồn ngoài = SL TỒN từng mã trên CHI TIẾT TỒN CUỐI CA.
               </p>
             </div>
           ) : activeTab === 'danh_gia_tong_hop' ? (
@@ -4567,7 +4704,6 @@ export default function ControlBoardBbMachineReportTable({
                           <td colSpan={8} className="p-0">
                             <BbDauCaMaterialSplitTables
                               materialLines={group.materialLines || []}
-                              tonColumnLabel="Tồn đầu (kg)"
                               onOpenTonFormula={setSelectedTonDauFormula}
                             />
                           </td>
@@ -4775,10 +4911,15 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2 font-black">Mã NVL</th>
                                           <th className="px-3 py-2 font-black">Tên nguyên phụ liệu</th>
                                           <th className="px-3 py-2 font-black">ĐVT</th>
-                                          <th className="px-3 py-2 text-right font-black">Tỉ lệ trộn (%)</th>
                                           <th
                                             className="px-3 py-2 text-right font-black"
-                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × cột «Tỉ lệ trộn Thực tế» trên /danh-sach-bao-cao-phoi-tron (ngày·ca·máy)"
+                                            title="Cùng Tồn đầu ca: KL NVL ÷ tổng KL báo cáo phối trộn × 100 (ngày·ca·máy)"
+                                          >
+                                            Tỉ lệ trộn (%)
+                                          </th>
+                                          <th
+                                            className="px-3 py-2 text-right font-black"
+                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × Tỉ lệ trộn (%) — cùng tỉ lệ Tồn đầu ca"
                                           >
                                             Trọng lượng lỗi
                                           </th>
@@ -5019,7 +5160,9 @@ export default function ControlBoardBbMachineReportTable({
                           <td colSpan={8} className="p-0">
                             <BbDauCaMaterialSplitTables
                               materialLines={group.materialLines || []}
-                              tonColumnLabel="Tồn cuối (kg)"
+                              tonKyLabel="Tồn cuối kỳ"
+                              tongColumnLabel="Tổng cuối"
+                              chiTietSlipLabel="CHI TIẾT TỒN CUỐI CA"
                               onOpenTonFormula={setSelectedTonDauFormula}
                             />
                           </td>
@@ -8093,8 +8236,51 @@ export default function ControlBoardBbMachineReportTable({
                       {selectedTonDauFormula.shiftLabel || '—'} · {selectedTonDauFormula.machine || '—'}
                     </td>
                   </tr>
-                  {selectedTonDauFormula.fromNnsTron &&
-                  selectedTonDauFormula.tiLeThucTeTbPercent !== null ? (
+                  {selectedTonDauFormula.fromNhuaTron &&
+                  selectedTonDauFormula.tiLeDinhMucAllocatePercent != null &&
+                  (selectedTonDauFormula.nhuaTronTonKg || 0) > 0 ? (
+                    <>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-zinc-800">NHUA-TRON</td>
+                        <td className="px-3 py-2 text-zinc-600">Tồn nhựa đã trộn trên báo cáo</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
+                          {formatKg(selectedTonDauFormula.nhuaTronTonKg || 0, 4)}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">kg</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-zinc-800">Tỉ lệ thực tế</td>
+                        <td className="px-3 py-2 text-zinc-600">Báo cáo phối trộn (KL ÷ tổng KL)</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-orange-800">
+                          {formatNumber(selectedTonDauFormula.tiLeDinhMucAllocatePercent, 4)}%
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">%</td>
+                      </tr>
+                      <tr className="hover:bg-emerald-50/50">
+                        <td className="px-3 py-2 font-semibold text-zinc-800">Phân bổ từ NHUA-TRON</td>
+                        <td className="px-3 py-2 font-mono text-[11px] font-bold text-emerald-900 sm:text-xs">
+                          NHUA-TRON × Tỉ lệ thực tế
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-900">
+                          {formatKg(
+                            (selectedTonDauFormula.nhuaTronTonKg || 0) *
+                              (selectedTonDauFormula.tiLeDinhMucAllocatePercent / 100),
+                            4
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">kg</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-zinc-800">Tồn trực tiếp</td>
+                        <td className="px-3 py-2 text-zinc-600">Tồn ghi nhận theo mã NVL</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
+                          {formatKg(selectedTonDauFormula.directTonDauKg, 4)}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">kg</td>
+                      </tr>
+                    </>
+                  ) : selectedTonDauFormula.fromNnsTron &&
+                    selectedTonDauFormula.tiLeThucTeTbPercent !== null ? (
                     <>
                       <tr>
                         <td className="px-3 py-2 font-semibold text-zinc-800">NNS-TRON</td>
@@ -8138,22 +8324,43 @@ export default function ControlBoardBbMachineReportTable({
                       ) : null}
                     </>
                   ) : (
-                    <tr>
-                      <td className="px-3 py-2 font-semibold text-zinc-800">Tồn theo mã NVL</td>
-                      <td className="px-3 py-2 text-zinc-600">Tồn ghi nhận trên báo cáo</td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
-                        {formatKg(selectedTonDauFormula.directTonDauKg, 4)}
-                      </td>
-                      <td className="px-3 py-2 text-zinc-600">kg</td>
-                    </tr>
+                    <>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-zinc-800">Đã trộn</td>
+                        <td className="px-3 py-2 text-zinc-600">Máy + bồn trộn + NL chưa trộn</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-sky-800">
+                          {formatKg(selectedTonDauFormula.daTronKg ?? 0, 4)}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">kg</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-zinc-800">Tồn ngoài</td>
+                        <td className="px-3 py-2 text-zinc-600">Tồn ngoài máy / kho tạm</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-sky-800">
+                          {formatKg(selectedTonDauFormula.tonNgoaiKg ?? 0, 4)}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-600">kg</td>
+                      </tr>
+                    </>
                   )}
                 </tbody>
                 <tfoot className="border-t-2 border-zinc-300 bg-zinc-50">
                   <tr>
-                    <td className="px-3 py-2.5 font-black uppercase tracking-wider text-zinc-600">Tổng tồn</td>
+                    <td className="px-3 py-2.5 font-black uppercase tracking-wider text-zinc-600">Tổng đầu</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] font-bold text-zinc-700 sm:text-xs">
-                      {selectedTonDauFormula.fromNnsTron &&
-                      selectedTonDauFormula.tiLeThucTeTbPercent !== null ? (
+                      {selectedTonDauFormula.fromNhuaTron &&
+                      selectedTonDauFormula.tiLeDinhMucAllocatePercent != null ? (
+                        <>
+                          Tồn ngoài + NHUA-TRON × Tỉ lệ thực tế ={' '}
+                          {formatKg(selectedTonDauFormula.directTonDauKg, 4)} +{' '}
+                          {formatKg(
+                            (selectedTonDauFormula.nhuaTronTonKg || 0) *
+                              (selectedTonDauFormula.tiLeDinhMucAllocatePercent / 100),
+                            4
+                          )}
+                        </>
+                      ) : selectedTonDauFormula.fromNnsTron &&
+                        selectedTonDauFormula.tiLeThucTeTbPercent !== null ? (
                         selectedTonDauFormula.directTonDauKg > 0 ? (
                           <>
                             Phân bổ NNS-TRON + Tồn trực tiếp ={' '}
@@ -8168,7 +8375,10 @@ export default function ControlBoardBbMachineReportTable({
                           <>NNS-TRON × Tỉ lệ ĐM</>
                         )
                       ) : (
-                        <>Tồn ghi nhận theo mã NVL</>
+                        <>
+                          Đã trộn + Tồn ngoài = {formatKg(selectedTonDauFormula.daTronKg ?? 0, 4)} +{' '}
+                          {formatKg(selectedTonDauFormula.tonNgoaiKg ?? 0, 4)}
+                        </>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-base font-black text-indigo-900">
@@ -8181,8 +8391,8 @@ export default function ControlBoardBbMachineReportTable({
             </div>
 
             <p className="text-xs font-semibold text-zinc-500">
-              Khi có NNS-TRON: phân bổ về từng NVL nhựa bằng Tỉ lệ ĐM (%) và cộng thêm tồn trực tiếp theo mã. Khi không có NNS-TRON: lấy nguyên tồn
-              ghi nhận theo mã NVL (dùng chung cho mọi sản phẩm cùng mã NVL đó trong lệnh).
+              Đã trộn = NHUA-TRON × tỉ lệ trộn thực tế (báo cáo phối trộn ngày·ca·máy). Tồn ngoài lấy độc lập từng mã trên báo cáo
+              tồn. Tổng đầu = Đã trộn + Tồn ngoài.
             </p>
           </div>
         </div>

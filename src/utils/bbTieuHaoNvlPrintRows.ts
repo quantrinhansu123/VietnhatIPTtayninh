@@ -26,8 +26,10 @@ import {
   isNnsTronMaterial,
   lookupBbMaterialKgByCodeOrName,
   lookupNnsTronTonDauKg,
+  buildBbMixingMaterialLinesForShift,
   enrichLoiHongMixingExtraWeights,
   filterBbDamagedLinesForShiftBucket,
+  isLoiHongMixingKgExtraCode,
   resolveBbLoiHongMixingLineWeightKg,
   resolveBbLoiHongNhuakmNcTotalKg,
   sumBbDamagedFilmScrapKg,
@@ -42,6 +44,7 @@ import {
   type BbWarehouseExportGroup,
   type BbWarehouseExportLineRow
 } from './controlBoardBbMachineReport';
+import type { MixingReport } from '../components/MixingReportForm';
 import { type ShiftSetting } from './shiftSettings';
 
 function round4(value: number) {
@@ -205,6 +208,10 @@ type MaterialBuildRow = {
   name: string;
   unit: string;
   normPercents: number[];
+  /**
+   * Cột «Tỉ lệ trộn Thực tế» `/danh-sach-bao-cao-phoi-tron`
+   * (KL ÷ tổng KL × 100, gộp ngày·ca·máy) — chia nhập TP + lỗi.
+   */
   actualPercent: number | null;
   actualMixedKg: number;
   openingKg: number;
@@ -216,6 +223,14 @@ type MaterialBuildRow = {
   closingKg: number;
 };
 
+/** % chia nhựa từ bảng trộn: chỉ KL thực tế — không ĐM/BOM/form. */
+function resolveBangTronTiLePercent(row: MaterialBuildRow): number | null {
+  if (row.actualPercent != null && Number.isFinite(row.actualPercent) && row.actualPercent > 0) {
+    return row.actualPercent;
+  }
+  return null;
+}
+
 function buildMaterialRowsForOrder(input: {
   order: BbProductionOrderGroup;
   products: ProductRow[];
@@ -226,6 +241,7 @@ function buildMaterialRowsForOrder(input: {
   cuoiCaGroups: BbCuoiCaGroup[];
   damagedGroups: BbDamagedGoodsGroup[];
   mixingGroups: BbMixingRatioGroup[];
+  mixingReports?: MixingReport[];
   sanLuongGroups: BbSanLuongGroup[];
   selectedMachineName?: string | null;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
@@ -240,6 +256,7 @@ function buildMaterialRowsForOrder(input: {
     cuoiCaGroups,
     damagedGroups,
     mixingGroups,
+    mixingReports,
     sanLuongGroups,
     selectedMachineName,
     shiftSettings
@@ -345,11 +362,35 @@ function buildMaterialRowsForOrder(input: {
   for (const line of mixingGroup?.lines || []) {
     const row = ensure(line.materialCode, line.materialName, 'kg');
     if (line.tiLeDinhMucPercent !== null) row.normPercents.push(line.tiLeDinhMucPercent);
-    row.actualPercent = line.tiLeThucTeTbPercent;
+    // Fallback nếu chưa có mixingReports — cùng cột Tỉ lệ trộn Thực tế.
+    if (row.actualPercent == null && line.tiLeThucTeTbPercent != null && line.tiLeThucTeTbPercent > 0) {
+      row.actualPercent = line.tiLeThucTeTbPercent;
+    }
     row.actualMixedKg += line.totalKlThucTe;
   }
+  // Nguồn chuẩn: cùng công thức cột «Tỉ lệ trộn Thực tế» trên danh sách phối trộn
+  // (KL ÷ tổng KL × 100), gộp phiếu đúng ngày · ca · máy.
+  if (mixingReports && mixingReports.length > 0) {
+    const mixLines = buildBbMixingMaterialLinesForShift({
+      mixingReports,
+      ngay: order.ngay,
+      shift: order.shift,
+      machine: order.machine,
+      shiftSettings
+    });
+    for (const mix of mixLines) {
+      const row = ensure(mix.materialCode, mix.materialName, mix.unit || 'kg');
+      if (mix.tiLeDinhMucPercent != null) row.normPercents.push(mix.tiLeDinhMucPercent);
+      if (mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0) {
+        row.actualPercent = mix.tiLeTronPercent;
+      }
+      if (mix.totalKlThucTe > 0) {
+        row.actualMixedKg = Math.max(row.actualMixedKg, mix.totalKlThucTe);
+      }
+    }
+  }
 
-  // Lỗi hỏng = cột «Trọng lượng lỗi» tab «Dữ liệu trong báo cáo hàng lỗi hỏng» — không phân bổ lại.
+  // Lỗi hỏng nhựa: sẽ chia theo % bảng trộn (KL thực tế) bên dưới — cùng công thức nhập TP.
   for (const row of rows.values()) row.damagedKg = 0;
   const plasticLoiHongKg = resolveBbLoiHongNhuakmNcTotalKg({
     damagedLines,
@@ -358,6 +399,7 @@ function buildMaterialRowsForOrder(input: {
     machine: order.machine,
     shiftSettings
   });
+  // NHUAKM / NC / RMN (và rác màng) — KL tuyệt đối, không chia %.
   const mixingLines = enrichLoiHongMixingExtraWeights({
     lines: damagedGroup?.mixingLines || [],
     damagedLines,
@@ -368,6 +410,7 @@ function buildMaterialRowsForOrder(input: {
     shiftSettings
   });
   for (const line of mixingLines) {
+    if (!isLoiHongMixingKgExtraCode(line.materialCode)) continue;
     const kg = resolveBbLoiHongMixingLineWeightKg(line, plasticLoiHongKg);
     if (kg == null || !(kg > 0)) continue;
     const row = ensure(line.materialCode, line.materialName, line.unit || 'kg');
@@ -483,6 +526,24 @@ function buildMaterialRowsForOrder(input: {
     row.finishedKg = round4(row.actualQty);
   }
 
+  // Mục 3.1: nhập TP + lỗi × cột «Tỉ lệ trộn Thực tế» (/danh-sach-bao-cao-phoi-tron).
+  // Mã tỉ lệ TT = «-» (không có KL) → 0 — không dùng ĐM/BOM.
+  const tongNhuaTpPlastic = [...rows.values()]
+    .filter(row => isPlasticNvl(row))
+    .reduce((sum, row) => sum + (row.finishedKg > 0 ? row.finishedKg : 0), 0);
+  const tongNhuaLoiPlastic = plasticLoiHongKg > 0 ? plasticLoiHongKg : 0;
+  for (const row of rows.values()) {
+    if (!isPlasticNvl(row)) continue;
+    const tiLe = resolveBangTronTiLePercent(row);
+    if (tiLe == null) {
+      row.finishedKg = 0;
+      row.damagedKg = 0;
+      continue;
+    }
+    row.finishedKg = tongNhuaTpPlastic > 0 ? round4(tongNhuaTpPlastic * (tiLe / 100)) : 0;
+    row.damagedKg = tongNhuaLoiPlastic > 0 ? round4(tongNhuaLoiPlastic * (tiLe / 100)) : 0;
+  }
+
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
   return [...rows.values()]
     .filter(row => {
@@ -491,6 +552,17 @@ function buildMaterialRowsForOrder(input: {
         (nnsTronTonDauKg > 0 || nnsTronTonCuoiKg > 0 || closingMaterialLines.length > 0)
       ) {
         return false;
+      }
+      // NVL nhựa không có trên bảng trộn ca đó và không xuất/tồn → ẩn khỏi tiêu hao.
+      if (isPlasticNvl(row)) {
+        const onBangTron =
+          resolveBangTronTiLePercent(row) != null || row.actualMixedKg > 0;
+        if (
+          !onBangTron &&
+          !(row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0)
+        ) {
+          return false;
+        }
       }
       if (isInOrderBom(row.code, row.name)) return true;
       return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0 || row.damagedKg > 0 || row.finishedKg > 0;
@@ -574,6 +646,8 @@ export function buildBbTieuHaoNvlThucDungRows(input: {
   cuoiCaGroups: BbCuoiCaGroup[];
   damagedGroups: BbDamagedGoodsGroup[];
   mixingGroups: BbMixingRatioGroup[];
+  /** Phiếu `bao_cao_phoi_tron` — nguồn cột «Tỉ lệ trộn Thực tế». */
+  mixingReports?: MixingReport[];
   sanLuongGroups: BbSanLuongGroup[];
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
   selectedMachine?: { code?: string; name?: string } | null;
@@ -592,6 +666,7 @@ export function buildBbTieuHaoNvlThucDungRows(input: {
       cuoiCaGroups: input.cuoiCaGroups,
       damagedGroups: input.damagedGroups,
       mixingGroups: input.mixingGroups,
+      mixingReports: input.mixingReports,
       sanLuongGroups: input.sanLuongGroups,
       selectedMachineName: input.selectedMachine?.name,
       shiftSettings: input.shiftSettings

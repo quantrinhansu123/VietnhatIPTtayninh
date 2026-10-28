@@ -389,6 +389,7 @@ export function buildBbMachineReportSnapshot(input: {
     cuoiCaGroups,
     damagedGroups,
     mixingGroups,
+    mixingReports: input.mixingReports,
     sanLuongGroups,
     shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine

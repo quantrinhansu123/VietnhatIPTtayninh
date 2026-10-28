@@ -57,6 +57,7 @@ import {
   getRoundBatchWeight,
   getRoundItems,
   resolveLineKlThucTe,
+  resolveMixingTiLeThucTePercent,
   roundNormWeight,
   sumReportNormTotal
 } from '../lib/mixingReportModel';
@@ -4802,8 +4803,8 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
     }
   }
 
-  // Tỉ lệ chia lỗi = bảng trộn (báo cáo phối trộn) đúng ngày · ca · máy.
-  // Ưu tiên % theo KL thực tế; thiếu thì % đã nhập trên phiếu trộn ca đó — không lấy ĐM máy/BOM.
+  // Tỉ lệ chia lỗi = cột «Tỉ lệ trộn Thực tế» /danh-sach-bao-cao-phoi-tron
+  // (KL ÷ tổng KL × 100), gộp đúng ngày · ca · máy. Không dùng ĐM/BOM/form.
   const mixLines = buildBbMixingMaterialLinesForShift({
     mixingReports: input.mixingReports || [],
     ngay: input.ngay,
@@ -4813,11 +4814,7 @@ export function buildBbLoiHongMaterialLinesForShift(input: {
   });
   for (const mix of mixLines) {
     const tiLeFromBangTron =
-      mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0
-        ? mix.tiLeTronPercent
-        : mix.tiLeDinhMucPercent != null && mix.tiLeDinhMucPercent > 0
-          ? mix.tiLeDinhMucPercent
-          : null;
+      mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0 ? mix.tiLeTronPercent : null;
     if (tiLeFromBangTron == null && !(mix.totalKlThucTe > 0)) continue;
     upsert(
       {
@@ -8357,11 +8354,13 @@ function buildBbMixingShiftStats(input: {
   return { byMaterial, totalMixKg: roundQty(totalMixKg, 4) };
 }
 
+/**
+ * Cùng cột «Tỉ lệ trộn Thực tế» trên `/danh-sach-bao-cao-phoi-tron`
+ * (KL NVL ÷ tổng KL × 100) — gộp theo ngày · ca · máy.
+ */
 function resolveBbMixingShiftTiLeThucTeTbPercent(klSum: number, totalMixKg: number): number | null {
-  if (!Number.isFinite(klSum) || klSum <= 0 || !Number.isFinite(totalMixKg) || totalMixKg <= 0) {
-    return null;
-  }
-  return roundQty((klSum / totalMixKg) * 100, 4);
+  const pct = resolveMixingTiLeThucTePercent(klSum, totalMixKg);
+  return pct === null ? null : roundQty(pct, 4);
 }
 
 function lookupBbMixingShiftMaterialStat(

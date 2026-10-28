@@ -42,6 +42,8 @@
 
 Khi mở chi tiết phiếu vẫn hiện **Tỉ lệ trộn Định mức** / **Thực tế**.
 
+**Tỉ lệ trộn Thực tế** = KL thực tế NVL (ĐVT kg) ÷ tổng KL thực tế phiếu × 100. Báo cáo BB (lỗi hỏng / tiêu hao 3.1) lấy đúng cột này, gộp theo ngày · ca · máy — không dùng ĐM máy/BOM.
+
 
 
 **Update ca:** Form sửa chuẩn hóa `ca` (bỏ `-`), khớp với sổ ca / cài đặt thời gian trước khi PATCH. API từ chối lưu nếu `ca` trống hoặc chỉ là `-`.

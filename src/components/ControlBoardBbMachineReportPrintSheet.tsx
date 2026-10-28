@@ -367,13 +367,12 @@ function printPercent(value: number | null | undefined) {
   return `${formatNumber(value, 2)}%`;
 }
 
-/** Cùng công thức tab «Báo cáo lỗi hỏng»: ưu tiên tỉ lệ trộn thực tế, không có thì định mức. */
+/** Chia lỗi: chỉ % KL thực tế bảng trộn ngày·ca — không fallback ĐM/BOM. */
 function resolveLoiHongMixingTiLePercent(line: {
   tiLeTronPercent: number | null;
   tiLeDinhMucPercent: number | null;
 }) {
   if (line.tiLeTronPercent != null && line.tiLeTronPercent > 0) return line.tiLeTronPercent;
-  if (line.tiLeDinhMucPercent != null && line.tiLeDinhMucPercent > 0) return line.tiLeDinhMucPercent;
   return null;
 }
 

@@ -242,6 +242,28 @@ export function resolveLineKlThucTe(line: Pick<MixingReportLine, 'lan_su_dung' |
   return null;
 }
 
+/**
+ * Cột «Tỉ lệ trộn Thực tế» trên `/danh-sach-bao-cao-phoi-tron`:
+ * KL thực tế NVL ÷ tổng KL thực tế (phiếu hoặc gộp ngày·ca·máy) × 100.
+ */
+export function resolveMixingTiLeThucTePercent(
+  lineKlThucTe: number | null | undefined,
+  totalKlThucTe: number | null | undefined
+): number | null {
+  if (
+    lineKlThucTe === null ||
+    lineKlThucTe === undefined ||
+    !Number.isFinite(lineKlThucTe) ||
+    totalKlThucTe === null ||
+    totalKlThucTe === undefined ||
+    !Number.isFinite(totalKlThucTe) ||
+    totalKlThucTe <= 0
+  ) {
+    return null;
+  }
+  return (lineKlThucTe / totalKlThucTe) * 100;
+}
+
 function backfillItemKlFromLineRecord(
   lan_su_dung: MixingPhoiTron,
   ma_nvl: string,

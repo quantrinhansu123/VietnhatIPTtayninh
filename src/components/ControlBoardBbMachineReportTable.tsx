@@ -4778,7 +4778,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2 text-right font-black">Tỉ lệ trộn (%)</th>
                                           <th
                                             className="px-3 py-2 text-right font-black"
-                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × Tỉ lệ bảng trộn ngày·ca·máy (%)"
+                                            title="Tổng nhựa lỗi hỏng (NHUAKM+NC+RMN) × cột «Tỉ lệ trộn Thực tế» trên /danh-sach-bao-cao-phoi-tron (ngày·ca·máy)"
                                           >
                                             Trọng lượng lỗi
                                           </th>
@@ -5241,7 +5241,10 @@ export default function ControlBoardBbMachineReportTable({
                                             <th className="px-3 py-1.5 text-right font-black" title="Tỉ lệ trộn cấu hình trên Danh sách máy">
                                               Tỉ lệ ĐM (%)
                                             </th>
-                                            <th className="px-3 py-1.5 text-right font-black" title="KL NVL ÷ tổng KL trộn ca × 100">
+                                            <th
+                                              className="px-3 py-1.5 text-right font-black"
+                                              title="Cột «Tỉ lệ trộn Thực tế» trên /danh-sach-bao-cao-phoi-tron = KL NVL ÷ tổng KL × 100 (ngày·ca·máy)"
+                                            >
                                               Tỉ lệ TB thực tế (%)
                                             </th>
                                             <th className="px-3 py-1.5 text-right font-black">Thực trộn (kg)</th>
@@ -7045,8 +7048,8 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-1.5 font-black">Tên NVL</th>
                                           <th
                                             className="px-3 py-1.5 text-right font-black"
-                                            title="KL NVL ÷ tổng KL trộn ca × 100"
-                                          >
+                                            title="Cột «Tỉ lệ trộn Thực tế» /danh-sach-bao-cao-phoi-tron = KL NVL ÷ tổng KL × 100 (ngày·ca·máy)"
+                                            >
                                             Tỉ lệ TB thực tế (%)
                                           </th>
                                           <th className="px-3 py-1.5 text-right font-black">Thực trộn (kg)</th>

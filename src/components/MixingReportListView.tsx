@@ -18,6 +18,7 @@ import {
   resolveMixingReportRoundReasons,
   resolveMixingReportRoundExplanations,
   resolveLineKlThucTe,
+  resolveMixingTiLeThucTePercent,
   sumLineNormQuantity,
   sumLineRoundNormQuantity,
   sumMixingRounds,
@@ -130,24 +131,6 @@ function resolveLineTiLeDinhMucPercent(line: MixingReportLine): number | null {
   }
   if (values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-/** Tỉ lệ trộn thực tế (%) = KL thực tế dòng ÷ tổng KL thực tế phiếu × 100.
- * Chỉ chia trên vật tư ĐVT = kg (bỏ Cái / đơn vị khác).
- */
-function resolveLineTiLeThucTePercent(
-  lineKlThucTe: number | null,
-  reportTotalKlThucTe: number
-): number | null {
-  if (
-    lineKlThucTe === null ||
-    !Number.isFinite(lineKlThucTe) ||
-    !Number.isFinite(reportTotalKlThucTe) ||
-    reportTotalKlThucTe <= 0
-  ) {
-    return null;
-  }
-  return (lineKlThucTe / reportTotalKlThucTe) * 100;
 }
 
 function isMixingListKgUnit(unit: string) {
@@ -809,7 +792,7 @@ export default function MixingReportListView({
                   const lineKgForRatio = resolveMixingLineKgForRatio(line);
                   const tiLeThucTe =
                     hasReportActual && lineKgForRatio !== null
-                      ? resolveLineTiLeThucTePercent(lineKgForRatio, reportActualTotal)
+                      ? resolveMixingTiLeThucTePercent(lineKgForRatio, reportActualTotal)
                       : null;
                   return (
                     <tr key={`expand-row-${report.id}-${line.stt}-${index}`} className="hover:bg-red-50/20">

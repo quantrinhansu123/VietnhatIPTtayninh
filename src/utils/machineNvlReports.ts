@@ -1,5 +1,9 @@
 import { normalizeProductCodeKey } from '../features/san-pham/types';
-import { findMaterialTongKgPerUnit, type WarehouseWeightCatalogItem } from './warehouseWeight';
+import {
+  findMaterialTongKgPerUnit,
+  isWarehouseMixingUnit,
+  type WarehouseWeightCatalogItem
+} from './warehouseWeight';
 
 export type MachineNvlReportKind = 'dau_ca' | 'cuoi_ca';
 
@@ -40,9 +44,15 @@ export function guessMachineNvlMaterialType(code: string, name: string, unit: st
   return 'nhua';
 }
 
-/** Vật tư trộn = mã NHUA* / NVLK* (không phụ thuộc ô «Loại vật tư» người nhập chọn); còn lại = không trộn. */
-export function isMachineNvlTronMaterial(code = '') {
-  return /^(NHUA|NVLK)/i.test(code.trim());
+/**
+ * Vật tư trộn (nhựa + phụ gia):
+ * - mã NHUA* / NVLK*, hoặc
+ * - ĐVT kg / Lít (kể cả dầu bóng PA350…).
+ * Không phụ thuộc ô «Loại vật tư» người nhập chọn.
+ */
+export function isMachineNvlTronMaterial(code = '', unit = '') {
+  if (/^(NHUA|NVLK)/i.test(String(code || '').trim())) return true;
+  return isWarehouseMixingUnit(unit);
 }
 
 export function splitMachineNvlLinesByMaterialGroup<
@@ -56,7 +66,7 @@ export function splitMachineNvlLinesByMaterialGroup<
   const nvlTron: T[] = [];
   const vatTuKhac: T[] = [];
   for (const line of lines) {
-    if (isMachineNvlTronMaterial(String(line.maNvl ?? ''))) {
+    if (isMachineNvlTronMaterial(String(line.maNvl ?? ''), String(line.donVi ?? ''))) {
       nvlTron.push(line);
     } else {
       vatTuKhac.push(line);

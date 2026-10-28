@@ -32,3 +32,5 @@ SUPABASE_MACHINE_NVL_REPORTS_TABLE=bao_cao_may_nvl_ton
 **Tự điền cuối ca:** Nút **Tự điền tồn cuối ca** → lấy danh sách NVL từ **phiếu tồn đầu ca** cùng **Ngày · Ca** (**không** lọc máy; gộp mọi máy) — SL đầu ca làm tham chiếu, SL vị trí để trống để kiểm kê. Ảnh từng dòng tùy chọn ở cả hai loại; không có ảnh vẫn lưu được.
 
 **Chống trùng:** không lưu 2 phiếu cùng **ngày + ca + máy + loại** (đầu/cuối ca). Form và API (`409`) báo đỏ: «Đã lưu … Không lưu bản trùng.»
+
+**NVL trộn:** ĐVT **kg** hoặc **Lít** (và mã `NHUA*` / `NVLK*`) → nhóm trộn; Cái/Cuộn/m2 → không trộn. Cùng quy tắc trên báo cáo máy BB (tồn đầu/cuối, lỗi hỏng, phiếu in 3.1).

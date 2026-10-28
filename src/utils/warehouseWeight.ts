@@ -51,6 +51,38 @@ export function isWarehouseKgUnit(unit: string) {
   return normalized.startsWith('kg/') || normalized.startsWith('kg ');
 }
 
+/** ĐVT Lít / liter (dầu bóng, phụ gia lỏng…). */
+export function isWarehouseLiterUnit(unit: string) {
+  const normalized = normalizeWarehouseUnit(unit);
+  if (!normalized) return false;
+  if (
+    normalized === 'l' ||
+    normalized === 'l.' ||
+    normalized === 'lit' ||
+    normalized === 'liter' ||
+    normalized === 'litre' ||
+    normalized === 'liters' ||
+    normalized === 'litres' ||
+    normalized === 'lit.'
+  ) {
+    return true;
+  }
+  return (
+    normalized.startsWith('lit/') ||
+    normalized.startsWith('lit ') ||
+    normalized.startsWith('l/') ||
+    normalized.startsWith('l ')
+  );
+}
+
+/**
+ * ĐVT thuộc «NVL nhựa và phụ gia trộn»: kg hoặc Lít.
+ * Cái / Cuộn / m2 / đơn vị khác → không.
+ */
+export function isWarehouseMixingUnit(unit: string) {
+  return isWarehouseKgUnit(unit) || isWarehouseLiterUnit(unit);
+}
+
 function parseWeightNumber(value: string | number | undefined | null): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') {

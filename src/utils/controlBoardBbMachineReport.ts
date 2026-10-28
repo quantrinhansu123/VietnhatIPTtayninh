@@ -70,6 +70,7 @@ import {
   convertWarehouseQuantityToKg,
   findMaterialTongKgPerUnit,
   isWarehouseKgUnit,
+  isWarehouseMixingUnit,
   mapMaterialToWeightCatalogItem,
   type WarehouseWeightCatalogItem
 } from './warehouseWeight';
@@ -85,6 +86,7 @@ import {
 import {
   buildCanTuDongFilmKgByProductCode,
   canTuDongShiftMatches,
+  collectCanTuDongProductMatchKeys,
   computeInsulationFilmWeightKg,
   filterCanTuDongRecordsForBoard,
   listInsulationFilmBomLines,
@@ -94,6 +96,7 @@ import {
   resolveInsulationFilmBomWeightPerUnit,
   resolveInsulationFilmKgPerRoll,
   sumCanTuDongSanLuongTotals,
+  sumCanTuDongThucTeTotals,
   type CanTuDongWeightRow
 } from './canTuDongWeights';
 import { computeCanTuDongTongHopBannerTotals } from './canTuDongTongHop';
@@ -107,9 +110,9 @@ import {
 } from './machineNvlReports';
 
 /**
- * Vật tư tham gia chia tỉ lệ trộn / phân bổ NNS-TRON: chỉ ĐVT kg.
+ * Vật tư tham gia chia tỉ lệ trộn / phân bổ NNS-TRON: ĐVT kg hoặc Lít.
  * Thành phần SP kiểu % lưu unit="%" — vẫn tính là nhựa/kg.
- * Cái / m2 / đơn vị khác: không chia tỉ lệ.
+ * Cái / Cuộn / m2 / đơn vị khác: không chia tỉ lệ.
  */
 function isBbMixingRatioKgUnit(unit: string, amountType?: 'percent' | 'quantity' | null) {
   if (amountType === 'percent') return true;
@@ -117,7 +120,7 @@ function isBbMixingRatioKgUnit(unit: string, amountType?: 'percent' | 'quantity'
     .trim()
     .toLowerCase();
   if (!normalized || normalized === '-' || normalized === '%') return true;
-  return isWarehouseKgUnit(unit);
+  return isWarehouseMixingUnit(unit);
 }
 
 /** ĐVT hiển thị trên tab tồn đầu: thành phần % → kg (không hiện "%"). */
@@ -183,9 +186,9 @@ export type BbProductionOrderLineRow = {
   plasticNormKgPerUnit?: number | null;
   /** Tổng KL nhựa+phụ gia = cột trên × SL. Snapshot cũ có thể thiếu. */
   totalPlasticNormKg?: number | null;
-  /** SL thực tế từ tab Báo cáo sản lượng (sau Tính toán). */
+  /** SL thực tế — `/phan-tich-tu-dong`: số cuộn Cân AI; `/phan-tich`: tab sản lượng/nghiệm thu. */
   actualQuantity: number;
-  /** Trọng lượng thực tế (kg) SP từ tab Báo cáo sản lượng. */
+  /** Trọng lượng thực tế (kg) — Cân AI (nhựa TT / cân SP) hoặc tab sản lượng. */
   actualWeightKg: number | null;
   /** TL nhựa thực tế (kg) — phiếu in mục 2 / máy cách nhiệt. */
   actualPlasticWeightKg?: number | null;
@@ -1281,7 +1284,7 @@ function isBbExportPlasticKgLine(input: {
 
 /**
  * Tổng trọng lượng xuất (từ dòng đã build) — cùng quy tắc tồn đầu/cuối:
- * - Nhựa = hạt nhựa ĐVT kg (không gồm lõi / túi / bao bì / băng)
+ * - Nhựa + phụ gia trộn = ĐVT kg/Lít (không gồm lõi / túi / bao bì / băng)
  * - Vật tư khác = còn lại có Quy về kg
  */
 export function sumBbWarehouseExportWeightKgByKind(rows: BbWarehouseExportLineRow[]) {
@@ -3660,7 +3663,7 @@ export function isLoiHongFilmScrapBomMaterialCode(code: string, name = '', unit 
   return false;
 }
 
-/** NHUAKM · NC · RMN — luôn đưa vào «NVL trộn · ĐVT kg» trên tab lỗi hỏng. */
+/** NHUAKM · NC · RMN — luôn đưa vào «NVL trộn · ĐVT kg / Lít» trên tab lỗi hỏng. */
 export function isLoiHongMixingKgExtraCode(code: string) {
   const key = compactLoiHongMaterialCode(code);
   return Boolean(key && LOI_HONG_MIXING_KG_EXTRA_CODES.has(key));
@@ -5314,8 +5317,8 @@ export function sumBbCuoiCaWeightKg(rows: BbCuoiCaLineRow[]) {
 
 /**
  * Tổng trọng lượng tồn cuối ca tách nhựa / vật tư khác (khớp tab NVL TRỘN).
- * - Nhựa: mã NHUA / NVLK hoặc dòng hạt nhựa ĐVT = kg
- * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg
+ * - Nhựa + phụ gia trộn: mã NHUA / NVLK hoặc ĐVT kg/Lít (không lõi/túi/băng/màng)
+ * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg/Lít
  */
 export function sumBbCuoiCaWeightKgByKind(rows: BbCuoiCaLineRow[]) {
   let plasticKg = 0;
@@ -5325,14 +5328,13 @@ export function sumBbCuoiCaWeightKgByKind(rows: BbCuoiCaLineRow[]) {
     if (!(kg > 0)) continue;
 
     const isPlasticKg =
-      isMachineNvlTronMaterial(row.itemCode || '') ||
-      (isWarehouseKgUnit(row.unit || '') &&
-        isWarehousePlasticNvlLine({
-          warehouseKind: 'nvl',
-          itemCode: row.itemCode,
-          itemName: row.itemName,
-          unit: row.unit
-        }));
+      isMachineNvlTronMaterial(row.itemCode || '', row.unit || '') ||
+      isWarehousePlasticNvlLine({
+        warehouseKind: 'nvl',
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        unit: row.unit
+      });
     if (isPlasticKg) plasticKg += kg;
     else otherKg += kg;
   }
@@ -5585,8 +5587,8 @@ export function sumBbDauCaWeightKg(rows: BbDauCaLineRow[]) {
 
 /**
  * Tổng trọng lượng tồn đầu ca tách nhựa / vật tư khác (khớp tab NVL TRỘN).
- * - Nhựa: mã NHUA / NVLK hoặc dòng hạt nhựa ĐVT = kg
- * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg
+ * - Nhựa + phụ gia trộn: mã NHUA / NVLK hoặc ĐVT kg/Lít (không lõi/túi/băng/màng)
+ * - Vật tư khác: lõi, túi, màng, ĐVT ≠ kg/Lít
  */
 export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
   let plasticKg = 0;
@@ -5596,14 +5598,13 @@ export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
     if (!(kg > 0)) continue;
 
     const isPlasticKg =
-      isMachineNvlTronMaterial(row.itemCode || '') ||
-      (isWarehouseKgUnit(row.unit || '') &&
-        isWarehousePlasticNvlLine({
-          warehouseKind: 'nvl',
-          itemCode: row.itemCode,
-          itemName: row.itemName,
-          unit: row.unit
-        }));
+      isMachineNvlTronMaterial(row.itemCode || '', row.unit || '') ||
+      isWarehousePlasticNvlLine({
+        warehouseKind: 'nvl',
+        itemCode: row.itemCode,
+        itemName: row.itemName,
+        unit: row.unit
+      });
     if (isPlasticKg) plasticKg += kg;
     else otherKg += kg;
   }
@@ -5861,14 +5862,20 @@ function buildBbDauCaMaterialLinesForOrder(input: {
 }
 
 /**
- * NVL trộn trên tab tồn đầu/cuối = cùng quy tắc phiếu báo cáo máy-NVL:
- * mã NHUA* / NVLK*. Không xếp theo ĐVT/BOM % (vd DAU BONG Lít/% → không trộn).
+ * NVL trộn trên tab tồn đầu/cuối:
+ * mã NHUA* / NVLK* hoặc ĐVT kg / Lít (vd DAU BONG Lít → trộn).
  */
 function isBbDauCaMixingSideLine(row: BbDauCaProductLine): boolean {
-  return isMachineNvlTronMaterial(row.itemCode || '');
+  if (isMachineNvlTronMaterial(row.itemCode || '', row.unit || '')) return true;
+  return isWarehousePlasticNvlLine({
+    warehouseKind: 'nvl',
+    itemCode: row.itemCode,
+    itemName: row.itemName,
+    unit: row.unit
+  });
 }
 
-/** Tách NVL tab tồn đầu/cuối: khớp phiếu — mã NHUA / NVLK = trộn; còn lại = không trộn. */
+/** Tách NVL tab tồn đầu/cuối: ĐVT kg/Lít (hoặc NHUA/NVLK) = trộn; còn lại = không trộn. */
 export function splitBbDauCaMaterialLinesByMixing(lines: BbDauCaProductLine[]): {
   mixingLines: BbDauCaProductLine[];
   otherLines: BbDauCaProductLine[];
@@ -5882,7 +5889,7 @@ export function splitBbDauCaMaterialLinesByMixing(lines: BbDauCaProductLine[]): 
   return { mixingLines, otherLines };
 }
 
-/** Tách NVL tab lỗi hỏng: nhựa trộn (ĐVT kg, có tỉ lệ %) vs vật tư còn lại. */
+/** Tách NVL tab lỗi hỏng: nhựa/phụ gia trộn (ĐVT kg/Lít, có tỉ lệ %) vs vật tư còn lại. */
 export function splitBbLoiHongMaterialLinesByMixing(lines: BbDamagedMixingChildRow[]): {
   mixingKgLines: BbDamagedMixingChildRow[];
   otherMaterialLines: BbDamagedMixingChildRow[];
@@ -6023,7 +6030,7 @@ export function resolveBbSanLuongNvlDisplayUnit(
   return trimmed;
 }
 
-/** NVL trộn / ĐVT kg trên tab báo cáo sản lượng. */
+/** NVL trộn / ĐVT kg hoặc Lít trên tab báo cáo sản lượng. */
 export function isBbSanLuongNvlKgLine(
   line: Pick<BbSanLuongNvlLine, 'unit' | 'amountType'>
 ): boolean {
@@ -6438,6 +6445,63 @@ export function enrichBbProductionOrderRowsFromSanLuong(
         actualWeightKg
       },
       products
+    );
+  });
+}
+
+/**
+ * Gắn SL + TL thực tế thẳng từ Cân AI (`can_tu_dong`).
+ * SL = số lần cân (cuộn) khớp ngày·ca·máy·mã SP; TL = Σ Nhựa TT (máy cách nhiệt: Σ Cân SP).
+ */
+export function enrichBbProductionOrderRowsFromCanTuDong(
+  rows: BbProductionOrderLineRow[],
+  canTuDongRecords: CanTuDongWeightRow[],
+  products?: ProductRow[]
+): BbProductionOrderLineRow[] {
+  const merged = mergeBbProductionOrderLineRowsByProduct(rows);
+  const productList = products || [];
+  if (!Array.isArray(canTuDongRecords) || canTuDongRecords.length === 0) {
+    return merged.map(row =>
+      enrichBbProductionOrderLineWeights(
+        { ...row, actualQuantity: 0, actualWeightKg: null },
+        productList
+      )
+    );
+  }
+  const filmKgByProductCode = buildCanTuDongFilmKgByProductCode(productList);
+  return merged.map(row => {
+    const productKeys = collectCanTuDongProductMatchKeys(
+      [{ productCode: row.productCode, productName: row.productName }],
+      productList
+    );
+    let scoped = filterCanTuDongRecordsForBoard(canTuDongRecords, {
+      orderShiftBuckets: [{ ngay: row.ngay, shift: row.shift, machine: row.machine }],
+      productCodeKeys: productKeys
+    });
+    if (scoped.length === 0) {
+      scoped = filterCanTuDongRecordsForBoard(canTuDongRecords, {
+        orderShiftBuckets: [{ ngay: row.ngay, shift: row.shift }],
+        productCodeKeys: productKeys
+      });
+    }
+    const actualQuantity = scoped.length;
+    const nhuaTotals = sumCanTuDongSanLuongTotals(scoped, filmKgByProductCode);
+    const rollTotals = sumCanTuDongThucTeTotals(scoped);
+    const insulation = isInsulationMachineText(row.machine);
+    const actualWeightKg = insulation
+      ? rollTotals.weightKg > 0
+        ? roundQty(rollTotals.weightKg, 4)
+        : null
+      : nhuaTotals.weightKg > 0
+        ? roundQty(nhuaTotals.weightKg, 4)
+        : null;
+    return enrichBbProductionOrderLineWeights(
+      {
+        ...row,
+        actualQuantity,
+        actualWeightKg
+      },
+      productList
     );
   });
 }

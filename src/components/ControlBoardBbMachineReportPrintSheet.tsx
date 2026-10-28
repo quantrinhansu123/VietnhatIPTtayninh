@@ -59,6 +59,7 @@ import {
   collectCanTuDongProductMatchKeys,
   computeInsulationFilmWeightKg,
   filterCanTuDongRecordsForBoard,
+  parseCanTuDongQrProductCode,
   resolveInsulationFilmKgPerRoll,
   sumCanTuDongSanLuongTotals,
   sumCanTuDongThucTeTotals
@@ -141,7 +142,7 @@ type MaterialPrintTotals = {
   varianceKg: number;
 };
 
-/** 3.1 NVL nhựa và phụ gia trộn: ĐVT kg và không phải lõi/túi/băng dính. */
+/** 3.1 NVL nhựa và phụ gia trộn: ĐVT kg hoặc Lít và không phải lõi/túi/băng dính. */
 function isPlasticMaterialPrintRow(row: Pick<MaterialPrintRow, 'code' | 'name' | 'unit'>) {
   return isWarehousePlasticNvlLine({
     warehouseKind: 'nvl',
@@ -441,8 +442,12 @@ function canTuDongActualForProduct(
 }
 
 function canTuDongActualForOrder(order: BbProductionOrderGroup, records: CanTuDongRecord[]) {
-  const scoped = filterCanTuDongRecordsForBoard(records, {
+  const withMachine = filterCanTuDongRecordsForBoard(records, {
     orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift, machine: order.machine }]
+  });
+  if (withMachine.length > 0) return sumCanTuDongSanLuongTotals(withMachine);
+  const scoped = filterCanTuDongRecordsForBoard(records, {
+    orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift }]
   });
   return sumCanTuDongSanLuongTotals(scoped);
 }
@@ -455,8 +460,14 @@ function scopedCanTuDongForProduct(
   products: ProductRow[]
 ) {
   const productKeys = collectCanTuDongProductMatchKeys([{ productCode, productName }], products);
-  return filterCanTuDongRecordsForBoard(records, {
+  const withMachine = filterCanTuDongRecordsForBoard(records, {
     orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift, machine: order.machine }],
+    productCodeKeys: productKeys
+  });
+  if (withMachine.length > 0) return withMachine;
+  // Máy trên phiếu cân lệch tên so với lệnh SX → nới còn ngày·ca·mã SP.
+  return filterCanTuDongRecordsForBoard(records, {
+    orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift }],
     productCodeKeys: productKeys
   });
 }
@@ -504,20 +515,205 @@ function findSanLuongProductGroup(
   productName: string,
   sanLuongGroups: BbSanLuongGroup[]
 ) {
-  const group = findOrderGroup(sanLuongGroups, order);
-  if (!group) return undefined;
-  return group.productGroups.find(productGroup =>
-    sanLuongProductMatchesLine(productGroup, productCode, productName)
-  );
+  const groups = findOrderGroups(sanLuongGroups, order);
+  for (const group of groups) {
+    const productGroup = group.productGroups.find(pg =>
+      sanLuongProductMatchesLine(pg, productCode, productName)
+    );
+    if (productGroup) return productGroup;
+  }
+  // Không khớp lệnh: tìm SP trong mọi nhóm cùng ngày·ca (máy nới).
+  for (const group of sanLuongGroups) {
+    if (order.ngay && group.ngay && group.ngay !== order.ngay) continue;
+    if (order.shift && group.shift && !shiftNamesMatch(group.shift, order.shift)) continue;
+    const productGroup = group.productGroups.find(pg =>
+      sanLuongProductMatchesLine(pg, productCode, productName)
+    );
+    if (productGroup) return productGroup;
+  }
+  return undefined;
 }
 
-/** TL nhựa thành phẩm theo SP — chỉ `trong_luong_nhua` × SL (không lấy cân / TL cuộn). */
+/** Mã SP có trên Báo cáo sản lượng / Cân AI cùng ngày·ca·máy nhưng chưa có trên lệnh SX. */
+function collectExtraSanLuongProductLines(
+  order: BbProductionOrderGroup,
+  props: PrintProps
+): Array<{
+  key: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  totalNormKg: number | null;
+  actualQuantity: number;
+  actualWeightKg: number | null;
+  actualPlasticWeightKg: number | null;
+  actualFilmWeightKg: number | null;
+}> {
+  const covered = new Set<string>();
+  for (const line of order.lines) {
+    const codeKey = normalizeProductCodeKey(line.productCode);
+    const nameKey = normalizeProductCodeKey(line.productName);
+    if (codeKey) covered.add(codeKey);
+    if (nameKey) covered.add(nameKey);
+  }
+
+  const extras = new Map<
+    string,
+    {
+      key: string;
+      productCode: string;
+      productName: string;
+      unit: string;
+      quantity: number;
+      totalNormKg: number | null;
+      actualQuantity: number;
+      actualWeightKg: number | null;
+      actualPlasticWeightKg: number | null;
+      actualFilmWeightKg: number | null;
+    }
+  >();
+
+  const ensureExtra = (productCode: string, productName: string, unit: string) => {
+    const code = String(productCode || '').trim();
+    const name = String(productName || '').trim();
+    const codeKey = normalizeProductCodeKey(code);
+    const nameKey = normalizeProductCodeKey(name);
+    if ((codeKey && covered.has(codeKey)) || (nameKey && covered.has(nameKey))) return null;
+    const mapKey = codeKey || nameKey;
+    if (!mapKey) return null;
+    let row = extras.get(mapKey);
+    if (!row) {
+      const catalog =
+        findCatalogProduct(props.products, code, name) || findProduct(props.products, code);
+      row = {
+        key: `${order.groupKey}|extra|${mapKey}`,
+        productCode: code || catalog?.code || '',
+        productName: name || catalog?.name || code,
+        unit: unit || catalog?.unit || 'Cuộn',
+        quantity: 0,
+        totalNormKg: null,
+        actualQuantity: 0,
+        actualWeightKg: null,
+        actualPlasticWeightKg: null,
+        actualFilmWeightKg: null
+      };
+      extras.set(mapKey, row);
+      if (codeKey) covered.add(codeKey);
+      if (nameKey) covered.add(nameKey);
+    }
+    return row;
+  };
+
+  const sanLuongGroups = props.sanLuongGroups || [];
+  const groups = findOrderGroups(sanLuongGroups, order);
+  const scanned = groups.length > 0 ? groups : sanLuongGroups.filter(group => {
+    if (order.ngay && group.ngay && group.ngay !== order.ngay) return false;
+    if (order.shift && group.shift && !shiftNamesMatch(group.shift, order.shift)) return false;
+    return true;
+  });
+  for (const group of scanned) {
+    for (const pg of group.productGroups || []) {
+      if (!(pg.quantity > 0)) continue;
+      const row = ensureExtra(pg.productCode, pg.productName, pg.unit);
+      if (!row) continue;
+      row.actualQuantity += pg.quantity;
+      if (pg.weightKg > 0) {
+        row.actualWeightKg = (row.actualWeightKg || 0) + pg.weightKg;
+      }
+      const catalog =
+        findCatalogProduct(props.products, row.productCode, row.productName) ||
+        findProduct(props.products, row.productCode);
+      if (catalog) {
+        const plasticPer = resolveProductMaterialBaseKg(catalog);
+        if (plasticPer > 0 && row.actualQuantity > 0) {
+          row.actualPlasticWeightKg = Math.round(plasticPer * row.actualQuantity * 10000) / 10000;
+        }
+        if (isInsulationMachineReport(props, order)) {
+          const filmPer = resolveInsulationFilmKgPerRoll(catalog);
+          if (filmPer != null && filmPer > 0 && row.actualQuantity > 0) {
+            row.actualFilmWeightKg = Math.round(filmPer * row.actualQuantity * 10000) / 10000;
+          }
+        }
+      }
+    }
+  }
+
+  if (props.sanLuongSource === 'can-tu-dong' && (props.canTuDongRecords || []).length > 0) {
+    let scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+      orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift, machine: order.machine }]
+    });
+    if (scoped.length === 0) {
+      scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+        orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift }]
+      });
+    }
+    const byProduct = new Map<string, { code: string; count: number }>();
+    for (const record of scoped) {
+      const code = parseCanTuDongQrProductCode(record.qr_code);
+      const key = normalizeProductCodeKey(code);
+      if (!key) continue;
+      const existing = byProduct.get(key);
+      if (existing) existing.count += 1;
+      else byProduct.set(key, { code, count: 1 });
+    }
+    for (const [key, info] of byProduct.entries()) {
+      if (covered.has(key) || extras.has(key)) continue;
+      if (!(info.count > 0)) continue;
+      const row = ensureExtra(info.code, '', 'Cuộn');
+      if (!row) continue;
+      row.actualQuantity = info.count;
+      const fromCan = canTuDongActualForProduct(
+        order,
+        row.productCode,
+        row.productName,
+        props.canTuDongRecords || [],
+        props.products
+      );
+      if (fromCan.weightKg > 0) {
+        row.actualWeightKg = fromCan.weightKg;
+        row.actualPlasticWeightKg = fromCan.weightKg;
+      } else {
+        const catalog =
+          findCatalogProduct(props.products, row.productCode, row.productName) ||
+          findProduct(props.products, row.productCode);
+        if (catalog) {
+          const plasticPer = resolveProductMaterialBaseKg(catalog);
+          if (plasticPer > 0) {
+            row.actualPlasticWeightKg = Math.round(plasticPer * info.count * 10000) / 10000;
+            row.actualWeightKg = row.actualPlasticWeightKg;
+          }
+          if (isInsulationMachineReport(props, order)) {
+            const filmPer = resolveInsulationFilmKgPerRoll(catalog);
+            if (filmPer != null && filmPer > 0) {
+              row.actualFilmWeightKg = Math.round(filmPer * info.count * 10000) / 10000;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return [...extras.values()].filter(row => row.actualQuantity > 0);
+}
+
+/** TL nhựa thành phẩm theo SP — Cân AI: Σ Nhựa TT; fallback `trong_luong_nhua` × SL. */
 function resolveProductSanLuongPlasticKg(
   order: BbProductionOrderGroup,
   productCode: string,
   productName: string,
   props: PrintProps
 ): number | null {
+  if (props.sanLuongSource === 'can-tu-dong') {
+    const fromCan = canTuDongActualForProduct(
+      order,
+      productCode,
+      productName,
+      props.canTuDongRecords || [],
+      props.products
+    );
+    if (fromCan.weightKg > 0) return Math.round(fromCan.weightKg * 10000) / 10000;
+  }
   const sl = resolveProductSanLuongQuantity(order, productCode, productName, props);
   const catalog =
     findCatalogProduct(props.products, productCode, productName) ||
@@ -536,18 +732,19 @@ function resolveActualQuantityForProduct(
   props: PrintProps
 ) {
   if (props.sanLuongSource === 'can-tu-dong') {
-    return canTuDongActualForProduct(
+    const fromCan = canTuDongActualForProduct(
       order,
       productCode,
       productName,
       props.canTuDongRecords || [],
       props.products
     ).quantity;
+    if (fromCan > 0) return fromCan;
   }
   return acceptanceQuantityForProduct(order, productCode, productName, props.acceptanceReports);
 }
 
-/** SL sản lượng theo mã SP — ưu tiên tab Báo cáo sản lượng, không thì nguồn cân/nghiệm thu. */
+/** SL theo mã SP — ưu tiên tab Báo cáo sản lượng, rồi Cân AI / nghiệm thu. */
 function resolveProductSanLuongQuantity(
   order: BbProductionOrderGroup,
   productCode: string,
@@ -622,9 +819,14 @@ function resolveProductSanLuongFilmKg(
 /** Tổng TL cuộn theo lệnh (Σ Cân SP). */
 function resolveOrderSanLuongRollKg(order: BbProductionOrderGroup, props: PrintProps): number {
   if (props.sanLuongSource !== 'can-tu-dong') return 0;
-  const scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+  let scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
     orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift, machine: order.machine }]
   });
+  if (scoped.length === 0) {
+    scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+      orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift }]
+    });
+  }
   const totals = sumCanTuDongThucTeTotals(scoped);
   return totals.weightKg > 0 ? totals.weightKg : 0;
 }
@@ -656,9 +858,14 @@ function resolveTongNhuaThanhPhamFromThucDung(group: BbThucDungGroup | undefined
 /** TL màng thành phẩm theo lệnh (máy cách nhiệt + cân tự động). */
 function resolveOrderSanLuongFilmKg(order: BbProductionOrderGroup, props: PrintProps): number {
   if (props.sanLuongSource !== 'can-tu-dong' || !isInsulationMachineReport(props, order)) return 0;
-  const scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+  let scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
     orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift, machine: order.machine }]
   });
+  if (scoped.length === 0) {
+    scoped = filterCanTuDongRecordsForBoard(props.canTuDongRecords || [], {
+      orderShiftBuckets: [{ ngay: order.ngay, shift: order.shift }]
+    });
+  }
   const filmKg = computeInsulationFilmWeightKg(props.products, scoped);
   return filmKg > 0 ? filmKg : 0;
 }
@@ -1098,11 +1305,41 @@ function BbMachineOrderPrintSheet({
   const editableLyDo = Boolean(props.editableLyDo && props.onLyDoChange);
   const editableNote = Boolean(props.editableNote && props.onNoteChange);
   const showInsulationWeightCols = isInsulationMachineReport(props, order);
-  const productRows = order.lines.map(line => {
-    const actualQuantity =
-      line.actualQuantity > 0
-        ? line.actualQuantity
-        : resolveActualQuantityForProduct(order, line.productCode, line.productName, props);
+  const mapLineToProductRow = (line: {
+    key: string;
+    productCode: string;
+    productName: string;
+    unit: string;
+    quantity: number;
+    normKgPerUnit?: number | null;
+    totalNormKg?: number | null;
+    actualQuantity: number;
+    actualWeightKg?: number | null;
+    actualPlasticWeightKg?: number | null;
+    actualFilmWeightKg?: number | null;
+  }) => {
+    // Mục 2: ưu tiên Báo cáo sản lượng → dòng lệnh đã enrich → Cân AI / nghiệm thu.
+    const sanLuongPg = findSanLuongProductGroup(
+      order,
+      line.productCode,
+      line.productName,
+      props.sanLuongGroups || []
+    );
+    const fromSanLuongQty = sanLuongPg && sanLuongPg.quantity > 0 ? sanLuongPg.quantity : 0;
+    const fromLineQty = line.actualQuantity > 0 ? line.actualQuantity : 0;
+    const resolvedQty = resolveProductSanLuongQuantity(
+      order,
+      line.productCode,
+      line.productName,
+      props
+    );
+    const actualQuantity = fromSanLuongQty || fromLineQty || (resolvedQty > 0 ? resolvedQty : 0);
+
+    const fromSanLuongWeight =
+      sanLuongPg && sanLuongPg.weightKg > 0 ? sanLuongPg.weightKg : null;
+    const fromLineWeight =
+      line.actualWeightKg != null && line.actualWeightKg > 0 ? line.actualWeightKg : null;
+
     const actualPlasticWeight =
       line.actualPlasticWeightKg != null && line.actualPlasticWeightKg > 0
         ? line.actualPlasticWeightKg
@@ -1113,23 +1350,47 @@ function BbMachineOrderPrintSheet({
         : resolveProductSanLuongFilmKg(order, line.productCode, line.productName, props)
       : 0;
     const rollWeight = showInsulationWeightCols
-      ? resolveProductSanLuongRollKg(order, line.productCode, line.productName, props)
+      ? fromSanLuongWeight ??
+        fromLineWeight ??
+        resolveProductSanLuongRollKg(order, line.productCode, line.productName, props)
       : null;
     const actualWeight = showInsulationWeightCols
       ? rollWeight ??
         (actualPlasticWeight != null || actualFilmWeight > 0
           ? (actualPlasticWeight || 0) + actualFilmWeight
           : null)
-      : actualPlasticWeight;
+      : fromSanLuongWeight ?? fromLineWeight ?? actualPlasticWeight;
+
+    // Trọng lượng theo ĐM = ĐM (kg/ĐVT) × số lượng đạt.
+    const catalog =
+      findCatalogProduct(props.products, line.productCode, line.productName) ||
+      findProduct(props.products, line.productCode);
+    const normPerUnit =
+      line.normKgPerUnit != null && line.normKgPerUnit > 0
+        ? line.normKgPerUnit
+        : line.quantity > 0 && line.totalNormKg != null && line.totalNormKg > 0
+          ? line.totalNormKg / line.quantity
+          : parsePositiveKg(catalog?.totalWeight);
+    const dmWeight =
+      normPerUnit != null && normPerUnit > 0 && actualQuantity > 0
+        ? Math.round(normPerUnit * actualQuantity * 10000) / 10000
+        : null;
+
     return {
       ...line,
       actualQuantity,
       actualWeight,
       actualPlasticWeight,
       actualFilmWeight,
-      requiredWeight: line.totalNormKg
+      dmWeight
     };
-  });
+  };
+
+  const productRows = [
+    ...order.lines.map(mapLineToProductRow),
+    // SP có trên Báo cáo sản lượng / Cân AI (vd. MN-BB309) nhưng không có trên lệnh SX.
+    ...collectExtraSanLuongProductLines(order, props).map(mapLineToProductRow)
+  ];
   const productPlanRatios = productRows
     .map(row => (row.quantity > 0 ? (row.actualQuantity / row.quantity) * 100 : null))
     .filter((value): value is number => value !== null && Number.isFinite(value));
@@ -1138,7 +1399,7 @@ function BbMachineOrderPrintSheet({
       ? productPlanRatios.reduce((sum, value) => sum + value, 0) / productPlanRatios.length
       : null;
   const requiredQtyTotal = productRows.reduce((sum, row) => sum + row.quantity, 0);
-  const requiredWeightTotal = productRows.reduce((sum, row) => sum + (row.requiredWeight || 0), 0);
+  const dmWeightTotal = productRows.reduce((sum, row) => sum + (row.dmWeight || 0), 0);
   const lineActualQtyTotal = productRows.reduce((sum, row) => sum + row.actualQuantity, 0);
   const lineActualWeightTotal = productRows.reduce((sum, row) => sum + (row.actualWeight || 0), 0);
   // Cân tự động: tổng = mọi lần cân ngày/ca/máy lệnh (cùng thẻ SỐ SP / TL nhựa khi 1 lệnh khớp bộ lọc).
@@ -1152,7 +1413,13 @@ function BbMachineOrderPrintSheet({
     orderCanTuDongTotals.quantity > 0
       ? orderCanTuDongTotals.quantity
       : null;
-  const actualQtyTotal = canTuDongQty ?? (lineActualQtyTotal || inbound?.acceptedRolls || 0);
+  // Tổng SL đạt: ưu tiên Σ dòng (đã lấy từ Báo cáo sản lượng / Cân AI theo từng SP).
+  const actualQtyTotal =
+    lineActualQtyTotal > 0
+      ? lineActualQtyTotal
+      : useCanTuDong
+        ? canTuDongQty ?? 0
+        : canTuDongQty ?? (inbound?.acceptedRolls || 0);
   const tongNhuaThanhPhamCatalogKg = resolveOrderSanLuongPlasticKg(order, props);
   const tongMangThanhPhamKg = resolveOrderSanLuongFilmKg(order, props);
   const tongCuonThanhPhamKg = showInsulationWeightCols ? resolveOrderSanLuongRollKg(order, props) : 0;
@@ -1271,8 +1538,8 @@ function BbMachineOrderPrintSheet({
               <col className="bb-fg-col-name" />
               <col className="bb-fg-col-unit" />
               <col className="bb-fg-col-qty-req" />
-              <col className="bb-fg-col-w-req" />
               <col className="bb-fg-col-qty-ok" />
+              <col className="bb-fg-col-w-req" />
               <col className="bb-fg-col-w-actual" />
               {showInsulationWeightCols ? (
                 <>
@@ -1290,8 +1557,10 @@ function BbMachineOrderPrintSheet({
                 <th>Tên sản phẩm</th>
                 <th>ĐVT</th>
                 <th>Số lượng yêu cầu</th>
-                <th>Trọng lượng yêu cầu</th>
                 <th>Số lượng đạt</th>
+                <th title="Trọng lượng định mức (kg/ĐVT) × số lượng đạt">
+                  Trọng lượng<br />theo ĐM
+                </th>
                 <th title={showInsulationWeightCols ? 'Tổng trọng lượng cuộn = Σ Cân sản phẩm' : undefined}>
                   Trọng lượng<br />thực tế
                 </th>
@@ -1330,8 +1599,8 @@ function BbMachineOrderPrintSheet({
                     <td>{row.productName || ''}</td>
                     <td className="shift-summary-print-center">{row.unit || ''}</td>
                     <td className="shift-summary-print-num">{printNumber(row.quantity, 2)}</td>
-                    <td className="shift-summary-print-num">{printNumber(row.requiredWeight, 2)}</td>
                     <td className="shift-summary-print-num">{printNumber(row.actualQuantity, qtyDigits)}</td>
+                    <td className="shift-summary-print-num">{printNumber(row.dmWeight, 2)}</td>
                     <td className="shift-summary-print-num">{printNumber(row.actualWeight, 2)}</td>
                     {showInsulationWeightCols ? (
                       <>
@@ -1373,8 +1642,8 @@ function BbMachineOrderPrintSheet({
                   Tổng
                 </td>
                 <td className="shift-summary-print-num">{printNumber(requiredQtyTotal, 2)}</td>
-                <td className="shift-summary-print-num">{printNumber(requiredWeightTotal, 2)}</td>
                 <td className="shift-summary-print-num">{printNumber(actualQtyTotal, qtyDigits)}</td>
+                <td className="shift-summary-print-num">{printNumber(dmWeightTotal, 2)}</td>
                 <td className="shift-summary-print-num">
                   {printNumber(productActualWeightTotal, 2)}
                 </td>

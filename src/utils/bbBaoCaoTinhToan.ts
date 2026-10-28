@@ -37,6 +37,7 @@ import {
   buildBbTongHopVatTuThucXuatDungGroups,
   buildBbWarehouseExportLineRows,
   enrichBbDanhGiaGroupsWithPrintSummary,
+  enrichBbProductionOrderRowsFromCanTuDong,
   enrichBbProductionOrderRowsFromSanLuong,
   groupBbCuoiCaLines,
   groupBbDamagedGoodsLines,
@@ -345,11 +346,15 @@ export function buildBbMachineReportSnapshot(input: {
     ...filter
   });
 
-  const orderRows = enrichBbProductionOrderRowsFromSanLuong(
-    orderRowsBase,
-    sanLuongGroups,
-    input.products
-  );
+  // `/phan-tich-tu-dong`: SL/TL lệnh (mục Thành phẩm đạt nhập kho) lấy thẳng Cân AI.
+  const orderRows =
+    sanLuongSource === 'can-tu-dong' && (input.canTuDongRecords?.length ?? 0) > 0
+      ? enrichBbProductionOrderRowsFromCanTuDong(
+          orderRowsBase,
+          input.canTuDongRecords || [],
+          input.products
+        )
+      : enrichBbProductionOrderRowsFromSanLuong(orderRowsBase, sanLuongGroups, input.products);
   const orderGroups = groupBbProductionOrderLines(orderRows);
 
   const inboundRows = buildBbInboundReportRows({

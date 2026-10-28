@@ -73,6 +73,7 @@ import {
   buildBbThucDungMetricDetail,
   buildBbTongHopThucXuatMetricDetail,
   aggregateBbWarehouseExportByMaterial,
+  enrichBbProductionOrderRowsFromCanTuDong,
   enrichBbProductionOrderRowsFromSanLuong,
   enrichBbProductionOrderRowsPlasticNormFromProducts,
   formatProductCatalogPlasticWeight,
@@ -573,7 +574,7 @@ function BbDauCaMaterialSplitTables({
         'bg-violet-50 text-violet-900',
         mixingLines,
         mixingTotalKg,
-        'Không có NVL trộn (ĐVT gốc kg).'
+        'Không có NVL trộn (ĐVT kg / Lít).'
       )}
       {renderTable(
         'NVL còn lại',
@@ -1773,14 +1774,46 @@ export default function ControlBoardBbMachineReportTable({
   const orderGroupsMerged = useMemo(() => {
     const lines = orderGroups.flatMap(group => group.lines);
     if (lines.length === 0) return orderGroups;
+    const sourceRecords = calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords;
+    const canRecords =
+      sanLuongSource === 'can-tu-dong'
+        ? filterCanTuDongRecordsForBoard(sourceRecords, {
+            shiftFilter,
+            dateFrom,
+            dateTo,
+            machineFilter,
+            selectedMachine
+          })
+        : [];
+    // Ưu tiên Cân AI khi có cuộn khớp; không khớp → Báo cáo sản lượng (nghiệm thu / snapshot).
+    let enriched: typeof lines;
+    if (sanLuongSource === 'can-tu-dong' && canRecords.length > 0) {
+      const fromCan = enrichBbProductionOrderRowsFromCanTuDong(lines, canRecords, products);
+      const canQty = fromCan.reduce((sum, line) => sum + (line.actualQuantity || 0), 0);
+      enriched =
+        canQty > 0
+          ? fromCan
+          : enrichBbProductionOrderRowsFromSanLuong(lines, sanLuongGroups, products);
+    } else {
+      enriched = enrichBbProductionOrderRowsFromSanLuong(lines, sanLuongGroups, products);
+    }
     return groupBbProductionOrderLines(
-      enrichBbProductionOrderRowsPlasticNormFromProducts(
-        enrichBbProductionOrderRowsFromSanLuong(lines, sanLuongGroups),
-        products
-      )
+      enrichBbProductionOrderRowsPlasticNormFromProducts(enriched, products)
     );
-  }, [orderGroups, products, sanLuongGroups]);
-  /** SL/TL thực tế tab thành phẩm nhập kho — luôn đồng bộ tab Báo cáo sản lượng. */
+  }, [
+    orderGroups,
+    products,
+    sanLuongGroups,
+    sanLuongSource,
+    calcCanTuDongRecords,
+    canTuDongRecords,
+    shiftFilter,
+    dateFrom,
+    dateTo,
+    machineFilter,
+    selectedMachine
+  ]);
+  /** SL/TL tab thành phẩm nhập kho — đồng bộ orderGroupsMerged (Cân AI khi auto). */
   const thanhPhamNhapKhoOrderGroups = orderGroupsMerged;
   const inboundRows = activeSnapshot.inboundRows;
   const thucDungRows = activeSnapshot.thucDungRows;
@@ -2712,56 +2745,100 @@ export default function ControlBoardBbMachineReportTable({
   };
 
   const confirmPrint = () => {
-    const nextGroups = orderGroupsMerged.map(group => {
-      const selected = printStaffByOrder[group.groupKey];
-      if (!selected) return group;
-      return {
-        ...group,
-        staffMain: selected.staffMain.trim(),
-        staffAssistant: selected.staffAssistant.trim(),
-        staffSupport: selected.staffSupport.trim()
-      };
-    });
-    const nextNotes: Record<string, string> = {};
-    const nextLyDo: Record<string, string> = {};
-    orderGroupsMerged.forEach(group => {
-      const selected = printStaffByOrder[group.groupKey];
-      const note = selected?.ghiChu?.trim() || '';
-      const dbNote =
-        group.lines
-          .map(line => {
-            const stable = buildBbLyDoStableKey({
-              ngay: group.ngay,
-              ca: group.shift,
-              may: group.machine,
-              maLenh: group.orderCode,
-              maSp: line.productCode
-            });
-            return dbLyDoByStableKey[stable]?.ghi_chu || '';
-          })
-          .find(value => value.trim()) || '';
-      if (note) nextNotes[group.groupKey] = note;
-      else if (dbNote) nextNotes[group.groupKey] = dbNote;
+    void (async () => {
+      let canRecords =
+        calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords;
+      if (sanLuongSource === 'can-tu-dong' && (dateFrom || dateTo)) {
+        try {
+          canRecords = await fetchCanTuDongSlimRecords({ from: dateFrom, to: dateTo });
+          setCalcCanTuDongRecords(canRecords);
+        } catch {
+          /* giữ bản đã tải */
+        }
+      }
 
-      group.lines.forEach(line => {
-        const lineKey = printLyDoLineKey(group.groupKey, line.key);
-        const stable = buildBbLyDoStableKey({
-          ngay: group.ngay,
-          ca: group.shift,
-          may: group.machine,
-          maLenh: group.orderCode,
-          maSp: line.productCode
-        });
-        const fromDb = dbLyDoByStableKey[stable]?.ly_do || '';
-        nextLyDo[lineKey] = printLyDoByLine[lineKey] ?? fromDb;
+      // Mục 2 in: ưu tiên SL đã gắn từ Báo cáo sản lượng (orderGroupsMerged);
+      // Cân AI chỉ ghi đè khi khớp được cuộn > 0 — tránh in ra 0 khi QR/máy lệch.
+      let printLines = orderGroupsMerged.flatMap(group => group.lines);
+      if (sanLuongSource === 'can-tu-dong' && canRecords.length > 0) {
+        const fromCan = enrichBbProductionOrderRowsFromCanTuDong(
+          orderGroups.flatMap(group => group.lines),
+          canRecords,
+          products
+        );
+        const canQty = fromCan.reduce((sum, line) => sum + (line.actualQuantity || 0), 0);
+        if (canQty > 0) {
+          printLines = fromCan;
+        } else if (sanLuongGroups.length > 0) {
+          printLines = enrichBbProductionOrderRowsFromSanLuong(
+            orderGroups.flatMap(group => group.lines),
+            sanLuongGroups,
+            products
+          );
+        }
+      } else if (sanLuongSource !== 'can-tu-dong' && sanLuongGroups.length > 0) {
+        printLines = enrichBbProductionOrderRowsFromSanLuong(
+          orderGroups.flatMap(group => group.lines),
+          sanLuongGroups,
+          products
+        );
+      }
+      const baseGroups = groupBbProductionOrderLines(
+        enrichBbProductionOrderRowsPlasticNormFromProducts(printLines, products)
+      );
+
+      const nextGroups = baseGroups.map(group => {
+        const selected = printStaffByOrder[group.groupKey];
+        if (!selected) return group;
+        return {
+          ...group,
+          staffMain: selected.staffMain.trim(),
+          staffAssistant: selected.staffAssistant.trim(),
+          staffSupport: selected.staffSupport.trim()
+        };
       });
-    });
-    setPrintNoteByOrder(nextNotes);
-    setPrintLyDoByLine(nextLyDo);
-    setPrintOrderGroups(nextGroups);
-    setPrintConfirmOpen(false);
-    setShowPrintSheet(true);
-    setPrintPreviewOpen(true);
+      const nextNotes: Record<string, string> = {};
+      const nextLyDo: Record<string, string> = {};
+      baseGroups.forEach(group => {
+        const selected = printStaffByOrder[group.groupKey];
+        const note = selected?.ghiChu?.trim() || '';
+        const dbNote =
+          group.lines
+            .map(line => {
+              const stable = buildBbLyDoStableKey({
+                ngay: group.ngay,
+                ca: group.shift,
+                may: group.machine,
+                maLenh: group.orderCode,
+                maSp: line.productCode
+              });
+              return dbLyDoByStableKey[stable]?.ghi_chu || '';
+            })
+            .find(value => value.trim()) || '';
+        if (note) nextNotes[group.groupKey] = note;
+        else if (dbNote) nextNotes[group.groupKey] = dbNote;
+
+        group.lines.forEach(line => {
+          const lineKey = printLyDoLineKey(group.groupKey, line.key);
+          const stable = buildBbLyDoStableKey({
+            ngay: group.ngay,
+            ca: group.shift,
+            may: group.machine,
+            maLenh: group.orderCode,
+            maSp: line.productCode
+          });
+          const fromDb = dbLyDoByStableKey[stable]?.ly_do || '';
+          nextLyDo[lineKey] = printLyDoByLine[lineKey] ?? fromDb;
+        });
+      });
+      setPrintNoteByOrder(nextNotes);
+      setPrintLyDoByLine(nextLyDo);
+      setPrintOrderGroups(nextGroups);
+      setPrintPreviewDataKey(key => key + 1);
+      setPrintConfirmOpen(false);
+      setShowPrintSheet(true);
+      setPrintPreviewOpen(true);
+    })();
   };
 
   const printFromPreview = () => {
@@ -4644,7 +4721,7 @@ export default function ControlBoardBbMachineReportTable({
                                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
                                   <div className="bb-table-scroll bb-report-sheet-scroll xl:col-span-6">
                                     <div className="border-b border-rose-200 bg-rose-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-rose-900">
-                                      NVL trộn · ĐVT kg
+                                      NVL trộn · ĐVT kg / Lít
                                       {mixingKgLines.length > 0 ? ` (${mixingKgLines.length})` : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
@@ -4666,7 +4743,7 @@ export default function ControlBoardBbMachineReportTable({
                                         {mixingKgLines.length === 0 ? (
                                           <tr>
                                             <td colSpan={5} className="px-3 py-3 text-sm font-semibold text-zinc-400">
-                                              Chưa có NVL trộn ĐVT kg trên BOM lệnh SX.
+                                              Chưa có NVL trộn ĐVT kg / Lít trên BOM lệnh SX.
                                             </td>
                                           </tr>
                                         ) : (
@@ -5801,10 +5878,24 @@ export default function ControlBoardBbMachineReportTable({
                 <th className="text-right">Dòng SP</th>
                 <th className="text-right">SL yêu cầu</th>
                 <th className="text-right">TL yêu cầu (kg)</th>
-                <th className="text-right" title="Từ tab Báo cáo sản lượng (SL SP trên phiếu)">
+                <th
+                  className="text-right"
+                  title={
+                    sanLuongSource === 'can-tu-dong'
+                      ? 'Số cuộn từ Cân AI (can_tu_dong) — khớp ngày·ca·máy·mã SP'
+                      : 'Từ tab Báo cáo sản lượng (SL SP trên phiếu)'
+                  }
+                >
                   SL thực tế
                 </th>
-                <th className="text-right" title="Từ tab Báo cáo sản lượng (trọng lượng SP trên phiếu)">
+                <th
+                  className="text-right"
+                  title={
+                    sanLuongSource === 'can-tu-dong'
+                      ? 'Trọng lượng từ Cân AI (Nhựa TT / Cân SP)'
+                      : 'Từ tab Báo cáo sản lượng (trọng lượng SP trên phiếu)'
+                  }
+                >
                   Trọng lượng thực tế (kg)
                 </th>
                 <th className="text-right">TL nhựa (kg)</th>

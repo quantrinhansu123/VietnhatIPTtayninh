@@ -21,6 +21,7 @@ import {
 import { splitAcceptanceLoiHongWeightKg } from './controlBoardBbMachineReport';
 import { normalizeProductCodeKey } from '../features/san-pham/types';
 import { parseDateToIso } from './dateFormat';
+import { isWarehouseMixingUnit } from './warehouseWeight';
 
 export type ShiftSummaryWarehouseMovement = {
   id: string;
@@ -1204,7 +1205,10 @@ export function computeSoTienLoLaiNhua(giaTriLoLaiNhua: number, gia: number) {
   return Math.round(giaTriLoLaiNhua * gia);
 }
 
-/** Dòng NVL nhựa (kg): không phải lõi/túi/băng dính/màng m2 — cùng quy tắc xuất NPL trong tổng hợp ca. */
+/**
+ * Dòng NVL nhựa / phụ gia trộn (ĐVT kg hoặc Lít):
+ * không phải lõi/túi/băng dính/màng m2 — cùng quy tắc xuất NPL trong tổng hợp ca.
+ */
 export function isWarehousePlasticNvlLine(
   movement: Pick<ShiftSummaryWarehouseMovement, 'warehouseKind' | 'itemCode' | 'itemName' | 'unit'>
 ) {
@@ -1214,7 +1218,7 @@ export function isWarehousePlasticNvlLine(
   if (isWarehouseTapeExportItem(movement.itemCode || '', movement.itemName || '')) return false;
   const unit = movement.unit || '';
   if (isM2Unit(unit)) return false;
-  return isKgUnit(unit) || !unit.trim();
+  return isWarehouseMixingUnit(unit) || isKgUnit(unit) || !unit.trim();
 }
 
 /**

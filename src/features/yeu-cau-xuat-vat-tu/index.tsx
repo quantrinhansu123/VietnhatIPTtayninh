@@ -20,10 +20,13 @@ import {
 import { normalizeWarehouseMovements } from '../phieu-xuat-nhap-kho';
 import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
 import type { MaterialRequestRow } from './MaterialRequestListView';
+import { buildMaterialRequestPresetLines } from './materialRequestPreset';
 
 type Line = { key: string; code: string; name: string; unit: string; qty: string };
 
-const newLine = (): Line => ({ key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, code: '', name: '', unit: '', qty: '' });
+const lineKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const newLine = (): Line => ({ key: lineKey(), code: '', name: '', unit: '', qty: '' });
+const presetLines = (materials: MaterialRow[]): Line[] => buildMaterialRequestPresetLines(materials, lineKey);
 const fieldClass =
   'mt-0.5 h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
 const gridClass = 'grid grid-cols-[36px_minmax(130px,1.2fr)_minmax(140px,2fr)_60px_96px_96px_36px] items-center gap-1.5';
@@ -72,6 +75,7 @@ export function YeuCauXuatVatTuPanel({
   const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [presetApplied, setPresetApplied] = useState(false);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
@@ -80,6 +84,13 @@ export function YeuCauXuatVatTuPanel({
     void get('/api/kho-nvl?light=1').then(d => d && setMaterials(normalizeMaterialsInventory(d)));
     void get('/api/lenh-sx?light=1').then(d => d && setProductionOrders(normalizeProductionOrders(d)));
   }, []);
+
+  /** Phiếu mới: tự sổ mẫu mã đề xuất (chỉ điền SL). */
+  useEffect(() => {
+    if (editingCode || editRequest || presetApplied || materials.length === 0) return;
+    setLines(presetLines(materials));
+    setPresetApplied(true);
+  }, [editingCode, editRequest, materials, presetApplied]);
 
   const shiftOptions = useMemo(
     () =>
@@ -161,25 +172,39 @@ export function YeuCauXuatVatTuPanel({
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
 
+  const applyPreset = () => {
+    setLines(presetLines(materials));
+    setPresetApplied(true);
+    showAppToast('Đã sổ mẫu mã đề xuất — chỉ cần điền số lượng.');
+  };
+
   const resetForm = () => {
     setEditingCode(null);
-    setLines([newLine()]);
+    setLines(materials.length > 0 ? presetLines(materials) : [newLine()]);
+    setPresetApplied(materials.length > 0);
   };
 
   const submit = async () => {
     setIsSaving(true);
     try {
+      const filledLines = lines
+        .map(l => ({
+          ma_nvl: l.code.trim(),
+          ten_nvl: l.name.trim(),
+          don_vi: l.unit.trim(),
+          so_luong: Number(String(l.qty).replace(',', '.'))
+        }))
+        .filter(l => l.ma_nvl && Number.isFinite(l.so_luong) && l.so_luong > 0);
+      if (filledLines.length === 0) {
+        showAppToast('Nhập số lượng lớn hơn 0 cho ít nhất một mã NVL.', 'error');
+        return;
+      }
       const payload = {
         ngay: date,
         ca: shift,
         may: machine,
         nguoi_yc: requester,
-        lines: lines.map(l => ({
-          ma_nvl: l.code,
-          ten_nvl: l.name,
-          don_vi: l.unit,
-          so_luong: Number(l.qty.replace(',', '.'))
-        }))
+        lines: filledLines
       };
       const res = await fetch(
         editingCode
@@ -471,6 +496,15 @@ export function YeuCauXuatVatTuPanel({
           className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 px-2.5 text-[11px] font-bold text-zinc-700 hover:bg-zinc-50"
         >
           <Plus className="h-3.5 w-3.5" /> Thêm NVL
+        </button>
+        <button
+          type="button"
+          onClick={applyPreset}
+          disabled={isAutofilling || isSaving || Boolean(editingCode)}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          Sổ mẫu mã đề xuất
         </button>
         <button
           type="button"

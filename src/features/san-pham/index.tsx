@@ -2970,10 +2970,22 @@ export function productFormToPayload(form: ProductFormState) {
   };
 }
 
-export function ProductEditModal({
+export const DEFAULT_PRODUCT_UNIT_OPTIONS = ['Cuộn', 'Kg', 'Cái', 'Mét', 'Tấm', 'Thùng', 'Bịch', 'Bộ'];
+
+function withCurrentSelectOption(options: string[], current: string) {
+  const trimmed = String(current || '').trim();
+  if (!trimmed || trimmed === '-') return options;
+  if (options.some(option => option === trimmed)) return options;
+  return [trimmed, ...options];
+}
+
+function ProductEditModal({
   mode,
   product,
   warehouseOptions,
+  natureOptions = [],
+  groupOptions = [],
+  unitOptions = [],
   defaultWarehouse,
   isSaving,
   formError,
@@ -2983,6 +2995,9 @@ export function ProductEditModal({
   mode: 'add' | 'edit';
   product: ProductRow | null;
   warehouseOptions: string[];
+  natureOptions?: string[];
+  groupOptions?: string[];
+  unitOptions?: string[];
   defaultWarehouse?: string;
   isSaving: boolean;
   formError: string;
@@ -2996,6 +3011,22 @@ export function ProductEditModal({
   useEffect(() => {
     setForm(mode === 'edit' && product ? productToForm(product) : { ...emptyProductForm(), warehouse: defaultWarehouse || '' });
   }, [defaultWarehouse, mode, product?.id]);
+
+  const natureSelectOptions = useMemo(
+    () => withCurrentSelectOption(natureOptions, form.nature),
+    [form.nature, natureOptions]
+  );
+  const groupSelectOptions = useMemo(
+    () => withCurrentSelectOption(groupOptions, form.group),
+    [form.group, groupOptions]
+  );
+  const unitSelectOptions = useMemo(() => {
+    const merged = [...unitOptions];
+    for (const unit of DEFAULT_PRODUCT_UNIT_OPTIONS) {
+      if (!merged.includes(unit)) merged.push(unit);
+    }
+    return withCurrentSelectOption(merged, form.unit);
+  }, [form.unit, unitOptions]);
 
   const fields: Array<{ key: keyof ProductFormState; label: string; required?: boolean; span?: boolean }> = [
     { key: 'code', label: 'Mã SP', required: true },
@@ -3024,6 +3055,28 @@ export function ProductEditModal({
     await onSave(form);
   };
 
+  const renderSelectField = (
+    key: 'nature' | 'group' | 'unit' | 'warehouse',
+    options: string[],
+    placeholder: string,
+    searchPlaceholder: string,
+    allowEmpty: boolean
+  ) => (
+    <SearchableSelect
+      value={form[key]}
+      onChange={value => setForm(prev => ({ ...prev, [key]: value }))}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder}
+      getLabel={item => String(item)}
+      getValue={item => String(item)}
+      inputClassName={productFieldClass}
+      allowEmpty={allowEmpty}
+      allowCustomValue
+      comboboxMode
+    />
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
@@ -3049,20 +3102,21 @@ export function ProductEditModal({
               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                 {field.label}{field.required ? ' *' : ''}
               </span>
-              {field.key === 'warehouse' ? (
-                <SearchableSelect
-                  value={form.warehouse}
-                  onChange={value => setForm(prev => ({ ...prev, warehouse: value }))}
-                  options={warehouseOptions}
-                  placeholder="Chọn kho lưu trữ"
-                  searchPlaceholder="Tìm kho..."
-                  getLabel={item => String(item)}
-                  getValue={item => String(item)}
-                  inputClassName={productFieldClass}
-                  allowEmpty={false}
-                  comboboxMode
-                />
-              ) : (
+              {field.key === 'nature'
+                ? renderSelectField('nature', natureSelectOptions, 'Chọn tính chất', 'Tìm tính chất...', true)
+                : field.key === 'group'
+                  ? renderSelectField('group', groupSelectOptions, 'Chọn nhóm VTHH', 'Tìm nhóm...', true)
+                  : field.key === 'unit'
+                    ? renderSelectField('unit', unitSelectOptions, 'Chọn đơn vị tính', 'Tìm đơn vị...', true)
+                    : field.key === 'warehouse'
+                      ? renderSelectField(
+                          'warehouse',
+                          warehouseOptions,
+                          'Chọn kho lưu trữ',
+                          'Tìm kho...',
+                          false
+                        )
+                      : (
                 <input
                   type="text"
                   value={form[field.key]}
@@ -3802,6 +3856,25 @@ export function ProductsPanel({
   const productNatures = useMemo(
     () => Array.from(new Set(displayProducts.map(product => product.nature))).sort((a, b) => String(a).localeCompare(String(b), 'vi')),
     [displayProducts]
+  );
+  const productUnits = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          displayProducts
+            .map(product => String(product.unit || '').trim())
+            .filter(unit => unit && unit !== '-')
+        )
+      ).sort((a, b) => a.localeCompare(b, 'vi')),
+    [displayProducts]
+  );
+  const productFormGroupOptions = useMemo(
+    () =>
+      productGroups
+        .filter(group => group !== 'all')
+        .map(group => String(group || '').trim())
+        .filter(group => group && group !== '-'),
+    [productGroups]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
   const searchWarehouseProductCodes = useMemo(
@@ -4638,6 +4711,9 @@ export function ProductsPanel({
           mode={productFormMode}
           product={editingProduct}
           warehouseOptions={warehouseOptions}
+          natureOptions={productNatures}
+          groupOptions={productFormGroupOptions}
+          unitOptions={productUnits}
           defaultWarehouse={warehouseFilter}
           isSaving={isSavingProduct}
           formError={productFormError}

@@ -107,7 +107,7 @@ export function resolveNhuaDinhMucKg(
   return standardKg - core - DEFAULT_CAN_TU_DONG_BI_KG;
 }
 
-/** Tab cân thực tế — Nhựa ĐM / cuộn: chỉ cột «Trọng lượng nhựa + phụ gia (kg)» Kho hàng. */
+/** Helper cũ: KL nhựa+phụ gia Kho hàng / cuộn. Tab cân thực tế đã chuyển Nhựa ĐM sang `resolveTrongLuongNhuaKg` (Cân AI). */
 export function resolveCanTuDongNhuaDinhMucKgPerRoll(plasticKgFromProduct?: number | null): number | null {
   if (plasticKgFromProduct != null && Number.isFinite(plasticKgFromProduct) && plasticKgFromProduct > 0) {
     return plasticKgFromProduct;
@@ -513,26 +513,14 @@ export function computeInsulationFilmWeightKg(
   }, 0);
 }
 
-/** Nhựa định mức máy cách nhiệt = Σ (KL nhựa+phụ gia Kho hàng × 1 cuộn) theo Mã SP từ QR. */
+/** Nhựa định mức máy cách nhiệt = Σ (Cân SP − Cân lõi − bì) từ phiếu Cân AI. */
 export function computeInsulationPlasticNorm(
-  products: InsulationProductAlias[],
+  _products: InsulationProductAlias[],
   records: CanTuDongWeightRow[]
 ): { weightKg: number; counted: number } {
-  const plasticKgByProductCode = new Map<string, number>();
-  for (const product of products) {
-    const plasticKg = parsePositiveDecimal(
-      (product as InsulationProductAlias & { plasticWeight?: string | null }).plasticWeight
-    );
-    if (plasticKg === null) continue;
-    for (const productCode of [product.code, product.newCode, product.amisCode]) {
-      const key = normalizeProductCodeKey(productCode);
-      if (key && key !== '-') plasticKgByProductCode.set(key, plasticKg);
-    }
-  }
   return records.reduce(
     (total, record) => {
-      const productCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(record.qr_code));
-      const nhuaDm = resolveCanTuDongNhuaDinhMucKgPerRoll(plasticKgByProductCode.get(productCode));
+      const nhuaDm = resolveTrongLuongNhuaKg(record);
       if (nhuaDm === null) return total;
       return {
         weightKg: total.weightKg + nhuaDm,

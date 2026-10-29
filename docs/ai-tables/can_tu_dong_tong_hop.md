@@ -26,7 +26,7 @@ node scripts/run-sql-file.mjs supabase-can-tu-dong-tong-hop.sql
 | Cột | Nguồn |
 |-----|--------|
 | Số cuộn / Tổng TL thực tế | Σ phiếu cân |
-| **Trọng lượng Nhựa ĐM** | `san_pham.trong_luong_nhua` (cột Kho hàng) × 1 cuộn theo Mã SP từ QR |
+| **Trọng lượng Nhựa ĐM** | Σ (Cân SP − Cân lõi − bì 0,16) từ phiếu Cân AI (= `tong_trong_luong_nhua_kg` khi đồng bộ) |
 | **Khối lượng màng** | Khối lượng màng BOM Thành phần SP × 1 cuộn |
 | **Trọng lượng Nhựa TT** | Cân SP − Cân lõi − bì 0,16 − màng BOM |
 | **Chênh lệch nhựa** | Nhựa TT − Nhựa ĐM |

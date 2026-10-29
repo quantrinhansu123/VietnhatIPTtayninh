@@ -3918,7 +3918,7 @@ export default function ControlBoardBbMachineReportTable({
                   secondaryMetric:
                     isInsulationMachine && sanLuongSource === 'can-tu-dong' ? ('norm' as const) : undefined,
                   secondaryTitle:
-                    'Σ (Trọng lượng nhựa + phụ gia Kho hàng × 1 cuộn) — cột «Trọng lượng Nhựa ĐM» tab cân thực tế',
+                    'Σ (Cân SP − Cân lõi − bì) từ Cân AI — cột «Trọng lượng Nhựa ĐM» tab cân thực tế',
                   secondaryDisplay:
                     isInsulationMachine && sanLuongSource === 'can-tu-dong'
                       ? isLoading
@@ -4068,7 +4068,7 @@ export default function ControlBoardBbMachineReportTable({
         ) : null}
 
         <div className="relative flex shrink-0 items-stretch border-b border-slate-200 bg-slate-50/90">
-          <div className="bb-tab-scroller min-w-0 flex-1 gap-1 px-2 pt-2 sm:px-3">
+          <div className="bb-tab-scroller min-w-0 flex-1 gap-px px-1 pt-1 sm:px-1.5">
             {BB_MACHINE_REPORT_TABS.map(tab => {
               const isChecked = checkedTabs.has(tab.id);
               const isActive = activeTab === tab.id;
@@ -4077,7 +4077,7 @@ export default function ControlBoardBbMachineReportTable({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`group relative inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-lg border px-3.5 py-2.5 text-[13px] font-semibold tracking-tight transition sm:px-4 sm:text-sm ${
+                  className={`group relative inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t border px-1.5 py-1 text-[10px] font-semibold leading-tight tracking-tight transition sm:px-2 sm:text-[11px] ${
                     isActive
                       ? 'z-[1] -mb-px border-slate-200 border-b-white bg-white text-slate-900 shadow-[0_-1px_2px_rgba(15,23,42,0.04)]'
                       : 'border-transparent bg-transparent text-slate-600 hover:bg-white/70 hover:text-slate-900'
@@ -4086,7 +4086,7 @@ export default function ControlBoardBbMachineReportTable({
                   {isActive ? (
                     <span
                       aria-hidden
-                      className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-[#c8102e]"
+                      className="absolute inset-x-1.5 -bottom-px h-0.5 rounded-full bg-[#c8102e]"
                     />
                   ) : null}
                   <span
@@ -4099,13 +4099,13 @@ export default function ControlBoardBbMachineReportTable({
                     title={
                       isChecked ? 'Đã rà soát — bấm để bỏ đánh dấu' : 'Bấm để đánh dấu đã rà soát'
                     }
-                    className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border transition ${
+                    className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-sm border transition ${
                       isChecked
                         ? 'border-emerald-600 bg-emerald-600 text-white'
                         : 'border-slate-300 bg-white text-transparent hover:border-emerald-500'
                     }`}
                   >
-                    <Check className="h-3 w-3" strokeWidth={3} />
+                    <Check className="h-2 w-2" strokeWidth={3} />
                   </span>
                   <span className={isActive ? 'font-bold' : 'font-semibold'}>{tab.label}</span>
                 </button>
@@ -4115,10 +4115,10 @@ export default function ControlBoardBbMachineReportTable({
           <button
             type="button"
             onClick={() => setTableFullscreen(open => !open)}
-            className="inline-flex shrink-0 items-center gap-2 border-l border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 sm:text-sm"
+            className="inline-flex shrink-0 items-center gap-1 border-l border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 sm:px-2.5 sm:text-[11px]"
             title={tableFullscreen ? 'Thu nhỏ bảng' : 'Mở rộng bảng full màn hình'}
           >
-            {tableFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {tableFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
             <span className="hidden sm:inline">{tableFullscreen ? 'Thu nhỏ' : 'Mở rộng'}</span>
           </button>
         </div>

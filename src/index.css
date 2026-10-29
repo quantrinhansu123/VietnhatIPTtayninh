@@ -387,6 +387,25 @@ table.bb-sheet-table.bb-san-luong-sheet tbody tr.bb-san-luong-nvl-other-start > 
   padding: 0.5rem;
 }
 
+/* Tab Dữ liệu cân thực tế: bảng gọn hơn */
+.bb-can-tong-hop-compact.bb-report-sheet-scroll {
+  padding: 0.25rem;
+}
+.bb-can-tong-hop-compact table.bb-sheet-table {
+  font-size: 11px;
+}
+.bb-can-tong-hop-compact table.bb-sheet-table thead th {
+  padding: 0.28rem 0.4rem;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.bb-can-tong-hop-compact table.bb-sheet-table tbody td,
+.bb-can-tong-hop-compact table.bb-sheet-table tfoot td {
+  padding: 0.22rem 0.4rem !important;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 /* Responsive table: desktop giữ table; mobile (<768px) chuyển từng dòng <tr> thành card stack.
    Dùng cho các bảng có cấu trúc <table><thead><tbody><tr><td>. */
 @layer utilities {

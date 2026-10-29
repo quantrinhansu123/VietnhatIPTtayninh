@@ -65,6 +65,8 @@ export interface MaterialRow {
   openingStock: string;
   inbound: string;
   outbound: string;
+  /** Đơn giá mua gần nhất (VND / ĐVT). */
+  unitPrice: string;
   /** Dòng tồn phát sinh từ phiếu kho nhưng chưa có bản ghi riêng trong danh mục kho_nvl. */
   inventoryBalanceOnly?: boolean;
 }
@@ -128,7 +130,8 @@ export function normalizeMaterialsInventory(data: unknown): MaterialRow[] {
         unitLength: formatCell(record.chieu_dai_don_vi),
         openingStock: formatCell(record.ton_dau_ky),
         inbound: formatCell(record.nhap_trong_ky),
-        outbound: formatCell(record.xuat_trong_ky)
+        outbound: formatCell(record.xuat_trong_ky),
+        unitPrice: formatCell(record.don_gia ?? record.unitPrice)
       };
     })
     .filter((material): material is MaterialRow => Boolean(material));
@@ -1085,6 +1088,7 @@ export function MaterialsInventoryPanel({
         openingStock: String(balance.ton_dau_ky),
         inbound: String(balance.nhap_trong_ky),
         outbound: String(balance.xuat_trong_ky),
+        unitPrice: '-',
         inventoryBalanceOnly: true
       }];
     });
@@ -1860,6 +1864,7 @@ export function MaterialsInventoryPanel({
           <TableHeadCell>ĐV</TableHeadCell>
           <TableHeadCell>Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng kg</TableHeadCell>
+          <TableHeadCell align="center">Đơn giá</TableHeadCell>
           <TableHeadCell align="center">Tổng SL</TableHeadCell>
           <TableHeadCell align="center">Thao tác</TableHeadCell>
         </TableHead>
@@ -1888,6 +1893,11 @@ export function MaterialsInventoryPanel({
                 <td className="px-4 py-3 text-zinc-700">{material.unit}</td>
                 <td className="px-4 py-3 text-zinc-700">{material.warehouse || '—'}</td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-zinc-800">{material.totalWeight}</td>
+                <td className="px-4 py-3 text-right font-mono font-bold tabular-nums text-zinc-800">
+                  {material.unitPrice && material.unitPrice !== '-'
+                    ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(Number(material.unitPrice))
+                    : '—'}
+                </td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-zinc-800">
                   {computeClosingStock(material.openingStock, material.inbound, material.outbound)}
                 </td>

@@ -28,6 +28,10 @@ const WEIGHING_DB_FILE_PATH = process.env.VERCEL
 const DAMAGED_GOODS_DB_FILE_PATH = process.env.VERCEL
   ? path.join('/tmp', 'bao-cao-hang-hong-db.json')
   : path.join(process.cwd(), 'bao-cao-hang-hong-db.json');
+/** Map giá mua gần nhất NVL (từ Excel) khi chưa có / chưa ghi cột kho_nvl.don_gia. */
+const NVL_DON_GIA_FILE_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'nvl-don-gia.json')
+  : path.join(process.cwd(), 'data', 'nvl-don-gia.json');
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY;
 /** DB riêng cho phiếu cân (phieu_can_dinh_ki) — khác DB chính hệ thống. */
@@ -6582,6 +6586,53 @@ function parseOptionalMaterialNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+function normalizeNvlPriceCode(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+/** Đọc data/nvl-don-gia.json (xuất từ scripts/apply-nvl-gia-from-xlsx.mjs). */
+function loadNvlDonGiaMapFromFile(): Map<string, number> {
+  const map = new Map<string, number>();
+  try {
+    if (!fs.existsSync(NVL_DON_GIA_FILE_PATH)) return map;
+    const raw = JSON.parse(fs.readFileSync(NVL_DON_GIA_FILE_PATH, 'utf8')) as {
+      prices?: Record<string, unknown>;
+    };
+    const prices = raw?.prices && typeof raw.prices === 'object' ? raw.prices : {};
+    for (const [code, value] of Object.entries(prices)) {
+      const key = normalizeNvlPriceCode(code);
+      const price = Number(value);
+      if (key && Number.isFinite(price) && price >= 0) map.set(key, price);
+    }
+  } catch (err) {
+    console.warn('[nvl-don-gia] Không đọc được map giá:', (err as Error)?.message || err);
+  }
+  return map;
+}
+
+function resolveNvlCatalogUnitPrice(maNpl: string, rowDonGia?: unknown): number | null {
+  const fromRow = Number(rowDonGia);
+  if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
+  const fromFile = loadNvlDonGiaMapFromFile().get(normalizeNvlPriceCode(maNpl));
+  return fromFile != null && fromFile > 0 ? fromFile : null;
+}
+
+function mergeNvlDonGiaIntoMaterials(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const fileMap = loadNvlDonGiaMapFromFile();
+  if (!fileMap.size) return rows;
+  return rows.map(row => {
+    const existing = Number(row.don_gia);
+    if (Number.isFinite(existing) && existing > 0) return row;
+    const code = normalizeNvlPriceCode(row.ma_npl);
+    const price = fileMap.get(code);
+    if (price == null) return row;
+    return { ...row, don_gia: price };
+  });
+}
+
 function parseOptionalMaterialDecimalText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const raw = String(value).trim();
@@ -6789,6 +6840,10 @@ function parseMaterialBody(body: unknown): { error: string } | MaterialWritePayl
     ten_kho: parseMaterialText(source.warehouse ?? source.ten_kho) || null
   };
 
+  if (Object.prototype.hasOwnProperty.call(source, 'unitPrice') || Object.prototype.hasOwnProperty.call(source, 'don_gia')) {
+    record.don_gia = parseOptionalMaterialNumber(source.unitPrice ?? source.don_gia);
+  }
+
   return { record };
 }
 
@@ -6888,7 +6943,7 @@ function aggregateInboundAvgPrice(rows: any[]): { don_gia: number; so_dong: numb
   };
 }
 
-/** Giá TB nhập NVL: ưu tiên trong tháng phiếu; không có thì lấy toàn bộ lịch sử nhập. */
+/** Giá TB nhập NVL: ưu tiên trong tháng phiếu; không có thì lấy toàn bộ lịch sử nhập; cuối cùng lấy don_gia danh mục. */
 async function buildNvlInboundAvgPriceForMonth(
   maNpl: string,
   thangOrNgay?: string
@@ -6898,7 +6953,7 @@ async function buildNvlInboundAvgPriceForMonth(
   thang: string;
   so_dong: number;
   tong_sl: number;
-  price_source: 'month' | 'all' | 'none';
+  price_source: 'month' | 'all' | 'catalog' | 'none';
 }> {
   const code = String(maNpl || '').trim();
   const range = resolveWarehouseMonthRange(thangOrNgay || '');
@@ -6931,7 +6986,7 @@ async function buildNvlInboundAvgPriceForMonth(
   }
 
   let agg = aggregateInboundAvgPrice(data || []);
-  let priceSource: 'month' | 'all' | 'none' = agg.don_gia > 0 ? 'month' : 'none';
+  let priceSource: 'month' | 'all' | 'catalog' | 'none' = agg.don_gia > 0 ? 'month' : 'none';
 
   if (agg.don_gia <= 0) {
     const allData = await loadWarehouseMovementsFromKho({ loaiPhieu: 'nhap', loaiKho: 'nvl', maNpl: code });
@@ -6942,6 +6997,33 @@ async function buildNvlInboundAvgPriceForMonth(
     } else {
       agg = aggregateInboundAvgPrice(allData || []);
       if (agg.don_gia > 0) priceSource = 'all';
+    }
+  }
+
+  if (agg.don_gia <= 0) {
+    let catalogPrice: number | null = null;
+    if (supabase) {
+      const { data: catalogRows, error: catalogError } = await supabase
+        .from(SUPABASE_MATERIALS_TABLE)
+        .select('don_gia')
+        .eq('ma_npl', code)
+        .limit(1);
+      if (!catalogError) {
+        catalogPrice = resolveNvlCatalogUnitPrice(code, (catalogRows || [])[0]?.don_gia);
+      } else if (/don_gia/i.test(catalogError.message || '')) {
+        catalogPrice = resolveNvlCatalogUnitPrice(code);
+      }
+    } else {
+      catalogPrice = resolveNvlCatalogUnitPrice(code);
+    }
+    if (catalogPrice != null && catalogPrice > 0) {
+      return {
+        don_gia: roundWarehouseMoney(catalogPrice),
+        thang: range.thang,
+        so_dong: 0,
+        tong_sl: 0,
+        price_source: 'catalog'
+      };
     }
   }
 
@@ -12733,9 +12815,10 @@ export function createApp() {
 
       // ?no_movement=1: bỏ tính nhập/xuất (panel /kho-hang đã lấy tồn từ /api/ton-kho/tong-hop).
       const skipMovement = light || _req.query.no_movement === '1';
+      const withPrices = mergeNvlDonGiaIntoMaterials(rows);
       const materials = skipMovement
-        ? rows
-        : applyMaterialMovementTotals(rows, await buildMaterialMovementTotals());
+        ? withPrices
+        : applyMaterialMovementTotals(withPrices, await buildMaterialMovementTotals());
 
       const payload = {
         materials,

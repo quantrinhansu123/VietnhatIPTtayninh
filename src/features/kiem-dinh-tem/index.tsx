@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Printer, ScanBarcode, Search, Trash2, X } from 'lucide-react';
+import { Camera, Loader2, Printer, ScanBarcode, Search, Trash2, X } from 'lucide-react';
 import ProductQrScanner from '../../components/ProductQrScanner';
+import { CAMERA_IMAGE_INPUT_PROPS } from '../../utils/cameraCapture';
+import { fileToOptimizedImageDataUrl, uploadImage } from '../_shared/recordHelpers';
+import WeighingImagePreviewModal, { WeighingImageThumbnail, type WeighingPreviewImage } from '../../components/WeighingImagePreviewModal';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import { BienBanPrintModal, formatBbDate, type BienBanRecord } from './BienBanPrint';
 
@@ -38,6 +41,9 @@ export function KiemDinhTemPanel({
   const [ketLuan, setKetLuan] = useState<'dat' | 'khong_dat'>('dat');
   const [noiDung, setNoiDung] = useState('');
   const [ghiChu, setGhiChu] = useState('');
+  const [photo, setPhoto] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [viewingImage, setViewingImage] = useState<WeighingPreviewImage | null>(null);
   const [saving, setSaving] = useState(false);
   const [records, setRecords] = useState<BienBanRecord[]>([]);
   const [printing, setPrinting] = useState<BienBanRecord | null>(null);
@@ -77,6 +83,7 @@ export function KiemDinhTemPanel({
       setKetLuan((data as TemInfo).da_len_tram_can ? 'dat' : 'khong_dat');
       setNoiDung('');
       setGhiChu('');
+      setPhoto('');
       return true;
     } catch (err) {
       showAppToast(err instanceof Error ? err.message : 'Không tra cứu được tem.', 'error');
@@ -86,10 +93,33 @@ export function KiemDinhTemPanel({
     }
   }, []);
 
+  const pickPhoto = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showAppToast('Vui lòng chọn tệp ảnh.', 'error');
+      return;
+    }
+    setPhotoBusy(true);
+    try {
+      setPhoto(await fileToOptimizedImageDataUrl(file));
+    } catch (err) {
+      showAppToast(err instanceof Error ? err.message : 'Không đọc được ảnh.', 'error');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
   const save = async () => {
-    if (!tem) return;
+    if (!tem || saving || photoBusy) return;
     setSaving(true);
     try {
+      let photoUrl = photo;
+      if (photo.startsWith('data:')) {
+        const uploaded = await uploadImage(photo, 'bien_ban');
+        if (!uploaded.imageUrl) throw new Error('Upload ảnh không trả về URL. Vui lòng thử lại.');
+        photoUrl = uploaded.imageUrl;
+        setPhoto(photoUrl);
+      }
       const res = await fetch('/api/bien-ban', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,6 +139,7 @@ export function KiemDinhTemPanel({
           ket_luan: ketLuan,
           noi_dung: noiDung,
           ghi_chu: ghiChu,
+          ...(photoUrl ? { anh_url: photoUrl } : {}),
           nguoi_lap: currentUser?.name
         })
       });
@@ -116,6 +147,7 @@ export function KiemDinhTemPanel({
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không lưu được biên bản.'));
       showAppToast(`Đã lập biên bản ${data.record?.ma_bien_ban || ''}`);
       setTem(null);
+      setPhoto('');
       setManualCode('');
       setRecords(prev => [data.record, ...prev]);
       setPrinting(data.record);
@@ -172,49 +204,52 @@ export function KiemDinhTemPanel({
         }}
         className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4"
       >
-        <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-zinc-500">Mã QR tem</label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            value={manualCode}
-            onChange={e => setManualCode(e.target.value)}
-            placeholder="Dán hoặc gõ mã, Enter để tra cứu…"
-            autoComplete="off"
-            className="h-11 w-full rounded-xl border border-zinc-200 px-3 font-mono text-sm font-semibold outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 sm:flex-1"
-          />
-          <button
-            type="submit"
-            disabled={checking || !manualCode.trim()}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white disabled:opacity-50"
-          >
-            {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            Tra cứu
-          </button>
-          <button
-            type="button"
-            className={scanBtn}
-            onClick={() => {
-              setScannerMode('hardware-v2');
-              setScannerOpen(true);
-            }}
-          >
-            <ScanBarcode className="h-4 w-4" /> Quét máy
-          </button>
-          <button
-            type="button"
-            className={scanBtn}
-            onClick={() => {
-              setScannerMode('camera');
-              setScannerOpen(true);
-            }}
-          >
-            <ScanBarcode className="h-4 w-4" /> Quét ĐT
-          </button>
-        </div>
+        <fieldset disabled={saving || photoBusy || checking} className="min-w-0">
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-zinc-500">Mã QR tem</label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={manualCode}
+              onChange={e => setManualCode(e.target.value)}
+              placeholder="Dán hoặc gõ mã, Enter để tra cứu…"
+              autoComplete="off"
+              className="h-11 w-full rounded-xl border border-zinc-200 px-3 font-mono text-sm font-semibold outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 sm:flex-1"
+            />
+            <button
+              type="submit"
+              disabled={checking || !manualCode.trim()}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#ef1b2d] px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Tra cứu
+            </button>
+            <button
+              type="button"
+              className={scanBtn}
+              onClick={() => {
+                setScannerMode('hardware-v2');
+                setScannerOpen(true);
+              }}
+            >
+              <ScanBarcode className="h-4 w-4" /> Quét máy
+            </button>
+            <button
+              type="button"
+              className={scanBtn}
+              onClick={() => {
+                setScannerMode('camera');
+                setScannerOpen(true);
+              }}
+            >
+              <ScanBarcode className="h-4 w-4" /> Quét ĐT
+            </button>
+          </div>
+        </fieldset>
       </form>
 
       {tem && (
-        <div
-          className={`rounded-2xl border-2 p-4 ${
+        <fieldset
+          disabled={saving || photoBusy || checking}
+          className={`min-w-0 rounded-2xl border-2 p-4 ${
             tem.da_len_tram_can ? 'border-emerald-300 bg-emerald-50' : 'border-rose-400 bg-rose-50'
           }`}
         >
@@ -262,11 +297,38 @@ export function KiemDinhTemPanel({
               Ghi chú
               <input className={`${fieldCls} mt-1`} value={ghiChu} onChange={e => setGhiChu(e.target.value)} />
             </label>
+            <div className="sm:col-span-3">
+              <p className="text-xs font-bold uppercase text-zinc-500">Ảnh kiểm định (không bắt buộc)</p>
+              <label className={`${scanBtn} relative mt-2 overflow-hidden focus-within:ring-2 focus-within:ring-red-500/50`}>
+                {photoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                {photoBusy ? 'Đang xử lý ảnh…' : photo ? 'Chụp / chọn lại ảnh' : 'Chụp / chọn ảnh'}
+                <input
+                  {...CAMERA_IMAGE_INPUT_PROPS}
+                  aria-label="Chụp hoặc chọn ảnh kiểm định"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    void pickPhoto(file);
+                  }}
+                />
+              </label>
+              {photo && (
+                <div className="mt-2 flex items-center gap-3">
+                  <WeighingImageThumbnail url={photo} alt="Ảnh kiểm định" title="Xem ảnh kiểm định"
+                    onView={() => setViewingImage({ url: photo, title: 'Ảnh kiểm định' })}
+                    className="block h-24 w-32 overflow-hidden rounded-lg border border-zinc-200 bg-white" />
+                  <button type="button" onClick={() => setPhoto('')} className={`${scanBtn} text-rose-600`}>
+                    <Trash2 className="h-4 w-4" /> Xóa ảnh
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={() => setTem(null)}
+              onClick={() => { setTem(null); setPhoto(''); }}
               className="h-11 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700 sm:h-10"
             >
               Hủy
@@ -280,7 +342,7 @@ export function KiemDinhTemPanel({
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} Lập biên bản
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
 
       <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -351,6 +413,7 @@ export function KiemDinhTemPanel({
         scannedCount={tem ? 1 : 0}
       />
       <BienBanPrintModal data={printing} onClose={() => setPrinting(null)} />
+      <WeighingImagePreviewModal image={viewingImage} onClose={() => setViewingImage(null)} />
       {detail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4 backdrop-blur-sm"
@@ -412,6 +475,15 @@ export function KiemDinhTemPanel({
                   <dd className="min-w-0 break-words font-semibold text-zinc-900">{v || '—'}</dd>
                 </div>
               ))}
+              {detail.anh_url && (
+                <div>
+                  <dt className="mb-1 text-xs font-semibold text-zinc-500">Ảnh kiểm định</dt>
+                  <dd>
+                    <WeighingImageThumbnail url={detail.anh_url} alt="Ảnh kiểm định" title="Xem ảnh kiểm định"
+                      onView={() => setViewingImage({ url: detail.anh_url!, title: 'Ảnh kiểm định' })} />
+                  </dd>
+                </div>
+              )}
             </dl>
             <div className="flex gap-2 border-t border-zinc-200 px-4 py-3">
               <button

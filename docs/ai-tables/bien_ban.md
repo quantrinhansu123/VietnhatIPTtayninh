@@ -20,3 +20,5 @@
 |------|----------|
 | `src/features/kiem-dinh-tem/index.tsx` | Quét → preview → lập biên bản; danh sách + In/Xóa |
 | `src/features/kiem-dinh-tem/BienBanPrint.tsx` | Mẫu in (dùng CSS `warehouse-slip-print-*`) + modal xem trước |
+
+Ảnh kiểm định: chụp/chọn một ảnh tùy chọn → nén bằng `fileToOptimizedImageDataUrl` → Cloudinary (`bien_ban`) → `bien_ban.anh_url`; hiển thị trong chi tiết và bản in. DB cũ chạy lại `supabase-bien-ban.sql` để thêm cột `anh_url`.

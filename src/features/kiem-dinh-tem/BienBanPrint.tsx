@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Loader2, Printer, X } from 'lucide-react';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from '../../components/layout/constants';
 import { enablePortraitPrintPage, disablePortraitPrintPage, waitForPrintImagesReady } from '../../utils/printReady';
+import { sameOriginCloudinaryUrl } from '../../utils/cloudinaryUrl';
 
 export type BienBanRecord = {
   ma_bien_ban: string;
@@ -20,6 +21,7 @@ export type BienBanRecord = {
   ket_luan?: string | null;
   noi_dung?: string | null;
   ghi_chu?: string | null;
+  anh_url?: string | null;
   nguoi_lap?: string | null;
 };
 
@@ -98,6 +100,13 @@ export function BienBanSheet({ data }: { data: BienBanRecord }) {
             ))}
           </tbody>
         </table>
+        {data.anh_url && (
+          <div style={{ breakInside: 'avoid', marginTop: 12 }}>
+            <p style={{ fontWeight: 700, marginBottom: 6 }}>Ảnh kiểm định</p>
+            <img src={sameOriginCloudinaryUrl(data.anh_url)} alt="Ảnh kiểm định"
+              style={{ maxWidth: '100%', maxHeight: '65mm', objectFit: 'contain' }} />
+          </div>
+        )}
         <div className="warehouse-slip-print-signatures">
           {['Người lập biên bản', 'Trưởng ca', 'QC', 'Giám đốc'].map(role => (
             <div key={role}>

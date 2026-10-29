@@ -23,11 +23,15 @@ create table if not exists public.bien_ban (
   ket_luan text not null default 'dat',
   noi_dung text,
   ghi_chu text,
+  anh_url text,
   nguoi_lap text,
   created_at timestamptz not null default now(),
   constraint uq_bien_ban_ma unique (ma_bien_ban),
   constraint chk_bien_ban_ket_luan check (ket_luan in ('dat', 'khong_dat'))
 );
+
+-- Bổ sung cho DB đã có bảng biên bản.
+alter table public.bien_ban add column if not exists anh_url text;
 
 create index if not exists idx_bien_ban_ngay_lap on public.bien_ban (ngay_lap desc);
 create index if not exists idx_bien_ban_ma_qr on public.bien_ban (ma_qr);

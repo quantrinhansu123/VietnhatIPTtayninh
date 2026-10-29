@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductionReport } from './src/types';
 import { machineSlipCodeToken } from './src/utils/warehouseSlipCode';
+import { isCloudinaryUploadUrl } from './src/utils/cloudinaryUrl';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 
@@ -13542,6 +13543,10 @@ export function createApp() {
     const text = (v: unknown) => String(v ?? '').trim() || null;
     const maQr = text(b.ma_qr);
     if (!maQr) return res.status(400).json({ error: 'Cần ma_qr.' });
+    const anhUrl = text(b.anh_url);
+    if (anhUrl && !isCloudinaryUploadUrl(anhUrl)) {
+      return res.status(400).json({ error: 'Ảnh kiểm định phải được upload lên Cloudinary trước khi lưu.' });
+    }
     const stamp = new Date()
       .toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
       .replace(/[-: ]/g, '');
@@ -13551,6 +13556,7 @@ export function createApp() {
       .insert({
         ma_bien_ban: `BB-KDT-${stamp.slice(0, 8)}-${stamp.slice(8)}`,
         ma_qr: maQr,
+        ...(anhUrl ? { anh_url: anhUrl } : {}),
         ma_sp: text(b.ma_sp),
         ngay_sx: text(b.ngay_sx),
         ca: text(b.ca),

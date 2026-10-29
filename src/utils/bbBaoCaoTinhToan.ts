@@ -33,11 +33,11 @@ import {
   buildBbMixingRatioGroups,
   buildBbProductionOrderLineRows,
   buildBbSanLuongGroups,
+  overlayProductNplOnBbSanLuongGroups,
   buildBbTongGroups,
   buildBbTongHopVatTuThucXuatDungGroups,
   buildBbWarehouseExportLineRows,
   enrichBbDanhGiaGroupsWithPrintSummary,
-  enrichBbProductionOrderRowsFromCanTuDong,
   enrichBbProductionOrderRowsFromSanLuong,
   groupBbCuoiCaLines,
   groupBbDamagedGoodsLines,
@@ -330,7 +330,7 @@ export function buildBbMachineReportSnapshot(input: {
     };
   });
 
-  const sanLuongGroups = buildBbSanLuongGroups({
+  const sanLuongGroupsRaw = buildBbSanLuongGroups({
     productionOrders: input.productionOrders,
     acceptanceReports: input.acceptanceReports,
     acceptanceNvlDinhMucByReportId: input.acceptanceNvlDinhMucByReportId,
@@ -345,16 +345,19 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     ...filter
   });
+  // Phủ Thành phần SP mới nhất (túi/lõi/băng) trước khi ghi tiêu hao — tránh snapshot cũ thiếu BOM.
+  const sanLuongGroups = overlayProductNplOnBbSanLuongGroups(
+    sanLuongGroupsRaw,
+    input.products,
+    input.materials
+  );
 
-  // `/phan-tich-tu-dong`: SL/TL lệnh (mục Thành phẩm đạt nhập kho) lấy thẳng Cân AI.
-  const orderRows =
-    sanLuongSource === 'can-tu-dong' && (input.canTuDongRecords?.length ?? 0) > 0
-      ? enrichBbProductionOrderRowsFromCanTuDong(
-          orderRowsBase,
-          input.canTuDongRecords || [],
-          input.products
-        )
-      : enrichBbProductionOrderRowsFromSanLuong(orderRowsBase, sanLuongGroups, input.products);
+  // Thành phẩm đạt nhập kho / lệnh SX: SL/TL lấy thẳng từ Báo cáo sản lượng.
+  const orderRows = enrichBbProductionOrderRowsFromSanLuong(
+    orderRowsBase,
+    sanLuongGroups,
+    input.products
+  );
   const orderGroups = groupBbProductionOrderLines(orderRows);
 
   const inboundRows = buildBbInboundReportRows({

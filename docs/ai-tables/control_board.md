@@ -15,6 +15,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 | `ControlBoardBbMachineReportTable.tsx` | Báo cáo tổng hợp máy BB … **tab Báo cáo tổng hợp** — 2 bảng `Vật tư trộn` / `Các vật tư còn lại` theo mẫu Excel (mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · Tổng). |
 | `ReportListsHubModal.tsx` | Modal lớn trên `/phan-tich`: tab = mục `/danh-sach-bao-cao`. **In báo cáo** (vật tư) bắt buộc **Ngày · Ca · Máy** → tờ 1 `MachineShiftMaterialChecklistPrintSheet` + tờ 2 `AcceptanceReportPrintBatch` (phiếu sản lượng). |
 | `MachineShiftMaterialChecklistPrintSheet.tsx` | Mẫu 1 tờ A4 ngang: ĐM · tỉ lệ · tồn đầu · xuất kho · thực trộn · tồn cuối · TT sử dụng · **Nhật ký chạy máy** (Giờ máy chạy / Giờ máy dừng từ `nhat_ky_chay_may`). Trang sau in kèm phiếu sản lượng. |
+| `MachineShiftMaterialChecklistBelowReport.tsx` | Cùng biểu mẫu, hiện **bên dưới** báo cáo `/phan-tich-tu-dong` khi đã chọn một ngày · một ca · một máy, kèm nút **In**. |
 | `ControlBoardBbMachineReportPrintSheet.tsx` | Mẫu in BB — **chỉ mirror** tab thành phẩm / tiêu hao NVL / đánh giá (`thucDungGroups`, `summaryRows`); không tính lại mục 3–4.1 |
 | `ControlBoardShiftSummaryChart.tsx` | Biểu đồ tổng hợp ca |
 | `ControlBoardShiftDetailModal.tsx` | Chi tiết ca |

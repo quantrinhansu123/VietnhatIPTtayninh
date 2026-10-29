@@ -51,6 +51,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     menu: 'factory-quan-doc',
     label: 'Quản Đốc',
     children: [
+      { tab: 'dashboard-auto', label: 'Báo cáo mới' },
       { tab: 'production-plan-history', label: 'Kế hoạch sản xuất' },
       { tab: 'production-orders', label: 'Lệnh sản xuất' },
       { tab: 'control-board', label: 'Theo dõi sản xuất' },
@@ -92,7 +93,8 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'kiem-dinh-tem', label: 'Kiểm định tem' },
       { tab: 'kiem-kho-chenh-lech', label: 'Xử lý chênh lệch' },
       { tab: 'warehouse-history', label: 'Lịch sử xuất nhập' },
-      { tab: 'ton-kho', label: 'Tồn kho' }
+      { tab: 'ton-kho', label: 'Tồn kho' },
+      { tab: 'kiem-soat-ton', label: 'Kiểm soát tồn' }
     ]
   },
   {

@@ -270,6 +270,113 @@ function SanLuongShiftSection({
   );
 }
 
+function resolveGroupSpWeightKg(group: BbSanLuongGroup) {
+  const fromProducts = (group.productGroups || []).reduce(
+    (sum, pg) => sum + (pg.weightKg > 0 ? pg.weightKg : pg.totalActualWeightKg > 0 ? pg.totalActualWeightKg : 0),
+    0
+  );
+  return fromProducts > 0 ? fromProducts : group.totalActualWeightKg > 0 ? group.totalActualWeightKg : 0;
+}
+
+function SanLuongSummaryTable({
+  groups,
+  shiftSettings
+}: {
+  groups: BbSanLuongGroup[];
+  shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
+}) {
+  const totalQty = groups.reduce((sum, g) => sum + (g.totalQuantity > 0 ? g.totalQuantity : 0), 0);
+  const totalSpKg = groups.reduce((sum, g) => sum + resolveGroupSpWeightKg(g), 0);
+  const totalNorm = groups.reduce((sum, g) => sum + (g.totalNormWeightKg > 0 ? g.totalNormWeightKg : 0), 0);
+  const totalActual = groups.reduce(
+    (sum, g) => sum + (g.totalActualWeightKg > 0 ? g.totalActualWeightKg : 0),
+    0
+  );
+  const totalProducts = groups.reduce((sum, g) => sum + (g.productCount > 0 ? g.productCount : 0), 0);
+
+  return (
+    <section>
+      <table className="bb-sheet-table min-w-[920px]">
+        <caption className="font-black text-zinc-900">
+          Bảng tổng · Báo cáo sản lượng ({groups.length} phiếu)
+        </caption>
+        <thead>
+          <tr>
+            <th className="font-black">Ngày</th>
+            <th className="font-black">Ca</th>
+            <th className="font-black">Lệnh SX</th>
+            <th className="font-black">Máy</th>
+            <th className="text-right font-black">SP</th>
+            <th className="text-right font-black">SL SP</th>
+            <th className="text-right font-black">TL SP (kg)</th>
+            <th className="text-right font-black">TL ĐM NVL</th>
+            <th className="text-right font-black">TL thực tế</th>
+            <th className="font-black">Định mức</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map(group => {
+            const shiftName = resolveShiftName(group.shift, group.shiftLabel);
+            const timeRange = resolveShiftTimeRange(group.shift, group.shiftLabel, shiftSettings);
+            const spKg = resolveGroupSpWeightKg(group);
+            const normStatus = resolveNormStatus(group);
+            return (
+              <tr key={group.groupKey} className="bb-row-parent text-zinc-900">
+                <td className="font-mono font-bold">{group.ngay || '—'}</td>
+                <td className="font-semibold">
+                  {shiftName}
+                  {timeRange ? (
+                    <span className="mt-0.5 block text-[12px] font-semibold text-zinc-500">
+                      {timeRange}
+                    </span>
+                  ) : null}
+                </td>
+                <td className="font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
+                <td className="font-semibold">{group.machine || '—'}</td>
+                <td className="bb-sheet-num font-bold">{group.productCount || 0}</td>
+                <td className="bb-sheet-num font-bold">
+                  {group.totalQuantity > 0 ? formatNumber(group.totalQuantity, 0) : '—'}
+                </td>
+                <td className="bb-sheet-num font-bold text-emerald-800">
+                  {spKg > 0 ? formatKg(spKg, 2) : '—'}
+                </td>
+                <td className="bb-sheet-num font-bold text-violet-800">
+                  {group.totalNormWeightKg > 0 ? formatKg(group.totalNormWeightKg, 2) : '—'}
+                </td>
+                <td className="bb-sheet-num font-bold text-sky-800">
+                  {group.totalActualWeightKg > 0 ? formatKg(group.totalActualWeightKg, 2) : '—'}
+                </td>
+                <td className={`font-bold ${normStatus?.tone || 'text-zinc-400'}`}>
+                  {normStatus?.label || '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={4} className="text-right font-black uppercase tracking-wider">
+              Tổng cộng
+            </td>
+            <td className="bb-sheet-num font-black">{totalProducts}</td>
+            <td className="bb-sheet-num font-black">{totalQty > 0 ? formatNumber(totalQty, 0) : '—'}</td>
+            <td className="bb-sheet-num font-black text-emerald-800">
+              {totalSpKg > 0 ? formatKg(totalSpKg, 2) : '—'}
+            </td>
+            <td className="bb-sheet-num font-black text-violet-800">
+              {totalNorm > 0 ? formatKg(totalNorm, 2) : '—'}
+            </td>
+            <td className="bb-sheet-num font-black text-sky-800">
+              {totalActual > 0 ? formatKg(totalActual, 2) : '—'}
+            </td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+  );
+}
+
 export default function BbSanLuongReportPanel({
   groups,
   isLoading,
@@ -296,19 +403,18 @@ export default function BbSanLuongReportPanel({
     );
   }
 
-  const totalNorm = groups.reduce((sum, g) => sum + (g.totalNormWeightKg || 0), 0);
-  const totalActual = groups.reduce((sum, g) => sum + (g.totalActualWeightKg || 0), 0);
-
   return (
     <div className="bb-report-sheet-scroll px-2 py-3">
       <div className="space-y-6">
-        {groups.map(group => (
-          <SanLuongShiftSection key={group.groupKey} group={group} shiftSettings={shiftSettings} />
-        ))}
-      </div>
-      <div className="mt-6 flex justify-end gap-6 border-t border-zinc-200 pt-3 text-xs font-bold text-zinc-800">
-        <span>Tổng định mức NVL: {formatKg(totalNorm)} kg</span>
-        <span>Tổng thực tế: {formatKg(totalActual)} kg</span>
+        <SanLuongSummaryTable groups={groups} shiftSettings={shiftSettings} />
+        <div className="bb-child-panel space-y-6 p-2 sm:p-3">
+          <p className="bb-nvl-panel-title rounded-md bg-orange-50 text-orange-900">
+            Chi tiết theo phiếu
+          </p>
+          {groups.map(group => (
+            <SanLuongShiftSection key={group.groupKey} group={group} shiftSettings={shiftSettings} />
+          ))}
+        </div>
       </div>
     </div>
   );

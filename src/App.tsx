@@ -44,7 +44,8 @@ import {
 
 import { readCachedReports, STORAGE_DRAFT_KEY, STORAGE_OFFLINE_KEY, STORAGE_REPORTS_CACHE_KEY, STORAGE_AUTH_KEY } from './features/_shared/storage';
 import LoginPage, { grantResolvedAccess, type AuthUser } from './components/LoginPage';
-import loginHeroUrl from './assets/Loginimage.png';
+import appEmptyBgUrl from './assets/kaizen-app-bg.png';
+import { vietNhatLogoUrl, PRINT_COMPANY_NAME } from './components/layout/constants';
 import { AccessControlProvider } from './app/accessControl';
 import { buildAllowedTabSet, hasFullMenuAccess } from './features/nhan-su/menuViews';
 import { refreshAuthUserPermissions } from './app/refreshAuthPermissions';
@@ -86,6 +87,8 @@ import { KiemKhoPanel } from './features/kiem-kho';
 import { DoiSoatPanel } from './features/doi-soat';
 import { XuLyChenhLechPanel } from './features/xu-ly-chenh-lech';
 import { TonKhoPanel } from './features/ton-kho';
+import { SloganBanner } from './components/SloganBanner';
+import { KiemSoatTonPanel } from './features/kiem-soat-ton';
 import { QuanLyKhoPanel } from './features/quan-ly-kho';
 import { TraKhoNvlPanel } from './features/tra-kho-nvl';
 import { TimMaLoiPanel } from './features/tim-ma-loi';
@@ -790,27 +793,45 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Main Content scrollable container viewport */}
-        <main className={`flex-1 min-h-0 overflow-y-auto focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
+        {/* Main Content scrollable container viewport — ảnh nền + logo ở phần trống */}
+        <main className={`relative flex-1 min-h-0 overflow-y-auto focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
           activeTab === 'menu'
-            ? 'bg-slate-100 p-0'
+            ? 'p-0'
             : activeTab === 'control-board'
-            ? 'bg-slate-50 p-2 md:p-4'
+            ? 'p-2 md:p-4'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
-              ? 'bg-slate-50 overflow-hidden p-0'
+              ? 'overflow-hidden p-0'
               : activeTab === 'kiem-kho'
-                ? 'bg-slate-50 p-2 md:p-3 pb-4'
-              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'warehouse-history-detail' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho'
-                ? 'bg-slate-50 p-2 md:p-3 pb-4'
+                ? 'p-2 md:p-3 pb-4'
+              : activeTab === 'warehouse-slip' || activeTab === 'warehouse-history' || activeTab === 'warehouse-history-detail' || activeTab === 'damaged-goods-warehouse' || activeTab === 'ton-kho' || activeTab === 'kiem-soat-ton'
+                ? 'p-2 md:p-3 pb-4'
                 : activeTab === 'acceptance-report' || activeTab === 'acceptance-report-list'
-                  ? 'bg-slate-50 p-2 md:p-4 pb-4'
-                : 'bg-slate-50 p-4 md:p-6 pb-4'
+                  ? 'p-2 md:p-4 pb-4'
+                : 'p-4 md:p-6 pb-4'
         }`} id="applet-viewport">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0 bg-contain bg-center bg-no-repeat bg-black"
+            style={{ backgroundImage: `url(${appEmptyBgUrl})` }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/20 via-transparent to-black/35"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-4 right-4 z-0 flex items-center gap-2 rounded-xl border border-white/20 bg-white/85 px-2.5 py-1.5 shadow-md backdrop-blur-sm sm:bottom-6 sm:right-6"
+          >
+            <img src={vietNhatLogoUrl} alt="" className="h-8 w-8 object-contain sm:h-9 sm:w-9" />
+            <span className="hidden max-w-[160px] text-[10px] font-black uppercase leading-tight tracking-wide text-slate-700 sm:block">
+              {PRINT_COMPANY_NAME}
+            </span>
+          </div>
           <div
             className={
               activeTab === 'machine-nvl-report' || activeTab === 'orders'
-                ? 'w-full'
-                : 'mx-auto w-full min-w-0 max-w-none'
+                ? 'relative z-[1] w-full'
+                : 'relative z-[1] mx-auto w-full min-w-0 max-w-none'
             }
           >
             <div className="min-w-0">
@@ -850,20 +871,17 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="relative min-h-[calc(100dvh-3.5rem)] md:min-h-[calc(100dvh-4rem)] overflow-hidden"
+                className="relative min-h-[calc(100dvh-3.5rem)] md:min-h-[calc(100dvh-4rem)] overflow-hidden bg-black"
               >
                 <img
-                  src={loginHeroUrl}
+                  src={appEmptyBgUrl}
                   alt=""
-                  className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+                  className="pointer-events-none absolute inset-0 m-auto h-full w-full max-h-full max-w-full object-contain object-center"
                   draggable={false}
                 />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/80 via-slate-50/70 to-slate-100/85" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/45" />
                 <div className="relative z-10 space-y-5 p-4 md:p-6 pb-8">
                   <MainMenuFlow items={visibleMainMenuItems} onNavigate={navigateToTab} />
-                  <div className="flex w-full justify-center pt-6 pb-2 md:pt-10">
-                    <VietNhatLogo className="h-16 w-auto max-w-[180px] object-contain opacity-30 sm:h-20 sm:max-w-[220px] md:h-24 md:max-w-[260px]" />
-                  </div>
                 </div>
               </motion.div>
             ) : activeTab === 'quan-tri' ? (
@@ -1517,7 +1535,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <MachineRunLogPanel onBack={() => goBack('report-lists')} />
+                <MachineRunLogPanel onBack={() => goBack('report-lists')} showSavedList />
               </motion.div>
             ) : activeTab === 'hr' ? (
               <motion.div
@@ -1649,6 +1667,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <TonKhoPanel onBack={() => goBack('factory-kho')} />
+              </motion.div>
+            ) : activeTab === 'kiem-soat-ton' ? (
+              <motion.div
+                key="kiem-soat-ton"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <KiemSoatTonPanel onBack={() => goBack('factory-kho')} />
               </motion.div>
             ) : activeTab === 'orders' ? (
               <motion.div
@@ -1821,6 +1849,7 @@ export default function App() {
             )}
           </AnimatePresence>
             </div>
+            {activeTab !== 'menu' && activeTab !== 'machine-nvl-report' && activeTab !== 'orders' ? <SloganBanner variant="compact" /> : null}
           </div>
         </main>
 

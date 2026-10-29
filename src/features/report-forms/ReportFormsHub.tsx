@@ -191,6 +191,9 @@ export function ReportFormsHub({
   const hideSharedHeader =
     activeHubTab === 'can-tu-dong' || activeHubTab === 'can-tu-dong-entry';
 
+  const activeHubItem = hubItems.find(item => item.hubId === activeHubTab) ?? hubItems[0];
+  const activeHubOrder = Math.max(1, hubItems.findIndex(item => item.hubId === activeHubTab) + 1);
+
   return (
     <ReportFormsSharedProvider>
     <div className="space-y-3">
@@ -198,7 +201,7 @@ export function ReportFormsHub({
         <div className="min-w-0">
           <h2 className="font-display text-sm font-semibold tracking-tight text-slate-900 sm:text-base">Nhập báo cáo</h2>
           <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
-            Header chung áp dụng mọi tab · đổi tab giữ draft chưa lưu.
+            Chọn biểu mẫu bên dưới để xem trước · đổi phiếu giữ draft chưa lưu.
           </p>
         </div>
         <button
@@ -211,47 +214,40 @@ export function ReportFormsHub({
         </button>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white/95 p-2.5 shadow-card sm:p-3">
+        <label htmlFor="report-form-hub-select" className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+          Xem trước biểu mẫu
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            id="report-form-hub-select"
+            value={activeHubTab}
+            onChange={event => setActiveHubTab(event.target.value as ReportFormsHubTabId)}
+            className="h-10 w-full min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/15 sm:max-w-xl"
+          >
+            {hubItems.map((item, index) => (
+              <option key={item.hubId} value={item.hubId}>
+                {index + 1}. {item.title}
+              </option>
+            ))}
+          </select>
+          <span className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-[#ef1b2d] px-2.5 text-[11px] font-black tabular-nums text-white sm:h-10">
+            {activeHubOrder}/{hubItems.length}
+          </span>
+        </div>
+        {activeHubItem ? (
+          <p className="mt-1.5 text-[11px] font-semibold leading-snug text-slate-600">
+            <span className="font-black text-slate-800">{activeHubItem.title}</span>
+            {' — '}
+            {activeHubItem.desc}
+          </p>
+        ) : null}
+      </div>
+
       {!hideSharedHeader ? <ReportFormsSharedHeader /> : null}
 
       <div className="min-w-0">
-        <div
-          role="tablist"
-          aria-label="Phiếu nhập báo cáo"
-          className="flex items-end gap-1 overflow-x-auto px-1 scrollbar-thin"
-        >
-          {hubItems.map((item, index) => {
-            const active = item.hubId === activeHubTab;
-            const order = index + 1;
-            return (
-              <button
-                key={item.hubId}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setActiveHubTab(item.hubId)}
-                title={`${order}. ${item.desc}`}
-                className={`relative shrink-0 rounded-t-lg px-2.5 pt-2 text-left transition sm:px-3 ${
-                  active
-                    ? 'z-10 -mb-px border border-b-white border-slate-200 bg-white pb-2.5 text-slate-900'
-                    : 'z-0 mb-px border border-transparent bg-slate-100/90 pb-2 text-slate-600 hover:bg-slate-200/80 hover:text-slate-800'
-                }`}
-              >
-                <span className="flex items-center gap-1.5 whitespace-nowrap">
-                  <span
-                    className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded px-1 text-[10px] font-black tabular-nums leading-none ${
-                      active ? 'bg-[#ef1b2d] text-white' : 'bg-slate-200/90 text-slate-600'
-                    }`}
-                  >
-                    {order}
-                  </span>
-                  <span className="text-[12px] font-bold leading-tight">{item.title}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative z-0 min-h-0 rounded-b-xl rounded-tr-xl border border-slate-200 bg-white p-1.5 shadow-card sm:p-2">
+        <div className="relative z-0 min-h-0 rounded-xl border border-slate-200 bg-white p-1.5 shadow-card sm:p-2">
           <KeepAliveSlot tabId="machine-nvl-report" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <MachineNvlReportPanel
               onBack={onBack}

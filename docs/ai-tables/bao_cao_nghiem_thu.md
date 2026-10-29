@@ -29,7 +29,7 @@ Liên kết LSX ưu tiên ngày `lenh_sx.ngay`, lấy từng sản phẩm từ `
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
 Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm`; mã SP thuộc **Kho thành phẩm** hoặc **chưa gán kho** — loại kho hàng hỏng/rác).
-Cột **SL TP / Nhập thành phẩm** trên tiêu hao NVL cũng lấy từ các phiếu này (`/danh-sach-bao-cao-san-luong`), không lấy phiếu xuất kho.
+Cột **SL TP / Nhập thành phẩm** trên tiêu hao NVL lấy từ các phiếu này (`/danh-sach-bao-cao-san-luong`) theo **mã SP thực tế trên phiếu sản lượng** (ngày·ca·máy) — không giới hạn danh sách SP trên LSX; không lấy phiếu xuất kho.
 Trên `/phan-tich-tu-dong`:
 - Tab **Dữ liệu cân thực tế** lấy từ `can_tu_dong` (Cân AI)
 - Tab **Báo cáo sản lượng** lấy từ `bao_cao_nghiem_thu` (Thành phẩm · Kho thành phẩm / chưa gán kho)

@@ -511,6 +511,13 @@ export const FACTORY_MENU_ITEMS: MenuCardConfig[] = [
 
 export const FACTORY_QUAN_DOC_MENU_ITEMS: MenuCardConfig[] = [
   {
+    title: 'Báo cáo mới',
+    desc: 'Phân tích tự động — báo cáo tổng hợp máy BB theo ngày/ca.',
+    icon: ClipboardList,
+    icon3d: chartIncreasing3d,
+    tab: 'dashboard-auto'
+  },
+  {
     title: 'Kế hoạch sản xuất',
     desc: 'Lập kế hoạch, danh sách kế hoạch và tra cứu snapshot đã lưu theo ngày.',
     icon: CalendarDays,
@@ -652,6 +659,13 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     icon: ClipboardList,
     icon3d: reportList3d,
     tab: 'kiem-kho'
+  },
+  {
+    title: 'Kiểm soát tồn',
+    desc: 'Cảnh báo tồn âm, dưới tồn tối thiểu, sắp hết và phiếu treo lâu chưa chốt.',
+    icon: ShieldCheck,
+    icon3d: chartIncreasing3d,
+    tab: 'kiem-soat-ton'
   },
   {
     title: 'Tìm mã lỗi',
@@ -956,6 +970,7 @@ export const PRIMARY_NAV_GROUPS: {
     icon: Factory,
     tab: 'factory-quan-doc',
     children: [
+      { label: 'Báo cáo mới', tab: 'dashboard-auto' },
       { label: 'Kế hoạch sản xuất', tab: 'production-plan-history' },
       { label: 'Lệnh sản xuất', tab: 'production-orders' },
       { label: 'Theo dõi sản xuất', tab: 'control-board' },
@@ -1001,6 +1016,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Kiểm định tem', tab: 'kiem-dinh-tem' },
       { label: 'Lịch sử xuất nhập', tab: 'warehouse-history' },
       { label: 'Tồn kho', tab: 'ton-kho' },
+      { label: 'Kiểm soát tồn', tab: 'kiem-soat-ton' },
       { label: 'Chuẩn bị xuất hàng', tab: 'factory-kho', disabled: true }
     ]
   },
@@ -1063,6 +1079,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'warehouse-history-detail': { group: 'Kho', sub: 'Chi tiết phiếu' },
   'damaged-goods-warehouse': { group: 'Kho', sub: 'Kho hàng hỏng' },
   'ton-kho': { group: 'Kho', sub: 'Tồn kho' },
+  'kiem-soat-ton': { group: 'Kho', sub: 'Kiểm soát tồn' },
   'settings': { group: 'Quản trị', sub: 'Người dùng và phân quyền / Cấu hình hệ thống' },
   'hr': { group: 'HCNS', sub: 'Hồ sơ nhân sự' },
   'vehicles': { group: 'Trang chủ', sub: 'Lái xe' },

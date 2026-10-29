@@ -6147,10 +6147,19 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
   const ca = String(source.ca ?? '').trim();
   const ma_may = String(source.ma_may ?? source.machineCode ?? '').trim();
   const ten_may = String(source.ten_may ?? source.machineName ?? '').trim();
+  const gio = parseDowntimeTime(source.gio ?? source.startTime);
+  const gio_dung = parseDowntimeTime(source.gio_dung ?? source.endTime ?? source.stopTime);
+  const anh_thong_so = String(source.anh_thong_so ?? source.parameterImageUrl ?? '').trim();
+  const tho_chinh = String(
+    source.tho_chinh ?? source.mainOperator ?? source.nhan_su ?? source.responsibleStaff ?? ''
+  ).trim();
 
   if (!ngay) return { error: 'Vui lòng chọn ngày sản xuất.' };
-  if (!ca) return { error: 'Vui lòng chọn ca.' };
+  if (!ca) return { error: 'Vui lòng chọn ca chạy.' };
   if (!ma_may && !ten_may) return { error: 'Vui lòng chọn máy.' };
+  if (!gio) return { error: 'Vui lòng nhập giờ bắt đầu.' };
+  if (!gio_dung) return { error: 'Vui lòng nhập giờ dừng.' };
+  if (!tho_chinh) return { error: 'Vui lòng chọn nhân sự phụ trách.' };
 
   const rawLines = source.chi_tiet ?? source.lines ?? source.items;
   const list = Array.isArray(rawLines) ? rawLines : [];
@@ -6158,25 +6167,21 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
     .map((line, index) => parseMachineRunLogLine(line, index))
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
-  if (chi_tiet.length === 0) {
-    return { error: 'Vui lòng nhập ít nhất một dòng nhật ký chạy máy.' };
+  const runMinutesFromClock = calcDowntimeMinutes(gio, gio_dung);
+  if (runMinutesFromClock === null) {
+    return { error: 'Giờ / Giờ dừng không hợp lệ.' };
   }
 
-  for (const line of chi_tiet) {
-    if (!line.thoi_diem_ghi) {
-      return { error: `Dòng ${line.stt}: vui lòng nhập thời điểm ghi (giờ:phút).` };
-    }
-  }
-
-  const gio_chay_kh = parseMixingNumber(source.gio_chay_kh ?? source.plannedRunHours) ?? 0;
   const tong_cuon_ra =
     Math.round(chi_tiet.reduce((sum, line) => sum + (line.so_cuon_ra ?? 0), 0) * 100) / 100;
   const tong_thoi_gian_dung_phut =
-    Math.round(chi_tiet.reduce((sum, line) => sum + (line.thoi_gian_dung_phut ?? 0), 0) * 100) / 100;
+    chi_tiet.length > 0
+      ? Math.round(chi_tiet.reduce((sum, line) => sum + (line.thoi_gian_dung_phut ?? 0), 0) * 100) / 100
+      : 0;
 
+  const thoi_gian_chay_thuc_te_phut = Math.round(runMinutesFromClock * 100) / 100;
+  const gio_chay_kh = Math.round((thoi_gian_chay_thuc_te_phut / 60) * 100) / 100;
   const plannedMinutes = gio_chay_kh * 60;
-  const thoi_gian_chay_thuc_te_phut =
-    Math.round(Math.max(0, plannedMinutes - tong_thoi_gian_dung_phut) * 100) / 100;
   const hieu_suat_thoi_gian_pct =
     plannedMinutes > 0 ? Math.round((thoi_gian_chay_thuc_te_phut / plannedMinutes) * 10000) / 100 : null;
 
@@ -6189,7 +6194,7 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
       : null;
 
   const nang_suat_cuon_gio =
-    thoi_gian_chay_thuc_te_phut > 0
+    thoi_gian_chay_thuc_te_phut > 0 && tong_cuon_ra > 0
       ? Math.round((tong_cuon_ra / (thoi_gian_chay_thuc_te_phut / 60)) * 100) / 100
       : null;
 
@@ -6205,8 +6210,11 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
       ten_may: ten_may || null,
       lenh_sx: String(source.lenh_sx ?? source.productionOrder ?? '').trim() || null,
       ma_san_pham: String(source.ma_san_pham ?? source.productCode ?? '').trim() || null,
-      tho_chinh: String(source.tho_chinh ?? source.mainOperator ?? '').trim() || null,
+      tho_chinh,
       tho_phu: String(source.tho_phu ?? source.assistantOperator ?? '').trim() || null,
+      gio,
+      gio_dung,
+      anh_thong_so: anh_thong_so || null,
       gio_chay_kh,
       tong_cuon_ra,
       tong_thoi_gian_dung_phut,
@@ -6225,7 +6233,7 @@ function machineRunLogWriteError(error: { code?: string; message?: string }) {
     return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} chưa tồn tại. Hãy chạy supabase-nhat-ky-chay-may.sql.`;
   }
   if (isMissingColumnError(error)) {
-    return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-nhat-ky-chay-may.sql.`;
+    return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-nhat-ky-chay-may-simplify.sql.`;
   }
   return `Không thể lưu nhật ký chạy máy. ${error.message || ''}`.trim();
 }
@@ -12582,7 +12590,9 @@ export function createApp() {
         });
       }
 
-      const materials = light
+      // ?no_movement=1: bỏ tính nhập/xuất (panel /kho-hang đã lấy tồn từ /api/ton-kho/tong-hop).
+      const skipMovement = light || _req.query.no_movement === '1';
+      const materials = skipMovement
         ? rows
         : applyMaterialMovementTotals(rows, await buildMaterialMovementTotals());
 
@@ -19624,7 +19634,7 @@ export function createApp() {
     if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
     const pageSize = 1000;
     const rowsByCode = new Map<string, TonKhoGopRow>();
-    for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+    await Promise.all((['nhap', 'xuat'] as const).map(async loaiPhieu => {
       const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
       const headers = new Map<string, { ngay: string; kho: string }>();
       for (let offset = 0; ; offset += pageSize) {
@@ -19674,7 +19684,7 @@ export function createApp() {
         }
         if (!data || data.length < pageSize) break;
       }
-    }
+    }));
     return [...rowsByCode.values()].map(row => ({
       ...row,
       ton_cuoi_ky: row.ton_dau_ky + row.nhap_trong_ky - row.xuat_trong_ky
@@ -19825,6 +19835,123 @@ export function createApp() {
       return res.json({ records, total: records.length, source: 'supabase' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Lỗi khi tải bảng tổng hợp tồn kho.' });
+    }
+  });
+
+  // ===== Kiểm soát tồn: tồn hiện tại so với ngưỡng tồn tối thiểu + phiếu treo =====
+  const KIEM_SOAT_TON_SAP_HET_RATIO = 1.2;
+
+  function kiemSoatTonCatalogTable(loaiKho: TonKhoLoaiKho) {
+    return loaiKho === 'san_pham'
+      ? { table: SUPABASE_PRODUCTS_TABLE, code: 'ma_sp', name: 'ten_sp' }
+      : { table: SUPABASE_MATERIALS_TABLE, code: 'ma_npl', name: 'ten_npl' };
+  }
+
+  app.get('/api/kiem-soat-ton', async (req, res) => {
+    if (!supabase) return res.json({ items: [], summary: {}, treo: [], source: 'local' });
+    try {
+      const tenKho = String(req.query.ten_kho ?? '').trim() || null;
+      const loaiKho: TonKhoLoaiKho = String(req.query.loai_kho ?? '').trim() === 'san_pham' ? 'san_pham' : 'nvl';
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+      const stock = await loadTonKhoGop(loaiKho, tenKho, null, today);
+      if (stock.error) {
+        return res.status(500).json({ error: stock.error.message || 'Không thể tính tồn kho.' });
+      }
+      const balances = groupTonKhoRowsByPrefix(Array.isArray(stock.data) ? (stock.data as TonKhoGopRow[]) : []);
+
+      // Ngưỡng tồn tối thiểu nằm trên danh mục; thiếu cột (chưa chạy SQL) thì coi như chưa đặt ngưỡng.
+      const catalog = kiemSoatTonCatalogTable(loaiKho);
+      const minByCode = new Map<string, number | null>();
+      let thresholdColumnMissing = false;
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from(catalog.table)
+          .select(`${catalog.code}, so_luong_ton_toi_thieu`)
+          .range(from, from + 999);
+        if (error) {
+          if (isMissingColumnError(error)) thresholdColumnMissing = true;
+          else throw error;
+          break;
+        }
+        for (const row of (data || []) as unknown as Array<Record<string, unknown>>) {
+          const key = normalizeTonKhoCatalogCode(row[catalog.code]);
+          const min = row.so_luong_ton_toi_thieu;
+          if (key) minByCode.set(key, min === null || min === undefined || min === '' ? null : Number(min));
+        }
+        if (!data || data.length < 1000) break;
+      }
+
+      const items = balances.map(row => {
+        const ton = Math.round((Number(row.ton_cuoi_ky) || 0) * 1000) / 1000;
+        const rawMin = minByCode.get(normalizeTonKhoCatalogCode(row.ma));
+        const min = rawMin !== undefined && rawMin !== null && Number.isFinite(rawMin) ? rawMin : null;
+        let status: 'am' | 'duoi_toi_thieu' | 'sap_het' | 'on_dinh' | 'chua_dat_nguong' = 'on_dinh';
+        if (ton < 0) status = 'am';
+        else if (min === null) status = 'chua_dat_nguong';
+        else if (ton < min) status = 'duoi_toi_thieu';
+        else if (ton <= min * KIEM_SOAT_TON_SAP_HET_RATIO) status = 'sap_het';
+        return { ma: row.ma, ten: row.ten, don_vi: row.don_vi, ten_kho: row.ten_kho, ton, min, status };
+      });
+      items.sort((a, b) => a.ma.localeCompare(b.ma, 'vi', { numeric: true }));
+
+      const summary = { am: 0, duoi_toi_thieu: 0, sap_het: 0, on_dinh: 0, chua_dat_nguong: 0, tong: items.length };
+      for (const item of items) summary[item.status] += 1;
+
+      // Phiếu treo (chưa tính vào tồn) — cảnh báo phiếu để lâu.
+      const treo: Array<{ ma_phieu: string; loai: 'nhap' | 'xuat'; ngay: string; kho: string; so_ngay: number }> = [];
+      if (supabaseKho) {
+        for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+          let query = supabaseKho.from(warehouseTables(loaiPhieu).header).select('ma_phieu, ngay, kho').eq('treo', true);
+          if (tenKho) query = query.eq('kho', tenKho);
+          const { data, error } = await query.limit(500);
+          if (error) continue;
+          for (const row of data || []) {
+            const ngay = String(row.ngay ?? '').slice(0, 10);
+            const days = ngay ? Math.floor((Date.parse(today) - Date.parse(ngay)) / 86400000) : 0;
+            treo.push({ ma_phieu: String(row.ma_phieu), loai: loaiPhieu, ngay, kho: String(row.kho ?? ''), so_ngay: days });
+          }
+        }
+        treo.sort((a, b) => b.so_ngay - a.so_ngay);
+      }
+
+      return res.json({ items, summary, treo, thresholdColumnMissing, ngay: today, source: 'supabase' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Lỗi khi tải kiểm soát tồn.' });
+    }
+  });
+
+  app.put('/api/kiem-soat-ton/nguong', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    try {
+      const loaiKho: TonKhoLoaiKho = String(req.body?.loai_kho ?? '').trim() === 'san_pham' ? 'san_pham' : 'nvl';
+      const ma = String(req.body?.ma ?? '').trim();
+      const rawMin = req.body?.min;
+      const min = rawMin === null || rawMin === '' || rawMin === undefined ? null : Number(rawMin);
+      if (!ma) return res.status(400).json({ error: 'Thiếu mã hàng.' });
+      if (min !== null && (!Number.isFinite(min) || min < 0)) {
+        return res.status(400).json({ error: 'Tồn tối thiểu phải là số không âm.' });
+      }
+      const catalog = kiemSoatTonCatalogTable(loaiKho);
+      const { data, error } = await supabase
+        .from(catalog.table)
+        .update({ so_luong_ton_toi_thieu: min })
+        .eq(catalog.code, ma)
+        .select(catalog.code);
+      if (error) {
+        const message = isMissingColumnError(error)
+          ? 'Thiếu cột so_luong_ton_toi_thieu. Hãy chạy supabase-kho-nvl-ton-toi-thieu.sql.'
+          : error.message;
+        return res.status(500).json({ error: message });
+      }
+      if (!data || data.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy mã trong danh mục (mã chỉ có trên phiếu kho).' });
+      }
+      invalidateKhoNvlLightCache();
+      return res.json({ success: true, ma, min });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Không thể lưu tồn tối thiểu.' });
     }
   });
 

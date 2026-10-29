@@ -376,7 +376,7 @@ function resolveLoiHongMixingTiLePercent(line: {
   return null;
 }
 
-/** Xuất thực dùng = Tồn đầu ca + Xuất kho − Tồn cuối ca. */
+/** Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca. */
 function computeVatTuXuatThucDungKg(exportKg: number, openingKg: number, closingKg: number) {
   return computeMaterialUsageKg(exportKg, openingKg, closingKg);
 }
@@ -1800,12 +1800,12 @@ function BbMachineOrderPrintSheet({
                   <br />
                   cuối ca
                 </th>
-                <th title="Xuất thực dùng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
+                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
                   Trọng lượng
                   <br />
-                  Vật tư xuất
+                  Thực tế
                   <br />
-                  thực dùng
+                  sử dụng
                 </th>
                 <th>
                   Trọng lượng
@@ -1909,12 +1909,12 @@ function BbMachineOrderPrintSheet({
                   <br />
                   cuối ca
                 </th>
-                <th title="Xuất thực dùng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
+                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
                   Trọng lượng
                   <br />
-                  Vật tư xuất
+                  Thực tế
                   <br />
-                  thực dùng
+                  sử dụng
                 </th>
                 <th>
                   Trọng lượng

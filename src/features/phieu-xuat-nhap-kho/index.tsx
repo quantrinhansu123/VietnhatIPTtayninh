@@ -67,6 +67,8 @@ import WeighingImagePreviewModal, {
   WeighingImageThumbnail,
   type WeighingPreviewImage
 } from '../../components/WeighingImagePreviewModal';
+import { ReconciliationPanel } from './ReconciliationPanel';
+import { printWarehouseDailyReport, type DailyReportSlip } from './dailyReportPrint';
 import WarehouseSlipPrintModal, {
   mergeWarehousePrintLines,
   mergeWarehousePrintSlips,
@@ -6110,14 +6112,7 @@ export function WarehouseHistoryPanel({
   const [viewingSlipCode, setViewingSlipCode] = useState<string | null>(null);
   const [deletingSlipCode, setDeletingSlipCode] = useState<string | null>(null);
   const [selectedSlipCodes, setSelectedSlipCodes] = useState<Set<string>>(new Set());
-  const [expandedSlipCodes, setExpandedSlipCodes] = useState<Set<string>>(new Set());
-  const toggleSlipExpanded = (code: string) =>
-    setExpandedSlipCodes(current => {
-      const next = new Set(current);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
+  const [detailSlipCode, setDetailSlipCode] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [excelExportOpen, setExcelExportOpen] = useState(false);
   const [excelExportDraft, setExcelExportDraft] = useState<WarehouseOutboundAccountingDefaults>(() => ({
@@ -6240,6 +6235,74 @@ export function WarehouseHistoryPanel({
     const firstAllowed = accessibleWarehouseTabs[0]?.[0];
     if (firstAllowed && firstAllowed !== warehouseTab) setWarehouseTab(firstAllowed);
   }, [canView, warehouseTab, warehouseAccess.vatTu.canView, warehouseAccess.thanhPham.canView]);
+
+  const [isPrintingDailyReport, setIsPrintingDailyReport] = useState(false);
+
+  /** In biên bản cuối ngày: tồn đầu/nhập/xuất/cuối + danh sách phiếu nhập, xuất của ngày đang chọn (mặc định hôm nay). */
+  const handlePrintDailyReport = async () => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const day = (fromDate || toDate || today).slice(0, 10);
+    setIsPrintingDailyReport(true);
+    setError('');
+    try {
+      const slipParams = (loai: 'nhap' | 'xuat') => {
+        const params = new URLSearchParams({ loai_kho: warehouseTab, loai, from: day, to: day });
+        if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
+        return params.toString();
+      };
+      const balanceParams = new URLSearchParams({ loai_kho: warehouseTab, from: day, to: day, gom_het: '1' });
+      if (selectedWarehouseName) balanceParams.set('ten_kho', selectedWarehouseName);
+
+      const [inRes, outRes, balRes] = await Promise.all([
+        fetch(`/api/kho/lich-su?${slipParams('nhap')}`),
+        fetch(`/api/kho/lich-su?${slipParams('xuat')}`),
+        fetch(`/api/ton-kho/tong-hop?${balanceParams.toString()}`)
+      ]);
+      const [inData, outData, balData] = await Promise.all([
+        inRes.json().catch(() => ({})),
+        outRes.json().catch(() => ({})),
+        balRes.json().catch(() => ({}))
+      ]);
+      if (!inRes.ok || !outRes.ok) throw new Error(inData.error || outData.error || 'Không thể tải phiếu trong ngày.');
+      if (!balRes.ok) throw new Error(balData.error || 'Không thể tính tồn kho trong ngày.');
+
+      const groupSlips = (data: unknown): DailyReportSlip[] => {
+        const bySlip = new Map<string, DailyReportSlip>();
+        for (const row of normalizeWarehouseMovements(data)) {
+          if (row.warehouseKind !== warehouseTab) continue;
+          if (selectedWarehouseName && row.warehouseName !== selectedWarehouseName) continue;
+          if ((row.slipDate || '').slice(0, 10) !== day) continue;
+          const current = bySlip.get(row.slipCode) || { slipCode: row.slipCode, lineCount: 0, quantity: 0, createdBy: row.createdBy };
+          current.lineCount += 1;
+          current.quantity += Number(row.quantity) || 0;
+          bySlip.set(row.slipCode, current);
+        }
+        return [...bySlip.values()].sort((a, b) => a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true }));
+      };
+
+      const records: Array<Record<string, unknown>> = Array.isArray(balData?.records) ? balData.records : [];
+      printWarehouseDailyReport({
+        date: day,
+        warehouseName: selectedWarehouseName,
+        balances: records.map(record => ({
+          ma: String(record.ma ?? ''),
+          ten: String(record.ten ?? ''),
+          don_vi: String(record.don_vi ?? ''),
+          ton_dau_ky: Number(record.ton_dau_ky) || 0,
+          nhap_trong_ky: Number(record.nhap_trong_ky) || 0,
+          xuat_trong_ky: Number(record.xuat_trong_ky) || 0,
+          ton_cuoi_ky: Number(record.ton_cuoi_ky) || 0
+        })),
+        inboundSlips: groupSlips(inData),
+        outboundSlips: groupSlips(outData)
+      });
+    } catch (printError: any) {
+      setError(printError?.message || 'Không thể in biên bản cuối ngày.');
+    } finally {
+      setIsPrintingDailyReport(false);
+    }
+  };
 
   const loadMovements = async () => {
     if (!canView) {
@@ -6539,6 +6602,56 @@ export function WarehouseHistoryPanel({
 
   const historyColumnCount = isFinishedGoodsHistory ? 9 : 11;
 
+  // Tổng từng loại phiếu (theo kho + ngày, không phụ thuộc ô tìm kiếm/ca/máy) để hiện trên 2 tab Nhập / Xuất.
+  type SlipTypeTotals = { slips: number; rolls: number };
+  const summarizeSlipTotals = (rows: WarehouseMovementRow[]): SlipTypeTotals => {
+    const slips = new Set<string>();
+    let rolls = 0;
+    for (const row of rows) {
+      slips.add(row.slipCode || row.id);
+      const quantity = Number(row.quantity);
+      if (Number.isFinite(quantity) && quantity > 0 && (warehouseTab === 'san_pham' || isCuonUnit(row.unit))) rolls += quantity;
+    }
+    return { slips: slips.size, rolls };
+  };
+  const currentTypeTotals = useMemo(() => summarizeSlipTotals(movements), [movements, warehouseTab]);
+  const [otherTypeTotals, setOtherTypeTotals] = useState<SlipTypeTotals | null>(null);
+  useEffect(() => {
+    if (standaloneSlipCode || !canView) return;
+    const controller = new AbortController();
+    setOtherTypeTotals(null);
+    const params = new URLSearchParams({
+      loai_kho: warehouseTab,
+      loai: selectedType === 'xuat' ? 'nhap' : 'xuat'
+    });
+    if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
+    if (fromDate) params.set('from', fromDate);
+    if (toDate) params.set('to', toDate);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/kho/lich-su?${params.toString()}`, { signal: controller.signal });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        setOtherTypeTotals(
+          summarizeSlipTotals(
+            normalizeWarehouseMovements(data).filter(
+              row => row.warehouseKind === warehouseTab && (!selectedWarehouseName || row.warehouseName === selectedWarehouseName)
+            )
+          )
+        );
+      } catch {
+        // bỏ qua: tab chỉ không hiện tổng
+      }
+    })();
+    return () => controller.abort();
+  }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate, canView, standaloneSlipCode]);
+  const typeTotals: Partial<Record<WarehouseSlipType, SlipTypeTotals>> = isLoading
+    ? {}
+    : {
+        [selectedType]: currentTypeTotals,
+        ...(otherTypeTotals ? { [selectedType === 'xuat' ? 'nhap' : 'xuat']: otherTypeTotals } : {})
+      };
+
   const productRollSummary = useMemo(() => {
     const byCode = new Map<string, { code: string; name: string; rolls: number }>();
     for (const row of filteredMovements) {
@@ -6558,6 +6671,31 @@ export function WarehouseHistoryPanel({
     const rows = [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true }));
     const total = rows.reduce((sum, row) => sum + row.rolls, 0);
     return { rows, total };
+  }, [filteredMovements, isFinishedGoodsHistory]);
+
+  /** Tổng hợp theo ngày phiếu (tab Nhập kho / Xuất kho): số phiếu, số cuộn, tổng số lượng. */
+  const dailySummary = useMemo(() => {
+    const byDay = new Map<string, { day: string; slips: Set<string>; rolls: number; total: number }>();
+    for (const row of filteredMovements) {
+      const day = (row.slipDate || '').slice(0, 10) || '—';
+      const entry = byDay.get(day) || { day, slips: new Set<string>(), rolls: 0, total: 0 };
+      entry.slips.add(row.slipCode || row.id);
+      const quantity = Number(row.quantity);
+      if (Number.isFinite(quantity) && quantity > 0) {
+        entry.total += quantity;
+        if (isFinishedGoodsHistory || isCuonUnit(row.unit)) entry.rolls += quantity;
+      }
+      byDay.set(day, entry);
+    }
+    const rows = [...byDay.values()]
+      .sort((a, b) => b.day.localeCompare(a.day))
+      .map(entry => ({ day: entry.day, slipCount: entry.slips.size, rolls: entry.rolls, total: entry.total }));
+    return {
+      rows,
+      slipCount: rows.reduce((sum, row) => sum + row.slipCount, 0),
+      rolls: rows.reduce((sum, row) => sum + row.rolls, 0),
+      total: rows.reduce((sum, row) => sum + row.total, 0)
+    };
   }, [filteredMovements, isFinishedGoodsHistory]);
 
   const selectableSlips = useMemo(
@@ -7168,6 +7306,23 @@ export function WarehouseHistoryPanel({
                 <span className="block text-sm font-black leading-tight text-zinc-900">{tab.label}</span>
                 <span className="mt-0.5 hidden text-xs font-semibold text-zinc-500 sm:block">{tab.hint}</span>
               </span>
+              {(() => {
+                const totals = typeTotals[tab.key];
+                const rollsText = formatNumber(totals?.rolls ?? 0, Number.isInteger(totals?.rolls ?? 0) ? 0 : 2);
+                return (
+                  <span
+                    className={`ml-auto flex shrink-0 flex-col items-end rounded-lg px-2.5 py-1 leading-tight ring-1 ${
+                      isActive ? 'bg-white text-[#ef1b2d] ring-red-200' : 'bg-zinc-50 text-zinc-700 ring-zinc-200'
+                    }`}
+                    title={`${tab.label}: số phiếu · tổng cuộn (theo kho và ngày đang chọn)`}
+                  >
+                    <span className="font-mono text-lg font-black tabular-nums">{totals ? rollsText : '…'}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide opacity-80">
+                      {totals ? `${totals.slips} phiếu · cuộn` : 'đang tính'}
+                    </span>
+                  </span>
+                );
+              })()}
             </button>
           );
         })}
@@ -7330,6 +7485,16 @@ export function WarehouseHistoryPanel({
           ) : null}
           <button
             type="button"
+            disabled={isLoading || isPrintingDailyReport}
+            onClick={() => void handlePrintDailyReport()}
+            title="In biên bản xuất nhập kho cuối ngày (theo ngày đang chọn, mặc định hôm nay)"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-800 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPrintingDailyReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+            In biên bản cuối ngày
+          </button>
+          <button
+            type="button"
             disabled={isLoading}
             onClick={() => void loadMovements()}
             title="Tải lại danh sách phiếu"
@@ -7340,6 +7505,15 @@ export function WarehouseHistoryPanel({
           </button>
         </div>
       </section>
+
+      {isFinishedGoodsHistory && !isLoading ? (
+        <ReconciliationPanel
+          mode={selectedType}
+          movements={movements}
+          fromDate={fromDate}
+          toDate={toDate}
+        />
+      ) : null}
 
       {isLoading ? (
         <TableShell minWidthClassName="min-w-[980px]">
@@ -7423,7 +7597,6 @@ export function WarehouseHistoryPanel({
                   const isDeleting = deletingSlipCode === slip.slipCode;
                   const shown = slip.products.slice(0, 4);
                   const rollTotal = slip.products.reduce((sum, product) => sum + (Number(product.quantity) || 0), 0);
-                  const isExpanded = expandedSlipCodes.has(slip.slipCode);
                   return (
                     <div key={slip.slipCode}>
                     <div
@@ -7453,12 +7626,12 @@ export function WarehouseHistoryPanel({
                             </span>
                             <button
                               type="button"
-                              onClick={() => toggleSlipExpanded(slip.slipCode)}
-                              aria-expanded={isExpanded}
-                              title={isExpanded ? 'Thu gọn chi tiết' : 'Xem chi tiết phiếu'}
+                              onClick={() => setDetailSlipCode(slip.slipCode)}
+                              aria-haspopup="dialog"
+                              title="Xem chi tiết phiếu"
                               className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100"
                             >
-                              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              <ChevronDown className="h-4 w-4" />
                             </button>
                           </span>
                         </div>
@@ -7503,42 +7676,6 @@ export function WarehouseHistoryPanel({
                         </RowActionsMenu>
                       </div>
                     </div>
-                    {isExpanded ? (
-                      <div className="border-t border-zinc-100 bg-zinc-50/60 px-4 py-3">
-                        <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-                          <table className="w-full min-w-[480px] text-left text-xs">
-                            <thead className="bg-zinc-100 text-[10px] uppercase tracking-wider text-zinc-600">
-                              <tr>
-                                <th className="px-3 py-2 text-center font-black">STT</th>
-                                <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Mã SP' : warehouseItemCodeLabel(warehouseTab)}</th>
-                                <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Tên SP' : warehouseItemNameLabel(warehouseTab)}</th>
-                                <th className="px-3 py-2 text-right font-black">SL</th>
-                                <th className="px-3 py-2 font-black">ĐVT</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100">
-                              {Array.from(
-                                slip.lines.reduce((groups, line) => {
-                                  const key = `${line.itemCode}|${line.unit}`;
-                                  const group = groups.get(key);
-                                  if (group) group.quantity += Number(line.quantity) || 0;
-                                  else groups.set(key, { itemCode: line.itemCode, itemName: line.itemName, unit: line.unit, quantity: Number(line.quantity) || 0 });
-                                  return groups;
-                                }, new Map<string, { itemCode: string; itemName?: string; unit?: string; quantity: number }>()).values()
-                              ).map((line, index) => (
-                                <tr key={`${line.itemCode}-${index}`}>
-                                  <td className="px-3 py-1.5 text-center font-bold text-zinc-500">{index + 1}</td>
-                                  <td className="px-3 py-1.5 font-bold text-zinc-900">{line.itemCode}</td>
-                                  <td className="px-3 py-1.5 text-zinc-700">{line.itemName || '—'}</td>
-                                  <td className="px-3 py-1.5 text-right font-mono font-bold text-zinc-800">{formatNumber(line.quantity, Number.isInteger(line.quantity) ? 0 : 2)}</td>
-                                  <td className="px-3 py-1.5 text-zinc-700">{line.unit || '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : null}
                     </div>
                   );
                 })}
@@ -7548,6 +7685,67 @@ export function WarehouseHistoryPanel({
           })}
         </div>
       )}
+
+      {!isLoading ? (
+        <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+            <h2 className="text-sm font-black text-zinc-950">Tổng hợp theo ngày · {warehouseSlipTypeLabel(selectedType)}</h2>
+            <p className="text-[11px] font-semibold text-zinc-500">
+              {dailySummary.rows.length} ngày · {dailySummary.slipCount} phiếu · {formatWarehouseRollTotal(dailySummary.rolls)}
+            </p>
+          </div>
+          <div className="w-full min-w-0 overflow-x-auto">
+            <table className="w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+                  <th className="px-2 py-2 text-center font-black">STT</th>
+                  <th className="px-2 py-2 text-center font-black">Ngày</th>
+                  <th className="px-2 py-2 text-center font-black">Tổng phiếu</th>
+                  <th className="px-2 py-2 text-center font-black">Tổng cuộn</th>
+                  <th className="px-2 py-2 text-center font-black">Tổng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailySummary.rows.map((row, index) => (
+                  <tr key={row.day} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                    <td className="px-2 py-2 text-center text-zinc-500">{index + 1}</td>
+                    <td className="px-2 py-2 text-center font-bold text-zinc-800">
+                      {row.day.length === 10 ? row.day.split('-').reverse().join('/') : row.day}
+                    </td>
+                    <td className="px-2 py-2 text-center font-bold tabular-nums">{row.slipCount}</td>
+                    <td className="px-2 py-2 text-center font-bold tabular-nums">
+                      {formatNumber(row.rolls, Number.isInteger(row.rolls) ? 0 : 2)}
+                    </td>
+                    <td className="px-2 py-2 text-center font-black tabular-nums">
+                      {formatNumber(row.total, Number.isInteger(row.total) ? 0 : 2)}
+                    </td>
+                  </tr>
+                ))}
+                {dailySummary.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                      Không có phiếu trong bộ lọc hiện tại.
+                    </td>
+                  </tr>
+                ) : (
+                  <tr className="bg-zinc-100">
+                    <td colSpan={2} className="px-2 py-2 text-right text-[11px] font-black uppercase tracking-wide text-zinc-600">
+                      Tổng
+                    </td>
+                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">{dailySummary.slipCount}</td>
+                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
+                      {formatNumber(dailySummary.rolls, Number.isInteger(dailySummary.rolls) ? 0 : 2)}
+                    </td>
+                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
+                      {formatNumber(dailySummary.total, Number.isInteger(dailySummary.total) ? 0 : 2)}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {!isLoading ? (
         <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -7814,6 +8012,100 @@ export function WarehouseHistoryPanel({
           </div>
         </div>
       )}
+
+      {detailSlipCode ? (() => {
+        const slip = historyPrefixGroups.flatMap(group => group.slips).find(item => item.slipCode === detailSlipCode);
+        if (!slip) return null;
+        const totalQty = slip.lines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+        const verb = slip.header.slipType === 'xuat' ? 'xuất' : 'nhập';
+        return (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 p-3 backdrop-blur-sm"
+            onClick={() => setDetailSlipCode(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wide text-zinc-500">Chi tiết phiếu {verb} kho</p>
+                  <p className="break-all font-mono text-base font-black text-[#ef1b2d]">{slip.slipCode}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailSlipCode(null)}
+                  aria-label="Đóng"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                {([
+                  ['Ngày', (slip.header.slipDate || '').slice(0, 10).split('-').reverse().join('/') || '—'],
+                  [`Giờ ${verb}`, formatWarehouseSlipSavedTime(slip.createdAt)],
+                  [`Người ${verb}`, slip.header.createdBy || '—'],
+                  ['Kho', slip.header.warehouseName || '—'],
+                  ['Ca', slip.header.shift || '—'],
+                  ['Máy', slip.header.machine || '—']
+                ] as const).map(([label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-zinc-500">{label}</p>
+                    <p className="truncate font-bold text-zinc-900" title={value}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-3">
+                <div className="overflow-x-auto rounded-lg border border-zinc-200">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="bg-[#ef1b2d] text-[11px] text-white">
+                      <tr>
+                        <th className="px-3 py-2 text-center font-black">STT</th>
+                        <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Mã cuộn / Mã SP' : 'Mã dòng'}</th>
+                        <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Tên SP' : warehouseItemNameLabel(warehouseTab)}</th>
+                        <th className="px-3 py-2 text-right font-black">SL</th>
+                        <th className="px-3 py-2 font-black">ĐVT</th>
+                        <th className="px-3 py-2 font-black">Ngày giờ {verb}</th>
+                        <th className="px-3 py-2 font-black">Người {verb}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {slip.lines.map((line, index) => (
+                        <tr key={line.id || `${line.itemCode}-${index}`}>
+                          <td className="px-3 py-1.5 text-center font-bold text-zinc-500">{index + 1}</td>
+                          <td className="whitespace-nowrap px-3 py-1.5 font-mono font-bold text-zinc-900">
+                            {line.scannedCode?.trim() || line.itemCode}
+                          </td>
+                          <td className="px-3 py-1.5 text-zinc-700">{line.itemName || '—'}</td>
+                          <td className="px-3 py-1.5 text-right font-mono font-bold text-zinc-800">
+                            {formatNumber(Number(line.quantity) || 0, Number.isInteger(Number(line.quantity)) ? 0 : 2)}
+                          </td>
+                          <td className="px-3 py-1.5 text-zinc-700">{line.unit || '—'}</td>
+                          <td className="whitespace-nowrap px-3 py-1.5 font-mono text-zinc-700">
+                            {(line.slipDate || '').slice(0, 10).split('-').reverse().join('/')}{' '}
+                            {formatWarehouseSlipSavedTime(line.createdAt || slip.createdAt)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-1.5 text-zinc-700">{line.createdBy || slip.header.createdBy || '—'}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-zinc-100 font-black">
+                        <td colSpan={3} className="px-3 py-2 text-right uppercase text-zinc-600">Tổng {slip.lines.length} dòng</td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-950">
+                          {formatNumber(totalQty, Number.isInteger(totalQty) ? 0 : 2)}
+                        </td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       <WarehouseSlipPrintModal
         open={historyPrintOpen}

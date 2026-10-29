@@ -261,7 +261,7 @@ export default function BbCanTuDongTongHopPanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="rounded-xl border border-red-200/80 bg-white p-4 shadow-xs">
           <p className="text-[11px] font-black uppercase tracking-tight text-red-700">Số cuộn thực tế</p>
           <p className="mt-1 font-mono text-2xl font-black tabular-nums text-zinc-900">
@@ -277,6 +277,18 @@ export default function BbCanTuDongTongHopPanel({
             {busy ? '…' : formatKg(totals.tong_trong_luong_kg, 2)}
           </p>
           <p className="mt-1 text-[11px] font-semibold text-zinc-500">Σ Cân sản phẩm (kg)</p>
+        </div>
+        <div className="rounded-xl border border-teal-200/80 bg-white p-4 shadow-xs">
+          <p className="text-[11px] font-black uppercase tracking-tight text-teal-800">Nhựa ĐM</p>
+          <p className="mt-1 font-mono text-2xl font-black tabular-nums text-zinc-900">
+            {busy ? '…' : formatKg(totals.nhua_dm_kg, 2)}
+          </p>
+          <p
+            className="mt-1 text-[11px] font-semibold text-zinc-500"
+            title={`${totalFormulas.nhuaDmShort} · KL nhựa+phụ gia Kho hàng × số cuộn`}
+          >
+            {busy ? 'KL nhựa+phụ gia × cuộn' : totalFormulas.nhuaDm}
+          </p>
         </div>
         <div className="rounded-xl border border-emerald-200/80 bg-white p-4 shadow-xs">
           <p className="text-[11px] font-black uppercase tracking-tight text-emerald-700">Nhựa TT</p>

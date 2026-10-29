@@ -20,6 +20,9 @@ create table if not exists public.nhat_ky_chay_may (
   toc_do_dat_dinh_muc_pct numeric(10,2),
   nang_suat_cuon_gio numeric(14,2),
   ghi_chu text,
+  gio text,
+  gio_dung text,
+  anh_thong_so text,
   chi_tiet jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -54,5 +57,8 @@ before update on public.nhat_ky_chay_may
 for each row
 execute function public.set_nhat_ky_chay_may_updated_at();
 
-comment on table public.nhat_ky_chay_may is 'Nhật ký chạy máy BM-SX-11 — thợ chính máy điền mỗi 2 giờ, tổng kết hiệu suất máy trong ca.';
-comment on column public.nhat_ky_chay_may.chi_tiet is 'Danh sách dòng ghi: stt, thoi_diem_ghi, nhiet_do_gia_nhiet, toc_do_thuc, toc_do_dinh_muc, so_cuon_ra, thoi_gian_dung_phut, ly_do, nguoi_ghi.';
+comment on table public.nhat_ky_chay_may is 'Nhật ký chạy máy — Ngày · Giờ · Ca · Giờ dừng · Nhân sự · Ghi chú · Ảnh thông số.';
+comment on column public.nhat_ky_chay_may.gio is 'Giờ bắt đầu chạy (HH:MM).';
+comment on column public.nhat_ky_chay_may.gio_dung is 'Giờ dừng (HH:MM).';
+comment on column public.nhat_ky_chay_may.anh_thong_so is 'URL Cloudinary ảnh thông số máy.';
+comment on column public.nhat_ky_chay_may.chi_tiet is 'Tuỳ chọn / phiếu cũ: stt, thoi_diem_ghi, nhiet_do…; form mới có thể để [].';

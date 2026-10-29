@@ -171,11 +171,9 @@ export function buildCanTuDongTongHopDetailRows(
       nhua_dm_kg: number;
       khoi_luong_mang_kg: number;
       nhua_tt_kg: number;
-      chenh_lech_nhua_kg: number;
       loi_dm_kg: number;
       loi_tt_kg: number;
       trong_luong_bi_kg: number;
-      nhuaCompared: number;
       nhuaDmParts: Map<string, CanTuDongFormulaPart>;
       mangParts: Map<string, CanTuDongFormulaPart>;
     }
@@ -197,11 +195,9 @@ export function buildCanTuDongTongHopDetailRows(
       nhua_dm_kg: 0,
       khoi_luong_mang_kg: 0,
       nhua_tt_kg: 0,
-      chenh_lech_nhua_kg: 0,
       loi_dm_kg: 0,
       loi_tt_kg: 0,
       trong_luong_bi_kg: 0,
-      nhuaCompared: 0,
       nhuaDmParts: new Map<string, CanTuDongFormulaPart>(),
       mangParts: new Map<string, CanTuDongFormulaPart>()
     };
@@ -234,20 +230,17 @@ export function buildCanTuDongTongHopDetailRows(
     const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
     if (coreKg != null) current.loi_dm_kg += coreKg;
 
-    if (nhuaTt != null && nhuaDmPerRoll != null) {
-      current.chenh_lech_nhua_kg += nhuaTt - nhuaDmPerRoll;
-      current.nhuaCompared += 1;
-    }
-
     buckets.set(key, current);
   }
 
   const round3 = (n: number) => Math.round(n * 1000) / 1000;
   return [...buckets.values()]
     .map(item => {
+      // Chênh lệch = thực tế − định mức (luôn TT − ĐM, kể cả khi ĐM = 0).
+      const chenh_lech_nhua_kg = round3(item.nhua_tt_kg - item.nhua_dm_kg);
       const phan_tram_chenh =
-        item.nhua_tt_kg !== 0 && item.nhuaCompared > 0
-          ? (item.chenh_lech_nhua_kg / item.nhua_tt_kg) * 100
+        item.nhua_tt_kg !== 0
+          ? (chenh_lech_nhua_kg / item.nhua_tt_kg) * 100
           : null;
       const nhua_dm_formula = buildKgTimesRollFormula(
         item.nhuaDmParts,
@@ -264,7 +257,7 @@ export function buildCanTuDongTongHopDetailRows(
         nhua_dm_kg: round3(item.nhua_dm_kg),
         khoi_luong_mang_kg: round3(item.khoi_luong_mang_kg),
         nhua_tt_kg: round3(item.nhua_tt_kg),
-        chenh_lech_nhua_kg: round3(item.chenh_lech_nhua_kg),
+        chenh_lech_nhua_kg,
         phan_tram_chenh: phan_tram_chenh == null ? null : Math.round(phan_tram_chenh * 100) / 100,
         loi_dm_kg: round3(item.loi_dm_kg),
         loi_tt_kg: round3(item.loi_tt_kg),
@@ -328,6 +321,9 @@ export function sumCanTuDongTongHopDetailRows(rows: CanTuDongTongHopDetailRow[])
   totals.nhua_dm_parts = mapToFormulaParts(nhuaDmParts);
   totals.mang_parts = mapToFormulaParts(mangParts);
 
+  // Chênh lệch = thực tế − định mức (không cộng dồn từng dòng để tránh lệch làm tròn).
+  totals.chenh_lech_nhua_kg =
+    Math.round((totals.nhua_tt_kg - totals.nhua_dm_kg) * 1000) / 1000;
   totals.phan_tram_chenh =
     totals.nhua_tt_kg !== 0
       ? Math.round((totals.chenh_lech_nhua_kg / totals.nhua_tt_kg) * 10000) / 100

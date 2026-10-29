@@ -1,6 +1,7 @@
 import React from 'react';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { formatNumber } from '../utils';
+
 export type MachineRunLogPrintLine = {
   stt: number;
   logTime: string;
@@ -18,18 +19,13 @@ export type MachineRunLogPrintSlip = {
   date: string;
   shift: string;
   machineLabel: string;
-  productionOrder: string;
-  productCode: string;
   mainOperator: string;
-  assistantOperator: string;
-  plannedRunHours: number;
+  startTime: string;
+  endTime: string;
+  parameterImageUrl: string;
   note: string;
-  totalRollsProduced: number;
-  totalDowntimeMinutes: number;
   actualRunMinutes: number;
-  timeEfficiencyPct: number | null;
-  speedAttainmentPct: number | null;
-  productivityRollsPerHour: number | null;
+  /** Phiếu cũ — chỉ hiện khi còn dòng chi tiết. */
   lines: MachineRunLogPrintLine[];
 };
 
@@ -53,6 +49,12 @@ function formatMaybeNumber(value: number | null, digits = 0) {
   return formatNumber(value, digits);
 }
 
+function toNumberOrNull(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+  return Number.isFinite(num) ? num : null;
+}
+
 export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip }) {
   return (
     <div className="production-order-print-sheet">
@@ -64,12 +66,11 @@ export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip
           </div>
           <div className="machine-run-log-print-form-code">
             <p>BM-SX-11</p>
-            <span>Phiên bản 1.0</span>
+            <span>Phiên bản 2.0</span>
           </div>
         </header>
 
         <h1 className="production-order-print-title">NHẬT KÝ CHẠY MÁY</h1>
-        <p className="machine-run-log-print-subtitle">(Thợ chính máy điền nhật ký mỗi 2 giờ/lần)</p>
 
         <div className="production-order-print-meta">
           <span>Số phiếu: {slip.slipCode || '-'}</span>
@@ -79,126 +80,82 @@ export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip
         <table className="production-order-print-grid-table machine-run-log-print-info-table">
           <tbody>
             <tr>
-              <th>Ngày sản xuất</th>
+              <th>Ngày</th>
               <td>{formatPrintDate(slip.date)}</td>
-              <th>Ca</th>
+              <th>Ca chạy</th>
               <td>{slip.shift || '-'}</td>
+            </tr>
+            <tr>
+              <th>Giờ</th>
+              <td>{formatPrintTime(slip.startTime)}</td>
+              <th>Giờ dừng</th>
+              <td>{formatPrintTime(slip.endTime)}</td>
             </tr>
             <tr>
               <th>Máy</th>
               <td>{slip.machineLabel || '-'}</td>
-              <th>Lệnh sản xuất số</th>
-              <td>{slip.productionOrder || '-'}</td>
-            </tr>
-            <tr>
-              <th>Mã sản phẩm</th>
-              <td>{slip.productCode || '-'}</td>
-              <th>Thợ chính máy</th>
+              <th>Nhân sự phụ trách</th>
               <td>{slip.mainOperator || '-'}</td>
             </tr>
             <tr>
-              <th>Giờ chạy KH (giờ)</th>
-              <td>{formatNumber(slip.plannedRunHours, 2)}</td>
-              <th>Thợ phụ máy</th>
-              <td>{slip.assistantOperator || '-'}</td>
+              <th>Giờ chạy thực tế</th>
+              <td colSpan={3}>{formatNumber(slip.actualRunMinutes, 0)} phút</td>
             </tr>
           </tbody>
         </table>
 
-        <h2 className="production-order-print-section-title">Nhật ký ghi nhận</h2>
-        <table className="production-order-print-grid-table machine-run-log-print-table">
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Thời điểm ghi (giờ:phút)</th>
-              <th>Nhiệt độ gia nhiệt (°C)</th>
-              <th>Tốc độ thực (m/phút)</th>
-              <th>Tốc độ định mức (m/phút)</th>
-              <th>Số cuộn ra trong kỳ</th>
-              <th>Thời gian dừng (phút)</th>
-              <th>Lý do dừng / bất thường</th>
-              <th>Người ghi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {slip.lines.map(line => (
-              <tr key={line.stt}>
-                <td className="production-order-print-center">{line.stt}</td>
-                <td className="production-order-print-center">{formatPrintTime(line.logTime)}</td>
-                <td className="production-order-print-center">{formatMaybeNumber(line.temperature)}</td>
-                <td className="production-order-print-center">{formatMaybeNumber(line.actualSpeed)}</td>
-                <td className="production-order-print-center">{formatMaybeNumber(line.standardSpeed)}</td>
-                <td className="production-order-print-center">{formatNumber(line.rollsProduced, 0)}</td>
-                <td className="production-order-print-center">{formatNumber(line.downtimeMinutes, 0)}</td>
-                <td>{line.reason || '-'}</td>
-                <td>{line.recordedBy || '-'}</td>
-              </tr>
-            ))}
-            <tr>
-              <td colSpan={5} className="production-order-print-right" style={{ fontWeight: 700 }}>
-                Tổng cộng
-              </td>
-              <td className="production-order-print-center" style={{ fontWeight: 700 }}>
-                {formatNumber(slip.totalRollsProduced, 0)}
-              </td>
-              <td className="production-order-print-center" style={{ fontWeight: 700 }}>
-                {formatNumber(slip.totalDowntimeMinutes, 0)}
-              </td>
-              <td colSpan={2} />
-            </tr>
-          </tbody>
-        </table>
-
-        <h2 className="production-order-print-section-title">Tổng kết hiệu suất máy trong ca (tự động tính)</h2>
-        <table className="production-order-print-grid-table machine-run-log-print-summary-table">
-          <tbody>
-            <tr>
-              <th>Tổng thời gian dừng máy (phút)</th>
-              <td className="production-order-print-center">{formatNumber(slip.totalDowntimeMinutes, 0)}</td>
-              <td>Cộng thời gian dừng các dòng nhật ký và Phiếu báo dừng máy (BM-SX-10).</td>
-            </tr>
-            <tr>
-              <th>Thời gian chạy thực tế (phút)</th>
-              <td className="production-order-print-center">{formatNumber(slip.actualRunMinutes, 0)}</td>
-              <td>Bằng Giờ chạy kế hoạch × 60 − Tổng thời gian dừng.</td>
-            </tr>
-            <tr>
-              <th>Hiệu suất thời gian chạy máy (%)</th>
-              <td className="production-order-print-center">{formatMaybeNumber(slip.timeEfficiencyPct, 1)}</td>
-              <td>Mục tiêu ≥ 85%. Lệch chỉ tiêu KPI thì xử lý theo thợ chính.</td>
-            </tr>
-            <tr>
-              <th>Tốc độ bình quân đạt định mức (%)</th>
-              <td className="production-order-print-center">{formatMaybeNumber(slip.speedAttainmentPct, 1)}</td>
-              <td>Mục tiêu 95%. Phân tích máy chạy dưới định mức nếu thấp hơn.</td>
-            </tr>
-            <tr>
-              <th>Tổng số cuộn ra trong ca</th>
-              <td className="production-order-print-center">{formatNumber(slip.totalRollsProduced, 0)}</td>
-              <td>Đối chiếu với Báo cáo sản lượng (BM-SX-08) của thợ phụ.</td>
-            </tr>
-            <tr>
-              <th>Năng suất máy (cuộn/giờ chạy thực)</th>
-              <td className="production-order-print-center">{formatMaybeNumber(slip.productivityRollsPerHour, 2)}</td>
-              <td>Bằng Tổng cuộn ra ÷ Giờ chạy thực tế. Dùng cho tính toán chi phí máy/giờ.</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {slip.note && (
+        {slip.note ? (
           <p className="machine-downtime-print-note">
             <strong>Ghi chú:</strong> {slip.note}
           </p>
-        )}
+        ) : null}
 
-        <p className="machine-downtime-print-footnote">
-          Hướng dẫn: Thợ chính ghi mỗi 2 giờ. Chỉ nhập ô ở cột trắng; các ô "tự động tính" hệ thống điền sẵn.
-          Thời gian dừng máy phải khớp với Phiếu báo dừng máy (BM-SX-10). Số cuộn ra phải khớp Báo cáo sản lượng (BM-SX-08).
-        </p>
+        {slip.parameterImageUrl ? (
+          <div className="machine-run-log-print-photo">
+            <p className="production-order-print-section-title">Ảnh thông số</p>
+            <img src={slip.parameterImageUrl} alt="Ảnh thông số" />
+          </div>
+        ) : null}
+
+        {slip.lines.length > 0 ? (
+          <>
+            <h2 className="production-order-print-section-title">Chi tiết (phiếu cũ)</h2>
+            <table className="production-order-print-grid-table machine-run-log-print-table">
+              <thead>
+                <tr>
+                  <th>STT</th>
+                  <th>Thời điểm</th>
+                  <th>Nhiệt độ</th>
+                  <th>Tốc độ thực</th>
+                  <th>TĐ định mức</th>
+                  <th>Cuộn</th>
+                  <th>Dừng (phút)</th>
+                  <th>Lý do</th>
+                  <th>Người ghi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slip.lines.map(line => (
+                  <tr key={line.stt}>
+                    <td className="production-order-print-center">{line.stt}</td>
+                    <td className="production-order-print-center">{formatPrintTime(line.logTime)}</td>
+                    <td className="production-order-print-center">{formatMaybeNumber(line.temperature)}</td>
+                    <td className="production-order-print-center">{formatMaybeNumber(line.actualSpeed)}</td>
+                    <td className="production-order-print-center">{formatMaybeNumber(line.standardSpeed)}</td>
+                    <td className="production-order-print-center">{formatNumber(line.rollsProduced, 0)}</td>
+                    <td className="production-order-print-center">{formatNumber(line.downtimeMinutes, 0)}</td>
+                    <td>{line.reason || '-'}</td>
+                    <td>{line.recordedBy || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : null}
 
         <div className="machine-run-log-print-signatures">
           <div>
-            <p>Thợ chính máy (người ghi)</p>
+            <p>Nhân sự phụ trách</p>
             <span>(Ký, ghi rõ họ tên)</span>
           </div>
           <div>
@@ -225,25 +182,19 @@ export function MachineRunLogPrintBatch({ slips }: { slips: MachineRunLogPrintSl
   );
 }
 
-function toNumberOrNull(value: string | number | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const num = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
-  return Number.isFinite(num) ? num : null;
-}
-
 export function buildMachineRunLogPrintSlip(input: {
   slipCode?: string;
   date: string;
   shift: string;
   machineCode: string;
   machineName: string;
-  productionOrder: string;
-  productCode: string;
   mainOperator: string;
-  assistantOperator: string;
-  plannedRunHours: string | number;
+  startTime: string;
+  endTime: string;
+  parameterImageUrl?: string;
   note: string;
-  lines: Array<{
+  actualRunMinutes?: number;
+  lines?: Array<{
     logTime: string;
     temperature: string | number | null;
     actualSpeed: string | number | null;
@@ -254,35 +205,27 @@ export function buildMachineRunLogPrintSlip(input: {
     recordedBy: string;
   }>;
 }): MachineRunLogPrintSlip {
-  const printLines = input.lines.map((line, index) => ({
+  const printLines = (input.lines || []).map((line, index) => ({
     stt: index + 1,
-    logTime: line.logTime.trim(),
+    logTime: String(line.logTime || '').trim(),
     temperature: toNumberOrNull(line.temperature),
     actualSpeed: toNumberOrNull(line.actualSpeed),
     standardSpeed: toNumberOrNull(line.standardSpeed),
     rollsProduced: toNumberOrNull(line.rollsProduced) ?? 0,
     downtimeMinutes: toNumberOrNull(line.downtimeMinutes) ?? 0,
-    reason: line.reason.trim(),
-    recordedBy: line.recordedBy.trim()
+    reason: String(line.reason || '').trim(),
+    recordedBy: String(line.recordedBy || '').trim()
   }));
 
-  const plannedRunHours = toNumberOrNull(input.plannedRunHours) ?? 0;
-  const totalRollsProduced = printLines.reduce((sum, line) => sum + line.rollsProduced, 0);
-  const totalDowntimeMinutes = printLines.reduce((sum, line) => sum + line.downtimeMinutes, 0);
-  const plannedMinutes = plannedRunHours * 60;
-  const actualRunMinutes = Math.max(0, plannedMinutes - totalDowntimeMinutes);
-  const timeEfficiencyPct = plannedMinutes > 0 ? (actualRunMinutes / plannedMinutes) * 100 : null;
-
-  const speedRatios = printLines
-    .filter(line => (line.standardSpeed ?? 0) > 0 && (line.actualSpeed ?? 0) > 0)
-    .map(line => (line.actualSpeed as number) / (line.standardSpeed as number));
-  const speedAttainmentPct =
-    speedRatios.length > 0
-      ? (speedRatios.reduce((sum, ratio) => sum + ratio, 0) / speedRatios.length) * 100
-      : null;
-
-  const productivityRollsPerHour =
-    actualRunMinutes > 0 ? totalRollsProduced / (actualRunMinutes / 60) : null;
+  const startMatch = String(input.startTime || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  const endMatch = String(input.endTime || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  let computedMinutes = 0;
+  if (startMatch && endMatch) {
+    const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+    let endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+    if (endMinutes < startMinutes) endMinutes += 24 * 60;
+    computedMinutes = Math.max(0, endMinutes - startMinutes);
+  }
 
   const machineLabel =
     input.machineCode && input.machineName && input.machineCode !== input.machineName
@@ -294,18 +237,15 @@ export function buildMachineRunLogPrintSlip(input: {
     date: input.date,
     shift: input.shift,
     machineLabel,
-    productionOrder: input.productionOrder,
-    productCode: input.productCode,
     mainOperator: input.mainOperator,
-    assistantOperator: input.assistantOperator,
-    plannedRunHours,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    parameterImageUrl: String(input.parameterImageUrl || '').trim(),
     note: input.note,
-    totalRollsProduced,
-    totalDowntimeMinutes,
-    actualRunMinutes,
-    timeEfficiencyPct,
-    speedAttainmentPct,
-    productivityRollsPerHour,
+    actualRunMinutes:
+      input.actualRunMinutes != null && Number.isFinite(input.actualRunMinutes)
+        ? Number(input.actualRunMinutes)
+        : computedMinutes,
     lines: printLines
   };
 }

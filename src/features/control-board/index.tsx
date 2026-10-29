@@ -8,6 +8,7 @@ import {
   type ControlBoardDateScope
 } from '../../components/ControlBoardCommonFilters';
 import ReportListsHubModal from '../../components/ReportListsHubModal';
+import MachineShiftMaterialChecklistBelowReport from '../../components/MachineShiftMaterialChecklistBelowReport';
 import { RowActionsMenu } from '../../components/shared/table';
 import { ClipboardList } from 'lucide-react';
 import {
@@ -226,12 +227,11 @@ export function ControlBoardPanel({
   const [draftBoardFilterProductionOrder, setDraftBoardFilterProductionOrder] = useState('all');
   const [draftBoardFilterProductionOrderQuery, setDraftBoardFilterProductionOrderQuery] = useState('');
   const [filterReloadToken, setFilterReloadToken] = useState(0);
-  // Mở từ Biểu đồ TH (?ngay=...): ẩn bộ lọc, chỉ hiển thị tóm tắt — dữ liệu đã nạp sẵn, không cần bấm Áp dụng.
+  // Mở từ Biểu đồ TH (?ngay=...): nạp sẵn bộ lọc + nút Quay lại; Ca/Máy/Lệnh vẫn ép draft→thật như bình thường.
   const [lockedByUrlFilters] = useState(() => {
     if (mode !== 'report-only-auto' || typeof window === 'undefined') return false;
     return Boolean(new URLSearchParams(window.location.search).get('ngay'));
   });
-  const showFilterBar = !lockedByUrlFilters;
   const uiBoardDateScope = isAutoReport ? draftBoardDateScope : boardDateScope;
   const uiShiftSummaryDateFrom = isAutoReport ? draftShiftSummaryDateFrom : shiftSummaryDateFrom;
   const uiShiftSummaryDateTo = isAutoReport ? draftShiftSummaryDateTo : shiftSummaryDateTo;
@@ -600,12 +600,11 @@ export function ControlBoardPanel({
     });
     if (!preferred) return;
 
-    const key = `${uiEffectiveDateFrom}|${uiEffectiveDateTo}|${uiBoardFilterShift}`;
-    const keyChanged = lastMachineAutoKeyRef.current !== key;
-    lastMachineAutoKeyRef.current = key;
+    lastMachineAutoKeyRef.current = `${uiEffectiveDateFrom}|${uiEffectiveDateTo}|${uiBoardFilterShift}`;
 
+    // Chỉ tự điền khi đang «Tất cả» hoặc máy không còn trong bucket — không đè máy URL / đã chọn.
     const currentValid = panelMachines.some(machine => machine.code === uiBoardFilterMachine);
-    if (keyChanged || uiBoardFilterMachine === 'all' || !currentValid) {
+    if (uiBoardFilterMachine === 'all' || !currentValid) {
       if (uiBoardFilterMachine !== preferred) {
         setDraftBoardFilterMachine(preferred);
       }
@@ -718,21 +717,25 @@ export function ControlBoardPanel({
     draftBoardFilterProductionOrderQuery
   ]);
 
-  // Bộ lọc bị khóa theo URL: không có nút Áp dụng, nên đồng bộ ngay Máy/Lệnh SX tự chọn (draft) sang state hiển thị.
+  // `/phan-tich-tu-dong`: ép ngay Ca/Máy/Lệnh (draft → thật) để bảng khớp UI.
+  // Ngày vẫn qua «Áp dụng» (reload API).
   useEffect(() => {
-    if (!lockedByUrlFilters) return;
-    if (boardFilterMachine !== draftBoardFilterMachine) setBoardFilterMachine(draftBoardFilterMachine);
-    if (boardFilterProductionOrder !== draftBoardFilterProductionOrder) {
+    if (!isAutoReport) return;
+    if (draftBoardFilterShift !== boardFilterShift) setBoardFilterShift(draftBoardFilterShift);
+    if (draftBoardFilterMachine !== boardFilterMachine) setBoardFilterMachine(draftBoardFilterMachine);
+    if (draftBoardFilterProductionOrder !== boardFilterProductionOrder) {
       setBoardFilterProductionOrder(draftBoardFilterProductionOrder);
     }
-    if (boardFilterProductionOrderQuery !== draftBoardFilterProductionOrderQuery) {
+    if (draftBoardFilterProductionOrderQuery !== boardFilterProductionOrderQuery) {
       setBoardFilterProductionOrderQuery(draftBoardFilterProductionOrderQuery);
     }
   }, [
-    lockedByUrlFilters,
+    isAutoReport,
+    draftBoardFilterShift,
     draftBoardFilterMachine,
     draftBoardFilterProductionOrder,
     draftBoardFilterProductionOrderQuery,
+    boardFilterShift,
     boardFilterMachine,
     boardFilterProductionOrder,
     boardFilterProductionOrderQuery
@@ -1511,8 +1514,8 @@ export function ControlBoardPanel({
       )}
 
       <div className="order-[-30] flex flex-col gap-2">
-        {!showFilterBar ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-700">
+        {lockedByUrlFilters ? (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -1523,31 +1526,8 @@ export function ControlBoardPanel({
               <ChevronLeft className="h-3.5 w-3.5" />
               Quay lại
             </button>
-            <span>
-              Ngày:{' '}
-              <span className="text-zinc-900">
-                {shiftSummaryDateFrom ? formatProductionOrderPanelDate(shiftSummaryDateFrom) : '—'}
-              </span>
-            </span>
-            <span>
-              Ca: <span className="text-zinc-900">{boardFilterShift === 'all' ? 'Tất cả' : formatPanelShiftLabel(boardFilterShift)}</span>
-            </span>
-            <span>
-              Máy:{' '}
-              <span className="text-zinc-900">
-                {selectedBoardMachine?.name ||
-                  selectedBoardMachine?.code ||
-                  (boardFilterMachine === 'all' ? 'Tất cả' : boardFilterMachine)}
-              </span>
-            </span>
-            <span>
-              Lệnh SX:{' '}
-              <span className="text-zinc-900">
-                {boardFilterProductionOrderQuery || (boardFilterProductionOrder !== 'all' ? boardFilterProductionOrder : '—')}
-              </span>
-            </span>
           </div>
-        ) : (
+        ) : null}
         <ControlBoardCommonFilters
           dateScope={uiBoardDateScope}
           onDateScopeChange={isAutoReport ? setDraftBoardDateScope : setBoardDateScope}
@@ -1575,7 +1555,6 @@ export function ControlBoardPanel({
           onApply={applyBoardFilters}
           hasPendingChanges={hasPendingFilterChanges}
         />
-        )}
         {reportOnly ? (
           <div className="flex justify-end">
             <button
@@ -1630,6 +1609,18 @@ export function ControlBoardPanel({
         }}
         onReloadSourceData={loadBoard}
         onReloadWarehouseData={reloadWarehouseSourceData}
+        toolbarExtra={
+          reportOnly ? (
+            <MachineShiftMaterialChecklistBelowReport
+              variant="button"
+              dateFrom={effectiveDateFrom}
+              dateTo={effectiveDateTo}
+              shift={boardFilterShift}
+              machineCode={boardFilterMachine}
+              machineName={selectedBoardMachine?.name || selectedBoardMachine?.code || ''}
+            />
+          ) : null
+        }
       />
 
       {reportOnly ? (

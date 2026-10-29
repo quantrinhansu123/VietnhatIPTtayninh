@@ -81,7 +81,8 @@ export function buildBaoCaoTongHopRowFromSummary(input: {
   const loiHongNhua = damaged.plasticKg || 0;
   const loiHongKhac = damaged.otherKg || 0;
   const chenhLech = finishedKg - xuatThucDung + loiHongNhua;
-  const chenhLechDm = dinhMucKg - finishedKg;
+  /** Chênh lệch ĐM = thực tế − định mức. */
+  const chenhLechDm = finishedKg - dinhMucKg;
 
   return {
     khoa_on_dinh: khoa,

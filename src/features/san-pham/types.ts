@@ -20,13 +20,15 @@ export function normalizeProductCodeKey(code: string) {
 /**
  * Chuẩn hóa mã NVL để khớp Excel ↔ kho:
  * - bỏ khoảng trắng, hoa
+ * - bỏ `-` / `_` (`NHUA A1` ≡ `NHUA-A1`; `NHUA-TCMN 25kg` ≡ `NHUA-TCMN25kg`)
  * - dấu phẩy thập phân → chấm (T1,08 → T1.08)
  * - x/× giữa hai số → * (T1.08x2.2m → T1.08*2.2m)
  */
 export function normalizeNvlMatchKey(code: string) {
   return normalizeProductCodeKey(code)
     .replace(/,/g, '.')
-    .replace(/(\d)[X×](?=\d)/gi, '$1*');
+    .replace(/(\d)[X×](?=\d)/gi, '$1*')
+    .replace(/[-_]/g, '');
 }
 
 export function findMaterialOptionByCode(

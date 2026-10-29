@@ -949,7 +949,9 @@ export default function ReportListsHubModal({
               onCreate={() => goAndClose('machine-downtime-report')}
             />
           ) : null}
-          {activeTab === 'machine-run-log-list' ? <MachineRunLogPanel onBack={onClose} /> : null}
+          {activeTab === 'machine-run-log-list' ? (
+            <MachineRunLogPanel onBack={onClose} showSavedList />
+          ) : null}
           {activeTab === 'shift-handover-list' ? (
             <ShiftHandoverListView
               key={panelKey}

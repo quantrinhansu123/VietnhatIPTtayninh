@@ -96,6 +96,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'kiem-dinh-tem': 'factory-kho',
   'kiem-kho-chenh-lech': 'factory-kho',
   'ton-kho': 'factory-kho',
+  'kiem-soat-ton': 'factory-kho',
   'hr': 'hcns',
   'vehicles': 'menu',
   'settings': 'quan-tri',

@@ -12,11 +12,12 @@ Snapshot riêng — **không** trùng `bao_cao_may_nvl_ton`. Ghi khi **Tính to�
 
 Nguồn kg = phiếu kiểm tồn cuối ca (`bao_cao_may_nvl_ton`, `reportKind = cuoi_ca`).
 
-UI khớp Excel «Tồn cuối kỳ» — **cùng logic** tab tồn đầu ca:
+UI — **cùng logic** tab tồn đầu ca (`buildBbMixingLinesAllocatedNhuaTronByDm` + `BbDauCaMaterialSplitTables`):
 
-- **Tỉ lệ thực tế** = `bao_cao_phoi_tron` (KL ÷ tổng KL, ngày·ca·máy)
-- **Đã trộn** = SL TỒN **NHUA-TRON** trên phiếu × tỉ lệ thực tế
-- **Tồn ngoài** = SL TỒN / KL của từng mã trên CHI TIẾT TỒN CUỐI CA
+- Khớp phiếu tồn **đúng số máy** lệnh SX
+- **Đã trộn** = SL TỒN **NHUA-TRON** × tỉ lệ trộn thực tế (%) — cùng công thức tồn đầu
+- **Tồn ngoài** = SL TỒN từng mã trên phiếu cuối ca
+- Ẩn dòng NHUA-TRON / NNS-TRON (đã phân bổ)
 - **Tổng cuối** = Đã trộn + Tồn ngoài
 
 UI tab tính **live** từ phiếu (không phụ thuộc snapshot cũ để xem).

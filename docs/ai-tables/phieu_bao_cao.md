@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Tab** | `report-forms` → `/phieu-bao-cao` |
-| **UI** | Luôn dạng **tab** (không còn lưới thẻ) |
+| **UI** | **Sổ xuống** chọn biểu mẫu để xem trước (không còn lưới thẻ / tab ngang) |
 
 ## Frontend
 
 | File | Nội dung |
 |------|----------|
-| `src/features/report-forms/ReportFormsHub.tsx` | Tab strip + nhúng từng phiếu + Provider header chung |
+| `src/features/report-forms/ReportFormsHub.tsx` | Sổ xuống chọn biểu mẫu + nhúng từng phiếu + Provider header chung |
 | `src/features/report-forms/ReportFormsSharedContext.tsx` | State chung: ngày, giờ, ca, chi nhánh, máy, nhân sự (multi-tick LSX), ghi chú |
 | `src/features/report-forms/ReportFormsSharedHeader.tsx` | Thanh điền trên tablist |
 | `src/features/report-forms/index.tsx` | Export hub + shared hooks |
@@ -25,7 +25,7 @@
 
 ## Tab (theo quyền menu)
 
-Báo cáo tồn · Nhận VT · Bảng trộn · Báo cáo sản lượng · Dừng máy · Nhật ký chạy máy · Trả kho NVL
+Báo cáo tồn · Nhận VT · Bảng trộn · Báo cáo sản lượng · Dừng máy · Nhật ký chạy máy (Ngày · Giờ · Ca chạy · Giờ dừng · Nhân sự · Ghi chú · Ảnh thông số) · Trả kho NVL
 
 **Đã bỏ khỏi hub:** Phiếu giao ca · Đối soát · Danh sách cân AI · Trạm cân AI · Cân kiểm kho (vào từ menu/route riêng nếu cần).
 

@@ -499,13 +499,16 @@ export function MachineShiftMaterialChecklistPrintSheet({
   date,
   shift,
   machineCode,
-  machineName
+  machineName,
+  preview = false
 }: {
   data: ProductionPlanRelatedReports;
   date: string;
   shift: string;
   machineCode?: string;
   machineName?: string;
+  /** Hiện trên màn hình (bên dưới báo cáo). Bản in portal giữ ẩn cho đến khi in. */
+  preview?: boolean;
 }) {
   const { lines, mixingSessions } = useMemo(() => buildMachineShiftMaterialChecklist(data), [data]);
   const runLogHours = useMemo(
@@ -558,7 +561,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
   const tronColWidth = Math.max(3.5, Math.min(5.5, 30 / (tronColCount + 1)));
 
   return (
-    <div className="bb-nvl-checklist-print-batch" aria-hidden>
+    <div className="bb-nvl-checklist-print-batch" aria-hidden={preview ? undefined : true}>
       <div className="bb-nvl-checklist-print-page">
         <div className="bb-nvl-checklist-sheet bb-nvl-checklist-sheet-landscape">
           <header className="bb-nvl-checklist-header">

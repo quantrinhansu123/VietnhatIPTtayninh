@@ -34,6 +34,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `phieu_can_dinh_ki` | `/tong-hop-ca` | [phieu_can_dinh_ki.md](./phieu_can_dinh_ki.md) |
 | `can_tu_dong` | `/can-tu-dong` | [can_tu_dong.md](./can_tu_dong.md) |
 | `can_tu_dong_tong_hop` | `/phan-tich-tu-dong` (tab Dữ liệu cân thực tế) | [can_tu_dong_tong_hop.md](./can_tu_dong_tong_hop.md) |
+| *(tính toán)* `kiem_soat_ton` | `/kiem-soat-ton` | [kiem_soat_ton.md](./kiem_soat_ton.md) |
 | `kiem_kho` | `/kiem-kho` | [kiem_kho.md](./kiem_kho.md) |
 | `kho_cho` | `/can-tu-dong` (nút Nhập kho) | [kho_cho.md](./kho_cho.md) |
 | *(hub)* `report-forms` | `/phieu-bao-cao` — **tab** nhập báo cáo | [phieu_bao_cao.md](./phieu_bao_cao.md) |
@@ -83,6 +84,7 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 | `bao_cao_san_luong_nvl_dinh_muc` | *(snapshot NVL ĐM theo phiếu)* | [bao_cao_san_luong_nvl_dinh_muc.md](./bao_cao_san_luong_nvl_dinh_muc.md) |
 | `bao_cao_may_nvl_ton` | `/bao-cao-may-nvl-ton` | [bao_cao_may_nvl_ton.md](./bao_cao_may_nvl_ton.md) |
 | `phieu_bao_dung_may` | `/phieu-bao-dung-may` | [phieu_bao_dung_may.md](./phieu_bao_dung_may.md) |
+| `nhat_ky_chay_may` | `/nhat-ky-chay-may` · hub `/phieu-bao-cao` | [nhat_ky_chay_may.md](./nhat_ky_chay_may.md) |
 | `phieu_giao_ca` | `/phieu-giao-ca` | [phieu_giao_ca.md](./phieu_giao_ca.md) |
 | *(tổng hợp)* | `/bang-dieu-khien`, `/phan-tich` | [control_board.md](./control_board.md) |
 | `bb_bao_cao_ly_do` | *(lý do in BB)* | [bb_bao_cao_ly_do.md](./bb_bao_cao_ly_do.md) |

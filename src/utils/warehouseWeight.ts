@@ -33,6 +33,26 @@ export function normalizeWarehouseCodeKey(code: string) {
     .toUpperCase();
 }
 
+/**
+ * Mã phiếu kho viết tắt → mã danh mục dùng trên báo cáo BB.
+ * ONGGIAY20 là lõi 20 cm (ONG-19.5CM, 0,053 kg/cái).
+ */
+const WAREHOUSE_MATERIAL_CODE_ALIASES: Record<string, string> = {
+  ONGGIAY20: 'ONG-19.5CM'
+};
+
+export function canonicalWarehouseMaterialCode(code: string) {
+  const key = normalizeWarehouseCodeKey(code);
+  if (!key) return '';
+  return WAREHOUSE_MATERIAL_CODE_ALIASES[key] || String(code || '').trim();
+}
+
+/** ĐVT Cuộn (băng keo, dây nilông). */
+export function isWarehouseRollUnit(unit: string) {
+  const normalized = normalizeWarehouseUnit(unit);
+  return normalized === 'cuon' || normalized.startsWith('cuon ');
+}
+
 export function isWarehouseKgUnit(unit: string) {
   const normalized = normalizeWarehouseUnit(unit);
   if (!normalized) return false;

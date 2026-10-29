@@ -6,9 +6,11 @@
 | **Tab** | `/phan-tich-tu-dong` · **Báo cáo thành phẩm đạt nhập kho** |
 | **SQL** | `supabase-bao-cao-thanh-pham-dat-nhap-kho.sql` |
 
-Snapshot riêng. 1 dòng = 1 SP trong lệnh. Ghi khi **Tính toán**.
+Snapshot riêng. 1 dòng = 1 SP. Ghi khi **Tính toán**.
 
-**In mục 2** · SL đạt: ưu tiên Báo cáo sản lượng / Cân AI (số cuộn). **Trọng lượng thực tế** = trọng lượng SP (`Σ Cân sản phẩm`), không lấy Nhựa TT. Không lấy `phieu_nhap`.
+**Nguồn UI:** lấy **hết SP** từ tab **Báo cáo sản lượng** (`productGroups`) — không giới hạn theo dòng LSX, không lấy Cân AI, không lấy `phieu_nhap`.
+
+**Hạch toán NVL** (khi mở lệnh): 2 bảng song song **NVL trộn** | **NVL khác** từ `nvlTotals` / dòng NVL Báo cáo sản lượng.
 
 ## API
 

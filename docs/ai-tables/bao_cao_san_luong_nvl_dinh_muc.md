@@ -14,8 +14,8 @@ Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** / **
 
 - Danh sách dòng luôn lấy đủ từ `san_pham.npl_phan_tram` của từng mã SP.
 - Khi chọn Ngày/Ca và bấm **Áp dụng**, UI phủ danh sách này lên cả snapshot bản tính cũ; không cần bấm **Tính toán** lại chỉ để thấy NVL mới.
-- NVL phụ (Cái/m²/…): `SL NVL = SL SP` (kể cả không có snapshot/BOM phiếu).
-- `TL NVL = SL NVL × khoi_luong_kg`; không có `khoi_luong_kg` → `SL NVL × tong_trong_luong` kho NVL.
+- NVL phụ ĐVT Cái: `SL NVL = số cái trên 1 thành phẩm × SL SP`. ĐVT Cuộn mà `khoi_luong_kg` nhỏ hơn Tổng kg/cuộn (băng keo): `khoi_luong_kg` là kg trên 1 thành phẩm, số cuộn làm tròn ở tiêu hao.
+- `TL NVL` Cái = `SL NVL × kg/cái`. Cuộn kg/thành phẩm = `SL SP × khoi_luong_kg`.
 - NVL `%` / kg: `SL NVL` / `TL NVL` lấy từ snapshot theo id phiếu; không snapshot thì 0.
 - **Tính toán không tự ghi** lại snapshot từ Thành phần SP; chỉ nút **Đồng bộ** trên danh sách phiếu mới ghi bảng này.
 

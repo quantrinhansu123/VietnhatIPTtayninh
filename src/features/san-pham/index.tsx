@@ -794,6 +794,42 @@ export function ProductViewModal({
   const [warehouseSlipRows, setWarehouseSlipRows] = useState<ProductWarehouseSlipRow[]>([]);
   const [isLoadingWarehouseSlips, setIsLoadingWarehouseSlips] = useState(false);
   const [warehouseSlipError, setWarehouseSlipError] = useState('');
+  /** Tổng hợp theo ngày cho tab Nhập kho / Xuất kho: số phiếu, số cuộn (dòng), tổng SL. */
+  const warehouseSlipDailySummary = useMemo(() => {
+    const byDay = new Map<string, { day: string; slips: Set<string>; rolls: number; total: number }>();
+    for (const row of warehouseSlipRows) {
+      const day = String(row.ngay_phieu || '').slice(0, 10) || '—';
+      const entry = byDay.get(day) || { day, slips: new Set<string>(), rolls: 0, total: 0 };
+      entry.slips.add(String(row.ma_phieu || row.id));
+      entry.rolls += 1;
+      entry.total += Number(row.so_luong) || 0;
+      byDay.set(day, entry);
+    }
+    const rows = [...byDay.values()]
+      .sort((a, b) => b.day.localeCompare(a.day))
+      .map(entry => ({ day: entry.day, slipCount: entry.slips.size, rolls: entry.rolls, total: entry.total }));
+    return {
+      rows,
+      slipCount: rows.reduce((sum, row) => sum + row.slipCount, 0),
+      rolls: rows.reduce((sum, row) => sum + row.rolls, 0),
+      total: rows.reduce((sum, row) => sum + row.total, 0)
+    };
+  }, [warehouseSlipRows]);
+  /** Ngày đang mở chi tiết phiếu (bấm số trong bảng tổng hợp theo ngày). */
+  const [expandedSlipDay, setExpandedSlipDay] = useState('');
+  useEffect(() => {
+    setExpandedSlipDay('');
+  }, [tab, warehouseSlipRows]);
+  const expandedDaySlips = useMemo(() => {
+    const lines = expandedSlipDay
+      ? warehouseSlipRows.filter(row => (String(row.ngay_phieu || '').slice(0, 10) || '—') === expandedSlipDay)
+      : [];
+    return {
+      lines,
+      slipCount: new Set(lines.map(line => String(line.ma_phieu || line.id))).size,
+      total: lines.reduce((sum, line) => sum + (Number(line.so_luong) || 0), 0)
+    };
+  }, [expandedSlipDay, warehouseSlipRows]);
   const [deletingWarehouseSlipId, setDeletingWarehouseSlipId] = useState('');
   const [stockFromKiem, setStockFromKiem] = useState<{
     opening: number | null;
@@ -2507,6 +2543,128 @@ export function ProductViewModal({
                 </p>
               ) : null}
 
+              <TableShell minWidthClassName="min-w-[520px]" maxHeightClassName="max-h-[32vh]">
+                <TableHead>
+                  <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap">Ngày</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-right">Tổng phiếu</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-right">Tổng cuộn</TableHeadCell>
+                  <TableHeadCell className="whitespace-nowrap text-right">Tổng SL</TableHeadCell>
+                </TableHead>
+                <TableBody>
+                  {warehouseSlipDailySummary.rows.map((row, index) => (
+                    <TableRow key={row.day}>
+                      <td className="whitespace-nowrap px-4 py-3 font-bold text-zinc-600">{index + 1}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-zinc-800">{row.day}</td>
+                      {[String(row.slipCount), String(row.rolls), formatNplDecimal(row.total)].map((value, cellIndex) => (
+                        <td key={cellIndex} className="whitespace-nowrap px-4 py-3 text-right font-mono font-bold text-zinc-900">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSlipDay(prev => (prev === row.day ? '' : row.day))}
+                            title="Xem chi tiết các phiếu trong ngày"
+                            className={`rounded px-1.5 underline decoration-dotted underline-offset-2 hover:bg-sky-50 hover:text-sky-800 ${
+                              expandedSlipDay === row.day ? 'bg-sky-100 text-sky-900' : ''
+                            }`}
+                          >
+                            {value}
+                          </button>
+                        </td>
+                      ))}
+                    </TableRow>
+                  ))}
+                  {warehouseSlipDailySummary.rows.length > 0 ? (
+                    <TableRow>
+                      <td colSpan={2} className="whitespace-nowrap px-4 py-3 text-right text-xs font-black uppercase text-zinc-600">
+                        Tổng
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-black text-zinc-950">
+                        {warehouseSlipDailySummary.slipCount}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-black text-zinc-950">
+                        {warehouseSlipDailySummary.rolls}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 text-right font-mono font-black text-zinc-950"
+                        title="Tồn cuối kỳ của sản phẩm"
+                      >
+                        {isLoadingStockFromKiem
+                          ? '…'
+                          : closingStockNum !== null
+                            ? formatStockCell(closingStockNum)
+                            : formatNplDecimal(warehouseSlipDailySummary.total)}
+                      </td>
+                    </TableRow>
+                  ) : null}
+                  {!isLoadingWarehouseSlips && warehouseSlipDailySummary.rows.length === 0 ? (
+                    <TableEmptyRow colSpan={5}>Chưa có dữ liệu theo ngày.</TableEmptyRow>
+                  ) : null}
+                </TableBody>
+              </TableShell>
+
+              {expandedSlipDay ? (
+                <div
+                  className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 p-3 backdrop-blur-sm"
+                  onClick={() => setExpandedSlipDay('')}
+                >
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+                    onClick={event => event.stopPropagation()}
+                  >
+                    <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-black text-zinc-950">
+                          {tab === 'xuat-kho' ? 'Chi tiết xuất kho' : 'Chi tiết nhập kho'} · ngày {expandedSlipDay}
+                        </p>
+                        <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                          Mã SP {product.code} · {expandedDaySlips.slipCount} phiếu · {expandedDaySlips.lines.length} mã · Tổng SL{' '}
+                          {formatNplDecimal(expandedDaySlips.total)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSlipDay('')}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                        aria-label="Đóng"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto p-3">
+                      <TableShell minWidthClassName="min-w-[860px]" maxHeightClassName="">
+                        <TableHead>
+                          <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Mã phiếu</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Mã SP dòng</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Kho</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Ca</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Máy</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap">Người lập</TableHeadCell>
+                          <TableHeadCell className="whitespace-nowrap text-right">SL</TableHeadCell>
+                        </TableHead>
+                        <TableBody>
+                          {expandedDaySlips.lines.map((line, index) => (
+                            <TableRow key={line.id || `${line.ma_phieu}-${index}`}>
+                              <td className="whitespace-nowrap px-4 py-2.5 font-bold text-zinc-600">{index + 1}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 font-mono font-black text-zinc-950">{line.ma_phieu || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-bold text-zinc-800">{line.ma_sp || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 text-zinc-700">{line.ten_kho || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 text-zinc-700">{line.ca || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 text-zinc-700">{line.may || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 text-zinc-700">{line.nguoi_lap || '—'}</td>
+                              <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono font-black text-zinc-950">
+                                {formatNplDecimal(line.so_luong)}
+                              </td>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </TableShell>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <TableShell minWidthClassName="min-w-[1100px]" maxHeightClassName="max-h-[58vh]">
                 <TableHead>
                   <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
@@ -3675,6 +3833,19 @@ export function ProductsPanel({
     });
   }, [displayProducts, includeUnassigned, isCatalogMode, normalizedSearch, searchWarehouseFilter, searchWarehouseProductCodes, selectedGroup, selectedNatures, warehouseFilter]);
 
+  // Phân trang danh sách (mặc định 50 SP/trang) — chỉ render một trang để tránh lag.
+  const [productPageSize, setProductPageSize] = useState(50);
+  const [productPage, setProductPage] = useState(1);
+  const productTotalPages = Math.max(1, Math.ceil(filteredProducts.length / productPageSize));
+  const currentProductPage = Math.min(productPage, productTotalPages);
+  const pagedProducts = useMemo(
+    () => filteredProducts.slice((currentProductPage - 1) * productPageSize, currentProductPage * productPageSize),
+    [filteredProducts, currentProductPage, productPageSize]
+  );
+  useEffect(() => {
+    setProductPage(1);
+  }, [normalizedSearch, warehouseFilter, selectedGroup, selectedNatures, productPageSize]);
+
   const totalProductQuantity = useMemo(
     () => displayProducts.reduce((sum, product) => sum + (parseProductSpecNumber(product.stock) ?? 0), 0),
     [displayProducts]
@@ -4351,7 +4522,7 @@ export function ProductsPanel({
           </TableHeadCell>
         </TableHead>
         <TableBody>
-          {filteredProducts.map(product => (
+          {pagedProducts.map(product => (
             <React.Fragment key={`${product.code}-${product.name}`}>
               <TableRow className="group">
                 <td className="px-3 py-3.5 text-center">
@@ -4451,7 +4622,16 @@ export function ProductsPanel({
           )}
         </TableBody>
       </TableShell>
-
+      {filteredProducts.length > 0 ? (
+        <TablePagination
+          totalRecords={filteredProducts.length}
+          currentPage={currentProductPage}
+          totalPages={productTotalPages}
+          pageSize={productPageSize}
+          onPageChange={setProductPage}
+          onPageSizeChange={setProductPageSize}
+        />
+      ) : null}
 
       {productFormMode && (
         <ProductEditModal

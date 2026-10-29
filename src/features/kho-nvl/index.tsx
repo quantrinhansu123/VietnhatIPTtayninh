@@ -45,6 +45,7 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
+  TablePagination,
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
@@ -1004,7 +1005,7 @@ export function MaterialsInventoryPanel({
     setMaterialsError('');
 
     try {
-      const res = await fetch('/api/kho-nvl');
+      const res = await fetch('/api/kho-nvl?no_movement=1');
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -1107,6 +1108,19 @@ export function MaterialsInventoryPanel({
       return matchesWarehouse && matchesSearch;
     });
   }, [asOfDate, datedMaterials, includeUnassigned, normalizedSearch, warehouseFilter]);
+
+  // Phân trang danh sách (mặc định 50 dòng/trang).
+  const [materialPageSize, setMaterialPageSize] = useState(50);
+  const [materialPage, setMaterialPage] = useState(1);
+  const materialTotalPages = Math.max(1, Math.ceil(filteredMaterials.length / materialPageSize));
+  const currentMaterialPage = Math.min(materialPage, materialTotalPages);
+  const pagedMaterials = useMemo(
+    () => filteredMaterials.slice((currentMaterialPage - 1) * materialPageSize, currentMaterialPage * materialPageSize),
+    [filteredMaterials, currentMaterialPage, materialPageSize]
+  );
+  useEffect(() => {
+    setMaterialPage(1);
+  }, [normalizedSearch, warehouseFilter, materialPageSize]);
 
   const selectableFilteredMaterials = useMemo(
     () => filteredMaterials.filter(material => !material.inventoryBalanceOnly && Boolean(material.id)),
@@ -1850,7 +1864,7 @@ export function MaterialsInventoryPanel({
           <TableHeadCell align="center">Thao tác</TableHeadCell>
         </TableHead>
         <TableBody>
-          {filteredMaterials.map(material => {
+          {pagedMaterials.map(material => {
             const canSelect = !material.inventoryBalanceOnly && Boolean(material.id);
             return (
             <React.Fragment key={material.id}>
@@ -1928,6 +1942,16 @@ export function MaterialsInventoryPanel({
           )}
         </TableBody>
       </TableShell>
+      {filteredMaterials.length > 0 ? (
+        <TablePagination
+          totalRecords={filteredMaterials.length}
+          currentPage={currentMaterialPage}
+          totalPages={materialTotalPages}
+          pageSize={materialPageSize}
+          onPageChange={setMaterialPage}
+          onPageSizeChange={setMaterialPageSize}
+        />
+      ) : null}
     </div>
   );
 }

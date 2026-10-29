@@ -1138,7 +1138,9 @@ export function ProductionOrdersPanel({
                               >
                                 {row.code || '-'}
                               </button>
-                              <p className="mt-0.5 text-xs font-semibold text-zinc-500">Ca: {row.shift || '-'}</p>
+                              <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                                Ca: {row.shift || '-'} · Máy: {row.machine || '-'}
+                              </p>
                             </div>
                             <StatusBadge label={row.status} color="amber" />
                           </div>
@@ -1146,7 +1148,7 @@ export function ProductionOrdersPanel({
                           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                             <div><dt className="font-bold text-zinc-400">Khách hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.customer || '-'}</dd></div>
                             <div><dt className="font-bold text-zinc-400">Đơn hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.orderRef || '-'}</dd></div>
-                            <div className="col-span-2"><dt className="font-bold text-zinc-400">Nhân sự · Máy</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{staffNames.length > 0 ? staffNames.join(', ') : '-'} · {row.machine || '-'}</dd></div>
+                            <div className="col-span-2"><dt className="font-bold text-zinc-400">Nhân sự</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{staffNames.length > 0 ? staffNames.join(', ') : '-'}</dd></div>
                           </dl>
 
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
@@ -1165,8 +1167,8 @@ export function ProductionOrdersPanel({
                 <table className="w-full min-w-[1134px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
                     <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} />
-                    <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 120 }} />
-                    <col style={{ width: 220 }} /><col style={{ width: 160 }} /><col style={{ width: 100 }} />
+                    <col style={{ width: 160 }} /><col style={{ width: 120 }} /><col style={{ width: 150 }} />
+                    <col style={{ width: 120 }} /><col style={{ width: 220 }} /><col style={{ width: 100 }} />
                   </colgroup>
                   <TableHead>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-center text-[10px]">
@@ -1185,11 +1187,11 @@ export function ProductionOrdersPanel({
                     </TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Mã lệnh</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Ca</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Máy</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
                     <TableHeadCell className="min-w-[160px] max-w-[240px] px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Nhân sự phụ trách</TableHeadCell>
-                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Máy</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]" align="center">Thao tác</TableHeadCell>
                   </TableHead>
                   <TableBody>
@@ -1217,6 +1219,7 @@ export function ProductionOrdersPanel({
                           </button>
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
+                        <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top">
                           <StatusBadge label={row.status} color="amber" />
                         </td>
@@ -1231,7 +1234,6 @@ export function ProductionOrdersPanel({
                             </div>
                           ) : '-'}
                         </td>
-                        <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="px-2 py-2 align-top text-center">
                           <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`} colorful>
                             <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row, () => setRows(prev => prev.map(r => (r.id === row.id ? { ...r, daIn: true } : r))))} disabled={isLoadingPrint}>

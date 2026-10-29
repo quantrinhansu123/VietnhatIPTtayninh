@@ -6378,6 +6378,10 @@ export function WarehouseHistoryPanel({
     loadMovements();
   }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate]);
 
+  useEffect(() => {
+    if (selectedType === 'xuat') setFilterMachine('');
+  }, [selectedType]);
+
   const isFinishedGoodsHistory = warehouseTab === 'san_pham';
   const hasActiveFilters =
     Boolean(fromDate) ||
@@ -6480,7 +6484,9 @@ export function WarehouseHistoryPanel({
         if (fromDate && day < fromDate) return false;
         if (toDate && day > toDate) return false;
         if (!movementMatchesShiftFilter(row.shift, filterShift)) return false;
+        // Xuất kho không lọc theo máy (lệnh xuất / phiếu xuất không gắn máy).
         if (
+          selectedType !== 'xuat' &&
           filterMachine &&
           !warehouseMachineMatchesFilter(filterMachine, String(row.machine || ''), historyMachineCatalog)
         ) {
@@ -6492,7 +6498,7 @@ export function WarehouseHistoryPanel({
           .toLowerCase()
           .includes(normalizedSearch);
       });
-  }, [movements, fromDate, toDate, filterShift, filterMachine, normalizedSearch, historyMachineCatalog, productNameByKey]);
+  }, [movements, fromDate, toDate, filterShift, filterMachine, selectedType, normalizedSearch, historyMachineCatalog, productNameByKey]);
 
   useEffect(() => {
     setSelectedSlipCodes(new Set());
@@ -6602,7 +6608,7 @@ export function WarehouseHistoryPanel({
 
   const historyColumnCount = isFinishedGoodsHistory ? 9 : 11;
 
-  // Tổng từng loại phiếu (theo kho + ngày, không phụ thuộc ô tìm kiếm/ca/máy) để hiện trên 2 tab Nhập / Xuất.
+  // Tổng tab đang mở: theo bộ lọc hiện tại (ngày / ca / máy / tìm kiếm). Tab kia vẫn theo kho + ngày.
   type SlipTypeTotals = { slips: number; rolls: number };
   const summarizeSlipTotals = (rows: WarehouseMovementRow[]): SlipTypeTotals => {
     const slips = new Set<string>();
@@ -6614,7 +6620,10 @@ export function WarehouseHistoryPanel({
     }
     return { slips: slips.size, rolls };
   };
-  const currentTypeTotals = useMemo(() => summarizeSlipTotals(movements), [movements, warehouseTab]);
+  const currentTypeTotals = useMemo(
+    () => summarizeSlipTotals(filteredMovements),
+    [filteredMovements, warehouseTab]
+  );
   const [otherTypeTotals, setOtherTypeTotals] = useState<SlipTypeTotals | null>(null);
   useEffect(() => {
     if (standaloneSlipCode || !canView) return;
@@ -7314,7 +7323,11 @@ export function WarehouseHistoryPanel({
                     className={`ml-auto flex shrink-0 flex-col items-end rounded-lg px-2.5 py-1 leading-tight ring-1 ${
                       isActive ? 'bg-white text-[#ef1b2d] ring-red-200' : 'bg-zinc-50 text-zinc-700 ring-zinc-200'
                     }`}
-                    title={`${tab.label}: số phiếu · tổng cuộn (theo kho và ngày đang chọn)`}
+                    title={
+                      isActive
+                        ? `${tab.label}: số phiếu · tổng cuộn (theo bộ lọc đang chọn)`
+                        : `${tab.label}: số phiếu · tổng cuộn (theo kho và ngày đang chọn)`
+                    }
                   >
                     <span className="font-mono text-lg font-black tabular-nums">{totals ? rollsText : '…'}</span>
                     <span className="text-[10px] font-bold uppercase tracking-wide opacity-80">
@@ -7377,18 +7390,20 @@ export function WarehouseHistoryPanel({
               dropdownWidth="min-w-0 max-w-none"
             />
           </div>
-          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
-            <FilterCombobox
-              label="Máy"
-              options={machineFilterOptions}
-              value={filterMachine || 'all'}
-              onChange={value => setFilterMachine(value === 'all' ? '' : value)}
-              searchPlaceholder="Tìm máy..."
-              className="w-full"
-              matchButtonWidth
-              dropdownWidth="min-w-0 max-w-none"
-            />
-          </div>
+          {selectedType !== 'xuat' ? (
+            <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+              <FilterCombobox
+                label="Máy"
+                options={machineFilterOptions}
+                value={filterMachine || 'all'}
+                onChange={value => setFilterMachine(value === 'all' ? '' : value)}
+                searchPlaceholder="Tìm máy..."
+                className="w-full"
+                matchButtonWidth
+                dropdownWidth="min-w-0 max-w-none"
+              />
+            </div>
+          ) : null}
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
@@ -7509,7 +7524,7 @@ export function WarehouseHistoryPanel({
       {isFinishedGoodsHistory && !isLoading ? (
         <ReconciliationPanel
           mode={selectedType}
-          movements={movements}
+          movements={filteredMovements}
           fromDate={fromDate}
           toDate={toDate}
         />

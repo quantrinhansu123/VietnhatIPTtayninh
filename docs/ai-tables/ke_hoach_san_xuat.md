@@ -11,4 +11,8 @@
 
 **Modal tạo kế hoạch:** tick chọn lệnh SX (không tự lấy tất cả); chỉ hiện lệnh đúng **Ngày kế hoạch** khớp cột `lenh_sx.ngay` (không dùng `ngay_bat_dau`) và chưa nằm trong KH đã lưu (`GET /api/ke-hoach-sx?usedLenhSx=1`).
 
-**Kế hoạch CV:** chọn Loại = **Kế hoạch CV** → section `PhanCongCvPanel` (`phan_cong_cv`, `GET/PUT /api/phan-cong-cv` theo Ngày + Ca).
+**UI chung:** `/ke-hoach-san-xuat` hiện **cùng lúc** Kế hoạch SX (trên) + Kế hoạch CV (dưới), lọc ngày dùng chung.
+
+**Chọn ca lẻ:** modal lập KH SX cho phép nhiều dòng **Ngày · Ca** (vd. 12C2 hôm nay + 12C1 ngày mai); lệnh SX hiện theo khớp từng ô.
+
+**Kế hoạch CV:** section `PhanCongCvPanel` (`phan_cong_cv`, `GET/PUT /api/phan-cong-cv` theo Ngày + Ca).

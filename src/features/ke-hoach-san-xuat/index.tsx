@@ -9,6 +9,7 @@ import { RowActionsMenu } from '../../components/shared/table';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from '../../components/layout/constants';
 import { pickText, fileToDataUrl, uploadImage, formatCell } from '../_shared/recordHelpers';
 import { formatDateDdMmYyyy, parseDateToIso } from '../../utils/dateFormat';
+import { nextProductionOrderCode } from '../../utils/productionOrderCode';
 import { DateInput } from '../../components/shared/DateInput';
 import { SearchableSelect, SimpleSelect } from '../../components/shared/SearchableSelect';
 import { SearchableProductCodeField } from '../../components/shared/SearchableProductCodeField';
@@ -308,22 +309,43 @@ export function isProductionOrderUsedInSavedPlan(
   return Boolean(orderCode) && usedOrderCodes.has(orderCode);
 }
 
-/** Lệnh SX còn có thể chọn khi lập kế hoạch mới (đúng ngày lệnh SX, chưa nằm trong KH đã lưu). */
+/** Một ô (ngày + ca) để chọn lệnh SX lẻ — ví dụ 12C2 hôm nay và 12C1 ngày mai. */
+export type ProductionPlanDateShiftSlot = { date: string; shift: string };
+
+function normalizeProductionPlanDateShiftSlots(
+  planDateOrSlots: string | ProductionPlanDateShiftSlot[]
+): ProductionPlanDateShiftSlot[] {
+  const raw = Array.isArray(planDateOrSlots)
+    ? planDateOrSlots
+    : [{ date: planDateOrSlots, shift: '' }];
+  return raw
+    .map(slot => ({
+      date: parseProductionOrderFilterDate(slot.date) || '',
+      shift: String(slot.shift || '').trim()
+    }))
+    .filter(slot => slot.date);
+}
+
+/** Lệnh SX còn có thể chọn khi lập kế hoạch mới (khớp ngày·ca đã chọn, chưa nằm trong KH đã lưu). */
 export function getAvailableProductionPlanOrders(
   productionOrders: ProductionOrderRow[],
-  planDate: string,
+  planDateOrSlots: string | ProductionPlanDateShiftSlot[],
   usedLenhSxIds: Set<string>,
   usedOrderCodes: Set<string>,
   alwaysIncludeIds: Set<string> = new Set()
 ): ProductionOrderRow[] {
-  // Chuẩn hóa về YYYY-MM-DD để khớp cột Ngày lệnh SX (không dùng ngày tạo).
-  const targetDate = parseProductionOrderFilterDate(planDate);
+  const slots = normalizeProductionPlanDateShiftSlots(planDateOrSlots);
   return productionOrders
     .filter(isActiveProductionPlanOrder)
     .filter(row => {
-      if (!targetDate) return true;
+      if (slots.length === 0) return true;
       const orderDate = parseProductionOrderFilterDate(row.startDate);
-      return Boolean(orderDate) && orderDate === targetDate;
+      if (!orderDate) return false;
+      return slots.some(slot => {
+        if (slot.date !== orderDate) return false;
+        if (!slot.shift) return true;
+        return shiftNamesMatch(slot.shift, String(row.shift || ''));
+      });
     })
     .filter(row => alwaysIncludeIds.has(row.id) || !isProductionOrderUsedInSavedPlan(row, usedLenhSxIds, usedOrderCodes))
     .sort(compareProductionOrderPriority);
@@ -1883,13 +1905,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [editingPlan, setEditingPlan] = useState<ProductionPlanHistorySummary | null>(null);
   const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
   const [deletingPlanId, setDeletingPlanId] = useState('');
-  const [pageKind, setPageKind] = useState<'ke_hoach' | 'bao_cao_cv'>('ke_hoach');
   const [phanCongAddTick, setPhanCongAddTick] = useState(0);
-
-  const pageKindOptions = [
-    { value: 'ke_hoach', label: 'Kế hoạch sản xuất' },
-    { value: 'bao_cao_cv', label: 'Kế hoạch CV' }
-  ] as const;
 
   const loadPlans = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
     setIsLoading(true);
@@ -2178,97 +2194,93 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
       <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-end gap-2">
-            {canCreate ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (pageKind === 'bao_cao_cv') {
-                    setPhanCongAddTick(tick => tick + 1);
-                    return;
-                  }
-                  void openCreatePlan();
-                }}
-                disabled={isLoadingCreate}
-                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-              >
-                {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Thêm mới
-              </button>
-            ) : null}
-            <label className="min-w-0 flex-1 space-y-1 sm:max-w-[16rem]">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loại</span>
-              <select
-                value={pageKind}
-                onChange={e => setPageKind(e.target.value === 'bao_cao_cv' ? 'bao_cao_cv' : 'ke_hoach')}
-                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-              >
-                {pageKindOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm font-black text-zinc-950 sm:text-base">Kế hoạch SX &amp; Kế hoạch CV</h2>
+              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+                Cùng một màn hình — lọc ngày dùng chung, xem cả lệnh SX và phân công CV.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canCreate ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void openCreatePlan()}
+                    disabled={isLoadingCreate}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+                  >
+                    {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Thêm KH SX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhanCongAddTick(tick => tick + 1)}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 transition hover:bg-zinc-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm dòng CV
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
 
-          {pageKind === 'ke_hoach' ? (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:items-end">
-              <label className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
-                <DateInput
-                  value={filterDate}
-                  onChange={next => {
-                    setFilterDate(next);
-                    setFromDate('');
-                    setToDate('');
-                  }}
-                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
-                <DateInput
-                  value={fromDate}
-                  onChange={next => {
-                    setFromDate(next);
-                    setFilterDate('');
-                  }}
-                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
-                <DateInput
-                  value={toDate}
-                  onChange={next => {
-                    setToDate(next);
-                    setFilterDate('');
-                  }}
-                  className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
-                />
-              </label>
-              <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
-                <button
-                  type="button"
-                  onClick={applyFilters}
-                  disabled={isLoading}
-                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 lg:flex-none"
-                >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  Lọc
-                </button>
-                <button
-                  type="button"
-                  onClick={resetToToday}
-                  disabled={isLoading}
-                  className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 lg:flex-none"
-                >
-                  Hôm nay
-                </button>
-              </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:items-end">
+            <label className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Theo ngày</span>
+              <DateInput
+                value={filterDate}
+                onChange={next => {
+                  setFilterDate(next);
+                  setFromDate('');
+                  setToDate('');
+                }}
+                className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
+              <DateInput
+                value={fromDate}
+                onChange={next => {
+                  setFromDate(next);
+                  setFilterDate('');
+                }}
+                className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đến ngày</span>
+              <DateInput
+                value={toDate}
+                onChange={next => {
+                  setToDate(next);
+                  setFilterDate('');
+                }}
+                className="h-10 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
+              />
+            </label>
+            <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
+              <button
+                type="button"
+                onClick={applyFilters}
+                disabled={isLoading}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60 lg:flex-none"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Lọc
+              </button>
+              <button
+                type="button"
+                onClick={resetToToday}
+                disabled={isLoading}
+                className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 lg:flex-none"
+              >
+                Hôm nay
+              </button>
             </div>
-          ) : null}
+          </div>
         </div>
       </section>
 
@@ -2278,11 +2290,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         </section>
       )}
 
-      {pageKind === 'ke_hoach' ? (
+      <div className="space-y-4">
+      <div>
+        <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch sản xuất</h3>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
         <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-            <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch</h3>
+            <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch SX</h3>
           </div>
           <div className="max-h-[70vh] overflow-auto">
             {isLoading ? (
@@ -2461,13 +2475,17 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           )}
         </section>
       </div>
-      ) : (
-      <PhanCongCvPanel
-        defaultDate={filterDate || selectedPlan?.planDate || todayDateInputValue()}
-        canEdit={canCreate || canEdit}
-        addRowTick={phanCongAddTick}
-      />
-      )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch CV</h3>
+        <PhanCongCvPanel
+          defaultDate={filterDate || selectedPlan?.planDate || todayDateInputValue()}
+          canEdit={canCreate || canEdit}
+          addRowTick={phanCongAddTick}
+        />
+      </div>
+      </div>
 
       {historyPrintLines.length > 0 ? createPortal(
         <div className="production-plan-history-print-root">
@@ -2550,7 +2568,24 @@ export function ProductionPlanModal({
   const [accountingMaterialsByLine, setAccountingMaterialsByLine] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
   const [accountingInventoryMaterials, setAccountingInventoryMaterials] = useState<MaterialRow[]>([]);
   const [planDate, setPlanDate] = useState(todayDateInputValue());
+  const [dateShiftSlots, setDateShiftSlots] = useState<Array<ProductionPlanDateShiftSlot & { key: string }>>(() => [
+    { key: 'slot-0', date: todayDateInputValue(), shift: '' }
+  ]);
   const [planHeaderNote, setPlanHeaderNote] = useState('');
+
+  const makeDateShiftSlot = (date = todayDateInputValue(), shift = ''): ProductionPlanDateShiftSlot & { key: string } => ({
+    key: `slot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    date,
+    shift
+  });
+
+  const syncPlanDateFromSlots = (slots: Array<ProductionPlanDateShiftSlot & { key: string }>) => {
+    const dates = slots
+      .map(slot => parseProductionOrderFilterDate(slot.date) || '')
+      .filter(Boolean)
+      .sort();
+    if (dates[0]) setPlanDate(dates[0]);
+  };
   const [pendingStaffAssignmentPrint, setPendingStaffAssignmentPrint] = useState(false);
   const [isLoadingRelatedPrint, setIsLoadingRelatedPrint] = useState(false);
   const [relatedPrintData, setRelatedPrintData] = useState<ProductionPlanRelatedReports | null>(null);
@@ -2591,11 +2626,11 @@ export function ProductionPlanModal({
         ? []
         : getAvailableProductionPlanOrders(
             effectiveProductionOrders,
-            planDate,
+            dateShiftSlots.map(({ date, shift }) => ({ date, shift })),
             usedLenhSxIds,
             usedOrderCodes
           ),
-    [isEditingExistingPlan, effectiveProductionOrders, planDate, usedLenhSxIds, usedOrderCodes]
+    [isEditingExistingPlan, effectiveProductionOrders, dateShiftSlots, usedLenhSxIds, usedOrderCodes]
   );
 
   const allAvailableOrdersSelected =
@@ -2661,9 +2696,30 @@ export function ProductionPlanModal({
       parseProductionOrderFilterDate(initialPlanDate || '') ||
       resolveDefaultProductionPlanDate(seedOrders.length > 0 ? seedOrders : productionOrders, todayDateInputValue());
     setPlanDate(nextDate);
+    const seedShifts = [
+      ...new Set(
+        (seedOrders.length > 0 ? seedOrders : [])
+          .map(order => String(order.shift || '').trim())
+          .filter(Boolean)
+      )
+    ];
+    setDateShiftSlots(
+      seedShifts.length > 0
+        ? seedShifts.map(shift => ({ key: `slot-${shift}-${nextDate}`, date: nextDate, shift }))
+        : [{ key: `slot-init-${nextDate}`, date: nextDate, shift: '' }]
+    );
     if (initialLines?.length) {
       setPlanLines(initialLines);
       setSelectedOrderIds(new Set(initialLines.map(line => line.id).filter(Boolean)));
+      const lineSlots = new Map<string, ProductionPlanDateShiftSlot & { key: string }>();
+      for (const line of initialLines) {
+        const source = findProductionOrderForPlanLine(line, productionOrders);
+        const date = parseProductionOrderFilterDate(source?.startDate || nextDate) || nextDate;
+        const shift = String(line.shift || source?.shift || '').trim();
+        const key = `${date}|${shift}`;
+        if (!lineSlots.has(key)) lineSlots.set(key, { key: `slot-${key}`, date, shift });
+      }
+      if (lineSlots.size > 0) setDateShiftSlots([...lineSlots.values()]);
     } else {
       setPlanLines([]);
       setSelectedOrderIds(new Set(seedIdSet));
@@ -2705,21 +2761,21 @@ export function ProductionPlanModal({
       .catch(() => setRelatedShiftOptions([]));
   }, [open, productionOrders, machines, initialLines, initialPlanDate, initialNote, seedOrderIds]);
 
-  /** Đổi ngày kế hoạch → bỏ chọn lệnh không thuộc ngày mới (không áp khi sửa kế hoạch đã lưu). */
+  /** Đổi ngày·ca → bỏ chọn lệnh không còn khớp (không áp khi sửa kế hoạch đã lưu). */
   useEffect(() => {
     if (!open || isEditingExistingPlan) return;
     setSelectedOrderIds(prev => {
       const availableIdSet = new Set(
         getAvailableProductionPlanOrders(
           effectiveProductionOrders,
-          planDate,
+          dateShiftSlots.map(({ date, shift }) => ({ date, shift })),
           usedLenhSxIds,
           usedOrderCodes
         ).map(order => order.id)
       );
       return new Set([...prev].filter(id => availableIdSet.has(id)));
     });
-  }, [open, isEditingExistingPlan, planDate, effectiveProductionOrders, usedLenhSxIds, usedOrderCodes]);
+  }, [open, isEditingExistingPlan, dateShiftSlots, effectiveProductionOrders, usedLenhSxIds, usedOrderCodes]);
 
   useEffect(() => {
     if (!open || isEditingExistingPlan) return;
@@ -3380,21 +3436,100 @@ export function ProductionPlanModal({
               </p>
             )}
 
-            <div className="mb-4 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2">
-              <label className="space-y-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày kế hoạch</span>
-                <DateInput
-                  value={planDate}
-                  onChange={setPlanDate}
-                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-                <span className="block text-[11px] font-semibold text-zinc-500">
-                  {isEditingExistingPlan
-                    ? 'Bảng dưới chỉ hiện lệnh SX có ngày bắt đầu trùng ngày này.'
-                    : 'Chỉ hiện lệnh SX đúng ngày và chưa nằm trong kế hoạch đã lưu. Tick để chọn lệnh đưa vào kế hoạch.'}
-                </span>
-              </label>
-              <label className="space-y-1.5">
+            <div className="mb-4 space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Ngày · Ca đưa vào kế hoạch</p>
+                  <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                    Chọn lẻ từng ca theo ngày — ví dụ 12C2 hôm nay và 12C1 ngày mai. Để trống Ca = mọi ca trong ngày đó.
+                  </p>
+                </div>
+                {!isEditingExistingPlan ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateShiftSlots(prev => {
+                        const last = prev[prev.length - 1];
+                        const nextDate = last?.date || planDate || todayDateInputValue();
+                        const next = [...prev, makeDateShiftSlot(nextDate, '')];
+                        syncPlanDateFromSlots(next);
+                        return next;
+                      });
+                    }}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Thêm ngày·ca
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                {dateShiftSlots.map((slot, index) => (
+                  <div
+                    key={slot.key}
+                    className="grid grid-cols-1 gap-2 rounded-lg border border-zinc-200 bg-white p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                  >
+                    <label className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày {index + 1}</span>
+                      <DateInput
+                        value={slot.date}
+                        onChange={next => {
+                          setDateShiftSlots(prev => {
+                            const updated = prev.map(item =>
+                              item.key === slot.key ? { ...item, date: next } : item
+                            );
+                            syncPlanDateFromSlots(updated);
+                            return updated;
+                          });
+                        }}
+                        disabled={isEditingExistingPlan}
+                        className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:bg-zinc-100"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ca</span>
+                      <select
+                        value={slot.shift}
+                        onChange={event => {
+                          const shift = event.target.value;
+                          setDateShiftSlots(prev =>
+                            prev.map(item => (item.key === slot.key ? { ...item, shift } : item))
+                          );
+                        }}
+                        disabled={isEditingExistingPlan}
+                        className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 disabled:bg-zinc-100"
+                      >
+                        <option value="">Tất cả ca</option>
+                        {relatedShiftOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label || opt.value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {!isEditingExistingPlan && dateShiftSlots.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDateShiftSlots(prev => {
+                            const next = prev.filter(item => item.key !== slot.key);
+                            syncPlanDateFromSlots(next);
+                            return next;
+                          });
+                        }}
+                        className="inline-flex h-10 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+                      >
+                        Xóa
+                      </button>
+                    ) : (
+                      <span className="hidden sm:block" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <label className="block space-y-1.5">
                 <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Ghi chú kế hoạch</span>
                 <input
                   type="text"
@@ -3404,6 +3539,12 @@ export function ProductionPlanModal({
                   className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
               </label>
+              <p className="text-[11px] font-semibold text-zinc-500">
+                Ngày lưu snapshot: <span className="font-mono font-black text-zinc-800">{planDate || '—'}</span>
+                {isEditingExistingPlan
+                  ? ' · Đang sửa kế hoạch đã lưu.'
+                  : ' · Chỉ hiện lệnh SX khớp các ngày·ca trên và chưa nằm trong kế hoạch đã lưu.'}
+              </p>
             </div>
 
             <section className="mb-4 rounded-xl border border-zinc-200 bg-white p-3">
@@ -5511,7 +5652,12 @@ export function AddProductionOrderModal({
             }));
           }
         }
-        if (productionRes.ok) setProductionOrders(normalizeProductionOrders(productionData));
+        if (productionRes.ok) {
+          const loadedProductionOrders = normalizeProductionOrders(productionData);
+          setProductionOrders(loadedProductionOrders);
+          const nextCode = nextProductionOrderCode(loadedProductionOrders.map(order => order.code));
+          setForm(prev => (prev.code.trim() ? prev : { ...prev, code: nextCode }));
+        }
         if (machineRes.ok) setMachines(normalizeMachines(machineData));
         if (settingRes.ok) setSettings(mapProductionOrderSettings(settingData));
         if (staffRes.ok) setStaffBranches(normalizeHrBranches(staffData));
@@ -6096,15 +6242,14 @@ export function AddProductionOrderModal({
     setIsSaving(true);
     setFormError('');
 
-    const multipleShifts = selectedShifts.length > 1;
-
     try {
-      for (const shift of selectedShifts) {
+      for (let index = 0; index < selectedShifts.length; index += 1) {
+        const shift = selectedShifts[index];
         const shiftForm: ProductionOrderFormState = {
           ...form,
           shift,
-          // Nhiều ca: để trống mã để tự sinh, tránh trùng mã lệnh
-          code: multipleShifts ? '' : form.code
+          // Ca sau để trống để server nhảy số tiếp, không trùng mã ca đầu.
+          code: index === 0 ? form.code : ''
         };
         const res = await fetch('/api/lenh-sx', {
           method: 'POST',
@@ -6189,9 +6334,9 @@ export function AddProductionOrderModal({
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Mã lệnh</span>
             <input
               value={form.code}
-              onChange={e => setForm(prev => ({ ...prev, code: e.target.value }))}
+              onChange={e => setForm(prev => ({ ...prev, code: e.target.value.toUpperCase().replace(/[,\s-]+/g, '') }))}
               className={orderFieldClass}
-              placeholder="Để trống = tự sinh"
+              placeholder="LSX001"
             />
           </label>
           <label className="space-y-1.5">

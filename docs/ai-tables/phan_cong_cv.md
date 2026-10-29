@@ -1,7 +1,7 @@
 # `phan_cong_cv`
 
 | **Bảng** | `phan_cong_cv` |
-| **Tab** | `/ke-hoach-san-xuat` (Loại: **Kế hoạch CV**) |
+| **Tab** | `/ke-hoach-san-xuat` (cùng màn với Kế hoạch SX) |
 | **SQL** | `supabase-phan-cong-cv.sql` |
 
 **API:** `server.ts` — `GET/PUT/DELETE /api/phan-cong-cv` (sau `/api/phieu-giao-ca`)

@@ -12,6 +12,7 @@ import { machineSlipCodeToken } from './src/utils/warehouseSlipCode';
 import { isCloudinaryUploadUrl } from './src/utils/cloudinaryUrl';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
+import { nextProductionOrderCode } from './src/utils/productionOrderCode';
 
 /** Cổng khi chạy thêm một kênh. Đọc trước dotenv để file .env không ghi đè. */
 const ALT_PORT = process.env.ALT_PORT;
@@ -8136,9 +8137,18 @@ function pickRowField(row: Record<string, unknown>, keys: string[], fallback = '
   return fallback;
 }
 
-function makeProductionOrderCode(orderCode: string, suffix = '') {
-  const base = (orderCode || 'DH').replace(/\s+/g, '-').toUpperCase();
-  return `LSX-${base}${suffix}`.slice(0, 80);
+async function listProductionOrderCodes() {
+  if (!supabase) return [] as string[];
+  const { data, error } = await supabase.from(SUPABASE_PRODUCTION_ORDERS_TABLE).select('ma_lenh_sx');
+  if (error) {
+    console.error('Supabase lenh_sx next code query error:', error);
+    return [] as string[];
+  }
+  return (data || []).map(row => String((row as { ma_lenh_sx?: string }).ma_lenh_sx || ''));
+}
+
+async function generateNextProductionOrderCodeFromDb() {
+  return nextProductionOrderCode(await listProductionOrderCodes());
 }
 
 function generateNextStaffCode(existingCodes: Iterable<string>) {
@@ -8325,9 +8335,7 @@ function parseProductionOrderBody(
     ...new Set(products.map(item => String(item.ma_don_hang ?? '').trim()).filter(Boolean))
   ];
   const orderRef = pickRowField(source, ['ma_don_hang', 'orderRef', 'order_code'], '') || productOrderRefs.join(', ');
-  const manualSeed = `MAN-${Date.now().toString(36).slice(-6).toUpperCase()}`;
-  const codeInput = pickRowField(source, ['ma_lenh_sx', 'code'], '');
-  const code = (codeInput || makeProductionOrderCode(orderRef || manualSeed)).toUpperCase();
+  const code = pickRowField(source, ['ma_lenh_sx', 'code'], '').toUpperCase();
   const name = pickRowField(source, ['ten_lenh_sx', 'name'], '');
   const startDateTime = pickRowField(source, ['ngay_gio_bat_dau', 'startDateTime'], '');
   const endDateTime = pickRowField(source, ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'], '');
@@ -8382,10 +8390,11 @@ function parseProductionOrderBody(
 }
 
 async function ensureUniqueProductionOrderCode(initialCode: string) {
-  if (!supabase) return initialCode;
+  const trimmed = String(initialCode || '').trim().toUpperCase();
+  if (!supabase) return trimmed || nextProductionOrderCode([]);
 
-  let code = initialCode;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  let code = trimmed || (await generateNextProductionOrderCodeFromDb());
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     const { data: duplicate } = await supabase
       .from(SUPABASE_PRODUCTION_ORDERS_TABLE)
       .select('id')
@@ -8393,10 +8402,8 @@ async function ensureUniqueProductionOrderCode(initialCode: string) {
       .maybeSingle();
 
     if (!duplicate) return code;
-    code = makeProductionOrderCode(
-      initialCode.replace(/^LSX-/, ''),
-      `-${Date.now().toString(36).slice(-4)}`
-    );
+    const taken = await listProductionOrderCodes();
+    code = nextProductionOrderCode([...taken, code]);
   }
 
   return code;
@@ -11164,7 +11171,7 @@ export function createApp() {
         return res.status(400).json({ error: 'Sản phẩm trong đơn thiếu mã SP hoặc tên SP.' });
       }
 
-      let code = makeProductionOrderCode(orderCode);
+      let code = await generateNextProductionOrderCodeFromDb();
       code = await ensureUniqueProductionOrderCode(code);
 
       const record = buildProductionOrderRecordFromOrder(orderRow, code, firstProduct);
@@ -11225,6 +11232,9 @@ export function createApp() {
       }
 
       const record = { ...parsed.record };
+      if (!String(record.ma_lenh_sx || '').trim()) {
+        record.ma_lenh_sx = await generateNextProductionOrderCodeFromDb();
+      }
       record.ma_lenh_sx = await ensureUniqueProductionOrderCode(String(record.ma_lenh_sx));
 
       const orderRef = String(record.ma_don_hang ?? '').trim();
@@ -11607,6 +11617,10 @@ export function createApp() {
         .maybeSingle();
       if (existingOrder?.da_in) {
         return res.status(409).json({ error: 'Lệnh sản xuất đã in, không thể sửa nữa.' });
+      }
+
+      if (!String(parsed.record.ma_lenh_sx || '').trim()) {
+        delete parsed.record.ma_lenh_sx;
       }
 
       const { data: updated, error: updateError } = await updateProductionOrderRecord(id, parsed.record);

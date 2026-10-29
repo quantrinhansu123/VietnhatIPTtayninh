@@ -19,11 +19,16 @@ import {
 import { formatNumber } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { waitForPrintImagesReady } from '../utils/printReady';
-import { shiftNamesMatch } from '../utils/shiftSettings';
+import {
+  normalizeShiftSettings,
+  shiftNamesMatch,
+  type ShiftSetting
+} from '../utils/shiftSettings';
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 import { uploadImage } from '../features/_shared/recordHelpers';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import waitScreenBgUrl from '../assets/kaizen-app-bg.png';
+import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
 
 const fieldClass =
   'h-8 w-full min-w-0 rounded-md border border-zinc-200 bg-white px-2 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-1 focus:ring-red-500/10';
@@ -62,7 +67,6 @@ function MachineRunLogWaitScreen({ label }: { label: string }) {
 
 type MachineOption = { id: string; code: string; name: string };
 type StaffOption = { id: string; name: string; shift: string };
-type SettingOption = { name: string; code: string; loaiCaiDat: string };
 
 type SavedRunLogLine = {
   stt: number;
@@ -74,6 +78,28 @@ type SavedRunLogLine = {
   downtimeMinutes: number;
   reason: string;
   recordedBy: string;
+};
+
+export type MachineRunLogIncident = {
+  stt: number;
+  name: string;
+  occurredAt: string;
+  resolvedAt: string;
+  downtimeMinutes: number;
+};
+
+type IncidentDraft = {
+  key: string;
+  name: string;
+  customName: string;
+  occurredAt: string;
+  resolvedAt: string;
+};
+
+type ParameterImageDraft = {
+  key: string;
+  url: string;
+  preview: string;
 };
 
 export type MachineRunLog = {
@@ -90,24 +116,33 @@ export type MachineRunLog = {
   startTime: string;
   endTime: string;
   parameterImageUrl: string;
+  parameterImageUrls: string[];
   plannedRunHours: number;
   totalRollsProduced: number;
   totalDowntimeMinutes: number;
   actualRunMinutes: number;
   timeEfficiencyPct: number | null;
   note: string;
+  incidents: MachineRunLogIncident[];
   lines: SavedRunLogLine[];
   createdAt: string;
 };
 
+const DEFAULT_INCIDENT_OPTIONS = [
+  'Hỏng máy',
+  'Mất điện',
+  'Hết NVL',
+  'Chờ QC / kiểm tra',
+  'Setup / thay khuôn',
+  'Vệ sinh máy',
+  'Chờ lệnh / chờ NVL',
+  'Khác'
+] as const;
+
+const INCIDENT_OTHER = 'Khác';
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function nowTimeHm() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(11, 16);
 }
 
 function shiftMatches(orderShift: string, selectedShift: string) {
@@ -123,6 +158,66 @@ function minutesBetween(start: string, end: string): number | null {
   if (endMinutes < startMinutes) endMinutes += 24 * 60;
   const diff = endMinutes - startMinutes;
   return Number.isFinite(diff) && diff >= 0 ? diff : null;
+}
+
+function emptyIncidentDraft(): IncidentDraft {
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    customName: '',
+    occurredAt: '',
+    resolvedAt: ''
+  };
+}
+
+function resolveIncidentName(draft: IncidentDraft) {
+  if (draft.name === INCIDENT_OTHER) return draft.customName.trim();
+  return draft.name.trim() || draft.customName.trim();
+}
+
+function findShiftClockRange(settings: ShiftSetting[], shiftName: string) {
+  const target = String(shiftName || '').trim();
+  if (!target) return null;
+  const match = settings.find(
+    setting =>
+      shiftNamesMatch(setting.name, target) ||
+      shiftNamesMatch(setting.code, target) ||
+      setting.name === target ||
+      setting.code === target
+  );
+  if (!match?.startTime || !match?.endTime) return null;
+  return { start: match.startTime, end: match.endTime };
+}
+
+function parseImageUrlList(...values: unknown[]): string[] {
+  const urls: string[] = [];
+  const push = (value: unknown) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach(item => {
+        if (typeof item === 'string' && item.trim()) urls.push(item.trim());
+        else if (item && typeof item === 'object') {
+          const row = item as Record<string, unknown>;
+          const url = String(row.url ?? row.anh ?? '').trim();
+          if (url) urls.push(url);
+        }
+      });
+      return;
+    }
+    const text = String(value).trim();
+    if (!text) return;
+    if (text.startsWith('[')) {
+      try {
+        push(JSON.parse(text));
+      } catch {
+        urls.push(text);
+      }
+      return;
+    }
+    urls.push(text);
+  };
+  values.forEach(push);
+  return [...new Set(urls)];
 }
 
 function normalizeMachines(data: unknown): MachineOption[] {
@@ -141,25 +236,6 @@ function normalizeMachines(data: unknown): MachineOption[] {
       return { id: String(row.id ?? code), code, name };
     })
     .filter((item): item is MachineOption => Boolean(item));
-}
-
-function normalizeSettings(data: unknown): SettingOption[] {
-  const rows = Array.isArray(data)
-    ? data
-    : Array.isArray((data as { settings?: unknown }).settings)
-      ? (data as { settings: unknown[] }).settings
-      : [];
-  return rows
-    .map((item): SettingOption | null => {
-      if (!item || typeof item !== 'object') return null;
-      const row = item as Record<string, unknown>;
-      const name = String(row.ten_cai_dat ?? row.hang_muc ?? row.name ?? '').trim();
-      const code = String(row.ma_cai_dat ?? row.ma ?? row.code ?? '').trim();
-      const loaiCaiDat = String(row.loai_cai_dat ?? row.loai ?? '').trim();
-      if (!name && !code) return null;
-      return { name: name || code, code: code || name, loaiCaiDat };
-    })
-    .filter((item): item is SettingOption => Boolean(item));
 }
 
 function normalizeProductionStaff(data: unknown): StaffOption[] {
@@ -218,28 +294,69 @@ export function normalizeMachineRunLogs(data: unknown): MachineRunLog[] {
       if (!item || typeof item !== 'object') return null;
       const record = item as Record<string, unknown>;
       const rawLines = Array.isArray(record.chi_tiet) ? record.chi_tiet : [];
-      const lines = rawLines
-        .map((line, index): SavedRunLogLine | null => {
+      const linesFromChiTiet: SavedRunLogLine[] = [];
+      const incidentsFromChiTiet: MachineRunLogIncident[] = [];
+
+      rawLines.forEach((line, index) => {
+        if (!line || typeof line !== 'object') return;
+        const detail = line as Record<string, unknown>;
+        const numOrNull = (value: unknown) => {
+          if (value === null || value === undefined || value === '') return null;
+          const num = Number(value);
+          return Number.isFinite(num) ? num : null;
+        };
+        const loai = String(detail.loai ?? '').trim().toLowerCase();
+        const tenSuCo = String(detail.ten_su_co ?? '').trim();
+        if (loai === 'su_co' || tenSuCo || detail.thoi_gian_xay_ra) {
+          const occurredAt = String(detail.thoi_gian_xay_ra ?? detail.thoi_diem_ghi ?? '').trim();
+          const resolvedAt = String(detail.thoi_gian_khac_phuc ?? '').trim();
+          incidentsFromChiTiet.push({
+            stt: Number(detail.stt ?? index + 1) || index + 1,
+            name: tenSuCo || String(detail.ly_do ?? '').trim(),
+            occurredAt,
+            resolvedAt,
+            downtimeMinutes:
+              Number(detail.thoi_gian_dung_phut ?? 0) ||
+              minutesBetween(occurredAt, resolvedAt) ||
+              0
+          });
+          return;
+        }
+        linesFromChiTiet.push({
+          stt: Number(detail.stt ?? index + 1) || index + 1,
+          logTime: String(detail.thoi_diem_ghi ?? '').trim(),
+          temperature: numOrNull(detail.nhiet_do_gia_nhiet),
+          actualSpeed: numOrNull(detail.toc_do_thuc),
+          standardSpeed: numOrNull(detail.toc_do_dinh_muc),
+          rollsProduced: Number(detail.so_cuon_ra ?? 0) || 0,
+          downtimeMinutes: Number(detail.thoi_gian_dung_phut ?? 0) || 0,
+          reason: String(detail.ly_do ?? '').trim(),
+          recordedBy: String(detail.nguoi_ghi ?? '').trim()
+        });
+      });
+
+      const rawIncidents = Array.isArray(record.su_co) ? record.su_co : [];
+      const incidentsFromColumn = rawIncidents
+        .map((line, index): MachineRunLogIncident | null => {
           if (!line || typeof line !== 'object') return null;
           const detail = line as Record<string, unknown>;
-          const numOrNull = (value: unknown) => {
-            if (value === null || value === undefined || value === '') return null;
-            const num = Number(value);
-            return Number.isFinite(num) ? num : null;
-          };
+          const occurredAt = String(detail.thoi_gian_xay_ra ?? '').trim();
+          const resolvedAt = String(detail.thoi_gian_khac_phuc ?? '').trim();
+          const name = String(detail.ten_su_co ?? detail.ly_do ?? '').trim();
+          if (!name && !occurredAt && !resolvedAt) return null;
           return {
             stt: Number(detail.stt ?? index + 1) || index + 1,
-            logTime: String(detail.thoi_diem_ghi ?? '').trim(),
-            temperature: numOrNull(detail.nhiet_do_gia_nhiet),
-            actualSpeed: numOrNull(detail.toc_do_thuc),
-            standardSpeed: numOrNull(detail.toc_do_dinh_muc),
-            rollsProduced: Number(detail.so_cuon_ra ?? 0) || 0,
-            downtimeMinutes: Number(detail.thoi_gian_dung_phut ?? 0) || 0,
-            reason: String(detail.ly_do ?? '').trim(),
-            recordedBy: String(detail.nguoi_ghi ?? '').trim()
+            name,
+            occurredAt,
+            resolvedAt,
+            downtimeMinutes:
+              Number(detail.thoi_gian_dung_phut ?? 0) || minutesBetween(occurredAt, resolvedAt) || 0
           };
         })
-        .filter((line): line is SavedRunLogLine => Boolean(line));
+        .filter((line): line is MachineRunLogIncident => Boolean(line));
+
+      const incidents = incidentsFromColumn.length > 0 ? incidentsFromColumn : incidentsFromChiTiet;
+      const parameterImageUrls = parseImageUrlList(record.anh_urls, record.anh_thong_so);
 
       const numOrNull = (value: unknown) => {
         if (value === null || value === undefined || value === '') return null;
@@ -260,14 +377,16 @@ export function normalizeMachineRunLogs(data: unknown): MachineRunLog[] {
         assistantOperator: String(record.tho_phu ?? '').trim(),
         startTime: String(record.gio ?? '').trim(),
         endTime: String(record.gio_dung ?? '').trim(),
-        parameterImageUrl: String(record.anh_thong_so ?? '').trim(),
+        parameterImageUrl: parameterImageUrls[0] || '',
+        parameterImageUrls,
         plannedRunHours: Number(record.gio_chay_kh ?? 0) || 0,
         totalRollsProduced: Number(record.tong_cuon_ra ?? 0) || 0,
         totalDowntimeMinutes: Number(record.tong_thoi_gian_dung_phut ?? 0) || 0,
         actualRunMinutes: Number(record.thoi_gian_chay_thuc_te_phut ?? 0) || 0,
         timeEfficiencyPct: numOrNull(record.hieu_suat_thoi_gian_pct),
         note: String(record.ghi_chu ?? '').trim(),
-        lines,
+        incidents,
+        lines: linesFromChiTiet,
         createdAt: String(record.created_at ?? '').trim()
       };
     })
@@ -317,8 +436,10 @@ function logToPrintSlip(log: MachineRunLog): MachineRunLogPrintSlip {
     startTime: log.startTime,
     endTime: log.endTime,
     parameterImageUrl: log.parameterImageUrl,
+    parameterImageUrls: log.parameterImageUrls,
     note: log.note,
     actualRunMinutes: log.actualRunMinutes,
+    incidents: log.incidents,
     lines: log.lines.map(line => ({
       logTime: line.logTime,
       temperature: line.temperature,
@@ -344,20 +465,21 @@ export default function MachineRunLogPanel({
   const hideLocalHeader = Boolean(hubShared);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const panelRootRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoShiftRef = useRef('');
 
   const [machines, setMachines] = useState<MachineOption[]>([]);
-  const [settings, setSettings] = useState<SettingOption[]>([]);
+  const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [logs, setLogs] = useState<MachineRunLog[]>([]);
   const [date, setDate] = useState(todayIso());
-  const [startTime, setStartTime] = useState(nowTimeHm());
+  const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [shift, setShift] = useState('');
   const [machineRef, setMachineRef] = useState('');
   const [responsibleStaff, setResponsibleStaff] = useState('');
   const [note, setNote] = useState('');
-  const [parameterImageUrl, setParameterImageUrl] = useState('');
-  const [parameterPreview, setParameterPreview] = useState('');
+  const [incidents, setIncidents] = useState<IncidentDraft[]>([]);
+  const [parameterImages, setParameterImages] = useState<ParameterImageDraft[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -373,18 +495,27 @@ export default function MachineRunLogPanel({
   }, [machineRef, machines]);
 
   const shiftOptions = useMemo(() => {
-    const fromSettings = settings
+    const fromSettings = shiftSettings
       .filter(
         setting =>
           setting.loaiCaiDat === 'Thời gian' ||
           setting.loaiCaiDat === 'Sản xuất' ||
+          setting.loaiCaiDat === 'Ca máy' ||
           /ca/i.test(setting.name) ||
           /ca/i.test(setting.code)
       )
       .map(setting => setting.name || setting.code)
       .filter((name, index, arr) => name && arr.indexOf(name) === index);
     return fromSettings;
-  }, [settings]);
+  }, [shiftSettings]);
+
+  const incidentOptions = useMemo(() => {
+    const fromSettings = shiftSettings
+      .filter(setting => /sự cố|su co|dừng|dung may|ly do/i.test(`${setting.loaiCaiDat} ${setting.name}`))
+      .map(setting => setting.name || setting.code)
+      .filter(Boolean);
+    return [...new Set([...fromSettings, ...DEFAULT_INCIDENT_OPTIONS])];
+  }, [shiftSettings]);
 
   const filteredStaffOptions = useMemo(() => {
     const hubNames = hubShared?.staffOptions || [];
@@ -398,6 +529,17 @@ export default function MachineRunLogPanel({
 
   const actualRunMinutes = useMemo(() => minutesBetween(startTime, endTime), [startTime, endTime]);
 
+  const applyShiftClockTimes = (shiftName: string, force = false) => {
+    const range = findShiftClockRange(shiftSettings, shiftName);
+    if (!range) return false;
+    if (!force && lastAutoShiftRef.current === shiftName) return true;
+    lastAutoShiftRef.current = shiftName;
+    setStartTime(range.start);
+    setEndTime(range.end);
+    if (hubShared) hubShared.setGio(range.start);
+    return true;
+  };
+
   useEffect(() => {
     if (!hubShared) return;
     setDate(hubShared.ngay);
@@ -405,17 +547,24 @@ export default function MachineRunLogPanel({
     setMachineRef(hubShared.selectedMachine?.code || hubShared.machine?.code || '');
     setResponsibleStaff(hubShared.staffNames[0] || '');
     setNote(hubShared.ghiChu);
-    if (hubShared.gio) setStartTime(hubShared.gio);
   }, [
     hubShared,
     hubShared?.ngay,
     hubShared?.ca,
-    hubShared?.gio,
     hubShared?.selectedMachine,
     hubShared?.machine,
     hubShared?.staffNames,
     hubShared?.ghiChu
   ]);
+
+  useEffect(() => {
+    if (!shift) return;
+    const applied = applyShiftClockTimes(shift);
+    if (!applied && hubShared?.gio && !startTime) {
+      setStartTime(hubShared.gio);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift, shiftSettings]);
 
   const runLogGroups = useMemo(() => groupRunLogsByDateAndShift(logs), [logs]);
 
@@ -449,7 +598,7 @@ export default function MachineRunLogPanel({
         const [machineRes, settingRes, staffRes, logRes] = responses;
         const [machineData, settingData, staffData, logData] = payloads;
         if (machineRes.ok) setMachines(normalizeMachines(machineData));
-        if (settingRes.ok) setSettings(normalizeSettings(settingData));
+        if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
         if (staffRes.ok) setStaffOptions(normalizeProductionStaff(staffData));
         if (showSavedList && logRes?.ok) setLogs(normalizeMachineRunLogs(logData));
       } finally {
@@ -488,8 +637,9 @@ export default function MachineRunLogPanel({
     return () => window.removeEventListener('afterprint', handleAfterPrint);
   }, []);
 
-  const buildCurrentPrintSlip = (slipCode = '') =>
-    buildMachineRunLogPrintSlip({
+  const buildCurrentPrintSlip = (slipCode = '') => {
+    const imageUrls = parameterImages.map(image => image.url || image.preview).filter(Boolean);
+    return buildMachineRunLogPrintSlip({
       slipCode,
       date,
       shift,
@@ -498,11 +648,26 @@ export default function MachineRunLogPanel({
       mainOperator: responsibleStaff,
       startTime,
       endTime,
-      parameterImageUrl: parameterImageUrl || parameterPreview,
+      parameterImageUrl: imageUrls[0] || '',
+      parameterImageUrls: imageUrls,
       note,
       actualRunMinutes: actualRunMinutes ?? 0,
+      incidents: incidents
+        .map((incident, index) => {
+          const name = resolveIncidentName(incident);
+          const downtimeMinutes = minutesBetween(incident.occurredAt, incident.resolvedAt) ?? 0;
+          return {
+            stt: index + 1,
+            name,
+            occurredAt: incident.occurredAt,
+            resolvedAt: incident.resolvedAt,
+            downtimeMinutes
+          };
+        })
+        .filter(item => item.name || item.occurredAt || item.resolvedAt),
       lines: []
     });
+  };
 
   const handlePrint = (slip: MachineRunLogPrintSlip) => {
     setError('');
@@ -510,22 +675,33 @@ export default function MachineRunLogPanel({
     setPendingPrint(true);
   };
 
-  const handlePickImage = async (file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
+  const handlePickImages = async (files: FileList | File[] | null) => {
+    const list = files ? Array.from(files) : [];
+    if (list.length === 0) return;
+    const imageFiles = list.filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
       setError(showSaveFailure('Clipboard / file không phải ảnh.'));
       return;
     }
     setError('');
     setIsUploadingImage(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setParameterPreview(dataUrl);
-      const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may');
-      if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');
-      setParameterImageUrl(uploaded.imageUrl);
-      setParameterPreview(uploaded.imageUrl);
-      showAppToast('Đã gắn ảnh thông số.');
+      for (const file of imageFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may');
+        if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');
+        setParameterImages(prev => [
+          ...prev,
+          {
+            key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            url: uploaded.imageUrl,
+            preview: uploaded.imageUrl
+          }
+        ]);
+      }
+      showAppToast(
+        imageFiles.length > 1 ? `Đã gắn ${imageFiles.length} ảnh thông số.` : 'Đã gắn ảnh thông số.'
+      );
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể tải ảnh thông số.'));
     } finally {
@@ -534,24 +710,25 @@ export default function MachineRunLogPanel({
     }
   };
 
-  const imageFromClipboard = (clipboardData: DataTransfer | null): File | null => {
-    if (!clipboardData) return null;
+  const imageFilesFromClipboard = (clipboardData: DataTransfer | null): File[] => {
+    if (!clipboardData) return [];
+    const files: File[] = [];
     const items = Array.from(clipboardData.items || []);
     for (const item of items) {
       if (item.kind === 'file' && item.type.startsWith('image/')) {
         const file = item.getAsFile();
-        if (file) return file;
+        if (file) files.push(file);
       }
     }
-    const files = Array.from(clipboardData.files || []);
-    return files.find(file => file.type.startsWith('image/')) || null;
+    if (files.length > 0) return files;
+    return Array.from(clipboardData.files || []).filter(file => file.type.startsWith('image/'));
   };
 
   const handlePasteImage = (event: React.ClipboardEvent | ClipboardEvent) => {
-    const file = imageFromClipboard(event.clipboardData);
-    if (!file) return;
+    const files = imageFilesFromClipboard(event.clipboardData);
+    if (files.length === 0) return;
     event.preventDefault();
-    void handlePickImage(file);
+    void handlePickImages(files);
   };
 
   useEffect(() => {
@@ -561,19 +738,26 @@ export default function MachineRunLogPanel({
       if (!root || root.closest('[hidden]') || root.classList.contains('hidden')) return;
       const style = window.getComputedStyle(root);
       if (style.display === 'none' || style.visibility === 'hidden') return;
-      const file = imageFromClipboard(event.clipboardData);
-      if (!file) return;
+      const files = imageFilesFromClipboard(event.clipboardData);
+      if (files.length === 0) return;
       event.preventDefault();
-      void handlePickImage(file);
+      void handlePickImages(files);
     };
     window.addEventListener('paste', onWindowPaste);
     return () => window.removeEventListener('paste', onWindowPaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const clearImage = () => {
-    setParameterImageUrl('');
-    setParameterPreview('');
+  const removeImage = (key: string) => {
+    setParameterImages(prev => prev.filter(image => image.key !== key));
+  };
+
+  const updateIncident = (key: string, patch: Partial<IncidentDraft>) => {
+    setIncidents(prev => prev.map(item => (item.key === key ? { ...item, ...patch } : item)));
+  };
+
+  const removeIncident = (key: string) => {
+    setIncidents(prev => prev.filter(item => item.key !== key));
   };
 
   const saveLog = async () => {
@@ -582,14 +766,47 @@ export default function MachineRunLogPanel({
 
     if (!date || !shift || !machineRef.trim() || !startTime || !endTime || !responsibleStaff.trim()) {
       setError(
-        showSaveFailure('Vui lòng điền Ngày, Giờ, Ca chạy, Giờ dừng, Máy và Nhân sự phụ trách.')
+        showSaveFailure(
+          'Vui lòng điền Ngày, Giờ bắt đầu, Giờ kết thúc, Ca chạy, Máy và Nhân sự phụ trách.'
+        )
       );
       return;
     }
     if (actualRunMinutes === null) {
-      setError(showSaveFailure('Giờ / Giờ dừng không hợp lệ.'));
+      setError(showSaveFailure('Giờ bắt đầu / Giờ kết thúc không hợp lệ.'));
       return;
     }
+
+    const suCoPayload = [];
+    for (const incident of incidents) {
+      const name = resolveIncidentName(incident);
+      if (!name && !incident.occurredAt && !incident.resolvedAt) continue;
+      if (!name) {
+        setError(showSaveFailure('Vui lòng chọn tên sự cố.'));
+        return;
+      }
+      if (!incident.occurredAt) {
+        setError(showSaveFailure('Vui lòng nhập thời gian xảy ra sự cố.'));
+        return;
+      }
+      if (!incident.resolvedAt) {
+        setError(showSaveFailure('Vui lòng nhập thời gian khắc phục sự cố.'));
+        return;
+      }
+      const downtimeMinutes = minutesBetween(incident.occurredAt, incident.resolvedAt);
+      if (downtimeMinutes === null) {
+        setError(showSaveFailure('Thời gian xảy ra / khắc phục sự cố không hợp lệ.'));
+        return;
+      }
+      suCoPayload.push({
+        ten_su_co: name,
+        thoi_gian_xay_ra: incident.occurredAt,
+        thoi_gian_khac_phuc: incident.resolvedAt,
+        thoi_gian_dung_phut: downtimeMinutes
+      });
+    }
+
+    const imageUrls = parameterImages.map(image => image.url).filter(Boolean);
 
     setIsSaving(true);
     try {
@@ -606,8 +823,14 @@ export default function MachineRunLogPanel({
           tho_chinh: responsibleStaff.trim(),
           nhan_su: responsibleStaff.trim(),
           ghi_chu: note.trim(),
-          anh_thong_so: parameterImageUrl.trim() || null,
-          chi_tiet: []
+          anh_thong_so: imageUrls[0] || null,
+          anh_urls: imageUrls,
+          su_co: suCoPayload,
+          chi_tiet: suCoPayload.map((item, index) => ({
+            stt: index + 1,
+            loai: 'su_co',
+            ...item
+          }))
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -617,9 +840,10 @@ export default function MachineRunLogPanel({
       const okMsg = slipCode ? `Đã lưu nhật ký ${slipCode}.` : 'Đã lưu nhật ký chạy máy.';
       setMessage(okMsg);
       showAppToast(okMsg);
-      setEndTime('');
+      setIncidents([]);
       setNote(hubShared ? hubShared.ghiChu : '');
-      clearImage();
+      setParameterImages([]);
+      applyShiftClockTimes(shift, true);
       if (showSavedList) await loadLogs();
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể lưu nhật ký.'));
@@ -640,7 +864,6 @@ export default function MachineRunLogPanel({
     setMessage('Đã xóa nhật ký.');
   };
 
-  const imageSrc = parameterPreview || parameterImageUrl;
   const waitLabel = isSaving
     ? 'Đang lưu biểu mẫu…'
     : isUploadingImage
@@ -675,7 +898,7 @@ export default function MachineRunLogPanel({
             <div className="min-w-0">
               <h1 className="text-sm font-black text-zinc-900 sm:text-base">Nhật ký chạy máy</h1>
               <p className="text-[10px] font-semibold text-zinc-500">
-                Ngày · Giờ · Ca chạy · Giờ dừng · Nhân sự · Ghi chú · Ảnh thông số
+                Giờ bắt đầu/kết thúc theo ca · Sự cố · Nhiều ảnh
               </p>
             </div>
           </div>
@@ -724,7 +947,12 @@ export default function MachineRunLogPanel({
                     Ca chạy *
                     <select
                       value={shift}
-                      onChange={e => setShift(e.target.value)}
+                      onChange={e => {
+                        const next = e.target.value;
+                        setShift(next);
+                        lastAutoShiftRef.current = '';
+                        applyShiftClockTimes(next, true);
+                      }}
                       className={`${fieldClass} mt-1`}
                       disabled={isLoading}
                     >
@@ -772,7 +1000,7 @@ export default function MachineRunLogPanel({
               ) : null}
 
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Giờ *
+                Giờ bắt đầu *
                 <input
                   type="time"
                   value={startTime}
@@ -784,7 +1012,7 @@ export default function MachineRunLogPanel({
                 />
               </label>
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500">
-                Giờ dừng *
+                Giờ kết thúc *
                 <input
                   type="time"
                   value={endTime}
@@ -792,6 +1020,9 @@ export default function MachineRunLogPanel({
                   className={`${fieldClass} mt-1`}
                 />
               </label>
+              <p className="col-span-2 text-[11px] font-semibold normal-case tracking-normal text-zinc-500">
+                Giờ bắt đầu / kết thúc tự điền theo ca (Cài đặt), vẫn chỉnh tay được.
+              </p>
 
               {!hideLocalHeader ? (
                 <label className="col-span-2 text-xs font-black uppercase tracking-wider text-zinc-500">
@@ -805,6 +1036,79 @@ export default function MachineRunLogPanel({
                 </label>
               ) : null}
 
+              <div className="col-span-2">
+                <RepeatableLinesBlock
+                  title="Sự cố"
+                  addLabel="Thêm sự cố"
+                  onAdd={() => setIncidents(prev => [...prev, emptyIncidentDraft()])}
+                  columns={[
+                    { key: 'name', label: 'Sự cố', className: 'min-w-0 flex-[1.3]', required: true },
+                    { key: 'occurredAt', label: 'TG xảy ra', className: 'w-[7.5rem]', required: true },
+                    { key: 'resolvedAt', label: 'TG khắc phục', className: 'w-[7.5rem]', required: true },
+                    { key: 'minutes', label: 'Phút', className: 'w-16' }
+                  ]}
+                >
+                  {incidents.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-zinc-200 px-3 py-3 text-[11px] font-semibold text-zinc-400">
+                      Chưa có sự cố — bấm «Thêm sự cố» nếu máy dừng trong ca.
+                    </p>
+                  ) : (
+                    incidents.map(incident => {
+                      const minutes = minutesBetween(incident.occurredAt, incident.resolvedAt);
+                      return (
+                        <RepeatableLineRow key={incident.key} className="flex flex-wrap items-end gap-2">
+                          <div className="min-w-[10rem] flex-[1.3]">
+                            <select
+                              value={incident.name}
+                              onChange={e => updateIncident(incident.key, { name: e.target.value })}
+                              className={fieldClass}
+                            >
+                              <option value="">Chọn sự cố</option>
+                              {incidentOptions.map(option => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                            {incident.name === INCIDENT_OTHER ? (
+                              <input
+                                value={incident.customName}
+                                onChange={e => updateIncident(incident.key, { customName: e.target.value })}
+                                className={`${fieldClass} mt-1`}
+                                placeholder="Nhập tên sự cố"
+                              />
+                            ) : null}
+                          </div>
+                          <input
+                            type="time"
+                            value={incident.occurredAt}
+                            onChange={e => updateIncident(incident.key, { occurredAt: e.target.value })}
+                            className={`${fieldClass} w-[7.5rem]`}
+                          />
+                          <input
+                            type="time"
+                            value={incident.resolvedAt}
+                            onChange={e => updateIncident(incident.key, { resolvedAt: e.target.value })}
+                            className={`${fieldClass} w-[7.5rem]`}
+                          />
+                          <div className="flex h-8 w-16 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-xs font-black tabular-nums text-zinc-700">
+                            {minutes !== null ? formatNumber(minutes, 0) : '—'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeIncident(incident.key)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 hover:text-rose-600"
+                            title="Xóa sự cố"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </RepeatableLineRow>
+                      );
+                    })
+                  )}
+                </RepeatableLinesBlock>
+              </div>
+
               <div className="col-span-2 text-xs font-black uppercase tracking-wider text-zinc-500">
                 Ảnh thông số
                 <div
@@ -816,11 +1120,10 @@ export default function MachineRunLogPanel({
                   }}
                   onDrop={event => {
                     event.preventDefault();
-                    const file =
-                      Array.from(event.dataTransfer.files || []).find(item =>
-                        item.type.startsWith('image/')
-                      ) || null;
-                    void handlePickImage(file);
+                    const files = Array.from(event.dataTransfer.files || []).filter(item =>
+                      item.type.startsWith('image/')
+                    );
+                    void handlePickImages(files);
                   }}
                   className="mt-1 flex min-h-12 flex-wrap items-center gap-3 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/80 px-2.5 py-2 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-100"
                   title="Ctrl+V để dán ảnh, hoặc kéo thả ảnh vào đây"
@@ -830,8 +1133,9 @@ export default function MachineRunLogPanel({
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    multiple
                     className="hidden"
-                    onChange={e => void handlePickImage(e.target.files?.[0] || null)}
+                    onChange={e => void handlePickImages(e.target.files)}
                   />
                   <button
                     type="button"
@@ -841,32 +1145,40 @@ export default function MachineRunLogPanel({
                   >
                     {isUploadingImage ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : imageSrc ? (
+                    ) : parameterImages.length > 0 ? (
                       <Camera className="h-4 w-4" />
                     ) : (
                       <ImagePlus className="h-4 w-4" />
                     )}
-                    {isUploadingImage ? 'Đang tải...' : imageSrc ? 'Đổi ảnh' : 'Chụp / chọn ảnh'}
+                    {isUploadingImage
+                      ? 'Đang tải...'
+                      : parameterImages.length > 0
+                        ? 'Thêm ảnh'
+                        : 'Chụp / chọn ảnh'}
                   </button>
-                  {imageSrc ? (
-                    <div className="relative">
-                      <img
-                        src={imageSrc}
-                        alt="Ảnh thông số"
-                        className="h-16 w-24 rounded-lg border border-zinc-200 object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={clearImage}
-                        className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-rose-600"
-                        title="Xóa ảnh"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                  {parameterImages.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {parameterImages.map(image => (
+                        <div key={image.key} className="relative">
+                          <img
+                            src={image.preview || image.url}
+                            alt="Ảnh thông số"
+                            className="h-16 w-24 rounded-lg border border-zinc-200 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(image.key)}
+                            className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-rose-600"
+                            title="Xóa ảnh"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <p className="text-[11px] font-semibold normal-case tracking-normal text-zinc-400">
-                      Tuỳ chọn — chụp, chọn, kéo thả hoặc Ctrl+V dán ảnh.
+                      Có thể chụp / chọn nhiều ảnh — kéo thả hoặc Ctrl+V.
                     </p>
                   )}
                 </div>
@@ -875,7 +1187,7 @@ export default function MachineRunLogPanel({
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-semibold leading-5 text-zinc-500">
-                Giờ chạy thực tế = Giờ → Giờ dừng
+                Giờ chạy thực tế = Giờ bắt đầu → Giờ kết thúc
                 {actualRunMinutes !== null ? ` (${formatNumber(actualRunMinutes, 0)} phút).` : '.'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -966,17 +1278,28 @@ export default function MachineRunLogPanel({
                                           {log.startTime || '—'} → {log.endTime || '—'} ·{' '}
                                           {formatNumber(log.actualRunMinutes, 0)} phút
                                         </p>
+                                        {log.incidents.length > 0 ? (
+                                          <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                                            {log.incidents.length} sự cố · dừng{' '}
+                                            {formatNumber(log.totalDowntimeMinutes, 0)} phút
+                                          </p>
+                                        ) : null}
                                         {log.note ? (
                                           <p className="mt-1 truncate text-[11px] font-semibold text-zinc-500">
                                             {log.note}
                                           </p>
                                         ) : null}
-                                        {log.parameterImageUrl ? (
-                                          <img
-                                            src={log.parameterImageUrl}
-                                            alt="Ảnh thông số"
-                                            className="mt-2 h-14 w-20 rounded-md border border-zinc-200 object-cover"
-                                          />
+                                        {log.parameterImageUrls.length > 0 ? (
+                                          <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {log.parameterImageUrls.map(url => (
+                                              <img
+                                                key={url}
+                                                src={url}
+                                                alt="Ảnh thông số"
+                                                className="h-14 w-20 rounded-md border border-zinc-200 object-cover"
+                                              />
+                                            ))}
+                                          </div>
                                         ) : null}
                                       </div>
                                       <div className="flex shrink-0 items-center gap-1">

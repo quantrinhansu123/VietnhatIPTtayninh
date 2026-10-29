@@ -14,6 +14,14 @@ export type MachineRunLogPrintLine = {
   recordedBy: string;
 };
 
+export type MachineRunLogPrintIncident = {
+  stt: number;
+  name: string;
+  occurredAt: string;
+  resolvedAt: string;
+  downtimeMinutes: number;
+};
+
 export type MachineRunLogPrintSlip = {
   slipCode: string;
   date: string;
@@ -23,8 +31,10 @@ export type MachineRunLogPrintSlip = {
   startTime: string;
   endTime: string;
   parameterImageUrl: string;
+  parameterImageUrls: string[];
   note: string;
   actualRunMinutes: number;
+  incidents: MachineRunLogPrintIncident[];
   /** Phiếu cũ — chỉ hiện khi còn dòng chi tiết. */
   lines: MachineRunLogPrintLine[];
 };
@@ -56,6 +66,13 @@ function toNumberOrNull(value: string | number | null | undefined): number | nul
 }
 
 export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip }) {
+  const imageUrls =
+    slip.parameterImageUrls.length > 0
+      ? slip.parameterImageUrls
+      : slip.parameterImageUrl
+        ? [slip.parameterImageUrl]
+        : [];
+
   return (
     <div className="production-order-print-sheet">
       <div className="production-order-print-doc">
@@ -86,9 +103,9 @@ export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip
               <td>{slip.shift || '-'}</td>
             </tr>
             <tr>
-              <th>Giờ</th>
+              <th>Giờ bắt đầu</th>
               <td>{formatPrintTime(slip.startTime)}</td>
-              <th>Giờ dừng</th>
+              <th>Giờ kết thúc</th>
               <td>{formatPrintTime(slip.endTime)}</td>
             </tr>
             <tr>
@@ -110,10 +127,44 @@ export function MachineRunLogPrintSheet({ slip }: { slip: MachineRunLogPrintSlip
           </p>
         ) : null}
 
-        {slip.parameterImageUrl ? (
+        {slip.incidents.length > 0 ? (
+          <>
+            <h2 className="production-order-print-section-title">Sự cố</h2>
+            <table className="production-order-print-grid-table machine-run-log-print-table">
+              <thead>
+                <tr>
+                  <th>STT</th>
+                  <th>Sự cố</th>
+                  <th>TG xảy ra</th>
+                  <th>TG khắc phục</th>
+                  <th>Phút</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slip.incidents.map(incident => (
+                  <tr key={incident.stt}>
+                    <td className="production-order-print-center">{incident.stt}</td>
+                    <td>{incident.name || '-'}</td>
+                    <td className="production-order-print-center">{formatPrintTime(incident.occurredAt)}</td>
+                    <td className="production-order-print-center">{formatPrintTime(incident.resolvedAt)}</td>
+                    <td className="production-order-print-center">
+                      {formatNumber(incident.downtimeMinutes, 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : null}
+
+        {imageUrls.length > 0 ? (
           <div className="machine-run-log-print-photo">
             <p className="production-order-print-section-title">Ảnh thông số</p>
-            <img src={slip.parameterImageUrl} alt="Ảnh thông số" />
+            <div className="flex flex-wrap gap-2">
+              {imageUrls.map(url => (
+                <img key={url} src={url} alt="Ảnh thông số" />
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -192,8 +243,16 @@ export function buildMachineRunLogPrintSlip(input: {
   startTime: string;
   endTime: string;
   parameterImageUrl?: string;
+  parameterImageUrls?: string[];
   note: string;
   actualRunMinutes?: number;
+  incidents?: Array<{
+    stt?: number;
+    name: string;
+    occurredAt: string;
+    resolvedAt: string;
+    downtimeMinutes?: number;
+  }>;
   lines?: Array<{
     logTime: string;
     temperature: string | number | null;
@@ -217,6 +276,29 @@ export function buildMachineRunLogPrintSlip(input: {
     recordedBy: String(line.recordedBy || '').trim()
   }));
 
+  const incidents = (input.incidents || [])
+    .map((item, index) => {
+      const occurredAt = String(item.occurredAt || '').trim();
+      const resolvedAt = String(item.resolvedAt || '').trim();
+      const startMatch = occurredAt.match(/^(\d{1,2}):(\d{2})/);
+      const endMatch = resolvedAt.match(/^(\d{1,2}):(\d{2})/);
+      let minutes = toNumberOrNull(item.downtimeMinutes) ?? 0;
+      if ((!minutes || minutes <= 0) && startMatch && endMatch) {
+        const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+        let endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+        if (endMinutes < startMinutes) endMinutes += 24 * 60;
+        minutes = Math.max(0, endMinutes - startMinutes);
+      }
+      return {
+        stt: item.stt ?? index + 1,
+        name: String(item.name || '').trim(),
+        occurredAt,
+        resolvedAt,
+        downtimeMinutes: minutes
+      };
+    })
+    .filter(item => item.name || item.occurredAt || item.resolvedAt);
+
   const startMatch = String(input.startTime || '').trim().match(/^(\d{1,2}):(\d{2})/);
   const endMatch = String(input.endTime || '').trim().match(/^(\d{1,2}):(\d{2})/);
   let computedMinutes = 0;
@@ -232,6 +314,12 @@ export function buildMachineRunLogPrintSlip(input: {
       ? `${input.machineCode} · ${input.machineName}`
       : input.machineName || input.machineCode || '-';
 
+  const parameterImageUrls = [
+    ...new Set(
+      [...(input.parameterImageUrls || []), String(input.parameterImageUrl || '').trim()].filter(Boolean)
+    )
+  ];
+
   return {
     slipCode: input.slipCode || '',
     date: input.date,
@@ -240,12 +328,14 @@ export function buildMachineRunLogPrintSlip(input: {
     mainOperator: input.mainOperator,
     startTime: input.startTime,
     endTime: input.endTime,
-    parameterImageUrl: String(input.parameterImageUrl || '').trim(),
+    parameterImageUrl: parameterImageUrls[0] || '',
+    parameterImageUrls,
     note: input.note,
     actualRunMinutes:
       input.actualRunMinutes != null && Number.isFinite(input.actualRunMinutes)
         ? Number(input.actualRunMinutes)
         : computedMinutes,
+    incidents,
     lines: printLines
   };
 }

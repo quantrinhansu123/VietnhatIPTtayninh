@@ -57,8 +57,8 @@ before update on public.nhat_ky_chay_may
 for each row
 execute function public.set_nhat_ky_chay_may_updated_at();
 
-comment on table public.nhat_ky_chay_may is 'Nhật ký chạy máy — Ngày · Giờ · Ca · Giờ dừng · Nhân sự · Ghi chú · Ảnh thông số.';
-comment on column public.nhat_ky_chay_may.gio is 'Giờ bắt đầu chạy (HH:MM).';
-comment on column public.nhat_ky_chay_may.gio_dung is 'Giờ dừng (HH:MM).';
-comment on column public.nhat_ky_chay_may.anh_thong_so is 'URL Cloudinary ảnh thông số máy.';
-comment on column public.nhat_ky_chay_may.chi_tiet is 'Tuỳ chọn / phiếu cũ: stt, thoi_diem_ghi, nhiet_do…; form mới có thể để [].';
+comment on table public.nhat_ky_chay_may is 'Nhật ký chạy máy — Ngày · Giờ bắt đầu/kết thúc theo ca · Sự cố · Nhân sự · Ghi chú · Nhiều ảnh thông số.';
+comment on column public.nhat_ky_chay_may.gio is 'Giờ bắt đầu (HH:MM) — tự điền theo ca, chỉnh được.';
+comment on column public.nhat_ky_chay_may.gio_dung is 'Giờ kết thúc (HH:MM) — tự điền theo ca, chỉnh được.';
+comment on column public.nhat_ky_chay_may.anh_thong_so is 'URL Cloudinary ảnh thông số máy (ảnh đầu nếu nhiều ảnh).';
+comment on column public.nhat_ky_chay_may.chi_tiet is 'Phiếu cũ hoặc mirror sự cố: loai=su_co, ten_su_co, thoi_gian_xay_ra, thoi_gian_khac_phuc.';

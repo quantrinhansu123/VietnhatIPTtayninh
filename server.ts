@@ -6143,6 +6143,80 @@ function parseMachineRunLogLine(source: unknown, index: number) {
   };
 }
 
+function parseMachineRunLogIncident(source: unknown, index: number) {
+  if (!source || typeof source !== 'object') return null;
+  const record = source as Record<string, unknown>;
+  const ten_su_co = String(
+    record.ten_su_co ?? record.su_co ?? record.name ?? record.ly_do ?? record.reason ?? ''
+  ).trim();
+  const thoi_gian_xay_ra = parseDowntimeTime(
+    record.thoi_gian_xay_ra ?? record.occurredAt ?? record.startTime
+  );
+  const thoi_gian_khac_phuc = parseDowntimeTime(
+    record.thoi_gian_khac_phuc ?? record.resolvedAt ?? record.endTime ?? record.restartTime
+  );
+  if (!ten_su_co && !thoi_gian_xay_ra && !thoi_gian_khac_phuc) return null;
+
+  const fromClock =
+    thoi_gian_xay_ra && thoi_gian_khac_phuc
+      ? calcDowntimeMinutes(thoi_gian_xay_ra, thoi_gian_khac_phuc)
+      : null;
+  const thoi_gian_dung_phut =
+    fromClock ?? parseMixingNumber(record.thoi_gian_dung_phut ?? record.downtimeMinutes) ?? 0;
+
+  return {
+    stt: Number(record.stt ?? index + 1) || index + 1,
+    loai: 'su_co',
+    ten_su_co,
+    thoi_gian_xay_ra: thoi_gian_xay_ra || null,
+    thoi_gian_khac_phuc: thoi_gian_khac_phuc || null,
+    thoi_gian_dung_phut,
+    // Giữ field cũ để phiếu in / danh sách cũ vẫn đọc được.
+    ly_do: ten_su_co,
+    thoi_diem_ghi: thoi_gian_xay_ra || '',
+    nhiet_do_gia_nhiet: null,
+    toc_do_thuc: null,
+    toc_do_dinh_muc: null,
+    so_cuon_ra: 0,
+    nguoi_ghi: ''
+  };
+}
+
+function parseMachineRunLogImageUrls(source: Record<string, unknown>): string[] {
+  const fromArray = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map(item => {
+        if (typeof item === 'string') return item.trim();
+        if (item && typeof item === 'object') {
+          return String((item as Record<string, unknown>).url ?? (item as Record<string, unknown>).anh ?? '').trim();
+        }
+        return '';
+      })
+      .filter(Boolean);
+  };
+
+  const urls = [
+    ...fromArray(source.anh_urls ?? source.parameterImageUrls ?? source.imageUrls),
+    ...fromArray(source.anh_thong_so_list)
+  ];
+
+  const single = String(source.anh_thong_so ?? source.parameterImageUrl ?? '').trim();
+  if (single) {
+    if (single.startsWith('[')) {
+      try {
+        urls.push(...fromArray(JSON.parse(single)));
+      } catch {
+        urls.push(single);
+      }
+    } else {
+      urls.push(single);
+    }
+  }
+
+  return [...new Set(urls)];
+}
+
 function parseMachineRunLogBody(body: unknown): { error: string } | { record: Record<string, unknown> } {
   const source = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const ngay = String(source.ngay ?? '').trim();
@@ -6151,7 +6225,8 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
   const ten_may = String(source.ten_may ?? source.machineName ?? '').trim();
   const gio = parseDowntimeTime(source.gio ?? source.startTime);
   const gio_dung = parseDowntimeTime(source.gio_dung ?? source.endTime ?? source.stopTime);
-  const anh_thong_so = String(source.anh_thong_so ?? source.parameterImageUrl ?? '').trim();
+  const anh_urls = parseMachineRunLogImageUrls(source);
+  const anh_thong_so = anh_urls[0] || '';
   const tho_chinh = String(
     source.tho_chinh ?? source.mainOperator ?? source.nhan_su ?? source.responsibleStaff ?? ''
   ).trim();
@@ -6160,26 +6235,63 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
   if (!ca) return { error: 'Vui lòng chọn ca chạy.' };
   if (!ma_may && !ten_may) return { error: 'Vui lòng chọn máy.' };
   if (!gio) return { error: 'Vui lòng nhập giờ bắt đầu.' };
-  if (!gio_dung) return { error: 'Vui lòng nhập giờ dừng.' };
+  if (!gio_dung) return { error: 'Vui lòng nhập giờ kết thúc.' };
   if (!tho_chinh) return { error: 'Vui lòng chọn nhân sự phụ trách.' };
+
+  const rawIncidents = source.su_co ?? source.incidents;
+  const incidentList = Array.isArray(rawIncidents) ? rawIncidents : [];
+  const su_co = incidentList
+    .map((line, index) => parseMachineRunLogIncident(line, index))
+    .filter((line): line is NonNullable<typeof line> => Boolean(line));
+
+  for (const item of su_co) {
+    if (!item.ten_su_co) return { error: 'Vui lòng chọn tên sự cố.' };
+    if (!item.thoi_gian_xay_ra) return { error: 'Vui lòng nhập thời gian xảy ra sự cố.' };
+    if (!item.thoi_gian_khac_phuc) return { error: 'Vui lòng nhập thời gian khắc phục sự cố.' };
+  }
 
   const rawLines = source.chi_tiet ?? source.lines ?? source.items;
   const list = Array.isArray(rawLines) ? rawLines : [];
-  const chi_tiet = list
-    .map((line, index) => parseMachineRunLogLine(line, index))
+  const legacyLines = list
+    .map((line, index) => {
+      if (line && typeof line === 'object') {
+        const row = line as Record<string, unknown>;
+        const loai = String(row.loai ?? '').trim().toLowerCase();
+        if (loai === 'su_co' || row.ten_su_co || row.thoi_gian_xay_ra) {
+          return parseMachineRunLogIncident(line, index);
+        }
+      }
+      return parseMachineRunLogLine(line, index);
+    })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
+
+  // Ưu tiên mảng su_co riêng; nếu không có thì lấy dòng sự cố từ chi_tiet.
+  const incidents =
+    su_co.length > 0
+      ? su_co
+      : legacyLines.filter(
+          line =>
+            String((line as { loai?: string }).loai || '').toLowerCase() === 'su_co' ||
+            Boolean((line as { ten_su_co?: string }).ten_su_co)
+        );
+  const chi_tiet = su_co.length > 0 ? su_co : legacyLines;
 
   const runMinutesFromClock = calcDowntimeMinutes(gio, gio_dung);
   if (runMinutesFromClock === null) {
-    return { error: 'Giờ / Giờ dừng không hợp lệ.' };
+    return { error: 'Giờ bắt đầu / Giờ kết thúc không hợp lệ.' };
   }
 
   const tong_cuon_ra =
-    Math.round(chi_tiet.reduce((sum, line) => sum + (line.so_cuon_ra ?? 0), 0) * 100) / 100;
+    Math.round(
+      chi_tiet.reduce((sum, line) => sum + (Number((line as { so_cuon_ra?: number }).so_cuon_ra) || 0), 0) * 100
+    ) / 100;
   const tong_thoi_gian_dung_phut =
-    chi_tiet.length > 0
-      ? Math.round(chi_tiet.reduce((sum, line) => sum + (line.thoi_gian_dung_phut ?? 0), 0) * 100) / 100
-      : 0;
+    Math.round(
+      (incidents.length > 0 ? incidents : chi_tiet).reduce(
+        (sum, line) => sum + (Number((line as { thoi_gian_dung_phut?: number }).thoi_gian_dung_phut) || 0),
+        0
+      ) * 100
+    ) / 100;
 
   const thoi_gian_chay_thuc_te_phut = Math.round(runMinutesFromClock * 100) / 100;
   const gio_chay_kh = Math.round((thoi_gian_chay_thuc_te_phut / 60) * 100) / 100;
@@ -6188,8 +6300,14 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
     plannedMinutes > 0 ? Math.round((thoi_gian_chay_thuc_te_phut / plannedMinutes) * 10000) / 100 : null;
 
   const speedRatios = chi_tiet
-    .filter(line => (line.toc_do_dinh_muc ?? 0) > 0 && (line.toc_do_thuc ?? 0) > 0)
-    .map(line => (line.toc_do_thuc as number) / (line.toc_do_dinh_muc as number));
+    .filter(line => {
+      const row = line as { toc_do_dinh_muc?: number | null; toc_do_thuc?: number | null };
+      return (row.toc_do_dinh_muc ?? 0) > 0 && (row.toc_do_thuc ?? 0) > 0;
+    })
+    .map(line => {
+      const row = line as { toc_do_dinh_muc: number; toc_do_thuc: number };
+      return row.toc_do_thuc / row.toc_do_dinh_muc;
+    });
   const toc_do_dat_dinh_muc_pct =
     speedRatios.length > 0
       ? Math.round((speedRatios.reduce((sum, ratio) => sum + ratio, 0) / speedRatios.length) * 10000) / 100
@@ -6217,6 +6335,14 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
       gio,
       gio_dung,
       anh_thong_so: anh_thong_so || null,
+      anh_urls,
+      su_co: incidents.map(item => ({
+        stt: item.stt,
+        ten_su_co: item.ten_su_co,
+        thoi_gian_xay_ra: item.thoi_gian_xay_ra,
+        thoi_gian_khac_phuc: item.thoi_gian_khac_phuc,
+        thoi_gian_dung_phut: item.thoi_gian_dung_phut
+      })),
       gio_chay_kh,
       tong_cuon_ra,
       tong_thoi_gian_dung_phut,
@@ -6235,7 +6361,7 @@ function machineRunLogWriteError(error: { code?: string; message?: string }) {
     return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} chưa tồn tại. Hãy chạy supabase-nhat-ky-chay-may.sql.`;
   }
   if (isMissingColumnError(error)) {
-    return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-nhat-ky-chay-may-simplify.sql.`;
+    return `Bảng ${SUPABASE_MACHINE_RUN_LOG_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-nhat-ky-chay-may-simplify.sql và supabase-nhat-ky-chay-may-su-co-anh.sql.`;
   }
   return `Không thể lưu nhật ký chạy máy. ${error.message || ''}`.trim();
 }
@@ -22550,11 +22676,23 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
-      const { data, error } = await supabase
+      let insertPayload: Record<string, unknown> = { ...parsed.record };
+      let { data, error } = await supabase
         .from(SUPABASE_MACHINE_RUN_LOG_TABLE)
-        .insert(parsed.record)
+        .insert(insertPayload)
         .select('*')
         .single();
+
+      // Chưa chạy migrate su_co/anh_urls → vẫn lưu qua chi_tiet + anh_thong_so.
+      if (error && isMissingColumnError(error)) {
+        const { su_co: _suCo, anh_urls: _anhUrls, ...rest } = insertPayload;
+        insertPayload = rest;
+        ({ data, error } = await supabase
+          .from(SUPABASE_MACHINE_RUN_LOG_TABLE)
+          .insert(insertPayload)
+          .select('*')
+          .single());
+      }
 
       if (error) {
         console.error('Supabase machine run log insert error:', error);

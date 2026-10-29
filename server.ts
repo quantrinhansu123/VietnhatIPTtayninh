@@ -20029,8 +20029,12 @@ export function createApp() {
         if (!data || data.length < 1000) break;
       }
 
+      const round3 = (n: number) => Math.round((Number(n) || 0) * 1000) / 1000;
       const items = balances.map(row => {
-        const ton = Math.round((Number(row.ton_cuoi_ky) || 0) * 1000) / 1000;
+        const ton_dau = round3(row.ton_dau_ky);
+        const nhap = round3(row.nhap_trong_ky);
+        const xuat = round3(row.xuat_trong_ky);
+        const ton = round3(row.ton_cuoi_ky);
         const rawMin = minByCode.get(normalizeTonKhoCatalogCode(row.ma));
         const min = rawMin !== undefined && rawMin !== null && Number.isFinite(rawMin) ? rawMin : null;
         let status: 'am' | 'duoi_toi_thieu' | 'sap_het' | 'on_dinh' | 'chua_dat_nguong' = 'on_dinh';
@@ -20038,7 +20042,18 @@ export function createApp() {
         else if (min === null) status = 'chua_dat_nguong';
         else if (ton < min) status = 'duoi_toi_thieu';
         else if (ton <= min * KIEM_SOAT_TON_SAP_HET_RATIO) status = 'sap_het';
-        return { ma: row.ma, ten: row.ten, don_vi: row.don_vi, ten_kho: row.ten_kho, ton, min, status };
+        return {
+          ma: row.ma,
+          ten: row.ten,
+          don_vi: row.don_vi,
+          ten_kho: row.ten_kho,
+          ton_dau,
+          nhap,
+          xuat,
+          ton,
+          min,
+          status
+        };
       });
       items.sort((a, b) => a.ma.localeCompare(b.ma, 'vi', { numeric: true }));
 
@@ -20098,6 +20113,200 @@ export function createApp() {
       return res.json({ success: true, ma, min });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Không thể lưu tồn tối thiểu.' });
+    }
+  });
+
+  /** Chi tiết phiếu nhập/xuất theo mã (gộp theo ngày → phiếu) — modal kiểm soát tồn. */
+  app.get('/api/kiem-soat-ton/chi-tiet', async (req, res) => {
+    if (!supabaseKho) {
+      return res.status(503).json({
+        error: `Chưa cấu hình DB kho. Cần SUPABASE_KHO_URL / SUPABASE_KHO_KEY (label ${SUPABASE_KHO_DB_LABEL}).`
+      });
+    }
+    try {
+      const ma = String(req.query.ma ?? '').trim();
+      const loaiRaw = String(req.query.loai ?? '').trim().toLowerCase();
+      const loai: 'nhap' | 'xuat' | null =
+        loaiRaw === 'nhap' || loaiRaw === 'in' ? 'nhap' : loaiRaw === 'xuat' || loaiRaw === 'out' ? 'xuat' : null;
+      const loaiKho: TonKhoLoaiKho = String(req.query.loai_kho ?? '').trim() === 'san_pham' ? 'san_pham' : 'nvl';
+      const tenKho = String(req.query.ten_kho ?? '').trim() || null;
+      const ten = String(req.query.ten ?? '').trim();
+      if (!ma) return res.status(400).json({ error: 'Thiếu mã hàng.' });
+      if (!loai) return res.status(400).json({ error: 'Thiếu loại (loai=nhap|xuat).' });
+
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const codeKey = normalizeWarehouseMovementCode(ma);
+      const isProduct = loaiKho === 'san_pham';
+
+      const rows = await loadWarehouseMovementsFromKho({
+        loaiPhieu: loai,
+        loaiKho,
+        tenKho: tenKho || undefined,
+        toDate: today,
+        treo: false
+      });
+
+      const matchesCode = (row: Record<string, any>) => {
+        const candidates = isProduct
+          ? [row.ma_sp, row.ma_sp_quet]
+          : [row.ma_npl, row.ma_sp];
+        return candidates.some(value => {
+          const actual = normalizeWarehouseMovementCode(value);
+          return Boolean(actual) && (actual === codeKey || actual.startsWith(`${codeKey}_`) || actual.startsWith(`${codeKey}-`));
+        });
+      };
+
+      const pad2 = (n: number) => String(n).padStart(2, '0');
+
+      /** Ưu tiên: gio header → created_at → hậu tố HHmmss trong mã phiếu (PX-YYYYMMDD-HHmmss). */
+      const resolveNgayGio = (row: Record<string, any>) => {
+        const ngay = String(row.ngay_phieu ?? '').slice(0, 10);
+        const gioRaw = String(row.gio ?? '').trim();
+        if (ngay && gioRaw) {
+          const time = gioRaw.length === 5 ? `${gioRaw}:00` : gioRaw;
+          return { ngay, gio: time.slice(0, 8), ngay_gio: `${ngay} ${time.slice(0, 8)}` };
+        }
+        const created = String(row.created_at_phieu ?? row.created_at ?? '').trim();
+        if (created) {
+          const date = new Date(created);
+          if (Number.isFinite(date.getTime())) {
+            const gio = `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+            const day = ngay || `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+            return { ngay: day, gio, ngay_gio: `${day} ${gio}` };
+          }
+        }
+        const slipCode = String(row.ma_phieu ?? '').trim();
+        const match = slipCode.match(/(?:PN|PX)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/i);
+        if (match) {
+          const day = `${match[1]}-${match[2]}-${match[3]}`;
+          const gio = `${match[4]}:${match[5]}:${match[6]}`;
+          return { ngay: ngay || day, gio, ngay_gio: `${ngay || day} ${gio}` };
+        }
+        return { ngay: ngay || '—', gio: '', ngay_gio: ngay || '—' };
+      };
+
+      const movements = rows
+        .filter(matchesCode)
+        .map(row => {
+          const when = resolveNgayGio(row);
+          return {
+            id: row.id,
+            ma_phieu: String(row.ma_phieu ?? '').trim(),
+            ngay: when.ngay,
+            gio: when.gio,
+            ngay_gio: when.ngay_gio,
+            created_at: String(row.created_at_phieu ?? row.created_at ?? '').trim(),
+            ca: String(row.ca ?? '').trim(),
+            may: String(row.may ?? '').trim(),
+            kho: String(row.ten_kho ?? '').trim(),
+            nguoi_lap: String(row.nguoi_lap ?? row.nhan_su ?? '').trim(),
+            ly_do: String(row.ly_do ?? '').trim(),
+            ghi_chu: String(row.ghi_chu ?? '').trim(),
+            ma_dong: String((isProduct ? row.ma_sp_quet || row.ma_sp : row.ma_npl || row.ma_sp) ?? '').trim(),
+            ten_dong: String((isProduct ? row.ten_sp : row.ten_npl) ?? '').trim(),
+            don_vi: String(row.don_vi ?? '').trim() || '—',
+            so_luong: Number(row.so_luong) || 0
+          };
+        })
+        .sort((a, b) => {
+          const byDay = b.ngay.localeCompare(a.ngay);
+          if (byDay) return byDay;
+          const byTime = (b.ngay_gio || '').localeCompare(a.ngay_gio || '');
+          if (byTime) return byTime;
+          const bySlip = a.ma_phieu.localeCompare(b.ma_phieu, 'vi');
+          if (bySlip) return bySlip;
+          return String(a.id).localeCompare(String(b.id));
+        });
+
+      type SlipGroup = {
+        ma_phieu: string;
+        ngay: string;
+        gio: string;
+        ngay_gio: string;
+        ca: string;
+        may: string;
+        kho: string;
+        nguoi_lap: string;
+        ly_do: string;
+        tong: number;
+        so_dong: number;
+        lines: typeof movements;
+      };
+      type DayGroup = { ngay: string; tong: number; so_phieu: number; so_dong: number; phieu: SlipGroup[] };
+
+      const dayMap = new Map<string, Map<string, SlipGroup>>();
+      for (const line of movements) {
+        const dayKey = line.ngay || '—';
+        let slips = dayMap.get(dayKey);
+        if (!slips) {
+          slips = new Map();
+          dayMap.set(dayKey, slips);
+        }
+        let slip = slips.get(line.ma_phieu);
+        if (!slip) {
+          slip = {
+            ma_phieu: line.ma_phieu || '—',
+            ngay: line.ngay,
+            gio: line.gio,
+            ngay_gio: line.ngay_gio,
+            ca: line.ca,
+            may: line.may,
+            kho: line.kho,
+            nguoi_lap: line.nguoi_lap,
+            ly_do: line.ly_do,
+            tong: 0,
+            so_dong: 0,
+            lines: []
+          };
+          slips.set(line.ma_phieu, slip);
+        }
+        slip.tong += line.so_luong;
+        slip.so_dong += 1;
+        if (!slip.gio && line.gio) {
+          slip.gio = line.gio;
+          slip.ngay_gio = line.ngay_gio;
+        }
+        if (!slip.ca && line.ca) slip.ca = line.ca;
+        if (!slip.may && line.may) slip.may = line.may;
+        if (!slip.kho && line.kho) slip.kho = line.kho;
+        if (!slip.nguoi_lap && line.nguoi_lap) slip.nguoi_lap = line.nguoi_lap;
+        if (!slip.ly_do && line.ly_do) slip.ly_do = line.ly_do;
+        slip.lines.push(line);
+      }
+
+      const round3 = (n: number) => Math.round((Number(n) || 0) * 1000) / 1000;
+      const days: DayGroup[] = [...dayMap.entries()]
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([ngay, slips]) => {
+          const phieu = [...slips.values()]
+            .map(slip => ({ ...slip, tong: round3(slip.tong) }))
+            .sort((a, b) => (b.ngay_gio || '').localeCompare(a.ngay_gio || '') || a.ma_phieu.localeCompare(b.ma_phieu, 'vi'));
+          const tong = round3(phieu.reduce((sum, slip) => sum + slip.tong, 0));
+          return {
+            ngay,
+            tong,
+            so_phieu: phieu.length,
+            so_dong: phieu.reduce((sum, slip) => sum + slip.so_dong, 0),
+            phieu
+          };
+        });
+
+      return res.json({
+        ma,
+        ten,
+        loai,
+        loai_kho: loaiKho,
+        ten_kho: tenKho,
+        den_ngay: today,
+        tong: round3(days.reduce((sum, day) => sum + day.tong, 0)),
+        so_phieu: days.reduce((sum, day) => sum + day.so_phieu, 0),
+        so_dong: movements.length,
+        days,
+        source: 'supabase'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Không thể tải chi tiết nhập/xuất.' });
     }
   });
 

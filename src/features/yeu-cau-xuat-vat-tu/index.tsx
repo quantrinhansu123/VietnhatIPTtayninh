@@ -22,7 +22,10 @@ import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedC
 import type { MaterialRequestRow } from './MaterialRequestListView';
 import {
   buildMaterialRequestPresetLines,
+  hasEnteredQuantity,
   MATERIAL_REQUEST_PRESET_TABS,
+  mergeMaterialPreset,
+  resolveMaterialPresetKind,
   type MaterialRequestPresetKind
 } from './materialRequestPreset';
 
@@ -80,8 +83,8 @@ export function YeuCauXuatVatTuPanel({
   const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [presetApplied, setPresetApplied] = useState(false);
-  const [presetKind, setPresetKind] = useState<MaterialRequestPresetKind>('bb');
+  const selectedMachine = machines.find(m => machineSelectValue(m) === machine || m.code === machine || m.name === machine);
+  const presetKind = resolveMaterialPresetKind(hubShared?.machineRef || machine, selectedMachine?.code, selectedMachine?.name, selectedMachine?.type);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
@@ -91,12 +94,11 @@ export function YeuCauXuatVatTuPanel({
     void get('/api/lenh-sx?light=1').then(d => d && setProductionOrders(normalizeProductionOrders(d)));
   }, []);
 
-  /** Phiếu mới: tự sổ mẫu mã đề xuất theo tab Order máy (chỉ điền SL). */
+  /** Phiếu mới: tự sổ NVL theo loại máy (chỉ điền SL). */
   useEffect(() => {
-    if (editingCode || editRequest || presetApplied || materials.length === 0) return;
-    setLines(presetLines(materials, presetKind));
-    setPresetApplied(true);
-  }, [editingCode, editRequest, materials, presetApplied, presetKind]);
+    if (editingCode || editRequest || !presetKind || materials.length === 0) return;
+    setLines(prev => mergeMaterialPreset(prev, presetLines(materials, presetKind), line => line.code, line => line.qty.trim() !== ''));
+  }, [editingCode, editRequest, materials, presetKind]);
 
   const shiftOptions = useMemo(
     () =>
@@ -178,24 +180,24 @@ export function YeuCauXuatVatTuPanel({
 
   const weightCatalog = useMemo(() => materials.map(mapMaterialToWeightCatalogItem), [materials]);
 
-  const applyPreset = (kind: MaterialRequestPresetKind = presetKind) => {
-    setPresetKind(kind);
+  const applyPreset = () => {
+    const kind = presetKind;
+    if (!kind) return;
     setLines(presetLines(materials, kind));
-    setPresetApplied(true);
     const tabLabel = MATERIAL_REQUEST_PRESET_TABS.find(tab => tab.id === kind)?.label || kind;
     showAppToast(`Đã sổ mẫu «${tabLabel}» — chỉ cần điền số lượng.`);
   };
 
   const resetForm = () => {
     setEditingCode(null);
-    setLines(materials.length > 0 ? presetLines(materials, presetKind) : [newLine()]);
-    setPresetApplied(materials.length > 0);
+    setLines(materials.length > 0 && presetKind ? presetLines(materials, presetKind) : [newLine()]);
   };
 
   const submit = async () => {
     setIsSaving(true);
     try {
       const filledLines = lines
+        .filter(line => hasEnteredQuantity(line.qty))
         .map(l => ({
           ma_nvl: l.code.trim(),
           ten_nvl: l.name.trim(),
@@ -424,40 +426,6 @@ export function YeuCauXuatVatTuPanel({
         </p>
       )}
 
-      {!editingCode ? (
-        <div className="flex items-center gap-1.5">
-          <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-zinc-500">Mẫu</span>
-          <div
-            className="inline-flex h-7 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50"
-            role="tablist"
-            aria-label="Mẫu mã theo máy"
-          >
-            {MATERIAL_REQUEST_PRESET_TABS.map((tab, index) => {
-              const active = presetKind === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => applyPreset(tab.id)}
-                  disabled={isAutofilling || isSaving}
-                  className={`inline-flex h-full items-center px-2 text-[10px] font-bold transition disabled:opacity-50 ${
-                    index > 0 ? 'border-l border-zinc-200' : ''
-                  } ${
-                    active
-                      ? 'bg-[#ef1b2d] text-white'
-                      : 'bg-transparent text-zinc-600 hover:bg-white hover:text-zinc-900'
-                  }`}
-                >
-                  {tab.id === 'bb' ? 'Máy BB' : tab.id === 'cn' ? 'Máy CN' : tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       <div className="overflow-x-auto">
         <div className="min-w-[700px] space-y-1.5">
           <div className={`${gridClass} rounded-md border border-zinc-200 bg-[#e8f0ed] py-1.5 text-[10px] font-semibold tracking-wide text-zinc-700`}>
@@ -541,12 +509,12 @@ export function YeuCauXuatVatTuPanel({
         </button>
         <button
           type="button"
-          onClick={() => applyPreset(presetKind)}
-          disabled={isAutofilling || isSaving || Boolean(editingCode)}
+          onClick={applyPreset}
+          disabled={isAutofilling || isSaving || Boolean(editingCode) || !presetKind}
           className="inline-flex h-8 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
         >
           <Wand2 className="h-3.5 w-3.5" />
-          Sổ lại mẫu đang chọn
+          Sổ lại NVL theo máy
         </button>
         <button
           type="button"

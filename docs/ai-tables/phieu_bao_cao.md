@@ -22,6 +22,8 @@
 - Hợp field: Ngày · Giờ · Ca · Chi nhánh · Máy · Nhân sự (tick nhiều theo ngày+ca+máy / LSX) · Ghi chú.
 - Form trong hub: `useReportFormsSharedOptional()` → sync state + ẩn header local trùng; route độc lập giữ header riêng.
 - **Keep-alive tab:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab **không** mất draft chưa lưu; chỉ tải lazy lần đầu mở từng tab.
+- Chọn máy BB/CN → Nhận vật tư, Báo cáo tồn đầu/cuối ca và từng lần Bảng trộn tự sổ NVL theo cùng mẫu, đúng thứ tự `materialRequestPreset.ts`; không cần chọn mẫu riêng. Giữ số lượng đã nhập khi đổi loại máy, không tự sửa phiếu đang chỉnh sửa.
+- Khi lưu, bỏ NVL chưa nhập số lượng (kể cả từng lần trộn); phiếu in tồn cũng bỏ dòng trống. Số 0 được nhập rõ vẫn lưu ở tồn/trộn; Nhận vật tư giữ quy tắc số lượng > 0.
 
 ## Tab (theo quyền menu)
 

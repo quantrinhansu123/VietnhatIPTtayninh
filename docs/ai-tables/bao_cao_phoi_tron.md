@@ -30,6 +30,8 @@
 
 **Utils:** `lib/mixingReportModel.ts`, `utils/mixingOrderAutofill.ts` (`resolveMixingMaterialDisplayName` — nếu BOM để tên = mã thì lấy `ten_npl` từ kho NVL), `utils/mixingNormSuggestion.ts`
 
+Phiếu mới: chọn máy BB/CN và thêm lần trộn tự sổ NVL theo cùng thứ tự mẫu Nhận vật tư (`materialRequestPreset.ts`), để trống số lượng. Logic `applyMixingMaterialPreset` giữ dữ liệu đã nhập và không áp dụng vào phiếu đang sửa.
+
 
 
 **Gợi ý định mức QC:** Form `/bao-cao-phoi-tron` khi chọn Ngày + Ca sẽ tải `/api/bang-tron-vat-tu-dinh-muc?ngay&ca` và hiện phiếu định mức QC để **Áp dụng** (đổ NVL gộp theo mã vào lần 1).

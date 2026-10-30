@@ -16,6 +16,8 @@
 
 Loại báo cáo: tồn đầu ca, tồn cuối ca.
 
+Phiếu mới: chọn máy BB/CN tự sổ danh sách NVL theo `src/features/yeu-cau-xuat-vat-tu/materialRequestPreset.ts`, cùng thứ tự với Nhận vật tư và Bảng trộn; các ô số lượng để trống.
+
 **Env DB tồn:**
 ```
 SUPABASE_TON_URL=...
@@ -27,9 +29,11 @@ SUPABASE_MACHINE_NVL_REPORTS_TABLE=bao_cao_may_nvl_ton
 - Báo cáo tồn đầu ca
 - Báo cáo tồn cuối ca
 
-**Tự điền đầu ca (logic cũ, giữ nguyên):** Nút **Tự điền tồn đầu ca** → chọn phiếu **tồn cuối ca** trước → kế thừa mã NVL / SL sang form đầu ca.
+**Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** → chọn phiếu **tồn cuối ca** trước → chỉ điền số liệu vào danh sách NVL mặc định, giữ mã/tên/ĐVT/thứ tự mẫu. NVL không có ở ca trước vẫn hiển thị với số liệu trống; NVL phát sinh được thêm cuối danh sách. Không sao chép ghi chú/ảnh dòng cũ. Logic/test: `src/features/bao-cao-may-nvl-ton/autofill.ts`, `autofill.test.ts`.
 
 **Tự điền cuối ca:** Nút **Tự điền tồn cuối ca** → lấy danh sách NVL từ **phiếu tồn đầu ca** cùng **Ngày · Ca** (**không** lọc máy; gộp mọi máy) — SL đầu ca làm tham chiếu, SL vị trí để trống để kiểm kê. Ảnh từng dòng tùy chọn ở cả hai loại; không có ảnh vẫn lưu được.
+
+Cả hai nút Tự điền đều giữ bố cục NVL mặc định; mã phát sinh nối cuối, mã không có ở nguồn để trống số liệu.
 
 **Chống trùng:** không lưu 2 phiếu cùng **ngày + ca + máy + loại** (đầu/cuối ca). Form và API (`409`) báo đỏ: «Đã lưu … Không lưu bản trùng.»
 

@@ -1,4 +1,5 @@
 import { formatNumber } from '../utils';
+import { buildMaterialRequestPresetLines, hasEnteredQuantity, mergeMaterialPreset, type MaterialRequestPresetKind } from '../features/yeu-cau-xuat-vat-tu/materialRequestPreset';
 import type { MixingPhoiTron, MixingReport, MixingReportLine, MixingRoundItem, MixingRoundPhoto } from '../components/MixingReportForm';
 
 export const MIXING_MAX_ROUNDS = 20;
@@ -460,12 +461,44 @@ export function normalizeChiTietLines(lines: MixingReportLine[]): MixingReportLi
     .map((line, index) => ({ ...line, stt: index + 1 }));
 }
 
+export function applyMixingMaterialPreset(
+  lines: MixingReportLine[],
+  materials: Array<{ code: string; name: string; unit: string }>,
+  kind: MaterialRequestPresetKind,
+  roundCount: number
+): MixingReportLine[] {
+  const rounds = MIXING_ROUND_KEYS.slice(0, roundCount);
+  const preset = buildMaterialRequestPresetLines(materials, () => '', kind).map((material, index): MixingReportLine => ({
+    stt: index + 1,
+    ma_nvl: material.code,
+    ten_vat_tu: material.name,
+    don_vi: material.unit,
+    tong_nhua_tron: null,
+    lan_su_dung: Object.fromEntries(rounds.map(key => [key, [{
+      ma_nvl: material.code, ten_vat_tu: material.name, don_vi: material.unit,
+      so_luong: null, kl_thuc_te: null, ti_le_phan_tram: null
+    }]]))
+  }));
+  return mergeMaterialPreset(lines, preset, line => line.ma_nvl, line => Boolean(
+    line.hinh_anh || MIXING_ROUND_KEYS.some(key => getRoundItems(line.lan_su_dung, key).some(item =>
+      item.so_luong != null || item.kl_thuc_te != null || item.ti_le_phan_tram != null
+    ))
+  )).map((line, index) => {
+    const defaults = preset.find(item => item.ma_nvl.toLowerCase() === line.ma_nvl.toLowerCase());
+    const lan_su_dung = { ...line.lan_su_dung };
+    if (defaults) rounds.forEach(key => {
+      if (!lan_su_dung[key]) lan_su_dung[key] = defaults.lan_su_dung[key];
+    });
+    return { ...line, stt: index + 1, lan_su_dung };
+  });
+}
+
 /** Chuẩn hóa chi_tiet trước khi gửi API — luôn ghi rõ kl_thuc_te trên từng NVL và từng dòng */
 export function prepareMixingChiTietForSave(lines: MixingReportLine[]) {
   return normalizeChiTietLines(lines).map(line => {
     const lan_su_dung: MixingPhoiTron = {};
     MIXING_ROUND_KEYS.forEach(key => {
-      const items = getRoundItems(line.lan_su_dung, key).map(item => ({
+      const items = getRoundItems(line.lan_su_dung, key).filter(item => hasEnteredQuantity(item.so_luong, item.kl_thuc_te)).map(item => ({
         ma_nvl: item.ma_nvl,
         ten_vat_tu: item.ten_vat_tu,
         don_vi: item.don_vi || 'kg',
@@ -476,7 +509,9 @@ export function prepareMixingChiTietForSave(lines: MixingReportLine[]) {
       if (items.length > 0) lan_su_dung[key] = items;
     });
     if (line.lan_su_dung.khoi_luong_me) {
-      lan_su_dung.khoi_luong_me = line.lan_su_dung.khoi_luong_me;
+      lan_su_dung.khoi_luong_me = Object.fromEntries(
+        Object.entries(line.lan_su_dung.khoi_luong_me).filter(([key]) => (lan_su_dung[key as MixingRoundKey]?.length ?? 0) > 0)
+      );
     }
     const normalizedLine: MixingReportLine = { ...line, lan_su_dung };
     const kl_thuc_te = resolveLineKlThucTe(normalizedLine);
@@ -485,12 +520,13 @@ export function prepareMixingChiTietForSave(lines: MixingReportLine[]) {
       ma_nvl: normalizedLine.ma_nvl,
       ten_vat_tu: normalizedLine.ten_vat_tu,
       lan_su_dung,
-      tong_nhua_tron: normalizedLine.tong_nhua_tron ?? sumMixingRounds(lan_su_dung),
+      tong_nhua_tron: sumMixingRounds(lan_su_dung),
       kl_thuc_te,
       hinh_anh: normalizedLine.hinh_anh ?? null,
       hinh_anh_public_id: normalizedLine.hinh_anh_public_id ?? null
     };
-  });
+  }).filter(line => MIXING_ROUND_KEYS.some(key => (line.lan_su_dung[key]?.length ?? 0) > 0))
+    .map((line, index) => ({ ...line, stt: index + 1 }));
 }
 
 export function normalizeMixingReportLine(line: Record<string, unknown>, index: number): MixingReportLine {

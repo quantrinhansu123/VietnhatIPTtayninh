@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { resolveMaterialPresetKind } from '../features/yeu-cau-xuat-vat-tu/materialRequestPreset';
 import { openCameraImagePicker, compressImageDataUrl } from '../utils/cameraCapture';
 import {
   CalendarDays,
@@ -49,6 +50,7 @@ import {
   mixingSessionColumnLabel,
   mixingSessionLabel,
   normalizeChiTietLines,
+  applyMixingMaterialPreset,
   normalizeMixingReport,
   prepareMixingChiTietForSave,
   parseBatchWeightInput,
@@ -1091,6 +1093,16 @@ export default function MixingReportForm({
   const [applyingNormId, setApplyingNormId] = useState<string | null>(null);
   const autoCollapsedRoundsRef = useRef<Set<RoundKey>>(new Set());
 
+  const presetKind = resolveMaterialPresetKind(form.ma_may, form.ten_may);
+  useEffect(() => {
+    if (editingId || editReport || !presetKind || materials.length === 0) return;
+    setForm(prev => ({
+      ...prev,
+      chi_tiet: applyMixingMaterialPreset(applyActualWeightDrafts(prev.chi_tiet), materials, presetKind, activeRoundCount)
+    }));
+    setActualWeightDrafts({});
+  }, [presetKind, materials, activeRoundCount, editingId, editReport]);
+
   const allReasonOptions = useMemo(() => {
     const merged = new Set<string>(reasonOptions);
     ROUND_KEYS.forEach(key => {
@@ -1976,7 +1988,9 @@ export default function MixingReportForm({
   const getRoundPhotos = (roundKey: RoundKey) => form.hinh_anh_theo_lan?.[roundKey] ?? [];
 
   const isRoundComplete = (roundKey: RoundKey) =>
-    listRoundMaterialEntries(form.chi_tiet, roundKey).length > 0;
+    listRoundMaterialEntries(form.chi_tiet, roundKey).some(({ item }) =>
+      item.kl_thuc_te != null || item.so_luong != null || item.ti_le_phan_tram != null
+    );
 
   const toggleRoundCollapsed = (roundKey: RoundKey) => {
     setCollapsedRounds(prev => {
@@ -2124,7 +2138,7 @@ export default function MixingReportForm({
     }
 
     const missingBatchRound = ROUND_KEYS.slice(0, displayedRoundCount).find(roundKey => {
-      const hasNvl = listRoundMaterialEntries(chiTietReady, roundKey).length > 0;
+      const hasNvl = listRoundMaterialEntries(chi_tiet, roundKey).length > 0;
       if (!hasNvl) return false;
       const batchWeight = resolveRoundBatchWeight(chiTietReady, roundKey);
       return !Number.isFinite(batchWeight ?? NaN) || (batchWeight ?? 0) <= 0;
@@ -2156,7 +2170,7 @@ export default function MixingReportForm({
           : line
       );
 
-      const thucTeSuDung = round2(sumReportActualUsage(linesToSave));
+      const thucTeSuDung = round2(sumReportActualUsage(chi_tiet));
 
       const payload = {
         ca: resolvedCa,

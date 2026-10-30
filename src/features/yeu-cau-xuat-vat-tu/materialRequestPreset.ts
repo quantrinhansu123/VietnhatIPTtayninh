@@ -5,6 +5,28 @@
 
 export type MaterialRequestPresetKind = 'bb' | 'cn';
 
+export function hasEnteredQuantity(...values: Array<string | number | null | undefined>): boolean {
+  return values.some(value => value != null && String(value).trim() !== '');
+}
+
+export function resolveMaterialPresetKind(...machineText: Array<string | undefined | null>): MaterialRequestPresetKind | null {
+  const text = machineText.filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/cach\s*nhiet|\b(?:mcn|cn)\s*\d*\b/.test(text)) return 'cn';
+  if (/bao\s*bi|bb/.test(text)) return 'bb';
+  return null;
+}
+
+/** Đổi mẫu giữ các dòng đã nhập, chỉ bỏ dòng mẫu cũ còn trống. */
+export function mergeMaterialPreset<T>(current: T[], preset: T[], code: (line: T) => string, hasInput: (line: T) => boolean): T[] {
+  const key = (line: T) => code(line).trim().toLowerCase();
+  const existing = new Map(current.map(line => [key(line), line]));
+  const presetCodes = new Set(preset.map(key));
+  return [
+    ...preset.map(line => existing.get(key(line)) ?? line),
+    ...current.filter(line => !presetCodes.has(key(line)) && hasInput(line))
+  ];
+}
+
 export type MaterialRequestPresetItem = {
   /** Mã ưu tiên ghi trên phiếu / khớp kho. */
   code: string;
@@ -33,7 +55,8 @@ export const MATERIAL_REQUEST_PRESET_BB: MaterialRequestPresetItem[] = [
   { code: 'ONG-40CM', fallbackName: 'Ống giấy 76*2ly*40CM', fallbackUnit: 'Cái' },
   { code: 'ONG-46CM', fallbackName: 'Ống giấy 76*2ly*46CM', fallbackUnit: 'Cái' },
   { code: 'ONG-50CM', fallbackName: 'Ống giấy 76*2ly*50CM', fallbackUnit: 'Cái' },
-  { code: 'ONG-70CM', fallbackName: 'Ống giấy 76*2ly*70CM', fallbackUnit: 'Cái' }
+  { code: 'ONG-70CM', fallbackName: 'Ống giấy 76*2ly*70CM', fallbackUnit: 'Cái' },
+  { code: 'NHUA-TRON', fallbackName: 'Nhựa trộn Nguyên Sinh + Tái Chế', fallbackUnit: 'kg' }
 ];
 
 /**
@@ -91,7 +114,8 @@ export const MATERIAL_REQUEST_PRESET_CN: MaterialRequestPresetItem[] = [
     altCodes: ['TEMRK-P2'],
     fallbackName: 'TEM RANKO',
     fallbackUnit: 'Cái'
-  }
+  },
+  { code: 'NHUA-TRON', fallbackName: 'Nhựa trộn Nguyên Sinh + Tái Chế', fallbackUnit: 'kg' }
 ];
 
 export const MATERIAL_REQUEST_PRESET_TABS: Array<{

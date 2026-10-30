@@ -48,6 +48,9 @@ import {
 } from '../ke-hoach-san-xuat';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
 import { useReportFormsSharedOptional } from '../report-forms/ReportFormsSharedContext';
+import { mergeMachineNvlAutofillLines } from './autofill';
+
+import { buildMaterialRequestPresetLines, hasEnteredQuantity, mergeMaterialPreset, resolveMaterialPresetKind } from '../yeu-cau-xuat-vat-tu/materialRequestPreset';
 
 export const MACHINE_NVL_REPORT_TABS: { id: MachineNvlReportKind; label: string; hint: string }[] = [
   { id: 'dau_ca', label: 'Báo cáo đầu ca', hint: 'Kiểm kê NVL tồn khi bắt đầu ca' },
@@ -99,6 +102,10 @@ const emptyMachineNvlLine = (): MachineNvlReportLine => ({
   imagePublicId: '',
   imagePreview: ''
 });
+
+function machineNvlLineHasQuantity(line: MachineNvlReportLine) {
+  return hasEnteredQuantity(line.inMachineQuantity, line.inMixerQuantity, line.unblendedQuantity, line.outsideQuantity, line.quantity);
+}
 
 function machineNvlLineHasContent(line: MachineNvlReportLine) {
   return Boolean(
@@ -621,6 +628,19 @@ export function MachineNvlReportPanel({
   const isDauCaTab = activeKind === 'dau_ca';
 
   const selectedMachine = findMachineByRef(machines, machineRef);
+  const presetKind = resolveMaterialPresetKind(machineRef, selectedMachine?.code, selectedMachine?.name, selectedMachine?.type);
+  const defaultLines = useMemo(() => presetKind
+    ? buildMaterialRequestPresetLines(materials, () => emptyMachineNvlLine().key, presetKind)
+      .map(({ code, name, unit, key }) => ({ ...emptyMachineNvlLine(), key, code, name, unit, materialType: guessMachineNvlMaterialType(code, name, unit) }))
+    : [], [materials, presetKind]);
+  const emptyLines = lines.length === 1 && !lines[0].code;
+  useEffect(() => {
+    if (editingReportId || editReport || !presetKind || materials.length === 0) return;
+    setLines(prev => mergeMaterialPreset(prev, defaultLines, line => line.code, line => Boolean(
+      line.inMachineQuantity || line.inMixerQuantity || line.unblendedQuantity || line.outsideQuantity || line.quantity || line.note || line.imageUrl || line.imagePreview
+    )));
+  }, [presetKind, materials, defaultLines, activeKind, editingReportId, editReport, emptyLines]);
+
   const shiftOptions = useMemo(() => {
     const fromSettings = shiftSettings
       .filter(
@@ -767,18 +787,18 @@ export function MachineNvlReportPanel({
 
     const sourceLabel = `${selected.ngay} · ${selected.ca} · ${selected.tenMay || selected.maMay}`;
     if (
-      lines.some(line => line.code.trim() || resolveMachineNvlLineQty(line) > 0) &&
+      lines.some(machineNvlLineHasQuantity) &&
       !window.confirm(
-        `Điền lại toàn bộ dòng từ tồn cuối ca?\n${sourceLabel}\n\nCác dòng hiện tại trên form sẽ bị thay thế.`
+        `Điền lại số liệu từ tồn cuối ca?\n${sourceLabel}\n\nGiữ danh sách NVL mặc định; số liệu hiện tại sẽ được thay thế.`
       )
     ) {
       return;
     }
 
-    const nextLines =
-      selected.lines.length > 0
-        ? selected.lines.map(savedCuoiCaLineToDauCaFormLine)
-        : [emptyMachineNvlLine()];
+    const nextLines = mergeMachineNvlAutofillLines(
+      defaultLines.length > 0 ? defaultLines : lines,
+      selected.lines.map(savedCuoiCaLineToDauCaFormLine)
+    );
     setLines(nextLines);
     setNote(prev => {
       const stamp = `Điền từ tồn cuối ca ${sourceLabel}`;
@@ -801,9 +821,9 @@ export function MachineNvlReportPanel({
       return;
     }
     if (
-      lines.some(line => line.code.trim() || resolveMachineNvlLineQty(line) > 0) &&
+      lines.some(machineNvlLineHasQuantity) &&
       !window.confirm(
-        'Điền lại danh sách NVL từ tồn đầu ca?\nCác dòng hiện tại trên form sẽ bị thay thế.'
+        'Điền lại số liệu từ tồn đầu ca?\nGiữ danh sách NVL mặc định; số liệu hiện tại sẽ được thay thế.'
       )
     ) {
       return;
@@ -821,7 +841,7 @@ export function MachineNvlReportPanel({
       return;
     }
 
-    setLines(nextLines);
+    setLines(mergeMachineNvlAutofillLines(defaultLines.length > 0 ? defaultLines : lines, nextLines));
     setNote(prev => {
       const stamp = `Gợi ý từ tồn đầu ca ${date} · ${shift} (mọi máy)`;
       if (!prev.trim()) return stamp;
@@ -958,7 +978,7 @@ export function MachineNvlReportPanel({
     setMessage('');
     const reportToPrint = printAfterSave ? buildCurrentPrintReport() : null;
 
-    const activeLines = lines.filter(machineNvlLineHasContent);
+    const activeLines = lines.filter(machineNvlLineHasQuantity);
     if (!date || !shift || !machineRef.trim() || activeLines.length === 0) {
       setMessage(showSaveFailure('Vui lòng chọn ngày, ca, máy và nhập ít nhất một dòng NVL tồn.'));
       return;
@@ -967,7 +987,7 @@ export function MachineNvlReportPanel({
     setIsSaving(true);
     let resolvedLines = lines;
     try {
-      resolvedLines = await resolveLineImagesForSave(lines);
+      resolvedLines = await resolveLineImagesForSave(activeLines);
       setLines(resolvedLines);
     } catch (error: unknown) {
       setIsSaving(false);
@@ -1137,7 +1157,7 @@ export function MachineNvlReportPanel({
       machineName: selectedMachine?.name || machineRef.trim(),
       staff: machineNvlStaffText,
       note: note.trim(),
-      lines
+      lines: lines.filter(machineNvlLineHasQuantity)
     });
 
   useEffect(() => {

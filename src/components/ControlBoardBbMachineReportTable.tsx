@@ -6293,10 +6293,10 @@ export default function ControlBoardBbMachineReportTable({
             <thead>
               <tr>
                 <th className="w-10 text-center" />
-                <th>Ngày</th>
-                <th>Ca</th>
-                <th>Lệnh SX</th>
-                <th>Máy</th>
+                <th className="min-w-[150px] whitespace-nowrap">Ngày</th>
+                <th className="min-w-[100px] whitespace-nowrap">Ca</th>
+                <th className="min-w-[160px] whitespace-nowrap">Lệnh SX</th>
+                <th className="min-w-[180px] whitespace-nowrap">Máy</th>
                 <th className="text-right">SL yêu cầu</th>
                 <th className="text-right">TL yêu cầu (kg)</th>
                 <th
@@ -6347,20 +6347,20 @@ export default function ControlBoardBbMachineReportTable({
                 >
                   (%)
                 </th>
-                <th className="text-right">% SL đạt/KH</th>
+                <th colSpan={2} className="w-[90px] text-right">% SL đạt/KH</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={17} className="py-10 text-center text-zinc-400">
+                  <td colSpan={18} className="py-10 text-center text-zinc-400">
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                     Đang tải thành phẩm nhập kho...
                   </td>
                 </tr>
               ) : thanhPhamNhapKhoOrderGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={17} className="py-10 text-center text-zinc-400">
+                  <td colSpan={18} className="py-10 text-center text-zinc-400">
                     Chưa có dữ liệu trên tab Báo cáo sản lượng theo bộ lọc. Bấm «Tính toán» nếu chưa có snapshot.
                   </td>
                 </tr>
@@ -6398,10 +6398,10 @@ export default function ControlBoardBbMachineReportTable({
                             <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? '' : '-rotate-90'}`} />
                           </button>
                         </td>
-                        <td className="font-mono">{group.ngay || '—'}</td>
-                        <td>{group.shiftLabel || group.shift || '—'}</td>
-                        <td className="font-mono font-semibold">{group.orderCode || '—'}</td>
-                        <td>{group.machine || '—'}</td>
+                        <td className="min-w-[150px] whitespace-nowrap font-mono">{group.ngay || '—'}</td>
+                        <td className="min-w-[100px] whitespace-nowrap">{group.shiftLabel || group.shift || '—'}</td>
+                        <td className="min-w-[160px] whitespace-nowrap font-mono font-semibold">{group.orderCode || '—'}</td>
+                        <td className="min-w-[180px] whitespace-nowrap">{group.machine || '—'}</td>
                         <td className="bb-sheet-num font-semibold">{formatNumber(group.quantity, 2)}</td>
                         <td className="bb-sheet-num font-semibold text-zinc-700">
                           {formatKg(group.totalNormKg, 2)}
@@ -6439,7 +6439,7 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="bb-sheet-num font-semibold text-zinc-800">
                           {groupTtPerDm != null ? `${formatNumber(groupTtPerDm * 100, 1)}%` : '—'}
                         </td>
-                        <td className="bb-sheet-num font-semibold text-zinc-700">
+                        <td colSpan={2} className="bb-sheet-num w-[90px] font-semibold text-zinc-700">
                           {group.quantity > 0 && groupActualQty > 0
                             ? `${formatNumber((groupActualQty / group.quantity) * 100, 1)}%`
                             : '—'}

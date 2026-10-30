@@ -11,6 +11,7 @@ import {
 } from '../../components/shared/table';
 import { normalizeMachines, resolveMachineDisplayValue, type MachineRow } from '../danh-sach-may';
 import BieuDoThCharts, { compareShiftCa } from './BieuDoThCharts';
+import ProductionComparison from './ProductionComparison';
 
 export type BaoCaoTongHopListRow = {
   id: string;
@@ -221,7 +222,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
             Biểu đồ TH
           </h2>
           <p className="mt-1 text-sm font-semibold text-zinc-600">
-            Bảng theo ngày từ snapshot <span className="font-mono text-xs">bao_cao_tong_hop</span>.
+            Theo dõi sản lượng, chất lượng và hao hụt theo máy trong từng kỳ sản xuất.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -288,6 +289,9 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           </label>
         </TableToolbar>
       </section>
+
+      {rows.length >= 1000 && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Đã tải tới giới hạn 1.000 bản ghi. Hãy thu hẹp khoảng ngày để so sánh đầy đủ.</p>}
+      <ProductionComparison rows={sortedRows.map(row => ({ ...row, may: formatMayLabel(row.may, machines) === 'Tất cả' ? 'all' : formatMayLabel(row.may, machines) }))} isLoading={isLoading} />
 
       <TableShell minWidthClassName="min-w-[1100px]">
         <TableHead>

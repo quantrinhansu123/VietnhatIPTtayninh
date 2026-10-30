@@ -44,7 +44,7 @@ import {
 
 import { readCachedReports, STORAGE_DRAFT_KEY, STORAGE_OFFLINE_KEY, STORAGE_REPORTS_CACHE_KEY, STORAGE_AUTH_KEY } from './features/_shared/storage';
 import LoginPage, { grantResolvedAccess, type AuthUser } from './components/LoginPage';
-import appEmptyBgUrl from './assets/kaizen-app-bg.png';
+import appEmptyBgUrl from './assets/vietnhat-production-white.png';
 import { vietNhatLogoUrl, PRINT_COMPANY_NAME } from './components/layout/constants';
 import { AccessControlProvider } from './app/accessControl';
 import { buildAllowedTabSet, hasFullMenuAccess } from './features/nhan-su/menuViews';
@@ -812,12 +812,12 @@ export default function App() {
         }`} id="applet-viewport">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 bg-contain bg-center bg-no-repeat bg-black"
+            className="pointer-events-none absolute inset-0 z-0 bg-contain bg-right-bottom bg-no-repeat bg-white"
             style={{ backgroundImage: `url(${appEmptyBgUrl})` }}
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-black/20 via-transparent to-black/35"
+            className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/80 via-white/30 to-white/10"
           />
           <div
             aria-hidden
@@ -872,15 +872,15 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="relative min-h-[calc(100dvh-3.5rem)] md:min-h-[calc(100dvh-4rem)] overflow-hidden bg-black"
+                className="relative min-h-[calc(100dvh-3.5rem)] md:min-h-[calc(100dvh-4rem)] overflow-hidden bg-white"
               >
                 <img
                   src={appEmptyBgUrl}
                   alt=""
-                  className="pointer-events-none absolute inset-0 m-auto h-full w-full max-h-full max-w-full object-contain object-center"
+                  className="pointer-events-none absolute inset-0 m-auto h-full w-full max-h-full max-w-full object-contain object-right-bottom"
                   draggable={false}
                 />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/45" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/80 via-white/30 to-white/10" />
                 <div className="relative z-10 space-y-5 p-4 md:p-6 pb-8">
                   <MainMenuFlow items={visibleMainMenuItems} onNavigate={navigateToTab} />
                 </div>

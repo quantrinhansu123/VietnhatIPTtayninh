@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { comparisonRows, summarize } from './comparisonData';
+import type { BaoCaoTongHopListRow } from './index';
+const row = (patch: Partial<BaoCaoTongHopListRow> = {}) => ({ ngay_tu: '2026-09-01', ngay_den: '2026-09-01', ca: '12C1', may: 'M04', updated_at: '2026-09-02', tl_nhua_thanh_pham_kg: 100, loi_hong_tong_kg: 10, chenh_lech_nhua_kg: -2, tl_nhua_dinh_muc_kg: 100, ...patch } as BaoCaoTongHopListRow);
+assert.equal(comparisonRows([row(), row({ may: 'all' }), row({ ca: 'all' }), row({ ngay_den: '2026-09-30' }), row({ updated_at: '2026-09-01' })]).length, 1);
+const total = summarize([row(), row({ ca: '12C2', tl_nhua_thanh_pham_kg: 900, loi_hong_tong_kg: 0 })], () => 'total')[0];
+assert.equal(total.rate, 1);
+assert.equal(total.days, 1);
+assert.equal(total.loss, 2);
+assert.equal(summarize([row({ tl_nhua_thanh_pham_kg: 0 })], () => 'total')[0].rate, null);
+assert.equal(summarize([row({ loi_hong_tong_kg: null })], () => 'total')[0].rate, null);
+console.log('Comparison aggregation checks passed');

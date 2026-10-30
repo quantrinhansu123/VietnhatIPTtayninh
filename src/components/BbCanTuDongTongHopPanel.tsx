@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { formatNumber } from '../utils';
 import type { ProductRow } from '../features/san-pham/types';
@@ -139,7 +139,7 @@ export default function BbCanTuDongTongHopPanel({
         className={signedClass(row.phan_tram_chenh)}
       />
       <MetricCell value={formatKg(row.loi_dm_kg, 2)} className="text-sky-900" />
-      <MetricCell value={formatKg(row.loi_tt_kg, 2)} className="text-violet-900" />
+      <MetricCell value={formatKg(row.loi_tt_kg, 2)} className="text-zinc-900" />
       <MetricCell value={formatKg(row.trong_luong_bi_kg, 2)} className="text-zinc-700" />
     </>
   );
@@ -271,7 +271,7 @@ export default function BbCanTuDongTongHopPanel({
               </th>
               <th className="text-right font-semibold" title="Σ Cân lõi (tare_weight)">
                 <div>Trọng lượng Lõi TT</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-violet-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
                   Σ Cân lõi
                 </div>
               </th>
@@ -300,7 +300,7 @@ export default function BbCanTuDongTongHopPanel({
               </tr>
             ) : (
               detailRows.map(row => (
-                <tr key={row.khoa_on_dinh} className="hover:bg-violet-50/50">
+                <tr key={row.khoa_on_dinh} className="hover:bg-zinc-50/70">
                   <td className="whitespace-nowrap px-1.5 py-1 font-bold text-zinc-900">
                     {formatIsoDateVi(row.ngay)}
                   </td>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Check,
@@ -505,7 +505,7 @@ function BbDauCaMaterialRow({
     return unit === 'kg' || unit.startsWith('kg') || unit === 'lít' || unit === 'lit' ? 4 : 2;
   })();
   return (
-    <tr className="border-b border-slate-100 bg-white text-[15px] font-semibold leading-snug hover:bg-indigo-50/50">
+    <tr className="border-b border-slate-100 bg-white text-[15px] font-semibold leading-snug hover:bg-zinc-50/70">
       <td className="whitespace-nowrap px-3.5 py-3 font-mono text-[15px] font-bold text-zinc-900">
         {row.itemCode || '—'}
       </td>
@@ -531,11 +531,11 @@ function BbDauCaMaterialRow({
       >
         {formatKg(row.tonNgoaiKg, 4)}
       </td>
-      <td className="whitespace-nowrap border-r-2 border-sky-400 bg-amber-50/80 px-3.5 py-3 text-right font-mono text-[15px] font-black text-zinc-950">
+      <td className="whitespace-nowrap border-r-2 border-sky-400 bg-amber-50/80 px-3.5 py-3 text-right font-mono text-[15px] font-semibold text-zinc-950">
         {row.tonDauFormula ? (
           <ThucDungMetricButton
             label={formatKg(row.tonDauWeightKg, 4)}
-            className="font-mono text-[15px] font-black text-zinc-950"
+            className="font-mono text-[15px] font-semibold text-zinc-950"
             onOpen={openFormula}
           />
         ) : (
@@ -691,7 +691,7 @@ function BbDauCaMaterialSplitTables({
                   >
                     <div className="leading-tight">Đã trộn</div>
                     {showNhuaTronInHeader ? (
-                      <div className="mt-1 font-mono text-[12px] font-black normal-case tracking-normal text-violet-900">
+                      <div className="mt-1 font-mono text-[12px] font-black normal-case tracking-normal text-zinc-900">
                         NHUA-TRON {formatKg(daTronHeaderNhuaTronKg, 4)}
                       </div>
                     ) : null}
@@ -2855,13 +2855,13 @@ export default function ControlBoardBbMachineReportTable({
     metric: BbPlasticSummaryDetailMetric | undefined
   ) => {
     if (!metric || display === '—' || display === '…') {
-      return <p className="mt-1 font-mono text-base font-black tabular-nums text-zinc-900">{display}</p>;
+      return <p className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900">{display}</p>;
     }
     return (
       <button
         type="button"
         onClick={() => setPlasticSummaryDetail(metric)}
-        className="mt-1 font-mono text-base font-black tabular-nums text-zinc-900 underline decoration-dotted decoration-red-300 underline-offset-2 transition hover:text-red-700 hover:decoration-red-500"
+        className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900 underline decoration-dotted decoration-red-300 underline-offset-2 transition hover:text-red-700 hover:decoration-red-500"
         title="Xem công thức / nguồn số liệu"
       >
         {display}
@@ -3507,14 +3507,14 @@ export default function ControlBoardBbMachineReportTable({
 
   return (
     <>
-    <section className="control-board-report-theme overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
-      <div className="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 py-4 text-zinc-900 sm:px-5">
-        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+    <section className="control-board-report-theme overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="border-b border-zinc-200 bg-white px-4 py-5 text-zinc-900 sm:px-5">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               Báo cáo {machineReportLabel}
             </p>
-            <h3 className="mt-0.5 text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+            <h3 className="mt-0.5 text-lg font-semibold tracking-tight text-zinc-900 sm:text-xl">
               {machineReportTitle}
             </h3>
             {snapshotStatus === 'ready' && snapshotCalculatedAt ? (
@@ -3559,7 +3559,7 @@ export default function ControlBoardBbMachineReportTable({
               type="button"
               onClick={openCalcDialog}
               disabled={isLoading || calculatingReport || snapshotStatus === 'loading'}
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#c8102e]/80 bg-[#c8102e] px-3.5 text-[13px] font-semibold text-white shadow-xs transition hover:bg-[#a80e26] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand-600 bg-brand-500 px-3.5 text-[13px] font-semibold text-white shadow-xs transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
               title="Chọn Ngày · Ca · Máy — tính và đồng bộ tất cả tab, lưu DB"
             >
               {calculatingReport ? (
@@ -3584,24 +3584,25 @@ export default function ControlBoardBbMachineReportTable({
           </div>
         </div>
 
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
         <div
-          className={`grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 ${
+          className={`grid grid-cols-1 divide-y divide-zinc-100 sm:grid-cols-2 sm:divide-x lg:grid-cols-3 ${
             isInsulationMachine && sanLuongSource === 'can-tu-dong'
               ? 'xl:grid-cols-[1fr_1.05fr_1.05fr_1.05fr_1.45fr_1fr]'
-              : 'xl:grid-cols-6'
+              : 'xl:grid-cols-6 xl:divide-y-0'
           }`}
         >
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
             title="Lấy toàn bộ KG: tổng cột «Tổng (kg)» của tất cả dòng trong Lệnh sản xuất theo bộ lọc"
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              TL nhựa yêu cầu
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Yêu cầu
             </p>
             <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
               <div className="min-w-0" title="Tổng cột «SL» lệnh sản xuất">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">Số lượng</p>
-                <p className="font-mono text-[15px] font-black tabular-nums text-zinc-900">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">Số lượng</p>
+                <p className="font-mono text-[15px] font-semibold tabular-nums text-zinc-900">
                   {isLoading
                     ? '…'
                     : orderTotals.quantity > 0
@@ -3610,8 +3611,8 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
               <div className="min-w-0" title="Lấy hết KG từ cột «Tổng (kg)» trong Lệnh sản xuất">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL</p>
-                <p className="font-mono text-[15px] font-black tabular-nums text-zinc-900">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL</p>
+                <p className="font-mono text-[15px] font-semibold tabular-nums text-zinc-900">
                   {isLoading
                     ? '…'
                     : plasticRequiredWeightKg > 0
@@ -3623,11 +3624,11 @@ export default function ControlBoardBbMachineReportTable({
           </div>
 
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
             title="Lấy từ tab «Dữ liệu xuất kho»: TL nhựa = hạt nhựa kg; vật tư khác = còn lại (cùng bảng Tổng NVL đã xuất)"
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">TL xuất</p>
-            <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">Xuất</p>
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-zinc-900">
               {isLoading
                 ? '…'
                 : exportWeightByKind.totalKg > 0
@@ -3636,8 +3637,8 @@ export default function ControlBoardBbMachineReportTable({
             </p>
             <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
               <div className="min-w-0" title="Σ cột Quy về kg mọi dòng ĐVT = kg trên phiếu xuất (kể cả túi)">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL nhựa</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL nhựa</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.plasticKg > 0
@@ -3646,8 +3647,8 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
               <div className="min-w-0" title="Σ cột Quy về kg dòng ĐVT ≠ kg (lõi cái…)">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">Vật tư khác</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">Vật tư khác</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : exportWeightByKind.otherKg > 0
@@ -3659,13 +3660,13 @@ export default function ControlBoardBbMachineReportTable({
           </div>
 
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
             title="Trọng lượng tồn đầu ca = nhựa (ĐVT kg) + vật tư khác (lõi/túi/ĐVT ≠ kg) trên phiếu tồn đầu"
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              TL tồn Đầu ca
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Tồn đầu
             </p>
-            <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-zinc-900">
               {isLoading
                 ? '…'
                 : dauCaWeightByKind.totalKg > 0
@@ -3674,8 +3675,8 @@ export default function ControlBoardBbMachineReportTable({
             </p>
             <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
               <div className="min-w-0" title="Dòng NVL nhựa, ĐVT = kg">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL nhựa</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL nhựa</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : dauCaWeightByKind.plasticKg > 0
@@ -3684,8 +3685,8 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
               <div className="min-w-0" title="Lõi, túi, màng và ĐVT ≠ kg trên phiếu tồn đầu">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">Vật tư khác</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">Vật tư khác</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : dauCaWeightByKind.otherKg > 0
@@ -3697,13 +3698,13 @@ export default function ControlBoardBbMachineReportTable({
           </div>
 
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
             title="Trọng lượng tồn cuối ca = nhựa (ĐVT kg) + vật tư khác (lõi/túi/ĐVT ≠ kg) trên phiếu tồn cuối"
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              TL tồn Cuối ca
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Tồn cuối
             </p>
-            <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-zinc-900">
               {isLoading
                 ? '…'
                 : cuoiCaWeightByKind.totalKg > 0
@@ -3712,8 +3713,8 @@ export default function ControlBoardBbMachineReportTable({
             </p>
             <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
               <div className="min-w-0" title="Dòng NVL nhựa, ĐVT = kg">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL nhựa</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL nhựa</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : cuoiCaWeightByKind.plasticKg > 0
@@ -3722,8 +3723,8 @@ export default function ControlBoardBbMachineReportTable({
                 </p>
               </div>
               <div className="min-w-0" title="Lõi, túi, màng và ĐVT ≠ kg trên phiếu tồn cuối">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">Vật tư khác</p>
-                <p className="font-mono text-[13px] font-black tabular-nums text-zinc-800">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">Vật tư khác</p>
+                <p className="font-mono text-[13px] font-semibold tabular-nums text-zinc-800">
                   {isLoading
                     ? '…'
                     : cuoiCaWeightByKind.otherKg > 0
@@ -3735,15 +3736,15 @@ export default function ControlBoardBbMachineReportTable({
           </div>
 
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
             title={
               sanLuongSource === 'can-tu-dong'
                 ? 'Tổng cột «Trọng lượng nhựa» trên /can-tu-dong (SP − lõi − bì 0,16), cột Ngày từ Từ ngày đến Đến ngày+1 (gồm SP cân ngày hôm sau)'
                 : 'Tổng SL sản lượng và trọng lượng thực tế (kg) trên tab Dữ liệu trong báo cáo sản lượng'
             }
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Báo cáo sản lượng
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Sản lượng
             </p>
             <div
               className={`mt-auto grid gap-1.5 border-t border-red-100/80 pt-1.5 ${
@@ -3760,7 +3761,7 @@ export default function ControlBoardBbMachineReportTable({
                     : 'Tổng cột «SL sản lượng»'
                 }
               >
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">
                   {sanLuongSource === 'can-tu-dong' ? 'Số SP' : 'Số lượng'}
                 </p>
                 <p className="font-mono text-[14px] font-black tabular-nums text-zinc-900">
@@ -3773,7 +3774,7 @@ export default function ControlBoardBbMachineReportTable({
               </div>
               {isInsulationMachine && sanLuongSource === 'can-tu-dong' ? (
                 <div className="min-w-0">
-                  <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL màng</p>
+                  <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL màng</p>
                   {renderPlasticSummaryValue(
                     isLoading
                       ? '…'
@@ -3788,7 +3789,7 @@ export default function ControlBoardBbMachineReportTable({
                 </div>
               ) : null}
               <div className="min-w-0">
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">
                   {sanLuongSource === 'can-tu-dong' ? 'TL nhựa' : 'TL'}
                 </p>
                 {renderPlasticSummaryValue(
@@ -3809,17 +3810,17 @@ export default function ControlBoardBbMachineReportTable({
           </div>
 
           <div
-            className="flex h-full min-h-[102px] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50"
+            className="flex h-full min-h-[96px] flex-col p-3.5"
                 title={
                   isInsulationMachine
                     ? 'Từ Hàng lỗi hỏng trên BC sản lượng: SP lỗi + RAC MANG / MT-HANG RAC'
                     : 'Từ Hàng lỗi hỏng trên BC sản lượng: SP lỗi + SP rác (trừ rác màng)'
                 }
           >
-            <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Báo cáo lỗi hỏng
+            <p className="whitespace-nowrap text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Lỗi hỏng
             </p>
-            <p className="mt-0.5 font-mono text-base font-black tabular-nums text-zinc-900">
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-zinc-900">
               {isLoading
                 ? '…'
                 : damagedWeightByKind.plasticKg + damagedWeightByKind.otherKg > 0
@@ -3835,8 +3836,8 @@ export default function ControlBoardBbMachineReportTable({
                     : 'Σ trọng lượng phiếu Báo cáo sản lượng · loại SP lỗi (Hàng hỏng)'
                 }
               >
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">TL nhựa</p>
-                <p className="font-mono text-[15px] font-black tabular-nums text-zinc-900">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">TL nhựa</p>
+                <p className="font-mono text-[15px] font-semibold tabular-nums text-zinc-900">
                   {isLoading
                     ? '…'
                     : damagedWeightByKind.plasticKg > 0
@@ -3852,8 +3853,8 @@ export default function ControlBoardBbMachineReportTable({
                     : 'Σ trọng lượng phiếu Báo cáo sản lượng · loại SP rác (Kho rác), trừ rác màng'
                 }
               >
-                <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-tight text-zinc-500">Vật tư khác</p>
-                <p className="font-mono text-[15px] font-black tabular-nums text-zinc-900">
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-tight text-zinc-500">Vật tư khác</p>
+                <p className="font-mono text-[15px] font-semibold tabular-nums text-zinc-900">
                   {isLoading
                     ? '…'
                     : damagedWeightByKind.otherKg > 0
@@ -3864,29 +3865,30 @@ export default function ControlBoardBbMachineReportTable({
             </div>
           </div>
         </div>
+        </div>
 
         <div
-          className="mt-3 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-white p-3 shadow-xs"
+          className="mt-5 overflow-hidden rounded-xl border border-zinc-200 bg-white"
           title={
             isInsulationMachine
               ? 'Chênh lệch = Trọng lượng nhựa (đã trừ màng) − Thực tế sử dụng + Lỗi'
               : 'Chênh lệch = Tổng nhựa thành phẩm − Thực tế sử dụng + Lỗi'
           }
         >
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          <p className="border-b border-zinc-100 px-3.5 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Tổng hợp nhựa
           </p>
           <div
-            className={`grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 ${
+            className={`grid grid-cols-1 divide-y divide-zinc-100 sm:grid-cols-2 sm:divide-x lg:grid-cols-3 ${
               isInsulationMachine && sanLuongSource === 'can-tu-dong'
-                ? 'xl:grid-cols-[0.85fr_0.85fr_2.9fr_1.1fr_0.8fr_0.8fr]'
-                : 'xl:grid-cols-6'
+                ? 'xl:grid-cols-[0.85fr_0.85fr_2.9fr_1.1fr_0.8fr_0.8fr] xl:divide-y-0'
+                : 'xl:grid-cols-6 xl:divide-y-0'
             }`}
           >
             {(
               [
                 {
-                  label: 'Tổng nhựa yêu cầu',
+                  label: 'Nhựa yêu cầu',
                   title: 'Tổng (kg) lệnh sản xuất',
                   metric: 'required' as const,
                   display: isLoading
@@ -3896,7 +3898,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'
                 },
                 {
-                  label: 'Tổng nhựa xuất',
+                  label: 'Nhựa xuất',
                   title: 'Σ trọng lượng hạt nhựa trên tab «Dữ liệu xuất kho» (cùng Tổng NVL đã xuất)',
                   metric: 'export' as const,
                   display: isLoading
@@ -3906,7 +3908,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'
                 },
                 {
-                  label: 'Tổng nhựa thành phẩm',
+                  label: 'Nhựa TP',
                   metric: 'finished' as const,
                   title:
                     sanLuongSource === 'can-tu-dong'
@@ -3960,7 +3962,7 @@ export default function ControlBoardBbMachineReportTable({
                       : ''
                 },
                 {
-                  label: 'Thực tế sử dụng',
+                  label: 'Thực dùng',
                   title: 'Tồn đầu ca + Xuất nhựa (ca) − Tồn cuối ca',
                   metric: 'stock_net' as const,
                   display: isLoading
@@ -3972,7 +3974,7 @@ export default function ControlBoardBbMachineReportTable({
                       : '—'
                 },
                 {
-                  label: 'Tổng nhựa lỗi',
+                  label: 'Nhựa lỗi',
                   title: 'Σ trọng lượng phiếu Báo cáo sản lượng · SP lỗi (Hàng hỏng)',
                   metric: 'damaged' as const,
                   display: isLoading
@@ -3997,7 +3999,7 @@ export default function ControlBoardBbMachineReportTable({
             ).map(item => (
               <div
                 key={item.label}
-                className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-xs transition hover:border-slate-300"
+                className={`p-3.5 ${item.metric === 'difference' ? 'bg-rose-50/50' : ''}`}
                 title={item.title}
               >
                 {'secondaryDisplay' in item && item.secondaryDisplay ? (
@@ -4080,8 +4082,8 @@ export default function ControlBoardBbMachineReportTable({
           </div>
         ) : null}
 
-        <div className="relative flex shrink-0 items-stretch border-b border-slate-200 bg-slate-50/90">
-          <div className="bb-tab-scroller min-w-0 flex-1 gap-px px-1 pt-1 sm:px-1.5">
+        <div className="relative flex shrink-0 items-stretch border-b border-zinc-200 bg-[#e8f0ed]/40">
+          <div className="bb-tab-scroller min-w-0 flex-1 gap-1 px-1.5 pt-1.5 [mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]">
             {BB_MACHINE_REPORT_TABS.map(tab => {
               const isChecked = checkedTabs.has(tab.id);
               const isActive = activeTab === tab.id;
@@ -4090,16 +4092,17 @@ export default function ControlBoardBbMachineReportTable({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`group relative inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t border px-1.5 py-1 text-[10px] font-semibold leading-tight tracking-tight transition sm:px-2 sm:text-[11px] ${
+                  title={tab.label}
+                  className={`group relative inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-lg border px-2 py-1.5 text-[11px] font-medium leading-tight tracking-tight transition sm:text-xs ${
                     isActive
-                      ? 'z-[1] -mb-px border-slate-200 border-b-white bg-white text-slate-900 shadow-[0_-1px_2px_rgba(15,23,42,0.04)]'
-                      : 'border-transparent bg-transparent text-slate-600 hover:bg-white/70 hover:text-slate-900'
+                      ? 'z-[1] -mb-px border-zinc-200 border-b-white bg-white font-semibold text-zinc-900 shadow-sm'
+                      : 'border-transparent bg-transparent text-zinc-700 hover:bg-white/70 hover:text-zinc-900'
                   }`}
                 >
                   {isActive ? (
                     <span
                       aria-hidden
-                      className="absolute inset-x-1.5 -bottom-px h-0.5 rounded-full bg-[#c8102e]"
+                      className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-500"
                     />
                   ) : null}
                   <span
@@ -4112,15 +4115,15 @@ export default function ControlBoardBbMachineReportTable({
                     title={
                       isChecked ? 'Đã rà soát — bấm để bỏ đánh dấu' : 'Bấm để đánh dấu đã rà soát'
                     }
-                    className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-sm border transition ${
+                    className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border transition ${
                       isChecked
                         ? 'border-emerald-600 bg-emerald-600 text-white'
-                        : 'border-slate-300 bg-white text-transparent hover:border-emerald-500'
+                        : 'border-zinc-300 bg-white text-transparent hover:border-emerald-500'
                     }`}
                   >
-                    <Check className="h-2 w-2" strokeWidth={3} />
+                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
-                  <span className={isActive ? 'font-bold' : 'font-semibold'}>{tab.label}</span>
+                  <span>{tab.shortLabel}</span>
                 </button>
               );
             })}
@@ -4128,10 +4131,10 @@ export default function ControlBoardBbMachineReportTable({
           <button
             type="button"
             onClick={() => setTableFullscreen(open => !open)}
-            className="inline-flex shrink-0 items-center gap-1 border-l border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 sm:px-2.5 sm:text-[11px]"
+            className="inline-flex shrink-0 items-center gap-1 border-l border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
             title={tableFullscreen ? 'Thu nhỏ bảng' : 'Mở rộng bảng full màn hình'}
           >
-            {tableFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+            {tableFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline">{tableFullscreen ? 'Thu nhỏ' : 'Mở rộng'}</span>
           </button>
         </div>
@@ -4141,7 +4144,7 @@ export default function ControlBoardBbMachineReportTable({
       activeTab === 'kiem_ton_cuoi_ca' ||
       activeTab === 'danh_gia_tong_hop' ||
       activeTab === 'giai_trinh' ? (
-        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="flex flex-col gap-3 border-b border-zinc-200 bg-zinc-50/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           {activeTab === 'ton_dau_ca' ? (
             <div className="min-w-0">
               <p className="text-sm font-semibold tracking-tight text-slate-800">
@@ -4178,7 +4181,7 @@ export default function ControlBoardBbMachineReportTable({
                 Chỉ lưu Supabase — gõ xong bấm «Lưu giải trình DB». Chưa chạy migration →{' '}
                 <code className="rounded bg-zinc-100 px-1">supabase-bb-giai-trinh.sql</code>
                 {giaiTrinhSaveMessage ? (
-                  <span className="ml-1 font-bold text-indigo-700">{giaiTrinhSaveMessage}</span>
+                  <span className="ml-1 font-semibold text-brand-700">{giaiTrinhSaveMessage}</span>
                 ) : null}
                 {giaiTrinhDbError ? (
                   <span className="mt-1 block font-bold text-rose-700">{giaiTrinhDbError}</span>
@@ -4195,7 +4198,7 @@ export default function ControlBoardBbMachineReportTable({
                   type="button"
                   onClick={() => void saveGiaiTrinhToDb()}
                   disabled={savingGiaiTrinh || loadingGiaiTrinh || orderGroupsMerged.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-800 shadow-xs transition hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-black text-zinc-800 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {savingGiaiTrinh ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                   {savingGiaiTrinh ? 'Đang lưu...' : 'Lưu giải trình DB'}
@@ -4209,7 +4212,7 @@ export default function ControlBoardBbMachineReportTable({
                     isLoading ||
                     orderGroupsMerged.length === 0
                   }
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-black text-zinc-700 shadow-xs transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-black text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
                   title="In bảng giải trình (PDF qua hộp thoại in)"
                 >
                   {pendingGiaiTrinhPrint ? (
@@ -4227,7 +4230,7 @@ export default function ControlBoardBbMachineReportTable({
                 type="button"
                 onClick={() => setAllActiveGroupsExpanded(true)}
                 disabled={allActiveGroupsExpanded}
-                className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-black text-violet-800 shadow-sm transition hover:bg-violet-50 disabled:cursor-default disabled:opacity-40"
+                className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-black text-zinc-800 shadow-sm transition hover:bg-[#e8f0ed]/50 disabled:cursor-default disabled:opacity-40"
               >
                 Mở tất cả
               </button>
@@ -4393,7 +4396,7 @@ export default function ControlBoardBbMachineReportTable({
                                     const nvlItems = dmNvl?.nvl || [];
                                     return (
                                       <React.Fragment key={row.key}>
-                                        <tr className="border-b border-slate-100 bg-white font-semibold hover:bg-violet-50/50">
+                                        <tr className="border-b border-slate-100 bg-white font-semibold hover:bg-zinc-50/70">
                                           <td className="px-1.5 py-2">
                                             <button
                                               type="button"
@@ -4420,11 +4423,11 @@ export default function ControlBoardBbMachineReportTable({
                                             {row.productName || '—'}
                                           </td>
                                           <td className="px-3 py-2 text-zinc-600">{row.unit || '—'}</td>
-                                          <td className="px-3 py-2 text-right font-mono font-bold text-indigo-700">
+                                          <td className="px-3 py-2 text-right font-mono font-semibold text-brand-700">
                                             {formatKg(row.normKgPerUnit, 2)}
                                           </td>
                                           <td
-                                            className="px-3 py-2 text-right font-mono font-bold text-violet-700"
+                                            className="px-3 py-2 text-right font-mono font-bold text-zinc-700"
                                             title="Cột Trọng lượng nhựa + phụ gia (kg) · Kho hàng (= trọng lượng trộn)"
                                           >
                                             {formatProductCatalogPlasticWeight(catalogProduct)}
@@ -4445,11 +4448,11 @@ export default function ControlBoardBbMachineReportTable({
                                           <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                                             <td colSpan={9} className="p-0">
                                               <div className={`${BB_TABLE_CHILD_PANEL_CLASS} px-2 py-2`}>
-                                                <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-[11px] font-bold text-violet-900">
+                                                <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-[11px] font-bold text-zinc-900">
                                                   <span className="uppercase tracking-wider">
                                                     Định mức NVL
                                                   </span>
-                                                  <span className="font-mono text-violet-700">
+                                                  <span className="font-mono text-zinc-700">
                                                     TL trộn:{' '}
                                                     {dmNvl?.trong_luong_tron_kg != null
                                                       ? formatKg(dmNvl.trong_luong_tron_kg, 2)
@@ -4457,7 +4460,7 @@ export default function ControlBoardBbMachineReportTable({
                                                     kg / 1 {row.unit || 'ĐVT'}
                                                   </span>
                                                   {dmNvl?.tong_trong_luong_tron_kg != null ? (
-                                                    <span className="font-mono text-violet-600">
+                                                    <span className="font-mono text-zinc-600">
                                                       × SL = {formatKg(dmNvl.tong_trong_luong_tron_kg, 2)} kg
                                                     </span>
                                                   ) : null}
@@ -4507,7 +4510,7 @@ export default function ControlBoardBbMachineReportTable({
                                                       nvlItems.map((item, nvlIndex) => (
                                                         <tr
                                                           key={`${row.key}|nvl:${item.ma_nvl || nvlIndex}`}
-                                                          className="border-t border-violet-100 bg-white hover:bg-violet-50/50"
+                                                          className="border-t border-zinc-100 bg-white hover:bg-zinc-50/70"
                                                         >
                                                           <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
                                                             {item.ma_nvl || '—'}
@@ -4528,7 +4531,7 @@ export default function ControlBoardBbMachineReportTable({
                                                               ? formatNumber(item.so_luong, 3)
                                                               : '—'}
                                                           </td>
-                                                          <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-700">
+                                                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-brand-700">
                                                             {formatKg(item.dinh_luong_kg, 4)}
                                                           </td>
                                                           <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-700">
@@ -4681,10 +4684,10 @@ export default function ControlBoardBbMachineReportTable({
                           : '—'}
                       </td>
                     </tr>
-                    <tr className="border-t border-violet-300 bg-violet-50/80">
+                    <tr className="border-t border-zinc-300 bg-[#e8f0ed]/80">
                       <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-wider">
                         Tổng cộng
-                        <span className="ml-1 font-semibold normal-case tracking-normal text-violet-800/80">
+                        <span className="ml-1 font-semibold normal-case tracking-normal text-zinc-800/80">
                           = nhựa + vật tư khác
                         </span>
                       </td>
@@ -4933,7 +4936,7 @@ export default function ControlBoardBbMachineReportTable({
                     type="button"
                     onClick={() => setAllActiveGroupsExpanded(true)}
                     disabled={damagedGroupsWithMixing.every(g => isGroupExpanded('bao_cao_loi_hong', g.groupKey))}
-                    className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-black text-violet-800 shadow-sm transition hover:bg-violet-50 disabled:cursor-default disabled:opacity-40"
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-black text-zinc-800 shadow-sm transition hover:bg-[#e8f0ed]/50 disabled:cursor-default disabled:opacity-40"
                   >
                     Mở tất cả
                   </button>
@@ -5386,7 +5389,7 @@ export default function ControlBoardBbMachineReportTable({
                 </tr>
               ) : (
                 inboundRows.map(row => (
-                  <tr key={row.key} className="hover:bg-violet-50/50">
+                  <tr key={row.key} className="hover:bg-zinc-50/70">
                     <td className="px-3 py-2 font-mono font-bold text-zinc-800">{row.ngay || '—'}</td>
                     <td className="px-3 py-2 font-semibold text-zinc-700">{row.shiftLabel || row.shift || '—'}</td>
                     <td className="px-3 py-2 font-mono font-black text-sky-800">{row.orderCode || '—'}</td>
@@ -5501,7 +5504,7 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-3 py-2.5 text-[15px] font-semibold text-slate-800">
                           {group.machine || '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[15px] font-bold tabular-nums text-violet-800">
+                        <td className="px-3 py-2.5 text-right font-mono text-[15px] font-bold tabular-nums text-zinc-800">
                           {formatKg(group.thucTronTotal, 2)}
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono text-[15px] font-bold tabular-nums text-amber-700">
@@ -5621,7 +5624,7 @@ export default function ControlBoardBbMachineReportTable({
                                             </tr>
                                           ) : (
                                             mixingLines.map(row => (
-                                              <tr key={row.key} className="hover:bg-violet-50/50">
+                                              <tr key={row.key} className="hover:bg-zinc-50/70">
                                                 <td className="px-3 py-2 font-mono font-bold tabular-nums text-slate-800">
                                                   {row.materialCode || '—'}
                                                 </td>
@@ -5644,10 +5647,10 @@ export default function ControlBoardBbMachineReportTable({
                                                     }
                                                   />
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-violet-800">
+                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-800">
                                                   <ThucDungMetricButton
                                                     label={formatKg(row.mixingShiftMaterialKg, 2)}
-                                                    className="font-mono font-bold tabular-nums text-violet-800"
+                                                    className="font-mono font-bold tabular-nums text-zinc-800"
                                                     onOpen={() =>
                                                       setThucDungDetail({ line: row, metric: 'thuc_tron' })
                                                     }
@@ -5707,10 +5710,10 @@ export default function ControlBoardBbMachineReportTable({
                                                     }
                                                   />
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-indigo-800">
+                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-800">
                                                   <ThucDungMetricButton
                                                     label={formatKg(resolveKlNhuaTtLoiKg(row), 2)}
-                                                    className="font-mono font-bold tabular-nums text-indigo-800"
+                                                    className="font-mono font-bold tabular-nums text-zinc-800"
                                                     onOpen={() =>
                                                       setThucDungDetail({ line: row, metric: 'kl_nhua_tt_loi' })
                                                     }
@@ -5732,7 +5735,7 @@ export default function ControlBoardBbMachineReportTable({
                                           )}
                                         </tbody>
                                           {mixingTotals && mixingLines.length > 0 ? (
-                                          <tfoot className="border-t border-violet-200 bg-violet-50/80 text-[13px] font-bold text-violet-950">
+                                          <tfoot className="border-t border-zinc-200 bg-[#e8f0ed]/80 text-[13px] font-bold text-zinc-950">
                                             <tr>
                                               <td colSpan={4} className="px-3 py-2.5 text-right tracking-wide">
                                                 Tổng nhựa
@@ -5866,7 +5869,7 @@ export default function ControlBoardBbMachineReportTable({
                                                 <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-teal-700">
                                                   {formatKg(row.weightKg, 2)}
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-indigo-800">
+                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-800">
                                                   {formatKg(resolveKlNhuaTtLoiKg(row), 2)}
                                                 </td>
                                                 <td
@@ -6101,7 +6104,7 @@ export default function ControlBoardBbMachineReportTable({
                                       </td>
                                     </tr>
                                     {productGroup.lines.map(row => (
-                                      <tr key={row.key} className="bb-row-child bg-white font-semibold hover:bg-violet-50/50">
+                                      <tr key={row.key} className="bb-row-child bg-white font-semibold hover:bg-zinc-50/70">
                                         <td className="px-2 py-1.5" />
                                         <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
                                           {row.materialCode || '—'}
@@ -6219,13 +6222,13 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-4 py-2.5 font-semibold text-zinc-700">{group.shiftLabel || group.shift || '—'}</td>
                         <td className="px-4 py-2.5 font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
                         <td className="px-4 py-2.5 font-semibold text-zinc-700">{group.machine || '—'}</td>
-                        <td className="px-4 py-2.5 text-right font-mono font-bold text-indigo-700">
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-brand-700">
                           {formatKg(dauCaGroup?.totalWeightKg || 0, 2)}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-bold text-amber-700">
                           {formatKg(group.tongTrongLuongXuatRa, 2)}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono font-bold text-violet-700">
+                        <td className="px-4 py-2.5 text-right font-mono font-bold text-zinc-700">
                           {formatKg(cuoiCaGroup?.totalWeightKg || 0, 2)}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-bold text-cyan-700">
@@ -6245,7 +6248,7 @@ export default function ControlBoardBbMachineReportTable({
                             <td colSpan={4} className="px-4 py-2 text-right font-black">Giá trị (kg)</td>
                           </tr>
                           {group.lines.map(line => (
-                            <tr key={line.key} className="bb-row-child bg-white font-semibold hover:bg-violet-50/50 border-b border-slate-50">
+                            <tr key={line.key} className="bb-row-child bg-white font-semibold hover:bg-zinc-50/70 border-b border-slate-50">
                               <td className="px-3 py-2" />
                               <td colSpan={5} className="px-4 py-2 text-zinc-700">
                                 {line.label}
@@ -6268,13 +6271,13 @@ export default function ControlBoardBbMachineReportTable({
                   <td colSpan={5} className="px-4 py-3.5 text-right uppercase tracking-wider">
                     Tổng cộng
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-indigo-700">
+                  <td className="px-4 py-3.5 text-right font-mono text-zinc-700">
                     {formatKg(dauCaTotalKg, 2)}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-amber-700">
                     {formatKg(exportTotalKg, 2)}
                   </td>
-                  <td className="px-4 py-3.5 text-right font-mono text-violet-700">
+                  <td className="px-4 py-3.5 text-right font-mono text-zinc-700">
                     {formatKg(cuoiCaTotalKg, 2)}
                   </td>
                   <td className="px-4 py-3.5 text-right font-mono text-cyan-700">
@@ -6604,9 +6607,9 @@ export default function ControlBoardBbMachineReportTable({
                 orderGroupsMerged.map(group => {
                   const fields = resolveGiaiTrinhFields(group.groupKey);
                   const giaiTrinhInputClass =
-                    'w-full min-w-[140px] resize-y rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-zinc-800 outline-none focus:border-indigo-400';
+                    'w-full min-w-[140px] resize-y rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-zinc-800 outline-none focus:border-brand-500';
                   return (
-                    <tr key={group.groupKey} className="align-top hover:bg-indigo-50/30">
+                    <tr key={group.groupKey} className="align-top hover:bg-zinc-50/50">
                       <td className="px-3 py-2 font-mono font-bold text-zinc-800">{group.ngay || '—'}</td>
                       <td className="px-3 py-2 font-semibold text-zinc-700">
                         {group.shiftLabel || group.shift || '—'}
@@ -7136,13 +7139,13 @@ export default function ControlBoardBbMachineReportTable({
                                 );
                               }
                               return (
-                                <div className="min-w-0 overflow-hidden rounded-lg border border-violet-200">
-                                  <div className="border-b border-violet-200 bg-violet-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-violet-900">
+                                <div className="min-w-0 overflow-hidden rounded-lg border border-zinc-200">
+                                  <div className="border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2 text-xs font-black uppercase tracking-wider text-zinc-900">
                                     Vật tư trộn
                                     {dataRows.filter(r => r.id === 'nvl').length > 0
                                       ? ` (${dataRows.filter(r => r.id === 'nvl').length} NVL)`
                                       : ''}
-                                    <span className="ml-2 font-semibold normal-case tracking-normal text-violet-700/80">
+                                    <span className="ml-2 font-semibold normal-case tracking-normal text-zinc-700/80">
                                       Nhựa ĐM {formatKg(nhuaDmTong, 2)} · TL nhựa{' '}
                                       {formatKg(tlNhuaTong, 2)} (cân TT)
                                     </span>
@@ -7522,7 +7525,7 @@ export default function ControlBoardBbMachineReportTable({
                               ) : (
                                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-10">
                                   <div className="bb-table-scroll bb-report-sheet-scroll xl:col-span-6">
-                                    <div className="border-b border-violet-200 bg-violet-100 px-3 py-2 text-xs font-black uppercase tracking-wider text-violet-900">
+                                    <div className="border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2 text-xs font-black uppercase tracking-wider text-zinc-900">
                                       Vật tư trong bảng tỉ lệ trộn máy
                                       {mixingLines.length > 0 ? ` (${mixingLines.length})` : ''}
                                     </div>
@@ -7572,7 +7575,7 @@ export default function ControlBoardBbMachineReportTable({
                                           </th>
                                         </tr>
                                       </thead>
-                                      <tbody className="divide-y divide-violet-50">
+                                      <tbody className="divide-y divide-zinc-100">
                                         {mixingLines.length === 0 ? (
                                           <tr>
                                             <td colSpan={11} className="px-3 py-3 text-sm font-semibold text-zinc-400">
@@ -7587,7 +7590,7 @@ export default function ControlBoardBbMachineReportTable({
                                             const chiPhiHaoHut = lineCostOrNull(nhuaHaoHutKg, gia);
                                             const chiPhiHangLoi = lineCostOrNull(hangLoiKg, gia);
                                             return (
-                                              <tr key={row.key} className="hover:bg-violet-50/60">
+                                              <tr key={row.key} className="hover:bg-zinc-50">
                                                 <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
                                                   {row.materialCode || '—'}
                                                 </td>
@@ -7595,7 +7598,7 @@ export default function ControlBoardBbMachineReportTable({
                                                 <td className="px-3 py-1.5 text-right font-mono font-bold text-orange-800">
                                                   {formatPercent(row.tiLeThucTeTbPercent, 2)}
                                                 </td>
-                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-violet-800">
+                                                <td className="px-3 py-1.5 text-right font-mono font-bold text-zinc-800">
                                                   {formatKg(row.mixingShiftMaterialKg, 2)}
                                                 </td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-amber-700">
@@ -7637,7 +7640,7 @@ export default function ControlBoardBbMachineReportTable({
                                         )}
                                       </tbody>
                                       {mixingTotals && mixingLines.length > 0 ? (
-                                        <tfoot className="border-t border-violet-200 bg-violet-50 text-xs font-black text-violet-900">
+                                        <tfoot className="border-t border-zinc-200 bg-[#e8f0ed]/50 text-xs font-black text-zinc-900">
                                           <tr>
                                             <td colSpan={3} className="px-3 py-2 text-right uppercase tracking-wider">
                                               Tổng tỉ lệ trộn
@@ -8528,10 +8531,10 @@ export default function ControlBoardBbMachineReportTable({
           if (event.target === event.currentTarget) setSelectedTonDauFormula(null);
         }}
       >
-        <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-indigo-800 to-indigo-600 px-5 py-4 text-white">
+        <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-zinc-800 to-zinc-700 px-5 py-4 text-white">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Công thức tồn (kg)</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200">Công thức tồn (kg)</p>
               <h4 className="mt-1 text-base font-black">
                 {selectedTonDauFormula.itemCode || '—'} · {selectedTonDauFormula.itemName || '—'}
               </h4>
@@ -8579,10 +8582,10 @@ export default function ControlBoardBbMachineReportTable({
                       {selectedTonDauFormula.shiftLabel || '—'} · {selectedTonDauFormula.machine || '—'}
                     </td>
                   </tr>
-                  <tr className="bg-violet-50/70">
-                    <td className="px-3 py-2 font-semibold text-violet-900">ĐVT / SL tồn</td>
+                  <tr className="bg-[#e8f0ed]/70">
+                    <td className="px-3 py-2 font-semibold text-zinc-900">ĐVT / SL tồn</td>
                     <td className="px-3 py-2 text-zinc-600">Đơn vị · số lượng trên phiếu tồn</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-violet-900">
+                    <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
                       {selectedTonDauFormula.tonDauQuantity != null &&
                       selectedTonDauFormula.tonDauQuantity > 0
                         ? formatNumber(selectedTonDauFormula.tonDauQuantity, 4)
@@ -8592,8 +8595,8 @@ export default function ControlBoardBbMachineReportTable({
                       {selectedTonDauFormula.unit || '—'}
                     </td>
                   </tr>
-                  <tr className="bg-violet-50/70">
-                    <td className="px-3 py-2 font-semibold text-violet-900">Định mức</td>
+                  <tr className="bg-[#e8f0ed]/70">
+                    <td className="px-3 py-2 font-semibold text-zinc-900">Định mức</td>
                     <td className="px-3 py-2 text-zinc-600">
                       {selectedTonDauFormula.amountType === 'percent'
                         ? 'Thành phần SP / tỉ lệ trộn máy (%)'
@@ -8601,7 +8604,7 @@ export default function ControlBoardBbMachineReportTable({
                           ? 'Định mức số lượng / 1 SP'
                           : 'Định mức NVL (BOM / tỉ lệ máy)'}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-violet-900">
+                    <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
                       {selectedTonDauFormula.tiLeDinhMucPercent != null &&
                       selectedTonDauFormula.tiLeDinhMucPercent > 0
                         ? `${formatNumber(selectedTonDauFormula.tiLeDinhMucPercent, 4)}%`
@@ -8696,12 +8699,12 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                         <td className="px-3 py-2 text-zinc-600">%</td>
                       </tr>
-                      <tr className="hover:bg-indigo-50/40">
+                      <tr className="hover:bg-zinc-50/70">
                         <td className="px-3 py-2 font-semibold text-zinc-800">Phân bổ từ NNS-TRON</td>
-                        <td className="px-3 py-2 font-mono text-[11px] font-bold text-indigo-900 sm:text-xs">
+                        <td className="px-3 py-2 font-mono text-[11px] font-bold text-zinc-900 sm:text-xs">
                           NNS-TRON × Tỉ lệ ĐM
                         </td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-indigo-900">
+                        <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
                           {formatKg(
                             selectedTonDauFormula.nnsTronTonDauKg *
                               (selectedTonDauFormula.tiLeThucTeTbPercent / 100),
@@ -8779,7 +8782,7 @@ export default function ControlBoardBbMachineReportTable({
                         </>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-base font-black text-indigo-900">
+                    <td className="px-3 py-2.5 text-right font-mono text-base font-semibold text-zinc-900">
                       {formatKg(selectedTonDauFormula.tonDauWeightKg, 4)}
                     </td>
                     <td className="px-3 py-2.5 font-black text-zinc-600">kg</td>

@@ -400,7 +400,7 @@ function generateNextShippingCode(existingCodes: Iterable<string>) {
   let max = 0;
   for (const raw of existingCodes) {
     const code = String(raw || '').trim().toUpperCase();
-    const match = code.match(/^LXH(\d+)$/);
+    const match = code.match(/^LXH(\d+)[A-Z]*$/);
     if (!match) continue;
     const num = Number(match[1]);
     if (Number.isFinite(num) && num > max) max = num;
@@ -416,7 +416,7 @@ async function fetchNextShippingCode(fallbackCodes: Iterable<string> = []) {
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       const code = String((data as { ma_lenh?: string }).ma_lenh || '').trim().toUpperCase();
-      if (/^LXH\d+$/.test(code)) return code;
+      if (/^LXH\d+[A-Z]*$/.test(code)) return code;
     }
   } catch {
     /* fallback local */
@@ -1594,10 +1594,10 @@ export function ShippingOrdersPanel({
                     }
                     placeholder="LXH001"
                     className={`${compactFieldClass} font-mono`}
-                    title="Có thể sửa; phải liền mạch (max+1), không chèn số vào giữa dãy"
+                    title="Có thể sửa (vd LXH441 / LXH441A). Tạo mới: STT liền mạch max+1."
                   />
                   <span className="block text-[10px] font-semibold text-slate-400">
-                    Liền mạch theo ngày — chỉ dùng số kế tiếp, không chèn lệnh vào giữa
+                    Được sửa mã (LXH + số, có thể thêm chữ). Tạo mới: STT kế tiếp, không chèn giữa dãy
                   </span>
                 </label>
                 <label className="block space-y-0.5">

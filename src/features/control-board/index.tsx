@@ -1506,7 +1506,7 @@ export function ControlBoardPanel({
   }, []);
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2.5 sm:gap-3">
+    <div className="flex w-full min-w-0 flex-col gap-4 sm:gap-5">
       {loadError && (
         <p className="order-[-40] rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
           {loadError}

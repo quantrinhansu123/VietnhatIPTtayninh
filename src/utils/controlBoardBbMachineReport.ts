@@ -156,18 +156,23 @@ export type BbMachineReportTabId =
   | 'danh_gia_hao_hut'
   | 'giai_trinh';
 
-export const BB_MACHINE_REPORT_TABS: Array<{ id: BbMachineReportTabId; label: string }> = [
-  { id: 'lenh_sx', label: 'Dữ liệu trong lệnh sản xuất' },
-  { id: 'phieu_xuat_kho', label: 'Dữ liệu xuất kho' },
-  { id: 'ton_dau_ca', label: 'Báo cáo dữ liệu tồn đầu ca' },
-  { id: 'bao_cao_san_luong', label: 'Dữ liệu cân thực tế' },
-  { id: 'bao_cao_san_luong_phieu', label: 'Báo cáo sản lượng' },
-  { id: 'bao_cao_loi_hong', label: 'Dữ liệu trong báo cáo hàng lỗi hỏng' },
-  { id: 'kiem_ton_cuoi_ca', label: 'Dữ liệu trong báo cáo kiểm tồn cuối ca' },
-  { id: 'bao_cao_thanh_pham_nhap_kho', label: 'Báo cáo thành phẩm đạt nhập kho' },
-  { id: 'bao_cao_tieu_hao_nvl', label: 'Báo cáo tiêu hao nguyên vật liệu' },
-  { id: 'danh_gia_tong_hop', label: 'Báo cáo tổng hợp' },
-  { id: 'giai_trinh', label: 'Giải trình' }
+export const BB_MACHINE_REPORT_TABS: Array<{
+  id: BbMachineReportTabId;
+  label: string;
+  /** Nhãn ngắn trên thanh tab `/phan-tich-tu-dong`. */
+  shortLabel: string;
+}> = [
+  { id: 'lenh_sx', label: 'Dữ liệu trong lệnh sản xuất', shortLabel: 'LSX' },
+  { id: 'phieu_xuat_kho', label: 'Dữ liệu xuất kho', shortLabel: 'Xuất' },
+  { id: 'ton_dau_ca', label: 'Báo cáo dữ liệu tồn đầu ca', shortLabel: 'Đầu' },
+  { id: 'bao_cao_san_luong', label: 'Dữ liệu cân thực tế', shortLabel: 'Cân' },
+  { id: 'bao_cao_san_luong_phieu', label: 'Báo cáo sản lượng', shortLabel: 'SL' },
+  { id: 'bao_cao_loi_hong', label: 'Dữ liệu trong báo cáo hàng lỗi hỏng', shortLabel: 'Lỗi' },
+  { id: 'kiem_ton_cuoi_ca', label: 'Dữ liệu trong báo cáo kiểm tồn cuối ca', shortLabel: 'Cuối' },
+  { id: 'bao_cao_thanh_pham_nhap_kho', label: 'Báo cáo thành phẩm đạt nhập kho', shortLabel: 'TP' },
+  { id: 'bao_cao_tieu_hao_nvl', label: 'Báo cáo tiêu hao nguyên vật liệu', shortLabel: 'TH' },
+  { id: 'danh_gia_tong_hop', label: 'Báo cáo tổng hợp', shortLabel: 'Tổng' },
+  { id: 'giai_trinh', label: 'Giải trình', shortLabel: 'GT' }
 ];
 
 export type BbProductionOrderLineRow = {

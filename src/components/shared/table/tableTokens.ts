@@ -35,21 +35,21 @@ export const TABLE_FORM_HEADER_GRID_CLASS =
   'rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 text-[11px] font-semibold text-zinc-700';
 
 /**
- * Chrome bảng tab BB / phân tích — thống nhất theo mẫu «Kiểm tồn cuối ca».
+ * Chrome bảng tab BB / phân tích — khớp chuẩn bảng app (header #e8f0ed, flat, brand đỏ CTA).
  * Dùng chung mọi tab dữ liệu (lệnh SX, xuất kho, tồn đầu/cuối, lỗi hỏng, …).
  */
 export const BB_TABLE_CLASS =
-  'min-w-[1100px] w-full table-fixed whitespace-nowrap text-left text-[15px] font-semibold';
-export const BB_TABLE_THEAD_CLASS = `${TABLE_HEAD_STATIC_CLASS} text-[13px] uppercase tracking-wide`;
+  'min-w-[1100px] w-full table-fixed whitespace-nowrap text-left text-sm font-semibold';
+export const BB_TABLE_THEAD_CLASS = `${TABLE_HEAD_STATIC_CLASS} text-xs uppercase tracking-wide`;
 export const BB_TABLE_GROUP_ROW_CLASS =
-  'border-y border-violet-200 bg-violet-50/70 text-[15px] font-bold transition hover:bg-violet-100/60';
+  'border-y border-zinc-200 bg-[#e8f0ed]/80 text-sm font-bold transition hover:bg-[#e8f0ed]';
 export const BB_TABLE_EXPAND_BTN_CLASS =
-  'inline-flex h-9 w-9 items-center justify-center rounded-md border border-violet-300 bg-white text-violet-800 shadow-sm transition hover:bg-violet-50';
-export const BB_TABLE_CHILD_WRAP_CLASS = 'bb-row-child-wrap bg-violet-50/30';
+  'inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-50';
+export const BB_TABLE_CHILD_WRAP_CLASS = 'bb-row-child-wrap bg-zinc-50/60';
 export const BB_TABLE_CHILD_PANEL_CLASS =
-  'bb-child-panel overflow-x-auto border-y border-violet-200 bg-white';
-export const BB_TABLE_METRIC_CLASS = 'font-mono text-[16px] font-black text-violet-900';
+  'bb-child-panel overflow-x-auto border-y border-zinc-200 bg-white';
+export const BB_TABLE_METRIC_CLASS = 'font-mono text-base font-semibold tabular-nums text-zinc-900';
 export const BB_TABLE_TFOOT_CLASS =
-  'border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900';
-export const BB_TABLE_TFOOT_METRIC_CLASS = 'font-mono text-violet-800';
-export const BB_TABLE_ORDER_CODE_CLASS = 'font-mono font-black text-sky-950';
+  'border-t-2 border-zinc-300 bg-[#e8f0ed]/60 text-xs font-semibold text-zinc-900';
+export const BB_TABLE_TFOOT_METRIC_CLASS = 'font-mono font-semibold tabular-nums text-zinc-800';
+export const BB_TABLE_ORDER_CODE_CLASS = 'font-mono font-semibold text-zinc-900';

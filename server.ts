@@ -2287,15 +2287,19 @@ function stripShippingOrderOptionalColumns(
   return stripped ? next : null;
 }
 
-/** Cùng quy tắc với generateNextShippingCode ở màn lệnh xuất hàng: LXH + STT, lấy max rồi +1. */
+/** Cùng quy tắc với generateNextShippingCode: LXH + STT (+ hậu tố chữ tùy chọn, vd LXH441A). */
 function parseShippingOrderStt(code: unknown): number | null {
   const match = String(code ?? '')
     .trim()
     .toUpperCase()
-    .match(/^LXH(\d+)$/);
+    .match(/^LXH(\d+)[A-Z]*$/);
   if (!match) return null;
   const num = Number(match[1]);
   return Number.isFinite(num) ? num : null;
+}
+
+function isValidShippingOrderCode(code: unknown): boolean {
+  return /^LXH\d+[A-Z]*$/.test(String(code ?? '').trim().toUpperCase());
 }
 
 function formatShippingOrderCode(stt: number) {
@@ -2342,8 +2346,10 @@ async function listShippingOrderCodes() {
 }
 
 /**
- * Mã LXH phải liền mạch: tạo mới / đổi mã chỉ được lấy max+1.
- * Không cho chèn số vào giữa dãy (kể cả lấp số đã xóa). Giữ nguyên mã khi sửa nội dung thì OK.
+ * Mã LXH: dạng LXH001 / LXH441A (hậu tố chữ tùy chọn).
+ * - Giữ nguyên mã khi sửa nội dung → OK.
+ * - Đổi mã khi cập nhật → chỉ cần đúng dạng + không trùng.
+ * - Tạo mới → STT phải = max+1 (cho phép hậu tố chữ trên cùng STT, vd LXH442A).
  */
 async function validateShippingOrderCodeSequential(params: {
   maLenh: string;
@@ -2354,8 +2360,11 @@ async function validateShippingOrderCodeSequential(params: {
   const code = String(params.maLenh || '').trim().toUpperCase();
   const previous = String(params.previousCode || '').trim().toUpperCase();
   if (!code) return 'Thiếu mã lệnh xuất hàng.';
+  if (!isValidShippingOrderCode(code)) {
+    return 'Mã lệnh phải dạng LXH001, LXH002... (có thể thêm hậu tố chữ, vd LXH441A).';
+  }
   const stt = parseShippingOrderStt(code);
-  if (stt == null) return 'Mã lệnh phải dạng LXH001, LXH002...';
+  if (stt == null) return 'Mã lệnh phải dạng LXH001, LXH002... (có thể thêm hậu tố chữ, vd LXH441A).';
   if (previous && code === previous) return null;
 
   const rows = await listShippingOrderCodeRows();
@@ -2364,9 +2373,10 @@ async function validateShippingOrderCodeSequential(params: {
   const duplicate = others.find(row => row.ma_lenh.trim().toUpperCase() === code);
   if (duplicate) return `Mã lệnh ${code} đã tồn tại.`;
 
+  // Cập nhật / đổi mã lệnh đã có: không ép max+1 — chỉ chống trùng + đúng dạng.
+  if (previous) return null;
+
   const ngay = String(params.ngayXuat || '').trim().slice(0, 10);
-  // Liền mạch theo ngày xuất: STT của các lệnh cùng ngày phải nối đuôi max toàn hệ thống
-  // (tránh trùng unique toàn bảng) — chỉ cho max+1, không chèn số giữa ngày/toàn cục.
   let globalMax = 0;
   for (const row of others) {
     const num = parseShippingOrderStt(row.ma_lenh);
@@ -2380,9 +2390,10 @@ async function validateShippingOrderCodeSequential(params: {
       if (num != null && num > dayMax) dayMax = num;
     }
   }
-  const expected = formatShippingOrderCode(Math.max(globalMax, dayMax) + 1);
-  if (code !== expected) {
-    return `Mã lệnh phải liền mạch theo ngày: chỉ được dùng ${expected}, không chèn/đổi mã vào giữa dãy.`;
+  const expectedStt = Math.max(globalMax, dayMax) + 1;
+  const expected = formatShippingOrderCode(expectedStt);
+  if (stt !== expectedStt) {
+    return `Mã lệnh phải liền mạch theo ngày: chỉ được dùng ${expected} (hoặc ${expected}A...), không chèn số vào giữa dãy.`;
   }
   return null;
 }

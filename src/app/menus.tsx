@@ -102,6 +102,13 @@ export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'business'
   },
   {
+    title: 'Kế toán',
+    desc: 'Bảng giá NVL và các báo cáo phục vụ hạch toán.',
+    icon: Receipt,
+    icon3d: abacus3d,
+    tab: 'accounting'
+  },
+  {
     title: 'Quản Đốc',
     desc: 'Kế hoạch sản xuất, lệnh sản xuất, theo dõi và báo cáo sản xuất.',
     icon: BriefcaseBusiness,
@@ -429,6 +436,16 @@ export const HCNS_MENU_ITEMS: MenuCardConfig[] = [
     icon3d: ledger3d,
     tab: 'hcns',
     disabled: true
+  }
+];
+
+export const ACCOUNTING_MENU_ITEMS: MenuCardConfig[] = [
+  {
+    title: 'Bảng giá NVL',
+    desc: 'Xem đơn giá danh mục nguyên vật liệu theo mã NPL.',
+    icon: Receipt,
+    icon3d: abacus3d,
+    tab: 'nvl-price-list'
   }
 ];
 
@@ -966,6 +983,12 @@ export const PRIMARY_NAV_GROUPS: {
     ]
   },
   {
+    title: 'Kế toán',
+    icon: Receipt,
+    tab: 'accounting',
+    children: [{ label: 'Bảng giá NVL', tab: 'nvl-price-list' }]
+  },
+  {
     title: 'Quản Đốc',
     icon: Factory,
     tab: 'factory-quan-doc',
@@ -1039,6 +1062,8 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'quan-tri': { group: 'Trang chủ', sub: 'Quản trị' },
   'hcns': { group: 'Trang chủ', sub: 'HCNS' },
   'business': { group: 'Trang chủ', sub: 'Kinh doanh' },
+  'accounting': { group: 'Trang chủ', sub: 'Kế toán' },
+  'nvl-price-list': { group: 'Kế toán', sub: 'Bảng giá NVL' },
   'control-board': { group: 'Quản Đốc', sub: 'Theo dõi sản xuất' },
   'report-forms': { group: 'Sản xuất', sub: 'Nhập báo cáo ca' },
   'form': { group: 'Sản xuất', sub: 'Nhập báo cáo ca' },

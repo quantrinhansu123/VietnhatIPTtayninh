@@ -60,10 +60,11 @@ import { HomeNavButton, MobileBackNavButton, BACK_TAB_MAP } from './components/l
 import {
   MenuCardGrid, MainMenuFlow, FourStepMenuFlow, MenuPageHeader, SubNav, MAIN_MENU_ITEMS,
   ADMIN_MENU_ITEMS, REPORT_FORM_MENU_ITEMS, PRODUCTION_REPORT_MENU_ITEMS, FACILITY_MENU_ITEMS,
-  REPORT_LIST_MENU_ITEMS, HCNS_MENU_ITEMS, BUSINESS_MENU_ITEMS, FACTORY_MENU_ITEMS,
+  REPORT_LIST_MENU_ITEMS, HCNS_MENU_ITEMS, BUSINESS_MENU_ITEMS, ACCOUNTING_MENU_ITEMS, FACTORY_MENU_ITEMS,
   FACTORY_QUAN_DOC_MENU_ITEMS, FACTORY_QC_MENU_ITEMS, FACTORY_CONG_NHAN_MENU_ITEMS, FACTORY_KHO_MENU_ITEMS,
   getActivePageMeta
 } from './app/menus';
+import { BangGiaNvlPanel } from './features/bang-gia-nvl';
 import { ProductsPanel } from './features/san-pham';
 import { MachinesPanel } from './features/danh-sach-may';
 import { MaterialsInventoryPanel } from './features/kho-nvl';
@@ -797,8 +798,8 @@ export default function App() {
         <main className={`relative flex-1 min-h-0 overflow-y-auto focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
           activeTab === 'menu'
             ? 'p-0'
-            : activeTab === 'control-board'
-            ? 'p-2 md:p-4'
+            : activeTab === 'control-board' || activeTab === 'dashboard' || activeTab === 'dashboard-auto' || activeTab === 'bieu-do-th'
+            ? 'p-1.5 md:p-2'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
               ? 'overflow-hidden p-0'
               : activeTab === 'kiem-kho'
@@ -1022,6 +1023,28 @@ export default function App() {
               >
                 <MenuPageHeader title="Kinh doanh" desc="Khách hàng phục vụ lập và tra cứu đơn." />
                 <MenuCardGrid items={filterMenuItems(BUSINESS_MENU_ITEMS)} onNavigate={navigateToTab} />
+              </motion.div>
+            ) : activeTab === 'accounting' ? (
+              <motion.div
+                key="accounting-menu"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+                className="space-y-3"
+              >
+                <MenuPageHeader title="Kế toán" desc="Bảng giá NVL và các báo cáo phục vụ hạch toán." />
+                <MenuCardGrid items={filterMenuItems(ACCOUNTING_MENU_ITEMS)} onNavigate={navigateToTab} />
+              </motion.div>
+            ) : activeTab === 'nvl-price-list' ? (
+              <motion.div
+                key="nvl-price-list"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <BangGiaNvlPanel onBack={() => goBack('accounting')} />
               </motion.div>
             ) : activeTab === 'factory' ? (
               <motion.div

@@ -9,7 +9,7 @@ import {
 } from '../../components/ControlBoardCommonFilters';
 import ReportListsHubModal from '../../components/ReportListsHubModal';
 import MachineShiftMaterialChecklistBelowReport from '../../components/MachineShiftMaterialChecklistBelowReport';
-import { RowActionsMenu } from '../../components/shared/table';
+import { RowActionsMenu, TABLE_HEAD_CLASS } from '../../components/shared/table';
 import { ClipboardList } from 'lucide-react';
 import {
   buildControlBoardShiftSummary,
@@ -1506,7 +1506,7 @@ export function ControlBoardPanel({
   }, []);
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-[1880px] flex-col gap-2.5 sm:gap-3">
+    <div className="flex w-full min-w-0 flex-col gap-2.5 sm:gap-3">
       {loadError && (
         <p className="order-[-40] rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
           {loadError}
@@ -1748,7 +1748,7 @@ export function ControlBoardPanel({
           </div>
           <div className="min-w-0 overflow-x-auto">
           <table className="control-board-report-table w-full min-w-[880px] text-left text-[11px]">
-            <thead className="sticky top-0 bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+            <thead className={`${TABLE_HEAD_CLASS} text-[10px]`}>
               <tr>
                 <th className="px-2 py-1.5 text-center font-black">
                   <input

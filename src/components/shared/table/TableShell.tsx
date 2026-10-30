@@ -1,30 +1,45 @@
 import type { ReactNode } from 'react';
+import {
+  TABLE_HEAD_CLASS,
+  TABLE_ROW_CLASS,
+  TABLE_SHELL_CLASS,
+  TABLE_TH_CENTER_CLASS,
+  TABLE_TH_CLASS,
+  TABLE_TH_RIGHT_CLASS
+} from './tableTokens';
 
 /**
- * Khung bảng dùng chung: viền bo tròn, header đỏ chữ trắng dính (sticky), thân cuộn dọc.
- * Mẫu dùng chung được trích xuất từ trang Lệnh sản xuất (src/features/lenh-sx).
- *
- * Dùng cùng <TablePagination> ở footer để có bộ đôi bảng + phân trang thống nhất.
+ * Khung bảng dùng chung — layout kiểu «Hàng tiền».
+ * Token: `tableTokens.ts`. Màu logo (#ef1b2d) cho nút / phân trang / hover.
  */
 export function TableShell({
   children,
   footer,
   minWidthClassName = 'min-w-[1024px]',
   maxHeightClassName = 'max-h-[70vh]',
-  className = ''
+  className = '',
+  title
 }: {
   children: ReactNode;
-  /** Phân trang/chân bảng nằm chung trong khung bo tròn, bên ngoài vùng cuộn. */
   footer?: ReactNode;
-  /** vd. 'min-w-[1540px]' nếu bảng có nhiều cột */
   minWidthClassName?: string;
   maxHeightClassName?: string;
   className?: string;
+  title?: ReactNode;
 }) {
   return (
-    <section className={`overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm ${className}`}>
+    <section className={`${TABLE_SHELL_CLASS} ${className}`.trim()}>
+      {title ? (
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2.5">
+          {typeof title === 'string' ? (
+            <h3 className="text-sm font-bold text-zinc-900">{title}</h3>
+          ) : (
+            title
+          )}
+        </div>
+      ) : null}
       <div className={`hover-scrollbar ${maxHeightClassName} overflow-auto`}>
-        <table className={`${minWidthClassName} w-full text-left text-sm`}>
+        <table className={`${minWidthClassName} w-full border-collapse text-left text-sm`}>
           {children}
         </table>
       </div>
@@ -33,10 +48,9 @@ export function TableShell({
   );
 }
 
-/** <thead> đỏ chữ trắng, dính khi cuộn — dùng bên trong TableShell. */
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead className="sticky top-0 z-10 bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
+    <thead className={TABLE_HEAD_CLASS}>
       <tr>{children}</tr>
     </thead>
   );
@@ -50,22 +64,24 @@ export function TableHeadCell({
 }: {
   children: ReactNode;
   className?: string;
-  align?: 'left' | 'center';
+  align?: 'left' | 'center' | 'right';
   title?: string;
 }) {
+  const base =
+    align === 'center' ? TABLE_TH_CENTER_CLASS : align === 'right' ? TABLE_TH_RIGHT_CLASS : TABLE_TH_CLASS;
   return (
-    <th title={title} className={`px-4 py-3 font-black ${align === 'center' ? 'text-center' : ''} ${className}`}>
+    <th title={title} className={`${base} ${className}`.trim()}>
       {children}
     </th>
   );
 }
 
 export function TableBody({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <tbody className={`divide-y divide-zinc-200 ${className}`.trim()}>{children}</tbody>;
+  return <tbody className={className.trim()}>{children}</tbody>;
 }
 
 export function TableRow({ children, className = '' }: { children: ReactNode; className?: string; key?: string }) {
-  return <tr className={`transition hover:bg-red-50/40 ${className}`}>{children}</tr>;
+  return <tr className={`${TABLE_ROW_CLASS} ${className}`.trim()}>{children}</tr>;
 }
 
 export function TableEmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {

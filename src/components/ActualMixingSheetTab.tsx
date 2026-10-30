@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, Printer, Save, XCircle } from 'lucide-react';
 import { MixingNormRatioPrintBatch, type MixingNormRatioPrintDoc } from './MixingNormRatioPrintSheet';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
+import { TABLE_HEAD_STATIC_CLASS } from './shared/table';
 
 type ActualLine = {
   ma_nvl: string;
@@ -504,7 +505,7 @@ export default function ActualMixingSheetTab() {
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-xs">
-                <thead className="bg-[#ef1b2d] text-white">
+                <thead className={TABLE_HEAD_STATIC_CLASS}>
                   <tr>
                     <th className="px-3 py-2">Mã NVL</th>
                     <th className="px-3 py-2">Tên NVL</th>

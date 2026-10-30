@@ -20,7 +20,8 @@ import {
   FilterCombobox,
   TableToolbar,
   TableSearchInput,
-  TableDateFilter
+  TableDateFilter,
+  TABLE_HEAD_CLASS
 } from './shared/table';
 import {
   formatNplDecimal,
@@ -1410,7 +1411,7 @@ export default function AcceptanceReportListView({
                     </p>
                   ) : (
                     <table className="min-w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-zinc-50 text-[10px] font-black uppercase tracking-wider text-zinc-600">
+                      <thead className={`${TABLE_HEAD_CLASS} text-[10px]`}>
                         <tr>
                           <th className="px-3 py-2.5">Mã NVL</th>
                           <th className="px-3 py-2.5">Tên NVL</th>

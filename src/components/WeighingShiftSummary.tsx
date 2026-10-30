@@ -16,7 +16,13 @@ import WeighingImagePreviewModal, {
 } from './WeighingImagePreviewModal';
 import { FACTORY_PLACEHOLDER } from './layout/constants';
 import { WeighingSlipPrintBatch, type WeighingSlipPrintData } from './WeighingSlipPrintSheet';
-import { RowActionsMenu } from './shared/table';
+import {
+  FilterCombobox,
+  RowActionsMenu,
+  TableDateFilter,
+  TableToolbar,
+  TABLE_HEAD_STATIC_CLASS
+} from './shared/table';
 import { DEFAULT_WEIGHING_SLIP_CONFIG, type WeighingSlipConfig } from '../lib/weighingSlipConfig';
 import { useTabAccess } from '../app/useTabAccess';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
@@ -47,7 +53,6 @@ import {
   type WeighingRecord
 } from '../utils/weighingRecords';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../lib/weighingSlipConfig';
-import { FilterCombobox, TableDateFilter, TableToolbar } from './shared/table';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();
@@ -376,7 +381,7 @@ function ShiftSlipCard({
           <div className="overflow-x-auto rounded-xl border border-zinc-200">
             <table className="w-full min-w-[980px] border-collapse text-left text-xs">
               <thead>
-                <tr className="bg-[#ef1b2d] text-[10px] font-black uppercase tracking-wider text-white">
+                <tr className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
                   {!hideProductFields && <th className="px-3 py-2">Sản phẩm</th>}
                   <th className="px-3 py-2">Người cân</th>
                   {splitDamagedPlasticDefectWeights ? (

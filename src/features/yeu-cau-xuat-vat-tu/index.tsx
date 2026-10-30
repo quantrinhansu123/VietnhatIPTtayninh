@@ -460,7 +460,7 @@ export function YeuCauXuatVatTuPanel({
 
       <div className="overflow-x-auto">
         <div className="min-w-[700px] space-y-1.5">
-          <div className={`${gridClass} rounded-md bg-[#ef1b2d] py-1.5 text-[10px] font-black uppercase tracking-wider text-white`}>
+          <div className={`${gridClass} rounded-md border border-zinc-200 bg-[#e8f0ed] py-1.5 text-[10px] font-semibold tracking-wide text-zinc-700`}>
             <span className="pl-1.5">STT</span>
             <span>Mã NVL</span>
             <span>Tên NVL</span>

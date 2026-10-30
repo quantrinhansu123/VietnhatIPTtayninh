@@ -382,7 +382,7 @@ const warehouseLineFieldClass =
   'h-9 w-full rounded-md border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
 
 const warehouseLineHeaderClass =
-  'px-0.5 text-[10px] font-black uppercase tracking-wide text-white whitespace-nowrap';
+  'px-0.5 text-[10px] font-semibold tracking-wide text-zinc-700 whitespace-nowrap';
 
 // Mobile: Mã SP, Tên SP, Số lượng, Trọng lượng — min-w cố định để cuộn ngang thay vì bị bóp chữ.
 const warehouseMobileLineColsClass =
@@ -395,10 +395,10 @@ const warehouseXuatLineGridClass =
   `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapFullMobileLineGridClass =
   'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
@@ -407,15 +407,15 @@ const warehouseXuatFullMobileLineGridClass =
   'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseNhapFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseXuatFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
 
 // Xuất kho NVL: không có cột Giá / Thành tiền.
 const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_2rem]';
 const warehouseNvlXuatLineGridClass = `grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[40rem] ${warehouseNvlXuatCols}`;
-const warehouseNvlXuatHeaderGridClass = `mb-1 grid items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-2 py-2 min-w-[40rem] ${warehouseNvlXuatCols}`;
+const warehouseNvlXuatHeaderGridClass = `mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[40rem] ${warehouseNvlXuatCols}`;
 
 const warehouseDefaultLineMobileHiddenClass = 'hidden md:block';
 
@@ -4621,7 +4621,7 @@ export function WarehouseSlipPanel({
             <col style={{ width: '19%' }} />
           </colgroup>
           <thead>
-            <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+            <tr className="bg-[#e8f0ed] text-[11px] leading-tight font-semibold text-zinc-700">
               <th className="px-2 py-2 text-center font-black">Mã</th>
               <th className="px-2 py-2 text-center font-black">Mặt hàng</th>
               <th className="px-2 py-2 text-center font-black">Số lượng</th>
@@ -5345,7 +5345,7 @@ export function WarehouseSlipPanel({
       <section className={
         showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
           ? '-mx-2 space-y-3 border-y border-zinc-200 bg-white py-3 shadow-sm md:-mx-3'
-          : 'space-y-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm'
+          : 'space-y-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm'
       }>
         <div className={
           showProductExportTabs && productExportView === 'lap-phieu' && !isEditingProductInbound
@@ -5466,7 +5466,7 @@ export function WarehouseSlipPanel({
                   <col style={{ width: '24%' }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+                  <tr className="bg-[#e8f0ed] text-[11px] leading-tight font-semibold text-zinc-700">
                     <th className="overflow-hidden px-1 py-2 text-center font-black">STT</th>
                     <th className="overflow-hidden px-1 py-2 text-center font-black">Mã TP</th>
                     <th className="overflow-hidden px-1 py-2 text-center font-black">Tên TP</th>
@@ -5553,7 +5553,7 @@ export function WarehouseSlipPanel({
             <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
               <table className="w-full min-w-[620px] border-separate border-spacing-0 text-left text-xs">
                 <thead>
-                  <tr className="bg-[#ef1b2d] text-white">
+                  <tr className="bg-[#e8f0ed] font-semibold text-zinc-700">
                     {['STT', 'Mã gốc', 'Mã chi tiết', 'Tên sản phẩm', 'ĐVT', 'Số lượng'].map(label => (
                       <th key={label} className="px-3 py-2 font-black first:rounded-tl-lg last:rounded-tr-lg">{label}</th>
                     ))}
@@ -6133,7 +6133,13 @@ export function WarehouseHistoryPanel({
   const [viewingHistoryImage, setViewingHistoryImage] = useState<WeighingPreviewImage | null>(null);
   const [weightCatalogMaterials, setWeightCatalogMaterials] = useState<WarehouseWeightCatalogItem[]>([]);
   const [weightCatalogProducts, setWeightCatalogProducts] = useState<WarehouseWeightCatalogItem[]>([]);
+  /** Đơn giá theo mã NPL — cùng nguồn với /bang-gia-nvl (`kho_nvl.don_gia`). */
+  const [nvlCatalogUnitPriceByCode, setNvlCatalogUnitPriceByCode] = useState<Map<string, number>>(() => new Map());
   const [customerByOrderCode, setCustomerByOrderCode] = useState<Map<string, string>>(new Map());
+  /** Lệnh xuất hàng + SL đã xuất — dùng bảng Tổng hợp theo ngày khi tab Xuất kho TP. */
+  const [historyShippingOrders, setHistoryShippingOrders] = useState<ShippingOrder[]>([]);
+  const [historyExportedByOrder, setHistoryExportedByOrder] = useState<Record<string, Record<string, number>>>({});
+  const [historyOrdersLoading, setHistoryOrdersLoading] = useState(false);
   /** Mã lệnh xuất hàng nằm trong ghi chú phiếu dạng [LXH:LXH291]. */
   const orderCodeOfRow = (row?: WarehouseMovementRow) => row?.note?.match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim() || '';
   const orderLabelOfRow = (row?: WarehouseMovementRow) => {
@@ -6148,6 +6154,44 @@ export function WarehouseHistoryPanel({
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (warehouseTab !== 'san_pham' || selectedType !== 'xuat') {
+      setHistoryShippingOrders([]);
+      setHistoryExportedByOrder({});
+      setHistoryOrdersLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setHistoryOrdersLoading(true);
+    void (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (fromDate) params.set('tu_ngay', fromDate);
+        if (toDate) params.set('den_ngay', toDate);
+        const query = params.toString();
+        const [orderRes, exportedRes] = await Promise.all([
+          fetch(`/api/lenh-xuat-hang${query ? `?${query}` : ''}`, { signal: controller.signal }),
+          fetch('/api/kho/lenh-xuat-da-xuat', { signal: controller.signal })
+        ]);
+        const orderData = await orderRes.json().catch(() => ({}));
+        const exportedData = await exportedRes.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!orderRes.ok) throw new Error(orderData.error || 'Không tải được lệnh xuất hàng.');
+        setHistoryShippingOrders(normalizeShippingOrders(orderData));
+        setHistoryExportedByOrder(
+          exportedData?.exported && typeof exportedData.exported === 'object' ? exportedData.exported : {}
+        );
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setHistoryShippingOrders([]);
+        setHistoryExportedByOrder({});
+      } finally {
+        if (!controller.signal.aborted) setHistoryOrdersLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [warehouseTab, selectedType, fromDate, toDate]);
+
   const loadWeightCatalog = async () => {
     try {
       const [materialRes, productRes] = await Promise.all([fetch('/api/kho-nvl'), fetch('/api/san-pham?format=table')]);
@@ -6155,9 +6199,23 @@ export function WarehouseHistoryPanel({
       const productData = await productRes.json().catch(() => ({}));
 
       if (materialRes.ok) {
-        setWeightCatalogMaterials(normalizeMaterialsInventory(materialData).map(mapMaterialToWeightCatalogItem));
+        const materials = normalizeMaterialsInventory(materialData);
+        setWeightCatalogMaterials(materials.map(mapMaterialToWeightCatalogItem));
+        const priceMap = new Map<string, number>();
+        for (const material of materials) {
+          const key = normalizeMaterialCodeKey(material.code);
+          if (!key) continue;
+          const price = Number(String(material.unitPrice || '').replace(/,/g, ''));
+          if (!Number.isFinite(price) || price < 0) continue;
+          const existing = priceMap.get(key);
+          if (existing == null || (existing <= 0 && price > 0)) {
+            priceMap.set(key, price);
+          }
+        }
+        setNvlCatalogUnitPriceByCode(priceMap);
       } else {
         setWeightCatalogMaterials([]);
+        setNvlCatalogUnitPriceByCode(new Map());
       }
 
       if (productRes.ok) {
@@ -6168,7 +6226,15 @@ export function WarehouseHistoryPanel({
     } catch {
       setWeightCatalogMaterials([]);
       setWeightCatalogProducts([]);
+      setNvlCatalogUnitPriceByCode(new Map());
     }
+  };
+
+  const lookupNvlCatalogUnitPrice = (code: string) => {
+    const key = normalizeMaterialCodeKey(warehouseCodePrefix(code) || code);
+    if (!key) return 0;
+    const price = nvlCatalogUnitPriceByCode.get(key);
+    return typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : 0;
   };
 
   const resolveWarehouseRowWeightKg = (row: WarehouseMovementRow) =>
@@ -6682,7 +6748,7 @@ export function WarehouseHistoryPanel({
     return { rows, total };
   }, [filteredMovements, isFinishedGoodsHistory]);
 
-  /** Tổng hợp theo ngày phiếu (tab Nhập kho / Xuất kho): số phiếu, số cuộn, tổng số lượng. */
+  /** Tổng hợp theo ngày phiếu (tab Nhập kho / Xuất kho NVL…): số phiếu, số cuộn, tổng số lượng. */
   const dailySummary = useMemo(() => {
     const byDay = new Map<string, { day: string; slips: Set<string>; rolls: number; total: number }>();
     for (const row of filteredMovements) {
@@ -6706,6 +6772,66 @@ export function WarehouseHistoryPanel({
       total: rows.reduce((sum, row) => sum + row.total, 0)
     };
   }, [filteredMovements, isFinishedGoodsHistory]);
+
+  /**
+   * Tổng hợp theo ngày · Xuất kho TP: từng Lệnh xuất hàng trong khoảng ngày,
+   * cột Số lượng lệnh / Số lượng đã xuất (phiếu đã chốt gắn [LXH:…]).
+   */
+  const outboundOrderDailySummary = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+    const rows = historyShippingOrders
+      .filter(order => {
+        if (/h[uủ]y/i.test(String(order.trang_thai || ''))) return false;
+        const day = (order.ngay_xuat || '').slice(0, 10);
+        if (fromDate && day && day < fromDate) return false;
+        if (toDate && day && day > toDate) return false;
+        if (!search) return true;
+        return `${order.ma_lenh} ${order.ten_khach_hang} ${order.trang_thai}`
+          .toLowerCase()
+          .includes(search);
+      })
+      .map(order => {
+        const day = (order.ngay_xuat || '').slice(0, 10) || '—';
+        let orderQty = 0;
+        const needKeys = new Set<string>();
+        for (const line of order.chi_tiet) {
+          const qty = Number(line.so_luong) || 0;
+          if (qty > 0) orderQty += qty;
+          const key = normalizeMaterialCodeKey(warehouseCodePrefix(line.ma_sp) || line.ma_sp);
+          if (key) needKeys.add(key);
+        }
+        const exportedMap = normalizeExportedProductQty(
+          resolveExportedByOrderCode(historyExportedByOrder, order.ma_lenh)
+        );
+        let exportedQty = 0;
+        if (needKeys.size === 0) {
+          exportedQty = Object.values(exportedMap).reduce((sum, qty) => sum + qty, 0);
+        } else {
+          for (const key of needKeys) exportedQty += exportedMap[key] || 0;
+        }
+        return {
+          day,
+          maLenh: order.ma_lenh,
+          khach: order.ten_khach_hang.trim(),
+          orderQty,
+          exportedQty,
+          diff: Math.round((exportedQty - orderQty) * 100) / 100
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.day.localeCompare(a.day) ||
+          a.maLenh.localeCompare(b.maLenh, 'vi', { numeric: true })
+      );
+    return {
+      rows,
+      orderCount: rows.length,
+      orderQty: rows.reduce((sum, row) => sum + row.orderQty, 0),
+      exportedQty: rows.reduce((sum, row) => sum + row.exportedQty, 0)
+    };
+  }, [historyShippingOrders, historyExportedByOrder, fromDate, toDate, searchText]);
+
+  const showOutboundOrderDailySummary = isFinishedGoodsHistory && selectedType === 'xuat';
 
   const selectableSlips = useMemo(
     () => slipGroups.filter(group => group.slipCode && group.rows.some(row => row.id)),
@@ -6891,11 +7017,15 @@ export function WarehouseHistoryPanel({
       const key = `${normalizeMaterialCodeKey(maHang)}|${(row.unit || '').trim().toLowerCase()}`;
       const qty = Number(row.quantity);
       if (!Number.isFinite(qty) || qty === 0) continue;
+      const catalogPrice = lookupNvlCatalogUnitPrice(maHang);
       const existing = byKey.get(key);
       if (existing) {
         existing.soLuong += qty;
         if (!existing.tenHang && row.itemName.trim() && row.itemName.trim() !== '-') {
           existing.tenHang = row.itemName.trim();
+        }
+        if ((!existing.donGia || existing.donGia <= 0) && catalogPrice > 0) {
+          existing.donGia = catalogPrice;
         }
         continue;
       }
@@ -6903,7 +7033,8 @@ export function WarehouseHistoryPanel({
         maHang,
         tenHang: row.itemName.trim() && row.itemName.trim() !== '-' ? row.itemName.trim() : '',
         dvt: row.unit && row.unit !== '-' ? row.unit : '',
-        soLuong: qty
+        soLuong: qty,
+        donGia: catalogPrice
       });
     }
     return [...byKey.values()].sort((a, b) => a.maHang.localeCompare(b.maHang, 'vi', { numeric: true }));
@@ -6919,13 +7050,18 @@ export function WarehouseHistoryPanel({
       const key = `${normalizeMaterialCodeKey(maHang)}|${(row.unit || '').trim().toLowerCase()}`;
       const qty = Number(row.quantity);
       if (!Number.isFinite(qty) || qty === 0) continue;
-      const lineAmount = Number(row.lineAmount);
-      const unitPrice = Number(row.unitPrice);
-      const amount = Number.isFinite(lineAmount)
-        ? lineAmount
-        : Number.isFinite(unitPrice)
-          ? Math.round(qty * unitPrice * 100) / 100
-          : 0;
+      const catalogPrice = lookupNvlCatalogUnitPrice(maHang);
+      const slipUnitPrice = Number(row.unitPrice);
+      const slipLineAmount = Number(row.lineAmount);
+      const slipPrice =
+        Number.isFinite(slipUnitPrice) && slipUnitPrice > 0
+          ? slipUnitPrice
+          : Number.isFinite(slipLineAmount) && qty > 0
+            ? Math.round((slipLineAmount / qty) * 100) / 100
+            : 0;
+      // Ưu tiên Bảng giá NVL (/bang-gia-nvl); không có thì mới lấy giá trên phiếu.
+      const donGia = catalogPrice > 0 ? catalogPrice : slipPrice;
+      const amount = Math.round(qty * donGia * 100) / 100;
       const existing = byKey.get(key);
       if (existing) {
         existing.soLuong += qty;
@@ -6942,11 +7078,7 @@ export function WarehouseHistoryPanel({
         tenHang: row.itemName.trim() && row.itemName.trim() !== '-' ? row.itemName.trim() : '',
         dvt: row.unit && row.unit !== '-' ? row.unit : '',
         soLuong: qty,
-        donGia: Number.isFinite(unitPrice) && unitPrice > 0
-          ? unitPrice
-          : qty > 0
-            ? Math.round((amount / qty) * 100) / 100
-            : 0,
+        donGia,
         thanhTien: amount
       });
     }
@@ -6995,7 +7127,11 @@ export function WarehouseHistoryPanel({
 
   const handleConfirmExcelExport = () => {
     const dayPart =
-      (fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate || '').replace(/-/g, '') || 'all';
+      fromDate && toDate
+        ? fromDate === toDate
+          ? fromDate.replace(/-/g, '')
+          : `${fromDate.replace(/-/g, '')}_${toDate.replace(/-/g, '')}`
+        : (fromDate || toDate || '').replace(/-/g, '') || 'all';
     if (selectedType === 'xuat') {
       const lines = buildSelectedOutboundAccountingLines();
       if (lines.length === 0) {
@@ -7342,8 +7478,8 @@ export function WarehouseHistoryPanel({
       </nav>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 [&_button]:!h-9 [&_button]:!rounded-lg [&_button]:!text-xs [&_label]:!h-9 [&_label]:!min-w-0 [&_label]:!rounded-lg [&_label]:!text-[11px] [&_input]:!text-xs">
-          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+        <div className="flex flex-wrap items-center gap-2 [&_button]:!h-9 [&_button]:!rounded-lg [&_button]:!text-xs [&_label]:!h-9 [&_label]:!rounded-lg [&_label]:!text-[11px] [&_input]:!text-xs">
+          <div className="w-full min-w-0 sm:w-[13.5rem] [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
             <FilterCombobox
               label="Chọn kho"
               options={warehouseOptions.map(option => option.name)}
@@ -7361,24 +7497,36 @@ export function WarehouseHistoryPanel({
               className="w-full"
             />
           </div>
-          <TableSearchInput
-            value={searchText}
-            onChange={setSearchText}
-            placeholder="Tìm mã phiếu, mã hàng, tên..."
-            disabled={isLoading}
-            fullWidthOnMobile={false}
-          />
+          <div className="min-w-0 flex-1 basis-[12rem]">
+            <TableSearchInput
+              value={searchText}
+              onChange={setSearchText}
+              placeholder="Tìm mã phiếu, mã hàng, tên..."
+              disabled={isLoading}
+              fullWidthOnMobile={false}
+            />
+          </div>
           <TableDateFilter
-            label="Ngày"
-            value={fromDate && toDate && fromDate === toDate ? fromDate : fromDate || toDate}
+            label="Từ ngày"
+            value={fromDate}
             onChange={value => {
               setFromDate(value);
-              setToDate(value);
+              if (value && toDate && value > toDate) setToDate(value);
             }}
-            className="!h-9 !min-w-0 !px-2.5 !text-[11px]"
+            className="!h-9 !w-[10.5rem] !min-w-0 !shrink-0 !px-2.5 !text-[11px]"
             inputMinWidthClassName="min-w-0"
           />
-          <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+          <TableDateFilter
+            label="Đến ngày"
+            value={toDate}
+            onChange={value => {
+              setToDate(value);
+              if (value && fromDate && value < fromDate) setFromDate(value);
+            }}
+            className="!h-9 !w-[10.5rem] !min-w-0 !shrink-0 !px-2.5 !text-[11px]"
+            inputMinWidthClassName="min-w-0"
+          />
+          <div className="w-[8.5rem] shrink-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
             <FilterCombobox
               label="Ca"
               options={shiftOptions}
@@ -7391,7 +7539,7 @@ export function WarehouseHistoryPanel({
             />
           </div>
           {selectedType !== 'xuat' ? (
-            <div className="min-w-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
+            <div className="w-[10rem] shrink-0 [&_button]:!w-full [&_button]:!justify-between [&_button]:!px-2.5">
               <FilterCombobox
                 label="Máy"
                 options={machineFilterOptions}
@@ -7404,12 +7552,12 @@ export function WarehouseHistoryPanel({
               />
             </div>
           ) : null}
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={resetFilters}
               disabled={!hasActiveFilters}
-              className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-200 disabled:hover:text-zinc-600"
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-600 transition hover:border-[#ef1b2d] hover:text-[#ef1b2d] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-zinc-200 disabled:hover:text-zinc-600"
             >
               Xóa lọc
             </button>
@@ -7417,7 +7565,7 @@ export function WarehouseHistoryPanel({
               <button
                 type="button"
                 onClick={onOpenSlip}
-                className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
+                className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Lập phiếu
@@ -7527,6 +7675,8 @@ export function WarehouseHistoryPanel({
           movements={filteredMovements}
           fromDate={fromDate}
           toDate={toDate}
+          filterShift={filterShift}
+          filterMachine={selectedType === 'xuat' ? '' : filterMachine}
         />
       ) : null}
 
@@ -7590,7 +7740,7 @@ export function WarehouseHistoryPanel({
                   <p className="font-mono text-sm font-black tabular-nums text-emerald-800">{formatNumber(day.totalAmount, 0)} đ</p>
                 </div>
               </div>
-              <div className={`hidden items-center gap-3 bg-[#ef1b2d] px-4 py-2 text-[11px] font-black uppercase tracking-wide text-white md:grid ${rowGrid}`}>
+              <div className={`hidden items-center gap-3 bg-[#e8f0ed] px-4 py-2 text-[11px] font-semibold tracking-wide text-zinc-700 md:grid ${rowGrid}`}>
                 <input
                   type="checkbox"
                   checked={day.slips.every(slip => selectedSlipCodes.has(slip.slipCode))}
@@ -7706,58 +7856,154 @@ export function WarehouseHistoryPanel({
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <h2 className="text-sm font-black text-zinc-950">Tổng hợp theo ngày · {warehouseSlipTypeLabel(selectedType)}</h2>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {dailySummary.rows.length} ngày · {dailySummary.slipCount} phiếu · {formatWarehouseRollTotal(dailySummary.rolls)}
+              {showOutboundOrderDailySummary
+                ? historyOrdersLoading
+                  ? 'Đang tải lệnh xuất…'
+                  : `${outboundOrderDailySummary.orderCount} lệnh · SL lệnh ${formatNumber(outboundOrderDailySummary.orderQty, Number.isInteger(outboundOrderDailySummary.orderQty) ? 0 : 2)} · Đã xuất ${formatNumber(outboundOrderDailySummary.exportedQty, Number.isInteger(outboundOrderDailySummary.exportedQty) ? 0 : 2)}`
+                : `${dailySummary.rows.length} ngày · ${dailySummary.slipCount} phiếu · ${formatWarehouseRollTotal(dailySummary.rolls)}`}
             </p>
           </div>
           <div className="w-full min-w-0 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
-                  <th className="px-2 py-2 text-center font-black">STT</th>
-                  <th className="px-2 py-2 text-center font-black">Ngày</th>
-                  <th className="px-2 py-2 text-center font-black">Tổng phiếu</th>
-                  <th className="px-2 py-2 text-center font-black">Tổng cuộn</th>
-                  <th className="px-2 py-2 text-center font-black">Tổng</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailySummary.rows.map((row, index) => (
-                  <tr key={row.day} className="border-b border-zinc-100 even:bg-zinc-50/70">
-                    <td className="px-2 py-2 text-center text-zinc-500">{index + 1}</td>
-                    <td className="px-2 py-2 text-center font-bold text-zinc-800">
-                      {row.day.length === 10 ? row.day.split('-').reverse().join('/') : row.day}
-                    </td>
-                    <td className="px-2 py-2 text-center font-bold tabular-nums">{row.slipCount}</td>
-                    <td className="px-2 py-2 text-center font-bold tabular-nums">
-                      {formatNumber(row.rolls, Number.isInteger(row.rolls) ? 0 : 2)}
-                    </td>
-                    <td className="px-2 py-2 text-center font-black tabular-nums">
-                      {formatNumber(row.total, Number.isInteger(row.total) ? 0 : 2)}
-                    </td>
+            {showOutboundOrderDailySummary ? (
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-[#e8f0ed] text-[11px] leading-tight font-semibold text-zinc-700">
+                    <th className="px-2 py-2 text-center font-black">STT</th>
+                    <th className="px-2 py-2 text-center font-black">Ngày</th>
+                    <th className="px-2 py-2 font-black">Lệnh xuất</th>
+                    <th className="px-2 py-2 text-right font-black">Số lượng lệnh</th>
+                    <th className="px-2 py-2 text-right font-black">Số lượng đã xuất</th>
+                    <th className="px-2 py-2 text-right font-black">Chênh lệch</th>
                   </tr>
-                ))}
-                {dailySummary.rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
-                      Không có phiếu trong bộ lọc hiện tại.
-                    </td>
+                </thead>
+                <tbody>
+                  {historyOrdersLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
+                        Đang tải lệnh xuất hàng…
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!historyOrdersLoading &&
+                    outboundOrderDailySummary.rows.map((row, index) => (
+                      <tr key={`${row.day}-${row.maLenh}`} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                        <td className="px-2 py-2 text-center text-zinc-500">{index + 1}</td>
+                        <td className="px-2 py-2 text-center font-bold text-zinc-800">
+                          {row.day.length === 10 ? row.day.split('-').reverse().join('/') : row.day}
+                        </td>
+                        <td className="px-2 py-2">
+                          <p className="font-mono font-black text-zinc-900">{row.maLenh}</p>
+                          {row.khach ? <p className="text-[11px] font-semibold text-zinc-500">{row.khach}</p> : null}
+                        </td>
+                        <td className="px-2 py-2 text-right font-bold tabular-nums">
+                          {formatNumber(row.orderQty, Number.isInteger(row.orderQty) ? 0 : 2)}
+                        </td>
+                        <td className="px-2 py-2 text-right font-bold tabular-nums">
+                          {formatNumber(row.exportedQty, Number.isInteger(row.exportedQty) ? 0 : 2)}
+                        </td>
+                        <td
+                          className={`px-2 py-2 text-right font-black tabular-nums ${
+                            row.diff === 0 ? 'text-emerald-600' : 'text-rose-600'
+                          }`}
+                        >
+                          {row.diff > 0 ? '+' : ''}
+                          {formatNumber(row.diff, Number.isInteger(row.diff) ? 0 : 2)}
+                        </td>
+                      </tr>
+                    ))}
+                  {!historyOrdersLoading && outboundOrderDailySummary.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center text-zinc-500">
+                        Không có lệnh xuất hàng trong khoảng ngày đang chọn.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!historyOrdersLoading && outboundOrderDailySummary.rows.length > 0 ? (
+                    <tr className="bg-zinc-100">
+                      <td colSpan={3} className="px-2 py-2 text-right text-[11px] font-black uppercase tracking-wide text-zinc-600">
+                        Tổng · {outboundOrderDailySummary.orderCount} lệnh
+                      </td>
+                      <td className="px-2 py-2 text-right font-black tabular-nums text-zinc-950">
+                        {formatNumber(
+                          outboundOrderDailySummary.orderQty,
+                          Number.isInteger(outboundOrderDailySummary.orderQty) ? 0 : 2
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right font-black tabular-nums text-zinc-950">
+                        {formatNumber(
+                          outboundOrderDailySummary.exportedQty,
+                          Number.isInteger(outboundOrderDailySummary.exportedQty) ? 0 : 2
+                        )}
+                      </td>
+                      <td
+                        className={`px-2 py-2 text-right font-black tabular-nums ${
+                          outboundOrderDailySummary.exportedQty === outboundOrderDailySummary.orderQty
+                            ? 'text-emerald-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {(() => {
+                          const diff =
+                            Math.round(
+                              (outboundOrderDailySummary.exportedQty - outboundOrderDailySummary.orderQty) * 100
+                            ) / 100;
+                          return `${diff > 0 ? '+' : ''}${formatNumber(diff, Number.isInteger(diff) ? 0 : 2)}`;
+                        })()}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-[#e8f0ed] text-[11px] leading-tight font-semibold text-zinc-700">
+                    <th className="px-2 py-2 text-center font-black">STT</th>
+                    <th className="px-2 py-2 text-center font-black">Ngày</th>
+                    <th className="px-2 py-2 text-center font-black">Tổng phiếu</th>
+                    <th className="px-2 py-2 text-center font-black">Tổng cuộn</th>
+                    <th className="px-2 py-2 text-center font-black">Tổng</th>
                   </tr>
-                ) : (
-                  <tr className="bg-zinc-100">
-                    <td colSpan={2} className="px-2 py-2 text-right text-[11px] font-black uppercase tracking-wide text-zinc-600">
-                      Tổng
-                    </td>
-                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">{dailySummary.slipCount}</td>
-                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
-                      {formatNumber(dailySummary.rolls, Number.isInteger(dailySummary.rolls) ? 0 : 2)}
-                    </td>
-                    <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
-                      {formatNumber(dailySummary.total, Number.isInteger(dailySummary.total) ? 0 : 2)}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {dailySummary.rows.map((row, index) => (
+                    <tr key={row.day} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                      <td className="px-2 py-2 text-center text-zinc-500">{index + 1}</td>
+                      <td className="px-2 py-2 text-center font-bold text-zinc-800">
+                        {row.day.length === 10 ? row.day.split('-').reverse().join('/') : row.day}
+                      </td>
+                      <td className="px-2 py-2 text-center font-bold tabular-nums">{row.slipCount}</td>
+                      <td className="px-2 py-2 text-center font-bold tabular-nums">
+                        {formatNumber(row.rolls, Number.isInteger(row.rolls) ? 0 : 2)}
+                      </td>
+                      <td className="px-2 py-2 text-center font-black tabular-nums">
+                        {formatNumber(row.total, Number.isInteger(row.total) ? 0 : 2)}
+                      </td>
+                    </tr>
+                  ))}
+                  {dailySummary.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                        Không có phiếu trong bộ lọc hiện tại.
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="bg-zinc-100">
+                      <td colSpan={2} className="px-2 py-2 text-right text-[11px] font-black uppercase tracking-wide text-zinc-600">
+                        Tổng
+                      </td>
+                      <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">{dailySummary.slipCount}</td>
+                      <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
+                        {formatNumber(dailySummary.rolls, Number.isInteger(dailySummary.rolls) ? 0 : 2)}
+                      </td>
+                      <td className="px-2 py-2 text-center font-black tabular-nums text-zinc-950">
+                        {formatNumber(dailySummary.total, Number.isInteger(dailySummary.total) ? 0 : 2)}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
       ) : null}
@@ -7779,7 +8025,7 @@ export function WarehouseHistoryPanel({
                 <col style={{ width: '20%' }} />
               </colgroup>
               <thead>
-                <tr className="bg-[#ef1b2d] text-[11px] leading-tight text-white">
+                <tr className="bg-[#e8f0ed] text-[11px] leading-tight font-semibold text-zinc-700">
                   <th className="overflow-hidden px-1 py-2 text-center font-black">STT</th>
                   <th className="overflow-hidden px-1 py-2 text-center font-black">Mã SP</th>
                   <th className="overflow-hidden px-1 py-2 text-center font-black">Tên SP</th>
@@ -7924,7 +8170,7 @@ export function WarehouseHistoryPanel({
               </div>
               <div className={`border-t border-zinc-200 px-4 py-3 ${isStandalone ? 'overflow-x-auto' : 'shrink-0 overflow-x-auto'}`}>
               <table className={`text-left text-sm ${isStandalone ? 'w-full' : 'min-w-[640px]'}`}>
-                <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="py-2 pr-3 text-center font-black">STT</th>
                     <th className="py-2 pr-3 font-black">{warehouseItemCodeLabel(viewingRows[0].warehouseKind)}</th>
@@ -8076,7 +8322,7 @@ export function WarehouseHistoryPanel({
               <div className="min-h-0 flex-1 overflow-auto p-3">
                 <div className="overflow-x-auto rounded-lg border border-zinc-200">
                   <table className="w-full min-w-[760px] text-left text-xs">
-                    <thead className="bg-[#ef1b2d] text-[11px] text-white">
+                    <thead className="bg-[#e8f0ed] text-[11px] font-semibold text-zinc-700">
                       <tr>
                         <th className="px-3 py-2 text-center font-black">STT</th>
                         <th className="px-3 py-2 font-black">{isFinishedGoodsHistory ? 'Mã cuộn / Mã SP' : 'Mã dòng'}</th>
@@ -8155,7 +8401,7 @@ export function WarehouseHistoryPanel({
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
               <div>
                 <h3 className="text-base font-black text-zinc-950">
-                  {selectedType === 'xuat' ? 'Tải Excel xuất kho' : 'Tải Excel nhập kho'}
+                  {selectedType === 'xuat' ? 'Xuất Excel xuất kho kế toán' : 'Xuất Excel nhập kho kế toán'}
                 </h3>
                 <p className="text-xs font-semibold text-zinc-500">
                   Áp dụng cho mọi dòng · {selectedCount} phiếu đã chọn
@@ -8203,13 +8449,15 @@ export function WarehouseHistoryPanel({
                     </label>
                   </div>
                   <label className="block space-y-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Đơn giá</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                      Đơn giá (ghi đè)
+                    </span>
                     <input
                       value={excelExportDonGiaText}
                       onChange={e => setExcelExportDonGiaText(e.target.value)}
                       inputMode="decimal"
                       className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
-                      placeholder="0"
+                      placeholder="Để trống / 0 = bảng giá NVL"
                     />
                   </label>
                   <div className="grid grid-cols-2 gap-3">
@@ -8233,7 +8481,8 @@ export function WarehouseHistoryPanel({
                     </label>
                   </div>
                   <p className="text-[11px] font-semibold text-zinc-500">
-                    Thành tiền = Số lượng × Đơn giá (mặc định 0). Các cột trên điền giống nhau trên mọi dòng Excel.
+                    Đơn giá từng dòng lấy từ Bảng giá NVL; điền ô ghi đè thì áp dụng cùng một giá mọi dòng. Thành tiền = SL ×
+                    Đơn giá.
                   </p>
                 </>
               ) : (
@@ -8269,14 +8518,14 @@ export function WarehouseHistoryPanel({
                   </div>
                   <label className="block space-y-1">
                     <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                      Đơn giá (để trống = lấy từ phiếu)
+                      Đơn giá (ghi đè)
                     </span>
                     <input
                       value={excelExportDonGiaText}
                       onChange={e => setExcelExportDonGiaText(e.target.value)}
                       inputMode="decimal"
                       className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-[#ef1b2d]"
-                      placeholder="Theo phiếu"
+                      placeholder="Để trống = bảng giá NVL"
                     />
                   </label>
                   <label className="block space-y-1">
@@ -8318,7 +8567,9 @@ export function WarehouseHistoryPanel({
                     />
                   </label>
                   <p className="text-[11px] font-semibold text-zinc-500">
-                    Đơn giá / thành tiền mặc định lấy từ phiếu; điền đơn giá thì ghi đè mọi dòng. Các cột kho / TK / THCP điền giống nhau.
+                    Đơn giá / thành tiền từng dòng lấy từ Bảng giá NVL (Kế toán → Bảng giá NVL); không có giá danh mục thì
+                    mới lấy từ phiếu. Điền ô ghi đè thì áp dụng cùng một giá mọi dòng. Các cột kho / TK / THCP điền giống
+                    nhau.
                   </p>
                 </>
               )}

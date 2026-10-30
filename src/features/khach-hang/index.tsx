@@ -771,7 +771,7 @@ export function CustomersPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4">
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm lg:flex lg:items-center lg:justify-end lg:gap-3">
+      <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm lg:flex lg:items-center lg:justify-end lg:gap-3">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

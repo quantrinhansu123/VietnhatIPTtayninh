@@ -39,15 +39,19 @@ export type WarehouseOutboundAccountingLine = {
   tenHang: string;
   dvt: string;
   soLuong: number;
+  /** Đơn giá theo mã từ Bảng giá NVL; bị ghi đè nếu defaults.donGia > 0. */
+  donGia?: number;
 };
 
 export function buildWarehouseOutboundAccountingRows(
   lines: WarehouseOutboundAccountingLine[],
   defaults: WarehouseOutboundAccountingDefaults
 ) {
-  const donGia = Number.isFinite(defaults.donGia) ? defaults.donGia : 0;
+  const override = Number.isFinite(defaults.donGia) ? defaults.donGia : 0;
   return lines.map((line, index) => {
     const qty = Number.isFinite(line.soLuong) ? line.soLuong : 0;
+    const linePrice = Number.isFinite(line.donGia) ? Number(line.donGia) : 0;
+    const donGia = override > 0 ? override : linePrice > 0 ? linePrice : 0;
     const thanhTien = Math.round(qty * donGia * 100) / 100;
     return [
       index + 1,

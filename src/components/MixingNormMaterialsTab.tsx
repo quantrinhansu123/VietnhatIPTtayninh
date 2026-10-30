@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Pencil, Plus, Printer, Save, Search, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
-import { RowActionsMenu } from './shared/table';
+import { RowActionsMenu, TABLE_HEAD_STATIC_CLASS } from './shared/table';
 import { SearchableSelect } from './shared/SearchableSelect';
 import {
   normalizeMixingProductionOrders,
@@ -865,7 +865,7 @@ export default function MixingNormMaterialsTab() {
       <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-left text-sm">
-            <thead className="bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
+            <thead className={`${TABLE_HEAD_STATIC_CLASS} text-xs`}>
               <tr>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Ngày</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Ca</th>

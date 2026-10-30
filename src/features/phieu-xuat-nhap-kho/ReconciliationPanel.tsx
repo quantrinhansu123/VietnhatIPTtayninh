@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, ScanLine, Truck } from 'lucide-react';
+import { canTuDongShiftMatches } from '../../utils/canTuDongWeights';
+import { shiftNamesMatch } from '../../utils/shiftSettings';
 import type { WarehouseMovementRow } from './index';
 
 type Mode = 'nhap' | 'xuat';
@@ -19,6 +21,9 @@ type CompareRow = {
   extraCodes: string[];
   orderCodes: string[];
 };
+
+type AiRoll = { code: string; ma: string; day: string; ca: string; may: string };
+type NhapWindowRoll = { key: string; ca: string; may: string };
 
 const productCodeOf = (code: string) => String(code || '').split(/[_+]/)[0].trim().toUpperCase();
 const rollKey = (code: string) => String(code || '').replace(/\s+/g, '').toUpperCase();
@@ -47,6 +52,30 @@ function statusOf(expected: number, actual: number): RowStatus {
 }
 
 /**
+ * Khớp ca khi đang lọc lịch sử.
+ * Khác `canTuDongShiftMatches`: thiếu ca → không khớp (tránh cộng nhầm mọi lần cân trống ca vào bộ đếm).
+ */
+function scopedShiftMatches(rowCa: string, shiftFilter: string): boolean {
+  if (!shiftFilter) return true;
+  const raw = String(rowCa || '').trim();
+  if (!raw) return false;
+  return raw
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .some(part => shiftNamesMatch(part, shiftFilter) || canTuDongShiftMatches(part, shiftFilter));
+}
+
+function machineLooseMatch(rowMachine: string, machineFilter: string): boolean {
+  if (!machineFilter) return true;
+  const a = String(rowMachine || '').trim().toLowerCase();
+  const b = String(machineFilter || '').trim().toLowerCase();
+  if (!a) return false;
+  if (a === b) return true;
+  return a.includes(b) || b.includes(a);
+}
+
+/**
  * Đối chiếu trên trang Lịch sử xuất nhập kho (kho thành phẩm):
  * - Tab Nhập kho: so với số cuộn Cân AI (`can_tu_dong`), tìm cuộn đã cân chưa nhập / nhập mà không có cân.
  * - Tab Xuất kho: so với Lệnh xuất hàng (`lenh_xuat_hang`), tìm mặt hàng xuất thiếu / vượt / ngoài lệnh.
@@ -55,23 +84,32 @@ export function ReconciliationPanel({
   mode,
   movements,
   fromDate,
-  toDate
+  toDate,
+  filterShift = '',
+  filterMachine = ''
 }: {
   mode: Mode;
   movements: WarehouseMovementRow[];
   fromDate: string;
   toDate: string;
+  /** Ca đang chọn trên bộ lọc lịch sử — đối chiếu Cân AI / trạng thái theo cùng ca. */
+  filterShift?: string;
+  /** Máy đang chọn trên bộ lọc lịch sử. */
+  filterMachine?: string;
 }) {
   const from = (fromDate || toDate || todayIso()).slice(0, 10);
   const to = (toDate || fromDate || todayIso()).slice(0, 10);
+  const shiftFilter = String(filterShift || '').trim();
+  const machineFilter = String(filterMachine || '').trim();
   const [isOpen, setIsOpen] = useState(true);
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [expandedMa, setExpandedMa] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [aiRolls, setAiRolls] = useState<Array<{ code: string; ma: string; day: string }>>([]);
-  const [nhapWindowKeys, setNhapWindowKeys] = useState<Set<string>>(new Set());
-  const [aiUnreadable, setAiUnreadable] = useState(0);
+  const [aiRolls, setAiRolls] = useState<AiRoll[]>([]);
+  const [nhapWindowRolls, setNhapWindowRolls] = useState<NhapWindowRoll[]>([]);
+  /** Lần cân không đọc được QR — giữ ca/máy để bộ đếm lọc đúng. */
+  const [aiUnreadableRows, setAiUnreadableRows] = useState<Array<{ ca: string; may: string }>>([]);
   const [orderLines, setOrderLines] = useState<Array<{ maLenh: string; ma: string; ten: string; soLuong: number }>>([]);
 
   useEffect(() => {
@@ -98,22 +136,38 @@ export function ReconciliationPanel({
           if (!res.ok) throw new Error(data.error || 'Không tải được dữ liệu Cân AI.');
           if (!nhapRes.ok) throw new Error(nhapData.error || 'Không tải được phiếu nhập kho.');
           const nhapList: Array<Record<string, unknown>> = Array.isArray(nhapData?.movements) ? nhapData.movements : [];
-          setNhapWindowKeys(new Set(nhapList.map(row => rollKey(String(row.ma_sp_quet || row.ma_sp || '')))));
+          setNhapWindowRolls(
+            nhapList
+              .map(row => ({
+                key: rollKey(String(row.ma_sp_quet || row.ma_sp || '')),
+                ca: String(row.ca ?? row.shift ?? row.ca_san_xuat ?? '').trim(),
+                may: String(row.may ?? row.ma_may ?? row.ten_may ?? row.machine ?? '').trim()
+              }))
+              .filter(row => row.key)
+          );
           const records: Array<Record<string, unknown>> = Array.isArray(data?.records) ? data.records : [];
-          const rolls: Array<{ code: string; ma: string; day: string }> = [];
-          let unreadable = 0;
+          const rolls: AiRoll[] = [];
+          const unreadableRows: Array<{ ca: string; may: string }> = [];
           for (const record of records) {
             if (!(Number(record.weight) > 0)) continue;
             const code = String(record.qr_code ?? '').trim();
             const ma = productCodeOf(code);
-            if (!code || !/^[A-Z0-9-]+$/.test(ma)) unreadable += 1;
+            const ca = String(record.ca ?? '').trim();
+            const may = String(record.may ?? record.machine ?? '').trim();
+            if (!code || !/^[A-Z0-9-]+$/.test(ma)) unreadableRows.push({ ca, may });
             else {
               const meta = (record.metadata && typeof record.metadata === 'object' ? record.metadata : {}) as Record<string, unknown>;
-              rolls.push({ code, ma, day: String(meta.work_date ?? meta.SOURCE_DATE ?? '').slice(0, 10) });
+              rolls.push({
+                code,
+                ma,
+                day: String(record.ngay ?? meta.work_date ?? meta.SOURCE_DATE ?? '').slice(0, 10),
+                ca,
+                may
+              });
             }
           }
           setAiRolls(rolls);
-          setAiUnreadable(unreadable);
+          setAiUnreadableRows(unreadableRows);
         } else {
           const params = new URLSearchParams({ tu_ngay: from, den_ngay: to });
           const res = await fetch(`/api/lenh-xuat-hang?${params.toString()}`, { signal: controller.signal });
@@ -170,9 +224,25 @@ export function ReconciliationPanel({
 
     const result: CompareRow[] = [];
     if (mode === 'nhap') {
-      const aiWindow = new Set(aiRolls.map(roll => rollKey(roll.code)));
+      const aiRollsScoped = aiRolls.filter(roll => {
+        if (shiftFilter && !scopedShiftMatches(roll.ca, shiftFilter)) return false;
+        if (machineFilter && !machineLooseMatch(roll.may, machineFilter)) return false;
+        return true;
+      });
+      // Cửa sổ ±3 ngày: khi đang lọc ca/máy thì chỉ tính phiếu nhập cùng bộ lọc
+      // (tránh «Khớp» vì cuộn đã nhập ở ca khác).
+      const nhapWindowKeys = new Set(
+        nhapWindowRolls
+          .filter(row => {
+            if (shiftFilter && !scopedShiftMatches(row.ca, shiftFilter)) return false;
+            if (machineFilter && !machineLooseMatch(row.may, machineFilter)) return false;
+            return true;
+          })
+          .map(row => row.key)
+      );
+      const aiWindow = new Set(aiRollsScoped.map(roll => rollKey(roll.code)));
       const aiByMa = new Map<string, Map<string, string>>();
-      for (const roll of aiRolls) {
+      for (const roll of aiRollsScoped) {
         if (roll.day && (roll.day < from || roll.day > to)) continue;
         const rolls = aiByMa.get(roll.ma) || new Map<string, string>();
         rolls.set(rollKey(roll.code), roll.code);
@@ -194,7 +264,16 @@ export function ReconciliationPanel({
           orderCodes: []
         });
         const last = result[result.length - 1];
-        last.status = last.missingCodes.length > 0 ? 'thieu' : last.extraCodes.length > 0 ? 'thua' : 'khop';
+        // Có lọc ca/máy: trạng thái theo số đang hiện (Cân AI ↔ Nhập kho đã lọc).
+        // Không lọc: giữ đối chiếu theo mã cuộn trong cửa sổ ±3 ngày.
+        last.status =
+          shiftFilter || machineFilter
+            ? statusOf(expected, actual)
+            : last.missingCodes.length > 0
+              ? 'thieu'
+              : last.extraCodes.length > 0
+                ? 'thua'
+                : 'khop';
       }
     } else {
       const orderByMa = new Map<string, { ten: string; soLuong: number; codes: Set<string> }>();
@@ -226,20 +305,39 @@ export function ReconciliationPanel({
       const db = Math.abs(b.actual - b.expected);
       return (b.status !== "khop" ? 1 : 0) - (a.status !== "khop" ? 1 : 0) || db - da || a.ma.localeCompare(b.ma, 'vi', { numeric: true });
     });
-  }, [mode, scopedMovements, aiRolls, orderLines, nhapWindowKeys, from, to]);
+  }, [mode, scopedMovements, aiRolls, orderLines, nhapWindowRolls, from, to, shiftFilter, machineFilter]);
+
+  const hasScopeFilter = Boolean(shiftFilter || machineFilter);
 
   const totals = useMemo(() => {
     const expected = rows.reduce((sum, row) => sum + row.expected, 0);
     const actual = rows.reduce((sum, row) => sum + row.actual, 0);
+    // Có lọc ca/máy: badge theo chênh số đang hiện. Không lọc: theo mã cuộn cửa sổ ±3 ngày.
+    const missingRolls = hasScopeFilter
+      ? rows.reduce((sum, row) => sum + Math.max(0, row.expected - row.actual), 0)
+      : rows.reduce((sum, row) => sum + row.missingCodes.length, 0);
+    const extraRolls = hasScopeFilter
+      ? rows.reduce((sum, row) => sum + Math.max(0, row.actual - row.expected), 0)
+      : rows.reduce((sum, row) => sum + row.extraCodes.length, 0);
     return {
       expected,
       actual,
       diffRows: rows.filter(row => row.status !== 'khop').length,
-      missingRolls: rows.reduce((sum, row) => sum + row.missingCodes.length, 0),
-      extraRolls: rows.reduce((sum, row) => sum + row.extraCodes.length, 0),
+      missingRolls,
+      extraRolls,
       percent: expected > 0 ? Math.min(100, Math.round((Math.min(actual, expected) / expected) * 100)) : actual > 0 ? 0 : 100
     };
-  }, [rows]);
+  }, [rows, hasScopeFilter]);
+
+  const aiUnreadable = useMemo(
+    () =>
+      aiUnreadableRows.filter(row => {
+        if (shiftFilter && !scopedShiftMatches(row.ca, shiftFilter)) return false;
+        if (machineFilter && !machineLooseMatch(row.may, machineFilter)) return false;
+        return true;
+      }).length,
+    [aiUnreadableRows, shiftFilter, machineFilter]
+  );
 
   const isNhap = mode === 'nhap';
   const Icon = isNhap ? ScanLine : Truck;
@@ -264,6 +362,8 @@ export function ReconciliationPanel({
           </span>
           <span className="block text-[11px] font-semibold text-zinc-500">
             {from === to ? from.split('-').reverse().join('/') : `${from.split('-').reverse().join('/')} → ${to.split('-').reverse().join('/')}`}
+            {shiftFilter ? ` · ${shiftFilter}` : ''}
+            {machineFilter ? ` · máy ${machineFilter}` : ''}
             {isLoading ? ' · đang đối chiếu…' : ` · ${rows.length} mã`}
           </span>
         </span>
@@ -348,7 +448,7 @@ export function ReconciliationPanel({
 
           <div className="max-h-[46vh] overflow-auto rounded-lg border border-zinc-200">
             <table className="w-full min-w-[640px] text-left text-xs">
-              <thead className="sticky top-0 bg-[#ef1b2d] text-[11px] text-white">
+              <thead className="sticky top-0 bg-[#e8f0ed] text-[11px] font-semibold text-zinc-700">
                 <tr>
                   <th className="px-3 py-2 font-black">Mã SP</th>
                   <th className="px-3 py-2 font-black">Tên SP</th>

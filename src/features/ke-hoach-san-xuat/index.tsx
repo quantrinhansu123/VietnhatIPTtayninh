@@ -1190,14 +1190,14 @@ export function ProductionPlanMaterialAccountingModal({
 
                 return (
                   <section key={group.shift} className="overflow-hidden rounded-xl border border-zinc-200">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-950 px-4 py-3 text-white">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-4 py-3 text-zinc-700">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-red-300">Ca làm việc</p>
-                        <h4 className="text-lg font-black">{group.shift}</h4>
+                        <p className="text-[10px] font-semibold tracking-wide text-zinc-500">Ca làm việc</p>
+                        <h4 className="text-lg font-semibold text-zinc-700">{group.shift}</h4>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-                        <span className="rounded-full bg-white/10 px-2.5 py-1">{group.orderCount} lệnh SX</span>
-                        <span className="rounded-full bg-white/10 px-2.5 py-1">{group.lines.length} mã NVL</span>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-600">
+                        <span className="rounded-full bg-white/80 px-2.5 py-1">{group.orderCount} lệnh SX</span>
+                        <span className="rounded-full bg-white/80 px-2.5 py-1">{group.lines.length} mã NVL</span>
                         <button
                           type="button"
                           onClick={() => onExportWarehouseSlip(shiftExportLines, group.shift)}
@@ -1226,7 +1226,7 @@ export function ProductionPlanMaterialAccountingModal({
                             <col className="w-[15%]" />
                             <col className="w-[15%]" />
                           </colgroup>
-                          <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                          <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                             <tr>
                               <th className="px-2 py-1.5 font-black">STT</th>
                               <th className="px-2 py-1.5 font-black">Mã NVL</th>
@@ -1687,7 +1687,7 @@ export function ProductionPlanQrPrintModal({
                 </p>
                 <div className="overflow-x-auto rounded-xl border border-zinc-200">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                    <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                       <tr>
                         <th className="px-3 py-2 font-black">Mã SP</th>
                         <th className="px-3 py-2 font-black">Tên sản phẩm</th>
@@ -2192,7 +2192,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-4">
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+      <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
@@ -2294,7 +2294,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       <div>
         <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch sản xuất</h3>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
-        <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch SX</h3>
           </div>
@@ -2314,13 +2314,13 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                   const dateOrderTotal = datePlans.reduce((sum, plan) => sum + (plan.orderCount || 0), 0);
                   return (
                   <div key={date}>
-                    <div className="sticky top-0 flex items-center justify-between gap-2 bg-[#ef1b2d] px-4 py-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-white">{date}</span>
+                    <div className="sticky top-0 flex items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-4 py-2">
+                      <span className="text-xs font-semibold tracking-wide text-zinc-700">{date}</span>
                       <span className="text-right">
-                        <span className="mr-1.5 text-[9px] font-black uppercase tracking-wider text-white/80">
+                        <span className="mr-1.5 text-[9px] font-semibold tracking-wide text-zinc-500">
                           Tổng ngày
                         </span>
-                        <span className="font-mono text-xs font-black text-white">
+                        <span className="font-mono text-xs font-bold text-zinc-800">
                           {dateOrderTotal} lệnh SX
                         </span>
                       </span>
@@ -2328,7 +2328,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                     {datePlans.map(plan => (
                       <div
                         key={plan.id}
-                        className={`px-4 py-3 transition hover:bg-red-50/50 ${
+                        className={`px-4 py-3 transition hover:bg-[#ef1b2d]/[0.04] ${
                           selectedPlanId === plan.id ? 'bg-emerald-50' : ''
                         }`}
                       >
@@ -2372,7 +2372,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <div>
               <h3 className="text-sm font-black text-zinc-950">Chi tiết kế hoạch</h3>
@@ -2416,7 +2416,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-[920px] w-full text-left text-sm">
-                <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="w-12 px-3 py-2 text-center font-black">
                       <input
@@ -3628,7 +3628,7 @@ export function ProductionPlanModal({
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-zinc-200">
                   <table className="min-w-[980px] w-full text-left text-sm">
-                    <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wider text-white">
+                    <thead className="bg-[#e8f0ed] text-[11px] font-semibold tracking-wide text-zinc-700">
                       <tr>
                         <th className="px-2 py-2 font-black">STT</th>
                         <th className="px-2 py-2 font-black">Tên máy</th>
@@ -3724,7 +3724,7 @@ export function ProductionPlanModal({
             ) : (
               <div className="overflow-x-auto rounded-xl border border-zinc-200">
                 <table className="min-w-[980px] w-full text-left text-sm">
-                  <thead className="bg-[#ef1b2d] text-[11px] uppercase tracking-wider text-white">
+                  <thead className="bg-[#e8f0ed] text-[11px] font-semibold tracking-wide text-zinc-700">
                     <tr>
                       <th className="w-12 px-2 py-2 text-center font-black">
                         <input
@@ -7087,7 +7087,7 @@ export function ProductionOrderDetailBody({
           </p>
           <div className="overflow-hidden rounded-xl border border-zinc-200">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+              <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                 <tr>
                   <th className="px-3 py-2 font-black">Mã hàng</th>
                   <th className="px-3 py-2 font-black">Tên sản phẩm</th>

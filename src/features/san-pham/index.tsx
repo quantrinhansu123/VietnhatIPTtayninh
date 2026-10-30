@@ -1939,7 +1939,7 @@ export function ProductViewModal({
                 <div className="overflow-x-auto p-2">
                   <table className="min-w-full border-collapse text-left text-xs">
                     <thead>
-                      <tr className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white">
+                      <tr className="bg-[#e8f0ed] text-[9px] font-semibold tracking-wide text-zinc-700">
                         <th className="whitespace-nowrap px-2 py-2 font-black">Mã SP</th>
                         <th className="whitespace-nowrap px-2 py-2 font-black text-right">Tồn cuối ca</th>
                         <th className="whitespace-nowrap px-2 py-2 font-black text-right">Nhập trong kỳ</th>
@@ -2004,7 +2004,7 @@ export function ProductViewModal({
                   <div className="overflow-x-auto p-2">
                     <table className="min-w-full border-collapse text-left text-xs">
                       <thead>
-                        <tr className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white">
+                        <tr className="bg-[#e8f0ed] text-[9px] font-semibold tracking-wide text-zinc-700">
                           {normSpecCells.map(cell => (
                             <th key={cell.label} className="px-2 py-2 font-black whitespace-nowrap">
                               {cell.label}
@@ -4266,7 +4266,7 @@ export function ProductsPanel({
   return (
     <div className="w-full space-y-4">
       {isInventoryHeader ? (
-        <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+        <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             {topControls}
             {topControls ? <div className="hidden h-8 w-px shrink-0 bg-zinc-200 lg:block" aria-hidden /> : null}
@@ -4374,7 +4374,7 @@ export function ProductsPanel({
         </section>
       ) : (
         <>
-          <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+          <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
@@ -4459,7 +4459,7 @@ export function ProductsPanel({
         </>
       )}
 
-      <section className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+      <section className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         {isInventoryHeader ? null : (
           <TableSearchInput
             value={searchText}
@@ -4590,7 +4590,7 @@ export function ProductsPanel({
           ) : (
             <TableHeadCell align="center">Tổng SL</TableHeadCell>
           )}
-          <TableHeadCell align="center" className="sticky right-0 z-10 bg-[#ef1b2d]">
+          <TableHeadCell align="center" className="sticky right-0 z-10 bg-[#e8f0ed]">
             Thao tác
           </TableHeadCell>
         </TableHead>
@@ -4984,7 +4984,7 @@ export function ProductsPanel({
                 ) : null}
                 <div className="min-h-0 flex-1 overflow-auto">
                   <table className="min-w-full border-collapse text-left text-xs">
-                    <thead className="sticky top-0 bg-zinc-50 text-[10px] font-black uppercase tracking-wide text-zinc-500">
+                    <thead className="sticky top-0 bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                       <tr>
                         <th className="border-b border-zinc-200 px-3 py-2">Dòng</th>
                         <th className="border-b border-zinc-200 px-3 py-2">Mã SP</th>

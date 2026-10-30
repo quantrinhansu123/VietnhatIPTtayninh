@@ -944,7 +944,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
 
       {activeSection === 'settings' ? (
         <>
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm lg:flex lg:items-center lg:gap-3">
+      <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm lg:flex lg:items-center lg:gap-3">
         <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-1 lg:pb-0">
           {settingGroups.map(group => (
             <button
@@ -1094,7 +1094,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
       ) : activeSection === 'permissions' ? (
         <>
           <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Key phân quyền</h3>
@@ -1267,7 +1267,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
       ) : activeSection === 'role-permissions' ? (
         <>
           <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Vai trò</h3>
@@ -1415,7 +1415,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
               </div>
             </div>
 
-            <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
+            <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
               <RolePermissionsMatrix
                 value={{
                   viewPermissions: permissionForm.viewPermissions,

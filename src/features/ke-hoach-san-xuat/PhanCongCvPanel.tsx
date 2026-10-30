@@ -552,7 +552,7 @@ export default function PhanCongCvPanel({
         : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
-        <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch CV</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
@@ -575,14 +575,14 @@ export default function PhanCongCvPanel({
                   const dateRowTotal = datePlans.reduce((sum, plan) => sum + plan.rowCount, 0);
                   return (
                     <div key={date}>
-                      <div className="sticky top-0 flex items-center justify-between gap-2 bg-[#ef1b2d] px-4 py-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-white">{date}</span>
-                        <span className="font-mono text-xs font-black text-white">{dateRowTotal} dòng</span>
+                      <div className="sticky top-0 flex items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-4 py-2">
+                        <span className="text-xs font-semibold tracking-wide text-zinc-700">{date}</span>
+                        <span className="font-mono text-xs font-bold text-zinc-500">{dateRowTotal} dòng</span>
                       </div>
                       {datePlans.map(plan => (
                         <div
                           key={plan.key}
-                          className={`px-4 py-3 transition hover:bg-red-50/50 ${
+                          className={`px-4 py-3 transition hover:bg-[#ef1b2d]/[0.04] ${
                             selectedKey === plan.key ? 'bg-emerald-50' : ''
                           }`}
                         >
@@ -636,7 +636,7 @@ export default function PhanCongCvPanel({
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ef1b2d]">Kế hoạch CV</p>
@@ -724,7 +724,7 @@ export default function PhanCongCvPanel({
 
             <div className="overflow-x-auto rounded-xl border border-zinc-200">
               <table className="min-w-[1080px] w-full border-collapse text-xs">
-                <thead className="bg-zinc-100 text-[10px] font-black uppercase tracking-wide text-zinc-600">
+                <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="w-12 border border-zinc-200 px-2 py-1.5">STT</th>
                     <th className="min-w-[180px] border border-zinc-200 px-2 py-1.5 text-left">Công việc (task)</th>

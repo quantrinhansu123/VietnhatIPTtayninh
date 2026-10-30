@@ -33,8 +33,8 @@
 
 **Lịch sử — Tải Excel:** Lọc **Ngày**, tick phiếu (checkbox đầu ngày / từng phiếu). Nút **Tải Excel** mở popup rồi gom dòng theo mã hàng (+ ĐVT).
 
-- **Xuất kho:** Kho `KSX`, TK Nợ `154`, TK Có `152`, Đơn giá `0`, THCP `168B`, KMCP `NVLTT`.
-- **Nhập kho:** Kho `KTP`, TK Nợ `155`, TK Có `154`, Lệnh SX (trống), KMCP (trống), THCP `12NP`, Tên đối tượng (gợi ý máy nếu 1 máy); đơn giá/thành tiền lấy từ phiếu trừ khi ghi đè.
+- **Xuất kho:** Kho `KSX`, TK Nợ `154`, TK Có `152`, THCP `168B`, KMCP `NVLTT`; đơn giá từng dòng lấy từ **Bảng giá NVL** (`/bang-gia-nvl` / `kho_nvl.don_gia`), trừ khi ghi đè một giá chung.
+- **Nhập kho:** Kho `KTP`, TK Nợ `155`, TK Có `154`, Lệnh SX (trống), KMCP (trống), THCP `12NP`, Tên đối tượng (gợi ý máy nếu 1 máy); đơn giá/thành tiền lấy từ **Bảng giá NVL**, không có thì mới lấy từ phiếu; ghi đè thủ công vẫn áp dụng mọi dòng.
 | `src/App.tsx` | Shell routing — import panel, không chứa logic bảng |
 | `src/features/_shared/` | Helper dùng chung (storage, hr, recordHelpers) |
 

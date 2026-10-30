@@ -41,6 +41,19 @@ import ControlBoardBbMachineReportPrintBatch, {
 import BbCanTuDongTongHopPanel from './BbCanTuDongTongHopPanel';
 import BbSanLuongReportPanel from './BbSanLuongReportPanel';
 import {
+  TABLE_HEAD_STATIC_CLASS,
+  BB_TABLE_CLASS,
+  BB_TABLE_THEAD_CLASS,
+  BB_TABLE_GROUP_ROW_CLASS,
+  BB_TABLE_EXPAND_BTN_CLASS,
+  BB_TABLE_CHILD_WRAP_CLASS,
+  BB_TABLE_CHILD_PANEL_CLASS,
+  BB_TABLE_METRIC_CLASS,
+  BB_TABLE_TFOOT_CLASS,
+  BB_TABLE_TFOOT_METRIC_CLASS,
+  BB_TABLE_ORDER_CODE_CLASS
+} from './shared/table';
+import {
   BbGiaiTrinhPrintSheet,
   buildBbGiaiTrinhPrintReport,
   type BbGiaiTrinhPrintReport
@@ -769,8 +782,8 @@ function BbDauCaMaterialSplitTables({
         <div className="xl:col-span-7">
           {renderTable(
             'NVL trộn',
-            'text-violet-950 bg-violet-100 border-violet-200',
-            'bg-violet-50 text-violet-950',
+            'text-zinc-800 bg-[#e8f0ed] border-zinc-200',
+            'bg-[#e8f0ed] text-zinc-700',
             mixingDisplayLines,
             mixingTotalKg,
             'Không có NVL trộn (ĐVT kg / Lít).',
@@ -785,8 +798,8 @@ function BbDauCaMaterialSplitTables({
         <div className="xl:col-span-5">
           {renderTable(
             'NVL còn lại',
-            'text-slate-900 bg-slate-100 border-slate-200',
-            'bg-slate-50 text-slate-900',
+            'text-zinc-800 bg-[#e8f0ed] border-zinc-200',
+            'bg-[#e8f0ed] text-zinc-700',
             otherLines,
             otherTotalKg,
             'Không có NVL còn lại.',
@@ -868,7 +881,7 @@ function BbThanhPhamHachToanSplitTables({
                     {resolveBbSanLuongNvlDisplayUnit(row)}
                   </td>
                   {showRatio ? (
-                    <td className="px-3 py-1.5 text-right font-mono text-violet-800">
+                    <td className={`px-3 py-1.5 text-right ${BB_TABLE_TFOOT_METRIC_CLASS}`}>
                       {row.rate != null && row.rate > 0 && row.amountType === 'percent'
                         ? `${formatNumber(row.rate, 2)}%`
                         : '—'}
@@ -907,19 +920,19 @@ function BbThanhPhamHachToanSplitTables({
       <p className="px-1 text-[11px] font-black uppercase tracking-wider text-slate-600">
         Hạch toán NVL · từ Báo cáo sản lượng
       </p>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="space-y-3">
         {renderSide(
           'NVL trộn',
-          'text-violet-900 bg-violet-100 border-violet-200',
-          'bg-violet-50 text-violet-900',
+          'text-zinc-800 bg-[#e8f0ed] border-zinc-200',
+          'bg-[#e8f0ed] text-zinc-700',
           mixing,
           'Không có NVL trộn (ĐVT kg / Lít).',
           true
         )}
         {renderSide(
           'NVL khác',
-          'text-slate-800 bg-slate-100 border-slate-200',
-          'bg-slate-50 text-slate-800',
+          'text-zinc-800 bg-[#e8f0ed] border-zinc-200',
+          'bg-[#e8f0ed] text-zinc-700',
           other,
           'Không có NVL khác.',
           false
@@ -4214,7 +4227,7 @@ export default function ControlBoardBbMachineReportTable({
                 type="button"
                 onClick={() => setAllActiveGroupsExpanded(true)}
                 disabled={allActiveGroupsExpanded}
-                className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-black text-sky-800 shadow-sm transition hover:bg-sky-50 disabled:cursor-default disabled:opacity-40"
+                className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-black text-violet-800 shadow-sm transition hover:bg-violet-50 disabled:cursor-default disabled:opacity-40"
               >
                 Mở tất cả
               </button>
@@ -4241,7 +4254,7 @@ export default function ControlBoardBbMachineReportTable({
         }`}
       >
         {activeTab === 'lenh_sx' ? (
-          <table className="min-w-[1200px] w-full table-fixed whitespace-nowrap text-left text-[15px] font-semibold">
+          <table className={BB_TABLE_CLASS}>
             <colgroup>
               <col className="w-12" />
               <col className="w-[8rem]" />
@@ -4254,7 +4267,7 @@ export default function ControlBoardBbMachineReportTable({
               <col className="w-[9rem]" />
               <col className="w-[8rem]" />
             </colgroup>
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-[13px] uppercase tracking-wider text-slate-700">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="px-2 py-3 font-black" />
                 <th className="px-2.5 py-3 font-black">Ngày</th>
@@ -4287,12 +4300,12 @@ export default function ControlBoardBbMachineReportTable({
                   const expanded = isGroupExpanded('lenh_sx', group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-sky-200 bg-sky-50/60 font-bold hover:bg-sky-100/50 transition">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-1.5 py-1.5">
                           <button
                             type="button"
                             onClick={() => toggleGroup('lenh_sx', group.groupKey)}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-sky-300 bg-white text-sky-800 shadow-sm transition hover:bg-sky-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -4318,9 +4331,9 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                       </tr>
                       {expanded ? (
-                        <tr className="bb-row-child-wrap bg-sky-50/30">
+                        <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                           <td colSpan={10} className="p-0">
-                            <div className="bb-child-panel overflow-x-auto border-y border-sky-200 bg-white">
+                            <div className={BB_TABLE_CHILD_PANEL_CLASS}>
                               <table className="min-w-[1240px] w-full table-fixed text-left text-sm font-semibold">
                                 <colgroup>
                                   <col className="w-10" />
@@ -4334,21 +4347,21 @@ export default function ControlBoardBbMachineReportTable({
                                   <col className="w-[7rem]" />
                                 </colgroup>
                                 <thead>
-                                  <tr className="bg-sky-100/70 text-xs font-black uppercase tracking-wider text-sky-900">
-                                    <th className="px-1.5 py-2 font-black" />
-                                    <th className="px-3 py-2 font-black">Mã hàng</th>
-                                    <th className="px-3 py-2 font-black">Tên hàng</th>
-                                    <th className="px-3 py-2 font-black">ĐVT</th>
-                                    <th className="px-3 py-2 text-right font-black">Định mức (kg)</th>
+                                  <tr className={BB_TABLE_THEAD_CLASS}>
+                                    <th className="px-1.5 py-2 font-semibold" />
+                                    <th className="px-3 py-2 font-semibold">Mã hàng</th>
+                                    <th className="px-3 py-2 font-semibold">Tên hàng</th>
+                                    <th className="px-3 py-2 font-semibold">ĐVT</th>
+                                    <th className="px-3 py-2 text-right font-semibold">Định mức (kg)</th>
                                     <th
-                                      className="px-3 py-2 text-right font-black"
+                                      className="px-3 py-2 text-right font-semibold"
                                       title="Lấy thẳng cột Trọng lượng nhựa + phụ gia (kg) trên Kho hàng"
                                     >
                                       Trọng lượng nhựa + phụ gia (kg)
                                     </th>
-                                    <th className="px-3 py-2 text-right font-black">SL</th>
-                                    <th className="px-3 py-2 text-right font-black">Tổng (kg)</th>
-                                    <th className="px-3 py-2 text-right font-black">% KL nhựa</th>
+                                    <th className="px-3 py-2 text-right font-semibold">SL</th>
+                                    <th className="px-3 py-2 text-right font-semibold">Tổng (kg)</th>
+                                    <th className="px-3 py-2 text-right font-semibold">% KL nhựa</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -4380,12 +4393,12 @@ export default function ControlBoardBbMachineReportTable({
                                     const nvlItems = dmNvl?.nvl || [];
                                     return (
                                       <React.Fragment key={row.key}>
-                                        <tr className="border-b border-slate-100 bg-white font-semibold hover:bg-sky-50/40">
+                                        <tr className="border-b border-slate-100 bg-white font-semibold hover:bg-violet-50/50">
                                           <td className="px-1.5 py-2">
                                             <button
                                               type="button"
                                               onClick={() => toggleGroup('lenh_sx', lineNvlToggleKey)}
-                                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-violet-300 bg-white text-violet-800 shadow-sm transition hover:bg-violet-50"
+                                              className={BB_TABLE_EXPAND_BTN_CLASS}
                                               title={
                                                 nvlExpanded
                                                   ? 'Đóng định mức NVL'
@@ -4429,9 +4442,9 @@ export default function ControlBoardBbMachineReportTable({
                                           </td>
                                         </tr>
                                         {nvlExpanded ? (
-                                          <tr className="bb-row-child-wrap bg-violet-50/40">
+                                          <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                                             <td colSpan={9} className="p-0">
-                                              <div className="bb-child-panel border-y border-violet-200 bg-white/90 px-2 py-2">
+                                              <div className={`${BB_TABLE_CHILD_PANEL_CLASS} px-2 py-2`}>
                                                 <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-[11px] font-bold text-violet-900">
                                                   <span className="uppercase tracking-wider">
                                                     Định mức NVL
@@ -4460,20 +4473,20 @@ export default function ControlBoardBbMachineReportTable({
                                                     <col className="w-[7.5rem]" />
                                                   </colgroup>
                                                   <thead>
-                                                    <tr className="bg-violet-100/80 text-[10px] font-black uppercase tracking-wider text-violet-950">
-                                                      <th className="px-3 py-1.5 font-black">Mã NVL</th>
-                                                      <th className="px-3 py-1.5 font-black">Tên NVL</th>
-                                                      <th className="px-3 py-1.5 font-black">ĐVT</th>
-                                                      <th className="px-3 py-1.5 text-right font-black">%</th>
-                                                      <th className="px-3 py-1.5 text-right font-black">SL TP</th>
+                                                    <tr className="bg-[#e8f0ed] text-[10px] font-semibold uppercase tracking-wider text-zinc-700">
+                                                      <th className="px-3 py-1.5 font-semibold">Mã NVL</th>
+                                                      <th className="px-3 py-1.5 font-semibold">Tên NVL</th>
+                                                      <th className="px-3 py-1.5 font-semibold">ĐVT</th>
+                                                      <th className="px-3 py-1.5 text-right font-semibold">%</th>
+                                                      <th className="px-3 py-1.5 text-right font-semibold">SL TP</th>
                                                       <th
-                                                        className="px-3 py-1.5 text-right font-black"
+                                                        className="px-3 py-1.5 text-right font-semibold"
                                                         title="Định lượng kg / 1 ĐVT SP"
                                                       >
                                                         Định lượng (kg)
                                                       </th>
                                                       <th
-                                                        className="px-3 py-1.5 text-right font-black"
+                                                        className="px-3 py-1.5 text-right font-semibold"
                                                         title="Định lượng × SL dòng lệnh"
                                                       >
                                                         Tổng (kg)
@@ -4505,7 +4518,7 @@ export default function ControlBoardBbMachineReportTable({
                                                           <td className="px-3 py-1.5 text-zinc-600">
                                                             {item.don_vi || (item.loai === 'percent' ? '%' : '—')}
                                                           </td>
-                                                          <td className="px-3 py-1.5 text-right font-mono text-violet-800">
+                                                          <td className={`px-3 py-1.5 text-right ${BB_TABLE_TFOOT_METRIC_CLASS}`}>
                                                             {item.phan_tram != null
                                                               ? `${formatNumber(item.phan_tram, 2)}%`
                                                               : '—'}
@@ -4545,7 +4558,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && orderGroupsMerged.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={7} className="px-2 py-2 text-right uppercase tracking-wider">
                     Tổng cộng ({orderGroupsMerged.length} lệnh)
@@ -4588,7 +4601,7 @@ export default function ControlBoardBbMachineReportTable({
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-[720px] w-full text-left text-sm font-semibold">
-                <thead className="bg-emerald-50/80 text-xs uppercase tracking-wider text-emerald-900">
+                <thead className={BB_TABLE_THEAD_CLASS}>
                   <tr>
                     <th className="px-4 py-2.5 font-black">STT</th>
                     <th className="px-4 py-2.5 font-black">Mã NVL</th>
@@ -4641,7 +4654,7 @@ export default function ControlBoardBbMachineReportTable({
                   )}
                 </tbody>
                 {!isLoading && exportMaterialTotals.length > 0 ? (
-                  <tfoot className="border-t-2 border-emerald-300 bg-emerald-50 text-xs font-black text-emerald-950">
+                  <tfoot className={BB_TABLE_TFOOT_CLASS}>
                     <tr>
                       <td colSpan={5} className="px-4 py-2.5 text-right uppercase tracking-wider">
                         Tổng lượng nhựa
@@ -4668,10 +4681,10 @@ export default function ControlBoardBbMachineReportTable({
                           : '—'}
                       </td>
                     </tr>
-                    <tr className="border-t border-emerald-400/80 bg-emerald-100/80">
+                    <tr className="border-t border-violet-300 bg-violet-50/80">
                       <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-wider">
                         Tổng cộng
-                        <span className="ml-1 font-semibold normal-case tracking-normal text-emerald-800/80">
+                        <span className="ml-1 font-semibold normal-case tracking-normal text-violet-800/80">
                           = nhựa + vật tư khác
                         </span>
                       </td>
@@ -4685,8 +4698,8 @@ export default function ControlBoardBbMachineReportTable({
             </div>
           </section>
 
-          <table className="min-w-[1100px] w-full whitespace-nowrap text-left text-sm font-semibold">
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
+          <table className={BB_TABLE_CLASS}>
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="w-10 px-3 py-3.5 font-black" />
                 <th className="px-4 py-3.5 font-black">Ngày</th>
@@ -4734,7 +4747,7 @@ export default function ControlBoardBbMachineReportTable({
                   return (
                     <tr
                       key={group.groupKey}
-                      className="border-y border-amber-200 bg-amber-50/60 font-bold hover:bg-amber-100/50 transition"
+                      className={BB_TABLE_GROUP_ROW_CLASS}
                     >
                         <td className="px-3 py-2.5" />
                         <td className="px-4 py-2.5 font-mono font-bold text-zinc-700">{group.ngay || '—'}</td>
@@ -4791,7 +4804,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && exportGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={5} className="px-4 py-3.5 text-right uppercase tracking-wider">
                     Tổng cộng
@@ -4809,7 +4822,7 @@ export default function ControlBoardBbMachineReportTable({
           </table>
           </div>
         ) : activeTab === 'ton_dau_ca' ? (
-          <table className="min-w-[1100px] w-full table-fixed whitespace-nowrap text-left text-[15px] font-semibold">
+          <table className={BB_TABLE_CLASS}>
             <colgroup>
               <col className="w-11" />
               <col className="w-[9rem]" />
@@ -4818,7 +4831,7 @@ export default function ControlBoardBbMachineReportTable({
               <col className="w-[12rem]" />
               <col className="w-[11rem]" />
             </colgroup>
-            <thead className="border-b-2 border-slate-300 bg-gradient-to-r from-slate-100 to-slate-50 text-[13px] uppercase tracking-wide text-slate-800">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="px-2 py-3.5 font-black" />
                 <th className="px-3.5 py-3.5 font-black">Ngày</th>
@@ -4847,12 +4860,12 @@ export default function ControlBoardBbMachineReportTable({
                   const expanded = isGroupExpanded('ton_dau_ca', group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-indigo-200 bg-indigo-50/70 text-[15px] font-bold transition hover:bg-indigo-100/60">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-2 py-3">
                           <button
                             type="button"
                             onClick={() => toggleGroup('ton_dau_ca', group.groupKey)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-indigo-300 bg-white text-indigo-800 shadow-sm transition hover:bg-indigo-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -4863,14 +4876,14 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-3.5 py-3 font-semibold text-zinc-900">
                           {group.shiftLabel || group.shift || '—'}
                         </td>
-                        <td className="px-3.5 py-3 font-mono font-black text-sky-950">{group.orderCode || '—'}</td>
+                        <td className={`px-3.5 py-3 ${BB_TABLE_ORDER_CODE_CLASS}`}>{group.orderCode || '—'}</td>
                         <td className="px-3.5 py-3 font-semibold text-zinc-900">{group.machine || '—'}</td>
-                        <td className="px-3.5 py-3 text-right font-mono text-[16px] font-black text-indigo-900">
+                        <td className={`px-3.5 py-3 text-right ${BB_TABLE_METRIC_CLASS}`}>
                           {formatKg(group.totalWeightKg, 4)}
                         </td>
                       </tr>
                       {expanded ? (
-                        <tr className="bb-row-child-wrap bg-indigo-50/30">
+                        <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                           <td colSpan={6} className="p-0">
                             <BbDauCaMaterialSplitTables
                               materialLines={group.materialLines || []}
@@ -4885,12 +4898,12 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && dauCaGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={5} className="px-3 py-3.5 text-right uppercase tracking-wider">
                     Tổng
                   </td>
-                  <td className="px-3 py-3.5 text-right font-mono text-indigo-800">{formatKg(dauCaTotalKg, 4)}</td>
+                  <td className={`px-3 py-3.5 text-right ${BB_TABLE_TFOOT_METRIC_CLASS}`}>{formatKg(dauCaTotalKg, 4)}</td>
                 </tr>
               </tfoot>
             ) : null}
@@ -4920,7 +4933,7 @@ export default function ControlBoardBbMachineReportTable({
                     type="button"
                     onClick={() => setAllActiveGroupsExpanded(true)}
                     disabled={damagedGroupsWithMixing.every(g => isGroupExpanded('bao_cao_loi_hong', g.groupKey))}
-                    className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-black text-rose-800 shadow-sm transition hover:bg-rose-50 disabled:cursor-default disabled:opacity-40"
+                    className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-black text-violet-800 shadow-sm transition hover:bg-violet-50 disabled:cursor-default disabled:opacity-40"
                   >
                     Mở tất cả
                   </button>
@@ -4937,8 +4950,8 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
 
             <div className="bb-table-scroll bb-report-sheet-scroll">
-          <table className="min-w-[1100px] w-full text-left text-sm font-semibold">
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
+          <table className={BB_TABLE_CLASS}>
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="w-10 px-3 py-3.5 font-black" />
                 <th className="px-4 py-3.5 font-black">Ngày</th>
@@ -5014,12 +5027,12 @@ export default function ControlBoardBbMachineReportTable({
                   });
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-rose-200 bg-rose-50/60 font-bold hover:bg-rose-100/50 transition">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-3 py-3">
                           <button
                             type="button"
                             onClick={() => toggleGroup('bao_cao_loi_hong', group.groupKey)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-300 bg-white text-rose-800 shadow-sm transition hover:bg-rose-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -5046,7 +5059,7 @@ export default function ControlBoardBbMachineReportTable({
                         </td>
                       </tr>
                       {expanded ? (
-                        <tr className="bb-row-child-wrap bg-rose-50/20">
+                        <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                           <td colSpan={7} className="px-2 py-3">
                             {(() => {
                               const { mixingKgLines, otherMaterialLines } = splitBbLoiHongMaterialLinesByMixing(
@@ -5072,7 +5085,7 @@ export default function ControlBoardBbMachineReportTable({
                                       {mixingKgLines.length > 0 ? ` (${mixingKgLines.length})` : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left font-semibold">
-                                      <thead className="bg-rose-50 text-rose-900">
+                                      <thead className={TABLE_HEAD_STATIC_CLASS}>
                                         <tr>
                                           <th className="font-black">Mã NVL</th>
                                           <th className="font-black">Tên nguyên phụ liệu</th>
@@ -5153,7 +5166,7 @@ export default function ControlBoardBbMachineReportTable({
                                         : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left font-semibold">
-                                      <thead className="bg-slate-50 text-slate-700">
+                                      <thead className="bg-[#e8f0ed] text-zinc-700">
                                         <tr>
                                           <th className="font-black">Mã NVL</th>
                                           <th className="font-black">Tên nguyên phụ liệu</th>
@@ -5232,7 +5245,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && damagedGroupsWithMixing.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={5} className="px-4 py-3.5 text-right uppercase tracking-wider">
                     Tổng hàng lỗi hỏng
@@ -5253,7 +5266,7 @@ export default function ControlBoardBbMachineReportTable({
             </div>
           </>
         ) : activeTab === 'kiem_ton_cuoi_ca' ? (
-          <table className="min-w-[1100px] w-full table-fixed whitespace-nowrap text-left text-[15px] font-semibold">
+          <table className={BB_TABLE_CLASS}>
             <colgroup>
               <col className="w-11" />
               <col className="w-[9rem]" />
@@ -5262,7 +5275,7 @@ export default function ControlBoardBbMachineReportTable({
               <col className="w-[12rem]" />
               <col className="w-[11rem]" />
             </colgroup>
-            <thead className="border-b-2 border-slate-300 bg-gradient-to-r from-slate-100 to-slate-50 text-[13px] uppercase tracking-wide text-slate-800">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="px-2 py-3.5 font-black" />
                 <th className="px-3.5 py-3.5 font-black">Ngày</th>
@@ -5291,12 +5304,12 @@ export default function ControlBoardBbMachineReportTable({
                   const expanded = isGroupExpanded('kiem_ton_cuoi_ca', group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-violet-200 bg-violet-50/70 text-[15px] font-bold transition hover:bg-violet-100/60">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-2 py-3">
                           <button
                             type="button"
                             onClick={() => toggleGroup('kiem_ton_cuoi_ca', group.groupKey)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-violet-300 bg-white text-violet-800 shadow-sm transition hover:bg-violet-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -5307,14 +5320,14 @@ export default function ControlBoardBbMachineReportTable({
                         <td className="px-3.5 py-3 font-semibold text-zinc-900">
                           {group.shiftLabel || group.shift || '—'}
                         </td>
-                        <td className="px-3.5 py-3 font-mono font-black text-sky-950">{group.orderCode || '—'}</td>
+                        <td className={`px-3.5 py-3 ${BB_TABLE_ORDER_CODE_CLASS}`}>{group.orderCode || '—'}</td>
                         <td className="px-3.5 py-3 font-semibold text-zinc-900">{group.machine || '—'}</td>
-                        <td className="px-3.5 py-3 text-right font-mono text-[16px] font-black text-violet-900">
+                        <td className={`px-3.5 py-3 text-right ${BB_TABLE_METRIC_CLASS}`}>
                           {formatKg(group.totalWeightKg, 4)}
                         </td>
                       </tr>
                       {expanded ? (
-                        <tr className="bb-row-child-wrap bg-violet-50/30">
+                        <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                           <td colSpan={6} className="p-0">
                             <BbDauCaMaterialSplitTables
                               materialLines={group.materialLines || []}
@@ -5332,12 +5345,12 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && cuoiCaGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={5} className="px-3 py-3.5 text-right uppercase tracking-wider">
                     Tổng tồn cuối ca
                   </td>
-                  <td className="px-3 py-3.5 text-right font-mono text-violet-800">
+                  <td className={`px-3 py-3.5 text-right ${BB_TABLE_TFOOT_METRIC_CLASS}`}>
                     {formatKg(cuoiCaTotalKg, 4)}
                   </td>
                 </tr>
@@ -5345,8 +5358,8 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
           </table>
         ) : activeTab === 'phieu_nhap_kho' ? (
-          <table className="min-w-[1100px] w-full text-left text-sm font-semibold">
-            <thead className="bg-slate-200 text-xs uppercase tracking-wider text-slate-700">
+          <table className={BB_TABLE_CLASS}>
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="px-3 py-2.5 font-black">Ngày</th>
                 <th className="px-3 py-2.5 font-black">Ca</th>
@@ -5373,7 +5386,7 @@ export default function ControlBoardBbMachineReportTable({
                 </tr>
               ) : (
                 inboundRows.map(row => (
-                  <tr key={row.key} className="hover:bg-cyan-50/40">
+                  <tr key={row.key} className="hover:bg-violet-50/50">
                     <td className="px-3 py-2 font-mono font-bold text-zinc-800">{row.ngay || '—'}</td>
                     <td className="px-3 py-2 font-semibold text-zinc-700">{row.shiftLabel || row.shift || '—'}</td>
                     <td className="px-3 py-2 font-mono font-black text-sky-800">{row.orderCode || '—'}</td>
@@ -5392,7 +5405,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && inboundRows.length > 0 ? (
-              <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={4} className="px-3 py-2.5 text-right uppercase tracking-wider">
                     Tổng cộng
@@ -5424,7 +5437,7 @@ export default function ControlBoardBbMachineReportTable({
               <col className="w-[132px]" />
               <col className="w-[148px]" />
             </colgroup>
-            <thead className="bg-slate-100 text-[12px] font-semibold uppercase tracking-wide text-slate-600">
+            <thead className="bg-[#e8f0ed] text-[12px] font-semibold tracking-wide text-zinc-700">
               <tr>
                 <th className="w-10 px-2 py-3" />
                 <th className="px-3 py-3">Ngày</th>
@@ -5563,7 +5576,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <col className="w-[100px]" />
                                           <col className="w-[96px]" />
                                         </colgroup>
-                                        <thead className="bg-violet-50/90 text-[11px] font-semibold uppercase tracking-wide text-violet-900">
+                                        <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wide`}>
                                           <tr>
                                             <th className="px-3 py-2.5">Mã NVL</th>
                                             <th className="px-3 py-2.5">Tên NVL</th>
@@ -5783,7 +5796,7 @@ export default function ControlBoardBbMachineReportTable({
                                           <col className="w-[96px]" />
                                           <col className="w-[100px]" />
                                         </colgroup>
-                                        <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                        <thead className="bg-[#e8f0ed] text-[11px] font-semibold tracking-wide text-zinc-700">
                                           <tr>
                                             <th className="px-3 py-2.5">Mã NVL</th>
                                             <th className="px-3 py-2.5">Tên NVL</th>
@@ -5922,7 +5935,7 @@ export default function ControlBoardBbMachineReportTable({
           </table>
         ) : activeTab === 'tong_hop_vat_tu_thuc_xuat_dung' ? (
           <table className="min-w-[1300px] w-full whitespace-nowrap text-left text-sm font-semibold">
-            <thead className="bg-gradient-to-r from-emerald-100 to-teal-50 border-b-2 border-emerald-300 text-xs uppercase tracking-wider text-emerald-900">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="w-10 px-2 py-2.5 font-black" />
                 <th className="px-3 py-2.5 font-black">Ngày</th>
@@ -5959,12 +5972,12 @@ export default function ControlBoardBbMachineReportTable({
                   const expanded = isGroupExpanded('tong_hop_vat_tu_thuc_xuat_dung', group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-emerald-200 bg-emerald-50/80 font-bold hover:bg-emerald-100/70">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-2 py-2">
                           <button
                             type="button"
                             onClick={() => toggleGroup('tong_hop_vat_tu_thuc_xuat_dung', group.groupKey)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 bg-white text-emerald-800 shadow-sm transition hover:bg-emerald-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -5999,14 +6012,14 @@ export default function ControlBoardBbMachineReportTable({
                             );
                             return (
                               <React.Fragment key={productGroupKey}>
-                                <tr className="bb-row-mid border-y border-sky-200 bg-sky-50 font-bold text-sky-950 hover:bg-sky-100/80">
+                                <tr className={`bb-row-mid ${BB_TABLE_GROUP_ROW_CLASS}`}>
                                   <td className="px-2 py-1.5 text-right">
                                     <button
                                       type="button"
                                       onClick={() =>
                                         toggleGroup('tong_hop_vat_tu_thuc_xuat_dung', productGroupKey)
                                       }
-                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-sky-300 bg-white text-sky-800 shadow-sm transition hover:bg-sky-50"
+                                      className={BB_TABLE_EXPAND_BTN_CLASS}
                                       title={
                                         productExpanded ? 'Đóng NVL của sản phẩm' : 'Mở NVL của sản phẩm'
                                       }
@@ -6058,7 +6071,7 @@ export default function ControlBoardBbMachineReportTable({
                                 </tr>
                                 {productExpanded ? (
                                   <>
-                                    <tr className="bb-row-child-head border-y border-emerald-100 bg-emerald-50 text-xs font-black uppercase tracking-wider text-emerald-900">
+                                    <tr className={`bb-row-child-head border-y border-zinc-200 ${BB_TABLE_THEAD_CLASS}`}>
                                       <td />
                                       <td className="px-3 py-1.5 font-black">Mã NVL</td>
                                       <td className="px-3 py-1.5 font-black">Tên NVL (báo cáo phối trộn)</td>
@@ -6088,7 +6101,7 @@ export default function ControlBoardBbMachineReportTable({
                                       </td>
                                     </tr>
                                     {productGroup.lines.map(row => (
-                                      <tr key={row.key} className="bb-row-child bg-white font-semibold hover:bg-emerald-50/60">
+                                      <tr key={row.key} className="bb-row-child bg-white font-semibold hover:bg-violet-50/50">
                                         <td className="px-2 py-1.5" />
                                         <td className="px-3 py-1.5 font-mono font-bold text-zinc-800">
                                           {row.materialCode || '—'}
@@ -6136,7 +6149,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && tongHopThucXuatGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-emerald-300 bg-emerald-50 text-xs font-black text-emerald-950">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={8} className="px-3 py-2.5 text-right uppercase tracking-wider">
                     Tổng thực dùng
@@ -6153,7 +6166,7 @@ export default function ControlBoardBbMachineReportTable({
           </table>
         ) : activeTab === 'tong' ? (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
-            <thead className="bg-gradient-to-r from-slate-100 to-slate-50 border-b-2 border-slate-300 text-xs uppercase tracking-wider text-slate-700">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="w-10 px-3 py-3.5 font-black" />
                 <th className="px-4 py-3.5 font-black">Ngày</th>
@@ -6190,12 +6203,12 @@ export default function ControlBoardBbMachineReportTable({
                   const thucDungGroup = thucDungGroups.find(g => g.groupKey === group.groupKey);
                   return (
                     <React.Fragment key={group.groupKey}>
-                      <tr className="border-y border-emerald-200 bg-emerald-50/60 font-bold hover:bg-emerald-100/50 transition">
+                      <tr className={BB_TABLE_GROUP_ROW_CLASS}>
                         <td className="px-3 py-2.5">
                           <button
                             type="button"
                             onClick={() => toggleGroup('tong', group.groupKey)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-300 bg-white text-emerald-800 shadow-sm transition hover:bg-emerald-50"
+                            className={BB_TABLE_EXPAND_BTN_CLASS}
                             title={expanded ? 'Đóng các dòng con' : 'Mở các dòng con'}
                             aria-expanded={expanded}
                           >
@@ -6224,7 +6237,7 @@ export default function ControlBoardBbMachineReportTable({
                       </tr>
                       {expanded ? (
                         <>
-                          <tr className="bb-row-child-head border-y border-emerald-100 bg-emerald-100/40 text-xs font-black uppercase tracking-wider text-emerald-900">
+                          <tr className={`bb-row-child-head border-y border-zinc-200 ${BB_TABLE_THEAD_CLASS}`}>
                             <td className="px-3 py-2" />
                             <td colSpan={5} className="px-4 py-2 font-black">
                               Thành phần
@@ -6232,7 +6245,7 @@ export default function ControlBoardBbMachineReportTable({
                             <td colSpan={4} className="px-4 py-2 text-right font-black">Giá trị (kg)</td>
                           </tr>
                           {group.lines.map(line => (
-                            <tr key={line.key} className="bb-row-child bg-white font-semibold hover:bg-emerald-50/40 border-b border-slate-50">
+                            <tr key={line.key} className="bb-row-child bg-white font-semibold hover:bg-violet-50/50 border-b border-slate-50">
                               <td className="px-3 py-2" />
                               <td colSpan={5} className="px-4 py-2 text-zinc-700">
                                 {line.label}
@@ -6250,7 +6263,7 @@ export default function ControlBoardBbMachineReportTable({
               )}
             </tbody>
             {!isLoading && tongGroups.length > 0 ? (
-              <tfoot className="border-t-2 border-slate-300 bg-slate-100 text-xs font-black text-slate-900">
+              <tfoot className={BB_TABLE_TFOOT_CLASS}>
                 <tr>
                   <td colSpan={5} className="px-4 py-3.5 text-right uppercase tracking-wider">
                     Tổng cộng
@@ -6555,7 +6568,7 @@ export default function ControlBoardBbMachineReportTable({
           </table>
         ) : activeTab === 'giai_trinh' ? (
           <table className="min-w-[1400px] w-full text-left text-sm font-semibold">
-            <thead className="bg-slate-200 text-xs uppercase tracking-wider text-slate-700">
+            <thead className={BB_TABLE_THEAD_CLASS}>
               <tr>
                 <th className="px-3 py-2.5 font-black">Ngày</th>
                 <th className="px-3 py-2.5 font-black">Ca</th>
@@ -6684,7 +6697,7 @@ export default function ControlBoardBbMachineReportTable({
                       </div>
                       <div className="bb-table-scroll overflow-x-auto">
                         <table className="min-w-[960px] w-full text-left text-sm font-semibold">
-                          <thead className="bg-rose-50 text-[11px] uppercase tracking-wider text-rose-900">
+                          <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wider`}>
                             <tr>
                               <th className="whitespace-nowrap px-3 py-2.5 font-black">Chỉ số</th>
                               <th
@@ -6739,8 +6752,7 @@ export default function ControlBoardBbMachineReportTable({
                   sectionRows: typeof rows,
                   accent: 'violet' | 'slate'
                 ) => {
-                  const headBg = accent === 'violet' ? 'bg-violet-100 text-violet-900' : 'bg-slate-100 text-slate-700';
-                  const border = accent === 'violet' ? 'border-violet-200' : 'border-slate-200';
+                  const accentBar = accent === 'violet' ? 'border-l-[#ef1b2d]' : 'border-l-zinc-400';
                   const fmtQty = (value: number | null | undefined) =>
                     value != null && Number.isFinite(value) ? formatKg(value, 1) : '—';
                   const fmtThucXuatKg = (value: number | null | undefined) =>
@@ -6762,12 +6774,14 @@ export default function ControlBoardBbMachineReportTable({
                   const danhGiaInputClass =
                     'w-full min-w-[96px] rounded border border-zinc-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d]';
                   return (
-                    <div className={`min-w-0 overflow-hidden rounded-lg border ${border}`}>
-                      <div className={`border-b ${border} ${headBg} px-3 py-2 text-xs font-black uppercase tracking-wider`}>
-                        {title}
-                        {sectionRows.filter(r => r.id === 'nvl').length > 0
-                          ? ` (${sectionRows.filter(r => r.id === 'nvl').length} NVL)`
-                          : ''}
+                    <div className={`min-w-0 overflow-hidden rounded-xl border border-zinc-200 border-l-4 bg-white shadow-sm ${accentBar}`}>
+                      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2.5">
+                        <h4 className="text-sm font-bold text-zinc-900">
+                          {title}
+                          {sectionRows.filter(r => r.id === 'nvl').length > 0
+                            ? ` (${sectionRows.filter(r => r.id === 'nvl').length} NVL)`
+                            : ''}
+                        </h4>
                       </div>
                       {sectionRows.length === 0 ? (
                         <p className="px-3 py-6 text-center text-sm font-semibold text-zinc-400">
@@ -6775,7 +6789,7 @@ export default function ControlBoardBbMachineReportTable({
                         </p>
                       ) : (
                         <div className="bb-table-scroll overflow-x-auto">
-                          <table className="min-w-[760px] w-full table-fixed text-left text-sm font-semibold">
+                          <table className="min-w-[760px] w-full table-fixed border-collapse text-left text-sm">
                             <colgroup>
                               <col className="w-[6%]" />
                               <col className="w-[20%]" />
@@ -6787,29 +6801,29 @@ export default function ControlBoardBbMachineReportTable({
                               <col className="w-[12%]" />
                               <col className="w-[12%]" />
                             </colgroup>
-                            <thead className="bg-slate-50 text-[10px] leading-tight text-slate-700">
+                            <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px] leading-tight`}>
                               <tr>
-                                <th className="px-2 py-2.5 text-center font-black uppercase tracking-wide">
-                                  STT
+                                <th className="border-r border-zinc-200/80 px-2 py-2.5 text-center font-semibold">
+                                  #
                                 </th>
-                                <th className="px-3 py-2.5 font-black uppercase tracking-wide">
+                                <th className="border-r border-zinc-200/80 px-3 py-2.5 font-semibold">
                                   Giá trị phân tích dữ liệu
                                 </th>
                                 <th
-                                  className="px-1.5 py-2.5 text-center font-black leading-snug"
+                                  className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold leading-snug"
                                   title="Vật tư trộn: Tổng nhựa định mức (banner) × tỉ lệ % — chỉ nhựa ĐM"
                                 >
                                   ĐM vật tư
                                   <br />
                                   nhập TP (kg)
                                 </th>
-                                <th className="px-1.5 py-2.5 text-center font-black leading-snug">
+                                <th className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold leading-snug">
                                   Thực xuất
                                   <br />
                                   dùng (kg)
                                 </th>
                                 <th
-                                  className="px-1.5 py-2.5 text-center font-black leading-snug"
+                                  className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold leading-snug"
                                   title="Chênh lệch = Thực xuất dùng − Định mức nhập TP"
                                 >
                                   Chênh lệch
@@ -6817,30 +6831,28 @@ export default function ControlBoardBbMachineReportTable({
                                   (TX − ĐM)
                                 </th>
                                 <th
-                                  className="px-1.5 py-2.5 text-center font-black leading-snug uppercase tracking-wide"
+                                  className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold leading-snug"
                                   title="KL lỗi hỏng phân bổ theo tỉ lệ % (vật tư trộn) hoặc theo dòng"
                                 >
                                   Lỗi hỏng
                                   <br />
                                   (kg)
                                 </th>
-                                <th className="px-1.5 py-2.5 text-center font-black uppercase tracking-wide">
+                                <th className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold">
                                   Đơn giá
                                 </th>
                                 <th
-                                  className="px-1.5 py-2.5 text-center font-black leading-snug uppercase tracking-wide"
+                                  className="border-r border-zinc-200/80 px-1.5 py-2.5 text-center font-semibold leading-snug"
                                   title="Tiền lỗ do hàng lỗi = Lỗi hỏng (kg) × Đơn giá"
                                 >
                                   Tiền lỗ
                                   <br />
                                   do hàng lỗi
                                 </th>
-                                <th className="px-2 py-2.5 font-black uppercase tracking-wide">
-                                  Đánh giá
-                                </th>
+                                <th className="px-2 py-2.5 font-semibold">Đánh giá</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-zinc-100">
+                            <tbody>
                               {sectionRows.map((row, index) => {
                                 const isTong = row.id === 'tong';
                                 const rowKey = bbDanhGiaSummaryRowKey(row);
@@ -6848,29 +6860,33 @@ export default function ControlBoardBbMachineReportTable({
                                   <tr
                                     key={`${row.section || 'tron'}|${row.id}|${row.sttCode || row.materialCode || ''}|${index}`}
                                     className={
-                                      isTong ? 'bg-amber-50/80 font-black' : 'hover:bg-rose-50/20'
+                                      isTong
+                                        ? 'border-b border-zinc-100 bg-amber-50/80 font-bold'
+                                        : 'border-b border-zinc-100 odd:bg-white even:bg-zinc-50/70 hover:bg-[#ef1b2d]/[0.04]'
                                     }
                                   >
-                                    <td className="px-2 py-2 text-center font-mono text-xs">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-center font-mono text-xs text-zinc-600">
                                       {row.sttCode || (isTong ? '' : '—')}
                                     </td>
-                                    <td className="px-3 py-2">{row.label}</td>
-                                    <td className="px-2 py-2 text-right font-mono">
+                                    <td className="border-r border-zinc-100 px-3 py-2 text-[13px] text-zinc-800">
+                                      {row.label}
+                                    </td>
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtQty(row.dinhMucVatTuKg)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtThucXuatKg(row.thucXuatKg)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtSignedQty(row.chenhLechKg)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px] text-[#ef1b2d]">
                                       {fmtThucXuatKg(row.loiKg)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtDonGia(row.donGia)}
                                     </td>
-                                    <td className="px-2 py-2 text-right font-mono text-rose-800">
+                                    <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px] text-[#ef1b2d]">
                                       {fmtMoneyCell(row.tienLoDoHangLoi)}
                                     </td>
                                     <td className="px-1.5 py-1.5">
@@ -6927,7 +6943,7 @@ export default function ControlBoardBbMachineReportTable({
                     ) : (
                       <div className="space-y-3 p-3">
                         {renderRatioTable(ratioRows)}
-                        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
+                        <div className="space-y-3">
                           {renderSummaryTable('Vật tư trộn', mixingDetailRows, 'violet')}
                           {renderSummaryTable('Các vật tư còn lại', otherRows, 'slate')}
                         </div>
@@ -6959,7 +6975,7 @@ export default function ControlBoardBbMachineReportTable({
                                 </div>
                                 <div className="bb-table-scroll overflow-x-auto">
                                   <table className="w-full text-left text-sm font-semibold">
-                                    <thead className="bg-amber-50 text-[11px] uppercase tracking-wider text-amber-950">
+                                    <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wider`}>
                                       <tr>
                                         <th className="whitespace-nowrap px-3 py-2.5 font-black">
                                           Khoản mục
@@ -7133,7 +7149,7 @@ export default function ControlBoardBbMachineReportTable({
                                   </div>
                                   <div className="bb-table-scroll overflow-x-auto">
                                     <table className="min-w-[920px] w-full text-left text-sm font-semibold">
-                                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-700">
+                                      <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                                         <tr>
                                           <th className="px-2 py-2.5 text-center font-black">STT</th>
                                           <th className="px-3 py-2.5 font-black">Mã / Tên NVL</th>
@@ -7270,7 +7286,7 @@ export default function ControlBoardBbMachineReportTable({
           /* bảng đánh giá hao hụt / lỗi hỏng */
           <div className="bb-table-scroll bb-report-sheet-scroll">
             <table className="min-w-[2300px] w-full text-left text-sm font-semibold">
-              <thead className="bg-slate-200 text-xs uppercase tracking-wider text-slate-700">
+              <thead className={BB_TABLE_THEAD_CLASS}>
                 <tr>
                   <th className="w-10 px-2 py-2.5 font-black" />
                   <th className="px-3 py-2.5 font-black">Ngày</th>
@@ -7394,7 +7410,8 @@ export default function ControlBoardBbMachineReportTable({
                         warehouseMovements,
                         shiftSettingsTyped,
                         row.materialCode,
-                        row.materialName
+                        row.materialName,
+                        materials
                       );
                     const lineCost = (kg: number, gia: number) =>
                       Number.isFinite(kg) && gia > 0 ? kg * gia : null;
@@ -7407,7 +7424,7 @@ export default function ControlBoardBbMachineReportTable({
                             <button
                               type="button"
                               onClick={() => toggleGroup('danh_gia_hao_hut', group.groupKey)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-300 bg-white text-rose-800 shadow-sm transition hover:bg-rose-50"
+                              className={BB_TABLE_EXPAND_BTN_CLASS}
                               title={expanded ? 'Đóng chi tiết vật tư' : 'Mở chi tiết vật tư (tỉ lệ trộn)'}
                               aria-expanded={expanded}
                             >
@@ -7495,7 +7512,7 @@ export default function ControlBoardBbMachineReportTable({
                           </td>
                         </tr>
                         {expanded ? (
-                          <tr className="bb-row-child-wrap bg-rose-50/40">
+                          <tr className={BB_TABLE_CHILD_WRAP_CLASS}>
                             <td colSpan={20} className="px-2 py-3">
                               {!thucDungGroup || thucDungGroup.lines.length === 0 ? (
                                 <p className="px-2 py-4 text-center text-sm font-semibold text-zinc-400">
@@ -7510,7 +7527,7 @@ export default function ControlBoardBbMachineReportTable({
                                       {mixingLines.length > 0 ? ` (${mixingLines.length})` : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
-                                      <thead className="bg-violet-50 text-xs uppercase tracking-wider text-violet-900">
+                                      <thead className={BB_TABLE_THEAD_CLASS}>
                                         <tr>
                                           <th className="px-3 py-1.5 font-black">Mã NVL</th>
                                           <th className="px-3 py-1.5 font-black">Tên NVL</th>
@@ -7675,7 +7692,7 @@ export default function ControlBoardBbMachineReportTable({
                                       {otherLines.length > 0 ? ` (${otherLines.length})` : ''}
                                     </div>
                                     <table className="min-w-full whitespace-nowrap text-left text-sm font-semibold">
-                                      <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-700">
+                                      <thead className={BB_TABLE_THEAD_CLASS}>
                                         <tr>
                                           <th className="px-3 py-1.5 font-black">Mã NVL</th>
                                           <th className="px-3 py-1.5 font-black">Tên NVL</th>
@@ -7782,7 +7799,7 @@ export default function ControlBoardBbMachineReportTable({
                 )}
               </tbody>
               {!isLoading && danhGiaGroups.length > 0 ? (
-                <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
+                <tfoot className={BB_TABLE_TFOOT_CLASS}>
                   <tr>
                     <td colSpan={18} className="px-3 py-2.5 text-right uppercase tracking-wider">
                       Tổng giá trị hao hụt + lỗi hỏng
@@ -7983,7 +8000,7 @@ export default function ControlBoardBbMachineReportTable({
 
             <div className="bb-table-scroll bb-report-sheet-scroll">
               <table className="min-w-[980px] w-full text-left text-xs">
-                <thead className="bg-slate-100 font-black uppercase tracking-wider text-slate-700">
+                <thead className="bg-[#e8f0ed] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="px-3 py-2.5">Sản phẩm / NVL</th>
                     <th className="px-3 py-2.5 text-right">SL SP</th>
@@ -8097,7 +8114,7 @@ export default function ControlBoardBbMachineReportTable({
 
             <div className="bb-table-scroll bb-report-sheet-scroll">
               <table className="min-w-[980px] w-full text-left text-xs">
-                <thead className="bg-emerald-50 font-black uppercase tracking-wider text-emerald-900">
+                <thead className="bg-[#e8f0ed] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="px-3 py-2.5">Lệnh SX</th>
                     <th className="px-3 py-2.5">Sản phẩm</th>
@@ -8148,7 +8165,7 @@ export default function ControlBoardBbMachineReportTable({
                   )}
                 </tbody>
                 {selectedMaterialTotalDetail.products.length > 0 ? (
-                  <tfoot className="border-t-2 border-emerald-200 bg-emerald-50 text-xs font-black text-emerald-950">
+                  <tfoot className={BB_TABLE_TFOOT_CLASS}>
                     <tr>
                       <td colSpan={4} className="px-3 py-3 text-right uppercase tracking-wider">
                         Tổng
@@ -8440,7 +8457,7 @@ export default function ControlBoardBbMachineReportTable({
 
             <div className="overflow-hidden rounded-xl border border-zinc-200">
               <table className="w-full min-w-[640px] border-collapse text-left text-xs sm:text-sm">
-                <thead className="bg-zinc-900 text-[10px] uppercase tracking-wider text-white sm:text-[11px]">
+                <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px] sm:text-[11px]`}>
                   <tr>
                     {plasticSummaryDetailView.columns.map(column => (
                       <th
@@ -8534,7 +8551,7 @@ export default function ControlBoardBbMachineReportTable({
           <div className="space-y-3 overflow-auto p-5">
             <div className="overflow-hidden rounded-xl border border-zinc-200">
               <table className="w-full min-w-[640px] border-collapse text-left text-xs sm:text-sm">
-                <thead className="bg-zinc-900 text-[10px] uppercase tracking-wider text-white sm:text-[11px]">
+                <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px] sm:text-[11px]`}>
                   <tr>
                     <th className="px-3 py-2.5 font-black">Chỉ tiêu</th>
                     <th className="px-3 py-2.5 font-black">Công thức</th>
@@ -9038,7 +9055,7 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
             <div className="bb-table-scroll bb-report-sheet-scroll">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-100 text-[11px] uppercase tracking-wider text-zinc-600">
+                <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wider`}>
                   <tr>
                     {thucDungDetailView.columns.map(column => (
                       <th
@@ -9128,7 +9145,7 @@ export default function ControlBoardBbMachineReportTable({
           <div className="space-y-3 overflow-auto p-5">
             <div className="bb-table-scroll bb-report-sheet-scroll rounded-xl border border-zinc-200">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-100 text-[11px] uppercase tracking-wider text-zinc-600">
+                <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wider`}>
                   <tr>
                     <th className="px-3 py-2.5 font-black">Thành phẩm</th>
                     <th className="px-3 py-2.5 text-right font-black">SL SP</th>
@@ -9182,7 +9199,7 @@ export default function ControlBoardBbMachineReportTable({
                     })
                   )}
                 </tbody>
-                <tfoot className="border-t border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
+                <tfoot className={BB_TABLE_TFOOT_CLASS}>
                   <tr>
                     <td colSpan={4} className="px-3 py-2.5 text-right uppercase tracking-wider">
                       Tổng
@@ -9237,7 +9254,7 @@ export default function ControlBoardBbMachineReportTable({
             ) : null}
             <div className="bb-table-scroll bb-report-sheet-scroll">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-zinc-100 text-[11px] uppercase tracking-wider text-zinc-600">
+                <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[11px] uppercase tracking-wider`}>
                   <tr>
                     {inboundBalanceDetailView.columns.map(column => (
                       <th

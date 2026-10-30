@@ -31,6 +31,8 @@ Khóa ổn định: `ngay_tu|ngay_den|ca|may|nguon_san_luong|include_all|ma_lenh
 
 `payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` và `danhGiaGroups[].summaryRows` (mẫu Excel Báo cáo tổng hợp: STT=mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · đánh giá; tách **Vật tư trộn** / **Các vật tư còn lại** + dòng **Tổng**).
 
+**Đơn giá trên báo cáo:** ưu tiên **Bảng giá NVL** (`kho_nvl.don_gia` / `/bang-gia-nvl`); không có giá danh mục thì mới lấy bình quân giá xuất kho theo ngày. Thành tiền = chênh lệch × đơn giá.
+
 Tab **Dữ liệu trong lệnh sản xuất** còn ghi bảng riêng **`bc_lsx`** (cùng `khoa_on_dinh`) — xem [bc_lsx.md](./bc_lsx.md).
 
 ## UI / utils

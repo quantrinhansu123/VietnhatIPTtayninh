@@ -11969,39 +11969,98 @@ export function sumBbTongChenhLech(groups: BbTongGroup[]) {
   return groups.reduce((sum, g) => sum + g.chenhLechTrongLuongNhapXuat, 0);
 }
 
+/** Đơn giá danh mục NVL — cùng nguồn Bảng giá NVL (`kho_nvl.don_gia`). */
+export function parseBbMaterialCatalogUnitPrice(raw: string | number | null | undefined): number {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  const text = String(raw).trim();
+  if (!text || text === '-') return 0;
+  const num = Number(text.replace(/,/g, ''));
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+/** Tra đơn giá từ danh mục kho NVL theo mã (ưu tiên) hoặc tên. */
+export function lookupBbMaterialCatalogUnitPrice(
+  materials: MaterialRow[] | undefined,
+  materialCode: string,
+  materialName = ''
+): number {
+  if (!materials || materials.length === 0) return 0;
+  const codeKey = normalizeMaterialCodeKey(materialCode);
+  if (codeKey) {
+    for (const material of materials) {
+      if (normalizeMaterialCodeKey(material.code) !== codeKey) continue;
+      const price = parseBbMaterialCatalogUnitPrice(material.unitPrice);
+      if (price > 0) return price;
+    }
+  }
+  const nameKey = normalizeMaterialCodeKey(materialName);
+  if (nameKey) {
+    for (const material of materials) {
+      if (normalizeMaterialCodeKey(material.name) !== nameKey) continue;
+      const price = parseBbMaterialCatalogUnitPrice(material.unitPrice);
+      if (price > 0) return price;
+    }
+  }
+  return 0;
+}
+
 function resolveBbAvgExportUnitPrice(
   ngay: string,
   _ca: string,
   movements: ShiftSummaryWarehouseMovement[],
   _shiftSettings: ShiftSetting[],
-  matchItem: (movement: ShiftSummaryWarehouseMovement) => boolean
+  matchItem: (movement: ShiftSummaryWarehouseMovement) => boolean,
+  materials?: MaterialRow[]
 ) {
   let amount = 0;
   let qty = 0;
+  let catalogAmount = 0;
+  let catalogQty = 0;
   for (const movement of movements) {
     if (movement.slipType !== 'xuat' || movement.warehouseKind !== 'nvl') continue;
     if (!matchItem(movement)) continue;
     if (!matchesWarehouseExportDate(ngay, movement.slipDate)) continue;
-    const unitPrice = Number(movement.unitPrice);
     const quantity = Number(movement.quantity);
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue;
     if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+    const catalogPrice = lookupBbMaterialCatalogUnitPrice(
+      materials,
+      movement.itemCode || '',
+      movement.itemName || ''
+    );
+    if (catalogPrice > 0) {
+      catalogAmount += quantity * catalogPrice;
+      catalogQty += quantity;
+    }
+
+    const unitPrice = Number(movement.unitPrice);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue;
     amount += quantity * unitPrice;
     qty += quantity;
   }
+  // Ưu tiên Bảng giá NVL; không có thì mới lấy giá trên phiếu xuất.
+  if (catalogQty > 0) return Math.round(catalogAmount / catalogQty);
   if (qty <= 0) return 0;
   return Math.round(amount / qty);
 }
 
-/** Giá xuất kho NVL (đ/ĐVT) bình quân gia quyền theo ngày (không lọc ca), khớp mã/tên NVL. */
+/**
+ * Đơn giá NVL trên báo cáo BB (đ/ĐVT).
+ * Ưu tiên Bảng giá NVL (`kho_nvl.don_gia`); không có thì bình quân giá xuất kho theo ngày.
+ */
 export function resolveBbMaterialExportUnitPrice(
   ngay: string,
   ca: string,
   movements: ShiftSummaryWarehouseMovement[],
   shiftSettings: ShiftSetting[],
   materialCode: string,
-  materialName: string
+  materialName: string,
+  materials?: MaterialRow[]
 ) {
+  const catalogPrice = lookupBbMaterialCatalogUnitPrice(materials, materialCode, materialName);
+  if (catalogPrice > 0) return Math.round(catalogPrice);
+
   const codeKey = normalizeMaterialCodeKey(materialCode);
   const nameKey = String(materialName || '')
     .trim()
@@ -12020,7 +12079,7 @@ export function resolveBbMaterialExportUnitPrice(
         .toUpperCase() === nameKey;
     }
     return false;
-  });
+  }, materials);
 }
 
 /**
@@ -12640,25 +12699,38 @@ export function buildBbDanhGiaHaoHutGroups(input: {
       hangHongMang
     });
 
-    const giaNhua = resolveShiftSummaryGiaNhuaFromWarehouse(
+    const giaNhuaFromCatalog = resolveBbAvgExportUnitPrice(
       header.ngay,
       header.shift,
       input.warehouseMovements,
-      shiftSettings
+      shiftSettings,
+      m => isWarehousePlasticNvlLine(m),
+      input.materials
     );
+    const giaNhua =
+      giaNhuaFromCatalog > 0
+        ? giaNhuaFromCatalog
+        : resolveShiftSummaryGiaNhuaFromWarehouse(
+            header.ngay,
+            header.shift,
+            input.warehouseMovements,
+            shiftSettings
+          );
     const giaMang = resolveBbAvgExportUnitPrice(
       header.ngay,
       header.shift,
       input.warehouseMovements,
       shiftSettings,
-      m => isWarehouseFilmItem(m.itemCode || '', m.itemName || '', m.unit || '')
+      m => isWarehouseFilmItem(m.itemCode || '', m.itemName || '', m.unit || ''),
+      input.materials
     );
     const giaLoi = resolveBbAvgExportUnitPrice(
       header.ngay,
       header.shift,
       input.warehouseMovements,
       shiftSettings,
-      m => isWarehouseCoreExportItem(m.itemCode || '', m.itemName || '')
+      m => isWarehouseCoreExportItem(m.itemCode || '', m.itemName || ''),
+      input.materials
     );
 
     /** Tạm = thực xuất; enrich gắn banner «Tổng nhựa/màng thành phẩm» rồi tính lại TP/ĐM + hao hụt. */
@@ -13048,7 +13120,8 @@ export function enrichBbDanhGiaGroupsWithPrintSummary(input: {
         warehouseMovements,
         shiftSettingsTyped,
         line.materialCode,
-        line.materialName
+        line.materialName,
+        materials
       );
 
     const tongNhuaThucXuatKg =

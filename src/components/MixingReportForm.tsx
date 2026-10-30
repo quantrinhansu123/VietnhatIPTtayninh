@@ -25,7 +25,7 @@ import { formatNumber, parseMoneyInput } from '../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 import SearchableMultiSelect from './SearchableMultiSelect';
-import { RowActionsMenu } from './shared/table';
+import { RowActionsMenu, TABLE_HEAD_STATIC_CLASS } from './shared/table';
 import MixingProductionOrderAutofillModal from './MixingProductionOrderAutofillModal';
 import {
   normalizeMixingCatalogProducts,
@@ -893,7 +893,7 @@ function MixingLineFormModal({
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-left text-xs">
-                      <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                      <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
                         <tr>
                           <th className="px-2 py-2 font-black">Mã NVL</th>
                           <th className="px-2 py-2 font-black">%</th>
@@ -2624,7 +2624,7 @@ export default function MixingReportForm({
                       </div>
                       <div className="hidden overflow-x-auto md:block">
                       <table className="min-w-full text-left text-xs">
-                        <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                        <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
                           <tr>
                             <th className="px-2 py-2 font-black">Mã NVL</th>
                             <th className="px-2 py-2 font-black">Tên vật tư</th>

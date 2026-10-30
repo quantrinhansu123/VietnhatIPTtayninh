@@ -22,7 +22,7 @@ export type WarehouseInboundAccountingDefaults = {
   kho: string;
   tkNo: string;
   tkCo: string;
-  /** Nếu > 0 thì ghi đè đơn giá mọi dòng; 0 = giữ đơn giá / thành tiền từ phiếu. */
+  /** Nếu > 0 thì ghi đè đơn giá mọi dòng; 0 = giữ đơn giá từng dòng (Bảng giá NVL). */
   donGiaOverride: number;
   lenhSanXuat: string;
   khoanMucCp: string;

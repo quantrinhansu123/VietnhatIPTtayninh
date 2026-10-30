@@ -63,7 +63,7 @@ export function TablePagination({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-[#d71932] px-3 font-black text-white">
+        <span className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-[#ef1b2d] px-3 font-black text-white">
           {currentPage}
         </span>
         <span className="px-1 font-semibold text-zinc-600">/ {totalPages}</span>

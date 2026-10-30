@@ -1,13 +1,13 @@
 # Chuẩn giao diện bảng dữ liệu và bộ lọc
 
 Mục tiêu: dùng trang **Lệnh sản xuất** (`/lenh-san-xuat`,
-`src/features/lenh-sx/index.tsx`) làm chuẩn chung cho các màn hình danh sách:+
+`src/features/lenh-sx/index.tsx`) và form «Hàng tiền» làm chuẩn chung cho **mọi bảng UI trên màn hình**.
 
 - Bộ lọc gọn trên một hàng, ô tìm kiếm đặt trước.
-- Header bảng nền đen, chữ trắng.
-- Badge trạng thái thống nhất.
-- Danh sách dài có phân trang và chọn số bản ghi mỗi trang.
-- Giữ nguyên nghiệp vụ, API, bảng nhập liệu, bảng chi tiết modal và mẫu in.
+- Header bảng xám xanh nhạt (`#e8f0ed`), chữ `font-semibold text-zinc-700`; hàng zebra; khung `rounded-xl border border-zinc-200`.
+- Màu logo `#ef1b2d` chỉ cho nút CTA / phân trang đang chọn / hover hàng / focus — **không** phủ header bảng.
+- Badge trạng thái thống nhất; danh sách dài có phân trang.
+- **Không đổi** phiếu in A4 (`*PrintSheet*`, `BienBanPrint`, mẫu PDF) — giữ layout in giấy hiện tại.
 
 ## Thành phần dùng chung
 
@@ -15,13 +15,14 @@ Thư mục: `src/components/shared/table/`
 
 | File | Nội dung |
 |---|---|
+| `tableTokens.ts` | `TABLE_HEAD_CLASS`, `TABLE_TH_CLASS`, `TABLE_ROW_CLASS`, `TABLE_TD_CLASS`, `TABLE_FORM_HEADER_GRID_CLASS`, … |
 | `TableToolbar.tsx` | `TableToolbar`, `TableSearchInput`, `TableDateFilter` |
 | `FilterCombobox.tsx` | Dropdown chọn một giá trị, tùy chọn tìm kiếm |
 | `MultiSelectFilter.tsx` | Dropdown checkbox chọn nhiều giá trị |
-| `TableShell.tsx` | Khung bảng, header, body, row và empty row |
+| `TableShell.tsx` | Khung bảng (dùng token), header, body, row và empty row |
 | `TablePagination.tsx` | Footer phân trang và hook `usePagination` |
 | `StatusBadge.tsx` | Badge trạng thái dùng chung |
-| `index.ts` | Barrel export |
+| `index.ts` | Barrel export (shell + tokens) |
 
 Import mẫu:
 
@@ -30,9 +31,12 @@ import {
   TableToolbar, TableSearchInput, TableDateFilter,
   FilterCombobox, MultiSelectFilter,
   TableShell, TableHead, TableHeadCell, TableBody, TableRow, TableEmptyRow,
-  TablePagination, usePagination, StatusBadge
+  TablePagination, usePagination, StatusBadge,
+  TABLE_HEAD_CLASS, TABLE_TH_CLASS, TABLE_ROW_CLASS, TABLE_FORM_HEADER_GRID_CLASS
 } from '../../components/shared/table';
 ```
+
+Bảng **không** qua `TableShell`: gắn cùng token class (`TABLE_HEAD_*` / `TABLE_ROW_*`) để không lệch từng file.
 
 Khi render `TableRow`, đặt `key` trên `React.Fragment`:
 

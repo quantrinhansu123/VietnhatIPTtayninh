@@ -12,7 +12,7 @@ export function CanTuDongPilotPanel({
   title?: string;
 }) {
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[28rem] w-full min-w-0 flex-col overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+    <div className="flex h-[calc(100vh-7rem)] min-h-[28rem] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
       <iframe
         title={title}
         src={src}

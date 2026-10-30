@@ -6,7 +6,7 @@
 | **Tab** | `inventory-catalog` → `/kho-hang` (route cũ: `materials` → `/kho-nvl`) |
 | **SQL** | `supabase-kho-nvl.sql`, `supabase-kho-nvl-ten-kho.sql` |
 | **Fix precision** | `supabase-kho-nvl-precision.sql` (giữ số lẻ, không bị làm tròn) |
-| **Đơn giá** | `supabase-kho-nvl-don-gia.sql` — cột `don_gia`; script `scripts/apply-nvl-gia-from-xlsx.mjs` → `data/nvl-don-gia.json` (và DB nếu đã có cột). API `/api/kho-nvl` gộp giá; `/api/kho/gia-tb-nhap` fallback `catalog` khi chưa có phiếu nhập. |
+| **Đơn giá** | `supabase-kho-nvl-don-gia.sql` — cột `don_gia`; script `scripts/apply-nvl-gia-from-xlsx.mjs` → `data/nvl-don-gia.json` (và DB nếu đã có cột). API `/api/kho-nvl` gộp giá; `/api/kho/gia-tb-nhap` fallback `catalog` khi chưa có phiếu nhập. Tab **Kế toán → Bảng giá NVL** (`nvl-price-list` → `/bang-gia-nvl`): `src/features/bang-gia-nvl/index.tsx` — danh sách + **Thêm mới** / sửa `don_gia` (POST/PATCH `/api/kho-nvl`). Báo cáo BB (Đánh giá / tiêu hao) và Excel kế toán xuất/nhập kho **ưu tiên** `don_gia` danh mục này khi tính cột Đơn giá · Thành tiền. |
 | **Ảnh thực tế** | `supabase-kho-nvl-anh-thuc-te.sql` — link Cloudinary số cân / số bao thực tế |
 | **QR đã cấp** | `supabase-ma-qr-nvl.sql` — cấp một mã QR cho mỗi đơn vị nhập kho, lưu lịch sử in và trạng thái |
 

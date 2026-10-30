@@ -101,7 +101,7 @@ export default function BbCanTuDongSanLuongPanel({
   return (
     <>
       <table className="min-w-[1280px] w-full text-left text-sm font-semibold">
-        <thead className="border-b-2 border-red-200 bg-red-50/80 text-xs uppercase tracking-wider text-red-950 font-black">
+        <thead className="border-b border-zinc-200 bg-[#e8f0ed] text-xs font-semibold tracking-wide text-zinc-700">
           <tr>
             <th className="px-3 py-3.5 font-black">Ảnh lõi</th>
             <th className="px-3 py-3.5 font-black">Ảnh SP</th>

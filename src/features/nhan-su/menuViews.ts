@@ -48,6 +48,11 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     ]
   },
   {
+    menu: 'accounting',
+    label: 'Kế toán',
+    children: [{ tab: 'nvl-price-list', label: 'Bảng giá NVL' }]
+  },
+  {
     menu: 'factory-quan-doc',
     label: 'Quản Đốc',
     children: [

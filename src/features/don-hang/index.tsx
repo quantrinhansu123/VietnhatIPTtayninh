@@ -420,7 +420,7 @@ export function OrderDetailPage() {
             <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 sm:col-span-2 lg:col-span-3">
               <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Sản phẩm</p>
               <div className="mt-2 overflow-hidden rounded-lg border border-zinc-200 bg-white">
-                <div className="hidden border-b border-[#ef1b2d] bg-[#ef1b2d] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_6rem_7rem] sm:gap-3">
+                <div className="hidden border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2 text-[10px] font-semibold tracking-wide text-zinc-700 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_6rem_7rem] sm:gap-3">
                   <span>Mã SP</span>
                   <span>Tên sản phẩm</span>
                   <span>ĐVT</span>

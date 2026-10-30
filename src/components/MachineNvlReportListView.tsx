@@ -38,7 +38,9 @@ import {
   TableToolbar,
   TableSearchInput,
   TableDateFilter,
-  RowActionsMenu
+  RowActionsMenu,
+  TABLE_HEAD_CLASS,
+  TABLE_HEAD_STATIC_CLASS
 } from './shared/table';
 
 const MACHINE_NVL_SECTIONS: { id: MachineNvlReportKind; title: string; emptyLabel: string }[] = [
@@ -127,7 +129,6 @@ function khoNvlLightToWeightCatalog(data: unknown): WarehouseWeightCatalogItem[]
 function MachineNvlDetailLinesTable({
   title,
   accentClass,
-  headerClass,
   lines,
   isDauCa,
   emptyLabel,
@@ -135,7 +136,6 @@ function MachineNvlDetailLinesTable({
 }: {
   title: string;
   accentClass: string;
-  headerClass: string;
   lines: MachineNvlSavedLine[];
   isDauCa: boolean;
   emptyLabel: string;
@@ -153,19 +153,19 @@ function MachineNvlDetailLinesTable({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse text-left text-[11px] sm:text-xs">
-          <thead className={`sticky top-0 text-[9px] uppercase tracking-wider text-white sm:text-[10px] ${headerClass}`}>
+          <thead className={`${TABLE_HEAD_CLASS} text-[9px] uppercase tracking-wider sm:text-[10px]`}>
             <tr>
-              <th className="px-2.5 py-2.5 font-black">STT</th>
-              <th className="px-2.5 py-2.5 font-black">Mã NVL</th>
-              <th className="px-2.5 py-2.5 font-black">Tên NVL</th>
-              <th className="px-2.5 py-2.5 font-black">ĐVT</th>
-              <th className="px-2.5 py-2.5 font-black">Loại</th>
-              <th className="px-2.5 py-2.5 text-right font-black">Tồn máy</th>
-              <th className="px-2.5 py-2.5 text-right font-black">Tồn bồn</th>
-              <th className="px-2.5 py-2.5 text-right font-black">Chưa trộn</th>
-              <th className="px-2.5 py-2.5 text-right font-black">Tồn ngoài</th>
-              <th className="px-2.5 py-2.5 text-right font-black">SL tồn</th>
-              <th className="px-2.5 py-2.5 text-right font-black">KL (kg)</th>
+              <th className="px-2.5 py-2.5 font-semibold">STT</th>
+              <th className="px-2.5 py-2.5 font-semibold">Mã NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">Tên NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">ĐVT</th>
+              <th className="px-2.5 py-2.5 font-semibold">Loại</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Tồn máy</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Tồn bồn</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Chưa trộn</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Tồn ngoài</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">SL tồn</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">KL (kg)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 bg-white">
@@ -324,8 +324,7 @@ function MachineNvlReportDetailModal({
           <div className="space-y-3">
             <MachineNvlDetailLinesTable
               title="Vật tư trộn"
-              accentClass="border-violet-200 bg-violet-50 text-violet-900"
-              headerClass="bg-violet-700"
+              accentClass="border-zinc-200 bg-[#e8f0ed] text-zinc-800"
               lines={nvlTron}
               isDauCa={isDauCa}
               emptyLabel="Không có vật tư trộn (nhựa)."
@@ -333,8 +332,7 @@ function MachineNvlReportDetailModal({
             />
             <MachineNvlDetailLinesTable
               title="Vật tư không trộn"
-              accentClass="border-slate-200 bg-slate-50 text-slate-800"
-              headerClass="bg-slate-700"
+              accentClass="border-zinc-200 bg-zinc-50 text-zinc-800"
               lines={vatTuKhac}
               isDauCa={isDauCa}
               emptyLabel="Không có vật tư không trộn (màng / lõi / bao bì)."
@@ -527,9 +525,9 @@ function MachineNvlSection({
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[880px] border-collapse text-left text-[11px] sm:text-xs">
-                      <thead className="bg-[#ef1b2d] text-[9px] uppercase tracking-wider text-white sm:text-[10px]">
+                      <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[9px] sm:text-[10px]`}>
                         <tr className="border-b border-zinc-200">
-                          <th className="w-11 px-3 py-2.5 text-center font-black">
+                          <th className="w-11 px-3 py-2.5 text-center font-semibold">
                             {canDelete ? (
                               <input
                                 type="checkbox"
@@ -540,14 +538,14 @@ function MachineNvlSection({
                               />
                             ) : null}
                           </th>
-                          <th className="px-3 py-2.5 font-black">Ca</th>
-                          <th className="px-3 py-2.5 font-black">Máy</th>
-                          <th className="px-3 py-2.5 font-black">Nhân sự</th>
-                          <th className="px-3 py-2.5 font-black">Giờ</th>
-                          <th className="px-3 py-2.5 text-right font-black">Số NVL</th>
-                          <th className="px-3 py-2.5 text-right font-black">Tổng (kg)</th>
-                          <th className="px-3 py-2.5 font-black">Ghi chú</th>
-                          <th className="px-3 py-2.5 text-center font-black">Thao tác</th>
+                          <th className="px-3 py-2.5 font-semibold">Ca</th>
+                          <th className="px-3 py-2.5 font-semibold">Máy</th>
+                          <th className="px-3 py-2.5 font-semibold">Nhân sự</th>
+                          <th className="px-3 py-2.5 font-semibold">Giờ</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Số NVL</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Tổng (kg)</th>
+                          <th className="px-3 py-2.5 font-semibold">Ghi chú</th>
+                          <th className="px-3 py-2.5 text-center font-semibold">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">

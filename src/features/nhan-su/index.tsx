@@ -586,7 +586,7 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
         </div>
       </section>
 
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm">
+      <section className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap gap-2">
           {branches.map(branch => (
             <button
@@ -634,7 +634,7 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
       </TableToolbar>
 
       {canDelete ? (
-        <section className="grid gap-3 rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <section className="grid gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <p className="text-sm font-black text-zinc-950">Xóa theo lựa chọn</p>
             <p className="mt-0.5 text-xs font-semibold text-zinc-500">
@@ -679,7 +679,7 @@ export function HumanResourcesPanel({ onBack }: { onBack: () => void }) {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         {!isLoadingStaff && !staffError && branches.length === 0 && (
           <div className="px-4 py-8 text-center text-sm font-bold text-zinc-500">
             Supabase chưa có dữ liệu nhân sự để hiển thị.

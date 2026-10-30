@@ -22,7 +22,7 @@ export function TableToolbar({
   actionMessage?: string;
 }) {
   return (
-    <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-3 shadow-sm overflow-visible">
+    <section className="overflow-visible rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
         {children}
 

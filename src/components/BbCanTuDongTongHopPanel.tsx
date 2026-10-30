@@ -11,6 +11,7 @@ import {
   syncCanTuDongTongHop,
   type CanTuDongTongHopDetailRow
 } from '../utils/canTuDongTongHop';
+import { BB_TABLE_THEAD_CLASS, BB_TABLE_TFOOT_CLASS } from './shared/table';
 
 function formatIsoDateVi(iso?: string | null) {
   const raw = String(iso ?? '').trim();
@@ -213,8 +214,8 @@ export default function BbCanTuDongTongHopPanel({
       ) : null}
 
       <div className="bb-table-scroll bb-report-sheet-scroll bb-can-tong-hop-compact">
-        <table className="bb-sheet-table min-w-[1080px] w-full text-left">
-          <thead>
+        <table className="bb-sheet-table min-w-[1080px] w-full text-left text-[15px] font-semibold">
+          <thead className={BB_TABLE_THEAD_CLASS}>
             <tr>
               <th className="font-semibold">Ngày</th>
               <th className="font-semibold">Ca</th>
@@ -299,7 +300,7 @@ export default function BbCanTuDongTongHopPanel({
               </tr>
             ) : (
               detailRows.map(row => (
-                <tr key={row.khoa_on_dinh} className="hover:bg-red-50/40">
+                <tr key={row.khoa_on_dinh} className="hover:bg-violet-50/50">
                   <td className="whitespace-nowrap px-1.5 py-1 font-bold text-zinc-900">
                     {formatIsoDateVi(row.ngay)}
                   </td>
@@ -319,7 +320,7 @@ export default function BbCanTuDongTongHopPanel({
             )}
           </tbody>
           {!busy && detailRows.length > 0 ? (
-            <tfoot className="border-t-2 border-red-200 bg-red-50/70 text-[11px] font-black text-red-950">
+            <tfoot className={BB_TABLE_TFOOT_CLASS}>
               <tr>
                 <td colSpan={3} className="px-1.5 py-1.5 text-right uppercase tracking-wider">
                   Tổng

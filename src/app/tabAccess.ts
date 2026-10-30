@@ -72,7 +72,9 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
   ],
   'production-reports': ['report-forms', 'report-lists'],
   /** Ai đã có menu Kinh doanh thì thấy Phiếu bán hàng, kể cả quyền lưu trước khi có tab này. */
-  business: ['sales-invoices']
+  business: ['sales-invoices'],
+  /** Hub Kế toán mở các màn con. */
+  accounting: ['nvl-price-list']
 };
 
 export function resolveAccessTab(tab: AppTab | string): string {

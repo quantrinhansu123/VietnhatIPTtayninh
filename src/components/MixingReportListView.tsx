@@ -39,7 +39,7 @@ import {
   shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
-import { RowActionsMenu } from './shared/table';
+import { RowActionsMenu, TABLE_HEAD_STATIC_CLASS } from './shared/table';
 import { isWarehouseKgUnit } from '../utils/warehouseWeight';
 
 const inputClass =
@@ -722,7 +722,7 @@ export default function MixingReportListView({
 
         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
           <table className="min-w-full text-left text-xs">
-            <thead className="bg-zinc-900 text-[10px] uppercase tracking-wider text-white">
+            <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
               <tr>
                 <th className="w-10 px-2 py-2 font-black">STT</th>
                 <th className="px-2 py-2 font-black">Mã NVL</th>
@@ -1097,7 +1097,7 @@ export default function MixingReportListView({
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-xs">
-                    <thead className="bg-[#ef1b2d] text-[10px] uppercase tracking-wider text-white">
+                    <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
                       <tr>
                         <th className="w-10 px-3 py-2 text-center font-black">
                           <input

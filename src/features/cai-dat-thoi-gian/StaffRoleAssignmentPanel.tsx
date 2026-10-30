@@ -192,7 +192,7 @@ export function StaffRoleAssignmentPanel({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border-2 border-zinc-900/10 bg-white p-4 shadow-sm">
+      <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-[#ef1b2d]">
@@ -342,7 +342,7 @@ export function StaffRoleAssignmentPanel({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="border-b border-zinc-200 p-3">
           <label className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
             <Search className="h-4 w-4 text-zinc-400" />
@@ -356,7 +356,7 @@ export function StaffRoleAssignmentPanel({
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[860px] w-full text-left text-sm">
-            <thead className="bg-[#ef1b2d] text-xs uppercase tracking-wider text-white">
+            <thead className="bg-[#e8f0ed] text-xs font-semibold tracking-wide text-zinc-700">
               <tr>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Mã NV</th>
                 <th className="whitespace-nowrap px-3 py-3 font-black">Tên hiển thị</th>

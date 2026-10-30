@@ -454,7 +454,7 @@ export function ProductionOrderDetailPage() {
                     </button>
                   </div>
                   <div className="overflow-hidden rounded-xl border border-zinc-200">
-                    <div className="grid grid-cols-[1fr_7rem] bg-[#ef1b2d] px-4 py-3 text-xs font-black uppercase tracking-wide text-white">
+                    <div className="grid grid-cols-[1fr_7rem] border border-zinc-200 bg-[#e8f0ed] px-4 py-3 text-xs font-semibold tracking-wide text-zinc-700">
                       <span>Mã SP</span><span className="text-center">Số bản</span>
                     </div>
                     {qrQuantityLines.map(line => (
@@ -1100,7 +1100,7 @@ export function ProductionOrdersPanel({
             const selectedInGroup = groupIds.filter(id => selectedIds.includes(id));
             const allGroupSelected = groupIds.length > 0 && selectedInGroup.length === groupIds.length;
             return (
-              <div key={group.date} className="overflow-hidden rounded-2xl border-2 border-zinc-900/10 bg-white shadow-sm">
+              <div key={group.date} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
                 <div className="flex items-baseline gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>

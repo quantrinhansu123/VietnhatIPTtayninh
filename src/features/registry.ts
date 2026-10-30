@@ -242,8 +242,8 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     sql: ['supabase-kho-nvl.sql', 'supabase-kho-nvl-anh-thuc-te.sql'],
     apiPrefix: '/api/kho-nvl',
     serverLines: '4605–4784',
-    appTab: 'materials',
-    appLines: 'src/features/kho-hang/index.tsx, src/features/kho-nvl/index.tsx',
+    appTab: 'materials | nvl-price-list',
+    appLines: 'src/features/kho-hang/index.tsx, src/features/kho-nvl/index.tsx, src/features/bang-gia-nvl/index.tsx',
     components: ['src/components/MaterialsForm.tsx'],
     utils: [
       'src/utils/bulkOpeningStockExcel.ts',

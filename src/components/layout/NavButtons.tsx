@@ -76,6 +76,8 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'facility-management': 'factory-kho',
   'hcns': 'menu',
   'business': 'menu',
+  'accounting': 'menu',
+  'nvl-price-list': 'accounting',
   'factory': 'menu',
   'factory-quan-doc': 'menu',
   'factory-qc': 'menu',

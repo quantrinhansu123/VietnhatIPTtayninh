@@ -14,7 +14,7 @@ import WeighingImagePreviewModal, {
 import { CAMERA_IMAGE_INPUT_PROPS } from '../utils/cameraCapture';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { useTabAccess } from '../app/useTabAccess';
-import { RowActionsMenu } from './shared/table';
+import { RowActionsMenu, TABLE_HEAD_STATIC_CLASS } from './shared/table';
 import { FACTORY_PLACEHOLDER } from './layout/constants';
 
 interface WeighingRow {
@@ -2279,7 +2279,7 @@ export default function WeighingReportForm({
           {splitDamagedPlasticDefectWeights ? (
           <table className="responsive-table w-full md:min-w-[980px] border-collapse text-left">
             <thead className="table-header-group">
-              <tr className="bg-[#ef1b2d] text-xs font-black uppercase tracking-wider text-white">
+              <tr className={`${TABLE_HEAD_STATIC_CLASS} text-xs`}>
                 <th className="w-20 px-3 py-3 text-center">Lần cân</th>
                 <th className="px-3 py-3">Người cân</th>
                 <th className="px-3 py-3">Trạng thái vật tư</th>
@@ -2365,7 +2365,7 @@ export default function WeighingReportForm({
           ) : splitPlasticFilmWeights ? (
           <table className="responsive-table w-full md:min-w-[640px] border-collapse text-left">
             <thead className="table-header-group">
-              <tr className="bg-[#ef1b2d] text-xs font-black uppercase tracking-wider text-white">
+              <tr className={`${TABLE_HEAD_STATIC_CLASS} text-xs`}>
                 <th className="w-20 px-3 py-3 text-center">Lần cân</th>
                 <th className="px-3 py-3">Người cân</th>
                 <th className="px-3 py-3">KL nhựa</th>
@@ -2445,7 +2445,7 @@ export default function WeighingReportForm({
           ) : (
           <table className="responsive-table w-full md:min-w-[760px] border-collapse text-left">
             <thead className="table-header-group">
-              <tr className="bg-[#ef1b2d] text-xs font-black uppercase tracking-wider text-white">
+              <tr className={`${TABLE_HEAD_STATIC_CLASS} text-xs`}>
                 <th className="w-20 px-3 py-3 text-center">Lần cân</th>
                 <th className="w-28 px-3 py-3">Mã SP</th>
                 <th className="px-3 py-3">Tên sản phẩm</th>

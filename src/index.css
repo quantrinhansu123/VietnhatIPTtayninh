@@ -132,7 +132,7 @@ table.control-board-report-table {
 
 .control-board-report-theme table thead,
 table.control-board-report-table thead {
-  background: var(--color-ink-50) !important;
+  background: #e8f0ed !important;
   background-image: none !important;
   border-bottom: 1px solid var(--color-ink-200) !important;
   color: var(--color-ink-700) !important;
@@ -143,8 +143,8 @@ table.control-board-report-table thead {
 .control-board-report-theme table thead th,
 table.control-board-report-table thead th {
   font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 700 !important;
+  font-size: 12px;
+  font-weight: 600 !important;
   line-height: 1.4;
 }
 
@@ -196,7 +196,7 @@ table.bb-sheet-table caption {
 
 .bb-report-sheet-scroll table thead,
 table.bb-sheet-table thead {
-  background: var(--color-ink-50) !important;
+  background: #e8f0ed !important;
   background-image: none !important;
   border-bottom: none !important;
   color: var(--color-ink-700) !important;
@@ -209,11 +209,12 @@ table.bb-sheet-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--color-ink-50);
-  border: 1px solid var(--color-ink-200);
-  padding: 0.7rem 0.85rem;
-  font-size: 15px;
-  font-weight: 700;
+  background: #e8f0ed;
+  border: none;
+  border-bottom: 1px solid #e4e4e7;
+  padding: 0.65rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.4;
   text-transform: none;
   letter-spacing: 0;
@@ -224,7 +225,8 @@ table.bb-sheet-table thead th {
 .bb-report-sheet-scroll table tfoot td,
 table.bb-sheet-table tbody td,
 table.bb-sheet-table tfoot td {
-  border: 1px solid var(--color-ink-200);
+  border: none;
+  border-bottom: 1px solid #f4f4f5;
   padding: 0.65rem 0.85rem;
   vertical-align: middle;
   background: #fff;
@@ -266,92 +268,87 @@ table.bb-sheet-table tbody tr:hover td {
 }
 
 /*
- * Phân biệt bảng cha / bảng con (mọi tab báo cáo BB)
- * - Cha (dòng lệnh cấp ngoài): nền xanh xám, viền trái slate
- * - Giữa (dòng SP/NVL có expand trong panel con): nền sky nhạt
- * - Con (ô colspan / panel lồng / dòng chi tiết): nền kem ấm, viền trái cam
+ * Phân biệt bảng cha / bảng con — flat, không thanh trái / không nền trùng thead.
+ * - Cha (dòng có nút expand): trắng, chữ semi
+ * - Giữa / con: zebra zinc nhạt
  */
 .bb-report-sheet-scroll > table > tbody > tr:has(> td button[aria-expanded]) > td,
 .bb-report-sheet-scroll > table > tbody > tr.bb-row-parent > td,
 .control-board-report-theme .bb-report-sheet-scroll > table > tbody > tr:has(> td button[aria-expanded]) > td {
-  background: #d7e4f4 !important;
-  font-weight: 700;
-  box-shadow: inset 4px 0 0 #334155;
+  background: #fff !important;
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .bb-report-sheet-scroll > table > tbody > tr:has(> td button[aria-expanded]):hover > td,
 .control-board-report-theme .bb-report-sheet-scroll > table > tbody > tr:has(> td button[aria-expanded]):hover > td {
-  background: #c5d8ef !important;
+  background: color-mix(in srgb, #ef1b2d 4%, #fff) !important;
 }
 
-/* Dòng nhóm cấp giữa (SP trong lệnh, hoặc dòng expand trong panel con) */
 .bb-report-sheet-scroll > table > tbody > tr.bb-row-mid > td,
 .bb-report-sheet-scroll > table > tbody > tr.bb-row-mid:has(> td button[aria-expanded]) > td,
 .bb-child-panel table > tbody > tr:has(> td button[aria-expanded]) > td,
 .bb-report-sheet-scroll .bb-report-sheet-scroll > table > tbody > tr:has(> td button[aria-expanded]) > td {
-  background: #e0f2fe !important;
-  font-weight: 700;
-  box-shadow: inset 4px 0 0 #0284c7;
+  background: #fff !important;
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .bb-report-sheet-scroll > table > tbody > tr.bb-row-mid:hover > td,
 .bb-report-sheet-scroll > table > tbody > tr.bb-row-mid:has(> td button[aria-expanded]):hover > td {
-  background: #bae6fd !important;
+  background: color-mix(in srgb, #ef1b2d 4%, #fff) !important;
 }
 
-/* Ô/dòng chứa bảng con sau khi mở (không áp cho dòng loading/empty colspan) */
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child-wrap > td,
 .bb-report-sheet-scroll table > tbody > tr:has(> td[colspan] table) > td,
 .bb-report-sheet-scroll table > tbody > tr:has(> td[colspan] .bb-child-panel) > td,
 .bb-report-sheet-scroll table > tbody > tr:has(> td[colspan] .bb-report-sheet-scroll) > td,
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child > td,
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child-head > td {
-  background: #fff6e8 !important;
-  box-shadow: inset 4px 0 0 #ea580c;
+  background: #fafafa !important;
+  box-shadow: none;
 }
 
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child-head > td {
-  background: #ffedd5 !important;
-  font-weight: 800;
+  background: #f4f4f5 !important;
+  font-weight: 600;
 }
 
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child:nth-child(even) > td {
-  background: #ffefd6 !important;
+  background: #f4f4f5 !important;
 }
 
 .bb-report-sheet-scroll table > tbody > tr.bb-row-child:hover > td {
-  background: #ffe4c4 !important;
+  background: color-mix(in srgb, #ef1b2d 4%, #fff) !important;
 }
 
-/* Panel / bảng lồng trong ô cha = bảng con */
 .bb-report-sheet-scroll .bb-child-panel,
 .bb-report-sheet-scroll .bb-report-sheet-scroll {
-  background: #fffdf8;
-  border: 1px solid #fdba74;
-  border-left: 4px solid #ea580c;
-  border-radius: 0.5rem;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.75rem;
   overflow: hidden;
 }
 
 .bb-report-sheet-scroll .bb-child-panel table thead th,
 .bb-report-sheet-scroll .bb-report-sheet-scroll table thead th {
-  background: #ffedd5 !important;
-  color: #9a3412 !important;
+  background: #e8f0ed !important;
+  color: #3f3f46 !important;
 }
 
 .bb-report-sheet-scroll .bb-child-panel table tbody td,
 .bb-report-sheet-scroll .bb-report-sheet-scroll table tbody td {
-  background: #fffdf8 !important;
+  background: #fff !important;
 }
 
 .bb-report-sheet-scroll .bb-child-panel table tbody tr:nth-child(even) > td,
 .bb-report-sheet-scroll .bb-report-sheet-scroll table tbody tr:nth-child(even) > td {
-  background: #fff7ed !important;
+  background: #fafafa !important;
 }
 
 .bb-report-sheet-scroll .bb-child-panel table tfoot td,
 .bb-report-sheet-scroll .bb-report-sheet-scroll table tfoot td {
-  background: #ffedd5 !important;
+  background: color-mix(in srgb, #e8f0ed 60%, #fff) !important;
 }
 
 .bb-report-sheet-scroll table tfoot td,
@@ -376,7 +373,7 @@ table.bb-sheet-table.bb-san-luong-sheet {
 }
 
 table.bb-sheet-table.bb-san-luong-sheet tbody tr.bb-san-luong-nvl-kg > td {
-  background: #ecfdf5 !important;
+  background: #f8fafc !important;
 }
 
 table.bb-sheet-table.bb-san-luong-sheet tbody tr.bb-san-luong-nvl-other-start > td {

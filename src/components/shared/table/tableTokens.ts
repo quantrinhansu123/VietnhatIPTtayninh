@@ -42,7 +42,7 @@ export const BB_TABLE_CLASS =
   'min-w-[1100px] w-full table-fixed whitespace-nowrap text-left text-sm font-semibold';
 export const BB_TABLE_THEAD_CLASS = `${TABLE_HEAD_STATIC_CLASS} text-xs uppercase tracking-wide`;
 export const BB_TABLE_GROUP_ROW_CLASS =
-  'border-y border-zinc-200 bg-[#e8f0ed]/80 text-sm font-bold transition hover:bg-[#e8f0ed]';
+  'border-b border-zinc-100 bg-white text-sm font-semibold transition hover:bg-[#ef1b2d]/[0.04]';
 export const BB_TABLE_EXPAND_BTN_CLASS =
   'inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-300 bg-white text-zinc-800 shadow-sm transition hover:bg-zinc-50';
 export const BB_TABLE_CHILD_WRAP_CLASS = 'bb-row-child-wrap bg-zinc-50/60';

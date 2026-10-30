@@ -39,13 +39,13 @@ function formatPct(value: number | null | undefined, digits = 2) {
 
 function signedClass(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value) || value === 0) return 'text-zinc-700';
-  return value > 0 ? 'text-amber-800' : 'text-rose-800';
+  return value > 0 ? 'text-zinc-700' : 'text-rose-800';
 }
 
 function MetricCell({ value, className }: { value: string; className: string }) {
   return (
     <td className={`whitespace-nowrap px-1.5 py-1 text-right align-top text-[11px] ${className}`}>
-      <div className="font-mono text-[11px] font-bold">{value}</div>
+      <div className="font-mono text-[11px] font-semibold tabular-nums">{value}</div>
     </td>
   );
 }
@@ -127,9 +127,9 @@ export default function BbCanTuDongTongHopPanel({
 
   const renderMetricCells = (row: CanTuDongTongHopDetailRow | ReturnType<typeof sumCanTuDongTongHopDetailRows>) => (
     <>
-      <MetricCell value={formatKg(row.nhua_dm_kg, 2)} className="text-teal-900" />
-      <MetricCell value={formatKg(row.khoi_luong_mang_kg, 2)} className="text-indigo-900" />
-      <MetricCell value={formatKg(row.nhua_tt_kg, 2)} className="text-emerald-800" />
+      <MetricCell value={formatKg(row.nhua_dm_kg, 2)} className="text-zinc-800" />
+      <MetricCell value={formatKg(row.khoi_luong_mang_kg, 2)} className="text-zinc-800" />
+      <MetricCell value={formatKg(row.nhua_tt_kg, 2)} className="text-zinc-900" />
       <MetricCell
         value={formatSignedKg(row.chenh_lech_nhua_kg, 2)}
         className={signedClass(row.chenh_lech_nhua_kg)}
@@ -138,23 +138,23 @@ export default function BbCanTuDongTongHopPanel({
         value={formatPct(row.phan_tram_chenh, 2)}
         className={signedClass(row.phan_tram_chenh)}
       />
-      <MetricCell value={formatKg(row.loi_dm_kg, 2)} className="text-sky-900" />
-      <MetricCell value={formatKg(row.loi_tt_kg, 2)} className="text-zinc-900" />
+      <MetricCell value={formatKg(row.loi_dm_kg, 2)} className="text-zinc-800" />
+      <MetricCell value={formatKg(row.loi_tt_kg, 2)} className="text-zinc-800" />
       <MetricCell value={formatKg(row.trong_luong_bi_kg, 2)} className="text-zinc-700" />
     </>
   );
 
   return (
-    <div className="bb-report-sheet-scroll flex flex-col gap-3 p-3">
+    <div className="bb-report-sheet-scroll flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-black uppercase tracking-wider text-red-800">
+        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
           Tổng hợp cân thực tế (DB)
         </p>
         <button
           type="button"
           onClick={() => void handleSync()}
           disabled={busy}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-[11px] font-black text-red-700 shadow-xs transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {status === 'syncing' ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -165,45 +165,41 @@ export default function BbCanTuDongTongHopPanel({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-        <div className="rounded-lg border border-red-200/80 bg-white p-2.5 shadow-xs">
-          <p className="text-[9px] font-black uppercase tracking-tight text-red-700">Số cuộn thực tế</p>
-          <p className="mt-0.5 font-mono text-lg font-black tabular-nums text-zinc-900">
-            {busy ? '…' : totals.so_cuon > 0 ? formatNumber(totals.so_cuon, 0) : '—'}
-          </p>
-          <p className="mt-0.5 text-[9px] font-semibold text-zinc-500">Số lần cân / số cuộn</p>
-        </div>
-        <div className="rounded-lg border border-red-200/80 bg-white p-2.5 shadow-xs">
-          <p className="text-[9px] font-black uppercase tracking-tight text-red-700">
-            Tổng trọng lượng thực tế
-          </p>
-          <p className="mt-0.5 font-mono text-lg font-black tabular-nums text-zinc-900">
-            {busy ? '…' : formatKg(totals.tong_trong_luong_kg, 2)}
-          </p>
-          <p className="mt-0.5 text-[9px] font-semibold text-zinc-500">Σ Cân sản phẩm (kg)</p>
-        </div>
-        <div className="rounded-lg border border-teal-200/80 bg-white p-2.5 shadow-xs">
-          <p className="text-[9px] font-black uppercase tracking-tight text-teal-800">Nhựa ĐM</p>
-          <p className="mt-0.5 font-mono text-lg font-black tabular-nums text-zinc-900">
-            {busy ? '…' : formatKg(totals.nhua_dm_kg, 2)}
-          </p>
-          <p className="mt-0.5 text-[9px] font-semibold text-zinc-500">SP − lõi − bì (Cân AI)</p>
-        </div>
-        <div className="rounded-lg border border-emerald-200/80 bg-white p-2.5 shadow-xs">
-          <p className="text-[9px] font-black uppercase tracking-tight text-emerald-700">Nhựa TT</p>
-          <p className="mt-0.5 font-mono text-lg font-black tabular-nums text-zinc-900">
-            {busy ? '…' : formatKg(totals.nhua_tt_kg, 2)}
-          </p>
-          <p className="mt-0.5 text-[9px] font-semibold text-zinc-500">SP − lõi − bì − màng</p>
-        </div>
-        <div className="rounded-lg border border-amber-200/80 bg-white p-2.5 shadow-xs">
-          <p className="text-[9px] font-black uppercase tracking-tight text-amber-800">Chênh lệch nhựa</p>
-          <p className={`mt-0.5 font-mono text-lg font-black tabular-nums ${signedClass(totals.chenh_lech_nhua_kg)}`}>
-            {busy ? '…' : formatSignedKg(totals.chenh_lech_nhua_kg, 2)}
-          </p>
-          <p className="mt-0.5 text-[9px] font-semibold text-zinc-500">
-            TT − ĐM · {busy ? '…' : formatPct(totals.phan_tram_chenh, 2)}
-          </p>
+      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+        <div className="grid grid-cols-2 divide-x divide-y divide-zinc-100 sm:grid-cols-3 xl:grid-cols-5 xl:divide-y-0">
+          <div className="p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Số cuộn</p>
+            <p className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900">
+              {busy ? '…' : totals.so_cuon > 0 ? formatNumber(totals.so_cuon, 0) : '—'}
+            </p>
+          </div>
+          <div className="p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">TL thực tế</p>
+            <p className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900">
+              {busy ? '…' : formatKg(totals.tong_trong_luong_kg, 2)}
+            </p>
+          </div>
+          <div className="p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Nhựa ĐM</p>
+            <p className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900">
+              {busy ? '…' : formatKg(totals.nhua_dm_kg, 2)}
+            </p>
+          </div>
+          <div className="p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Nhựa TT</p>
+            <p className="mt-1 font-mono text-base font-semibold tabular-nums text-zinc-900">
+              {busy ? '…' : formatKg(totals.nhua_tt_kg, 2)}
+            </p>
+          </div>
+          <div className="bg-rose-50/40 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Chênh lệch</p>
+            <p className={`mt-1 font-mono text-base font-semibold tabular-nums ${signedClass(totals.chenh_lech_nhua_kg)}`}>
+              {busy ? '…' : formatSignedKg(totals.chenh_lech_nhua_kg, 2)}
+            </p>
+            <p className="mt-0.5 text-[11px] font-medium text-zinc-500">
+              {busy ? '…' : formatPct(totals.phan_tram_chenh, 2)}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -232,7 +228,7 @@ export default function BbCanTuDongTongHopPanel({
                 title="Σ (Cân SP − Cân lõi − bì 0,16) từ phiếu Cân AI — cùng tong_trong_luong_nhua_kg khi đồng bộ"
               >
                 <div>Trọng lượng Nhựa ĐM</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-teal-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-600">
                   SP − lõi − bì (Cân AI)
                 </div>
               </th>
@@ -241,31 +237,31 @@ export default function BbCanTuDongTongHopPanel({
                 title="Σ (Khối lượng màng BOM Thành phần SP × 1 cuộn) theo Mã SP từ QR"
               >
                 <div>Khối lượng màng</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-indigo-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-600">
                   BOM màng × cuộn
                 </div>
               </th>
               <th className="text-right font-semibold" title="Nhựa thực tế = Cân SP − Cân lõi − bì 0,16 − màng BOM">
                 <div>Trọng lượng Nhựa TT</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-emerald-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
                   SP − lõi − bì − màng
                 </div>
               </th>
               <th className="text-right font-semibold" title="Nhựa TT − Nhựa ĐM">
                 <div>Chênh lệch nhựa</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-amber-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
                   TT − ĐM
                 </div>
               </th>
               <th className="text-right font-semibold" title="(Chênh lệch nhựa ÷ Nhựa TT) × 100">
                 <div>Phần trăm chênh</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-amber-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
                   CL ÷ TT × 100
                 </div>
               </th>
               <th className="text-right font-semibold" title="Lõi lý thuyết từ Kho hàng (trong_luong_loi)">
                 <div>Trọng lượng Lõi ĐM</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-sky-700">
+                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
                   Σ TL lõi KH
                 </div>
               </th>
@@ -301,17 +297,17 @@ export default function BbCanTuDongTongHopPanel({
             ) : (
               detailRows.map(row => (
                 <tr key={row.khoa_on_dinh} className="hover:bg-zinc-50/70">
-                  <td className="whitespace-nowrap px-1.5 py-1 font-bold text-zinc-900">
+                  <td className="whitespace-nowrap px-1.5 py-1 font-semibold tabular-nums text-zinc-900">
                     {formatIsoDateVi(row.ngay)}
                   </td>
-                  <td className="whitespace-nowrap px-1.5 py-1 font-bold text-sky-900">{row.ca || '—'}</td>
-                  <td className="whitespace-nowrap px-1.5 py-1 font-semibold text-zinc-800">
+                  <td className="whitespace-nowrap px-1.5 py-1 font-semibold text-zinc-800">{row.ca || '—'}</td>
+                  <td className="whitespace-nowrap px-1.5 py-1 font-medium text-zinc-800">
                     {row.may || '—'}
                   </td>
-                  <td className="whitespace-nowrap px-1.5 py-1 text-right font-mono font-black text-zinc-900">
+                  <td className="whitespace-nowrap px-1.5 py-1 text-right font-mono font-semibold text-zinc-900">
                     {formatNumber(row.so_cuon, 0)}
                   </td>
-                  <td className="whitespace-nowrap px-1.5 py-1 text-right align-top font-mono font-black text-emerald-800">
+                  <td className="whitespace-nowrap px-1.5 py-1 text-right align-top font-mono font-semibold text-zinc-800">
                     {formatKg(row.tong_trong_luong_kg, 2)}
                   </td>
                   {renderMetricCells(row)}
@@ -326,7 +322,7 @@ export default function BbCanTuDongTongHopPanel({
                   Tổng
                 </td>
                 <td className="px-1.5 py-1.5 text-right font-mono">{formatNumber(totals.so_cuon, 0)}</td>
-                <td className="px-1.5 py-1.5 text-right align-top font-mono text-emerald-800">
+                <td className="px-1.5 py-1.5 text-right align-top font-mono text-zinc-800">
                   {formatKg(totals.tong_trong_luong_kg, 2)}
                 </td>
                 {renderMetricCells(totals)}

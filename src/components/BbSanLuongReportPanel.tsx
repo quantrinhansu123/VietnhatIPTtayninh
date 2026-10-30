@@ -58,9 +58,9 @@ function resolveNormStatus(group: BbSanLuongGroup) {
   const actual = group.totalActualWeightKg;
   if (!(norm > 0) || !(actual >= 0)) return null;
   const diffPct = Math.abs(actual - norm) / norm;
-  if (diffPct <= 0.02) return { label: 'đúng định mức', tone: 'text-emerald-600' };
-  if (actual > norm) return { label: 'vượt định mức', tone: 'text-amber-600' };
-  return { label: 'dưới định mức', tone: 'text-rose-600' };
+  if (diffPct <= 0.02) return { label: 'đúng định mức', tone: 'text-zinc-700' };
+  if (actual > norm) return { label: 'vượt định mức', tone: 'text-amber-700' };
+  return { label: 'dưới định mức', tone: 'text-rose-700' };
 }
 
 function formatUnitLabel(unit: string) {
@@ -226,10 +226,10 @@ function SanLuongShiftSection({
                   {showTronCell ? (
                     <td
                       rowSpan={product.tronRowSpan}
-                      className="bb-sheet-num align-middle font-bold text-emerald-800"
+                      className="bb-sheet-num align-middle font-semibold text-zinc-800"
                       title="Tổng nhựa thành phẩm = trong_luong_nhua × SL (cơ sở nhân % vật tư trộn)"
                     >
-                      <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
+                      <div className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-zinc-500">
                         Tổng vật tư trộn
                       </div>
                       <div className="mt-0.5">{formatKg(product.tongVatTuTronKg)}</div>
@@ -238,10 +238,10 @@ function SanLuongShiftSection({
                   {showConLaiCell ? (
                     <td
                       rowSpan={product.conLaiRowSpan}
-                      className="bb-sheet-num align-middle font-bold text-emerald-800"
+                      className="bb-sheet-num align-middle font-semibold text-zinc-800"
                       title="Tổng TL NVL vật tư còn lại"
                     >
-                      <div className="text-[10px] font-black uppercase leading-tight tracking-wide text-emerald-700/80">
+                      <div className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-zinc-500">
                         Tổng vật tư còn lại
                       </div>
                       <div className="mt-0.5">{formatKg(product.tongVatTuConLaiKg)}</div>
@@ -258,7 +258,7 @@ function SanLuongShiftSection({
                     {line.itemName === '—' ? '—' : resolveBbSanLuongNvlDisplayUnit(line)}
                   </td>
                   <td className="bb-sheet-num font-bold text-zinc-900">{resolveNvlQuantity(line)}</td>
-                  <td className="bb-sheet-num font-bold text-emerald-800">{resolveNvlWeight(line)}</td>
+                  <td className="bb-sheet-num font-semibold text-zinc-900">{resolveNvlWeight(line)}</td>
                 </tr>
                 );
               });
@@ -297,21 +297,21 @@ function SanLuongSummaryTable({
   return (
     <section>
       <table className="bb-sheet-table min-w-[920px]">
-        <caption className="font-black text-zinc-900">
+        <caption className="font-semibold text-zinc-900">
           Bảng tổng · Báo cáo sản lượng ({groups.length} phiếu)
         </caption>
         <thead>
           <tr>
-            <th className="font-black">Ngày</th>
-            <th className="font-black">Ca</th>
-            <th className="font-black">Lệnh SX</th>
-            <th className="font-black">Máy</th>
-            <th className="text-right font-black">SP</th>
-            <th className="text-right font-black">SL SP</th>
-            <th className="text-right font-black">TL SP (kg)</th>
-            <th className="text-right font-black">TL ĐM NVL</th>
-            <th className="text-right font-black">TL thực tế</th>
-            <th className="font-black">Định mức</th>
+            <th className="font-semibold">Ngày</th>
+            <th className="font-semibold">Ca</th>
+            <th className="font-semibold">Lệnh SX</th>
+            <th className="font-semibold">Máy</th>
+            <th className="text-right font-semibold">SP</th>
+            <th className="text-right font-semibold">SL SP</th>
+            <th className="text-right font-semibold">TL SP (kg)</th>
+            <th className="text-right font-semibold">TL ĐM NVL</th>
+            <th className="text-right font-semibold">TL thực tế</th>
+            <th className="font-semibold">Định mức</th>
           </tr>
         </thead>
         <tbody>
@@ -322,31 +322,31 @@ function SanLuongSummaryTable({
             const normStatus = resolveNormStatus(group);
             return (
               <tr key={group.groupKey} className="bb-row-parent text-zinc-900">
-                <td className="font-mono font-bold">{group.ngay || '—'}</td>
+                <td className="font-mono font-semibold">{group.ngay || '—'}</td>
                 <td className="font-semibold">
                   {shiftName}
                   {timeRange ? (
-                    <span className="mt-0.5 block text-[12px] font-semibold text-zinc-500">
+                    <span className="mt-0.5 block text-[12px] font-medium text-zinc-500">
                       {timeRange}
                     </span>
                   ) : null}
                 </td>
-                <td className="font-mono font-black text-sky-900">{group.orderCode || '—'}</td>
-                <td className="font-semibold">{group.machine || '—'}</td>
-                <td className="bb-sheet-num font-bold">{group.productCount || 0}</td>
-                <td className="bb-sheet-num font-bold">
+                <td className="font-mono font-semibold text-zinc-900">{group.orderCode || '—'}</td>
+                <td className="font-medium">{group.machine || '—'}</td>
+                <td className="bb-sheet-num font-semibold">{group.productCount || 0}</td>
+                <td className="bb-sheet-num font-semibold">
                   {group.totalQuantity > 0 ? formatNumber(group.totalQuantity, 0) : '—'}
                 </td>
-                <td className="bb-sheet-num font-bold text-emerald-800">
+                <td className="bb-sheet-num font-semibold text-zinc-900">
                   {spKg > 0 ? formatKg(spKg, 2) : '—'}
                 </td>
-                <td className="bb-sheet-num font-bold text-violet-800">
+                <td className="bb-sheet-num font-semibold text-zinc-800">
                   {group.totalNormWeightKg > 0 ? formatKg(group.totalNormWeightKg, 2) : '—'}
                 </td>
-                <td className="bb-sheet-num font-bold text-sky-800">
+                <td className="bb-sheet-num font-semibold text-zinc-900">
                   {group.totalActualWeightKg > 0 ? formatKg(group.totalActualWeightKg, 2) : '—'}
                 </td>
-                <td className={`font-bold ${normStatus?.tone || 'text-zinc-400'}`}>
+                <td className={`font-semibold ${normStatus?.tone || 'text-zinc-400'}`}>
                   {normStatus?.label || '—'}
                 </td>
               </tr>
@@ -355,18 +355,18 @@ function SanLuongSummaryTable({
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={4} className="text-right font-black uppercase tracking-wider">
+            <td colSpan={4} className="text-right font-semibold uppercase tracking-wide text-zinc-600">
               Tổng cộng
             </td>
-            <td className="bb-sheet-num font-black">{totalProducts}</td>
-            <td className="bb-sheet-num font-black">{totalQty > 0 ? formatNumber(totalQty, 0) : '—'}</td>
-            <td className="bb-sheet-num font-black text-emerald-800">
+            <td className="bb-sheet-num font-semibold">{totalProducts}</td>
+            <td className="bb-sheet-num font-semibold">{totalQty > 0 ? formatNumber(totalQty, 0) : '—'}</td>
+            <td className="bb-sheet-num font-semibold text-zinc-900">
               {totalSpKg > 0 ? formatKg(totalSpKg, 2) : '—'}
             </td>
-            <td className="bb-sheet-num font-black text-violet-800">
+            <td className="bb-sheet-num font-semibold text-zinc-800">
               {totalNorm > 0 ? formatKg(totalNorm, 2) : '—'}
             </td>
-            <td className="bb-sheet-num font-black text-sky-800">
+            <td className="bb-sheet-num font-semibold text-zinc-900">
               {totalActual > 0 ? formatKg(totalActual, 2) : '—'}
             </td>
             <td />
@@ -408,7 +408,7 @@ export default function BbSanLuongReportPanel({
       <div className="space-y-6">
         <SanLuongSummaryTable groups={groups} shiftSettings={shiftSettings} />
         <div className="bb-child-panel space-y-6 p-2 sm:p-3">
-          <p className="bb-nvl-panel-title rounded-md bg-orange-50 text-orange-900">
+          <p className="bb-nvl-panel-title border-b border-zinc-200 bg-[#e8f0ed] text-zinc-800">
             Chi tiết theo phiếu
           </p>
           {groups.map(group => (

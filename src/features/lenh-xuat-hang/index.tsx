@@ -1647,15 +1647,15 @@ export function ShippingOrdersPanel({
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     Trạng thái
                   </span>
-                  <SearchableSelect
+                  <select
                     value={form.trang_thai}
-                    options={[...STATUS_OPTIONS]}
-                    onChange={status => setForm(prev => ({ ...prev, trang_thai: status }))}
-                    placeholder="Trạng thái"
-                    getValue={item => String(item)}
-                    getLabel={item => String(item)}
-                    inputClassName={compactFieldClass}
-                  />
+                    onChange={event => setForm(prev => ({ ...prev, trang_thai: event.target.value }))}
+                    className={compactFieldClass}
+                  >
+                    {STATUS_OPTIONS.map(status => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
 

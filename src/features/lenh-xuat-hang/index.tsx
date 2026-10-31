@@ -1566,8 +1566,8 @@ export function ShippingOrdersPanel({
         : null}
 
       {formOpen ? (
-        <div className="fixed inset-0 z-[75] flex items-stretch justify-center bg-slate-950/50 p-0 sm:items-center sm:p-2 md:p-3">
-          <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-[98vw] flex-col overflow-hidden rounded-none bg-white shadow-2xl sm:h-[96dvh] sm:max-h-[96dvh] sm:max-w-[96vw] sm:rounded-2xl xl:max-w-[1600px]">
+        <div className="fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-[75] flex items-center justify-center bg-slate-950/50 p-3 sm:left-16 md:top-[calc(4rem+env(safe-area-inset-top))] md:p-6">
+          <div className="flex h-full max-h-[720px] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-3 py-2">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
@@ -1583,7 +1583,7 @@ export function ShippingOrdersPanel({
               </button>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
               <div className="shrink-0 grid gap-x-2 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="block space-y-0.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Mã lệnh</span>
@@ -1669,7 +1669,7 @@ export function ShippingOrdersPanel({
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden">
+              <div className="shrink-0 space-y-3">
                 {form.khach.map((group, groupIndex) => (
                   <section key={group.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">

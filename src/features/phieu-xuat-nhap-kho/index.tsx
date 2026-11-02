@@ -5967,92 +5967,81 @@ export function WarehouseSlipPanel({
               </div>
             ) : null}
             {pendingScannedProductDetails.length ? (
-              <div className="space-y-3 p-3">
-                {pendingScannedProductDetails.map((detail, index) => {
-                  const qtyNum = parsePercentInput(detail.quantity);
-                  const qtyForWeight = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1;
-                  const weightKg = convertWarehouseQuantityToKg({
-                    quantity: qtyForWeight,
-                    unit: detail.unit,
-                    itemCode: detail.baseCode,
-                    warehouseKind: 'san_pham',
-                    products: weightCatalog
-                  });
-                  const fieldClass = 'min-h-11 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800';
-                  const allowFractionQty = slipType === 'xuat' && warehouseKind === 'san_pham';
-                  return (
-                    <article key={detail.key} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <h3 className="text-[11px] font-black uppercase tracking-wider text-zinc-400">Mã quét #{index + 1}</h3>
-                        <button
-                          type="button"
-                          onClick={() => removeScannedProduct(detail.fullCode, detail.quantity)}
-                          disabled={isSaving}
-                          aria-label={`Xóa mã quét ${detail.fullCode}`}
-                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className={`${fieldClass} break-all font-mono text-base font-black`} title={detail.fullCode}>{detail.fullCode}</div>
-                      <div className="mt-3 grid grid-cols-2 gap-2.5">
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Mã TP gốc<div className={fieldClass}>{detail.baseCode}</div>
-                        </label>
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          ĐV<div className={fieldClass}>{detail.unit || '—'}</div>
-                        </label>
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Số lượng
-                          {allowFractionQty ? (
-                            <div className="space-y-1">
-                              <input
-                                value={detail.quantity}
-                                onChange={event => updateScannedProductQuantity(detail.fullCode, event.target.value)}
-                                disabled={isSaving}
-                                inputMode="decimal"
-                                autoComplete="off"
-                                placeholder="0.5 · 1 · 1/2 · 1/3"
-                                className={`${fieldClass} w-full outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 disabled:opacity-60`}
-                                title="Gõ số thập phân (0.5, 0,25) hoặc phân số (1/2, 1/3)"
-                              />
-                              <div className="flex flex-wrap gap-1">
-                                {(['1', '0.5', '1/2', '1/3'] as const).map(preset => (
-                                  <button
-                                    key={preset}
-                                    type="button"
-                                    disabled={isSaving}
-                                    onClick={() => updateScannedProductQuantity(detail.fullCode, preset)}
-                                    className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold transition disabled:opacity-50 ${
-                                      detail.quantity.trim() === preset ||
-                                      (preset === '0.5' &&
-                                        ['0.5', '0,5'].includes(detail.quantity.trim()))
-                                        ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
-                                        : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
-                                    }`}
-                                  >
-                                    {preset}
-                                  </button>
-                                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[400px] border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-[#e8f0ed] text-[11px] font-semibold text-zinc-700">
+                      <th className="px-2 py-2 text-center font-semibold">STT</th>
+                      <th className="px-2 py-2 font-semibold">Mã quét</th>
+                      <th className="px-2 py-2 font-semibold">Tên TP</th>
+                      <th className="min-w-[7.5rem] px-2 py-2 text-center font-semibold">Số lượng</th>
+                      <th className="px-2 py-2 text-center font-semibold">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingScannedProductDetails.map((detail, index) => {
+                      const allowFractionQty = slipType === 'xuat' && warehouseKind === 'san_pham';
+                      return (
+                        <tr key={detail.key} className="border-b border-zinc-100 even:bg-zinc-50/70">
+                          <td className="px-2 py-1.5 text-center tabular-nums text-zinc-500">{index + 1}</td>
+                          <td className="max-w-[9rem] px-2 py-1.5 font-mono text-[11px] font-bold break-all text-[#ef1b2d]" title={detail.fullCode}>
+                            {detail.fullCode}
+                          </td>
+                          <td className="max-w-[12rem] px-2 py-1.5 text-zinc-700">
+                            <div className="line-clamp-2 break-words" title={detail.name || ''}>{detail.name || '—'}</div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {allowFractionQty ? (
+                              <div className="space-y-1">
+                                <input
+                                  value={detail.quantity}
+                                  onChange={event => updateScannedProductQuantity(detail.fullCode, event.target.value)}
+                                  disabled={isSaving}
+                                  inputMode="decimal"
+                                  autoComplete="off"
+                                  placeholder="0.5"
+                                  className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-center text-xs font-bold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 disabled:opacity-60"
+                                  title="Gõ số thập phân (0.5, 0,25) hoặc phân số (1/2, 1/3)"
+                                />
+                                <div className="flex flex-wrap justify-center gap-0.5">
+                                  {(['1', '0.5', '1/2', '1/3'] as const).map(preset => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      disabled={isSaving}
+                                      onClick={() => updateScannedProductQuantity(detail.fullCode, preset)}
+                                      className={`rounded border px-1.5 py-0.5 text-[9px] font-extrabold transition disabled:opacity-50 ${
+                                        detail.quantity.trim() === preset ||
+                                        (preset === '0.5' && ['0.5', '0,5'].includes(detail.quantity.trim()))
+                                          ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
+                                          : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+                                      }`}
+                                    >
+                                      {preset}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <div className={fieldClass}>{detail.quantity}</div>
-                          )}
-                        </label>
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Trọng lượng<div className={fieldClass}>{weightKg == null ? '—' : formatWarehouseWeightKg(weightKg)}</div>
-                        </label>
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Kho<div className={`${fieldClass} truncate`}>{warehouseName}</div>
-                        </label>
-                        <label className="min-w-0 space-y-1 text-[11px] font-bold text-zinc-500">
-                          Tên TP<div className={`${fieldClass} truncate`}>{detail.name || '—'}</div>
-                        </label>
-                      </div>
-                    </article>
-                  );
-                })}
+                            ) : (
+                              <div className="text-center font-bold tabular-nums">{detail.quantity}</div>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => removeScannedProduct(detail.fullCode, detail.quantity)}
+                              disabled={isSaving}
+                              aria-label={`Xóa mã quét ${detail.fullCode}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="p-3 text-center text-xs font-semibold text-zinc-500">

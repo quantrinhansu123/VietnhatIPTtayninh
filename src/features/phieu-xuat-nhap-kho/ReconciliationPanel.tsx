@@ -7,6 +7,12 @@ import type { WarehouseMovementRow } from './index';
 type Mode = 'nhap' | 'xuat';
 type RowStatus = 'khop' | 'thieu' | 'thua';
 
+type InboundSlipRef = {
+  slipCode: string;
+  quantity: number;
+  status: 'chua_chot' | 'da_chot';
+};
+
 type CompareRow = {
   ma: string;
   ten: string;
@@ -20,6 +26,8 @@ type CompareRow = {
   /** Nhập: mã cuộn đã nhập kho nhưng không có bản cân AI. */
   extraCodes: string[];
   orderCodes: string[];
+  /** Nhập: các phiếu nhập kho góp vào cột Nhập kho của mã này. */
+  inboundSlips: InboundSlipRef[];
 };
 
 type AiRoll = { code: string; ma: string; day: string; ca: string; may: string };
@@ -80,13 +88,19 @@ function machineLooseMatch(rowMachine: string, machineFilter: string): boolean {
  * - Tab Nhập kho: so với số cuộn Cân AI (`can_tu_dong`), tìm cuộn đã cân chưa nhập / nhập mà không có cân.
  * - Tab Xuất kho: so với Lệnh xuất hàng (`lenh_xuat_hang`), tìm mặt hàng xuất thiếu / vượt / ngoài lệnh.
  */
+const cleanName = (value: string) => {
+  const text = String(value || '').trim();
+  return !text || text === '-' ? '' : text;
+};
+
 export function ReconciliationPanel({
   mode,
   movements,
   fromDate,
   toDate,
   filterShift = '',
-  filterMachine = ''
+  filterMachine = '',
+  productNames
 }: {
   mode: Mode;
   movements: WarehouseMovementRow[];
@@ -96,11 +110,21 @@ export function ReconciliationPanel({
   filterShift?: string;
   /** Máy đang chọn trên bộ lọc lịch sử. */
   filterMachine?: string;
+  /** Tên SP từ danh mục `/kho-hang` — dùng khi phiếu nhập chưa có tên (vd chỉ có Cân AI). */
+  productNames?: Map<string, string> | Record<string, string>;
 }) {
   const from = (fromDate || toDate || todayIso()).slice(0, 10);
   const to = (toDate || fromDate || todayIso()).slice(0, 10);
   const shiftFilter = String(filterShift || '').trim();
   const machineFilter = String(filterMachine || '').trim();
+  const resolveProductName = (ma: string, fallback = '') => {
+    const fromFallback = cleanName(fallback);
+    if (fromFallback) return fromFallback;
+    const key = String(ma || '').replace(/\s+/g, '').toUpperCase();
+    if (!key || !productNames) return '';
+    if (productNames instanceof Map) return cleanName(productNames.get(key) || '');
+    return cleanName(productNames[key] || '');
+  };
   const [isOpen, setIsOpen] = useState(true);
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [expandedMa, setExpandedMa] = useState('');
@@ -211,16 +235,36 @@ export function ReconciliationPanel({
     const names = new Map<string, string>();
     const actualByMa = new Map<string, number>();
     const actualRolls = new Map<string, Map<string, string>>();
+    const slipsByMa = new Map<string, Map<string, InboundSlipRef>>();
     for (const row of scopedMovements) {
       const rollCode = (row.scannedCode?.trim() || row.itemCode || '').trim();
       const ma = productCodeOf(rollCode);
       if (!ma) continue;
-      if (row.itemName && !names.has(ma)) names.set(ma, row.itemName);
-      actualByMa.set(ma, (actualByMa.get(ma) || 0) + (Number(row.quantity) || 0));
+      const name = cleanName(row.itemName || '');
+      if (name && !names.has(ma)) names.set(ma, name);
+      const qty = Number(row.quantity) || 0;
+      actualByMa.set(ma, (actualByMa.get(ma) || 0) + qty);
       const rolls = actualRolls.get(ma) || new Map<string, string>();
       rolls.set(rollKey(rollCode), rollCode);
       actualRolls.set(ma, rolls);
+      const slipCode = String(row.slipCode || '').trim();
+      if (slipCode && qty !== 0) {
+        const bySlip = slipsByMa.get(ma) || new Map<string, InboundSlipRef>();
+        const current = bySlip.get(slipCode) || {
+          slipCode,
+          quantity: 0,
+          status: row.status === 'chua_chot' ? 'chua_chot' : 'da_chot'
+        };
+        current.quantity += qty;
+        if (row.status === 'chua_chot') current.status = 'chua_chot';
+        bySlip.set(slipCode, current);
+        slipsByMa.set(ma, bySlip);
+      }
     }
+    const slipsOf = (ma: string) =>
+      [...(slipsByMa.get(ma)?.values() || [])].sort((a, b) =>
+        a.slipCode.localeCompare(b.slipCode, 'vi', { numeric: true })
+      );
 
     const result: CompareRow[] = [];
     if (mode === 'nhap') {
@@ -255,13 +299,14 @@ export function ReconciliationPanel({
         const actual = actualByMa.get(ma) || 0;
         result.push({
           ma,
-          ten: names.get(ma) || '',
+          ten: resolveProductName(ma, names.get(ma) || ''),
           expected,
           actual,
           status: 'khop',
           missingCodes: [...ai].filter(([key]) => !nhapWindowKeys.has(key)).map(([, code]) => code),
           extraCodes: [...nhap].filter(([key]) => !aiWindow.has(key)).map(([, code]) => code),
-          orderCodes: []
+          orderCodes: [],
+          inboundSlips: slipsOf(ma)
         });
         const last = result[result.length - 1];
         // Có lọc ca/máy: trạng thái theo số đang hiện (Cân AI ↔ Nhập kho đã lọc).
@@ -278,7 +323,8 @@ export function ReconciliationPanel({
     } else {
       const orderByMa = new Map<string, { ten: string; soLuong: number; codes: Set<string> }>();
       for (const line of orderLines) {
-        const entry = orderByMa.get(line.ma) || { ten: line.ten, soLuong: 0, codes: new Set<string>() };
+        const entry = orderByMa.get(line.ma) || { ten: cleanName(line.ten), soLuong: 0, codes: new Set<string>() };
+        if (!entry.ten) entry.ten = cleanName(line.ten);
         entry.soLuong += line.soLuong;
         entry.codes.add(line.maLenh);
         orderByMa.set(line.ma, entry);
@@ -289,13 +335,14 @@ export function ReconciliationPanel({
         const actual = actualByMa.get(ma) || 0;
         result.push({
           ma,
-          ten: order?.ten || names.get(ma) || '',
+          ten: resolveProductName(ma, order?.ten || names.get(ma) || ''),
           expected,
           actual,
           status: statusOf(expected, actual),
           missingCodes: [],
           extraCodes: [],
-          orderCodes: [...(order?.codes || [])]
+          orderCodes: [...(order?.codes || [])],
+          inboundSlips: slipsOf(ma)
         });
       }
     }
@@ -305,7 +352,7 @@ export function ReconciliationPanel({
       const db = Math.abs(b.actual - b.expected);
       return (b.status !== "khop" ? 1 : 0) - (a.status !== "khop" ? 1 : 0) || db - da || a.ma.localeCompare(b.ma, 'vi', { numeric: true });
     });
-  }, [mode, scopedMovements, aiRolls, orderLines, nhapWindowRolls, from, to, shiftFilter, machineFilter]);
+  }, [mode, scopedMovements, aiRolls, orderLines, nhapWindowRolls, from, to, shiftFilter, machineFilter, productNames]);
 
   const hasScopeFilter = Boolean(shiftFilter || machineFilter);
 
@@ -342,6 +389,8 @@ export function ReconciliationPanel({
   const isNhap = mode === 'nhap';
   const Icon = isNhap ? ScanLine : Truck;
   const visibleRows = onlyDiff ? rows.filter(row => row.status !== 'khop') : rows;
+  /** Xuất kho thêm cột Lệnh xuất. */
+  const tableColCount = isNhap ? 6 : 7;
   const label = isNhap
     ? { source: 'Cân AI', expected: 'Cân AI (cuộn)', actual: 'Nhập kho', missing: 'Đã cân chưa nhập', extra: 'Nhập không có cân AI' }
     : { source: 'Lệnh xuất hàng', expected: 'Theo lệnh', actual: 'Xuất kho', missing: '', extra: '' };
@@ -447,11 +496,12 @@ export function ReconciliationPanel({
           </label>
 
           <div className="max-h-[46vh] overflow-auto rounded-lg border border-zinc-200">
-            <table className="w-full min-w-[640px] text-left text-xs">
+            <table className={`w-full text-left text-xs ${isNhap ? 'min-w-[640px]' : 'min-w-[760px]'}`}>
               <thead className="sticky top-0 bg-[#e8f0ed] text-[11px] font-semibold text-zinc-700">
                 <tr>
                   <th className="px-3 py-2 font-black">Mã SP</th>
                   <th className="px-3 py-2 font-black">Tên SP</th>
+                  {!isNhap ? <th className="px-3 py-2 font-black">Lệnh xuất</th> : null}
                   <th className="px-3 py-2 text-right font-black">{label.expected}</th>
                   <th className="px-3 py-2 text-right font-black">{label.actual}</th>
                   <th className="px-3 py-2 text-right font-black">Chênh lệch</th>
@@ -462,18 +512,71 @@ export function ReconciliationPanel({
                 {visibleRows.map(row => {
                   const diff = Math.round((row.actual - row.expected) * 100) / 100;
                   const meta = STATUS_META[row.status];
-                  const hasDetail = row.missingCodes.length > 0 || row.extraCodes.length > 0 || row.orderCodes.length > 0;
+                  const hasDetail =
+                    row.missingCodes.length > 0 ||
+                    row.extraCodes.length > 0 ||
+                    row.orderCodes.length > 0 ||
+                    row.inboundSlips.length > 0;
                   const isExpanded = expandedMa === row.ma;
                   // Xuất kho: có xuất nhưng không có lệnh → hiện rõ là "ngoài lệnh".
                   const outsideOrder = !isNhap && row.expected === 0 && row.actual > 0;
+                  const slipLabel = isNhap ? 'Phiếu nhập kho' : 'Phiếu xuất kho';
                   return (
                     <React.Fragment key={row.ma}>
                       <tr
                         onClick={hasDetail ? () => setExpandedMa(isExpanded ? '' : row.ma) : undefined}
                         className={`${hasDetail ? 'cursor-pointer hover:bg-zinc-50' : ''} ${row.status !== 'khop' ? 'bg-rose-50/30' : ''}`}
                       >
-                        <td className="whitespace-nowrap px-3 py-2 font-mono font-black text-zinc-900">{row.ma}</td>
-                        <td className="px-3 py-2 text-zinc-700">{row.ten || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 font-mono font-black text-zinc-900">
+                          <span className="inline-flex items-center gap-1">
+                            {row.ma}
+                            {hasDetail ? (
+                              <ChevronDown className={`h-3.5 w-3.5 text-zinc-400 transition ${isExpanded ? 'rotate-180' : ''}`} />
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-zinc-700">
+                          <div>{row.ten || '—'}</div>
+                          {isNhap && row.inboundSlips.length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {row.inboundSlips.slice(0, 4).map(slip => (
+                                <a
+                                  key={slip.slipCode}
+                                  href={`/lich-su-xuat-nhap-kho/phieu?ma_phieu=${encodeURIComponent(slip.slipCode)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={event => event.stopPropagation()}
+                                  className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100"
+                                  title={`${slipLabel} · ×${fmt(slip.quantity)} · ${slip.status === 'chua_chot' ? 'Chưa chốt' : 'Đã chốt'}`}
+                                >
+                                  {slip.slipCode}
+                                  <span className="font-sans font-black text-sky-600">×{fmt(slip.quantity)}</span>
+                                </a>
+                              ))}
+                              {row.inboundSlips.length > 4 ? (
+                                <span className="text-[10px] font-bold text-sky-700">+{row.inboundSlips.length - 4} phiếu</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </td>
+                        {!isNhap ? (
+                          <td className="px-3 py-2">
+                            {row.orderCodes.length > 0 ? (
+                              <div className="flex flex-wrap gap-1" title={row.orderCodes.join(', ')}>
+                                {row.orderCodes.map(code => (
+                                  <span
+                                    key={code}
+                                    className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-zinc-800 ring-1 ring-zinc-200"
+                                  >
+                                    {code}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-zinc-400">—</span>
+                            )}
+                          </td>
+                        ) : null}
                         <td className="px-3 py-2 text-right font-mono font-bold tabular-nums">{fmt(row.expected)}</td>
                         <td className="px-3 py-2 text-right font-mono font-bold tabular-nums">{fmt(row.actual)}</td>
                         <td className={`px-3 py-2 text-right font-mono font-black tabular-nums ${diff === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -487,7 +590,39 @@ export function ReconciliationPanel({
                       </tr>
                       {isExpanded ? (
                         <tr className="bg-zinc-50">
-                          <td colSpan={6} className="space-y-2 px-4 py-2.5">
+                          <td colSpan={tableColCount} className="space-y-2 px-4 py-2.5">
+                            {row.inboundSlips.length > 0 ? (
+                              <div>
+                                <p className="mb-1 text-[11px] font-black text-sky-800">
+                                  {slipLabel} ({row.inboundSlips.length})
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {row.inboundSlips.map(slip => (
+                                    <a
+                                      key={slip.slipCode}
+                                      href={`/lich-su-xuat-nhap-kho/phieu?ma_phieu=${encodeURIComponent(slip.slipCode)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-2 py-1 font-mono text-[11px] font-bold text-sky-900 transition hover:bg-sky-50"
+                                    >
+                                      <span>{slip.slipCode}</span>
+                                      <span className="rounded bg-sky-100 px-1.5 py-0.5 font-sans text-[10px] font-black text-sky-700">
+                                        ×{fmt(slip.quantity)}
+                                      </span>
+                                      <span
+                                        className={`rounded-full px-1.5 py-0.5 font-sans text-[10px] font-black ${
+                                          slip.status === 'chua_chot'
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-100 text-emerald-700'
+                                        }`}
+                                      >
+                                        {slip.status === 'chua_chot' ? 'Chưa chốt' : 'Đã chốt'}
+                                      </span>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
                             {row.orderCodes.length > 0 ? (
                               <p className="text-[11px] font-bold text-zinc-600">
                                 Lệnh xuất:{' '}
@@ -526,14 +661,14 @@ export function ReconciliationPanel({
                 })}
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
+                    <td colSpan={tableColCount} className="px-3 py-6 text-center text-zinc-500">
                       <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> Đang đối chiếu…
                     </td>
                   </tr>
                 ) : null}
                 {!isLoading && visibleRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
+                    <td colSpan={tableColCount} className="px-3 py-6 text-center text-zinc-500">
                       {onlyDiff ? 'Không có mã lệch.' : 'Không có dữ liệu để đối chiếu trong khoảng ngày này.'}
                     </td>
                   </tr>

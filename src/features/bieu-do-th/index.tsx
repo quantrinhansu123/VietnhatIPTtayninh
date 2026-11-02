@@ -1,17 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Loader2, RefreshCw } from 'lucide-react';
-import {
-  TableShell,
-  TableHead,
-  TableHeadCell,
-  TableBody,
-  TableEmptyRow,
-  TableToolbar,
-  TableDateFilter
-} from '../../components/shared/table';
+import { AlertTriangle, BarChart3, Loader2, Package, RefreshCw } from 'lucide-react';
+import { TableToolbar, TableDateFilter } from '../../components/shared/table';
 import { normalizeMachines, resolveMachineDisplayValue, type MachineRow } from '../danh-sach-may';
+import { splitProductionOrderStaffNames } from '../cai-dat-thoi-gian';
 import BieuDoThCharts, { compareShiftCa } from './BieuDoThCharts';
+import LoiHongPanel from './LoiHongPanel';
 import ProductionComparison from './ProductionComparison';
+import SanLuongPanel from './SanLuongPanel';
+import {
+  loadProductionOrdersFromApi,
+  resolveCongNhanPhuTrach,
+  staffNamesInclude
+} from './staffEnrichment';
+import TongHopTreeTable from './TongHopTreeTable';
+
+type BieuDoThViewTab = 'loi-hong' | 'san-luong' | 'bieu-do';
+
+const VIEW_TABS: { id: BieuDoThViewTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'loi-hong', label: 'Lỗi hỏng', icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+  { id: 'san-luong', label: 'Sản lượng', icon: <Package className="h-3.5 w-3.5" /> },
+  { id: 'bieu-do', label: 'Biểu đồ', icon: <BarChart3 className="h-3.5 w-3.5" /> }
+];
 
 export type BaoCaoTongHopListRow = {
   id: string;
@@ -20,6 +29,7 @@ export type BaoCaoTongHopListRow = {
   ngay_den: string;
   ca: string;
   may: string;
+  cong_nhan_phu_trach: string;
   nguon_san_luong: string;
   sl_yeu_cau: number | null;
   tl_nhua_yeu_cau_kg: number | null;
@@ -64,6 +74,7 @@ function normalizeRows(data: unknown): BaoCaoTongHopListRow[] {
         ngay_den: String(row.ngay_den ?? '').trim(),
         ca: String(row.ca ?? '').trim() || 'all',
         may: String(row.may ?? '').trim() || 'all',
+        cong_nhan_phu_trach: String(row.cong_nhan_phu_trach ?? '').trim(),
         nguon_san_luong: String(row.nguon_san_luong ?? '').trim(),
         sl_yeu_cau: numOrNull(row.sl_yeu_cau),
         tl_nhua_yeu_cau_kg: numOrNull(row.tl_nhua_yeu_cau_kg),
@@ -82,29 +93,6 @@ function normalizeRows(data: unknown): BaoCaoTongHopListRow[] {
       };
     })
     .filter((row): row is BaoCaoTongHopListRow => Boolean(row));
-}
-
-function formatKg(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return '—';
-  return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
-}
-
-function formatNum(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return '—';
-  return value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
-}
-
-function formatDateLabel(iso: string) {
-  const raw = String(iso || '').trim();
-  if (!raw) return 'Chưa có ngày';
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-  return raw;
-}
-
-function signedClass(value: number | null) {
-  if (value === null || !Number.isFinite(value) || value === 0) return 'text-zinc-900';
-  return value > 0 ? 'text-emerald-700' : 'text-rose-700';
 }
 
 function formatMayLabel(may: string, machines: MachineRow[]) {
@@ -130,6 +118,9 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [caFilter, setCaFilter] = useState('all');
+  const [mayFilter, setMayFilter] = useState('all');
+  const [congNhanFilter, setCongNhanFilter] = useState('all');
+  const [viewTab, setViewTab] = useState<BieuDoThViewTab>('bieu-do');
 
   const loadRows = useCallback(async () => {
     setIsLoading(true);
@@ -139,17 +130,36 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
       params.set('limit', '1000');
       if (dateFrom) params.set('ngay_tu', dateFrom);
       if (dateTo) params.set('ngay_den', dateTo);
-      const [tongHopRes, machineRes] = await Promise.all([
+      const [tongHopRes, machineRes, orderRes] = await Promise.all([
         fetch(`/api/bao-cao-tong-hop?${params.toString()}`),
-        fetch('/api/danh-sach-may')
+        fetch('/api/danh-sach-may'),
+        fetch('/api/lenh-sx')
       ]);
       const tongHopData = await tongHopRes.json().catch(() => ({}));
       const machineData = await machineRes.json().catch(() => ({}));
+      const orderData = await orderRes.json().catch(() => ({}));
       if (!tongHopRes.ok) {
         throw new Error(String(tongHopData?.error || 'Không tải được bao_cao_tong_hop.'));
       }
-      setRows(normalizeRows(tongHopData));
-      if (machineRes.ok) setMachines(normalizeMachines(machineData));
+      const nextMachines = machineRes.ok ? normalizeMachines(machineData) : [];
+      const orders = orderRes.ok ? loadProductionOrdersFromApi(orderData) : [];
+      // Luôn gắn trưởng ca từ LSX theo Ngày·Ca·Máy (không dùng thợ chính đã lưu).
+      const normalized = normalizeRows(tongHopData).map(row => {
+        const truongCa = resolveCongNhanPhuTrach({
+          ngayTu: row.ngay_tu,
+          ngayDen: row.ngay_den,
+          ca: row.ca,
+          may: row.may,
+          orders,
+          machines: nextMachines
+        });
+        return {
+          ...row,
+          cong_nhan_phu_trach: truongCa || row.cong_nhan_phu_trach
+        };
+      });
+      setMachines(nextMachines);
+      setRows(normalized);
     } catch (err) {
       setRows([]);
       setError(err instanceof Error ? err.message : 'Lỗi tải Biểu đồ TH.');
@@ -167,50 +177,53 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
     [rows]
   );
 
+  const displayRows = useMemo(
+    () =>
+      rows.map(row => ({
+        ...row,
+        may: formatMayLabel(row.may, machines) === 'Tất cả' ? 'all' : formatMayLabel(row.may, machines)
+      })),
+    [rows, machines]
+  );
+
+  const mayOptions = useMemo(
+    () =>
+      [...new Set(displayRows.map(row => row.may).filter(may => may && may !== 'all'))].sort((a, b) =>
+        a.localeCompare(b, 'vi')
+      ),
+    [displayRows]
+  );
+
+  const congNhanOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of displayRows) {
+      splitProductionOrderStaffNames(row.cong_nhan_phu_trach).forEach(name => names.add(name));
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [displayRows]);
+
   const sortedRows = useMemo(() => {
-    return rows
+    return displayRows
       .filter(row => caFilter === 'all' || row.ca === caFilter)
+      .filter(row => mayFilter === 'all' || row.may === mayFilter)
+      .filter(row => congNhanFilter === 'all' || staffNamesInclude(row.cong_nhan_phu_trach, congNhanFilter))
       .sort((a, b) => {
         const d = String(b.ngay_tu || '').localeCompare(String(a.ngay_tu || ''));
         if (d !== 0) return d;
         const caCmp = compareShiftCa(a.ca, b.ca);
         if (caCmp !== 0) return caCmp;
-        return formatMayLabel(a.may, machines).localeCompare(formatMayLabel(b.may, machines), 'vi');
+        const mayCmp = String(a.may || '').localeCompare(String(b.may || ''), 'vi');
+        if (mayCmp !== 0) return mayCmp;
+        return String(a.cong_nhan_phu_trach || '').localeCompare(String(b.cong_nhan_phu_trach || ''), 'vi');
       });
-  }, [rows, machines, caFilter]);
+  }, [displayRows, caFilter, mayFilter, congNhanFilter]);
 
-  const hasActiveFilters = Boolean(dateFrom) || Boolean(dateTo) || caFilter !== 'all';
-
-  const totals = useMemo(
-    () =>
-      sortedRows.reduce(
-        (total, row) => ({
-          slYeuCau: total.slYeuCau + (row.sl_yeu_cau ?? 0),
-          tlNhuaYeuCau: total.tlNhuaYeuCau + (row.tl_nhua_yeu_cau_kg ?? 0),
-          tlXuat: total.tlXuat + (row.tl_xuat_tong_kg ?? 0),
-          slSanLuong: total.slSanLuong + (row.sl_san_luong ?? 0),
-          tlMang: total.tlMang + (row.tl_mang_kg ?? 0),
-          tlNhuaThanhPham: total.tlNhuaThanhPham + (row.tl_nhua_thanh_pham_kg ?? 0),
-          tlNhuaDinhMuc: total.tlNhuaDinhMuc + (row.tl_nhua_dinh_muc_kg ?? 0),
-          loiHong: total.loiHong + (row.loi_hong_tong_kg ?? 0),
-          xuatThucDung: total.xuatThucDung + (row.xuat_thuc_dung_kg ?? 0),
-          chenhLech: total.chenhLech + (row.chenh_lech_nhua_kg ?? 0)
-        }),
-        {
-          slYeuCau: 0,
-          tlNhuaYeuCau: 0,
-          tlXuat: 0,
-          slSanLuong: 0,
-          tlMang: 0,
-          tlNhuaThanhPham: 0,
-          tlNhuaDinhMuc: 0,
-          loiHong: 0,
-          xuatThucDung: 0,
-          chenhLech: 0
-        }
-      ),
-    [sortedRows]
-  );
+  const hasActiveFilters =
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    caFilter !== 'all' ||
+    mayFilter !== 'all' ||
+    congNhanFilter !== 'all';
 
   return (
     <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:px-4">
@@ -222,7 +235,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
             Biểu đồ TH
           </h2>
           <p className="mt-1 text-sm font-semibold text-zinc-600">
-            Theo dõi sản lượng, chất lượng và hao hụt theo máy trong từng kỳ sản xuất.
+            Bảng tổng theo ngày → bấm dòng để xem ca → bấm ca để xem từng máy.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -255,6 +268,8 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
             setDateFrom('');
             setDateTo('');
             setCaFilter('all');
+            setMayFilter('all');
+            setCongNhanFilter('all');
           }}
           loadError={error}
         >
@@ -287,96 +302,88 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
               ))}
             </select>
           </label>
+          <label className="flex h-11 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 sm:w-auto sm:shrink-0">
+            <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">Máy</span>
+            <select
+              value={mayFilter}
+              onChange={event => setMayFilter(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent font-semibold text-zinc-900 focus:outline-none sm:min-w-[9rem]"
+            >
+              <option value="all">Tất cả</option>
+              {mayOptions.map(label => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex h-11 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 sm:w-auto sm:shrink-0">
+            <span className="shrink-0 text-xs font-bold uppercase text-zinc-400">Trưởng ca</span>
+            <select
+              value={congNhanFilter}
+              onChange={event => setCongNhanFilter(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent font-semibold text-zinc-900 focus:outline-none sm:min-w-[10rem]"
+            >
+              <option value="all">Tất cả</option>
+              {congNhanOptions.map(name => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
         </TableToolbar>
       </section>
 
-      {rows.length >= 1000 && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Đã tải tới giới hạn 1.000 bản ghi. Hãy thu hẹp khoảng ngày để so sánh đầy đủ.</p>}
-      <ProductionComparison rows={sortedRows.map(row => ({ ...row, may: formatMayLabel(row.may, machines) === 'Tất cả' ? 'all' : formatMayLabel(row.may, machines) }))} isLoading={isLoading} />
+      {rows.length >= 1000 && (
+        <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+          Đã tải tới giới hạn 1.000 bản ghi. Hãy thu hẹp khoảng ngày để so sánh đầy đủ.
+        </p>
+      )}
 
-      <TableShell minWidthClassName="min-w-[1100px]">
-        <TableHead>
-          <TableHeadCell>Ngày</TableHeadCell>
-          <TableHeadCell>Ca</TableHeadCell>
-          <TableHeadCell>Máy</TableHeadCell>
-          <TableHeadCell className="text-right">SL YC</TableHeadCell>
-          <TableHeadCell className="text-right">TL nhựa YC</TableHeadCell>
-          <TableHeadCell className="text-right">TL xuất</TableHeadCell>
-          <TableHeadCell className="text-right">SL SP</TableHeadCell>
-          <TableHeadCell className="text-right">TL màng</TableHeadCell>
-          <TableHeadCell className="text-right">TL nhựa TP</TableHeadCell>
-          <TableHeadCell className="text-right">TL nhựa ĐM</TableHeadCell>
-          <TableHeadCell className="text-right">Lỗi</TableHeadCell>
-          <TableHeadCell className="text-right">Xuất TD</TableHeadCell>
-          <TableHeadCell className="text-right">Chênh lệch</TableHeadCell>
-        </TableHead>
-        <TableBody>
-          {!isLoading && sortedRows.length > 0 ? (
-            <tr className="border-b border-red-200 bg-red-50 font-black text-zinc-900">
-              <td colSpan={3} className="px-4 py-2.5 uppercase">
-                TỔNG CỘNG
-              </td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(totals.slYeuCau)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaYeuCau)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlXuat)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(totals.slSanLuong)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlMang)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaThanhPham)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.tlNhuaDinhMuc)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.loiHong)}</td>
-              <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(totals.xuatThucDung)}</td>
-              <td className={`px-4 py-2.5 text-right font-mono tabular-nums ${signedClass(totals.chenhLech)}`}>
-                {formatKg(totals.chenhLech)}
-              </td>
-            </tr>
-          ) : null}
-          {isLoading ? (
-            <TableEmptyRow colSpan={13}>
-              <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-              Đang tải…
-            </TableEmptyRow>
-          ) : sortedRows.length === 0 ? (
-            <TableEmptyRow colSpan={13}>
-              Chưa có dữ liệu. Vào Phân tích tự động → Tính toán để ghi bao_cao_tong_hop.
-            </TableEmptyRow>
-          ) : (
-            sortedRows.map(row => (
-              <tr
-                key={row.id || row.khoa_on_dinh}
-                onClick={() => window.open(buildBieuDoThDetailUrl(row), '_blank', 'noopener')}
-                title="Mở báo cáo chi tiết ngày/ca này"
-                className="cursor-pointer border-b border-zinc-200 bg-white transition hover:bg-zinc-50"
-              >
-                <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs font-semibold text-zinc-700">
-                  {formatDateLabel(row.ngay_tu)}
-                  {row.ngay_den && row.ngay_den !== row.ngay_tu
-                    ? ` → ${formatDateLabel(row.ngay_den)}`
-                    : ''}
-                </td>
-                <td className="px-4 py-2.5 font-semibold text-zinc-800">{row.ca}</td>
-                <td className="px-4 py-2.5 font-semibold text-zinc-800">
-                  {formatMayLabel(row.may, machines)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_yeu_cau)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_yeu_cau_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_xuat_tong_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatNum(row.sl_san_luong)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_mang_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_thanh_pham_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.tl_nhua_dinh_muc_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.loi_hong_tong_kg)}</td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatKg(row.xuat_thuc_dung_kg)}</td>
-                <td
-                  className={`px-4 py-2.5 text-right font-mono font-black tabular-nums ${signedClass(row.chenh_lech_nhua_kg)}`}
-                >
-                  {formatKg(row.chenh_lech_nhua_kg)}
-                </td>
-              </tr>
-            ))
-          )}
-        </TableBody>
-      </TableShell>
+      <TongHopTreeTable
+        rows={sortedRows}
+        isLoading={isLoading}
+        onOpenDetail={row => window.open(buildBieuDoThDetailUrl(row), '_blank', 'noopener')}
+      />
 
-      <BieuDoThCharts rows={sortedRows} isLoading={isLoading} />
+      <div
+        role="tablist"
+        aria-label="Chế độ xem Biểu đồ TH"
+        className="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1"
+      >
+        {VIEW_TABS.map(tab => {
+          const isActive = viewTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setViewTab(tab.id)}
+              className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-bold transition sm:flex-none sm:min-w-[8.5rem] ${
+                isActive
+                  ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200'
+                  : 'text-zinc-600 hover:bg-white/70 hover:text-zinc-900'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {viewTab === 'loi-hong' ? <LoiHongPanel rows={sortedRows} isLoading={isLoading} /> : null}
+
+      {viewTab === 'san-luong' ? <SanLuongPanel rows={sortedRows} isLoading={isLoading} /> : null}
+
+      {viewTab === 'bieu-do' ? (
+        <>
+          <ProductionComparison rows={sortedRows} isLoading={isLoading} />
+          <BieuDoThCharts rows={sortedRows} isLoading={isLoading} />
+        </>
+      ) : null}
     </div>
   );
 }

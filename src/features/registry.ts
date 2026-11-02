@@ -444,7 +444,11 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     components: [
       'src/components/ControlBoardBbMachineReportTable.tsx',
       'src/features/bieu-do-th/index.tsx',
-      'src/features/bieu-do-th/BieuDoThCharts.tsx'
+      'src/features/bieu-do-th/staffEnrichment.ts',
+      'src/features/bieu-do-th/LoiHongPanel.tsx',
+      'src/features/bieu-do-th/SanLuongPanel.tsx',
+      'src/features/bieu-do-th/BieuDoThCharts.tsx',
+      'src/features/bieu-do-th/ProductionComparison.tsx'
     ],
     utils: ['src/utils/baoCaoTongHop.ts', 'src/utils/bbBaoCaoTinhToan.ts']
   },

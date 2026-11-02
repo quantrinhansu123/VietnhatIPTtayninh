@@ -1,5 +1,14 @@
 import type { BaoCaoTongHopListRow } from './index';
 
+/** Ngưỡng % lỗi hỏng / thành phẩm cho phép trên biểu đồ. */
+export const LOI_HONG_RATE_THRESHOLD_PERCENT = 2;
+
+/** Trục % luôn gồm ngưỡng 2% — tránh Recharts co domain quá nhỏ làm mất ReferenceLine. */
+export const percentAxisDomain = [
+  0,
+  (dataMax: number) => Math.max(Number(dataMax) || 0, LOI_HONG_RATE_THRESHOLD_PERCENT) * 1.15
+] as const;
+
 export function comparisonRows(rows: BaoCaoTongHopListRow[]) {
   const unique = new Map<string, BaoCaoTongHopListRow>();
   for (const row of rows) {
@@ -23,7 +32,6 @@ export function summarize(rows: BaoCaoTongHopListRow[], key: (row: BaoCaoTongHop
     const dm = sum('tl_nhua_dinh_muc_kg');
     return { label, tp, loi, chenh, dm,
       rate: tp != null && tp > 0 && loi != null ? loi / tp * 100 : null,
-      loss: dm != null && dm > 0 && chenh != null ? -chenh / dm * 100 : null,
-      days: new Set(items.filter(r => (r.tl_nhua_thanh_pham_kg ?? 0) > 0).map(r => r.ngay_tu)).size };
+      loss: dm != null && dm > 0 && chenh != null ? -chenh / dm * 100 : null };
   });
 }

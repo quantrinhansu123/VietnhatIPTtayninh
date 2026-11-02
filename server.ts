@@ -5936,6 +5936,7 @@ function parseBaoCaoTongHopRow(source: unknown): Record<string, unknown> | null 
     ngay_den: String(row.ngay_den ?? row.ngayDen ?? '').trim(),
     ca: String(row.ca ?? '').trim(),
     may: String(row.may ?? '').trim(),
+    cong_nhan_phu_trach: String(row.cong_nhan_phu_trach ?? row.congNhanPhuTrach ?? '').trim(),
     nguon_san_luong: String(row.nguon_san_luong ?? row.nguonSanLuong ?? '').trim(),
     sl_yeu_cau: numOrNull(row.sl_yeu_cau ?? row.slYeuCau),
     tl_nhua_yeu_cau_kg: numOrNull(row.tl_nhua_yeu_cau_kg ?? row.tlNhuaYeuCauKg),
@@ -7215,10 +7216,28 @@ function parseWarehouseStorageType(value: unknown): WarehouseStorageType | null 
 function parseWarehouseSlipDate(value: unknown): string | null {
   const raw = String(value ?? '').trim();
   if (!raw) return null;
+  // Chỉ YYYY-MM-DD thuần — giữ nguyên (không qua Date, tránh lệch TZ).
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const isoPrefix = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoPrefix) {
+    // Timestamptz kiểu 2026-10-26T17:00:00Z = 00:00 ngày 27 VN → lấy lịch Asia/Ho_Chi_Minh.
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime()) && /[zZ]|[+\-]\d{2}:?\d{2}$/.test(raw)) {
+      const vn = new Date(parsed.getTime() + 7 * 60 * 60 * 1000);
+      const y = vn.getUTCFullYear();
+      const m = String(vn.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(vn.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return isoPrefix[1];
+  }
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  const vn = new Date(parsed.getTime() + 7 * 60 * 60 * 1000);
+  const y = vn.getUTCFullYear();
+  const m = String(vn.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(vn.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function normalizeWarehouseExportReferenceText(value: unknown): string | null {
@@ -13256,7 +13275,7 @@ export function createApp() {
               loai_phieu: slipType,
               loai_kho: kind,
               ten_kho: header.kho || '',
-              ngay_phieu: header.ngay,
+              ngay_phieu: parseWarehouseSlipDate(header.ngay) || header.ngay,
               ca: header.ca || '',
               may: header.may || '',
               nhan_su: header.nhan_su || '',
@@ -13302,7 +13321,7 @@ export function createApp() {
           loai_phieu: slipType,
           loai_kho: kind,
           ten_kho: header.kho || '',
-          ngay_phieu: header.ngay,
+          ngay_phieu: parseWarehouseSlipDate(header.ngay) || header.ngay,
           ca: header.ca || '',
           may: header.may || '',
           nhan_su: header.nhan_su || '',
@@ -13426,7 +13445,8 @@ export function createApp() {
       const optionalText = (value: unknown) => String(value ?? '').trim() || null;
       const headerPayload: Record<string, unknown> = {
         ma_phieu: maPhieu,
-        ngay: optionalText(body.ngay) || undefined,
+        // Luôn lưu YYYY-MM-DD lịch VN — tránh timestamptz bị lệch ngày khi đọc lại.
+        ngay: parseWarehouseSlipDate(body.ngay) || optionalText(body.ngay) || undefined,
         nhan_su: optionalText(body.nhan_su ?? body.nhanSu),
         kho: optionalText(body.kho),
         ca: optionalText(body.ca),
@@ -20128,7 +20148,8 @@ export function createApp() {
         const ton_dau = round3(row.ton_dau_ky);
         const nhap = round3(row.nhap_trong_ky);
         const xuat = round3(row.xuat_trong_ky);
-        const ton = round3(row.ton_cuoi_ky);
+        // Luôn tính lại — không lấy ton_cuoi_ky từ nguồn khác: Tồn hiện tại = Tồn đầu + Nhập − Xuất.
+        const ton = round3(ton_dau + nhap - xuat);
         const rawMin = minByCode.get(normalizeTonKhoCatalogCode(row.ma));
         const min = rawMin !== undefined && rawMin !== null && Number.isFinite(rawMin) ? rawMin : null;
         let status: 'am' | 'duoi_toi_thieu' | 'sap_het' | 'on_dinh' | 'chua_dat_nguong' = 'on_dinh';

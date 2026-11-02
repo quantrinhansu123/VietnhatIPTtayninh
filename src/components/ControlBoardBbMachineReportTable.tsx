@@ -94,6 +94,7 @@ import { buildDuLieuTrongBaoCaoKiemTonCuoiCaRowsFromGroups } from '../utils/duLi
 import { buildBaoCaoThanhPhamDatNhapKhoRowsFromGroups } from '../utils/baoCaoThanhPhamDatNhapKho';
 import { buildBaoCaoTieuHaoNguyenVatLieuRowsFromGroups } from '../utils/baoCaoTieuHaoNguyenVatLieu';
 import { buildBaoCaoTongHopRowFromSummary } from '../utils/baoCaoTongHop';
+import { resolveCongNhanPhuTrach } from '../features/bieu-do-th/staffEnrichment';
 import {
   BB_MACHINE_REPORT_TABS,
   buildBbInboundBalanceMetricDetail,
@@ -1840,16 +1841,37 @@ export default function ControlBoardBbMachineReportTable({
       }
 
       // Khối KPI «Báo cáo tổng hợp» + «Tổng hợp nhựa» → bao_cao_tong_hop (1 dòng / khóa).
+      // Công nhân = trưởng ca lệnh SX theo Ngày · Ca · Máy (không lấy thợ chính).
+      const mayLabel =
+        String(scope.selectedMachine?.name || '').trim() ||
+        String(scope.machineFilter || '').trim() ||
+        'all';
+      const congNhanPhuTrach =
+        resolveCongNhanPhuTrach({
+          ngayTu: scope.dateFrom,
+          ngayDen: scope.dateTo,
+          ca: scope.shiftFilter || 'all',
+          may: mayLabel,
+          orders: productionOrders,
+          machines
+        }) ||
+        [
+          ...new Set(
+            (payload.orderGroups || [])
+              .map(group => String(group.staffMain || '').trim())
+              .filter(name => name && name !== '-')
+          )
+        ]
+          .sort((a, b) => a.localeCompare(b, 'vi'))
+          .join(', ');
       const tongHopRow = buildBaoCaoTongHopRowFromSummary({
         khoaOnDinh: snapshotKey,
         ngayTu: scope.dateFrom,
         ngayDen: scope.dateTo,
         ca: scope.shiftFilter || 'all',
         // Biểu đồ TH hiện tên máy (không lưu mã máy).
-        may:
-          String(scope.selectedMachine?.name || '').trim() ||
-          String(scope.machineFilter || '').trim() ||
-          'all',
+        may: mayLabel,
+        congNhanPhuTrach,
         nguonSanLuong: sanLuongSource || 'acceptance',
         isInsulationMachine: isInsulationMachineText(
           scope.selectedMachine?.name || scope.machineFilter || ''

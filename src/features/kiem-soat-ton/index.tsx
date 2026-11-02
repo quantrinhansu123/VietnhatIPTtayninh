@@ -361,6 +361,12 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           {data.ngay ? <span className="text-xs font-semibold text-zinc-500">Tồn đến hết ngày {data.ngay}</span> : null}
+          <span
+            className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-semibold text-zinc-600"
+            title="Tồn hiện tại = Tồn đầu + Nhập − Xuất"
+          >
+            Tồn hiện tại = Tồn đầu + Nhập − Xuất
+          </span>
         </div>
         {error ? (
           <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-bold text-rose-700">{error}</p>

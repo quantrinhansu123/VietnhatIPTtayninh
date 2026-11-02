@@ -59,7 +59,8 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
-  RowActionsMenu
+  RowActionsMenu,
+  StatusBadge
 } from '../../components/shared/table';
 import { pickText, fileToDataUrl, fileToOptimizedImageDataUrl, uploadImage } from '../_shared/recordHelpers';
 import { CAMERA_IMAGE_INPUT_PROPS } from '../../utils/cameraCapture';
@@ -6048,10 +6049,10 @@ export function WarehouseSlipPanel({
 }
 
 const HISTORY_ROW_GRID =
-  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_150px_150px_56px]';
+  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_90px_150px_120px_56px]';
 /** Phiếu xuất thành phẩm không hiện cột Ca, Máy. */
 const HISTORY_ROW_GRID_NO_SHIFT_MACHINE =
-  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_150px_56px]';
+  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_120px_56px]';
 
 function formatWarehouseHistoryDay(day: string) {
   const [y, m, d] = day.split('-');
@@ -7677,6 +7678,7 @@ export function WarehouseHistoryPanel({
           toDate={toDate}
           filterShift={filterShift}
           filterMachine={selectedType === 'xuat' ? '' : filterMachine}
+          productNames={productNameByKey}
         />
       ) : null}
 
@@ -7751,6 +7753,7 @@ export function WarehouseHistoryPanel({
                 />
                 <span>Mã phiếu</span>
                 <span title="Thời điểm lưu phiếu theo giờ Việt Nam">Giờ</span>
+                <span>Trạng thái</span>
                 {hideShiftMachine ? null : <span>Ca</span>}
                 {hideShiftMachine ? null : <span>Máy</span>}
                 <span>Người lập</span>
@@ -7762,6 +7765,7 @@ export function WarehouseHistoryPanel({
                   const isDeleting = deletingSlipCode === slip.slipCode;
                   const shown = slip.products.slice(0, 4);
                   const rollTotal = slip.products.reduce((sum, product) => sum + (Number(product.quantity) || 0), 0);
+                  const isClosed = slip.header.status !== 'chua_chot';
                   return (
                     <div key={slip.slipCode}>
                     <div
@@ -7807,11 +7811,23 @@ export function WarehouseHistoryPanel({
                         {orderLabelOfRow(slip.header) ? (
                           <p className="truncate text-[11px] font-bold text-sky-700">Lệnh xuất: {orderLabelOfRow(slip.header)}</p>
                         ) : null}
+                        <div className="mt-1 md:hidden">
+                          <StatusBadge
+                            label={isClosed ? 'Đã chốt' : 'Chưa chốt'}
+                            color={isClosed ? 'emerald' : 'amber'}
+                          />
+                        </div>
                         <p className="text-[11px] font-semibold text-zinc-500 md:hidden">
                           {formatWarehouseSlipSavedTime(slip.createdAt)}{hideShiftMachine ? '' : ` · ${slip.header.shift || '—'} · ${slip.header.machine || '—'}`} · {slip.header.createdBy || '—'}
                         </p>
                       </div>
                       <span className="font-mono text-xs font-bold tabular-nums text-zinc-700 max-md:hidden">{formatWarehouseSlipSavedTime(slip.createdAt)}</span>
+                      <span className="max-md:hidden">
+                        <StatusBadge
+                          label={isClosed ? 'Đã chốt' : 'Chưa chốt'}
+                          color={isClosed ? 'emerald' : 'amber'}
+                        />
+                      </span>
                       {hideShiftMachine ? null : <span className="text-xs font-bold text-zinc-800 max-md:hidden">{slip.header.shift || '—'}</span>}
                       {hideShiftMachine ? null : <span className="text-xs font-semibold text-zinc-800 max-md:hidden">{slip.header.machine || '—'}</span>}
                       <span className="text-xs font-semibold text-zinc-600 max-md:hidden">{slip.header.createdBy || '—'}</span>

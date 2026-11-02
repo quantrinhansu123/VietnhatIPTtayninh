@@ -16,7 +16,9 @@
 
 Trạng thái: `am` (tồn < 0) · `duoi_toi_thieu` · `sap_het` (≤ 120% tối thiểu) · `chua_dat_nguong` · `on_dinh`. Phiếu treo ≥ 3 ngày hiện thành cảnh báo.
 
-Cột bảng: **Tồn đầu** (`ton_dau_ky` danh mục) · **Nhập** · **Xuất** · **Tồn hiện tại** (= đầu + nhập − xuất). Bấm số Nhập/Xuất → modal chi tiết theo ngày / phiếu / dòng.
+Cột bảng: **Tồn đầu** (`ton_dau_ky` danh mục + điều chỉnh trước kỳ nếu có lọc ngày) · **Nhập** · **Xuất** · **Tồn hiện tại**.
+
+**Công thức (bắt buộc):** `Tồn hiện tại = Tồn đầu + Nhập − Xuất` — API `/api/kiem-soat-ton` luôn tính lại cột `ton` theo công thức này (không tin `ton_cuoi_ky` nguồn khác). Bấm số Nhập/Xuất → modal chi tiết theo ngày / phiếu / dòng.
 
 ## Frontend
 

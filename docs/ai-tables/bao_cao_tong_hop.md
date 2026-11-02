@@ -16,9 +16,14 @@ Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**.
 
 ## Feature
 
-- `src/features/bieu-do-th/index.tsx` — menu **Quản trị → Biểu đồ TH** (bảng theo ngày)
-- `src/features/bieu-do-th/BieuDoThCharts.tsx` — biểu đồ biến thiên theo Ngày · Ca (12C1 trước 12C2)
-- `src/features/bieu-do-th/ProductionComparison.tsx` — KPI, so sánh máy/ngày/tháng, tỷ trọng, ngày chạy, bảng màu và hao hụt theo ca.
+- `src/features/bieu-do-th/index.tsx` — menu **Quản trị → Biểu đồ TH** · lọc → **bảng tổng hợp** → tab **Lỗi hỏng / Sản lượng / Biểu đồ**
+- `src/features/bieu-do-th/TongHopTreeTable.tsx` — bảng drill-down **Ngày → Ca → Máy**
+- `src/features/bieu-do-th/staffEnrichment.ts` — ghép `cong_nhan_phu_trach` = trưởng ca (`truong_ca` → fallback `nhan_su_chinh` → người đầu `nhan_su`) theo ngày·ca·máy
+- `src/features/bieu-do-th/chartUi.tsx` — card / KPI / tooltip / gradient dùng chung cho biểu đồ TH
+- `src/features/bieu-do-th/LoiHongPanel.tsx` — tab Lỗi hỏng (KPI + biểu đồ + bảng theo Ngày·Ca·Máy · trưởng ca)
+- `src/features/bieu-do-th/SanLuongPanel.tsx` — tab Sản lượng (KPI + biểu đồ + bảng theo Ngày·Ca·Máy · trưởng ca)
+- `src/features/bieu-do-th/BieuDoThCharts.tsx` — tab Biểu đồ · biến thiên theo Ngày · Ca + theo trưởng ca
+- `src/features/bieu-do-th/ProductionComparison.tsx` — tab Biểu đồ · KPI, so sánh máy/ngày/tháng/trưởng ca, tỷ trọng và hao hụt theo ca.
 - `src/features/bieu-do-th/comparisonData.ts` — loại snapshot tổng/khoảng ngày, chọn bản mới nhất theo ngày·ca·máy, tính tỷ lệ từ tổng khối lượng.
 
 ```bash

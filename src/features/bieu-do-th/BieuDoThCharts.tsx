@@ -4,6 +4,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -14,11 +15,13 @@ import {
   YAxis
 } from 'recharts';
 import { BarChart3, TrendingUp } from 'lucide-react';
+import { LOI_HONG_RATE_THRESHOLD_PERCENT, percentAxisDomain } from './comparisonData';
 
 export type BieuDoThChartSourceRow = {
   ngay_tu: string;
   ngay_den: string;
   ca: string;
+  cong_nhan_phu_trach?: string;
   sl_yeu_cau: number | null;
   sl_san_luong: number | null;
   tl_xuat_nhua_kg: number | null;
@@ -38,7 +41,7 @@ const SERIES_AMBER = '#eda100';
 const SERIES_VIOLET = '#7c3aed';
 const SERIES_ROSE = '#d03b3b';
 const GRID_COLOR = '#e1e0d9';
-const AXIS_COLOR = '#898781';
+const AXIS_COLOR = '#0b0b0b';
 const BORDER_COLOR = '#e1e0d9';
 const SURFACE = '#fcfcfb';
 const INK_PRIMARY = '#0b0b0b';
@@ -46,7 +49,12 @@ const INK_SECONDARY = '#52514e';
 const INK_MUTED = '#898781';
 const CURSOR_WASH = 'rgba(11,11,11,0.04)';
 
-const legendStyle: React.CSSProperties = { fontSize: '11px', paddingTop: '8px' };
+const legendStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: INK_PRIMARY,
+  paddingTop: 12
+};
 
 function formatAxisNumber(value: number) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value);
@@ -100,6 +108,7 @@ type ChartPoint = {
   tonDau: number;
   tonCuoi: number;
   loiHong: number;
+  loiHongRate: number;
 };
 
 function ChartTooltip({
@@ -168,6 +177,24 @@ function ChartCardHeader({
 const cardClass = 'rounded-xl bg-white p-3 transition-shadow hover:shadow-sm';
 const cardStyle: React.CSSProperties = { border: `1px solid ${BORDER_COLOR}` };
 
+type StaffChartPoint = {
+  key: string;
+  label: string;
+  slSanLuong: number;
+  tlNhuaTp: number;
+  loiHong: number;
+  chenhLech: number;
+};
+
+function roundChartPoint<T extends Record<string, number | string>>(point: T, keys: (keyof T)[]): T {
+  const next = { ...point };
+  for (const key of keys) {
+    const value = next[key];
+    if (typeof value === 'number') next[key] = Number(value.toFixed(2)) as T[keyof T];
+  }
+  return next;
+}
+
 export function buildBieuDoThChartPoints(rows: BieuDoThChartSourceRow[]): ChartPoint[] {
   const buckets = new Map<string, ChartPoint>();
 
@@ -190,7 +217,8 @@ export function buildBieuDoThChartPoints(rows: BieuDoThChartSourceRow[]): ChartP
       chenhLech: 0,
       tonDau: 0,
       tonCuoi: 0,
-      loiHong: 0
+      loiHong: 0,
+      loiHongRate: 0
     };
 
     current.slYeuCau = addMetric(current.slYeuCau, row.sl_yeu_cau);
@@ -212,19 +240,56 @@ export function buildBieuDoThChartPoints(rows: BieuDoThChartSourceRow[]): ChartP
       if (dateCmp !== 0) return dateCmp;
       return compareShiftCa(a.ca, b.ca);
     })
-    .map(point => ({
-      ...point,
-      slYeuCau: Number(point.slYeuCau.toFixed(2)),
-      slSanLuong: Number(point.slSanLuong.toFixed(2)),
-      tlXuatNhua: Number(point.tlXuatNhua.toFixed(2)),
-      tlNhuaTp: Number(point.tlNhuaTp.toFixed(2)),
-      tlNhuaDm: Number(point.tlNhuaDm.toFixed(2)),
-      xuatThucDung: Number(point.xuatThucDung.toFixed(2)),
-      chenhLech: Number(point.chenhLech.toFixed(2)),
-      tonDau: Number(point.tonDau.toFixed(2)),
-      tonCuoi: Number(point.tonCuoi.toFixed(2)),
-      loiHong: Number(point.loiHong.toFixed(2))
-    }));
+    .map(point => {
+      const rounded = roundChartPoint(point, [
+        'slYeuCau',
+        'slSanLuong',
+        'tlXuatNhua',
+        'tlNhuaTp',
+        'tlNhuaDm',
+        'xuatThucDung',
+        'chenhLech',
+        'tonDau',
+        'tonCuoi',
+        'loiHong'
+      ]);
+      rounded.loiHongRate =
+        rounded.tlNhuaTp > 0 ? Number(((rounded.loiHong / rounded.tlNhuaTp) * 100).toFixed(2)) : 0;
+      return rounded;
+    });
+}
+
+export function buildBieuDoThStaffChartPoints(rows: BieuDoThChartSourceRow[]): StaffChartPoint[] {
+  const buckets = new Map<string, StaffChartPoint>();
+
+  for (const row of rows) {
+    const names = String(row.cong_nhan_phu_trach || '')
+      .split(/[,;+]/)
+      .map(name => name.trim())
+      .filter(name => name && name !== '-');
+    const labels = names.length > 0 ? names : ['Chưa gán'];
+    for (const label of labels) {
+      const current = buckets.get(label) || {
+        key: label,
+        label,
+        slSanLuong: 0,
+        tlNhuaTp: 0,
+        loiHong: 0,
+        chenhLech: 0
+      };
+      // Nhiều CN trên 1 dòng: chia đều để tránh cộng trùng khi lọc tổng.
+      const share = 1 / labels.length;
+      current.slSanLuong = addMetric(current.slSanLuong, (row.sl_san_luong ?? 0) * share);
+      current.tlNhuaTp = addMetric(current.tlNhuaTp, (row.tl_nhua_thanh_pham_kg ?? 0) * share);
+      current.loiHong = addMetric(current.loiHong, (row.loi_hong_tong_kg ?? 0) * share);
+      current.chenhLech = addMetric(current.chenhLech, (row.chenh_lech_nhua_kg ?? 0) * share);
+      buckets.set(label, current);
+    }
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => a.label.localeCompare(b.label, 'vi'))
+    .map(point => roundChartPoint(point, ['slSanLuong', 'tlNhuaTp', 'loiHong', 'chenhLech']));
 }
 
 export default function BieuDoThCharts({
@@ -235,6 +300,7 @@ export default function BieuDoThCharts({
   isLoading?: boolean;
 }) {
   const chartData = useMemo(() => buildBieuDoThChartPoints(rows), [rows]);
+  const staffChartData = useMemo(() => buildBieuDoThStaffChartPoints(rows), [rows]);
 
   if (isLoading) {
     return (
@@ -254,20 +320,20 @@ export default function BieuDoThCharts({
 
   const xAxisProps = {
     dataKey: 'label' as const,
-    tick: { fill: AXIS_COLOR, fontSize: 10 },
+    tick: { fill: AXIS_COLOR, fontSize: 13, fontWeight: 700 },
     axisLine: { stroke: GRID_COLOR },
     tickLine: { stroke: GRID_COLOR },
     interval: 0 as const,
     angle: chartData.length > 6 ? -28 : 0,
     textAnchor: (chartData.length > 6 ? 'end' : 'middle') as 'end' | 'middle',
-    height: chartData.length > 6 ? 58 : 28
+    height: chartData.length > 6 ? 64 : 32
   };
 
   const yAxisProps = {
-    tick: { fill: AXIS_COLOR, fontSize: 10 },
+    tick: { fill: AXIS_COLOR, fontSize: 13, fontWeight: 700 },
     axisLine: { stroke: GRID_COLOR },
     tickLine: { stroke: GRID_COLOR },
-    width: 52,
+    width: 56,
     tickFormatter: formatAxisNumber
   };
 
@@ -328,7 +394,7 @@ export default function BieuDoThCharts({
           <ChartCardHeader
             icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />}
             title="Sản lượng theo ca"
-            subtitle="SL yêu cầu · SL SP · Lỗi hỏng (kg)"
+            subtitle="SL yêu cầu · SL thực tế"
           />
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -339,9 +405,97 @@ export default function BieuDoThCharts({
                 <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={qtyTooltip} />} />
                 <Legend wrapperStyle={legendStyle} />
                 <Bar dataKey="slYeuCau" name="SL yêu cầu" fill={SERIES_VIOLET} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="slSanLuong" name="SL SP" fill={SERIES_BLUE} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="loiHong" name="Lỗi (kg)" fill={SERIES_ROSE} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="slSanLuong" name="SL thực tế" fill={SERIES_BLUE} radius={[4, 4, 0, 0]} />
               </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className={cardClass} style={cardStyle}>
+          <ChartCardHeader
+            icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />}
+            title="Lỗi hỏng theo ca"
+            subtitle={`Lỗi (kg) · % / TP · ngưỡng ${LOI_HONG_RATE_THRESHOLD_PERCENT}%`}
+          />
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="18%">
+                <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                <XAxis {...xAxisProps} />
+                <YAxis yAxisId="kg" {...yAxisProps} />
+                <YAxis
+                  yAxisId="percent"
+                  orientation="right"
+                  tick={{ fill: AXIS_COLOR, fontSize: 13, fontWeight: 700 }}
+                  axisLine={{ stroke: GRID_COLOR }}
+                  tickLine={{ stroke: GRID_COLOR }}
+                  width={44}
+                  unit="%"
+                  domain={[...percentAxisDomain]}
+                />
+                <Tooltip
+                  cursor={{ fill: CURSOR_WASH }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div
+                        className="rounded-xl px-3 py-2"
+                        style={{
+                          background: SURFACE,
+                          border: `1px solid ${BORDER_COLOR}`,
+                          boxShadow: '0 4px 16px rgba(11,11,11,0.10)'
+                        }}
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: INK_MUTED }}>
+                          {label}
+                        </p>
+                        <div className="mt-1 space-y-1">
+                          {payload.map(entry => (
+                            <div key={String(entry.dataKey)} className="flex items-center gap-2 text-[11px]">
+                              <span
+                                className="inline-block h-[2px] w-3 shrink-0 rounded-full"
+                                style={{ backgroundColor: String(entry.color) }}
+                              />
+                              <span style={{ color: INK_SECONDARY }}>{entry.name}</span>
+                              <span className="ml-auto font-black tabular-nums" style={{ color: INK_PRIMARY }}>
+                                {entry.dataKey === 'loiHongRate'
+                                  ? `${Number(entry.value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%`
+                                  : kgTooltip(Number(entry.value) || 0)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Legend wrapperStyle={legendStyle} />
+                <Bar yAxisId="kg" dataKey="loiHong" name="Lỗi (kg)" fill={SERIES_ROSE} radius={[4, 4, 0, 0]} />
+                <Line
+                  yAxisId="percent"
+                  type="monotone"
+                  dataKey="loiHongRate"
+                  name="Lỗi / TP (%)"
+                  stroke={INK_PRIMARY}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+                <ReferenceLine
+                  yAxisId="percent"
+                  y={LOI_HONG_RATE_THRESHOLD_PERCENT}
+                  stroke={SERIES_ROSE}
+                  strokeDasharray="6 4"
+                  strokeWidth={2}
+                  label={{
+                    value: `Ngưỡng ${LOI_HONG_RATE_THRESHOLD_PERCENT}%`,
+                    position: 'insideTopRight',
+                    fill: SERIES_ROSE,
+                    fontSize: 13,
+                    fontWeight: 700
+                  }}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -373,6 +527,85 @@ export default function BieuDoThCharts({
             </ResponsiveContainer>
           </div>
         </div>
+
+        {staffChartData.length > 0 ? (
+          <>
+            <div className={cardClass} style={cardStyle}>
+              <ChartCardHeader
+                icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />}
+                title="Sản lượng theo trưởng ca"
+                subtitle="SL thực tế · TL nhựa TP"
+              />
+              <div className="h-[300px] w-full overflow-x-auto">
+                <div style={{ minWidth: Math.max(360, staffChartData.length * 72), height: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={staffChartData}
+                      margin={{ top: 8, right: 12, left: 0, bottom: 40 }}
+                      barGap={2}
+                      barCategoryGap="18%"
+                    >
+                      <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: AXIS_COLOR, fontSize: 13, fontWeight: 700 }}
+                        axisLine={{ stroke: GRID_COLOR }}
+                        tickLine={{ stroke: GRID_COLOR }}
+                        angle={staffChartData.length > 4 ? -28 : 0}
+                        textAnchor={staffChartData.length > 4 ? 'end' : 'middle'}
+                        height={staffChartData.length > 4 ? 58 : 28}
+                        interval={0}
+                      />
+                      <YAxis {...yAxisProps} />
+                      <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={kgTooltip} />} />
+                      <Legend wrapperStyle={legendStyle} />
+                      <Bar dataKey="slSanLuong" name="SL thực tế" fill={SERIES_BLUE} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="tlNhuaTp" name="TL nhựa TP" fill={SERIES_AQUA} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <div className={cardClass} style={cardStyle}>
+              <ChartCardHeader
+                icon={<BarChart3 className="h-3.5 w-3.5 text-slate-500" />}
+                title="Lỗi hỏng theo trưởng ca"
+                subtitle="Lỗi (kg) · Chênh lệch"
+              />
+              <div className="h-[300px] w-full overflow-x-auto">
+                <div style={{ minWidth: Math.max(360, staffChartData.length * 72), height: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={staffChartData}
+                      margin={{ top: 8, right: 12, left: 0, bottom: 40 }}
+                      barGap={2}
+                      barCategoryGap="18%"
+                    >
+                      <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: AXIS_COLOR, fontSize: 13, fontWeight: 700 }}
+                        axisLine={{ stroke: GRID_COLOR }}
+                        tickLine={{ stroke: GRID_COLOR }}
+                        angle={staffChartData.length > 4 ? -28 : 0}
+                        textAnchor={staffChartData.length > 4 ? 'end' : 'middle'}
+                        height={staffChartData.length > 4 ? 58 : 28}
+                        interval={0}
+                      />
+                      <YAxis {...yAxisProps} />
+                      <Tooltip cursor={{ fill: CURSOR_WASH }} content={<ChartTooltip formatValue={kgTooltip} />} />
+                      <Legend wrapperStyle={legendStyle} />
+                      <ReferenceLine y={0} stroke={GRID_COLOR} />
+                      <Bar dataKey="loiHong" name="Lỗi (kg)" fill={SERIES_AMBER} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="chenhLech" name="Chênh lệch" fill={SERIES_ROSE} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </section>
   );

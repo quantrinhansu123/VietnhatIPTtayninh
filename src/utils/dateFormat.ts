@@ -45,6 +45,23 @@ export function parseDateToYmd(value: unknown): DateYmd | null {
   const text = String(value ?? '').trim();
   if (!text || text === '-') return null;
 
+  // YYYY-MM-DD thuần — giữ đúng lịch đã ghi.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const parts = {
+      year: Number(text.slice(0, 4)),
+      month: Number(text.slice(5, 7)),
+      day: Number(text.slice(8, 10))
+    };
+    return isValidYmd(parts) ? parts : null;
+  }
+
+  // Datetime ISO (có T / offset) → ngày lịch VN, không cắt UTC date.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text) || /[zZ]|[+\-]\d{2}:?\d{2}$/.test(text)) {
+    const parsed = new Date(text);
+    const fromInstant = ymdFromInstant(parsed);
+    if (fromInstant) return fromInstant;
+  }
+
   const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) {
     const parts = { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };

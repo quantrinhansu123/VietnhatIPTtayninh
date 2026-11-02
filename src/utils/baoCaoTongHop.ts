@@ -10,6 +10,7 @@ export type BaoCaoTongHopRow = {
   ngay_den: string;
   ca: string;
   may: string;
+  cong_nhan_phu_trach: string;
   nguon_san_luong: string;
   sl_yeu_cau: number | null;
   tl_nhua_yeu_cau_kg: number | null;
@@ -50,6 +51,7 @@ export function buildBaoCaoTongHopRowFromSummary(input: {
   ngayDen?: string;
   ca?: string;
   may?: string;
+  congNhanPhuTrach?: string;
   nguonSanLuong?: string;
   isInsulationMachine?: boolean;
   summary: BbBaoCaoTinhToanPayload['summary'];
@@ -90,6 +92,7 @@ export function buildBaoCaoTongHopRowFromSummary(input: {
     ngay_den: String(input.ngayDen || '').trim(),
     ca: String(input.ca || '').trim(),
     may: String(input.may || '').trim(),
+    cong_nhan_phu_trach: String(input.congNhanPhuTrach || '').trim(),
     nguon_san_luong: String(input.nguonSanLuong || '').trim(),
     sl_yeu_cau: numOrNull(summary.orderTotals?.quantity),
     tl_nhua_yeu_cau_kg: numOrNull(summary.plasticRequiredWeightKg),

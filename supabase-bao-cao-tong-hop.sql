@@ -18,6 +18,7 @@ alter table public.bao_cao_tong_hop
   add column if not exists ngay_den text not null default '',
   add column if not exists ca text not null default '',
   add column if not exists may text not null default '',
+  add column if not exists cong_nhan_phu_trach text not null default '',
   add column if not exists nguon_san_luong text not null default '',
   -- Ô TL nhựa yêu cầu
   add column if not exists sl_yeu_cau numeric,

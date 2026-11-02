@@ -49,6 +49,7 @@ export const MATERIAL_REQUEST_PRESET_BB: MaterialRequestPresetItem[] = [
   { code: 'NVLK-BOT TANG TRANG', fallbackName: 'Bột tẩy OB1', fallbackUnit: 'kg' },
   { code: 'NHUA A1', fallbackName: 'Hạt tăng dai', fallbackUnit: 'kg' },
   { code: 'NVLK-PPA', fallbackName: 'PPA', fallbackUnit: 'kg' },
+  { code: 'ONG-1.38M', fallbackName: 'Ống giấy 76*2ly*1.38m', fallbackUnit: 'Cái' },
   { code: 'ONG-20CM', fallbackName: 'Ống giấy 76*2ly*20CM', fallbackUnit: 'Cái' },
   { code: 'ONG-30CM', fallbackName: 'Ống giấy 76*2ly*30CM', fallbackUnit: 'Cái' },
   { code: 'ONG-35CM', fallbackName: 'Ống giấy 76*2ly*35CM', fallbackUnit: 'Cái' },

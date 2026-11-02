@@ -18,6 +18,8 @@ Loại báo cáo: tồn đầu ca, tồn cuối ca.
 
 Phiếu mới: chọn máy BB/CN tự sổ danh sách NVL theo `src/features/yeu-cau-xuat-vat-tu/materialRequestPreset.ts`, cùng thứ tự với Nhận vật tư và Bảng trộn; các ô số lượng để trống.
 
+Mẫu máy BB: `ONG-1.38M` (Ống giấy 76*2ly*1.38m, Cái) ngay sau `NVLK-PPA`, dùng chung cho tồn đầu/cuối, phối trộn và yêu cầu xuất vật tư.
+
 **Env DB tồn:**
 ```
 SUPABASE_TON_URL=...

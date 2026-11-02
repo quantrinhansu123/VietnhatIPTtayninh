@@ -14,8 +14,8 @@ test('catalog names and units follow the pictured BB order, quantities start bla
   const catalog = [{ code: 'ong-20cm', name: 'Ống giấy 20cm', unit: 'Cái' }];
   const lines = buildMaterialRequestPresetLines(catalog, () => 'key', 'bb');
   assert.deepEqual(lines.map(line => line.code.toLowerCase()), MATERIAL_REQUEST_PRESET_BB.map(item => item.code.toLowerCase()));
-  assert.equal(lines[11].name, catalog[0].name);
-  assert.equal(lines[11].unit, 'Cái');
+  assert.equal(lines[12].name, catalog[0].name);
+  assert.equal(lines[12].unit, 'Cái');
   assert.ok(lines.every(line => line.qty === ''));
 });
 
@@ -23,10 +23,21 @@ test('both machine presets end with one existing mixed-plastic material', () => 
   const material = { code: 'NHUA-TRON', name: 'Nhựa trộn Nguyên Sinh + Tái Chế', unit: 'kg' };
   for (const kind of ['bb', 'cn'] as const) {
     const lines = buildMaterialRequestPresetLines([material], () => 'key', kind);
-    assert.equal(lines.length, kind === 'bb' ? 19 : 13);
+    assert.equal(lines.length, kind === 'bb' ? 20 : 13);
     assert.equal(lines.filter(line => line.code === material.code).length, 1);
     assert.deepEqual(lines.at(-1), { ...material, key: 'key', qty: '' });
   }
+});
+
+test('BB includes ONG-1.38M once immediately after NVLK-PPA in shared and mixing presets', () => {
+  const lines = buildMaterialRequestPresetLines([], () => 'key', 'bb');
+  const index = lines.findIndex(line => line.code === 'NVLK-PPA') + 1;
+  assert.deepEqual(lines[index], {
+    key: 'key', code: 'ONG-1.38M', name: 'Ống giấy 76*2ly*1.38m', unit: 'Cái', qty: ''
+  });
+  assert.equal(lines.filter(line => line.code === 'ONG-1.38M').length, 1);
+  const mixing = applyMixingMaterialPreset([], [], 'bb', 1);
+  assert.equal(listRoundMaterialEntries(mixing, 'lan_1')[index].item.ma_nvl, 'ONG-1.38M');
 });
 
 test('switching template preserves entered quantities including zero, drops unused old defaults', () => {

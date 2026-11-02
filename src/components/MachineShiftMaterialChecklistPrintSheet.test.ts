@@ -96,3 +96,38 @@ test('dòng hiển thị kg không có ngoặc dù phiếu nguồn lưu số lư
   assert.equal(formatChecklistStock(0.532, 7, 'Cuộn'), '0,532(7)');
   assert.equal(formatChecklistStock(14, 14, undefined), '14');
 });
+
+test('cột lần trộn chỉ lấy KL thực tế, số 0/trống không lấy lại định mức hay tổng cũ', () => {
+  const rows = checklist(true, { mixing: [{ lan_thu: 1, so_lan: 2, chi_tiet: [
+    { ma_nvl: 'ZERO', tong_nhua_tron: 21.46, kl_thuc_te: 21.46, lan_su_dung: {
+      lan_1: [{ ma_nvl: 'ZERO', so_luong: 21.46, kl_thuc_te: 0 }],
+      lan_2: [{ ma_nvl: 'ZERO', so_luong: 21.46, kl_thuc_te: 0 }]
+    } },
+    { ma_nvl: 'BLANK', tong_nhua_tron: 21.46, lan_su_dung: {
+      lan_1: [{ ma_nvl: 'BLANK', so_luong: 21.46, kl_thuc_te: null }]
+    } },
+    { ma_nvl: 'ACTUAL', tong_nhua_tron: 999, lan_su_dung: {
+      lan_1: [{ ma_nvl: 'ACTUAL', so_luong: 100, kl_thuc_te: 125 }],
+      lan_2: [{ ma_nvl: 'ACTUAL', so_luong: 100, kl_thuc_te: 0.04 }]
+    } }
+  ] }] } as unknown as Partial<ProductionPlanRelatedReports>);
+  for (const code of ['ZERO', 'BLANK']) {
+    const row = rows.find(item => item.maVatTu === code)!;
+    assert.deepEqual(row.thucTronByLan, {});
+    assert.equal(row.thucTronKg, null);
+  }
+  const actual = rows.find(item => item.maVatTu === 'ACTUAL')!;
+  assert.deepEqual(actual.thucTronByLan, { 1: 125, 2: 0.04 });
+  assert.equal(actual.thucTronKg, 125.04);
+});
+
+test('phiếu cũ không có từng lần chỉ lấy KL thực tế, bỏ tổng nhựa trộn định mức', () => {
+  const rows = checklist(true, { mixing: [{ lan_thu: 3, chi_tiet: [
+    { ma_nvl: 'OLD-NORM', tong_nhua_tron: 21.46, kl_thuc_te: null },
+    { ma_nvl: 'OLD-ZERO', tong_nhua_tron: 21.46, kl_thuc_te: 0 },
+    { ma_nvl: 'OLD-ACTUAL', tong_nhua_tron: 21.46, kl_thuc_te: 5 }
+  ] }] } as unknown as Partial<ProductionPlanRelatedReports>);
+  assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-NORM')!.thucTronByLan, {});
+  assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-ZERO')!.thucTronByLan, {});
+  assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-ACTUAL')!.thucTronByLan, { 3: 5 });
+});

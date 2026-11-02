@@ -240,12 +240,6 @@ function materialRequestTakeByCode(
   return { kg: map, quantities };
 }
 
-function roundItemActualQty(item: { kl_thuc_te?: number | null; so_luong?: number | null }) {
-  if (item.kl_thuc_te != null && Number.isFinite(item.kl_thuc_te)) return Number(item.kl_thuc_te);
-  if (item.so_luong != null && Number.isFinite(item.so_luong)) return Number(item.so_luong);
-  return 0;
-}
-
 /** Gom thực trộn theo mã NVL + số lần tuyệt đối (giữ từng lần, không gộp mất). */
 function mixingActualBySessions(reports: MixingReport[]) {
   const totals = new Map<string, number>();
@@ -289,24 +283,22 @@ function mixingActualBySessions(reports: MixingReport[]) {
       const lineUnit = String(line.don_vi || '').trim() || 'kg';
       if (lineCode) rememberMaterial(lineCode, lineName, lineUnit);
 
-      let hasRoundQty = false;
+      let hasRoundItems = false;
       MIXING_ROUND_KEYS.forEach((roundKey, roundIndex) => {
         const session = sessionStart + roundIndex;
         for (const item of getRoundItems(line.lan_su_dung || {}, roundKey)) {
+          hasRoundItems = true;
           const code = String(item.ma_nvl || lineCode || '').trim();
           if (!code) continue;
-          const qty = roundItemActualQty(item);
-          if (!qty) continue;
-          hasRoundQty = true;
           rememberMaterial(code, String(item.ten_vat_tu || lineName || '').trim(), String(item.don_vi || lineUnit).trim());
-          addQty(code, session, qty);
+          if (item.kl_thuc_te != null && Number.isFinite(item.kl_thuc_te)) {
+            addQty(code, session, item.kl_thuc_te);
+          }
         }
       });
 
-      if (hasRoundQty || !lineCode) continue;
-      if (line.tong_nhua_tron != null && Number.isFinite(line.tong_nhua_tron) && Number(line.tong_nhua_tron) !== 0) {
-        addQty(lineCode, sessionStart, Number(line.tong_nhua_tron));
-      } else if (line.kl_thuc_te != null && Number.isFinite(line.kl_thuc_te) && Number(line.kl_thuc_te) !== 0) {
+      if (hasRoundItems || !lineCode) continue;
+      if (line.kl_thuc_te != null && Number.isFinite(line.kl_thuc_te) && Number(line.kl_thuc_te) !== 0) {
         addQty(lineCode, sessionStart, Number(line.kl_thuc_te));
       }
     }

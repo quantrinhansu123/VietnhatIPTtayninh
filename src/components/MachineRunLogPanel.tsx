@@ -458,7 +458,7 @@ export default function MachineRunLogPanel({
   showSavedList = false
 }: {
   onBack: () => void;
-  /** Chỉ hiện danh sách phiếu đã lưu trên route/list hub — phiếu nhập không cần. */
+  /** Route/list hub: chỉ hiện danh sách đã lưu (ẩn form nhập). */
   showSavedList?: boolean;
 }) {
   const hubShared = useReportFormsSharedOptional();
@@ -898,21 +898,26 @@ export default function MachineRunLogPanel({
             <div className="min-w-0">
               <h1 className="text-sm font-black text-zinc-900 sm:text-base">Nhật ký chạy máy</h1>
               <p className="text-[10px] font-semibold text-zinc-500">
-                Giờ bắt đầu/kết thúc theo ca · Sự cố · Nhiều ảnh
+                {showSavedList
+                  ? 'Danh sách nhật ký đã lưu'
+                  : 'Giờ bắt đầu/kết thúc theo ca · Sự cố · Nhiều ảnh'}
               </p>
             </div>
           </div>
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-right">
-            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Giờ chạy</span>
-            <span className="text-sm font-black tabular-nums text-emerald-900">
-              {actualRunMinutes !== null ? `${formatNumber(actualRunMinutes, 0)} phút` : '—'}
-            </span>
-          </div>
+          {!showSavedList ? (
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-right">
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Giờ chạy</span>
+              <span className="text-sm font-black tabular-nums text-emerald-900">
+                {actualRunMinutes !== null ? `${formatNumber(actualRunMinutes, 0)} phút` : '—'}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 sm:p-2.5">
-        <div className={`grid gap-2 ${showSavedList ? 'xl:grid-cols-[1.35fr_0.65fr]' : ''}`}>
+        <div className="grid gap-2">
+          {!showSavedList ? (
           <section className="rounded-xl border border-white/40 bg-white/95 p-2.5 shadow-lg backdrop-blur-sm">
             <div className="mb-2 flex items-center gap-1.5 border-b border-zinc-100 pb-1.5">
               <img src={vietNhatLogoUrl} alt="" className="h-5 w-5 shrink-0 rounded object-contain" />
@@ -1212,6 +1217,7 @@ export default function MachineRunLogPanel({
               </div>
             </div>
           </section>
+          ) : null}
 
           {showSavedList ? (
             <section className="rounded-xl border border-white/40 bg-white/95 p-2.5 shadow-lg backdrop-blur-sm">

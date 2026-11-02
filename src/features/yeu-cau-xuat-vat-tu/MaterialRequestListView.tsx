@@ -197,17 +197,20 @@ export function MaterialRequestListView({
   onBack,
   onCreate,
   onEdit,
-  initialFilters
+  initialFilters,
+  hideLocalFilters = false
 }: {
   onBack?: () => void;
   onCreate?: () => void;
   onEdit?: (row: MaterialRequestRow) => void;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
     machineCode?: string;
   };
+  hideLocalFilters?: boolean;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('machine-nvl-report-list');
   const [rows, setRows] = useState<MaterialRequestRow[]>([]);
@@ -395,6 +398,7 @@ export function MaterialRequestListView({
         </div>
       </div>
 
+      {!hideLocalFilters ? (
       <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
         <TableToolbar isLoading={isLoading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
           <TableDateFilter label="Từ ngày" value={filterFromDate} onChange={setFilterFromDate} />
@@ -430,6 +434,7 @@ export function MaterialRequestListView({
           </label>
         </TableToolbar>
       </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">

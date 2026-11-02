@@ -22,7 +22,7 @@ Modal **Tự động báo cáo sản lượng** bắt buộc chọn **Ngày + Ca
 
 Mục **Hàng lỗi hỏng nhập kho** (SP lỗi + SP rác) trên phiếu sản lượng được **tổng hợp** sang `/danh-sach-bao-cao-hang-hong` ([bao_cao_hang_hong](./bao_cao_hang_hong.md)).
 
-**Mã SP theo loại vật tư:** Thành phẩm / Gia công lấy `san_pham`. **SP lỗi** thêm mã `kho_nvl` thuộc Kho hàng hỏng (vd. NC). **SP rác** thêm mã kho rác. Vẫn gộp mã từ lệnh SX khớp ngày + ca + máy.
+**Mã SP theo loại vật tư:** Thành phẩm / Gia công lấy `san_pham`. **SP lỗi** thêm mã `kho_nvl` thuộc Kho hàng hỏng (vd. NC). **SP rác** thêm mã kho rác. Vẫn gộp mã từ lệnh SX khớp ngày + ca + máy. **Cấm trên tab Sản lượng (Thành phẩm / Gia công):** `RAC` · `RAC MANG` · `MT-HANG RAC` · `NHUAKM` — chỉ chọn ở SP lỗi / SP rác.
 
 Liên kết LSX ưu tiên ngày `lenh_sx.ngay`, lấy từng sản phẩm từ `lenh_sx_dong` (fallback `san_pham`, rồi dòng tổng cho dữ liệu cũ). Tải lỗi một API không chặn máy/ca từ các API còn lại; form hiển thị lỗi tải máy, ca hoặc LSX.
 

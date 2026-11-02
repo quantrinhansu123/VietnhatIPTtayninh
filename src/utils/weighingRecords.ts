@@ -684,13 +684,53 @@ function isAcceptanceHangLoiHongLoai(value: unknown) {
     key.includes('sp loi') ||
     key.includes('sp rac') ||
     key.includes('hang hong') ||
-    key.includes('hang loi')
+    key.includes('hang loi') ||
+    key.includes('hang rac') ||
+    key.includes('kho rac') ||
+    key.includes('phe')
   );
 }
 
 /**
+ * Mã RAC / RAC MANG / MT-HANG RAC (và biến thể) — luôn đưa vào danh sách hàng hỏng
+ * kể cả khi dòng BC sản lượng lưu loại Thành phẩm / Gia công.
+ */
+export function isHangHongRacProductCode(code: string, name = '') {
+  const codeKey = String(code || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+  if (
+    codeKey === 'RAC' ||
+    codeKey === 'RACMANG' ||
+    codeKey === 'MTHANGRAC' ||
+    codeKey === 'RACMANGXI' ||
+    codeKey === 'MTHANGRACMANG'
+  ) {
+    return true;
+  }
+  const text = `${code} ${name}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (text.includes('rac mang') || text.includes('racmang')) return true;
+  if (text.includes('mt-hang rac') || text.includes('mt hang rac') || text.includes('mthangrac')) {
+    return true;
+  }
+  // Mã đúng «RAC» (không phải trách / tracking…).
+  const raw = String(code || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return raw === 'rac';
+}
+
+/**
  * Map dòng «Hàng lỗi hỏng nhập kho» (SP lỗi / SP rác trên bao_cao_nghiem_thu)
- * → WeighingRecord để tổng hợp trên /danh-sach-bao-cao-hang-hong.
+ * + mã RAC / RAC MANG / MT-HANG RAC → WeighingRecord trên /danh-sach-bao-cao-hang-hong.
  */
 export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): WeighingRecord[] {
   const rows = Array.isArray(data)
@@ -704,12 +744,13 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
       if (!item || typeof item !== 'object') return null;
       const row = item as Record<string, unknown>;
       const loai = String(row.loai_vat_tu ?? row.loaiVatTu ?? '').trim();
-      if (!isAcceptanceHangLoiHongLoai(loai)) return null;
-
       const id = String(row.id ?? '').trim();
       if (!id) return null;
       const matHang = String(row.mat_hang ?? row.ma_sp ?? row.productCode ?? '').trim();
       if (!matHang || matHang === '-') return null;
+      const tenSp = String(row.ten_sp ?? row.ten_hang ?? '').trim();
+      const isRacCode = isHangHongRacProductCode(matHang, tenSp);
+      if (!isAcceptanceHangLoiHongLoai(loai) && !isRacCode) return null;
 
       const ngay = String(row.ngay ?? row.report_date ?? '').trim().slice(0, 10);
       const ca = String(row.ca ?? '').trim();
@@ -719,7 +760,6 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
       const trongLuong =
         row.trong_luong === null || row.trong_luong === undefined ? '' : String(row.trong_luong).trim();
       const donVi = String(row.don_vi ?? '').trim() || 'kg';
-      const tenSp = String(row.ten_sp ?? row.ten_hang ?? '').trim();
       const documentNo = [
         'BCSL-HH',
         ngay.replace(/-/g, ''),
@@ -729,6 +769,7 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
       ]
         .filter(Boolean)
         .join('-');
+      const loaiLabel = loai || (isRacCode ? 'SP rác' : 'SP lỗi');
 
       return {
         id: `${ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX}${id}`,
@@ -752,7 +793,7 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
         materialQuantity: soLuong || trongLuong,
         materialUnit: donVi,
         acceptanceStatus: '',
-        note: [`Từ BC sản lượng · ${loai}`, tenSp].filter(Boolean).join(' · '),
+        note: [`Từ BC sản lượng · ${loaiLabel}`, tenSp].filter(Boolean).join(' · '),
         imageUrl: String(row.hinh_anh ?? '').trim() || undefined,
         createdAt: String(row.created_at ?? '').trim() || undefined,
         daIn: Boolean(row.da_in)

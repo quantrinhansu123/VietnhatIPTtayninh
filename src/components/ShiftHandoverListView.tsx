@@ -181,15 +181,19 @@ function ShiftHandoverDetailModal({
 export default function ShiftHandoverListView({
   onBack,
   onCreate,
-  initialFilters
+  initialFilters,
+  hideLocalFilters = false
 }: {
   onBack: () => void;
   onCreate?: () => void;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
+    machineCode?: string;
   };
+  hideLocalFilters?: boolean;
 }) {
   const { canCreate, canDelete } = useTabAccess('shift-handover-list');
   const [slips, setSlips] = useState<ShiftHandoverSlip[]>([]);
@@ -200,7 +204,7 @@ export default function ShiftHandoverListView({
     () => initialFilters?.dateFrom?.trim() || defaultFromDate()
   );
   const [filterToDate, setFilterToDate] = useState(() => initialFilters?.dateTo?.trim() || todayIso());
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(() => initialFilters?.search?.trim() || '');
   const [filterShift, setFilterShift] = useState(() => {
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? '' : shift;
@@ -437,6 +441,7 @@ export default function ShiftHandoverListView({
           </div>
         </div>
 
+        {!hideLocalFilters ? (
         <div className="border-b border-zinc-100 bg-white px-4 py-3">
           <TableToolbar isLoading={isLoading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
             <TableSearchInput
@@ -457,6 +462,7 @@ export default function ShiftHandoverListView({
             <TableDateFilter label="Đến ngày" value={filterToDate} onChange={setFilterToDate} />
           </TableToolbar>
         </div>
+        ) : null}
 
         {error ? (
           <div className="mx-4 mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">

@@ -220,10 +220,12 @@ export default function MixingReportListView({
   initialFilters,
   initialTab = 'form',
   initialMachine = null,
-  onInitialMachineConsumed
+  onInitialMachineConsumed,
+  hideLocalFilters = false
 }: {
   onBack: () => void;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
@@ -233,6 +235,7 @@ export default function MixingReportListView({
   initialTab?: MixingReportHubTab;
   initialMachine?: { id: string; code: string; name: string } | null;
   onInitialMachineConsumed?: () => void;
+  hideLocalFilters?: boolean;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('mixing-report-list');
   // Chỉ còn nhập báo cáo trộn trên UI; norms/actual/reports chỉ mở qua initialTab (menu QC / danh sách).
@@ -933,6 +936,7 @@ export default function MixingReportListView({
               Đang lọc: {formatFilterSummary(filters, machines)}
             </p>
           </div>
+          {!hideLocalFilters ? (
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
             <label className="space-y-1">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Từ ngày</span>
@@ -1000,6 +1004,7 @@ export default function MixingReportListView({
               </button>
             </div>
           </div>
+          ) : null}
         </div>
         ) : null}
       </section>

@@ -1470,6 +1470,7 @@ export function WarehouseSlipPanel({
   const [lines, setLines] = useState<WarehouseSlipLineDraft[]>(() => [createWarehouseLineDraft()]);
   const [productLineView, setProductLineView] = useState<'detail' | 'summary'>('detail');
   const [productExportView, setProductExportView] = useState<'thuc-hien' | 'lap-phieu'>('thuc-hien');
+  const [manualProductAddOpen, setManualProductAddOpen] = useState(false);
   const [itemOptions, setItemOptions] = useState<MaterialOption[]>([]);
   /** Toàn bộ danh mục SP — dùng điền tên khi mã không nằm trong danh sách chọn của kho. */
   const [productCatalogByKey, setProductCatalogByKey] = useState<Map<string, MaterialOption>>(() => new Map());
@@ -2669,6 +2670,23 @@ export function WarehouseSlipPanel({
       });
     }
     return true;
+  };
+
+  /** Thêm mã SP thủ công (không quét) vào đợt đang thực hiện — cùng luồng với quét. */
+  const handleManualProductAdd = async (codeRaw: string) => {
+    const code = String(codeRaw || '').trim();
+    if (!code) return;
+    const result = await addLineFromScan(code);
+    if (result === true) {
+      setManualProductAddOpen(false);
+      setFormError('');
+      return;
+    }
+    if (result === 'duplicate') {
+      const message = `Mã ${code} đã có trong đợt — không thêm trùng.`;
+      setFormError(message);
+      showAppToast(message, 'error');
+    }
   };
 
   const removeScannedProduct = async (fullCode: string, qtyHint?: string) => {
@@ -4056,7 +4074,7 @@ export function WarehouseSlipPanel({
       ).values()];
       if (!candidates.length) return;
       if (slipType === 'xuat' && candidates.some(item => !(item.so_luong > 0))) {
-        const message = 'Số lượng xuất phải lớn hơn 0 (vd 1, 1/2, 1/3).';
+        const message = 'Số lượng xuất phải lớn hơn 0 (vd 1, 0.5, 1/2, 1/3).';
         setFormError(message);
         showAppToast(message, 'error');
         return;
@@ -5871,7 +5889,7 @@ export function WarehouseSlipPanel({
                   SL mã QR đã quét: {scannedItemCount}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:flex">
+              <div className="grid grid-cols-3 gap-2 sm:flex">
                 <button
                   type="button"
                   onClick={() => { setScannerMode('hardware-v2'); setQrScannerOpen(true); }}
@@ -5886,8 +5904,68 @@ export function WarehouseSlipPanel({
                 >
                   <ScanBarcode className="h-4 w-4" /> Quét ĐT
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setManualProductAddOpen(current => !current)}
+                  disabled={isSaving}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" /> Thêm mới
+                </button>
               </div>
             </div>
+            {manualProductAddOpen ? (
+              <div className="border-b border-zinc-100 px-3 py-3 sm:px-4">
+                <label className="block space-y-1.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">Chọn mã sản phẩm</span>
+                  <SearchableSelect
+                    value=""
+                    onChange={code => {
+                      void handleManualProductAdd(code);
+                    }}
+                    options={
+                      shippingOrderId && shippingOrderItems.length
+                        ? shippingOrderItems.map(item => {
+                            const catalog =
+                              productCatalogByKey.get(normalizeMaterialCodeKey(item.code)) ||
+                              itemOptions.find(option => normalizeMaterialCodeKey(option.code) === normalizeMaterialCodeKey(item.code));
+                            return {
+                              code: item.code,
+                              name: item.name || catalog?.name || '',
+                              unit: catalog?.unit || ''
+                            } satisfies MaterialOption;
+                          })
+                        : itemOptions
+                    }
+                    placeholder={
+                      shippingOrderId
+                        ? shippingOrderItems.length
+                          ? 'Gõ mã / tên trong lệnh xuất'
+                          : 'Lệnh xuất chưa có mặt hàng'
+                        : 'Gõ mã / tên sản phẩm'
+                    }
+                    preferValueMatch
+                    isLoading={isLoadingItems}
+                    disabled={isSaving || isLoadingItems || (Boolean(shippingOrderId) && shippingOrderItems.length === 0)}
+                    inputClassName="min-h-11 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10"
+                    desktopAutoFlip
+                    maxResults={Math.min(Math.max(shippingOrderItems.length || itemOptions.length, 50), 400)}
+                    getLabel={item => {
+                      const option = item as MaterialOption;
+                      return `${option.code} · ${option.name}`;
+                    }}
+                    getValue={item => (item as MaterialOption).code}
+                    getSearchText={item => {
+                      const option = item as MaterialOption;
+                      return `${option.code} ${option.name}`;
+                    }}
+                  />
+                </label>
+                <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
+                  Chọn mã để thêm vào đợt (không cần quét QR). Bấm Lưu đợt để ghi vào phiếu.
+                </p>
+              </div>
+            ) : null}
             {pendingScannedProductDetails.length ? (
               <div className="space-y-3 p-3">
                 {pendingScannedProductDetails.map((detail, index) => {
@@ -5933,19 +6011,22 @@ export function WarehouseSlipPanel({
                                 onChange={event => updateScannedProductQuantity(detail.fullCode, event.target.value)}
                                 disabled={isSaving}
                                 inputMode="decimal"
-                                placeholder="1 hoặc 1/2, 1/3"
+                                autoComplete="off"
+                                placeholder="0.5 · 1 · 1/2 · 1/3"
                                 className={`${fieldClass} w-full outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10 disabled:opacity-60`}
-                                title="Xuất không nguyên: nhập 1/2, 1/3 hoặc 0.5"
+                                title="Gõ số thập phân (0.5, 0,25) hoặc phân số (1/2, 1/3)"
                               />
                               <div className="flex flex-wrap gap-1">
-                                {(['1', '1/2', '1/3'] as const).map(preset => (
+                                {(['1', '0.5', '1/2', '1/3'] as const).map(preset => (
                                   <button
                                     key={preset}
                                     type="button"
                                     disabled={isSaving}
                                     onClick={() => updateScannedProductQuantity(detail.fullCode, preset)}
                                     className={`rounded-md border px-2 py-0.5 text-[10px] font-extrabold transition disabled:opacity-50 ${
-                                      detail.quantity.trim() === preset
+                                      detail.quantity.trim() === preset ||
+                                      (preset === '0.5' &&
+                                        ['0.5', '0,5'].includes(detail.quantity.trim()))
                                         ? 'border-[#ef1b2d] bg-red-50 text-[#ef1b2d]'
                                         : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
                                     }`}
@@ -5976,10 +6057,10 @@ export function WarehouseSlipPanel({
             ) : (
               <div className="p-3 text-center text-xs font-semibold text-zinc-500">
                 {scannedProductDetails.length
-                  ? 'Các mã trong đợt đã được lưu. Quét tiếp mã mới nếu cần.'
+                  ? 'Các mã trong đợt đã được lưu. Quét hoặc Thêm mới nếu cần.'
                   : isEditingProductInbound
-                    ? 'Quét thêm mã mới tại đây. Các mã QR đã lưu xem trong tab Lập phiếu.'
-                    : 'Quét mã QR để xem danh sách sản phẩm trong đợt. Mã chỉ được lưu vào kho khi bấm Lưu đợt.'}
+                    ? 'Quét hoặc Thêm mới tại đây. Các mã QR đã lưu xem trong tab Lập phiếu.'
+                    : 'Quét mã QR hoặc bấm Thêm mới để chọn mã. Mã chỉ được lưu vào kho khi bấm Lưu đợt.'}
               </div>
             )}
           </section>
@@ -6064,6 +6145,7 @@ export function WarehouseHistoryPanel({
   onOpenSlip,
   initialFilters,
   initialWarehouseTab = 'san_pham',
+  initialSlipType = 'nhap',
   standaloneSlipCode
 }: {
   onBack: () => void;
@@ -6075,6 +6157,8 @@ export function WarehouseHistoryPanel({
     machineCode?: string;
   };
   initialWarehouseTab?: WarehouseKind;
+  /** Tab loại phiếu mở sẵn: chỉ load đúng loại này (không preload loại kia). */
+  initialSlipType?: WarehouseSlipType;
   /** Khi có: chỉ hiển thị chi tiết đúng 1 phiếu (trang mở ở tab mới), ẩn bộ lọc & danh sách. */
   standaloneSlipCode?: string;
 }) {
@@ -6093,7 +6177,9 @@ export function WarehouseHistoryPanel({
   const { canView, canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseTab);
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedType, setSelectedType] = useState<WarehouseSlipType>('xuat');
+  const [selectedType, setSelectedType] = useState<WarehouseSlipType>(() =>
+    initialSlipType === 'xuat' ? 'xuat' : 'nhap'
+  );
   const [fromDate, setFromDate] = useState(() => initialFilters?.dateFrom?.trim() || '');
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || '');
   const [filterShift, setFilterShift] = useState(() => {
@@ -6412,11 +6498,14 @@ export function WarehouseHistoryPanel({
           .map(order => [order.orderCode.trim().toUpperCase(), order.machine] as const)
       );
       const rows = normalizeWarehouseMovements(data)
-        .filter(row => (
-          standaloneSlipCode
-            ? row.slipCode === standaloneSlipCode
-            : row.warehouseKind === warehouseTab && (!selectedWarehouseName || row.warehouseName === selectedWarehouseName)
-        ))
+        .filter(row => {
+          if (standaloneSlipCode) return row.slipCode === standaloneSlipCode;
+          // Tab Nhập chỉ giữ phiếu nhập; tab Xuất chỉ giữ phiếu xuất.
+          if (row.slipType !== selectedType) return false;
+          if (row.warehouseKind !== warehouseTab) return false;
+          if (selectedWarehouseName && row.warehouseName !== selectedWarehouseName) return false;
+          return true;
+        })
         .map(row => {
           if (row.machine) return row;
           const linkedCodes = extractLinkedProductionOrderCodes(row.reason, row.note);
@@ -6547,6 +6636,7 @@ export function WarehouseHistoryPanel({
         return itemName && itemName !== row.itemName ? { ...row, itemName } : row;
       })
       .filter(row => {
+        if (row.slipType !== selectedType) return false;
         const day = row.slipDate.slice(0, 10);
         if (fromDate && day < fromDate) return false;
         if (toDate && day > toDate) return false;
@@ -6691,42 +6781,10 @@ export function WarehouseHistoryPanel({
     () => summarizeSlipTotals(filteredMovements),
     [filteredMovements, warehouseTab]
   );
-  const [otherTypeTotals, setOtherTypeTotals] = useState<SlipTypeTotals | null>(null);
-  useEffect(() => {
-    if (standaloneSlipCode || !canView) return;
-    const controller = new AbortController();
-    setOtherTypeTotals(null);
-    const params = new URLSearchParams({
-      loai_kho: warehouseTab,
-      loai: selectedType === 'xuat' ? 'nhap' : 'xuat'
-    });
-    if (selectedWarehouseName) params.set('ten_kho', selectedWarehouseName);
-    if (fromDate) params.set('from', fromDate);
-    if (toDate) params.set('to', toDate);
-    void (async () => {
-      try {
-        const res = await fetch(`/api/kho/lich-su?${params.toString()}`, { signal: controller.signal });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
-        setOtherTypeTotals(
-          summarizeSlipTotals(
-            normalizeWarehouseMovements(data).filter(
-              row => row.warehouseKind === warehouseTab && (!selectedWarehouseName || row.warehouseName === selectedWarehouseName)
-            )
-          )
-        );
-      } catch {
-        // bỏ qua: tab chỉ không hiện tổng
-      }
-    })();
-    return () => controller.abort();
-  }, [warehouseTab, selectedWarehouseName, selectedType, fromDate, toDate, canView, standaloneSlipCode]);
+  // Chỉ hiện tổng trên tab đang mở — không gọi API loại phiếu kia.
   const typeTotals: Partial<Record<WarehouseSlipType, SlipTypeTotals>> = isLoading
     ? {}
-    : {
-        [selectedType]: currentTypeTotals,
-        ...(otherTypeTotals ? { [selectedType === 'xuat' ? 'nhap' : 'xuat']: otherTypeTotals } : {})
-      };
+    : { [selectedType]: currentTypeTotals };
 
   const productRollSummary = useMemo(() => {
     const byCode = new Map<string, { code: string; name: string; rolls: number }>();
@@ -7452,27 +7510,25 @@ export function WarehouseHistoryPanel({
                 <span className="block text-sm font-black leading-tight text-zinc-900">{tab.label}</span>
                 <span className="mt-0.5 hidden text-xs font-semibold text-zinc-500 sm:block">{tab.hint}</span>
               </span>
-              {(() => {
-                const totals = typeTotals[tab.key];
-                const rollsText = formatNumber(totals?.rolls ?? 0, Number.isInteger(totals?.rolls ?? 0) ? 0 : 2);
-                return (
-                  <span
-                    className={`ml-auto flex shrink-0 flex-col items-end rounded-lg px-2.5 py-1 leading-tight ring-1 ${
-                      isActive ? 'bg-white text-[#ef1b2d] ring-red-200' : 'bg-zinc-50 text-zinc-700 ring-zinc-200'
-                    }`}
-                    title={
-                      isActive
-                        ? `${tab.label}: số phiếu · tổng cuộn (theo bộ lọc đang chọn)`
-                        : `${tab.label}: số phiếu · tổng cuộn (theo kho và ngày đang chọn)`
-                    }
-                  >
-                    <span className="font-mono text-lg font-black tabular-nums">{totals ? rollsText : '…'}</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide opacity-80">
-                      {totals ? `${totals.slips} phiếu · cuộn` : 'đang tính'}
+              {isActive ? (
+                (() => {
+                  const totals = typeTotals[tab.key];
+                  const rollsText = formatNumber(totals?.rolls ?? 0, Number.isInteger(totals?.rolls ?? 0) ? 0 : 2);
+                  return (
+                    <span
+                      className="ml-auto flex shrink-0 flex-col items-end rounded-lg bg-white px-2.5 py-1 leading-tight text-[#ef1b2d] ring-1 ring-red-200"
+                      title={`${tab.label}: số phiếu · tổng cuộn (theo bộ lọc đang chọn)`}
+                    >
+                      <span className="font-mono text-lg font-black tabular-nums">
+                        {totals ? rollsText : '…'}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide opacity-80">
+                        {totals ? `${totals.slips} phiếu · cuộn` : 'đang tính'}
+                      </span>
                     </span>
-                  </span>
-                );
-              })()}
+                  );
+                })()
+              ) : null}
             </button>
           );
         })}

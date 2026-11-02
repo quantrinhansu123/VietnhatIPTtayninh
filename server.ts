@@ -6418,6 +6418,29 @@ function parseAcceptanceReportBody(body: unknown): { error: string } | { record:
   if (!['Thành phẩm', 'Gia công', 'SP lỗi', 'SP rác'].includes(loai_vat_tu)) {
     return { error: 'Loại vật tư không hợp lệ.' };
   }
+  // Tab Sản lượng (Thành phẩm / Gia công): không cho mã RAC · NHUAKM — dùng SP lỗi / SP rác.
+  if (loai_vat_tu === 'Thành phẩm' || loai_vat_tu === 'Gia công') {
+    const codeKey = mat_hang
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, '');
+    const baseKey = codeKey.includes('_') ? codeKey.slice(0, codeKey.indexOf('_')) : codeKey;
+    const forbidden =
+      baseKey === 'NHUAKM' ||
+      baseKey === 'RAC' ||
+      baseKey === 'RACMANG' ||
+      baseKey === 'MTHANGRAC' ||
+      baseKey === 'RACMANGXI' ||
+      baseKey === 'MTHANGRACMANG' ||
+      baseKey.startsWith('RACMANG');
+    if (forbidden) {
+      return {
+        error: `Mã ${mat_hang} không dùng trên tab Sản lượng — chọn ở SP lỗi / SP rác (Hàng hỏng).`
+      };
+    }
+  }
   if (so_luong === null || so_luong <= 0) {
     return {
       error:

@@ -24,6 +24,7 @@ import { CAMERA_IMAGE_INPUT_PROPS, compressImageDataUrl } from '../utils/cameraC
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../lib/appToast';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import { parseCanTuDongQrProductCode, resolveCanSpKg } from '../utils/canTuDongWeights';
+import { isHangHongRacProductCode } from '../utils/weighingRecords';
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 
 /** Lưới dòng Thành phẩm — có cột Số AI + ghi chú đối chiếu. */
@@ -252,6 +253,18 @@ function findProductOption(code: string, options: ProductSelectOption[]) {
     options.find(option => normalizeKey(autoReportGroupCode(option.code)) === key) ??
     null
   );
+}
+
+/** Mã chỉ dùng Hàng hỏng / SP rác — không cho chọn trên tab Sản lượng (Thành phẩm · Gia công). */
+function isForbiddenSanLuongProductCode(code: string, name = '') {
+  const compact = String(autoReportGroupCode(code) || code)
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+  if (compact === 'NHUAKM') return true;
+  return isHangHongRacProductCode(code, name) || isHangHongRacProductCode(autoReportGroupCode(code), name);
 }
 
 function normalizeCatalogProducts(data: unknown): ProductSelectOption[] {
@@ -837,12 +850,21 @@ export default function AcceptanceReportForm({
       };
 
       // Thành phẩm / gia công: danh mục SP. SP lỗi / SP rác: thêm mã trong kho_nvl theo tên kho.
+      // SP lỗi (Hàng hỏng) cũng nhận mã RAC / Kho rác để chọn RAC · RAC MANG · MT-HANG RAC.
       mergeOptions(catalogProducts);
-      if (materialType === 'SP lỗi') mergeOptions(hangHongMaterialOptions);
+      if (materialType === 'SP lỗi') {
+        mergeOptions(hangHongMaterialOptions);
+        mergeOptions(racMaterialOptions);
+      }
       if (materialType === 'SP rác') mergeOptions(racMaterialOptions);
       mergeOptions(orderProductOptions);
 
-      return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+      let options = [...byCode.values()];
+      // Tab Sản lượng (Thành phẩm / Gia công): cấm RAC · NHUAKM (đưa sang SP lỗi / SP rác).
+      if (materialType === 'Thành phẩm' || materialType === 'Gia công') {
+        options = options.filter(option => !isForbiddenSanLuongProductCode(option.code, option.name));
+      }
+      return options.sort((a, b) => a.code.localeCompare(b.code, 'vi'));
     };
 
     return {
@@ -884,6 +906,16 @@ export default function AcceptanceReportForm({
     const currentLines = sectionsRef.current[type].lines;
     if (mat_hang && currentLines.some(line => line.id !== lineId && lineHasProductCode(line, mat_hang))) {
       setError(`Mã SP "${parseQrProductCode(mat_hang)}" đã có trong phiếu ${MATERIAL_TYPE_LABELS[type]}.`);
+      return;
+    }
+    if (
+      mat_hang &&
+      (type === 'Thành phẩm' || type === 'Gia công') &&
+      isForbiddenSanLuongProductCode(mat_hang)
+    ) {
+      setError(
+        `Mã "${parseQrProductCode(mat_hang) || mat_hang}" không dùng trên tab Sản lượng — chọn ở SP lỗi / SP rác (Hàng hỏng).`
+      );
       return;
     }
 
@@ -1522,6 +1554,10 @@ export default function AcceptanceReportForm({
         const catalog = findProductOption(qrProductCode, catalogProducts);
         const product = findProductOption(qrProductCode, productOptionsByType['Thành phẩm']);
         const code = autoReportGroupCode(catalog?.code || product?.code || qrProductCode);
+        if (isForbiddenSanLuongProductCode(code, catalog?.name || product?.name || '')) {
+          skipped += 1;
+          return;
+        }
         const key = normalizeKey(code);
         const current = quantities.get(key);
         const rollKg = resolveCanSpKg(record);

@@ -43,7 +43,7 @@ export const DAMAGED_GOODS_SLIP_CONFIG: WeighingSlipConfig = {
   weigherStorageKey: 'damaged-goods-current-weigher',
   backLabel: 'Quay lại Báo cáo hàng hỏng',
   summaryTitle: 'Tổng hợp báo cáo hàng hỏng',
-  summarySubtitle: 'Chỉ lấy SP lỗi / SP rác từ mục Hàng lỗi hỏng trên Báo cáo sản lượng',
+  summarySubtitle: 'SP lỗi / SP rác + mã RAC · RAC MANG · MT-HANG RAC từ Báo cáo sản lượng',
   printTitle: 'BÁO CÁO HÀNG HỎNG',
   restrictProductsToOrders: false,
   hideWorkersInEntry: true,

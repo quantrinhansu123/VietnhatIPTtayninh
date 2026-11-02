@@ -18,7 +18,6 @@ import {
   type MaterialRequestRow
 } from '../features/yeu-cau-xuat-vat-tu/MaterialRequestListView';
 import { CanTuDongPanel } from '../features/can-tu-dong';
-import { KiemKhoPanel } from '../features/kiem-kho';
 import { WarehouseHistoryPanel } from '../features/phieu-xuat-nhap-kho';
 import {
   loadMachineShiftChecklistPrintData,
@@ -899,7 +898,6 @@ export default function ReportListsHubModal({
           {activeTab === 'can-tu-dong' ? (
             <CanTuDongPanel key={panelKey} initialFilters={selectedHubFilters} onBack={onClose} />
           ) : null}
-          {activeTab === 'kiem-kho' ? <KiemKhoPanel onBack={onClose} /> : null}
           {activeTab === 'damaged-goods-report-list' ? (
             <WeighingShiftSummary
               key={panelKey}

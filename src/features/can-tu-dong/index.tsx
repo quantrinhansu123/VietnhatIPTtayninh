@@ -389,15 +389,19 @@ function normalizeQrKey(qr?: string | null): string {
 export function CanTuDongPanel({
   onBack,
   currentUser,
-  initialFilters
+  initialFilters,
+  hideLocalFilters = false
 }: {
   onBack: () => void;
   currentUser?: { id: string; name: string } | null;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
+    machineCode?: string;
   };
+  hideLocalFilters?: boolean;
 }) {
   const [records, setRecords] = useState<CanTuDongRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -418,16 +422,22 @@ export function CanTuDongPanel({
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
   const [maSpFilter, setMaSpFilter] = useState('all');
   /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
-  const [maSpQuery, setMaSpQuery] = useState('');
+  const [maSpQuery, setMaSpQuery] = useState(() => initialFilters?.search?.trim() || '');
   /** Lọc cột Ngày (SOURCE_DATE / work_date) — mặc định hôm nay để không tải cả bảng. */
   const [fromDate, setFromDate] = useState(
     () => initialFilters?.dateFrom?.trim() || localIsoDateToday()
   );
   const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || localIsoDateToday());
   /** Lọc cột Ca (`all` = tất cả). */
-  const [caFilter, setCaFilter] = useState(() => initialFilters?.shift?.trim() || 'all');
+  const [caFilter, setCaFilter] = useState(() => {
+    const shift = initialFilters?.shift?.trim() || '';
+    return !shift || shift === 'all' ? 'all' : shift;
+  });
   /** Lọc cột Máy (`all` = tất cả). */
-  const [mayFilter, setMayFilter] = useState('all');
+  const [mayFilter, setMayFilter] = useState(() => {
+    const machine = initialFilters?.machineCode?.trim() || '';
+    return !machine || machine === 'all' ? 'all' : machine;
+  });
   /** Lọc Lệnh SX (`all` = tất cả). */
   const [lenhSxFilter, setLenhSxFilter] = useState('all');
   /** Chỉ hiện dòng có mã QR trùng trong phạm vi bộ lọc ngày/ca/Mã SP. */
@@ -1904,6 +1914,7 @@ export function CanTuDongPanel({
         </div>
       </div>
 
+      {!hideLocalFilters ? (
       <TableToolbar
         isLoading={loading}
         hasActiveFilters={hasActiveFilters}
@@ -2002,6 +2013,7 @@ export function CanTuDongPanel({
               : `${formatNumber(records.length, 0)} dòng`}
         </span>
       </TableToolbar>
+      ) : null}
 
       {onlyDuplicateQr && qrDuplicateInfo.duplicateList.length > 0 ? (
         <div className="rounded-2xl border border-amber-300 bg-amber-50/90 px-3 py-3 shadow-sm sm:px-4">

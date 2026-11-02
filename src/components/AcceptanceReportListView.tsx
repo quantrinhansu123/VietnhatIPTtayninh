@@ -473,17 +473,21 @@ export default function AcceptanceReportListView({
   onCreate,
   onEdit,
   onEditGroup,
-  initialFilters
+  initialFilters,
+  hideLocalFilters = false
 }: {
   onBack: () => void;
   onCreate: (prefill?: { ngay: string; ca: string }) => void;
   onEdit: (report: AcceptanceReport) => void;
   onEditGroup?: (reports: AcceptanceReport[]) => void;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
+    machineCode?: string;
   };
+  hideLocalFilters?: boolean;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('acceptance-report-list');
   const [filterFromDate, setFilterFromDate] = useState(
@@ -494,7 +498,7 @@ export default function AcceptanceReportListView({
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? '' : shift;
   });
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(() => initialFilters?.search?.trim() || '');
   const [reports, setReports] = useState<AcceptanceReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1248,6 +1252,7 @@ export default function AcceptanceReportListView({
           </div>
         </div>
 
+        {!hideLocalFilters ? (
         <div className="border-b border-zinc-100 bg-white px-4 py-3">
           <TableToolbar isLoading={isLoading} hasActiveFilters={hasActiveFilters} onResetFilters={resetFilters}>
             <TableSearchInput
@@ -1268,6 +1273,7 @@ export default function AcceptanceReportListView({
             <TableDateFilter label="Đến ngày" value={filterToDate} onChange={setFilterToDate} />
           </TableToolbar>
         </div>
+        ) : null}
 
         <div className="p-3 sm:p-4">
           {isLoading ? (

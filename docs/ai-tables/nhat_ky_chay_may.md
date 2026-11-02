@@ -6,7 +6,8 @@
 
 **API:** `server.ts` — `/api/nhat-ky-chay-may`  
 **UI:** `src/components/MachineRunLogPanel.tsx`, `MachineRunLogPrintSheet.tsx`  
-**Hub:** `/phieu-bao-cao` tab Nhật ký chạy máy
+**Hub nhập:** `/phieu-bao-cao` tab Nhật ký chạy máy (form)  
+**Hub danh sách:** `/danh-sach-bao-cao` · `showSavedList` — **chỉ** danh sách đã lưu (ẩn form nhập)
 
 ## Form
 

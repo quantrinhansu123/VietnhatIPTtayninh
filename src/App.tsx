@@ -96,6 +96,7 @@ import { TimMaLoiPanel } from './features/tim-ma-loi';
 import { KiemDinhTemPanel } from './features/kiem-dinh-tem';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
 import { ReportFormsHub } from './features/report-forms';
+import { ReportListsHub } from './features/report-lists';
 import { BieuDoThPanel } from './features/bieu-do-th';
 
 const DEFAULT_REPORT: Omit<ProductionReport, 'id' | 'createdAt'> = {
@@ -945,15 +946,47 @@ export default function App() {
               </motion.div>
             ) : activeTab === 'report-lists' ? (
               <motion.div
-                key="report-lists-menu"
+                key="report-lists-hub"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="space-y-3"
               >
-                <MenuPageHeader title="Xem báo cáo" desc="Chọn danh sách báo cáo cần mở." />
-                <MenuCardGrid items={filterMenuItems(REPORT_LIST_MENU_ITEMS)} onNavigate={navigateToTab} />
+                <ReportListsHub
+                  menuItems={filterMenuItems(REPORT_LIST_MENU_ITEMS)}
+                  onBack={() => goBack('factory-cong-nhan')}
+                  currentUser={authUser}
+                  onNavigate={navigateToTab}
+                  onEditMachineNvlReport={report => {
+                    setMachineNvlEditReport(report);
+                    navigateToTab('machine-nvl-report');
+                  }}
+                  onEditMaterialRequest={row => {
+                    setMaterialRequestEdit(row);
+                    navigateToTab('material-request');
+                  }}
+                  onCreateAcceptanceReport={prefill => {
+                    setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(null);
+                    setAcceptanceCreatePrefill(prefill ?? null);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                  onEditAcceptanceReport={report => {
+                    setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReportGroup(null);
+                    setAcceptanceEditReport(report);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                  onEditAcceptanceReportGroup={reports => {
+                    setAcceptanceCreatePrefill(null);
+                    setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(reports);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                />
               </motion.div>
             ) : activeTab === 'acceptance-report-list' ? (
               <motion.div

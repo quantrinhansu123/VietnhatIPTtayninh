@@ -671,17 +671,21 @@ export default function MachineNvlReportListView({
   onBack,
   onCreate,
   onEdit,
-  initialFilters
+  initialFilters,
+  hideLocalFilters = false
 }: {
   onBack: () => void;
   onCreate: () => void;
   onEdit: (report: MachineNvlSavedReport) => void;
   initialFilters?: {
+    search?: string;
     dateFrom?: string;
     dateTo?: string;
     shift?: string;
     machineCode?: string;
   };
+  /** Ẩn toolbar lọc khi hub `/danh-sach-bao-cao` đã có bộ lọc chung phía trên. */
+  hideLocalFilters?: boolean;
 }) {
   const { canCreate, canEdit, canDelete } = useTabAccess('machine-nvl-report-list');
   const [filterFromDate, setFilterFromDate] = useState(
@@ -698,7 +702,7 @@ export default function MachineNvlReportListView({
     const machine = initialFilters?.machineCode?.trim() || '';
     return !machine || machine === 'all' ? '' : machine;
   });
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(() => initialFilters?.search?.trim() || '');
   const [dauCaReports, setDauCaReports] = useState<MachineNvlSavedReport[]>([]);
   const [cuoiCaReports, setCuoiCaReports] = useState<MachineNvlSavedReport[]>([]);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
@@ -1006,6 +1010,7 @@ export default function MachineNvlReportListView({
         </div>
 
         <div className="p-2 sm:p-4">
+          {!hideLocalFilters ? (
           <TableToolbar
             isLoading={isLoading}
             hasActiveFilters={Boolean(searchText || filterCa || filterMachine)}
@@ -1040,6 +1045,7 @@ export default function MachineNvlReportListView({
             <TableDateFilter label="Từ ngày" value={filterFromDate} onChange={setFilterFromDate} />
             <TableDateFilter label="Đến ngày" value={filterToDate} onChange={setFilterToDate} />
           </TableToolbar>
+          ) : null}
           <div className="hidden grid-cols-2 gap-1.5 sm:gap-2">
             <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 sm:text-[10px]">
               Từ ngày

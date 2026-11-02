@@ -317,13 +317,6 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'can-tu-dong'
   },
   {
-    title: 'Báo cáo kiểm kho',
-    desc: 'Nhập và xem các dòng kiểm kho đã quét mã SP.',
-    icon: ClipboardList,
-    icon3d: reportList3d,
-    tab: 'kiem-kho'
-  },
-  {
     title: 'Danh sách báo cáo hàng hỏng',
     desc: 'Xem, sửa và in các phiếu hàng hỏng đã lưu theo ngày, ca và máy.',
     icon: PackageX,
@@ -345,13 +338,6 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     tab: 'warehouse-history'
   },
   {
-    title: 'Danh sách báo cáo dừng máy',
-    desc: 'Xem các phiếu báo dừng máy đã lưu và lịch sử gần nhất.',
-    icon: MachineDowntimeIcon,
-    icon3d: alarmClock3d,
-    tab: 'machine-downtime-list'
-  },
-  {
     title: 'Danh sách nhật ký chạy máy',
     desc: 'Xem các nhật ký chạy máy BM-SX-11 đã lưu và in lại.',
     icon: Activity,
@@ -363,6 +349,13 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Xem nhật ký sản xuất kiêm phiếu giao ca đã lưu, lọc theo ngày/ca và in lại.',
     icon: ArrowLeftRight,
     tab: 'shift-handover-list'
+  },
+  {
+    title: 'Danh sách báo cáo dừng máy',
+    desc: 'Xem các phiếu báo dừng máy đã lưu và lịch sử gần nhất.',
+    icon: MachineDowntimeIcon,
+    icon3d: alarmClock3d,
+    tab: 'machine-downtime-list'
   }
 ];
 

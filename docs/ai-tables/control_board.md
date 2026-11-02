@@ -41,6 +41,8 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 
 ## Utils
 
+Bảng trộn vật tư (`MachineShiftMaterialChecklistPrintSheet`): tồn đầu/cuối ca ĐVT khác kg ưu tiên **Tổng kg danh mục NVL**, thiếu danh mục mới dùng hệ số đã lưu trên phiếu. Hiển thị **kg(SL gốc)**, ví dụ `0,532(7)` = 0,532 kg / 7 cuộn (tối đa 3 số lẻ kg). Test hồi quy: `src/components/MachineShiftMaterialChecklistPrintSheet.test.ts`.
+
 | File | Vai trò |
 |------|---------|
 | `controlBoardShiftSummary.ts` | Tổng hợp theo ca từ phiếu cân, kho, NVL |

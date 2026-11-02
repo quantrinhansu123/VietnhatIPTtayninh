@@ -23,7 +23,9 @@ import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { compareMaterialMisaCode } from '../utils/materialMisaSortOrder';
 import {
   convertWarehouseQuantityToKg,
-  mapMaterialToWeightCatalogItem
+  isWarehouseKgUnit,
+  mapMaterialToWeightCatalogItem,
+  type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
 import {
   formatChecklistMachineHeader,
@@ -41,12 +43,14 @@ export type MachineShiftMaterialChecklistLine = {
   dinhMucKg: number | null;
   tiLePercent: number | null;
   tonDauCaKg: number | null;
+  tonDauCaQuantity?: number;
   layTrongKhoKg: number | null;
   /** Tổng thực trộn mọi lần (dùng tính TT SD). */
   thucTronKg: number | null;
   /** KL thực trộn theo số lần tuyệt đối (lan_thu + index). */
   thucTronByLan: Record<number, number>;
   tonCuoiCaKg: number | null;
+  tonCuoiCaQuantity?: number;
   thucTeSuDungKg: number | null;
 };
 
@@ -78,6 +82,13 @@ function buildDisplayMixingSessions(sessions: number[]) {
 function formatQty(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value) || value === 0) return '';
   return formatNumber(value, 2);
+}
+
+export function formatChecklistStock(kg: number | null | undefined, quantity?: number) {
+  if (kg == null || !Number.isFinite(kg) || kg === 0) return '';
+  return quantity != null && Number.isFinite(quantity) && quantity > 0
+    ? `${formatNumber(kg, 3)}(${formatNumber(quantity, 4)})`
+    : formatQty(kg);
 }
 
 function formatPercent(value: number | null | undefined) {
@@ -117,7 +128,7 @@ function addToQtyMap(map: Map<string, number>, code: string, qty: number) {
   map.set(key, (map.get(key) || 0) + qty);
 }
 
-function openingStockByCode(reports: MachineNvlSavedReport[]) {
+function openingStockByCode(reports: MachineNvlSavedReport[], catalog: WarehouseWeightCatalogItem[]) {
   const map = new Map<string, number>();
   for (const report of reports) {
     if (report.reportKind !== 'dau_ca') continue;
@@ -125,7 +136,7 @@ function openingStockByCode(reports: MachineNvlSavedReport[]) {
       const code = String(line.maNvl || '').trim();
       if (!code) continue;
       // Ưu tiên tổng kg (máy+bồn+chưa trộn+ngoài); nếu 0 thì lấy soLuongTon thô.
-      const kg = sumMachineNvlDauCaLineTotal(line);
+      const kg = sumMachineNvlDauCaLineTotal(line, catalog);
       const raw = Number(line.soLuongTon);
       addToQtyMap(map, code, kg > 0 ? kg : Number.isFinite(raw) && raw > 0 ? raw : 0);
     }
@@ -167,14 +178,14 @@ function openingStockFromTotalReport(data: ProductionPlanRelatedReports) {
   return map;
 }
 
-function closingStockByCode(reports: MachineNvlSavedReport[]) {
+function closingStockByCode(reports: MachineNvlSavedReport[], catalog: WarehouseWeightCatalogItem[]) {
   const map = new Map<string, number>();
   for (const report of reports) {
     if (report.reportKind !== 'cuoi_ca') continue;
     for (const line of report.lines || []) {
       const code = String(line.maNvl || '').trim();
       if (!code) continue;
-      addToQtyMap(map, code, sumMachineNvlCuoiCaLineTotal(line));
+      addToQtyMap(map, code, sumMachineNvlCuoiCaLineTotal(line, catalog));
     }
   }
   return map;
@@ -395,7 +406,8 @@ export function buildMachineShiftMaterialChecklist(
   data: ProductionPlanRelatedReports
 ): MachineShiftMaterialChecklistBuild {
   const lines = aggregateMaterialsFromOrders(data.productionOrders || []);
-  const tonDauFromReports = openingStockByCode(data.machineNvl || []);
+  const materialWeightCatalog = (data.materialCatalog || []).map(mapMaterialToWeightCatalogItem);
+  const tonDauFromReports = openingStockByCode(data.machineNvl || [], materialWeightCatalog);
   const tonDauFromSnapshot = openingStockFromTotalReport(data);
   // Ưu tiên phiếu tồn đầu ca; mã còn trống mới lấy snapshot BB (sau Tính toán).
   const tonDauMap = new Map<string, number>(tonDauFromReports);
@@ -403,9 +415,8 @@ export function buildMachineShiftMaterialChecklist(
     if ((tonDauMap.get(key) || 0) > 0) continue;
     tonDauMap.set(key, value);
   }
-  const tonCuoiMap = closingStockByCode(data.machineNvl || []);
+  const tonCuoiMap = closingStockByCode(data.machineNvl || [], materialWeightCatalog);
   const xuatMap = warehouseExportByCode(data.warehouseExportSlips || []);
-  const materialWeightCatalog = (data.materialCatalog || []).map(mapMaterialToWeightCatalogItem);
   const yeuCauMap = materialRequestTakeByCode(data.materialRequests || [], materialWeightCatalog);
   const mixingAgg = mixingActualBySessions(data.mixing || []);
 
@@ -414,18 +425,36 @@ export function buildMachineShiftMaterialChecklist(
       const code = String(line.maNvl || '').trim();
       if (!code) continue;
       ensureMaterialRow(lines, code, String(line.tenNvl || '').trim(), String(line.donVi || '').trim() || 'kg');
+      if (!isWarehouseKgUnit(line.donVi)) {
+        const row = lines.find(item => normalizeProductCodeKey(item.maVatTu) === normalizeProductCodeKey(code))!;
+        const quantity = line.soLuongTon > 0 ? line.soLuongTon :
+          (line.soLuongTrongMay ?? 0) + (line.soLuongTrongBonTron ?? 0) +
+          (line.soLuongNlChuaTron ?? 0) + (line.soLuongTonNgoai ?? 0);
+        const field = report.reportKind === 'dau_ca' ? 'tonDauCaQuantity' : 'tonCuoiCaQuantity';
+        row[field] = (row[field] ?? 0) + quantity;
+      }
     }
   }
+  const openingQuantityFromSnapshot = new Map<string, number>();
   for (const group of data.totalReport?.dauCaGroups || []) {
     for (const line of group.materialLines || []) {
       const code = String(line.itemCode || '').trim();
       if (!code) continue;
       ensureMaterialRow(lines, code, String(line.itemName || '').trim(), String(line.unit || '').trim() || 'kg');
+      if (!isWarehouseKgUnit(line.unit)) addToQtyMap(openingQuantityFromSnapshot, code, line.tonDauQuantity);
     }
     for (const row of group.lines || []) {
       const code = String(row.itemCode || '').trim();
       if (!code) continue;
       ensureMaterialRow(lines, code, String(row.itemName || '').trim(), String(row.unit || '').trim() || 'kg');
+    }
+  }
+  for (const group of data.totalReport?.dauCaGroups || []) {
+    for (const row of group.lines || []) {
+      const codeKey = normalizeProductCodeKey(row.itemCode);
+      if (!isWarehouseKgUnit(row.unit) && !openingQuantityFromSnapshot.has(codeKey)) {
+        addToQtyMap(openingQuantityFromSnapshot, row.itemCode, row.quantity);
+      }
     }
   }
   for (const slip of data.warehouseExportSlips || []) {
@@ -455,6 +484,7 @@ export function buildMachineShiftMaterialChecklist(
     const codeKey = normalizeProductCodeKey(row.maVatTu);
     row.tonDauCaKg = positiveOrNull(tonDauMap.get(codeKey));
     row.tonCuoiCaKg = positiveOrNull(tonCuoiMap.get(codeKey));
+    if (row.tonDauCaQuantity == null) row.tonDauCaQuantity = openingQuantityFromSnapshot.get(codeKey);
     // Ưu tiên phiếu xuất kho NVL; thiếu thì lấy từ phiếu nhận NVL (`yeu_cau_xuat_kho`).
     const fromXuat = xuatMap.get(codeKey);
     const fromYeuCau = yeuCauMap.get(codeKey);
@@ -682,7 +712,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
                   <td className="bb-nvl-checklist-center">{row?.donVi || ''}</td>
                   <td className="bb-nvl-checklist-num">{formatQty(row?.dinhMucKg)}</td>
                   <td className="bb-nvl-checklist-num">{formatPercent(row?.tiLePercent)}</td>
-                  <td className="bb-nvl-checklist-num">{formatQty(row?.tonDauCaKg)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonDauCaKg, row?.tonDauCaQuantity)}</td>
                   <td className="bb-nvl-checklist-num">{formatQty(row?.layTrongKhoKg)}</td>
                   {displaySessions.map(session => (
                     <td key={`tron-${row?.key || index}-${session}`} className="bb-nvl-checklist-num">
@@ -690,7 +720,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
                     </td>
                   ))}
                   <td className="bb-nvl-checklist-num">{formatQty(row?.thucTronKg)}</td>
-                  <td className="bb-nvl-checklist-num">{formatQty(row?.tonCuoiCaKg)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonCuoiCaKg, row?.tonCuoiCaQuantity)}</td>
                 </tr>
               ))}
             </tbody>
@@ -741,6 +771,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
             <p>
               <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới lấy vật tư đúng định mức. Pallet: 1L/2L = 25 kg/bao.
               <b> Ghi chú:</b> TT SD = Tồn đầu + Thực tế trộn − Tồn cuối. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
+              {' '}Tồn đầu/cuối: kg(số lượng theo ĐVT) đối với vật tư khác kg.
             </p>
           </div>
 

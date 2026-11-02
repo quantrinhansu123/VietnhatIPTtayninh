@@ -45,6 +45,7 @@ export type MachineShiftMaterialChecklistLine = {
   tonDauCaKg: number | null;
   tonDauCaQuantity?: number;
   layTrongKhoKg: number | null;
+  layTrongKhoQuantity?: number;
   /** Tổng thực trộn mọi lần (dùng tính TT SD). */
   thucTronKg: number | null;
   /** KL thực trộn theo số lần tuyệt đối (lan_thu + index). */
@@ -193,6 +194,7 @@ function closingStockByCode(reports: MachineNvlSavedReport[], catalog: Warehouse
 
 function warehouseExportByCode(slips: WarehouseSlipPrintData[]) {
   const map = new Map<string, number>();
+  const quantities = new Map<string, number>();
   for (const slip of slips || []) {
     if (slip.slipType !== 'xuat') continue;
     for (const line of slip.lines || []) {
@@ -203,9 +205,10 @@ function warehouseExportByCode(slips: WarehouseSlipPrintData[]) {
           ? Number(line.weightKg)
           : Number(line.quantity) || 0;
       addToQtyMap(map, code, qty);
+      if (line.unit && !isWarehouseKgUnit(line.unit)) addToQtyMap(quantities, code, line.quantity);
     }
   }
-  return map;
+  return { kg: map, quantities };
 }
 
 /** Lấy trong kho từ phiếu nhận NVL (`yeu_cau_xuat_kho` / `nvl_yeu_cau`), quy đổi kg khi có catalog. */
@@ -214,6 +217,7 @@ function materialRequestTakeByCode(
   materials: ReturnType<typeof mapMaterialToWeightCatalogItem>[]
 ) {
   const map = new Map<string, number>();
+  const quantities = new Map<string, number>();
   for (const request of requests || []) {
     for (const line of request.lines || []) {
       const code = String(line.ma_nvl || '').trim();
@@ -230,9 +234,10 @@ function materialRequestTakeByCode(
         products: []
       });
       addToQtyMap(map, code, kg != null && Number.isFinite(kg) ? kg : qty);
+      if (!isWarehouseKgUnit(unit)) addToQtyMap(quantities, code, qty);
     }
   }
-  return map;
+  return { kg: map, quantities };
 }
 
 function roundItemActualQty(item: { kl_thuc_te?: number | null; so_luong?: number | null }) {
@@ -416,8 +421,8 @@ export function buildMachineShiftMaterialChecklist(
     tonDauMap.set(key, value);
   }
   const tonCuoiMap = closingStockByCode(data.machineNvl || [], materialWeightCatalog);
-  const xuatMap = warehouseExportByCode(data.warehouseExportSlips || []);
-  const yeuCauMap = materialRequestTakeByCode(data.materialRequests || [], materialWeightCatalog);
+  const { kg: xuatMap, quantities: xuatQuantities } = warehouseExportByCode(data.warehouseExportSlips || []);
+  const { kg: yeuCauMap, quantities: yeuCauQuantities } = materialRequestTakeByCode(data.materialRequests || [], materialWeightCatalog);
   const mixingAgg = mixingActualBySessions(data.mixing || []);
 
   for (const report of data.machineNvl || []) {
@@ -491,6 +496,9 @@ export function buildMachineShiftMaterialChecklist(
     row.layTrongKhoKg = positiveOrNull(
       fromXuat != null && fromXuat > 0 ? fromXuat : fromYeuCau
     );
+    if (!isWarehouseKgUnit(row.donVi)) {
+      row.layTrongKhoQuantity = (fromXuat != null && fromXuat > 0 ? xuatQuantities : yeuCauQuantities).get(codeKey);
+    }
     row.thucTronKg = positiveOrNull(mixingAgg.totals.get(codeKey));
     const perSession = mixingAgg.byCodeSession.get(codeKey);
     row.thucTronByLan = {};
@@ -713,7 +721,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
                   <td className="bb-nvl-checklist-num">{formatQty(row?.dinhMucKg)}</td>
                   <td className="bb-nvl-checklist-num">{formatPercent(row?.tiLePercent)}</td>
                   <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonDauCaKg, row?.tonDauCaQuantity)}</td>
-                  <td className="bb-nvl-checklist-num">{formatQty(row?.layTrongKhoKg)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.layTrongKhoKg, row?.layTrongKhoQuantity)}</td>
                   {displaySessions.map(session => (
                     <td key={`tron-${row?.key || index}-${session}`} className="bb-nvl-checklist-num">
                       {formatQty(row?.thucTronByLan?.[session] ?? null)}
@@ -771,7 +779,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
             <p>
               <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới lấy vật tư đúng định mức. Pallet: 1L/2L = 25 kg/bao.
               <b> Ghi chú:</b> TT SD = Tồn đầu + Thực tế trộn − Tồn cuối. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
-              {' '}Tồn đầu/cuối: kg(số lượng theo ĐVT) đối với vật tư khác kg.
+              {' '}Tồn đầu/cuối và Lấy trong kho: kg(số lượng theo ĐVT) đối với vật tư khác kg.
             </p>
           </div>
 

@@ -1,18 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ClipboardList, Eye, Loader2, Pencil, Plus, Printer, RefreshCw, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ClipboardList, Loader2, Pencil, Plus, Printer, RefreshCw, X } from 'lucide-react';
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { waitForPrintImagesReady } from '../utils/printReady';
 import {
   AcceptanceReportPrintBatch,
   buildAcceptancePrintSlips,
-  buildAcceptanceScreenSlips,
   buildAcceptanceFilmKgByProductCode,
   buildAcceptanceProductNormByCode,
-  AcceptanceReportSlipStack
+  isAcceptanceThanhPhamLoai
 } from './AcceptanceReportPrintSheet';
-import type { AcceptanceScreenSlip } from './AcceptanceReportPrintSheet';
+import AcceptanceReportFlatTable from './AcceptanceReportFlatTable';
 import { normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import { normalizeReportFromApi } from './AcceptanceReportForm';
@@ -94,6 +93,14 @@ function resolveReportProductCode(matHang: string) {
   if (!trimmed) return '';
   const plusIdx = trimmed.indexOf('+');
   return (plusIdx > 0 ? trimmed.slice(0, plusIdx) : trimmed).trim();
+}
+
+/** Mã SP không được hiện trên tab Sản lượng (chỉ dùng ở SP lỗi / SP rác). */
+const SAN_LUONG_EXCLUDED_CODES = new Set(['RAC', 'RAC MANG', 'MT-HANG RAC', 'NHUAKM']);
+
+function isSanLuongExcludedCode(matHang: string) {
+  const code = resolveReportProductCode(matHang).replace(/\s+/g, ' ').trim().toUpperCase();
+  return SAN_LUONG_EXCLUDED_CODES.has(code);
 }
 
 function isKgUnit(value: string) {
@@ -531,6 +538,10 @@ export default function AcceptanceReportListView({
   const normalizedSearch = searchText.trim().toLowerCase();
   const filteredReports = useMemo(() => {
     return reports.filter(report => {
+      // Quy định tab Sản lượng: chỉ hiện Thành phẩm / Gia công; không hiện SP lỗi, SP rác,
+      // và không hiện RAC / RAC MANG / MT-HANG RAC / NHUAKM.
+      if (!isAcceptanceThanhPhamLoai(report.loai_vat_tu)) return false;
+      if (isSanLuongExcludedCode(report.mat_hang)) return false;
       const matchesShift = !filterShift || report.ca?.trim() === filterShift;
       const matchesSearch =
         !normalizedSearch ||
@@ -554,11 +565,6 @@ export default function AcceptanceReportListView({
         ten_sp: resolveReportProductName(report, productNameByCode)
       })),
     [filteredReports, productNameByCode]
-  );
-
-  const screenSlips = useMemo(
-    () => buildAcceptanceScreenSlips(reportsWithNames),
-    [reportsWithNames]
   );
 
   const filmKgByProductCode = useMemo(
@@ -954,12 +960,6 @@ export default function AcceptanceReportListView({
     }
   };
 
-  const reportById = useMemo(() => {
-    const map = new Map<string, AcceptanceReport>();
-    for (const report of filteredReports) map.set(report.id, report);
-    return map;
-  }, [filteredReports]);
-
   const openNvlView = async (report: AcceptanceReport) => {
     setNvlSyncMessage('');
     const fallback = buildNvlViewState(report, productCatalogByKey, productNameByCode, {
@@ -1096,58 +1096,11 @@ export default function AcceptanceReportListView({
     }
   };
 
-  const renderLineActions = (line: { id: string }) => {
-    const report = reportById.get(line.id);
-    if (!report) return null;
-    return (
-      <div className="inline-flex items-center justify-center gap-1">
-        <button
-          type="button"
-          onClick={() => void openNvlView(report)}
-          className="rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-800 transition hover:bg-violet-100"
-          title="Xem NVL định mức"
-        >
-          <span className="inline-flex items-center gap-1">
-            <Eye className="h-3.5 w-3.5" />
-            Xem
-          </span>
-        </button>
-        {canEdit && !report.da_in ? (
-          <button
-            type="button"
-            onClick={() => onEdit(report)}
-            className="rounded-lg border border-zinc-200 px-2 py-1 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
-            title="Sửa"
-          >
-            <span className="inline-flex items-center gap-1">
-              <Pencil className="h-3.5 w-3.5" />
-              Sửa
-            </span>
-          </button>
-        ) : null}
-        {canDelete ? (
-          <button
-            type="button"
-            onClick={() => void handleDelete(report.id)}
-            disabled={deletingId === report.id}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Xóa"
-          >
-            {deletingId === report.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-          </button>
-        ) : null}
-      </div>
-    );
-  };
-
-  const renderSlipActions = (slip: AcceptanceScreenSlip) => {
+  const renderSlipActions = (report: AcceptanceReport) => {
     if (!onEditGroup || !canEdit) return null;
+    const slipKey = [report.ngay, report.ca, report.ma_may || report.ten_may, report.lan].join('|');
     const groupReports = reports.filter(
-      report => [report.ngay, report.ca, report.ma_may || report.ten_may, report.lan].join('|') === slip.key
+      r => [r.ngay, r.ca, r.ma_may || r.ten_may, r.lan].join('|') === slipKey
     );
     if (groupReports.length === 0) return null;
 
@@ -1188,7 +1141,7 @@ export default function AcceptanceReportListView({
                   Báo cáo sản lượng
                 </p>
                 <p className="mt-1 text-[11px] font-semibold text-zinc-500">
-                  Mỗi phiếu một bảng — vuốt xuống xem, không cần chọn
+                  Bảng tổng hợp theo dòng — cột Ngày · Ca · Máy, lọc và phân trang
                 </p>
               </div>
             </div>
@@ -1282,12 +1235,14 @@ export default function AcceptanceReportListView({
               Đang tải...
             </div>
           ) : (
-            <AcceptanceReportSlipStack
-              slips={screenSlips}
-              emptyText="Chưa có báo cáo phù hợp với bộ lọc."
+            <AcceptanceReportFlatTable
+              reports={reportsWithNames}
               filmKgByProductCode={filmKgByProductCode}
-              renderLineActions={renderLineActions}
+              onViewNvl={report => void openNvlView(report)}
               renderSlipActions={renderSlipActions}
+              onEditLine={onEdit}
+              onDeleteLine={id => void handleDelete(id)}
+              deletingId={deletingId}
             />
           )}
         </div>

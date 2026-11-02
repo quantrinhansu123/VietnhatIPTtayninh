@@ -604,7 +604,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     serverLines: '5708–5833',
     appTab: 'acceptance-report | acceptance-report-list',
     appLines: 'src/components/AcceptanceReportForm.tsx, src/components/AcceptanceReportListView.tsx',
-    components: ['src/components/AcceptanceReportForm.tsx', 'src/components/AcceptanceReportListView.tsx', 'src/components/AcceptanceReportPrintSheet.tsx'],
+    components: ['src/components/AcceptanceReportForm.tsx', 'src/components/AcceptanceReportListView.tsx', 'src/components/AcceptanceReportFlatTable.tsx', 'src/components/AcceptanceReportPrintSheet.tsx'],
     utils: []
   },
   bao_cao_san_luong_nvl_dinh_muc: {
@@ -615,7 +615,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     serverLines: 'GET/PUT /api/bao-cao-san-luong-nvl-dinh-muc (sau bao-cao-nghiem-thu)',
     appTab: 'acceptance-report-list',
     appLines: 'src/components/AcceptanceReportListView.tsx',
-    components: ['src/components/AcceptanceReportListView.tsx'],
+    components: ['src/components/AcceptanceReportListView.tsx', 'src/components/AcceptanceReportFlatTable.tsx'],
     utils: []
   },
   bao_cao_may_nvl_ton: {

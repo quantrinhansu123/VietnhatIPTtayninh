@@ -51,7 +51,7 @@ test('lấy trong kho hiển thị kg và SL cùng nguồn phiếu xuất, khôn
   } as unknown as Partial<ProductionPlanRelatedReports>);
   const tape = rows.find(row => row.maVatTu === 'BK-BKT2cm')!;
   assert.equal(tape.layTrongKhoQuantity, 15);
-  assert.equal(formatChecklistStock(tape.layTrongKhoKg, tape.layTrongKhoQuantity), '1,14(15)');
+  assert.equal(formatChecklistStock(tape.layTrongKhoKg, tape.layTrongKhoQuantity, tape.donVi), '1,14(15)');
   assert.equal(rows.find(row => row.maVatTu === 'NHUA')!.layTrongKhoQuantity, undefined);
 });
 
@@ -65,7 +65,7 @@ test('thiếu xuất kho thì lấy kg và SL từ phiếu nhận NVL, cộng đ
   } as unknown as Partial<ProductionPlanRelatedReports>);
   const tape = rows.find(row => row.maVatTu === 'BK-BKT2cm')!;
   assert.equal(tape.layTrongKhoQuantity, 7);
-  assert.equal(formatChecklistStock(tape.layTrongKhoKg, tape.layTrongKhoQuantity), '0,532(7)');
+  assert.equal(formatChecklistStock(tape.layTrongKhoKg, tape.layTrongKhoQuantity, tape.donVi), '0,532(7)');
 });
 
 test('chưa tải được danh mục vẫn dùng hệ số đã lưu trên phiếu', () => {
@@ -79,12 +79,20 @@ test('hiện kg kèm số cuộn/cái gốc trong ngoặc; dòng kg và ô trố
   const tape = rows.find(row => row.maVatTu === 'BK-BKT2cm')!;
   assert.equal(tape.tonDauCaQuantity, 7);
   assert.equal(tape.tonCuoiCaQuantity, 18);
-  assert.equal(formatChecklistStock(tape.tonDauCaKg, tape.tonDauCaQuantity), '0,532(7)');
-  assert.equal(formatChecklistStock(tape.tonCuoiCaKg, tape.tonCuoiCaQuantity), '1,368(18)');
+  assert.equal(formatChecklistStock(tape.tonDauCaKg, tape.tonDauCaQuantity, tape.donVi), '0,532(7)');
+  assert.equal(formatChecklistStock(tape.tonCuoiCaKg, tape.tonCuoiCaQuantity, tape.donVi), '1,368(18)');
   const core = rows.find(row => row.maVatTu === 'ONG-35CM')!;
-  assert.equal(formatChecklistStock(core.tonDauCaKg, core.tonDauCaQuantity), '4(40)');
+  assert.equal(formatChecklistStock(core.tonDauCaKg, core.tonDauCaQuantity, core.donVi), '4(40)');
   const plastic = rows.find(row => row.maVatTu === 'NHUA')!;
   assert.equal(plastic.tonDauCaQuantity, undefined);
-  assert.equal(formatChecklistStock(plastic.tonDauCaKg, plastic.tonDauCaQuantity), '10');
-  assert.equal(formatChecklistStock(null), '');
+  assert.equal(formatChecklistStock(plastic.tonDauCaKg, plastic.tonDauCaQuantity, plastic.donVi), '10');
+  assert.equal(formatChecklistStock(null, undefined, undefined), '');
+});
+
+test('dòng hiển thị kg không có ngoặc dù phiếu nguồn lưu số lượng theo Lít', () => {
+  for (const unit of ['kg', ' KG ', 'kilogram', 'kg/sp']) {
+    assert.equal(formatChecklistStock(14, 14, unit), '14');
+  }
+  assert.equal(formatChecklistStock(0.532, 7, 'Cuộn'), '0,532(7)');
+  assert.equal(formatChecklistStock(14, 14, undefined), '14');
 });

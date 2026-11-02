@@ -85,9 +85,9 @@ function formatQty(value: number | null | undefined) {
   return formatNumber(value, 2);
 }
 
-export function formatChecklistStock(kg: number | null | undefined, quantity?: number) {
+export function formatChecklistStock(kg: number | null | undefined, quantity: number | undefined, unit: string | undefined) {
   if (kg == null || !Number.isFinite(kg) || kg === 0) return '';
-  return quantity != null && Number.isFinite(quantity) && quantity > 0
+  return unit && !isWarehouseKgUnit(unit) && quantity != null && Number.isFinite(quantity) && quantity > 0
     ? `${formatNumber(kg, 3)}(${formatNumber(quantity, 4)})`
     : formatQty(kg);
 }
@@ -720,15 +720,15 @@ export function MachineShiftMaterialChecklistPrintSheet({
                   <td className="bb-nvl-checklist-center">{row?.donVi || ''}</td>
                   <td className="bb-nvl-checklist-num">{formatQty(row?.dinhMucKg)}</td>
                   <td className="bb-nvl-checklist-num">{formatPercent(row?.tiLePercent)}</td>
-                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonDauCaKg, row?.tonDauCaQuantity)}</td>
-                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.layTrongKhoKg, row?.layTrongKhoQuantity)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonDauCaKg, row?.tonDauCaQuantity, row?.donVi)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.layTrongKhoKg, row?.layTrongKhoQuantity, row?.donVi)}</td>
                   {displaySessions.map(session => (
                     <td key={`tron-${row?.key || index}-${session}`} className="bb-nvl-checklist-num">
                       {formatQty(row?.thucTronByLan?.[session] ?? null)}
                     </td>
                   ))}
                   <td className="bb-nvl-checklist-num">{formatQty(row?.thucTronKg)}</td>
-                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonCuoiCaKg, row?.tonCuoiCaQuantity)}</td>
+                  <td className="bb-nvl-checklist-num">{formatChecklistStock(row?.tonCuoiCaKg, row?.tonCuoiCaQuantity, row?.donVi)}</td>
                 </tr>
               ))}
             </tbody>

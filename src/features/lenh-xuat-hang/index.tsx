@@ -127,11 +127,11 @@ function todayIso() {
   return `${y}-${m}-${d}`;
 }
 
-/** Mặc định danh sách: từ N ngày trước → hôm nay (giảm payload lần mở trang). */
-function daysAgoIso(days: number) {
+/** Ngày tương đối so với hôm nay, tính theo ngày lịch địa phương. */
+function relativeDateIso(days: number) {
   const date = new Date();
   date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() - Math.max(0, days));
+  date.setDate(date.getDate() + days);
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -139,6 +139,7 @@ function daysAgoIso(days: number) {
 }
 
 const SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS = 2;
+const SHIPPING_LIST_DEFAULT_LOOKAHEAD_DAYS = 2;
 
 function formatDateVi(value: string) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -465,9 +466,9 @@ export function ShippingOrdersPanel({
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [searchText, setSearchText] = useState('');
   const [dateFrom, setDateFrom] = useState(
-    () => daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS)
+    () => relativeDateIso(-SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS)
   );
-  const [dateTo, setDateTo] = useState(() => todayIso());
+  const [dateTo, setDateTo] = useState(() => relativeDateIso(SHIPPING_LIST_DEFAULT_LOOKAHEAD_DAYS));
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -493,8 +494,8 @@ export function ShippingOrdersPanel({
   const [pendingPrint, setPendingPrint] = useState(false);
   const [printingWarehouseOrders, setPrintingWarehouseOrders] = useState<ShippingOrder[]>([]);
   const [pendingWarehousePrint, setPendingWarehousePrint] = useState(false);
-  const defaultDateFrom = daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS);
-  const defaultDateTo = todayIso();
+  const defaultDateFrom = relativeDateIso(-SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS);
+  const defaultDateTo = relativeDateIso(SHIPPING_LIST_DEFAULT_LOOKAHEAD_DAYS);
 
   const applyExportedStatus = (
     list: ShippingOrder[],
@@ -597,8 +598,8 @@ export function ShippingOrdersPanel({
   const resetFilters = () => {
     setSelectedStatus('all');
     setSearchText('');
-    setDateFrom(daysAgoIso(SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS));
-    setDateTo(todayIso());
+    setDateFrom(relativeDateIso(-SHIPPING_LIST_DEFAULT_LOOKBACK_DAYS));
+    setDateTo(relativeDateIso(SHIPPING_LIST_DEFAULT_LOOKAHEAD_DAYS));
   };
 
   const filteredOrders = useMemo(() => {

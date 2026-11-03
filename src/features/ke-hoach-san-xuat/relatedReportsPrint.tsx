@@ -286,9 +286,19 @@ function machineTrailingNumber(value: string): string {
   return nums && nums.length > 0 ? nums[nums.length - 1] : '';
 }
 
+/** Loại máy suy từ mã/tên: bao bì (bb) hay cách nhiệt (cn); '' nếu không rõ. */
+function machineKindKey(value: string): 'bb' | 'cn' | '' {
+  const key = normalizeMachineKey(value);
+  if (/\b(bao\s*bi|mbb|bb)\b|mbb/.test(key)) return 'bb';
+  if (/\b(cach\s*nhiet|mcn|cn)\b|mcn/.test(key)) return 'cn';
+  return '';
+}
+
 function buildMachineMatchers(planMachines: string[]): Set<string> {
   const matchers = new Set<string>();
   planMachines.forEach(machine => {
+    const kind = machineKindKey(machine);
+    if (kind) matchers.add(`@${kind}`);
     const key = normalizeMachineKey(machine);
     if (key && key !== '-') matchers.add(key);
     const compact = compactMachineKey(machine);
@@ -308,9 +318,15 @@ function machineMatches(
   if (normalizedCandidates.length === 0) return false;
 
   for (const candidate of normalizedCandidates) {
+    // Khác loại máy (bao bì ↔ cách nhiệt) thì không bao giờ khớp, dù trùng số máy.
+    const candidateKind = machineKindKey(candidate);
+    if (candidateKind && machineMatchers.has(`@${candidateKind === 'bb' ? 'cn' : 'bb'}`) && !machineMatchers.has(`@${candidateKind}`)) {
+      continue;
+    }
     const candidateCompact = compactMachineKey(candidate);
     const candidateNum = machineTrailingNumber(candidate);
     for (const matcher of machineMatchers) {
+      if (matcher.startsWith('@')) continue;
       if (candidate === matcher || candidate.includes(matcher) || matcher.includes(candidate)) {
         return true;
       }

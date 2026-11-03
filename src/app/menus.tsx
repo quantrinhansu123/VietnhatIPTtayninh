@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Icon as IconifyIcon } from '@iconify/react';
 import type { IconifyIcon as IconifyIconData } from '@iconify/types';
 import gear3d from '@iconify-icons/fluent-emoji/gear';
@@ -54,8 +54,8 @@ import {
   FilePlus2, Layers, History, UsersRound, Building2, BriefcaseBusiness, Package, Cpu, Boxes,
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, PackageMinus, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
-  ArrowRight, ArrowDown, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode, BadgeCheck
-  , X
+  ArrowRight, ArrowDown, ArrowUpRight, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode, BadgeCheck,
+  Sparkles, X, Settings2, Users, Store, Calculator, GanttChart, Wrench
 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
@@ -77,78 +77,80 @@ export type MenuCardConfig = {
   modalUrl?: string;
   /** Form nhập tay, không mở trạm cân ngoài. */
   entryForm?: 'can-tu-dong';
+  /** Màu nhấn cho ô menu (Tailwind class icon bg/text). */
+  accent?: string;
 };
 
 export const MAIN_MENU_ITEMS: MenuCardConfig[] = [
   {
     title: 'Quản trị',
     desc: 'Dashboard quản trị, người dùng/phân quyền, cấu hình hệ thống và danh mục dùng chung.',
-    icon: Settings,
-    icon3d: gear3d,
-    tab: 'quan-tri'
+    icon: Settings2,
+    tab: 'quan-tri',
+    accent: 'bg-slate-100 text-slate-600'
   },
   {
     title: 'HCNS',
     desc: 'Hồ sơ nhân sự, cơ cấu tổ chức, ca làm việc và báo cáo nhân sự.',
-    icon: UsersRound,
-    icon3d: people3d,
-    tab: 'hcns'
+    icon: Users,
+    tab: 'hcns',
+    accent: 'bg-amber-50 text-amber-600'
   },
   {
     title: 'Kinh doanh',
     desc: 'Khách hàng, đơn đặt hàng, lệnh giao/xuất hàng và báo cáo kinh doanh.',
-    icon: BriefcaseBusiness,
-    icon3d: briefcase3d,
-    tab: 'business'
+    icon: Store,
+    tab: 'business',
+    accent: 'bg-sky-50 text-sky-600'
   },
   {
     title: 'Kế toán',
     desc: 'Bảng giá NVL và các báo cáo phục vụ hạch toán.',
-    icon: Receipt,
-    icon3d: abacus3d,
-    tab: 'accounting'
+    icon: Calculator,
+    tab: 'accounting',
+    accent: 'bg-emerald-50 text-emerald-600'
   },
   {
     title: 'Quản Đốc',
     desc: 'Kế hoạch sản xuất, lệnh sản xuất, theo dõi và báo cáo sản xuất.',
-    icon: BriefcaseBusiness,
-    icon3d: manager3d,
-    tab: 'factory-quan-doc'
+    icon: GanttChart,
+    tab: 'factory-quan-doc',
+    accent: 'bg-indigo-50 text-indigo-600'
   },
   {
     title: 'QC',
     desc: 'Danh mục sản phẩm, BOM/tỷ lệ phối trộn, kiểm soát hàng hỏng, kiểm soát cân và chất lượng.',
     icon: ShieldCheck,
-    icon3d: shield3d,
-    tab: 'factory-qc'
+    tab: 'factory-qc',
+    accent: 'bg-violet-50 text-violet-600'
   },
   {
     title: 'Sản xuất',
     desc: 'Công việc được giao, nhập báo cáo ca và lịch sử công việc.',
-    icon: UserRound,
-    icon3d: worker3d,
-    tab: 'factory-cong-nhan'
+    icon: Factory,
+    tab: 'factory-cong-nhan',
+    accent: 'bg-orange-50 text-orange-600'
   },
   {
     title: 'Kho',
     desc: 'Danh mục kho, kho NVL, kho thành phẩm, kiểm kho và xuất nhập kho.',
     icon: Warehouse,
-    icon3d: warehouse3d,
-    tab: 'factory-kho'
+    tab: 'factory-kho',
+    accent: 'bg-cyan-50 text-cyan-600'
   },
   {
     title: 'Quản lý máy',
     desc: 'Danh sách máy móc, tình trạng và thông tin vận hành.',
-    icon: Cpu,
-    icon3d: wrench3d,
-    tab: 'machines'
+    icon: Wrench,
+    tab: 'machines',
+    accent: 'bg-rose-50 text-rose-600'
   },
   {
     title: 'Lái xe',
     desc: 'Công việc được giao, tuyến giao hàng, nhật ký, chi phí và thu tiền khách hàng.',
     icon: Truck,
-    icon3d: deliveryTruck3d,
-    tab: 'vehicles'
+    tab: 'vehicles',
+    accent: 'bg-teal-50 text-teal-600'
   }
 ];
 
@@ -740,31 +742,41 @@ export function MenuCardGrid({
       {visibleItems.map(item => {
         const Icon = item.icon;
         const disabled = item.disabled;
+        const accent = item.accent || 'bg-brand-50 text-brand-500';
+        const clickable = !disabled && !item.modalUrl && !item.entryForm;
         return (
           <button
             key={item.title}
             type="button"
             aria-disabled={disabled}
             onClick={() => !disabled && (item.modalUrl || item.entryForm ? setModalItem(item) : onNavigate(item.tab))}
-            className={`group relative min-h-[80px] overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 md:p-4 text-left transition hover:border-brand-200 hover:shadow-elevated focus-visible:ring-2 focus-visible:ring-brand-500/25 ${
-              disabled ? 'cursor-not-allowed' : 'active:scale-[0.99]'
+            className={`group relative min-h-[88px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-3.5 md:p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30 ${
+              disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer active:scale-[0.99]'
             }`}
           >
-            <div className="flex items-start gap-3">
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition ${
-                item.icon3d
-                  ? 'bg-gradient-to-br from-white to-slate-100 shadow-sm ring-1 ring-slate-200/70 group-hover:scale-110'
-                  : 'bg-brand-50 text-brand-500 group-hover:bg-brand-500 group-hover:text-white'
+            <div className="flex items-start gap-3.5">
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-200 group-hover:scale-105 ${
+                item.icon3d ? 'bg-gradient-to-br from-white to-slate-100 shadow-sm ring-1 ring-slate-200/70' : accent
               }`}>
                 {item.icon3d ? (
-                  <IconifyIcon icon={item.icon3d} className="h-8 w-8 drop-shadow-sm" />
+                  <IconifyIcon icon={item.icon3d} className="h-9 w-9 drop-shadow-sm" />
                 ) : (
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon className="h-[20px] w-[20px]" strokeWidth={1.9} />
                 )}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-display font-semibold tracking-tight text-[13.5px] text-slate-900">{item.title}</span>
-                <span className="mt-0.5 block text-[11.5px] leading-snug text-slate-500 line-clamp-2">{item.desc}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="block truncate font-display font-semibold tracking-tight text-[13.5px] text-slate-900">
+                    {item.title}
+                  </span>
+                  {clickable ? (
+                    <ArrowUpRight
+                      className="h-3.5 w-3.5 shrink-0 text-slate-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500"
+                      strokeWidth={2.5}
+                    />
+                  ) : null}
+                </span>
+                <span className="mt-1 block text-[11.5px] leading-snug text-slate-500 line-clamp-2">{item.desc}</span>
               </span>
             </div>
           </button>
@@ -889,7 +901,34 @@ export function MainMenuFlow({
   items: MenuCardConfig[];
   onNavigate: (tab: AppTab) => void;
 }) {
-  return <MenuCardGrid items={items} onNavigate={onNavigate} />;
+  const enabled = items.filter(item => !item.disabled && !item.hidden);
+  return (
+    <div className="space-y-4">
+      <header className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-brand-50/40 px-4 py-4 shadow-card sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 ring-1 ring-brand-100">
+              <Sparkles className="h-3 w-3" />
+              Hệ thống quản lý sản xuất
+            </span>
+          </div>
+          <h1 className="mt-1.5 font-display text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+            Chào mừng trở lại
+          </h1>
+          <p className="mt-0.5 max-w-xl text-[12px] leading-snug text-slate-500">
+            Chọn chức năng để bắt đầu — mọi dữ liệu sản xuất, kho và vận hành đều được đồng bộ theo ca, máy và ngày.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-center shadow-soft">
+            <span className="block font-display text-base font-bold tabular-nums text-slate-900">{enabled.length}</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Chức năng</span>
+          </span>
+        </div>
+      </header>
+      <MenuCardGrid items={items} onNavigate={onNavigate} />
+    </div>
+  );
 }
 
 export function FourStepMenuFlow({

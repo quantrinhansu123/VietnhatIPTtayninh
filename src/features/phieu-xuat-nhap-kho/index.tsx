@@ -6133,7 +6133,7 @@ export function WarehouseHistoryPanel({
   onBack,
   onOpenSlip,
   initialFilters,
-  initialWarehouseTab = 'san_pham',
+  initialWarehouseTab = 'nvl',
   initialSlipType = 'nhap',
   standaloneSlipCode
 }: {

@@ -523,6 +523,7 @@ export default function AcceptanceReportListView({
   const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
   const [isSyncingNvl, setIsSyncingNvl] = useState(false);
   const [nvlSyncMessage, setNvlSyncMessage] = useState('');
+  const [isProductNamesLoading, setIsProductNamesLoading] = useState(true);
 
   const shiftOptions = useMemo<string[]>(() => {
     const shifts = reports.reduce<string[]>((result, report) => {
@@ -742,19 +743,26 @@ export default function AcceptanceReportListView({
 
   useEffect(() => {
     let cancelled = false;
+    // Nạp danh mục SP riêng: lỗi /api/kho-nvl hay /api/cai-dat không được xoá tên SP đã nạp.
     (async () => {
       try {
-        const [catalog, materialRes, settingRes] = await Promise.all([
-          fetch('/api/san-pham?format=table'),
-          fetch('/api/kho-nvl'),
-          fetch('/api/cai-dat')
-        ]);
+        const res = await fetch('/api/san-pham?format=table');
         if (cancelled) return;
-        const productData = await catalog.json().catch(() => ({}));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as { error?: string }).error || 'Không thể tải danh mục sản phẩm.');
+        if (!cancelled) applyProductCatalogData(data);
+      } catch {
+        // Giữ nguyên danh mục cũ (nếu có) — không xoá trắng để tránh cột Tên SP trống.
+      } finally {
+        if (!cancelled) setIsProductNamesLoading(false);
+      }
+    })();
+    (async () => {
+      try {
+        const [materialRes, settingRes] = await Promise.all([fetch('/api/kho-nvl'), fetch('/api/cai-dat')]);
+        if (cancelled) return;
         const materialData = await materialRes.json().catch(() => ({}));
         const settingData = await settingRes.json().catch(() => ({}));
-        if (!catalog.ok) throw new Error(productData.error || 'Không thể tải danh mục sản phẩm.');
-        applyProductCatalogData(productData, materialRes.ok ? materialData : undefined);
         if (materialRes.ok) {
           setMaterialWeightCatalog(
             normalizeMaterialsInventory(materialData).map(mapMaterialToWeightCatalogItem)
@@ -762,10 +770,7 @@ export default function AcceptanceReportListView({
         }
         if (settingRes.ok) setShiftSettings(normalizeShiftSettings(settingData));
       } catch {
-        if (!cancelled) {
-          setProductNameByCode(new Map());
-          setProductCatalogByKey(new Map());
-        }
+        // Không ảnh hưởng danh mục SP.
       }
     })();
     return () => {
@@ -1243,6 +1248,7 @@ export default function AcceptanceReportListView({
               onEditLine={onEdit}
               onDeleteLine={id => void handleDelete(id)}
               deletingId={deletingId}
+              isLoadingNames={isProductNamesLoading}
             />
           )}
         </div>

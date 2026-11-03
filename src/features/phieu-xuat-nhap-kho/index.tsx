@@ -7648,7 +7648,7 @@ export function WarehouseHistoryPanel({
               <p className="truncate text-[11px] font-semibold text-zinc-500">
                 {selectedCount > 0
                   ? `Đã chọn ${selectedCount} phiếu`
-                  : `Tích chọn phiếu để in gộp / tải Excel${canDelete ? ' hoặc xóa nhiều' : ''}`}
+                  : 'Tích chọn phiếu để tải Excel'}
               </p>
             ) : null}
           </div>
@@ -7670,26 +7670,6 @@ export function WarehouseHistoryPanel({
               <FileDown className="h-3.5 w-3.5" />
               Tải Excel{selectedCount > 0 ? ` (${selectedCount})` : ''}
             </button>
-            <button
-              type="button"
-              disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
-              onClick={() => handlePrintSelectedSlips(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#ef1b2d]/30 bg-red-50 px-3 py-1.5 text-xs font-black text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              In gộp{selectedCount > 0 ? ` (${selectedCount})` : ''}
-            </button>
-            {canDelete ? (
-              <button
-                type="button"
-                disabled={selectedCount === 0 || isBulkDeleting || Boolean(deletingSlipCode)}
-                onClick={() => void handleBulkDelete()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Xóa đã chọn{selectedCount > 0 ? ` (${selectedCount})` : ''}
-              </button>
-            ) : null}
             </>
           ) : null}
           <button

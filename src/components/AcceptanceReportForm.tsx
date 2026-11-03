@@ -434,6 +434,7 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     ten_may: String(record.ten_may ?? ''),
     loai_vat_tu: String(record.loai_vat_tu ?? 'Thành phẩm'),
     mat_hang: String(record.mat_hang ?? ''),
+    ten_sp: String(record.ten_sp ?? record.ten_san_pham ?? '').trim() || undefined,
     don_vi: String(record.don_vi ?? ''),
     so_luong:
       record.so_luong === null || record.so_luong === undefined ? null : Number(record.so_luong),

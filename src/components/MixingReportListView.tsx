@@ -649,14 +649,6 @@ export default function MixingReportListView({
     const roundExplanations = resolveMixingReportRoundExplanations(report);
     const showQtyColumns = roundCount > 1;
     const roundKeys = MIXING_ROUND_KEYS.slice(0, roundCount);
-    const roundGridClass =
-      roundCount <= 1
-        ? 'grid grid-cols-1 gap-2'
-        : roundCount === 2
-          ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
-          : roundCount === 3
-            ? 'grid grid-cols-1 gap-2 sm:grid-cols-3'
-            : 'grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4';
 
     if (report.chi_tiet.length === 0) {
       return (
@@ -666,61 +658,69 @@ export default function MixingReportListView({
 
     return (
       <div className="space-y-3">
-        <div className={roundGridClass}>
-          {roundKeys.map((roundKey, roundIndex) => {
-            const roundLabel = mixingSessionColumnLabel(sessionStart, roundIndex);
-            const roundNorm = report.chi_tiet.reduce(
-              (sum, line) => sum + sumLineRoundNormQuantity(line, roundKey),
-              0
-            );
-            const roundActualRaw = report.chi_tiet.reduce(
-              (sum, line) => sum + sumRoundActualQuantity(line.lan_su_dung, roundKey),
-              0
-            );
-            const roundHasActual = report.chi_tiet.some(line =>
-              getRoundItems(line.lan_su_dung, roundKey).some(
-                item =>
-                  item.kl_thuc_te !== null &&
-                  item.kl_thuc_te !== undefined &&
-                  !Number.isNaN(item.kl_thuc_te)
-              )
-            );
-            return (
-              <div
-                key={`expand-round-card-${report.id}-${roundKey}`}
-                className="min-w-0 rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm"
-              >
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5 border-b border-zinc-100 pb-2">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-[#ef1b2d]">
-                    {roundLabel}
-                  </p>
-                  <p className="font-mono text-[11px] font-bold text-zinc-600">
-                    ĐM {formatNormWeight(roundNorm) || '—'}
-                    <span className="mx-1 text-zinc-300">·</span>
-                    TT {roundHasActual ? formatOptionalNumber(roundActualRaw) : '—'}
-                  </p>
-                </div>
-                {renderPhotoGallery(
-                  roundPhotos[roundKey] ?? [],
-                  'Chưa có ảnh xác nhận',
-                  'thumb',
-                  `Ảnh · ${roundLabel}`
-                )}
-                <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-2">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Lý do</p>
-                    <div className="mt-1 max-h-16 overflow-y-auto">{renderReasonList(roundReasons[roundKey])}</div>
-                  </div>
-                  <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-2">
-                    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Giải trình</p>
-                    <div className="mt-1 max-h-16 overflow-y-auto">
-                      {renderExplanationText(roundExplanations[roundKey])}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
+          <table className="min-w-full text-left text-xs">
+            <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[10px]`}>
+              <tr>
+                <th className="whitespace-nowrap px-2 py-2 font-black">Lần</th>
+                <th className="whitespace-nowrap px-2 py-2 text-right font-black">ĐM</th>
+                <th className="whitespace-nowrap px-2 py-2 text-right font-black">TT</th>
+                <th className="min-w-[120px] px-2 py-2 font-black">Ảnh xác nhận</th>
+                <th className="min-w-[140px] px-2 py-2 font-black">Lý do</th>
+                <th className="min-w-[140px] px-2 py-2 font-black">Giải trình</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {roundKeys.map((roundKey, roundIndex) => {
+                const roundLabel = mixingSessionColumnLabel(sessionStart, roundIndex);
+                const roundNorm = report.chi_tiet.reduce(
+                  (sum, line) => sum + sumLineRoundNormQuantity(line, roundKey),
+                  0
+                );
+                const roundActualRaw = report.chi_tiet.reduce(
+                  (sum, line) => sum + sumRoundActualQuantity(line.lan_su_dung, roundKey),
+                  0
+                );
+                const roundHasActual = report.chi_tiet.some(line =>
+                  getRoundItems(line.lan_su_dung, roundKey).some(
+                    item =>
+                      item.kl_thuc_te !== null &&
+                      item.kl_thuc_te !== undefined &&
+                      !Number.isNaN(item.kl_thuc_te)
+                  )
+                );
+                return (
+                  <tr key={`expand-round-row-${report.id}-${roundKey}`} className="align-top hover:bg-red-50/20">
+                    <td className="whitespace-nowrap px-2 py-2 text-[11px] font-black uppercase tracking-wider text-[#ef1b2d]">
+                      {roundLabel}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-zinc-600">
+                      {formatNormWeight(roundNorm) || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right font-mono font-bold text-zinc-800">
+                      {roundHasActual ? formatOptionalNumber(roundActualRaw) : '—'}
+                    </td>
+                    <td className="px-2 py-2">
+                      {renderPhotoGallery(
+                        roundPhotos[roundKey] ?? [],
+                        'Chưa có ảnh xác nhận',
+                        'thumb',
+                        `Ảnh · ${roundLabel}`
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      <div className="max-h-16 overflow-y-auto">{renderReasonList(roundReasons[roundKey])}</div>
+                    </td>
+                    <td className="px-2 py-2">
+                      <div className="max-h-16 overflow-y-auto">
+                        {renderExplanationText(roundExplanations[roundKey])}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">

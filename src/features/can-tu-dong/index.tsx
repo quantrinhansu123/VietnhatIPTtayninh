@@ -377,6 +377,14 @@ function resolveRowMay(row: CanTuDongRecord): string {
   return String(resolveCanTuDongMachine(row) ?? '').trim();
 }
 
+function normalizeMachineToken(value: string): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ');
+}
+
 function mayMatches(rowMay: string, filter: string): boolean {
   if (filter === 'all') return true;
   return rowMay.trim().toLocaleLowerCase('vi') === filter.trim().toLocaleLowerCase('vi');
@@ -464,6 +472,10 @@ export function CanTuDongPanel({
   const [lsxQtyByLenhAndSp, setLsxQtyByLenhAndSp] = useState<Map<string, number>>(() => new Map());
   /** Mã SP gốc trong danh mục (hiển thị combobox đồng bộ). */
   const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>([]);
+  /** Mã máy (danh mục) → tên máy — dùng khớp bộ lọc Máy từ hub (chọn theo mã máy). */
+  const [machineNameByCode, setMachineNameByCode] = useState<Map<string, string>>(() => new Map());
+  /** Tên máy chuẩn hoá → mã máy — khớp tên máy trong dữ liệu cân với mã máy. */
+  const [machineCodeByName, setMachineCodeByName] = useState<Map<string, string>>(() => new Map());
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [showNhapKhoModal, setShowNhapKhoModal] = useState(false);
@@ -600,6 +612,43 @@ export function CanTuDongPanel({
     let cancelled = false;
     void (async () => {
       try {
+        const res = await fetch('/api/danh-sach-may');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.machines)
+            ? data.machines
+            : Array.isArray(data?.records)
+              ? data.records
+              : [];
+        const byCode = new Map<string, string>();
+        const byName = new Map<string, string>();
+        for (const row of rows) {
+          const code = String(row?.ma_may ?? row?.code ?? row?.ma ?? '').trim();
+          const name = String(row?.ten_may ?? row?.name ?? row?.ten ?? '').trim();
+          if (!code) continue;
+          if (name) byCode.set(code, name);
+          const nameKey = normalizeMachineToken(name);
+          if (nameKey && !byName.has(nameKey)) byName.set(nameKey, code);
+        }
+        if (!cancelled) {
+          setMachineNameByCode(byCode);
+          setMachineCodeByName(byName);
+        }
+      } catch {
+        // Không chặn màn hình nếu danh mục máy lỗi.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
         const res = await fetch('/api/lenh-sx');
         const data = await res.json().catch(() => ({}));
         if (!res.ok || cancelled) return;
@@ -697,8 +746,26 @@ export function CanTuDongPanel({
 
   const recordsByMay = useMemo(() => {
     if (mayFilter === 'all') return recordsByCa;
-    return recordsByCa.filter(row => mayMatches(resolveRowMay(row), mayFilter));
-  }, [recordsByCa, mayFilter]);
+    const filterKey = normalizeMachineToken(mayFilter);
+    const filterName = machineNameByCode.get(mayFilter)?.trim() ?? '';
+    const filterNameKey = normalizeMachineToken(filterName);
+    return recordsByCa.filter(row => {
+      const rowMay = resolveRowMay(row);
+      // 1) Trùng tên máy trực tiếp.
+      if (mayMatches(rowMay, mayFilter)) return true;
+      // 2) Filter là mã máy (vd MBB_5) → khớp với tên máy (MÁY BAO BÌ 5) qua danh mục.
+      const rowNameKey = normalizeMachineToken(rowMay);
+      if (filterNameKey && rowNameKey && rowNameKey === filterNameKey) return true;
+      // 3) Khớp mã máy qua tên máy chuẩn hoá.
+      const rowCode = machineCodeByName.get(rowNameKey);
+      if (rowCode && rowCode === mayFilter) return true;
+      // 4) Khớp token chuẩn hoá (số máy / loại máy) khi cả hai bên đều có ý nghĩa.
+      if (filterKey && rowNameKey && (rowNameKey === filterKey || rowNameKey.includes(filterKey))) {
+        return true;
+      }
+      return false;
+    });
+  }, [recordsByCa, mayFilter, machineNameByCode, machineCodeByName]);
 
   const lenhSxOptions = useMemo(() => {
     const set = new Set<string>();

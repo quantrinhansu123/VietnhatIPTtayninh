@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
 import {
-  isAcceptanceHangLoiHongLoai,
-  isAcceptanceThanhPhamLoai,
   resolveAcceptanceLineFilmKg,
   resolveAcceptanceLineNhuaKg,
   sumByUnit,
@@ -20,8 +18,7 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
-  TablePagination,
-  StatusBadge
+  TablePagination
 } from './shared/table';
 
 type NamedReport = AcceptanceReport & { ten_sp?: string };
@@ -34,6 +31,8 @@ type Props = {
   onEditLine: (report: AcceptanceReport) => void;
   onDeleteLine: (id: string) => void;
   deletingId: string | null;
+  /** Danh mục SP đang tải — hiện «Đang tải…» thay vì «—» ở cột Tên SP. */
+  isLoadingNames?: boolean;
 };
 
 function machineLabel(report: NamedReport) {
@@ -50,7 +49,8 @@ export default function AcceptanceReportFlatTable({
   renderSlipActions,
   onEditLine,
   onDeleteLine,
-  deletingId
+  deletingId,
+  isLoadingNames = false
 }: Props) {
   const { canEdit, canDelete } = useTabAccess('acceptance-report-list');
   const [page, setPage] = useState(1);
@@ -90,8 +90,9 @@ export default function AcceptanceReportFlatTable({
 
   return (
     <TableShell
-      minWidthClassName="min-w-[1280px]"
+      minWidthClassName="min-w-[1360px]"
       maxHeightClassName="max-h-[70vh]"
+      className="!rounded-md !shadow-none"
       footer={
         rows.length > 0 ? (
           <TablePagination
@@ -110,12 +111,11 @@ export default function AcceptanceReportFlatTable({
     >
       <TableHead>
         <TableHeadCell className="text-center">STT</TableHeadCell>
-        <TableHeadCell>Ngày</TableHeadCell>
-        <TableHeadCell>Ca</TableHeadCell>
-        <TableHeadCell>Lần · Giờ</TableHeadCell>
-        <TableHeadCell>Máy</TableHeadCell>
-        <TableHeadCell align="center">Loại</TableHeadCell>
-        <TableHeadCell>Mặt hàng</TableHeadCell>
+        <TableHeadCell className="text-center">Ngày</TableHeadCell>
+        <TableHeadCell className="text-center">Ca</TableHeadCell>
+        <TableHeadCell className="text-center">Lần · Giờ</TableHeadCell>
+        <TableHeadCell className="text-center">Máy</TableHeadCell>
+        <TableHeadCell className="text-center">Mặt hàng</TableHeadCell>
         <TableHeadCell>Tên SP</TableHeadCell>
         <TableHeadCell align="center">ĐVT</TableHeadCell>
         <TableHeadCell align="right">Số lượng</TableHeadCell>
@@ -126,7 +126,7 @@ export default function AcceptanceReportFlatTable({
       </TableHead>
       <TableBody>
         {pageRows.length === 0 ? (
-          <TableEmptyRow colSpan={14}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
+          <TableEmptyRow colSpan={13}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
         ) : (
           pageRows.map((report, index) => {
             const filmKg = resolveAcceptanceLineFilmKg(
@@ -135,70 +135,67 @@ export default function AcceptanceReportFlatTable({
               filmKgByProductCode
             );
             const plasticKg = resolveAcceptanceLineNhuaKg(report.trong_luong, filmKg);
-            const isFinishedGoods = isAcceptanceThanhPhamLoai(report.loai_vat_tu);
-            const isDefective = isAcceptanceHangLoiHongLoai(report.loai_vat_tu);
-            const typeLabel = report.loai_vat_tu?.trim() || 'Thành phẩm';
             const timeLabel = report.gio && report.gio !== '-' ? ` · ${report.gio}` : '';
 
             return (
-              <TableRow key={report.id || `flat-${index}`}>
-                <td className="px-3 py-2 text-center font-mono font-bold text-zinc-500">
+              <TableRow key={report.id || `flat-${index}`} className="border-b border-zinc-200">
+                <td className="border-r border-zinc-200 px-2 py-1.5 text-center font-mono text-[12px] text-zinc-500 last:border-r-0">
                   {(currentPage - 1) * pageSize + index + 1}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold text-zinc-800">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center font-mono text-[12px] text-zinc-800 last:border-r-0">
                   {formatDateDdMmYyyy(report.ngay)}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 font-semibold text-zinc-800">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center text-[12px] font-semibold text-zinc-800 last:border-r-0">
                   {report.ca || '-'}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-zinc-600">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center text-[12px] text-zinc-600 last:border-r-0">
                   {`${report.lan || '-'}${timeLabel}`}
                 </td>
-                <td className="px-3 py-2 text-zinc-700">{machineLabel(report)}</td>
-                <td className="px-3 py-2 text-center">
-                  <StatusBadge
-                    label={typeLabel}
-                    color={isFinishedGoods ? 'emerald' : isDefective ? 'rose' : 'zinc'}
-                  />
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center text-[12px] text-zinc-700 last:border-r-0">
+                  {machineLabel(report)}
                 </td>
-                <td className="px-3 py-2 font-semibold text-zinc-800">{report.mat_hang || '—'}</td>
-                <td className="px-3 py-2 text-zinc-600">{report.ten_sp || '—'}</td>
-                <td className="px-3 py-2 text-center font-semibold text-zinc-600">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center font-mono text-[12px] font-semibold text-zinc-800 last:border-r-0">
+                  {report.mat_hang || '—'}
+                </td>
+                <td className="border-r border-zinc-200 px-2 py-1.5 text-[12px] text-zinc-700 last:border-r-0">
+                  {report.ten_sp || (isLoadingNames ? <span className="text-zinc-400">Đang tải…</span> : '—')}
+                </td>
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-center text-[12px] font-semibold text-zinc-600 last:border-r-0">
                   {report.don_vi || '—'}
                 </td>
-                <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-emerald-700 last:border-r-0">
                   {report.so_luong == null ? '—' : formatNumber(report.so_luong, 2)}
                 </td>
-                <td className="px-3 py-2 text-right font-mono font-bold text-amber-800">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-amber-800 last:border-r-0">
                   {report.trong_luong == null || !(Number(report.trong_luong) > 0)
                     ? '—'
                     : `${formatNumber(Number(report.trong_luong), 2)} ${report.don_vi_trong_luong || 'Kg'}`}
                 </td>
-                <td className="px-3 py-2 text-right font-mono font-bold text-cyan-800">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-cyan-800 last:border-r-0">
                   {filmKg != null && filmKg > 0 ? `${formatNumber(filmKg, 2)} Kg` : '—'}
                 </td>
-                <td className="px-3 py-2 text-right font-mono font-bold text-violet-800">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-violet-800 last:border-r-0">
                   {plasticKg != null && plasticKg > 0 ? `${formatNumber(plasticKg, 2)} Kg` : '—'}
                 </td>
-                <td className="px-3 py-2 text-center">
+                <td className="whitespace-nowrap px-2 py-1.5 text-center">
                   <div className="inline-flex items-center justify-center gap-1">
                     <button
                       type="button"
                       onClick={() => onViewNvl(report)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black text-violet-800 transition hover:bg-violet-100"
+                      className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
                       title="Xem NVL định mức"
                     >
-                      <Eye className="h-3.5 w-3.5" />
+                      <Eye className="h-3 w-3" />
                       Xem
                     </button>
                     {canEdit && !report.da_in ? (
                       <button
                         type="button"
                         onClick={() => onEditLine(report)}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
+                        className="inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50"
                         title="Sửa"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil className="h-3 w-3" />
                         <span>Sửa</span>
                       </button>
                     ) : null}
@@ -207,13 +204,13 @@ export default function AcceptanceReportFlatTable({
                         type="button"
                         onClick={() => onDeleteLine(report.id)}
                         disabled={deletingId === report.id}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-rose-300 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                         title="Xóa"
                       >
                         {deletingId === report.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         )}
                       </button>
                     ) : null}
@@ -226,23 +223,23 @@ export default function AcceptanceReportFlatTable({
         )}
       </TableBody>
       {rows.length > 0 ? (
-        <tfoot className="border-t-2 border-zinc-200 bg-zinc-50 text-xs font-black text-zinc-800">
+        <tfoot className="border-t-2 border-zinc-300 bg-[#e8f0ed]/70 text-[12px] font-bold text-zinc-900">
           <tr>
-            <td colSpan={9} className="px-3 py-2 text-right">
+            <td colSpan={8} className="border-r border-zinc-300 px-2 py-2 text-right">
               Tổng cộng ({rows.length} dòng)
             </td>
-            <td className="px-3 py-2 text-right font-mono text-emerald-800">
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-emerald-800">
               {sumByUnit(rows)
                 .map(([unit, total]) => `${formatNumber(total, 2)} ${unit}`)
                 .join(' · ')}
             </td>
-            <td className="px-3 py-2 text-right font-mono text-amber-800">
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-amber-800">
               {totals.weightKg > 0 ? `${formatNumber(totals.weightKg, 2)} Kg` : '—'}
             </td>
-            <td className="px-3 py-2 text-right font-mono text-cyan-800">
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-cyan-800">
               {totals.filmKg > 0 ? `${formatNumber(totals.filmKg, 2)} Kg` : '—'}
             </td>
-            <td className="px-3 py-2 text-right font-mono text-violet-800">
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-violet-800">
               {totals.plasticKg > 0 ? `${formatNumber(totals.plasticKg, 2)} Kg` : '—'}
             </td>
             <td />

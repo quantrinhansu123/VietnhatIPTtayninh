@@ -9,7 +9,7 @@ export const MATERIAL_MISA_SORT_ORDER = [
   'NHUA-2L',
   'NHUA-TCMN 25kg',
   'NHUA-TCVN 25kg',
-  'TUI KHI 65*215',
+  'VT-TUI03',
   'BK-BKT2cm',
   'BK-BKT5cm',
   'DAU BONG',

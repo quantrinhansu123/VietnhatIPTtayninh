@@ -48,7 +48,7 @@ test('switching template preserves entered quantities including zero, drops unus
   const result = mergeMaterialPreset(bb, cn, line => line.code, line => line.qty !== '');
   assert.equal(result.find(line => line.code === 'NHUA-2L')?.qty, '20');
   assert.equal(result.find(line => line.code === 'BK-BKT2cm')?.qty, '0');
-  assert.ok(!result.some(line => line.code === 'TUI KHI 65*215'));
+  assert.ok(!result.some(line => line.code === 'VT-TUI03'));
   assert.equal(bb[1].qty, '20');
 });
 
@@ -67,7 +67,7 @@ test('mixing fills every round in preset order and preserves entered values when
   assert.equal(saved[0].lan_su_dung.lan_2, undefined);
   const cn = applyMixingMaterialPreset(next, [], 'cn', 2);
   assert.equal(cn.find(line => line.ma_nvl === 'NHUA-2L')?.lan_su_dung.lan_1![0].kl_thuc_te, 12);
-  assert.ok(!cn.some(line => line.ma_nvl === 'TUI KHI 65*215'));
+  assert.ok(!cn.some(line => line.ma_nvl === 'VT-TUI03'));
 });
 
 test('blank quantities are omitted; explicitly entered zero is retained', () => {

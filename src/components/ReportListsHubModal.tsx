@@ -389,6 +389,13 @@ export default function ReportListsHubModal({
 
       // Bảng vật tư: bỏ các API nặng (cân AI 10k dòng, phiếu cân, BB tổng hợp…).
       const data = await loadMachineShiftChecklistPrintData(date, [shift], [], machine);
+      if (data.isEmpty) {
+        setPrintError(`Không có phiếu nào của ${machine.name} trong ca này (${date}). Vui lòng kiểm tra lại ngày · ca · máy.`);
+        setPrintData(null);
+        setSanLuongPrintData(null);
+        setTonData(null);
+        return;
+      }
       setTonData(null);
       setSanLuongPrintData(null);
       setPrintData(data);

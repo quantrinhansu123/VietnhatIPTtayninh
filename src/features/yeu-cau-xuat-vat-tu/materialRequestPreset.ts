@@ -42,7 +42,7 @@ export const MATERIAL_REQUEST_PRESET_BB: MaterialRequestPresetItem[] = [
   { code: 'NHUA-2L', fallbackName: 'Nguyên sinh LLDPE 2L 25kg/b', fallbackUnit: 'kg' },
   { code: 'NHUA-TCMN 25kg', fallbackName: 'Nhựa tái chế mua ngoài 25kg/b', fallbackUnit: 'kg' },
   { code: 'NHUA-TC-VN', fallbackName: 'Nhựa tái chế Việt Nhật 20kg/b', fallbackUnit: 'kg' },
-  { code: 'VT-TUI03', fallbackName: 'Túi khí 65+15+15*215', fallbackUnit: 'kg' },
+  { code: 'VT-TUI03', fallbackName: 'Túi đựng hàng bao bì 65cm*215 cm( xếp hông 20cm)(1kg= 7 cái)', fallbackUnit: 'Cái' },
   { code: 'BK-BKT2cm', fallbackName: 'Băng keo trong 2cm', fallbackUnit: 'Cuộn' },
   { code: 'BK-BKT5cm', fallbackName: 'Băng keo trong 5cm', fallbackUnit: 'Cuộn' },
   { code: 'DAU BONG PA350', fallbackName: 'Dầu bóng phân tán', fallbackUnit: 'Lít' },

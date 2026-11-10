@@ -173,7 +173,9 @@ export function ControlBoardPanel({
   onEditMaterialRequest,
   onEditAcceptanceReport,
   onEditAcceptanceReportGroup,
-  mode = 'full'
+  mode = 'full',
+  hideCommonFilters = false,
+  initialFilters
 }: {
   onNavigate: (tab: AppTab) => void;
   onMachineReport: (machine: MachineRow, type: 'mixing' | 'nvl') => void;
@@ -184,6 +186,8 @@ export function ControlBoardPanel({
   onEditAcceptanceReportGroup?: (reports: AcceptanceReport[]) => void;
   /** `report-only`: `/phan-tich`. `report-only-auto`: `/phan-tich-tu-dong` (mọi máy; sản lượng = cột Trọng lượng nhựa `can_tu_dong` / `/can-tu-dong`). */
   mode?: 'full' | 'report-only' | 'report-only-auto';
+  hideCommonFilters?: boolean;
+  initialFilters?: { dateFrom?: string; dateTo?: string; shift?: string; machineCode?: string };
 }) {
   const reportOnly = mode === 'report-only' || mode === 'report-only-auto';
   const isAutoReport = mode === 'report-only-auto';
@@ -268,13 +272,32 @@ export function ControlBoardPanel({
   useEffect(() => {
     if (!isAutoReport) return;
     const defaultRange = defaultShiftSummaryDateRange(14);
+    // Nếu có initialFilters từ component cha (vd trang Xem báo cáo / Lịch sử công việc)
+    if (initialFilters) {
+      const initFrom = initialFilters.dateFrom || defaultRange.from;
+      const initTo = initialFilters.dateTo || initialFilters.dateFrom || defaultRange.to;
+      const initShift = initialFilters.shift || 'all';
+      const initMachine = initialFilters.machineCode || 'all';
+      setShiftSummaryDateFrom(initFrom);
+      setShiftSummaryDateTo(initTo);
+      setBoardDateScope('range');
+      setBoardFilterShift(initShift);
+      setBoardFilterMachine(initMachine);
+      setDraftShiftSummaryDateFrom(initFrom);
+      setDraftShiftSummaryDateTo(initTo);
+      setDraftBoardDateScope('range');
+      setDraftBoardFilterShift(initShift);
+      setDraftBoardFilterMachine(initMachine);
+      return;
+    }
     // Mở từ Biểu đồ TH (/bieu-do-th?ngay=...&ca=...&may=...): nạp sẵn bộ lọc theo dòng đã bấm.
     const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const urlNgay = urlParams?.get('ngay')?.trim() || '';
+    const urlNgay = urlParams?.get('ngay')?.trim() || urlParams?.get('tu_ngay')?.trim() || '';
+    const urlDenNgay = urlParams?.get('den_ngay')?.trim() || '';
     const urlCa = urlParams?.get('ca')?.trim() || '';
     const urlMay = urlParams?.get('may')?.trim() || '';
     const initFrom = urlNgay || defaultRange.from;
-    const initTo = urlNgay || defaultRange.to;
+    const initTo = urlDenNgay || urlNgay || defaultRange.to;
     const initShift = urlCa || 'all';
     const initMachine = urlMay || 'all';
     setShiftSummaryDateFrom(initFrom);
@@ -1513,63 +1536,65 @@ export function ControlBoardPanel({
         </p>
       )}
 
-      <div className="order-[-30] flex flex-col gap-2">
-        {lockedByUrlFilters ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = '/bieu-do-th';
-              }}
-              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-100"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Quay lại
-            </button>
-          </div>
-        ) : null}
-        <ControlBoardCommonFilters
-          dateScope={uiBoardDateScope}
-          onDateScopeChange={isAutoReport ? setDraftBoardDateScope : setBoardDateScope}
-          dateFrom={uiShiftSummaryDateFrom}
-          dateTo={uiShiftSummaryDateTo}
-          onDateFromChange={isAutoReport ? setDraftShiftSummaryDateFrom : setShiftSummaryDateFrom}
-          onDateToChange={isAutoReport ? setDraftShiftSummaryDateTo : setShiftSummaryDateTo}
-          shift={uiBoardFilterShift}
-          onShiftChange={handleUiBoardShiftChange}
-          shiftOptions={panelShiftOptions}
-          formatShiftLabel={formatPanelShiftLabel}
-          machine={uiBoardFilterMachine}
-          onMachineChange={isAutoReport ? setDraftBoardFilterMachine : setBoardFilterMachine}
-          machines={panelMachines}
-          productionOrder={uiBoardFilterProductionOrder}
-          productionOrderQuery={uiBoardFilterProductionOrderQuery}
-          onProductionOrderChange={isAutoReport ? setDraftBoardFilterProductionOrder : setBoardFilterProductionOrder}
-          onProductionOrderQueryChange={
-            isAutoReport ? setDraftBoardFilterProductionOrderQuery : setBoardFilterProductionOrderQuery
-          }
-          productionOrderOptions={panelProductionOrderOptions}
-          onClear={clearBoardFilters}
-          isLoading={isLoading}
-          deferApply={isAutoReport}
-          onApply={applyBoardFilters}
-          hasPendingChanges={hasPendingFilterChanges}
-        />
-        {reportOnly ? (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowReportListsModal(true)}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-black text-red-700 shadow-xs transition hover:border-red-300 hover:bg-red-50"
-              title="Chọn loại · ngày · ca · máy rồi in báo cáo"
-            >
-              <ClipboardList className="h-4 w-4 text-[#ef1b2d]" />
-              Danh sách báo cáo
-              <ChevronDown className="h-3.5 w-3.5 text-[#ef1b2d]" />
-            </button>
-          </div>
-        ) : null}
-      </div>
+      {!hideCommonFilters ? (
+        <div className="order-[-30] flex flex-col gap-2">
+          {lockedByUrlFilters ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = '/bieu-do-th';
+                }}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-100"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Quay lại
+              </button>
+            </div>
+          ) : null}
+          <ControlBoardCommonFilters
+            dateScope={uiBoardDateScope}
+            onDateScopeChange={isAutoReport ? setDraftBoardDateScope : setBoardDateScope}
+            dateFrom={uiShiftSummaryDateFrom}
+            dateTo={uiShiftSummaryDateTo}
+            onDateFromChange={isAutoReport ? setDraftShiftSummaryDateFrom : setShiftSummaryDateFrom}
+            onDateToChange={isAutoReport ? setDraftShiftSummaryDateTo : setShiftSummaryDateTo}
+            shift={uiBoardFilterShift}
+            onShiftChange={handleUiBoardShiftChange}
+            shiftOptions={panelShiftOptions}
+            formatShiftLabel={formatPanelShiftLabel}
+            machine={uiBoardFilterMachine}
+            onMachineChange={isAutoReport ? setDraftBoardFilterMachine : setBoardFilterMachine}
+            machines={panelMachines}
+            productionOrder={uiBoardFilterProductionOrder}
+            productionOrderQuery={uiBoardFilterProductionOrderQuery}
+            onProductionOrderChange={isAutoReport ? setDraftBoardFilterProductionOrder : setBoardFilterProductionOrder}
+            onProductionOrderQueryChange={
+              isAutoReport ? setDraftBoardFilterProductionOrderQuery : setBoardFilterProductionOrderQuery
+            }
+            productionOrderOptions={panelProductionOrderOptions}
+            onClear={clearBoardFilters}
+            isLoading={isLoading}
+            deferApply={isAutoReport}
+            onApply={applyBoardFilters}
+            hasPendingChanges={hasPendingFilterChanges}
+          />
+          {reportOnly ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowReportListsModal(true)}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-black text-red-700 shadow-xs transition hover:border-red-300 hover:bg-red-50"
+                title="Chọn loại · ngày · ca · máy rồi in báo cáo"
+              >
+                <ClipboardList className="h-4 w-4 text-[#ef1b2d]" />
+                Danh sách báo cáo
+                <ChevronDown className="h-3.5 w-3.5 text-[#ef1b2d]" />
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <ControlBoardBbMachineReportTable
         productionOrders={boardScopedProductionOrders}

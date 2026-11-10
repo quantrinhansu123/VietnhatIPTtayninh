@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { Activity, ChevronLeft, Loader2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../components/AcceptanceReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../../lib/weighingSlipConfig';
@@ -12,6 +12,7 @@ import {
   ReportListsSharedFiltersBar,
   type ReportListsHubFilters
 } from './ReportListsSharedFilters';
+import ReportListsPrintActions from './ReportListsPrintActions';
 
 const MachineNvlReportListView = lazy(() => import('../../components/MachineNvlReportListView'));
 const MaterialRequestListView = lazy(() =>
@@ -27,8 +28,9 @@ const WarehouseHistoryPanel = lazy(() =>
 const MachineDowntimeReportListView = lazy(() => import('../../components/MachineDowntimeReportListView'));
 const MachineRunLogPanel = lazy(() => import('../../components/MachineRunLogPanel'));
 const ShiftHandoverListView = lazy(() => import('../../components/ShiftHandoverListView'));
+const ControlBoardPanel = lazy(() => import('../control-board').then(m => ({ default: m.ControlBoardPanel })));
 
-export type ReportListsHubTabId = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'];
+export type ReportListsHubTabId = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'] | 'dashboard-auto';
 
 function shortTabLabel(item: MenuCardConfig) {
   return item.title
@@ -93,7 +95,19 @@ export function ReportListsHub({
   initialHubTab
 }: Props) {
   const hubItems = useMemo(
-    () => (menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS),
+    () => {
+      const base = menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS;
+      if (base.some(item => item.tab === 'dashboard-auto')) return base;
+      return [
+        ...base,
+        {
+          title: 'Báo cáo theo LSX',
+          desc: 'Báo cáo tổng hợp máy BB, tính toán và in báo cáo theo từng lệnh sản xuất.',
+          icon: Activity,
+          tab: 'dashboard-auto'
+        } as MenuCardConfig
+      ];
+    },
     [menuItems]
   );
 
@@ -198,14 +212,24 @@ export function ReportListsHub({
             Bộ lọc chung áp dụng mọi tab · đổi tab giữ dữ liệu đã tải.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Quay lại
-        </button>
+        <div className="flex items-center gap-2">
+          <ReportListsPrintActions
+            filters={draftFilters}
+            onNavigate={onNavigate}
+            onOpenAutoReportTab={() => {
+              setActiveHubTab('dashboard-auto');
+              setMountedTabs(prev => new Set([...prev, 'dashboard-auto']));
+            }}
+          />
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Quay lại
+          </button>
+        </div>
       </div>
 
       <ReportListsSharedFiltersBar value={draftFilters} onChange={setDraftFilters} />
@@ -352,7 +376,7 @@ export function ReportListsHub({
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="machine-run-log-list" activeTab={activeHubTab} mountedTabs={mountedTabs}>
-            <MachineRunLogPanel onBack={onBack} showSavedList />
+            <MachineRunLogPanel onBack={onBack} showSavedList filters={sharedInitialFilters} />
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="shift-handover-list" activeTab={activeHubTab} mountedTabs={mountedTabs}>
@@ -362,6 +386,16 @@ export function ReportListsHub({
               initialFilters={sharedInitialFilters}
               onBack={onBack}
               onCreate={() => onNavigate('shift-handover-report')}
+            />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="dashboard-auto" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <ControlBoardPanel
+              mode="report-only-auto"
+              hideCommonFilters
+              initialFilters={sharedInitialFilters}
+              onNavigate={onNavigate}
+              onMachineReport={() => {}}
             />
           </KeepAliveSlot>
         </div>

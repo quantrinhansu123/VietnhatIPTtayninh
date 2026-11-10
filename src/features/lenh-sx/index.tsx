@@ -48,6 +48,7 @@ import { normalizeProducts } from '../san-pham';
 import { normalizeProductCodeKey, type ProductRow } from '../san-pham/types';
 import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import type { OrderRow } from '../_shared/orderRecordHelpers';
+import { tokenizeSearchQuery, matchSearchTokens } from '../_shared/productSearchMatch';
 import ProductQrPrintModal, { type ProductQrPrintLabel } from '../../components/ProductQrPrintModal';
 import { useTabAccess } from '../../app/useTabAccess';
 import type { AuthUser } from '../../app/authUser';
@@ -719,7 +720,7 @@ export function ProductionOrdersPanel({
     !currentUser?.fullAccess &&
     isNhanVienRole(currentUser?.role || '');
 
-  const normalizedSearch = normalizeStaffMatchKey(searchText);
+  const searchTokens = useMemo(() => tokenizeSearchQuery(searchText), [searchText]);
   const filteredRows = useMemo(() => {
     const fromTime = dateFrom ? parseDateInput(dateFrom) : null;
     const toTime = dateTo ? parseDateInput(dateTo) : null;
@@ -740,11 +741,37 @@ export function ProductionOrdersPanel({
         const rowStartTime = parseDisplayDate(row.startDate);
         const matchesFrom = !fromTime || (rowStartTime !== null && rowStartTime >= fromTime);
         const matchesTo = !toTime || (rowStartTime !== null && rowStartTime <= toTime);
+        // Mỗi dòng sản phẩm là 1 nhóm: mọi từ khoá phải khớp trong CÙNG một dòng SP;
+        // thông tin cấp lệnh (mã lệnh, khách, máy, nhân sự, ghi chú) là nhóm riêng.
+        const productGroups = (row.products ?? []).map(product => ({
+          fields: [
+            { value: product.productCode || '', weight: 3 },
+            { value: product.productName || '', weight: 2 }
+          ].filter(field => field.value.trim())
+        }));
+        const headerGroup = {
+          fields: [
+            { value: row.code || '', weight: 3 },
+            { value: row.orderRef || '', weight: 2 },
+            { value: row.customer || '', weight: 2 },
+            { value: row.productCode || '', weight: 3 },
+            { value: row.productName || '', weight: 2 },
+            { value: row.name || '', weight: 1 },
+            { value: row.machine || '', weight: 1 },
+            { value: row.note || '', weight: 1 },
+            { value: formatProductionOrderProductsSummary(row), weight: 1 },
+            {
+              value: [row.staff, row.shiftLead, row.mainStaff, row.assistantStaff, row.traineeStaff]
+                .filter(name => name && name !== '-')
+                .join(' '),
+              weight: 1
+            }
+          ].filter(field => field.value.trim() && field.value !== '-')
+        };
         const matchesSearch =
-          !normalizedSearch ||
-          normalizeStaffMatchKey(
-            `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note} ${row.staff} ${row.shiftLead} ${row.mainStaff} ${row.assistantStaff} ${row.traineeStaff} ${(row.products ?? []).map(product => `${product.productName} ${product.productCode}`).join(' ')}`
-          ).includes(normalizedSearch);
+          searchTokens.length === 0 ||
+          matchSearchTokens(searchTokens, productGroups).matched ||
+          matchSearchTokens(searchTokens, [headerGroup]).matched;
         return (
           matchesStatus &&
           matchesMachine &&
@@ -771,7 +798,7 @@ export function ProductionOrdersPanel({
       });
   }, [
     currentUser?.name,
-    normalizedSearch,
+    searchTokens,
     restrictToOwnAssignments,
     rows,
     selectedStatus,

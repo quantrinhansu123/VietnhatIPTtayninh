@@ -427,6 +427,44 @@ function groupRunLogsByDateAndShift(logs: MachineRunLog[]): MachineRunLogDateGro
     });
 }
 
+export type MachineRunLogFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  shift?: string;
+  machineCode?: string;
+  search?: string;
+};
+
+/** Lọc nhật ký theo bộ lọc chung của hub (ngày · ca · máy · tìm kiếm). */
+export function filterMachineRunLogs(logs: MachineRunLog[], filters?: MachineRunLogFilters): MachineRunLog[] {
+  if (!filters) return logs;
+  const from = (filters.dateFrom || '').trim();
+  const to = (filters.dateTo || '').trim();
+  const shiftFilter = (filters.shift || '').trim();
+  const machineFilter = (filters.machineCode || '').trim();
+  const searchFilter = (filters.search || '').trim().toLowerCase();
+  return logs.filter(log => {
+    const day = String(log.date || '').slice(0, 10);
+    if (from && day && day < from) return false;
+    if (to && day && day > to) return false;
+    if (shiftFilter && !shiftMatches(log.shift, shiftFilter)) return false;
+    if (machineFilter && log.machineCode !== machineFilter) return false;
+    if (searchFilter) {
+      const haystack = [log.slipCode, log.machineCode, log.machineName, log.mainOperator, log.note]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(searchFilter)) return false;
+    }
+    return true;
+  });
+}
+
+export function groupedPrintSlips(logs: MachineRunLog[]): MachineRunLogPrintSlip[] {
+  return groupRunLogsByDateAndShift(logs).flatMap(dateGroup =>
+    dateGroup.shifts.flatMap(shiftGroup => shiftGroup.logs.map(logToPrintSlip))
+  );
+}
+
 function logToPrintSlip(log: MachineRunLog): MachineRunLogPrintSlip {
   return buildMachineRunLogPrintSlip({
     slipCode: log.slipCode,
@@ -457,11 +495,14 @@ function logToPrintSlip(log: MachineRunLog): MachineRunLogPrintSlip {
 
 export default function MachineRunLogPanel({
   onBack,
-  showSavedList = false
+  showSavedList = false,
+  filters
 }: {
   onBack: () => void;
   /** Route/list hub: chỉ hiện danh sách đã lưu (ẩn form nhập). */
   showSavedList?: boolean;
+  /** Bộ lọc chung của hub Lịch sử công việc (ngày · ca · máy · tìm kiếm). */
+  filters?: MachineRunLogFilters;
 }) {
   const hubShared = useReportFormsSharedOptional();
   const hideLocalHeader = Boolean(hubShared);
@@ -487,7 +528,7 @@ export default function MachineRunLogPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [printSlip, setPrintSlip] = useState<MachineRunLogPrintSlip | null>(null);
+  const [printSlips, setPrintSlips] = useState<MachineRunLogPrintSlip[]>([]);
   const [pendingPrint, setPendingPrint] = useState(false);
 
   const selectedMachine = useMemo(() => {
@@ -568,19 +609,21 @@ export default function MachineRunLogPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shift, shiftSettings]);
 
-  const runLogGroups = useMemo(() => groupRunLogsByDateAndShift(logs), [logs]);
+  const filteredLogs = useMemo(() => filterMachineRunLogs(logs, filters), [logs, filters]);
+
+  const runLogGroups = useMemo(() => groupRunLogsByDateAndShift(filteredLogs), [filteredLogs]);
 
   const loadLogs = async () => {
-    const res = await fetch('/api/nhat-ky-chay-may?limit=50');
+    const res = await fetch('/api/nhat-ky-chay-may?limit=300');
     const data = await res.json().catch(() => ({}));
     if (res.ok) setLogs(normalizeMachineRunLogs(data));
   };
 
   useEffect(() => {
-    if (!printSlip) return;
+    if (printSlips.length === 0) return;
     document.body.classList.add('production-order-print-active');
     return () => document.body.classList.remove('production-order-print-active');
-  }, [printSlip]);
+  }, [printSlips]);
 
   useEffect(() => {
     let alive = true;
@@ -593,7 +636,7 @@ export default function MachineRunLogPanel({
           fetch('/api/cai-dat'),
           fetch('/api/nhan-su?format=groups')
         ];
-        if (showSavedList) requests.push(fetch('/api/nhat-ky-chay-may?limit=50'));
+        if (showSavedList) requests.push(fetch('/api/nhat-ky-chay-may?limit=300'));
         const responses = await Promise.all(requests);
         const payloads = await Promise.all(responses.map(res => res.json().catch(() => ({}))));
         if (!alive) return;
@@ -615,7 +658,7 @@ export default function MachineRunLogPanel({
   }, [showSavedList]);
 
   useEffect(() => {
-    if (!pendingPrint || !printSlip) return;
+    if (!pendingPrint || printSlips.length === 0) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       waitForPrintImagesReady().then(() => {
@@ -628,11 +671,11 @@ export default function MachineRunLogPanel({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pendingPrint, printSlip]);
+  }, [pendingPrint, printSlips]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
-      setPrintSlip(null);
+      setPrintSlips([]);
       setPendingPrint(false);
     };
     window.addEventListener('afterprint', handleAfterPrint);
@@ -673,7 +716,14 @@ export default function MachineRunLogPanel({
 
   const handlePrint = (slip: MachineRunLogPrintSlip) => {
     setError('');
-    setPrintSlip(slip);
+    setPrintSlips([slip]);
+    setPendingPrint(true);
+  };
+
+  const handlePrintMany = (slips: MachineRunLogPrintSlip[]) => {
+    if (slips.length === 0) return;
+    setError('');
+    setPrintSlips(slips);
     setPendingPrint(true);
   };
 
@@ -905,8 +955,8 @@ export default function MachineRunLogPanel({
   return (
     <div ref={panelRootRef} className="flex h-full flex-col bg-transparent">
       {waitLabel && typeof document !== 'undefined' ? <MachineRunLogWaitScreen label={waitLabel} /> : null}
-      {printSlip && typeof document !== 'undefined'
-        ? createPortal(<MachineRunLogPrintBatch slips={[printSlip]} />, document.body)
+      {printSlips.length > 0 && typeof document !== 'undefined'
+        ? createPortal(<MachineRunLogPrintBatch slips={printSlips} />, document.body)
         : null}
 
       <div className="border-b border-white/20 bg-white/90 px-2 py-1.5 backdrop-blur-sm sm:px-3">
@@ -1253,7 +1303,19 @@ export default function MachineRunLogPanel({
             <section className="rounded-xl border border-white/40 bg-white/95 p-2.5 shadow-lg backdrop-blur-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-sm font-black text-zinc-900">Danh sách nhật ký</h2>
-                <Activity className="h-5 w-5 text-[#ef1b2d]" />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePrintMany(groupedPrintSlips(filteredLogs))}
+                    disabled={isLoading || filteredLogs.length === 0}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-black text-zinc-700 transition hover:border-zinc-400 disabled:opacity-50"
+                    title="In toàn bộ nhật ký đang hiển thị theo cùng mẫu in nhật ký"
+                  >
+                    <Printer className="h-4 w-4" />
+                    In báo cáo ({filteredLogs.length})
+                  </button>
+                  <Activity className="h-5 w-5 text-[#ef1b2d]" />
+                </div>
               </div>
               <div className="space-y-3">
                 {isLoading ? (

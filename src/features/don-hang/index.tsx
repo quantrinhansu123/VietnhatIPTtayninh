@@ -33,6 +33,11 @@ import {
   type OrderProductLine
 } from '../_shared/orderRecordHelpers';
 import { normalizeHcmBusinessStaffOptions, normalizeCustomerOptions } from '../khach-hang';
+import {
+  tokenizeSearchQuery,
+  matchSearchTokens,
+  normalizeSearchText as normalizeProductSearchText
+} from '../_shared/productSearchMatch';
 import type { AuthUser } from '../../app/authUser';
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { OrderFormModal } from './OrderFormModal';
@@ -78,11 +83,7 @@ export function generateNextOrderCode(existingCodes: Iterable<string>) {
 
 /** Chuẩn hóa chuỗi tìm kiếm đơn hàng (không dấu, không phân biệt hoa thường). */
 export function normalizeOrderSearchText(value: string) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd');
+  return normalizeProductSearchText(value);
 }
 
 function formatOrderCreatedAt(value: string): string {
@@ -866,59 +867,74 @@ export function OrdersPanel({
     return [...new Set(types)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [orders]);
   const normalizedSearch = normalizeOrderSearchText(searchText.trim());
-  const searchTokens = useMemo(
-    () => normalizedSearch.split(/\s+/).filter(token => token.replace(/[^a-z0-9]/g, '').length > 0),
-    [normalizedSearch]
-  );
+  const searchTokens = useMemo(() => tokenizeSearchQuery(searchText), [searchText]);
+
+  /** Trường của 1 dòng sản phẩm — mã khớp nặng hơn tên để xếp hạng đúng. */
+  const buildLineSearchFields = (line: { productCode?: string; productName?: string }) => {
+    const catalog = findOrderProductByCode(productCatalog, line.productCode || '');
+    return [
+      { value: line.productCode || '', weight: 3 },
+      { value: catalog?.code || '', weight: 3 },
+      { value: catalog?.newCode || '', weight: 3 },
+      { value: line.productName || '', weight: 2 },
+      { value: catalog?.name || '', weight: 2 }
+    ].filter(field => field.value.trim());
+  };
+
   const lineMatchesSearch = (line: { productCode?: string; productName?: string }) => {
     if (searchTokens.length === 0) return false;
-    const catalog = findOrderProductByCode(productCatalog, line.productCode || '');
-    const text = normalizeOrderSearchText(
-      [line.productCode, line.productName, catalog?.code, catalog?.newCode, catalog?.name]
-        .filter(Boolean)
-        .join(' ')
-    );
-    const compact = text.replace(/[^a-z0-9]/g, '');
-    return searchTokens.some(
-      token => text.includes(token) || compact.includes(token.replace(/[^a-z0-9]/g, ''))
-    );
+    return matchSearchTokens(searchTokens, [{ fields: buildLineSearchFields(line) }]).matched;
   };
+
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    const queryActive = searchTokens.length > 0;
+    const scored: Array<{ order: (typeof orders)[number]; score: number }> = [];
+
+    for (const order of orders) {
       const matchesType = selectedType === 'all' || order.orderType === selectedType;
       const orderDate = order.orderDate || order.createdAt.slice(0, 10);
       const matchesDateFrom = !dateFrom || Boolean(orderDate && orderDate >= dateFrom);
       const matchesDateTo = !dateTo || Boolean(orderDate && orderDate <= dateTo);
-      if (!normalizedSearch) {
-        return matchesType && matchesDateFrom && matchesDateTo;
+      if (!matchesType || !matchesDateFrom || !matchesDateTo) continue;
+      if (!queryActive) {
+        scored.push({ order, score: 0 });
+        continue;
       }
+
       const productLines = getOrderProductLines(order);
-      const productSearchText = productLines
-        .map(line => {
-          const catalog = findOrderProductByCode(productCatalog, line.productCode);
-          return [
-            line.productCode,
-            line.productName,
-            catalog?.code,
-            catalog?.newCode,
-            catalog?.name
-          ]
-            .filter(Boolean)
-            .join(' ');
-        })
-        .filter(Boolean)
-        .join(' ');
-      const haystack = normalizeOrderSearchText(
-        `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${productSearchText} ${formatOrderProductsSummary(productLines)} ${order.note}`
-      );
-      // Bỏ ký tự phân cách để "bb453", "BB-453", "MN BB 453" đều khớp mã MN-BB453.
-      const compactHaystack = haystack.replace(/[^a-z0-9]/g, '');
-      const matchesSearch = searchTokens.every(
-        token => haystack.includes(token) || compactHaystack.includes(token.replace(/[^a-z0-9]/g, ''))
-      );
-      return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
-    });
-  }, [dateFrom, dateTo, orders, normalizedSearch, searchTokens, productCatalog, selectedType]);
+      // Mỗi dòng sản phẩm là 1 nhóm riêng → mọi từ khoá phải khớp TRONG CÙNG 1 dòng,
+      // tránh trường hợp đơn có "BB453" dòng 1 và "6.28kg" dòng 2 vẫn bị coi là khớp.
+      const lineGroups = productLines.map(line => ({ fields: buildLineSearchFields(line) }));
+      // Thông tin cấp đơn (mã đơn, khách, nhân viên, ghi chú, tổng SL) cũng là 1 nhóm.
+      const headerGroup = {
+        fields: [
+          { value: order.orderCode || '', weight: 3 },
+          { value: order.customer || '', weight: 2 },
+          { value: order.staffName || '', weight: 1 },
+          { value: order.orderType && order.orderType !== '-' ? order.orderType : '', weight: 1 },
+          { value: order.status && order.status !== '-' ? order.status : '', weight: 1 },
+          { value: order.note || '', weight: 1 },
+          { value: formatOrderProductsSummary(productLines), weight: 1 }
+        ].filter(field => field.value.trim())
+      };
+
+      const lineResult = matchSearchTokens(searchTokens, lineGroups);
+      const headerResult = matchSearchTokens(searchTokens, [headerGroup]);
+      if (!lineResult.matched && !headerResult.matched) continue;
+
+      scored.push({
+        order,
+        score: Math.max(lineResult.score, headerResult.score)
+      });
+    }
+
+    if (!queryActive) return scored.map(item => item.order);
+    // Giữ nguyên thứ tự gốc khi điểm bằng nhau; điểm cao (mã khớp khít) lên trước.
+    return scored
+      .map((item, index) => ({ ...item, index }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map(item => item.order);
+  }, [dateFrom, dateTo, orders, searchTokens, productCatalog, selectedType]);
 
   const hasActiveFilters = selectedType !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
 

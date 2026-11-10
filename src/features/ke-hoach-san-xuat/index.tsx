@@ -36,6 +36,7 @@ import {
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftOption } from '../../utils/shiftSettings';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
+import { tokenizeSearchQuery, matchSearchTokens } from '../_shared/productSearchMatch';
 import { sortWarehouseLinesKgFirst, type WarehouseSlipPrefillDraft } from '../phieu-xuat-nhap-kho';
 import { STANDARD_SHIFTS } from '../../types';
 import { normalizeHrBranches, type HrBranch, type HrMember } from '../_shared/hr';
@@ -5953,14 +5954,29 @@ export function AddProductionOrderModal({
   );
 
   const autofillOrderOptions = useMemo(() => {
-    const normalized = autofillSearch.trim().toLowerCase();
+    const tokens = tokenizeSearchQuery(autofillSearch);
     return autofillOrders
       .filter(order => getOrderProductLines(order).length > 0)
       .filter(order => {
-        if (!normalized) return true;
-        return `${order.orderCode} ${order.customer} ${formatOrderProductsSummary(getOrderProductLines(order))}`
-          .toLowerCase()
-          .includes(normalized);
+        if (tokens.length === 0) return true;
+        const productLines = getOrderProductLines(order);
+        // Mỗi dòng SP 1 nhóm + nhóm cấp đơn: mọi từ khoá phải khớp cùng 1 nhóm.
+        const groups = [
+          ...productLines.map(line => ({
+            fields: [
+              { value: line.productCode || '', weight: 3 },
+              { value: line.productName || '', weight: 2 }
+            ].filter(field => field.value.trim())
+          })),
+          {
+            fields: [
+              { value: order.orderCode || '', weight: 3 },
+              { value: order.customer || '', weight: 2 },
+              { value: formatOrderProductsSummary(productLines), weight: 1 }
+            ].filter(field => field.value.trim())
+          }
+        ];
+        return matchSearchTokens(tokens, groups).matched;
       })
       .sort((a, b) => {
         const aCreated = Date.parse(a.createdAt);

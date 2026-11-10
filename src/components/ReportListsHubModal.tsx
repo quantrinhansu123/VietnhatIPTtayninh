@@ -955,7 +955,7 @@ export default function ReportListsHubModal({
             />
           ) : null}
           {activeTab === 'machine-run-log-list' ? (
-            <MachineRunLogPanel onBack={onClose} showSavedList />
+            <MachineRunLogPanel onBack={onClose} showSavedList filters={selectedHubFilters} />
           ) : null}
           {activeTab === 'shift-handover-list' ? (
             <ShiftHandoverListView

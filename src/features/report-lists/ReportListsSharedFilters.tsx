@@ -38,7 +38,7 @@ export function createDefaultReportListsHubFilters(): ReportListsHubFilters {
   };
 }
 
-type MachineOption = { code: string; name: string };
+export type MachineOption = { code: string; name: string };
 
 function pickMachineField(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {

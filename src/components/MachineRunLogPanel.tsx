@@ -26,6 +26,7 @@ import {
 } from '../utils/shiftSettings';
 import { useReportFormsSharedOptional } from '../features/report-forms/ReportFormsSharedContext';
 import { uploadImage } from '../features/_shared/recordHelpers';
+import { compressImageDataUrl } from '../utils/cameraCapture';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import waitScreenBgUrl from '../assets/kaizen-app-bg.png';
 import { RepeatableLineRow, RepeatableLinesBlock } from './RepeatableLinesBlock';
@@ -686,19 +687,29 @@ export default function MachineRunLogPanel({
     setError('');
     setIsUploadingImage(true);
     try {
-      for (const file of imageFiles) {
-        const dataUrl = await readFileAsDataUrl(file);
-        const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may');
-        if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');
-        setParameterImages(prev => [
-          ...prev,
-          {
-            key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            url: uploaded.imageUrl,
-            preview: uploaded.imageUrl
+      // Nén ảnh trước khi up (ảnh điện thoại vài MB → ~200-400KB) và up song song.
+      const uploadedList = await Promise.all(
+        imageFiles.map(async file => {
+          const rawDataUrl = await readFileAsDataUrl(file);
+          let dataUrl = rawDataUrl;
+          try {
+            dataUrl = await compressImageDataUrl(rawDataUrl, { maxEdge: 1600, quality: 0.8 });
+          } catch {
+            dataUrl = rawDataUrl;
           }
-        ]);
-      }
+          const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may');
+          if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');
+          return uploaded.imageUrl;
+        })
+      );
+      setParameterImages(prev => [
+        ...prev,
+        ...uploadedList.map(url => ({
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          url,
+          preview: url
+        }))
+      ]);
       showAppToast(
         imageFiles.length > 1 ? `Đã gắn ${imageFiles.length} ảnh thông số.` : 'Đã gắn ảnh thông số.'
       );
@@ -1125,7 +1136,7 @@ export default function MachineRunLogPanel({
                   }}
                   onDrop={event => {
                     event.preventDefault();
-                    const files = Array.from(event.dataTransfer.files || []).filter(item =>
+                    const files = (Array.from(event.dataTransfer.files || []) as File[]).filter(item =>
                       item.type.startsWith('image/')
                     );
                     void handlePickImages(files);

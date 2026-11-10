@@ -29,7 +29,6 @@ import {
 } from '../utils/warehouseWeight';
 import {
   formatChecklistMachineHeader,
-  formatChecklistShiftLabel,
   resolveAcceptanceShiftHours
 } from '../utils/printShiftMeta';
 
@@ -586,7 +585,11 @@ export function MachineShiftMaterialChecklistPrintSheet({
   }, [lines]);
 
   const machineHeader = formatChecklistMachineHeader(machineCode, machineName);
-  const shiftLabel = formatChecklistShiftLabel(shift);
+  const shiftCode = shift.trim();
+  const shiftOption = data.shiftOptions?.find(
+    option => option.value.trim().toLowerCase() === shiftCode.toLowerCase()
+  );
+  const shiftLabel = shiftOption?.label.replace(/\s*\([^)]*\d\s*[-–]\s*\d[^)]*\)\s*$/, '').trim() || shiftCode || '—';
   const dateParts = formatPrintDateParts(date);
   const shiftHours = resolveAcceptanceShiftHours(shift, data.shiftOptions || []);
   const performedBy = resolveChecklistPerformedBy(data);

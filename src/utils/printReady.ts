@@ -60,6 +60,8 @@ export function disablePortraitPrintPage(styleId = PORTRAIT_PRINT_PAGE_STYLE_ID)
   document.getElementById(styleId)?.remove();
 }
 
+const PRINT_PAGE_SIZE_STYLE_ID = 'app-print-page-size-override';
+
 const LANDSCAPE_PRINT_PAGE_STYLE_ID = 'app-print-page-landscape-override';
 
 /** Inject @page A4 ngang (297×210mm). */
@@ -80,5 +82,31 @@ export function enableLandscapePrintPage(
 }
 
 export function disableLandscapePrintPage(styleId = LANDSCAPE_PRINT_PAGE_STYLE_ID) {
+  document.getElementById(styleId)?.remove();
+}
+
+/**
+ * Khổ giấy tuỳ biến (vd A3 ngang 420×297mm) — dùng cho bảng kế hoạch SX dạng lưới
+ * vì có nhiều cột máy, A4 ngang không đủ chỗ.
+ * `size` theo cú pháp CSS `@page`: "420mm 297mm".
+ */
+export function enablePrintPageSize(
+  styleId = PRINT_PAGE_SIZE_STYLE_ID,
+  size = '420mm 297mm',
+  marginMm: number | string = 6
+) {
+  document.getElementById(styleId)?.remove();
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.media = 'print';
+  const margin =
+    typeof marginMm === 'string' && marginMm.trim()
+      ? marginMm.trim()
+      : `${Number.isFinite(marginMm) ? marginMm : 6}mm`;
+  style.textContent = `@page { size: ${size}; margin: ${margin}; }`;
+  document.head.appendChild(style);
+}
+
+export function disablePrintPageSize(styleId = PRINT_PAGE_SIZE_STYLE_ID) {
   document.getElementById(styleId)?.remove();
 }

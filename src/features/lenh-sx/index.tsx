@@ -719,7 +719,7 @@ export function ProductionOrdersPanel({
     !currentUser?.fullAccess &&
     isNhanVienRole(currentUser?.role || '');
 
-  const normalizedSearch = searchText.trim().toLowerCase();
+  const normalizedSearch = normalizeStaffMatchKey(searchText);
   const filteredRows = useMemo(() => {
     const fromTime = dateFrom ? parseDateInput(dateFrom) : null;
     const toTime = dateTo ? parseDateInput(dateTo) : null;
@@ -742,9 +742,9 @@ export function ProductionOrdersPanel({
         const matchesTo = !toTime || (rowStartTime !== null && rowStartTime <= toTime);
         const matchesSearch =
           !normalizedSearch ||
-          `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note} ${row.staff} ${row.shiftLead} ${row.mainStaff} ${row.assistantStaff} ${row.traineeStaff}`
-            .toLowerCase()
-            .includes(normalizedSearch);
+          normalizeStaffMatchKey(
+            `${row.code} ${row.name} ${row.productCode} ${row.productName} ${formatProductionOrderProductsSummary(row)} ${row.customer} ${row.orderRef} ${row.machine} ${row.status} ${row.note} ${row.staff} ${row.shiftLead} ${row.mainStaff} ${row.assistantStaff} ${row.traineeStaff} ${(row.products ?? []).map(product => `${product.productName} ${product.productCode}`).join(' ')}`
+          ).includes(normalizedSearch);
         return (
           matchesStatus &&
           matchesMachine &&
@@ -972,7 +972,7 @@ export function ProductionOrdersPanel({
           <TableSearchInput
             value={searchText}
             onChange={setSearchText}
-            placeholder="Tìm mã lệnh, hàng, khách, đơn hàng..."
+            placeholder="Tìm mã lệnh, hàng, khách, đơn hàng, tên SP..."
             disabled={isLoading}
           />
         </div>

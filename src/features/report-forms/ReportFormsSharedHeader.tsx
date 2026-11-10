@@ -1,4 +1,5 @@
 import React from 'react';
+import { RefreshCw } from 'lucide-react';
 import { renderMachineSelect } from '../danh-sach-may';
 import { useReportFormsSharedOptional } from './ReportFormsSharedContext';
 
@@ -17,9 +18,25 @@ export function ReportFormsSharedHeader() {
         <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">
           Thông tin chung · áp dụng mọi tab
         </p>
-        {shared.isLoadingOptions ? (
-          <span className="text-[10px] font-semibold text-slate-400">Đang tải ca / máy...</span>
-        ) : null}
+        <div className="flex items-center gap-1.5">
+          {shared.isLoadingOptions ? (
+            <span className="text-[10px] font-semibold text-slate-400">Đang tải ca / máy...</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void shared.reloadOptions()}
+            disabled={shared.isLoadingOptions}
+            title="Tải lại ca / máy / lệnh SX — giữ nguyên ngày, giờ, ca, máy, nhân sự, ghi chú đang nhập"
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[10px] font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {shared.isLoadingOptions ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            TẢI LẠI DỮ LIỆU
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-8">
         <label className={labelClass}>

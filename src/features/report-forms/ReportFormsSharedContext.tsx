@@ -87,6 +87,8 @@ type ReportFormsSharedContextValue = ReportFormsSharedState & {
   staffOptions: string[];
   selectedMachine: MachineRow | null;
   isLoadingOptions: boolean;
+  /** Tải lại ca / máy / lệnh SX từ API — KHÔNG đụng các trường đang nhập (ngày, giờ, ca, máy, nhân sự, ghi chú). */
+  reloadOptions: () => void;
   setNgay: (value: string) => void;
   setGio: (value: string) => void;
   setCa: (value: string) => void;
@@ -129,38 +131,34 @@ export function ReportFormsSharedProvider({ children }: { children: ReactNode })
   const [productionOrders, setProductionOrders] = useState<ProductionOrderRow[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      setIsLoadingOptions(true);
-      try {
-        const [machinesRes, settingsRes, productionRes] = await Promise.all([
-          fetch('/api/danh-sach-may'),
-          fetch('/api/cai-dat'),
-          fetch('/api/lenh-sx?light=1')
-        ]);
-        if (!alive) return;
-        if (machinesRes.ok) {
-          const data = await machinesRes.json().catch(() => []);
-          setMachines(normalizeMachines(data));
-        }
-        if (settingsRes.ok) {
-          const data = await settingsRes.json().catch(() => []);
-          setShiftOptions(getProductionShiftOptions(normalizeShiftSettings(data)));
-        }
-        if (productionRes.ok) {
-          const data = await productionRes.json().catch(() => []);
-          setProductionOrders(normalizeProductionOrders(data));
-        }
-      } finally {
-        if (alive) setIsLoadingOptions(false);
+  const loadOptions = useCallback(async () => {
+    setIsLoadingOptions(true);
+    try {
+      const [machinesRes, settingsRes, productionRes] = await Promise.all([
+        fetch('/api/danh-sach-may'),
+        fetch('/api/cai-dat'),
+        fetch('/api/lenh-sx?light=1')
+      ]);
+      if (machinesRes.ok) {
+        const data = await machinesRes.json().catch(() => []);
+        setMachines(normalizeMachines(data));
       }
-    };
-    void load();
-    return () => {
-      alive = false;
-    };
+      if (settingsRes.ok) {
+        const data = await settingsRes.json().catch(() => []);
+        setShiftOptions(getProductionShiftOptions(normalizeShiftSettings(data)));
+      }
+      if (productionRes.ok) {
+        const data = await productionRes.json().catch(() => []);
+        setProductionOrders(normalizeProductionOrders(data));
+      }
+    } finally {
+      setIsLoadingOptions(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadOptions();
+  }, [loadOptions]);
 
   const selectedMachine = useMemo(
     () => (machineRef.trim() ? findMachineByRef(machines, machineRef) : null),
@@ -243,6 +241,7 @@ export function ReportFormsSharedProvider({ children }: { children: ReactNode })
       staffOptions,
       selectedMachine,
       isLoadingOptions,
+      reloadOptions: loadOptions,
       setNgay,
       setGio,
       setCa,
@@ -268,6 +267,7 @@ export function ReportFormsSharedProvider({ children }: { children: ReactNode })
       staffOptions,
       selectedMachine,
       isLoadingOptions,
+      loadOptions,
       toggleStaffName,
       applyFromForm,
       staffText,

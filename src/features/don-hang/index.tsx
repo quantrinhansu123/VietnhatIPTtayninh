@@ -866,6 +866,23 @@ export function OrdersPanel({
     return [...new Set(types)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [orders]);
   const normalizedSearch = normalizeOrderSearchText(searchText.trim());
+  const searchTokens = useMemo(
+    () => normalizedSearch.split(/\s+/).filter(token => token.replace(/[^a-z0-9]/g, '').length > 0),
+    [normalizedSearch]
+  );
+  const lineMatchesSearch = (line: { productCode?: string; productName?: string }) => {
+    if (searchTokens.length === 0) return false;
+    const catalog = findOrderProductByCode(productCatalog, line.productCode || '');
+    const text = normalizeOrderSearchText(
+      [line.productCode, line.productName, catalog?.code, catalog?.newCode, catalog?.name]
+        .filter(Boolean)
+        .join(' ')
+    );
+    const compact = text.replace(/[^a-z0-9]/g, '');
+    return searchTokens.some(
+      token => text.includes(token) || compact.includes(token.replace(/[^a-z0-9]/g, ''))
+    );
+  };
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const matchesType = selectedType === 'all' || order.orderType === selectedType;
@@ -891,12 +908,17 @@ export function OrdersPanel({
         })
         .filter(Boolean)
         .join(' ');
-      const matchesSearch = normalizeOrderSearchText(
+      const haystack = normalizeOrderSearchText(
         `${order.orderCode} ${order.orderType} ${order.status} ${order.staffName} ${order.customer} ${productSearchText} ${formatOrderProductsSummary(productLines)} ${order.note}`
-      ).includes(normalizedSearch);
+      );
+      // Bỏ ký tự phân cách để "bb453", "BB-453", "MN BB 453" đều khớp mã MN-BB453.
+      const compactHaystack = haystack.replace(/[^a-z0-9]/g, '');
+      const matchesSearch = searchTokens.every(
+        token => haystack.includes(token) || compactHaystack.includes(token.replace(/[^a-z0-9]/g, ''))
+      );
       return matchesType && matchesDateFrom && matchesDateTo && matchesSearch;
     });
-  }, [dateFrom, dateTo, orders, normalizedSearch, productCatalog, selectedType]);
+  }, [dateFrom, dateTo, orders, normalizedSearch, searchTokens, productCatalog, selectedType]);
 
   const hasActiveFilters = selectedType !== 'all' || Boolean(searchText) || Boolean(dateFrom) || Boolean(dateTo);
 
@@ -1386,10 +1408,18 @@ export function OrdersPanel({
                   <td className="px-3 py-2.5 align-top font-bold text-zinc-800">{order.customer}</td>
                   <td className="px-3 py-2.5 align-top">
                     <div className="divide-y divide-zinc-100">
-                      {getOrderProductLines(order).map((line, index) => (
+                      {getOrderProductLines(order).map((line, index) => {
+                        const lineMatches = lineMatchesSearch(line);
+                        return (
                         <div
                           key={`${order.id}-${line.productCode}-${line.productName}-${index}`}
-                          className="grid grid-cols-[minmax(72px,0.8fr)_minmax(100px,1.2fr)_56px_48px_minmax(80px,1fr)] gap-2 py-1.5 text-xs font-semibold text-zinc-700 first:pt-0 last:pb-0"
+                          className={`grid grid-cols-[minmax(72px,0.8fr)_minmax(100px,1.2fr)_56px_48px_minmax(80px,1fr)] gap-2 py-1.5 text-xs font-semibold text-zinc-700 first:pt-0 last:pb-0 ${
+                            searchTokens.length === 0
+                              ? ''
+                              : lineMatches
+                                ? 'rounded bg-amber-100/70'
+                                : 'opacity-40'
+                          }`}
                         >
                           <span className="font-black text-zinc-950">{line.productCode || '-'}</span>
                           <span className="text-zinc-800">{line.productName || '-'}</span>
@@ -1397,7 +1427,8 @@ export function OrdersPanel({
                           <span className="font-bold text-zinc-600">{line.unit || '-'}</span>
                           <span className="text-zinc-500">{line.note || '-'}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </td>
                   <td className="px-3 py-2.5 align-top font-semibold text-zinc-500">{order.note || '-'}</td>

@@ -84,6 +84,26 @@ function readInventoryFromXlsx(filePath) {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
+  // Định dạng "TỔNG HỢP TỒN KHO" (MISA): header nhiều dòng, lấy cột Mã hàng (C) + Đầu kỳ - Số lượng (F)
+  const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+  const hIdx = grid.findIndex(r => String(r[2] || '').trim().normalize('NFC') === 'Mã hàng' && String(r[5] || '').trim() !== '');
+  if (hIdx >= 0) {
+    const merged = [];
+    const byCode = new Map();
+    for (const r of grid.slice(hIdx + 2)) {
+      const code = normalizeCode(r[2]);
+      const qty = Number(r[5]);
+      if (!code || r[5] === '' || !Number.isFinite(qty)) continue;
+      if (byCode.has(code)) {
+        byCode.get(code).qty += qty;
+        continue;
+      }
+      const item = { code, qty, rawCode: String(r[2] || '').trim() };
+      byCode.set(code, item);
+      merged.push(item);
+    }
+    return { sheetName, items: merged };
+  }
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
   const items = [];
   const seen = new Set();

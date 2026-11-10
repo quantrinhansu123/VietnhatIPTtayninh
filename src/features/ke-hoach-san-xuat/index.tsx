@@ -23,6 +23,16 @@ import {
   type ProductionPlanRelatedReports
 } from './relatedReportsPrint';
 import PhanCongCvPanel from './PhanCongCvPanel';
+import {
+  buildProductionPlanBoard,
+  toBoardLines,
+  type ProductionPlanBoard,
+  type ProductionPlanBoardLine
+} from './productionPlanBoard';
+import {
+  ProductionPlanBoardScreen,
+  ProductionPlanBoardPrintSheet
+} from './ProductionPlanBoardSheet';
 import OrderPrintSheet from '../../components/OrderPrintSheet';
 import { getProductionShiftOptions, normalizeShiftSettings, shiftNamesMatch, type ShiftOption } from '../../utils/shiftSettings';
 import { STORAGE_WAREHOUSE_SLIP_DRAFT_KEY } from '../_shared/storageKeys';
@@ -31,7 +41,7 @@ import { STANDARD_SHIFTS } from '../../types';
 import { normalizeHrBranches, type HrBranch, type HrMember } from '../_shared/hr';
 import { ControlBoardShiftSummaryPrintBatch } from '../../components/ControlBoardShiftSummaryPrintSheet';
 import { buildControlBoardShiftSummary, type ControlBoardShiftSummaryRow } from '../../utils/controlBoardShiftSummary';
-import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../../utils/printReady';
+import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage, enablePrintPageSize, disablePrintPageSize } from '../../utils/printReady';
 import {
   normalizeProducts,
   findProductByCode,
@@ -1906,6 +1916,15 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
   const [deletingPlanId, setDeletingPlanId] = useState('');
   const [phanCongAddTick, setPhanCongAddTick] = useState(0);
+  const [boardLines, setBoardLines] = useState<ProductionPlanBoardLine[]>([]);
+  const [boardProducts, setBoardProducts] = useState<ProductRow[]>([]);
+  const [boardExtraMachines, setBoardExtraMachines] = useState<string[]>([]);
+  const [boardBlankRows, setBoardBlankRows] = useState(3);
+  const [isLoadingBoard, setIsLoadingBoard] = useState(false);
+  const [boardError, setBoardError] = useState('');
+  const [isPrintingBoard, setIsPrintingBoard] = useState(false);
+  const [boardPrintActive, setBoardPrintActive] = useState(false);
+  const [boardPrintDate, setBoardPrintDate] = useState('');
 
   const loadPlans = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
     setIsLoading(true);
@@ -1969,6 +1988,97 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   }, []);
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+
+  const loadBoard = async (date: string) => {
+    setIsLoadingBoard(true);
+    setBoardError('');
+    try {
+      const params = new URLSearchParams({ ngay: date, limit: '200' });
+      const [planRes, productRes] = await Promise.all([
+        fetch(`/api/ke-hoach-sx?${params.toString()}`),
+        fetch('/api/san-pham?format=table')
+      ]);
+      const [planData, productData] = await Promise.all([
+        planRes.json().catch(() => ({})),
+        productRes.json().catch(() => ({}))
+      ]);
+      if (!planRes.ok) throw new Error(planData.error || 'Không thể tải kế hoạch SX theo ngày.');
+      const summaries = normalizeProductionPlanHistory(planData);
+
+      const detailPayloads = await Promise.all(
+        summaries.map(plan =>
+          fetch(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`)
+            .then(res => res.json().catch(() => ({})))
+            .catch(() => ({}))
+        )
+      );
+      const merged: ProductionPlanHistoryLine[] = [];
+      detailPayloads.forEach(payload => {
+        const lines = Array.isArray(payload?.lines) ? normalizeProductionPlanHistoryLines(payload) : [];
+        merged.push(...lines);
+      });
+
+      setBoardProducts(productRes.ok ? normalizeProducts(productData) : []);
+      setBoardLines(toBoardLines(merged));
+    } catch (error: any) {
+      setBoardLines([]);
+      setBoardError(error.message || 'Không thể tải bảng kế hoạch SX theo ngày.');
+    } finally {
+      setIsLoadingBoard(false);
+    }
+  };
+
+  const board = useMemo(
+    () => buildProductionPlanBoard({ lines: boardLines, products: boardProducts, extraMachines: boardExtraMachines, blankRowsPerShift: boardBlankRows }),
+    [boardLines, boardProducts, boardExtraMachines, boardBlankRows]
+  );
+
+  useEffect(() => {
+    const date = filterDate || selectedPlan?.planDate || todayDateInputValue();
+    void loadBoard(date);
+  }, [filterDate, selectedPlan?.planDate]);
+
+  useEffect(() => {
+    if (!boardPrintActive) return;
+    let cancelled = false;
+    document.body.classList.add('production-plan-board-print-active');
+    enablePrintPageSize('production-plan-board-page-a3-landscape', '420mm 297mm', 8);
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        window.print();
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('production-plan-board-print-active');
+      disablePrintPageSize('production-plan-board-page-a3-landscape');
+    };
+  }, [boardPrintActive]);
+
+  useEffect(() => {
+    const handleAfterBoardPrint = () => {
+      document.body.classList.remove('production-plan-board-print-active');
+      disablePrintPageSize('production-plan-board-page-a3-landscape');
+      setBoardPrintActive(false);
+      setIsPrintingBoard(false);
+    };
+    window.addEventListener('afterprint', handleAfterBoardPrint);
+    return () => window.removeEventListener('afterprint', handleAfterBoardPrint);
+  }, []);
+
+  const printBoard = async () => {
+    if (boardLines.length === 0) {
+      setBoardError('Chưa có lệnh sản xuất để in bảng kế hoạch.');
+      return;
+    }
+    setIsPrintingBoard(true);
+    setBoardError('');
+    setBoardPrintDate(filterDate || selectedPlan?.planDate || todayDateInputValue());
+    setBoardPrintActive(true);
+  };
+
   const allSelectedLinesChecked = selectedLines.length > 0 && selectedLines.every(line => selectedPrintLineIds.includes(line.id));
 
   const togglePrintLine = (lineId: string) => {
@@ -2290,6 +2400,45 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         </section>
       )}
 
+      <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-black text-zinc-950">Kế hoạch SX theo máy (bảng ngày)</h3>
+            <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
+              Cột = máy · dòng = ca · nội dung ô ghép tự động từ lệnh SX + sản phẩm.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void printBoard()}
+              disabled={isPrintingBoard || boardLines.length === 0}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPrintingBoard ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              In bảng A3
+            </button>
+          </div>
+        </div>
+
+        {boardError ? (
+          <p className="px-4 py-3 text-sm font-bold text-rose-700">{boardError}</p>
+        ) : null}
+
+        {isLoadingBoard ? (
+          <p className="px-4 py-8 text-center text-sm font-semibold text-zinc-400">
+            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+            Đang tải bảng kế hoạch theo ngày...
+          </p>
+        ) : board.lineCount === 0 ? (
+          <p className="px-4 py-8 text-center text-sm font-semibold text-zinc-500">
+            Ngày {filterDate || selectedPlan?.planDate || todayDateInputValue()} chưa có lệnh sản xuất trong kế hoạch.
+          </p>
+        ) : (
+          <ProductionPlanBoardScreen board={board} planDate={filterDate || selectedPlan?.planDate || ''} />
+        )}
+      </section>
+
       <div className="space-y-4">
       <div>
         <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch sản xuất</h3>
@@ -2495,6 +2644,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
             planDate={selectedPlan?.planDate || ''}
             planNote={selectedPlan?.note || ''}
           />
+        </div>,
+        document.body
+      ) : null}
+      {boardPrintActive ? createPortal(
+        <div className="production-plan-board-print-root">
+          <ProductionPlanBoardPrintSheet board={board} planDate={boardPrintDate} />
         </div>,
         document.body
       ) : null}

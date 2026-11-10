@@ -6999,12 +6999,12 @@ async function buildNvlInboundAvgPriceForMonth(
     return { don_gia: 0, thang: range.thang, so_dong: 0, tong_sl: 0, price_source: 'none' };
   }
 
-  const data = await loadWarehouseMovementsFromKho({
-    loaiPhieu: 'nhap',
-    loaiKho: 'nvl',
-    maNpl: code,
-    fromDate: range.from,
-    toDate: range.to
+  // Truy vấn trực tiếp theo mã (index ma_sp) — trước đây load toàn bộ phiếu nhập rồi mới lọc
+  // nên mỗi lần lưu phiếu xuất NVL phải chờ ~3s cho mỗi dòng.
+  const allInbound = await loadNvlMovementLinesByCode(code, 'nhap');
+  const data = allInbound.filter(row => {
+    const ngay = String(row.ngay_phieu || '').slice(0, 10);
+    return ngay >= range.from && ngay <= range.to;
   });
   const error = null;
 
@@ -7024,13 +7024,12 @@ async function buildNvlInboundAvgPriceForMonth(
   let priceSource: 'month' | 'all' | 'catalog' | 'none' = agg.don_gia > 0 ? 'month' : 'none';
 
   if (agg.don_gia <= 0) {
-    const allData = await loadWarehouseMovementsFromKho({ loaiPhieu: 'nhap', loaiKho: 'nvl', maNpl: code });
     const allError = null;
 
     if (allError) {
       console.error('Supabase gia-tb-nhap fallback query error:', allError);
     } else {
-      agg = aggregateInboundAvgPrice(allData || []);
+      agg = aggregateInboundAvgPrice(allInbound);
       if (agg.don_gia > 0) priceSource = 'all';
     }
   }
@@ -7071,6 +7070,65 @@ async function buildNvlInboundAvgPriceForMonth(
   };
 }
 
+/**
+ * Dòng phiếu kho của MỘT mã NVL — truy vấn trực tiếp theo ma_sp (index) thay vì
+ * load toàn bộ header rồi mới lọc như loadWarehouseMovementsFromKho().
+ * Dùng cho lô tồn (lo-ton) và kiểm tra lô khi lưu phiếu xuất: trước đây mỗi mã
+ * mất vài giây vì phải quét cả bảng phiếu.
+ */
+async function loadNvlMovementLinesByCode(
+  code: string,
+  loaiPhieu: 'nhap' | 'xuat'
+): Promise<Array<Record<string, any>>> {
+  if (!supabaseKho) return [];
+  const wanted = String(code || '').trim();
+  if (!wanted) return [];
+  const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
+
+  const rows: Record<string, any>[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabaseKho
+      .from(lineTable)
+      .select('id, ma_sp, ten_sp, don_vi, so_luong, don_gia, ma_phieu, id_dong_nhap_nguon, created_at, loai')
+      .eq('ma_sp', wanted)
+      .range(offset, offset + 999);
+    if (error) {
+      console.error(`Supabase ${lineTable} by-code error:`, error);
+      break;
+    }
+    const batch = (data || []) as Record<string, any>[];
+    rows.push(...batch);
+    if (batch.length < 1000) break;
+  }
+  if (rows.length === 0) return [];
+
+  const slipCodes = [...new Set(rows.map(row => String(row.ma_phieu ?? '').trim()).filter(Boolean))];
+  const headerByCode = new Map<string, Record<string, any>>();
+  for (let index = 0; index < slipCodes.length; index += 100) {
+    const batch = slipCodes.slice(index, index + 100);
+    const { data, error } = await supabaseKho
+      .from(headerTable)
+      .select('ma_phieu, ngay, ca, may, kho, treo, da_in, created_at')
+      .in('ma_phieu', batch);
+    if (error) {
+      console.error(`Supabase ${headerTable} by-code header error:`, error);
+      continue;
+    }
+    for (const header of (data || []) as Record<string, any>[]) {
+      headerByCode.set(String(header.ma_phieu ?? '').trim(), header);
+    }
+  }
+
+  return rows
+    .map(row => {
+      const header = headerByCode.get(String(row.ma_phieu ?? '').trim()) || {};
+      return {
+        ...mapKhoLineToMovement(row, { ...header, ma_phieu: row.ma_phieu }, loaiPhieu)
+      };
+    })
+    .filter(row => row.loai_kho === 'nvl' || String(row.ma_sp || '').trim() === wanted);
+}
+
 async function buildNvlInboundLots(
   maNpl: string,
   excludeSlipCode?: string
@@ -7079,28 +7137,11 @@ async function buildNvlInboundLots(
   const code = String(maNpl || '').trim();
   if (!code) return { lots: [] };
 
-  const inboundRows = await loadWarehouseMovementsFromKho({ loaiPhieu: 'nhap', loaiKho: 'nvl', maNpl: code });
-  const inboundError = null;
-
-  if (inboundError) {
-    console.error('Supabase lo-ton inbound query error:', inboundError);
-    return { error: `Không thể tải lô nhập. ${inboundError.message}`, lots: [] };
-  }
-
-  const outboundRows = await loadWarehouseMovementsFromKho({ loaiPhieu: 'xuat', loaiKho: 'nvl', maNpl: code, treo: false });
-  const outboundError = null;
-
-  if (outboundError) {
-    if (isMissingColumnError(outboundError)) {
-      return {
-        error:
-          'Thiếu cột id_dong_nhap_nguon. Hãy chạy supabase-phieu-xuat-nhap-kho-lo-ton.sql trong Supabase SQL Editor.',
-        lots: []
-      };
-    }
-    console.error('Supabase lo-ton outbound query error:', outboundError);
-    return { error: `Không thể tải xuất theo lô. ${outboundError.message}`, lots: [] };
-  }
+  const [inboundRows, outboundAll] = await Promise.all([
+    loadNvlMovementLinesByCode(code, 'nhap'),
+    loadNvlMovementLinesByCode(code, 'xuat')
+  ]);
+  const outboundRows = outboundAll.filter(row => !row.treo);
 
   const exclude = String(excludeSlipCode || '').trim();
   const consumedByLot = new Map<string, number>();
@@ -7725,6 +7766,35 @@ function mapKhoLineToMovement(
   };
 }
 
+/**
+ * Chỉ các dòng có gắn báo cáo (hàng hỏng / nghiệm thu) — dùng để chặn nhập trùng báo cáo.
+ * Trước đây phải load toàn bộ phiếu kho rồi lọc, rất chậm khi lưu phiếu.
+ */
+async function loadWarehouseReportLinkIds(): Promise<
+  Array<{ id_bao_cao_hang_hong: string | null; id_bao_cao_nghiem_thu: string | null }>
+> {
+  if (!supabaseKho) return [];
+  const result: Array<{ id_bao_cao_hang_hong: string | null; id_bao_cao_nghiem_thu: string | null }> = [];
+  for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+    const { line: lineTable } = warehouseTables(loaiPhieu);
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabaseKho
+        .from(lineTable)
+        .select('id_bao_cao_hang_hong, id_bao_cao_nghiem_thu')
+        .or('id_bao_cao_hang_hong.not.is.null,id_bao_cao_nghiem_thu.not.is.null')
+        .range(offset, offset + 999);
+      if (error) {
+        console.error(`Supabase ${lineTable} report-link lookup error:`, error);
+        break;
+      }
+      const rows = (data || []) as Array<{ id_bao_cao_hang_hong: string | null; id_bao_cao_nghiem_thu: string | null }>;
+      result.push(...rows);
+      if (rows.length < 1000) break;
+    }
+  }
+  return result;
+}
+
 async function loadWarehouseMovementsFromKho(filter: WarehouseMovementFilter = {}) {
   if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
 
@@ -7983,7 +8053,9 @@ async function syncMaterialInventoryFromMovements(maNpl: string) {
   const code = String(maNpl || '').trim();
   if (!code) return;
 
-  const totals = await buildMaterialMovementTotals();
+  // Chỉ tính lại đúng mã này — trước đây gọi buildMaterialMovementTotals() (quét TOÀN BỘ
+  // phiếu kho) nên lưu phiếu N nhiều dòng mất N × ~8s.
+  const totals = await buildMaterialMovementTotalsForCodes([code]);
   const movement = totals.get(code) || { nhap: 0, xuat: 0 };
 
   const { error: updateError } = await supabase
@@ -7997,6 +8069,30 @@ async function syncMaterialInventoryFromMovements(maNpl: string) {
   if (updateError) {
     console.error('Supabase kho_nvl inventory sync error:', updateError);
   }
+}
+
+/**
+ * Cập nhật nhập/xuất trong kỳ cho NHIỀU mã NVL trong MỘT lượt tính.
+ * Dùng khi lưu/xóa phiếu (trước đây mỗi mã gọi riêng → N × quét toàn bộ phiếu kho).
+ */
+async function syncMaterialInventoryFromMovementsBatch(maNpls: string[]) {
+  if (!supabase) return;
+  const codes = [...new Set(maNpls.map(code => String(code || '').trim()).filter(Boolean))];
+  if (codes.length === 0) return;
+
+  const totals = await buildMaterialMovementTotalsForCodes(codes);
+  await Promise.all(
+    codes.map(async code => {
+      const movement = totals.get(code) || { nhap: 0, xuat: 0 };
+      const { error } = await supabase!
+        .from(SUPABASE_MATERIALS_TABLE)
+        .update({ nhap_trong_ky: movement.nhap, xuat_trong_ky: movement.xuat })
+        .eq('ma_npl', code);
+      if (error) {
+        console.error('Supabase kho_nvl inventory sync error:', error);
+      }
+    })
+  );
 }
 
 async function syncProductDetailCodeFromMovements(fullCode: string) {
@@ -8068,6 +8164,95 @@ async function buildMaterialMovementTotals(): Promise<Map<string, { nhap: number
       current.nhap = roundWarehouseMoney(current.nhap + qty);
     }
     totals.set(code, current);
+  }
+
+  return totals;
+}
+
+/**
+ * Tổng nhập/xuất CHỈ cho danh sách mã NVL truyền vào.
+ * buildMaterialMovementTotals() quét toàn bộ phiếu kho (~8s) — trước đây hàm sync
+ * gọi nó MỘT LẦN CHO MỖI MÃ khi lưu phiếu, nên phiếu 10 dòng mất hàng chục giây.
+ * Ở đây chỉ lấy dòng của đúng các mã cần (1 lượt / lô 100 mã), rồi loại phiếu xuất
+ * treo chưa xác nhận bằng 1 lượt đọc header của chính các phiếu vừa chạm.
+ */
+async function buildMaterialMovementTotalsForCodes(
+  codes: string[]
+): Promise<Map<string, { nhap: number; xuat: number }>> {
+  const totals = new Map<string, { nhap: number; xuat: number }>();
+  const wanted = [...new Set(codes.map(code => String(code || '').trim()).filter(Boolean))];
+  if (!supabaseKho || wanted.length === 0) return totals;
+
+  const collected: Array<{ loaiPhieu: 'nhap' | 'xuat'; code: string; qty: number; slipCode: string }> = [];
+
+  for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+    const { line: lineTable } = warehouseTables(loaiPhieu);
+    for (let index = 0; index < wanted.length; index += 100) {
+      const batch = wanted.slice(index, index + 100);
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await supabaseKho
+          .from(lineTable)
+          .select('ma_sp, so_luong, ma_phieu')
+          .in('ma_sp', batch)
+          .range(offset, offset + 999);
+        if (error) {
+          console.error(`Supabase ${lineTable} movement totals error:`, error);
+          break;
+        }
+        const rows = (data || []) as Record<string, any>[];
+        for (const row of rows) {
+          const code = String(row.ma_sp ?? '').trim();
+          const qty = Number(row.so_luong);
+          if (!code || !Number.isFinite(qty)) continue;
+          collected.push({
+            loaiPhieu,
+            code,
+            qty,
+            slipCode: String(row.ma_phieu ?? '').trim()
+          });
+        }
+        if (rows.length < 1000) break;
+      }
+    }
+  }
+
+  // Chỉ đọc header của các phiếu vừa chạm tới (không quét cả bảng phieu_*).
+  const treoSkipped = new Set<string>();
+  for (const loaiPhieu of ['nhap', 'xuat'] as const) {
+    const slipCodes = [
+      ...new Set(
+        collected.filter(item => item.loaiPhieu === loaiPhieu).map(item => item.slipCode).filter(Boolean)
+      )
+    ];
+    if (slipCodes.length === 0) continue;
+    const { header: headerTable } = warehouseTables(loaiPhieu);
+    for (let index = 0; index < slipCodes.length; index += 100) {
+      const batch = slipCodes.slice(index, index + 100);
+      const { data, error } = await supabaseKho
+        .from(headerTable)
+        .select('ma_phieu, treo')
+        .in('ma_phieu', batch);
+      if (error) {
+        console.error(`Supabase ${headerTable} treo lookup error:`, error);
+        continue;
+      }
+      for (const row of (data || []) as Record<string, any>[]) {
+        if (row.treo === true) {
+          treoSkipped.add(`${loaiPhieu}|${String(row.ma_phieu ?? '').trim()}`);
+        }
+      }
+    }
+  }
+
+  for (const item of collected) {
+    if (item.slipCode && treoSkipped.has(`${item.loaiPhieu}|${item.slipCode}`)) continue;
+    const current = totals.get(item.code) || { nhap: 0, xuat: 0 };
+    if (item.loaiPhieu === 'xuat') {
+      current.xuat = roundWarehouseMoney(current.xuat + item.qty);
+    } else {
+      current.nhap = roundWarehouseMoney(current.nhap + item.qty);
+    }
+    totals.set(item.code, current);
   }
 
   return totals;
@@ -8509,7 +8694,7 @@ function buildProductionOrderRecordFromOrder(
     ma_don_hang: orderCode,
     ngay: orderDateOnly,
     ngay_bat_dau: orderDateOnly,
-    ngay_gio_bat_dau: `${orderDateOnly}T08:00:00`,
+    ngay_gio_bat_dau: `${orderDateOnly}T08:00:00+07:00`,
     ghi_chu: pickRowField(order, ['ghi_chu', 'note'])
   };
 }
@@ -8555,6 +8740,22 @@ function summarizeProductionOrderProducts(products: OrderProductRecord[]) {
   };
 }
 
+/**
+ * Chuẩn hóa giờ lệnh SX về múi giờ Việt Nam trước khi ghi vào cột timestamptz.
+ * Form gửi chuỗi naive "YYYY-MM-DDTHH:mm" (không offset); nếu ghi thẳng, Postgres
+ * hiểu là UTC → giờ bị lệch +7 và mỗi lần sửa lại nhảy thêm. Gắn +07:00 để giữ đúng
+ * giờ treo tường (VN không có DST).
+ */
+function normalizeVietnamProductionDateTime(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  // Đã có offset/Z → giữ nguyên, Postgres lưu đúng instant.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) return raw;
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/);
+  if (match) return `${match[1]}T${match[2]}+07:00`;
+  return raw;
+}
+
 function parseProductionOrderBody(
   body: unknown
 ): { error: string } | { record: Record<string, string | number | null | OrderProductRecord[]> } {
@@ -8598,8 +8799,12 @@ function parseProductionOrderBody(
   const orderRef = pickRowField(source, ['ma_don_hang', 'orderRef', 'order_code'], '') || productOrderRefs.join(', ');
   const code = pickRowField(source, ['ma_lenh_sx', 'code'], '').toUpperCase();
   const name = pickRowField(source, ['ten_lenh_sx', 'name'], '');
-  const startDateTime = pickRowField(source, ['ngay_gio_bat_dau', 'startDateTime'], '');
-  const endDateTime = pickRowField(source, ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'], '');
+  const startDateTime = normalizeVietnamProductionDateTime(
+    pickRowField(source, ['ngay_gio_bat_dau', 'startDateTime'], '')
+  );
+  const endDateTime = normalizeVietnamProductionDateTime(
+    pickRowField(source, ['ngay_gio_ket_thuc', 'endDateTime', 'ngay_ket_thuc', 'endDate'], '')
+  );
   // Cột Ngày lệnh SX — lấy `ngay` / startDate form.
   const explicitDate = pickRowField(source, ['ngay', 'startDate', 'ngay_bat_dau'], '');
   const startDateOnly =
@@ -12799,17 +13004,22 @@ export function createApp() {
     }
 
     try {
-      // ?light=1: danh mục gọn (mã/tên/ĐVT/KL) — không select * và không tính tồn nhập/xuất.
+      // ?light=1: danh mục gọn (mã/tên/ĐVT/KL/giá) — không select * và không tính tồn nhập/xuất.
+      // Đây là đường tải chính của form phiếu kho: đủ cột cho Quy đổi kg + đơn giá, bỏ phần
+      // buildMaterialMovementTotals() (quét toàn bộ phiếu nhập/xuất — tốn ~8s mỗi lần).
       const light = _req.query.light === '1';
+      const fresh = _req.query.fresh === '1';
       if (
         light &&
+        !fresh &&
         khoNvlLightCache &&
         Date.now() - khoNvlLightCache.at < KHO_NVL_LIGHT_CACHE_TTL_MS
       ) {
         return res.json(khoNvlLightCache.payload);
       }
 
-      const lightSelect = 'id,ma_npl,ten_npl,don_vi,ten_kho,tong_trong_luong';
+      const lightSelect =
+        'id,ma_npl,ten_npl,don_vi,ten_kho,tong_trong_luong,trong_luong_nhua,trong_luong_tui,trong_luong_loi,kho_cuon,chieu_dai_don_vi,don_gia';
       // PostgREST mặc định tối đa 1000 dòng/query → phân trang range để lấy hết.
       const PAGE_SIZE = 1000;
       const rows: Record<string, unknown>[] = [];
@@ -14406,8 +14616,15 @@ export function createApp() {
         if (!code) continue;
         (kind === 'san_pham' ? products : nvl).add(code);
       }
-      await Promise.all([...nvl].map(code => syncMaterialInventoryFromMovements(code)));
-      await Promise.all([...products].map(code => syncProductDetailCodeFromMovements(code)));
+      // Chạy nền: không chặn response lưu phiếu. Trước đây các bước này chạy đồng bộ
+      // (mỗi mã quét toàn bộ phiếu kho) nên bấm Lưu phải chờ hàng chục giây mới xong.
+      void Promise.all([
+        syncMaterialInventoryFromMovementsBatch([...nvl]),
+        ...[...products].map(code => syncProductDetailCodeFromMovements(code))
+      ]).catch(syncError => {
+        console.error('Supabase warehouse inventory background sync error:', syncError);
+      });
+      return;
     };
 
     try {
@@ -14465,13 +14682,14 @@ export function createApp() {
           const lotError = await validateNvlExportLots(parsed.items);
           if (lotError) return res.status(400).json(lotError);
         }
-        const existing = await loadWarehouseMovementsFromKho({ maPhieu: slipCode });
         const incomingReportIds = parsed.items
           .flatMap(item => [item.damagedReportRowId, item.acceptanceReportRowId])
           .filter(Boolean);
+        // Chỉ quét toàn bộ phiếu khi phiếu có dòng gắn báo cáo — trước đây phiếu thường
+        // vẫn phải chờ 1 lượt tải toàn bộ kho rồi mới lưu được.
         if (incomingReportIds.length) {
           const importedReportIds = new Set(
-            (await loadWarehouseMovementsFromKho())
+            (await loadWarehouseReportLinkIds())
               .flatMap(row => [row.id_bao_cao_hang_hong, row.id_bao_cao_nghiem_thu])
               .filter(Boolean)
           );

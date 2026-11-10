@@ -20,6 +20,7 @@
 
 - Nằm **phía trên** tab strip; áp dụng khi đổi tab phiếu.
 - Hợp field: Ngày · Giờ · Ca · Chi nhánh · Máy · Nhân sự (tick nhiều theo ngày+ca+máy / LSX) · Ghi chú.
+- Nút **TẢI LẠI DỮ LIỆU**: tải lại ca / máy / lệnh SX từ API — **giữ nguyên** ngày, giờ, ca, máy, nhân sự, ghi chú đang nhập (không reset form/draft).
 - Form trong hub: `useReportFormsSharedOptional()` → sync state + ẩn header local trùng; route độc lập giữ header riêng.
 - **Keep-alive tab:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab **không** mất draft chưa lưu; chỉ tải lazy lần đầu mở từng tab.
 - Chọn máy BB/CN → Nhận vật tư, Báo cáo tồn đầu/cuối ca và từng lần Bảng trộn tự sổ NVL theo cùng mẫu, đúng thứ tự `materialRequestPreset.ts`; không cần chọn mẫu riêng. Giữ số lượng đã nhập khi đổi loại máy, không tự sửa phiếu đang chỉnh sửa.

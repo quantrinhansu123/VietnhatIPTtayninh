@@ -2103,6 +2103,228 @@ input[type="number"] {
   }
 }
 
+/* ===== Kế hoạch SX theo máy (bảng lưới, A3 ngang) ===== */
+.production-plan-board-screen {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+}
+
+.production-plan-board-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #172033;
+}
+
+.production-plan-board-table th,
+.production-plan-board-table td {
+  border: 1px solid #7a8699;
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.production-plan-board-th {
+  background: #e3e9f5;
+  color: #102a43;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.production-plan-board-th-label {
+  background: #d6e0ef;
+  color: #102a43;
+  font-weight: 800;
+  text-align: center;
+}
+
+.production-plan-board-col-label {
+  width: 64px;
+  min-width: 64px;
+}
+
+.production-plan-board-roman {
+  width: 30px;
+  min-width: 30px;
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 900;
+  color: #102a43;
+  background: #f3f6fb;
+}
+
+.production-plan-board-cell {
+  min-height: 22px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.production-plan-board-cell-staff {
+  font-weight: 700;
+  color: #0b2d5c;
+}
+
+.production-plan-board-cell-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  padding: 1px 0;
+  font-weight: 700;
+}
+
+.production-plan-board-cell-weight {
+  color: #c00c22;
+  font-weight: 800;
+}
+
+.production-plan-board-shift-title {
+  font-weight: 800;
+  color: #102a43;
+  background: #f3f6fb;
+}
+
+.production-plan-board-row-blank td,
+.production-plan-board-row-blank th {
+  border-top-style: dashed;
+  border-top-color: #b7c0cd;
+}
+
+.production-plan-board-empty {
+  text-align: center;
+  padding: 16px !important;
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* ---------- Bản in A3 ngang ---------- */
+.production-plan-board-print-sheet {
+  display: none;
+}
+
+.production-plan-board-print-root {
+  display: none;
+}
+
+.production-plan-board-print-doc {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 8.5pt;
+  color: #111111;
+}
+
+.production-plan-board-print-header {
+  display: flex;
+  align-items: center;
+  gap: 5mm;
+  margin-bottom: 4mm;
+  border-bottom: 1.5px solid #102a43;
+  padding-bottom: 2mm;
+}
+
+.production-plan-board-print-logo {
+  height: 14mm;
+  width: auto;
+  max-width: 40mm;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.production-plan-board-print-title {
+  flex: 1;
+  text-align: center;
+}
+
+.production-plan-board-print-company {
+  margin: 0 0 1mm;
+  font-size: 11pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.production-plan-board-print-title h1 {
+  margin: 0;
+  font-size: 16pt;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.production-plan-board-print-doc .production-plan-board-table {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 8pt;
+}
+
+.production-plan-board-print-doc .production-plan-board-th,
+.production-plan-board-print-doc .production-plan-board-th-label,
+.production-plan-board-print-doc .production-plan-board-roman {
+  background: #e3e9f5 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.production-plan-board-print-doc .production-plan-board-cell-weight {
+  color: #c00c22;
+}
+
+@media print {
+  @page production-plan-board-page {
+    size: 420mm 297mm;
+    margin: 8mm;
+  }
+
+  .production-plan-board-print-sheet {
+    page: production-plan-board-page;
+  }
+
+  body.production-plan-board-print-active #root {
+    display: none !important;
+  }
+
+  body.production-plan-board-print-active .production-plan-board-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.production-plan-board-print-active .production-plan-board-print-sheet {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+  }
+
+  .production-plan-board-print-sheet,
+  .production-plan-board-print-sheet * {
+    visibility: visible !important;
+  }
+
+  .production-plan-board-print-doc .production-plan-board-table thead {
+    display: table-header-group;
+  }
+
+  .production-plan-board-print-doc,
+  .production-plan-board-print-doc * {
+    font-family: 'Times New Roman', Times, serif !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
 .production-plan-nvl-print-sheet {
   display: none;
 }

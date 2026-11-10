@@ -389,32 +389,33 @@ const warehouseLineHeaderClass =
 const warehouseMobileLineColsClass =
   'min-w-[26rem] grid-cols-[minmax(5.5rem,1fr)_minmax(5.5rem,1.1fr)_minmax(3.5rem,0.65fr)_minmax(4rem,0.85fr)]';
 
+// Cột Số lượng nằm ngay sau Tên NVL (ĐVT đẩy ra sau), thu nhỏ để gần tên.
 const warehouseNhapLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapFullMobileLineGridClass =
-  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseXuatFullMobileLineGridClass =
-  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseNhapFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_5.5rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseXuatFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 // Xuất kho NVL: không có cột Giá / Thành tiền.
-const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_3.25rem_4.5rem_6.25rem_5.5rem_2rem]';
+const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_2rem]';
 const warehouseNvlXuatLineGridClass = `grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[40rem] ${warehouseNvlXuatCols}`;
 const warehouseNvlXuatHeaderGridClass = `mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[40rem] ${warehouseNvlXuatCols}`;
 
@@ -1789,8 +1790,10 @@ export function WarehouseSlipPanel({
           );
           setWeightCatalog(selectableProducts.map(mapProductToWeightCatalogItem));
         } else {
+          // ?light=1: đủ cột cho ô Mã + Quy đổi kg nhưng BỎ bước tính tồn nhập/xuất toàn bộ phiếu
+          // (trước đây form chờ ~8s mới mở được ô MÃ NVL).
           const [khoRes, spRes] = await Promise.all([
-            fetch('/api/kho-nvl'),
+            fetch('/api/kho-nvl?light=1'),
             fetch('/api/san-pham?format=table')
           ]);
           const data = await khoRes.json().catch(() => ({}));
@@ -5606,7 +5609,6 @@ export function WarehouseSlipPanel({
                 <span className="hidden md:inline">{warehouseItemCodeLabel(warehouseKind)} *</span>
               </span>
               <span className={warehouseLineHeaderClass}>{warehouseItemNameLabel(warehouseKind)}</span>
-              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>ĐVT</span>
               {slipType === 'xuat' ? (
                 <>
                   <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>SL CT</span>
@@ -5622,6 +5624,7 @@ export function WarehouseSlipPanel({
               ) : (
                 <span className={warehouseLineHeaderClass}>Số lượng *</span>
               )}
+              <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass}`}>ĐVT</span>
               <span className={warehouseLineHeaderClass}>
                 {showAllWarehouseColumnsOnMobile ? 'Quy đổi kg' : (
                   <>
@@ -5685,14 +5688,6 @@ export function WarehouseSlipPanel({
                       className={`${warehouseLineFieldClass} ${hideLinePrice ? 'bg-zinc-50' : ''}`}
                     />
                   </div>
-                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
-                    <input
-                      value={line.unit}
-                      onChange={event => updateLine(line.key, { unit: event.target.value })}
-                      readOnly={hideLinePrice}
-                      className={`${warehouseLineFieldClass} ${hideLinePrice ? 'bg-zinc-50' : ''}`}
-                    />
-                  </div>
                   {slipType === 'xuat' ? (
                     <>
                       <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
@@ -5725,6 +5720,14 @@ export function WarehouseSlipPanel({
                       />
                     </div>
                   )}
+                  <div className={`min-w-0 ${warehouseLineMobileHiddenClass}`}>
+                    <input
+                      value={line.unit}
+                      onChange={event => updateLine(line.key, { unit: event.target.value })}
+                      readOnly={hideLinePrice}
+                      className={`${warehouseLineFieldClass} ${hideLinePrice ? 'bg-zinc-50' : ''}`}
+                    />
+                  </div>
                   <div className="min-w-0">
                     <div
                       className={`${warehouseLineFieldClass} flex items-center whitespace-nowrap bg-emerald-50/60 font-mono font-bold text-emerald-800`}
@@ -6165,6 +6168,8 @@ export function WarehouseHistoryPanel({
   const [selectedWarehouseName, setSelectedWarehouseName] = useState('');
   const { canView, canCreate, canEdit, canDelete } = pickWarehouseSlipAccess(warehouseAccess, warehouseTab);
   const [movements, setMovements] = useState<WarehouseMovementRow[]>([]);
+  /** Đếm lần gọi loadMovements — bỏ kết quả cũ khi đổi kho/loại/ngày nhanh. */
+  const loadMovementsSeqRef = useRef(0);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<WarehouseSlipType>(() =>
     initialSlipType === 'xuat' ? 'xuat' : 'nhap'
@@ -6270,7 +6275,10 @@ export function WarehouseHistoryPanel({
 
   const loadWeightCatalog = async () => {
     try {
-      const [materialRes, productRes] = await Promise.all([fetch('/api/kho-nvl'), fetch('/api/san-pham?format=table')]);
+      const [materialRes, productRes] = await Promise.all([
+        fetch('/api/kho-nvl?light=1'),
+        fetch('/api/san-pham?format=table')
+      ]);
       const materialData = await materialRes.json().catch(() => ({}));
       const productData = await productRes.json().catch(() => ({}));
 
@@ -6453,6 +6461,8 @@ export function WarehouseHistoryPanel({
       setError('Bạn không có quyền xem dữ liệu kho này.');
       return;
     }
+    // Chống race: chỉ áp dụng kết quả của lần gọi mới nhất (đổi kho/loại/ngày nhanh).
+    const requestSeq = ++loadMovementsSeqRef.current;
     setIsLoading(true);
     setError('');
 
@@ -6503,6 +6513,8 @@ export function WarehouseHistoryPanel({
           )];
           return machines.length > 0 ? { ...row, machine: machines.join(', ') } : row;
         });
+      // Bỏ kết quả cũ nếu đã có lần gọi mới hơn (tránh đè dữ liệu kho khác).
+      if (requestSeq !== loadMovementsSeqRef.current) return;
       setMovements(rows);
       if (standaloneSlipCode && rows[0]) {
         setViewingSlipCode(standaloneSlipCode);
@@ -6510,10 +6522,11 @@ export function WarehouseHistoryPanel({
         if (rows[0].slipType !== selectedType) setSelectedType(rows[0].slipType);
       }
     } catch (loadError: any) {
+      if (requestSeq !== loadMovementsSeqRef.current) return;
       setMovements([]);
       setError(loadError.message || 'Không thể tải lịch sử xuất nhập kho.');
     } finally {
-      setIsLoading(false);
+      if (requestSeq === loadMovementsSeqRef.current) setIsLoading(false);
     }
   };
 

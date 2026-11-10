@@ -691,16 +691,24 @@ export default function MachineRunLogPanel({
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
-      // Nén ảnh trước khi up (ảnh điện thoại vài MB → ~200-400KB) và up song song.
+      // Đọc ảnh trực tiếp từ File để chỉ mã hóa base64 bản gửi đi.
       const uploads = Promise.all(
         imageFiles.map(async file => {
-          const rawDataUrl = await readFileAsDataUrl(file);
-          let dataUrl = rawDataUrl;
+          const objectUrl = URL.createObjectURL(file);
+          let compressed = '';
           try {
-            dataUrl = await compressImageDataUrl(rawDataUrl, { maxEdge: 1600, quality: 0.8 });
+            compressed = await compressImageDataUrl(objectUrl, { maxEdge: 1280, quality: 0.72 });
           } catch {
-            dataUrl = rawDataUrl;
+            // Gửi ảnh gốc khi trình duyệt không giải mã được định dạng ảnh.
+          } finally {
+            URL.revokeObjectURL(objectUrl);
           }
+          if (controller.signal.aborted) throw new Error('Đã dừng tải ảnh.');
+          const originalBase64Length = 4 * Math.ceil(file.size / 3);
+          const dataUrl =
+            compressed.startsWith('data:') && compressed.length < originalBase64Length
+              ? compressed
+              : await readFileAsDataUrl(file);
           if (controller.signal.aborted) throw new Error('Đã dừng tải ảnh.');
           const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may', controller.signal);
           if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');

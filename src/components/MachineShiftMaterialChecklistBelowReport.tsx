@@ -5,7 +5,7 @@ import {
   AcceptanceReportPrintBatch,
   buildAcceptancePrintSlips
 } from './AcceptanceReportPrintSheet';
-import { MachineShiftMaterialChecklistPrintSheet } from './MachineShiftMaterialChecklistPrintSheet';
+import { MachineShiftMaterialChecklistPrintSheet, resolveChecklistPerformedBy } from './MachineShiftMaterialChecklistPrintSheet';
 import {
   loadMachineShiftChecklistPrintData,
   type ProductionPlanRelatedReports
@@ -30,29 +30,6 @@ function specificFilter(value?: string) {
   const text = String(value || '').trim();
   if (!text || text === 'all') return '';
   return text;
-}
-
-function resolveShiftLead(data: ProductionPlanRelatedReports | null) {
-  if (!data) return '';
-  const clean = (value: string) => {
-    const text = String(value || '').trim();
-    return !text || text === '-' ? '' : text;
-  };
-  for (const item of data.productionOrders || []) {
-    const name = clean(item.order?.shiftLead || '');
-    if (name) return name;
-  }
-  for (const plan of data.productionPlans || []) {
-    for (const line of plan.lines || []) {
-      const name = clean(line.shiftLead || '');
-      if (name) return name;
-    }
-  }
-  for (const slip of data.shiftHandovers || []) {
-    const name = clean(slip.operators || '');
-    if (name) return name;
-  }
-  return '';
 }
 
 export default function MachineShiftMaterialChecklistBelowReport({
@@ -155,7 +132,7 @@ export default function MachineShiftMaterialChecklistBelowReport({
     ];
   }, [data, date, shiftCode, machine, machineLabel]);
 
-  const performedBy = useMemo(() => resolveShiftLead(data), [data]);
+  const performedBy = useMemo(() => data ? resolveChecklistPerformedBy(data) : '', [data]);
 
   useEffect(() => {
     if (!printing || !data) return;

@@ -8649,4 +8649,35 @@ input[type="number"] {
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sign {
     min-height: 16mm !important;
   }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-title {
+    font-size: 13pt;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-date {
+    font-size: 10pt;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table th {
+    padding: 1mm 0.5mm !important;
+    font-size: 7pt !important;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table td {
+    height: 6.5mm;
+    font-size: 8.5pt !important;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-num {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-notes {
+    font-size: 8.5pt !important;
+  }
+
+  .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-sign {
+    min-height: 28mm !important;
+  }
 }

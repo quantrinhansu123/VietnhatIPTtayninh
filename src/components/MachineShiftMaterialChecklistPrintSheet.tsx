@@ -524,6 +524,38 @@ function sumCol(lines: MachineShiftMaterialChecklistLine[], pick: (row: MachineS
   return lines.reduce((sum, row) => sum + (pick(row) ?? 0), 0);
 }
 
+export function resolveChecklistPerformedBy(data: ProductionPlanRelatedReports) {
+  const clean = (value?: string) => {
+    const text = String(value || '').trim();
+    return !text || text === '-' ? '' : text;
+  };
+  for (const item of data.productionOrders || []) {
+    const name = clean(item.order?.shiftLead || '');
+    if (name) return name;
+  }
+  for (const plan of data.productionPlans || []) {
+    for (const line of plan.lines || []) {
+      const name = clean(line.shiftLead || '');
+      if (name) return name;
+    }
+  }
+  for (const slip of data.shiftHandovers || []) {
+    const name = clean(slip.operators || '');
+    if (name) return name;
+  }
+  for (const { order } of data.productionOrders || []) {
+    const name = clean(order.mainStaff) || clean(order.staff);
+    if (name) return name;
+  }
+  for (const plan of data.productionPlans || []) {
+    for (const line of plan.lines || []) {
+      const name = clean(line.mainStaff) || clean(line.staff);
+      if (name) return name;
+    }
+  }
+  return '';
+}
+
 export function MachineShiftMaterialChecklistPrintSheet({
   data,
   date,
@@ -557,27 +589,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
   const shiftLabel = formatChecklistShiftLabel(shift);
   const dateParts = formatPrintDateParts(date);
   const shiftHours = resolveAcceptanceShiftHours(shift, data.shiftOptions || []);
-  const performedBy = (() => {
-    const clean = (value: string) => {
-      const text = String(value || '').trim();
-      return !text || text === '-' ? '' : text;
-    };
-    for (const item of data.productionOrders || []) {
-      const name = clean(item.order?.shiftLead || '');
-      if (name) return name;
-    }
-    for (const plan of data.productionPlans || []) {
-      for (const line of plan.lines || []) {
-        const name = clean(line.shiftLead || '');
-        if (name) return name;
-      }
-    }
-    for (const slip of data.shiftHandovers || []) {
-      const name = clean(slip.operators || '');
-      if (name) return name;
-    }
-    return '';
-  })();
+  const performedBy = resolveChecklistPerformedBy(data);
   const tronColCount = displaySessions.length;
   const totalDinhMuc = sumCol(lines, row => row.dinhMucKg);
   const totalTonDau = sumCol(lines, row => row.tonDauCaKg);
@@ -593,7 +605,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
   return (
     <div className="bb-nvl-checklist-print-batch" aria-hidden={preview ? undefined : true}>
       <div className="bb-nvl-checklist-print-page">
-        <div className="bb-nvl-checklist-sheet bb-nvl-checklist-sheet-landscape">
+        <div className={`bb-nvl-checklist-sheet bb-nvl-checklist-sheet-landscape${bodyRows.length <= 15 ? ' bb-nvl-checklist-sheet-spacious' : ''}`}>
           <header className="bb-nvl-checklist-header">
             <div className="bb-nvl-checklist-header-left">
               <img

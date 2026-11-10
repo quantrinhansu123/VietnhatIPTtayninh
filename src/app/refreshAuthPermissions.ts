@@ -24,12 +24,12 @@ function mapSettingsRows(raw: unknown) {
 }
 
 /**
- * Nạp lại quyền từ ma trận Phân quyền + vi_tri_gan theo username phiên hiện tại.
+ * Nạp lại quyền từ ma trận Phân quyền + vi_tri_gan theo ID và username của phiên hiện tại.
  * Không cần mật khẩu (đã đăng nhập). Trả null nếu không tìm thấy / lỗi mạng.
  */
-export async function refreshAuthUserPermissions(username: string): Promise<AuthUser | null> {
+export async function refreshAuthUserPermissions(username: string, staffId: string): Promise<AuthUser | null> {
   const user = normalizeUsername(username);
-  if (!user) return null;
+  if (!user || !staffId) return null;
 
   try {
     const [staffRes, settingsRes] = await Promise.all([
@@ -50,7 +50,7 @@ export async function refreshAuthUserPermissions(username: string): Promise<Auth
     );
 
     const matched = members.find(
-      ({ member }) => member.username && normalizeUsername(member.username) === user
+      ({ member }) => member.id === staffId && member.username && normalizeUsername(member.username) === user
     );
     if (!matched) return null;
 

@@ -155,9 +155,10 @@ export default function App() {
   // Mỗi lần mở app: nạp lại quyền từ ma trận Phân quyền (tránh localStorage quyền cũ).
   useEffect(() => {
     const username = authUser?.username;
-    if (!username || authUser?.fullAccess) return;
+    const staffId = authUser?.id;
+    if (!username || !staffId || authUser?.fullAccess) return;
     let cancelled = false;
-    void refreshAuthUserPermissions(username).then(next => {
+    void refreshAuthUserPermissions(username, staffId).then(next => {
       if (cancelled || !next) return;
       try {
         localStorage.setItem(STORAGE_AUTH_KEY, JSON.stringify(next));
@@ -171,7 +172,7 @@ export default function App() {
     };
     // Chỉ chạy khi đổi user đăng nhập
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.username, authUser?.fullAccess]);
+  }, [authUser?.username, authUser?.id, authUser?.fullAccess]);
 
   const [activeTab, setActiveTab] = useState<AppTab>(() => tabFromPath(window.location.pathname));
   const [locationPath, setLocationPath] = useState(() => {

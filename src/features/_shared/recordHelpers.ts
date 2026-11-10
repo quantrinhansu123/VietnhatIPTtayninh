@@ -79,9 +79,10 @@ export function cloudinaryPreviewUrl(url: string, width = 480) {
   return sameOriginCloudinaryUrl(transformed);
 }
 
-export async function uploadImage(imageDataUrl: string, folder?: string) {
+export async function uploadImage(imageDataUrl: string, folder?: string, signal?: AbortSignal) {
   const res = await fetch('/api/cloudinary/upload', {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imageDataUrl, folder })
   });

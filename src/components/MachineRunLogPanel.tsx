@@ -282,6 +282,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ''));
     reader.onerror = () => reject(new Error('Không đọc được ảnh.'));
+    reader.onabort = () => reject(new Error('Đã dừng đọc ảnh.'));
     reader.readAsDataURL(file);
   });
 }
@@ -677,6 +678,7 @@ export default function MachineRunLogPanel({
   };
 
   const handlePickImages = async (files: FileList | File[] | null) => {
+    if (isUploadingImage) return;
     const list = files ? Array.from(files) : [];
     if (list.length === 0) return;
     const imageFiles = list.filter(file => file.type.startsWith('image/'));
@@ -686,9 +688,11 @@ export default function MachineRunLogPanel({
     }
     setError('');
     setIsUploadingImage(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
       // Nén ảnh trước khi up (ảnh điện thoại vài MB → ~200-400KB) và up song song.
-      const uploadedList = await Promise.all(
+      const uploads = Promise.all(
         imageFiles.map(async file => {
           const rawDataUrl = await readFileAsDataUrl(file);
           let dataUrl = rawDataUrl;
@@ -697,11 +701,18 @@ export default function MachineRunLogPanel({
           } catch {
             dataUrl = rawDataUrl;
           }
-          const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may');
+          if (controller.signal.aborted) throw new Error('Đã dừng tải ảnh.');
+          const uploaded = await uploadImage(dataUrl, 'nhat_ky_chay_may', controller.signal);
           if (!uploaded.imageUrl) throw new Error('Upload ảnh thất bại.');
           return uploaded.imageUrl;
         })
       );
+      const deadline = new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error('Tải ảnh quá thời gian. Vui lòng thử lại với ít ảnh hơn.'));
+        }, { once: true });
+      });
+      const uploadedList = await Promise.race([uploads, deadline]);
       setParameterImages(prev => [
         ...prev,
         ...uploadedList.map(url => ({
@@ -716,6 +727,8 @@ export default function MachineRunLogPanel({
     } catch (err: unknown) {
       setError(showSaveFailure(err, 'Không thể tải ảnh thông số.'));
     } finally {
+      window.clearTimeout(timeout);
+      controller.abort();
       setIsUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -877,11 +890,9 @@ export default function MachineRunLogPanel({
 
   const waitLabel = isSaving
     ? 'Đang lưu biểu mẫu…'
-    : isUploadingImage
-      ? 'Đang tải ảnh…'
-      : isLoading
-        ? 'Đang tải biểu mẫu…'
-        : '';
+    : isLoading
+      ? 'Đang tải biểu mẫu…'
+      : '';
 
   return (
     <div ref={panelRootRef} className="flex h-full flex-col bg-transparent">

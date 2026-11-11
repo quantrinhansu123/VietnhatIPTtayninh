@@ -6,6 +6,10 @@ Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao
 
 **Hiệu năng:** `ControlBoardBbMachineReportTable.tsx` lưu 9 bảng kết quả độc lập theo nhóm tối đa 3 request song song; chờ đủ kết quả và giữ báo lỗi từng bảng. Đồng bộ/cập nhật bản in đã tải nguồn thì không tải lại lần hai khi tính.
 
+**Phân bổ ngược NVL trộn:** kg thành phẩm theo từng NVL = tổng kg nhựa thành phẩm × tỷ lệ trộn thực tế trong `bao_cao_phoi_tron` đúng ngày/ca/máy. Bảng đánh giá và phân bổ hao hụt cũng dùng tỷ lệ thực tế, không thay bằng BOM khi thiếu phiếu trộn. Cột % định mức giữ để đối chiếu. Test: `src/utils/bbActualMixAllocation.test.ts`.
+
+**Trọng lượng SP ngoài LSX:** `sanLuongGroups.productGroups` lưu `grossWeightKg` (Σ Cân SP) và `normKgPerUnit` từ danh mục lúc Tính toán. Phiếu in đọc hai field này khi không tải cân/catalog live; không dùng `weightKg` (kg nhựa) thay trọng lượng cân SP. Bản tính cũ cần Tính toán lại để bổ sung.
+
 KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũng **chỉ** lấy từ `payload.summary` — không cộng live từ `can_tu_dong` / phiếu.
 
 Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_phan_tram`. NVL Cái: `SL = số cái/thành phẩm × SL SP`. Băng keo (Cuộn, `khoi_luong_kg` < Tổng kg/cuộn): kg trên 1 thành phẩm, tiêu hao làm tròn số cuộn. **TL NVL %** = Σ **Nhựa thực tế** (Thành phẩm) trên `can_tu_dong` (ngày·ca·máy·mã SP) × tỉ lệ %; không có lần cân thì fallback `trong_luong_nhua × SL`. Tính toán **không** tự ghi Thành phần SP. Phiếu xuất mã `ONGGIAY20` cộng vào `ONG-19.5CM`.

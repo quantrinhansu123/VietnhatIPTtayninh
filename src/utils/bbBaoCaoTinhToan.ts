@@ -349,7 +349,9 @@ export function buildBbMachineReportSnapshot(input: {
   const sanLuongGroups = overlayProductNplOnBbSanLuongGroups(
     sanLuongGroupsRaw,
     input.products,
-    input.materials
+    input.materials,
+    { mixingReports: input.mixingReports, shiftSettings: input.shiftSettings,
+      canTuDongRecords: sanLuongSource === 'can-tu-dong' ? input.canTuDongRecords : undefined }
   );
 
   // Thành phẩm đạt nhập kho / lệnh SX: SL/TL lấy thẳng từ Báo cáo sản lượng.

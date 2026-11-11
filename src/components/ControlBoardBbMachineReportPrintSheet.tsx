@@ -851,7 +851,9 @@ function resolveProductSanLuongRollKg(
       props.products
     );
     const totals = sumCanTuDongThucTeTotals(scoped);
-    return totals.weightKg > 0 ? totals.weightKg : null;
+    if (totals.weightKg > 0) return totals.weightKg;
+    const saved = findSanLuongProductGroup(order, productCode, productName, props.sanLuongGroups || []);
+    return saved?.grossWeightKg != null && saved.grossWeightKg > 0 ? saved.grossWeightKg : null;
   }
   const product = findCatalogProduct(props.products, productCode, productName);
   const perRollKg = parsePositiveKg(product?.totalWeight);
@@ -1446,7 +1448,9 @@ function BbMachineOrderPrintSheet({
         ? line.normKgPerUnit
         : line.quantity > 0 && line.totalNormKg != null && line.totalNormKg > 0
           ? line.totalNormKg / line.quantity
-          : parsePositiveKg(catalog?.totalWeight);
+          : sanLuongPg?.normKgPerUnit != null && sanLuongPg.normKgPerUnit > 0
+            ? sanLuongPg.normKgPerUnit
+            : parsePositiveKg(catalog?.totalWeight);
     const dmWeight =
       normPerUnit != null && normPerUnit > 0 && actualQuantity > 0
         ? Math.round(normPerUnit * actualQuantity * 10000) / 10000

@@ -6779,6 +6779,9 @@ export type BbSanLuongProductGroup = {
   quantity: number;
   /** Khối lượng SP (kg) từ phiếu báo cáo sản lượng. */
   weightKg: number;
+  /** Σ Cân SP và ĐM kg/cuộn lưu cùng snapshot, kể cả SP ngoài lệnh. */
+  grossWeightKg?: number | null;
+  normKgPerUnit?: number | null;
   /** % mặt hàng = quantity ÷ tổng SL mọi SP cùng nhóm phiếu sản lượng. */
   productSharePercent: number;
   reportCount: number;
@@ -7458,12 +7461,22 @@ export function refreshAcceptanceNvlDinhMucFromProductBom(input: {
 export function overlayProductNplOnBbSanLuongGroups(
   groups: BbSanLuongGroup[],
   products: ProductRow[],
-  materials: MaterialRow[] = []
+  materials: MaterialRow[] = [],
+  mixingSource?: {
+    mixingReports: MixingReport[];
+    shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
+    canTuDongRecords?: CanTuDongWeightRow[];
+  }
 ): BbSanLuongGroup[] {
   if (!Array.isArray(groups) || groups.length === 0 || products.length === 0) return groups || [];
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
 
   return groups.map(group => {
+    const actualMix = mixingSource
+      ? buildBbMixingMaterialLinesForShift({
+          ...mixingSource, ngay: group.ngay, shift: group.shift, machine: group.machine
+        })
+      : null;
     const sourceProductGroups = Array.isArray(group.productGroups) ? group.productGroups : [];
     const productGroups = sourceProductGroups.map(productGroup => {
       const catalog = findProductByCode(products, productGroup.productCode);
@@ -7554,9 +7567,42 @@ export function overlayProductNplOnBbSanLuongGroups(
         }
       }
 
-      const lines = orderBbSanLuongNvlLinesByKg([...recalculatedLines, ...missingLines]);
+      let allocatedLines = [...recalculatedLines, ...missingLines];
+      if (actualMix) {
+        const template = allocatedLines.find(line => line.amountType === 'percent');
+        if (template) {
+          for (const mix of actualMix) {
+            if (!(mix.tiLeTronPercent != null && mix.tiLeTronPercent > 0)) continue;
+            const key = normalizeNvlMatchKey(mix.materialCode);
+            if (allocatedLines.some(line => normalizeNvlMatchKey(line.itemCode) === key)) continue;
+            allocatedLines.push({
+              ...template, key: `${productGroup.key}|mix|${key}`,
+              itemCode: mix.materialCode, itemName: mix.materialName,
+              tiLeDinhMucPercent: mix.tiLeDinhMucPercent,
+              dinhMucRate: mix.tiLeDinhMucPercent, unit: '%'
+            });
+          }
+        }
+        allocatedLines = allocatedLines.map(line => {
+          if (line.amountType !== 'percent') return line;
+          const mix = actualMix.find(item =>
+            normalizeNvlMatchKey(item.materialCode) === normalizeNvlMatchKey(line.itemCode));
+          const rate = mix?.tiLeTronPercent ?? 0;
+          const kg = tongNhuaThanhPhamKg * rate / 100;
+          return { ...line, quantity: rate, normWeightKg: kg,
+            baseActualWeightKg: kg, actualWeightKg: kg };
+        });
+      }
+      const lines = orderBbSanLuongNvlLinesByKg(allocatedLines);
       return {
         ...productGroup,
+        normKgPerUnit: catalog ? resolveProductUnitNormKg(catalog) : productGroup.normKgPerUnit,
+        grossWeightKg: mixingSource?.canTuDongRecords
+          ? resolveBbThanhPhamCanAiWeightKg({
+              ngay: group.ngay, shift: group.shift, machine: group.machine,
+              productCode: productGroup.productCode, productName: productGroup.productName
+            }, mixingSource.canTuDongRecords, products)
+          : productGroup.grossWeightKg,
         // Cột / ô «Tổng vật tư trộn» = Tổng nhựa thành phẩm (không TL cả cuộn).
         weightKg: tongNhuaThanhPhamKg > 0 ? tongNhuaThanhPhamKg : productGroup.weightKg,
         lines,
@@ -12086,7 +12132,7 @@ export function resolveBbMaterialExportUnitPrice(
 
 /**
  * Phân bổ kg nhựa hao hụt (Chênh lệch) theo tỉ lệ % từng NVL.
- * Ưu tiên Tỉ lệ TB thực tế (%); không có thì dùng ĐM máy. Chuẩn hóa theo tổng % các dòng.
+ * Dùng Tỉ lệ trộn thực tế (%); thiếu tỷ lệ thì không phân bổ từ ĐM máy/BOM.
  */
 export function allocateBbNhuaHaoHutByRatioPercent(
   totalNhuaHaoHutKg: number,
@@ -12098,8 +12144,6 @@ export function allocateBbNhuaHaoHutByRatioPercent(
   const percents = lines.map(line => {
     const fromTb = line.tiLeThucTeTbPercent;
     if (fromTb !== null && fromTb !== undefined && Number.isFinite(fromTb) && fromTb > 0) return fromTb;
-    const fromDm = line.tiLeDinhMucPercent;
-    if (fromDm !== null && fromDm !== undefined && Number.isFinite(fromDm) && fromDm > 0) return fromDm;
     return 0;
   });
   const sumPct = percents.reduce((sum, pct) => sum + pct, 0);
@@ -12856,15 +12900,9 @@ function buildBbDanhGiaSummaryNvlRow(input: {
 }): BbDanhGiaSummaryRow {
   const { line, section, bomDinhMucKg, donGia } = input;
   const tiLePercent =
-    line.tiLeDinhMucPercent != null &&
-    Number.isFinite(line.tiLeDinhMucPercent) &&
-    line.tiLeDinhMucPercent > 0
-      ? line.tiLeDinhMucPercent
-      : line.tiLeThucTeTbPercent != null &&
-          Number.isFinite(line.tiLeThucTeTbPercent) &&
-          line.tiLeThucTeTbPercent > 0
-        ? line.tiLeThucTeTbPercent
-        : null;
+    line.tiLeThucTeTbPercent != null && Number.isFinite(line.tiLeThucTeTbPercent)
+      ? Math.max(0, line.tiLeThucTeTbPercent)
+      : null;
   const tongNhuaDm =
     input.tongNhuaDinhMucKg != null &&
     Number.isFinite(input.tongNhuaDinhMucKg) &&

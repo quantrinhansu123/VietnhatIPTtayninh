@@ -1697,7 +1697,8 @@ export default function ControlBoardBbMachineReportTable({
       const sanLuongGroupsForSave = overlayProductNplOnBbSanLuongGroups(
         payload.sanLuongGroups || [],
         liveProducts,
-        liveMaterials
+        liveMaterials,
+        { mixingReports: refreshed.mixingReports, shiftSettings }
       );
       const baoCaoSanLuongItems = buildBaoCaoSanLuongRowsFromGroups({
         khoaOnDinh: snapshotKey,
@@ -2239,8 +2240,8 @@ export default function ControlBoardBbMachineReportTable({
   );
   /** Snapshot cũ vẫn phủ đủ npl_phan_tram ngay sau khi bấm Áp dụng. */
   const sanLuongGroups = useMemo(
-    () => savedReportView ? activeSnapshot.sanLuongGroups : overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials),
-    [savedReportView, activeSnapshot.sanLuongGroups, products, materials]
+    () => savedReportView ? activeSnapshot.sanLuongGroups : overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials, { mixingReports, shiftSettings }),
+    [savedReportView, activeSnapshot.sanLuongGroups, products, materials, mixingReports, shiftSettings]
   );
   /** Gộp mã SP trùng + gắn SL/TL thực tế + KL nhựa+phụ gia từ /kho-hang (cả snapshot cũ). */
   const orderGroupsMerged = useMemo(() => {

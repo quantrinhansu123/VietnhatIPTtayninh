@@ -4,6 +4,7 @@ import { ChevronLeft, Eye, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'l
 import { formatNumber } from '../../utils';
 import { readApiErrorMessage, showAppToast, showSaveFailure } from '../../lib/appToast';
 import { useTabAccess } from '../../app/useTabAccess';
+import { normalizeMachines, type MachineRow } from '../danh-sach-may';
 import {
   getProductionShiftOptions,
   normalizeShiftSettings,
@@ -230,6 +231,7 @@ export function MaterialRequestListView({
     return !machine || machine === 'all' ? '' : machine;
   });
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
+  const [machines, setMachines] = useState<MachineRow[]>([]);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [viewingRow, setViewingRow] = useState<MaterialRequestRow | null>(null);
@@ -259,6 +261,13 @@ export function MaterialRequestListView({
 
   useEffect(() => {
     let cancelled = false;
+    void fetch('/api/danh-sach-may')
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setMachines(normalizeMachines(data));
+      })
+      .catch(() => { /* Keep exact matching available if the catalog cannot load. */ });
     (async () => {
       try {
         const settingsRes = await fetch('/api/cai-dat');
@@ -310,7 +319,9 @@ export function MaterialRequestListView({
       if (filterMachine) {
         const key = filterMachine.trim().toLowerCase();
         const may = String(row.may || '').trim().toLowerCase();
-        if (may !== key && !may.includes(key)) return false;
+        const selected = machines.find(machine => machine.code.trim().toLowerCase() === key);
+        const name = selected?.name.trim().toLowerCase();
+        if (may !== key && (!name || may !== name)) return false;
       }
       if (statusFilter !== 'all') {
         const status = String(row.trang_thai || 'cho_xu_ly').toLowerCase();
@@ -318,7 +329,7 @@ export function MaterialRequestListView({
       }
       return true;
     });
-  }, [rows, filterFromDate, filterToDate, filterCa, filterMachine, statusFilter, shiftOptions]);
+  }, [rows, filterFromDate, filterToDate, filterCa, filterMachine, statusFilter, shiftOptions, machines]);
 
   const hasActiveFilters = Boolean(filterCa || filterMachine || statusFilter !== 'all');
 

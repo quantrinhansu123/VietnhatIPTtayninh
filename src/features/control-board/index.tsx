@@ -191,6 +191,7 @@ export function ControlBoardPanel({
 }) {
   const reportOnly = mode === 'report-only' || mode === 'report-only-auto';
   const isAutoReport = mode === 'report-only-auto';
+  const savedReportView = reportOnly && hideCommonFilters;
   const { canCreate, canEdit, canDelete } = useTabAccess(reportOnly ? 'dashboard' : 'control-board');
   const [showReportListsModal, setShowReportListsModal] = useState(false);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -206,7 +207,12 @@ export function ControlBoardPanel({
   const [damagedRecords, setDamagedRecords] = useState<WeighingRecord[]>([]);
   const [machineNvlReports, setMachineNvlReports] = useState<MachineNvlSavedReport[]>([]);
   const [shiftSummaryWarehouseMovements, setShiftSummaryWarehouseMovements] = useState<WarehouseMovementRow[]>([]);
-  const defaultShiftSummaryRange = defaultShiftSummaryDateRange(14);
+  const defaultShiftSummaryRange = initialFilters
+    ? {
+        from: initialFilters.dateFrom || defaultShiftSummaryDateRange(14).from,
+        to: initialFilters.dateTo || initialFilters.dateFrom || defaultShiftSummaryDateRange(14).to
+      }
+    : defaultShiftSummaryDateRange(14);
   const [boardDateScope, setBoardDateScope] = useState<ControlBoardDateScope>('range');
   const [shiftSummaryDateFrom, setShiftSummaryDateFrom] = useState(defaultShiftSummaryRange.from);
   const [shiftSummaryDateTo, setShiftSummaryDateTo] = useState(defaultShiftSummaryRange.to);
@@ -219,15 +225,15 @@ export function ControlBoardPanel({
   const [materialSearch, setMaterialSearch] = useState('');
   const [productionOrderSearch, setProductionOrderSearch] = useState('');
   const [productionOrderStaffFilters, setProductionOrderStaffFilters] = useState<Set<string>>(() => new Set());
-  const [boardFilterShift, setBoardFilterShift] = useState('all');
-  const [boardFilterMachine, setBoardFilterMachine] = useState('all');
+  const [boardFilterShift, setBoardFilterShift] = useState(initialFilters?.shift || 'all');
+  const [boardFilterMachine, setBoardFilterMachine] = useState(initialFilters?.machineCode || 'all');
   const [boardFilterProductionOrder, setBoardFilterProductionOrder] = useState('all');
   const [boardFilterProductionOrderQuery, setBoardFilterProductionOrderQuery] = useState('');
   const [draftBoardDateScope, setDraftBoardDateScope] = useState<ControlBoardDateScope>('range');
   const [draftShiftSummaryDateFrom, setDraftShiftSummaryDateFrom] = useState(defaultShiftSummaryRange.from);
   const [draftShiftSummaryDateTo, setDraftShiftSummaryDateTo] = useState(defaultShiftSummaryRange.to);
-  const [draftBoardFilterShift, setDraftBoardFilterShift] = useState('all');
-  const [draftBoardFilterMachine, setDraftBoardFilterMachine] = useState('all');
+  const [draftBoardFilterShift, setDraftBoardFilterShift] = useState(initialFilters?.shift || 'all');
+  const [draftBoardFilterMachine, setDraftBoardFilterMachine] = useState(initialFilters?.machineCode || 'all');
   const [draftBoardFilterProductionOrder, setDraftBoardFilterProductionOrder] = useState('all');
   const [draftBoardFilterProductionOrderQuery, setDraftBoardFilterProductionOrderQuery] = useState('');
   const [filterReloadToken, setFilterReloadToken] = useState(0);
@@ -518,16 +524,31 @@ export function ControlBoardPanel({
 
   useEffect(() => {
     const onVisible = () => {
+      if (savedReportView) return;
       if (document.visibilityState !== 'visible') return;
       void reloadWarehouseSourceDataRef.current();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  }, [savedReportView]);
 
   useEffect(() => {
+    if (savedReportView) {
+      // The report reads its saved snapshot directly; catalogs are only for labels/dialogs.
+      setIsLoading(false);
+      let cancelled = false;
+      void Promise.all([
+        fetch('/api/danh-sach-may').then(res => res.ok ? res.json() : null),
+        fetch('/api/cai-dat').then(res => res.ok ? res.json() : null)
+      ]).then(([machineData, settingsData]) => {
+        if (cancelled) return;
+        if (machineData) setMachines(normalizeMachines(machineData));
+        if (settingsData) setProductionOrderSettings(mapProductionOrderSettings(settingsData));
+      }).catch(() => undefined);
+      return () => { cancelled = true; };
+    }
     loadBoard();
-  }, [boardDateScope, shiftSummaryDateFrom, shiftSummaryDateTo, filterReloadToken, isAutoReport]);
+  }, [boardDateScope, shiftSummaryDateFrom, shiftSummaryDateTo, filterReloadToken, isAutoReport, savedReportView]);
 
   const shiftSummaryWarehouseMovementRefs = useMemo(() => {
     const mapped = mapWarehouseMovementsForShiftSummary(shiftSummaryWarehouseMovements);
@@ -599,6 +620,7 @@ export function ControlBoardPanel({
   // Trang thường: chỉ auto khi ca/ngày có đúng 1 máy.
   const lastMachineAutoKeyRef = useRef('');
   useEffect(() => {
+    if (hideCommonFilters && initialFilters) return;
     if (!isAutoReport) {
       if (uiBoardFilterShift === 'all' || panelMachines.length !== 1) return;
       if (uiBoardFilterMachine !== panelMachines[0].code) {
@@ -656,6 +678,7 @@ export function ControlBoardPanel({
 
   useEffect(() => {
     if (!isAutoReport) return;
+    if (hideCommonFilters && initialFilters) return;
     syncMachineFilterToPanelMachines(panelMachines, uiBoardFilterMachine, value => {
       setDraftBoardFilterMachine(value);
     });
@@ -698,6 +721,7 @@ export function ControlBoardPanel({
   // `/phan-tich-tu-dong`: đổi ngày/ca (và máy nếu có) thì tự chọn lệnh SX khớp bucket.
   useEffect(() => {
     if (!isAutoReport) return;
+    if (hideCommonFilters && initialFilters) return;
 
     const resetProductionOrderFilter = () => {
       if (draftBoardFilterProductionOrder !== 'all' || draftBoardFilterProductionOrderQuery) {
@@ -1597,6 +1621,7 @@ export function ControlBoardPanel({
       ) : null}
 
       <ControlBoardBbMachineReportTable
+        savedReportView={savedReportView}
         productionOrders={boardScopedProductionOrders}
         products={products}
         materials={materials}

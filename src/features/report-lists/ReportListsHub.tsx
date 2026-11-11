@@ -391,6 +391,7 @@ export function ReportListsHub({
 
           <KeepAliveSlot tabId="dashboard-auto" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <ControlBoardPanel
+              key={filtersKey}
               mode="report-only-auto"
               hideCommonFilters
               initialFilters={sharedInitialFilters}

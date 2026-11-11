@@ -568,12 +568,9 @@ function sanLuongProductMatchesLine(
   const nameKey = normalizeProductCodeKey(productName);
   const groupCode = normalizeProductCodeKey(productGroup.productCode);
   const groupName = normalizeProductCodeKey(productGroup.productName);
-  return (
-    (Boolean(codeKey) &&
-      (groupCode === codeKey || groupCode.includes(codeKey) || codeKey.includes(groupCode))) ||
-    (Boolean(nameKey) &&
-      (groupName === nameKey || groupName.includes(nameKey) || nameKey.includes(groupName)))
-  );
+  // Different product codes must never match through similar product names.
+  if (codeKey && groupCode) return codeKey === groupCode;
+  return Boolean(nameKey && groupName && nameKey === groupName);
 }
 
 function findSanLuongProductGroup(

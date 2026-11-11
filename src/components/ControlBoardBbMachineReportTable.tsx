@@ -954,6 +954,7 @@ export default function ControlBoardBbMachineReportTable({
   canTuDongRecords = [],
   sanLuongSource = 'acceptance',
   includeAllMachines = false,
+  savedReportView = false,
   shiftSettings,
   isLoading,
   dateFrom,
@@ -982,6 +983,8 @@ export default function ControlBoardBbMachineReportTable({
   sanLuongSource?: 'acceptance' | 'can-tu-dong';
   /** `/phan-tich-tu-dong`: lấy lệnh/xuất kho mọi máy, không giới hạn nhóm BB. */
   includeAllMachines?: boolean;
+  /** Read persisted report without loading or recomputing source records. */
+  savedReportView?: boolean;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   isLoading?: boolean;
   dateFrom: string;
@@ -1348,7 +1351,7 @@ export default function ControlBoardBbMachineReportTable({
 
   /** Tải phiếu cân khi xem snapshot cân tự động (banner live + tab cân thực tế). */
   useEffect(() => {
-    if (sanLuongSource !== 'can-tu-dong') return;
+    if (savedReportView || sanLuongSource !== 'can-tu-dong') return;
     if (!dateFrom && !dateTo) return;
     let cancelled = false;
     void fetchCanTuDongSlimRecords({ from: dateFrom, to: dateTo })
@@ -1359,7 +1362,7 @@ export default function ControlBoardBbMachineReportTable({
     return () => {
       cancelled = true;
     };
-  }, [sanLuongSource, dateFrom, dateTo, reportSnapshotKey]);
+  }, [savedReportView, sanLuongSource, dateFrom, dateTo, reportSnapshotKey]);
 
   const openCalcDialog = () => {
     if (calculatingReport || isLoading || snapshotStatus === 'loading') return;
@@ -1421,16 +1424,16 @@ export default function ControlBoardBbMachineReportTable({
     shiftFilter: string;
     machineFilter: string;
     selectedMachine: { code?: string; name?: string } | null;
-  }) => {
+  }, sourceAlreadyRefreshed = false) => {
     if (calculatingReport) return;
     setCalculatingReport(true);
     setSnapshotMessage('');
     try {
       // Luôn tải lại Thành phần SP + Tổng kg kho NVL trước khi tính (BOM túi/lõi/băng mới).
-      if (onReloadSourceData) {
+      if (!sourceAlreadyRefreshed && onReloadSourceData) {
         const fresh = await onReloadSourceData();
         applyFreshToReportSource(fresh);
-      } else if (onReloadWarehouseData) {
+      } else if (!sourceAlreadyRefreshed && onReloadWarehouseData) {
         const fresh = await onReloadWarehouseData();
         applyFreshToReportSource(fresh);
       }
@@ -1573,6 +1576,8 @@ export default function ControlBoardBbMachineReportTable({
         ? ''
         : String(data?.error || 'Không lưu được bb_bao_cao_tinh_toan.');
 
+      const saveTasks: Array<() => Promise<void>> = [];
+
       // Tab «Dữ liệu trong lệnh SX» → bc_lsx — ghi độc lập (không phụ thuộc snapshot JSON).
       const bcLsxItems = buildBcLsxRowsFromOrderGroups({
         khoaOnDinh: snapshotKey,
@@ -1583,24 +1588,26 @@ export default function ControlBoardBbMachineReportTable({
       let bcLsxOk = false;
       let bcLsxError = '';
       let bcLsxSavedCount = 0;
-      try {
-        const bcLsxRes = await fetch('/api/bc-lsx', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: bcLsxItems })
-        });
-        const bcLsxData = await bcLsxRes.json().catch(() => ({}));
-        bcLsxOk = bcLsxRes.ok;
-        bcLsxSavedCount = Number(bcLsxData?.total ?? bcLsxItems.length) || 0;
-        if (!bcLsxOk) {
-          bcLsxError = String(
-            bcLsxData?.error || 'Không ghi được bc_lsx. Chạy supabase-bc-lsx.sql trên Supabase.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const bcLsxRes = await fetch('/api/bc-lsx', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: bcLsxItems })
+          });
+          const bcLsxData = await bcLsxRes.json().catch(() => ({}));
+          bcLsxOk = bcLsxRes.ok;
+          bcLsxSavedCount = Number(bcLsxData?.total ?? bcLsxItems.length) || 0;
+          if (!bcLsxOk) {
+            bcLsxError = String(
+              bcLsxData?.error || 'Không ghi được bc_lsx. Chạy supabase-bc-lsx.sql trên Supabase.'
+            );
+          }
+        } catch (bcErr) {
+          bcLsxError =
+            bcErr instanceof Error ? bcErr.message : 'Lỗi gọi /api/bc-lsx (server có thể chưa restart).';
         }
-      } catch (bcErr) {
-        bcLsxError =
-          bcErr instanceof Error ? bcErr.message : 'Lỗi gọi /api/bc-lsx (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Dữ liệu xuất kho» → du_lieu_xuat_kho — ghi độc lập từ phiếu XK live.
       const exportGroupsForSave = groupBbWarehouseExportLines(
@@ -1630,27 +1637,29 @@ export default function ControlBoardBbMachineReportTable({
       let xkOk = false;
       let xkError = '';
       let xkSavedCount = 0;
-      try {
-        const xkRes = await fetch('/api/du-lieu-xuat-kho', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: duLieuXuatKhoItems })
-        });
-        const xkData = await xkRes.json().catch(() => ({}));
-        xkOk = xkRes.ok;
-        xkSavedCount = Number(xkData?.total ?? duLieuXuatKhoItems.length) || 0;
-        if (!xkOk) {
-          xkError = String(
-            xkData?.error ||
-              'Không ghi được du_lieu_xuat_kho. Chạy supabase-du-lieu-xuat-kho.sql trên Supabase.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const xkRes = await fetch('/api/du-lieu-xuat-kho', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: duLieuXuatKhoItems })
+          });
+          const xkData = await xkRes.json().catch(() => ({}));
+          xkOk = xkRes.ok;
+          xkSavedCount = Number(xkData?.total ?? duLieuXuatKhoItems.length) || 0;
+          if (!xkOk) {
+            xkError = String(
+              xkData?.error ||
+                'Không ghi được du_lieu_xuat_kho. Chạy supabase-du-lieu-xuat-kho.sql trên Supabase.'
+            );
+          }
+        } catch (xkErr) {
+          xkError =
+            xkErr instanceof Error
+              ? xkErr.message
+              : 'Lỗi gọi /api/du-lieu-xuat-kho (server có thể chưa restart).';
         }
-      } catch (xkErr) {
-        xkError =
-          xkErr instanceof Error
-            ? xkErr.message
-            : 'Lỗi gọi /api/du-lieu-xuat-kho (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Báo cáo dữ liệu tồn đầu ca» → bao_cao_du_lieu_ton_dau_ca (≠ bao_cao_may_nvl_ton).
       const tonDauCaItems = buildBaoCaoDuLieuTonDauCaRowsFromGroups({
@@ -1660,27 +1669,29 @@ export default function ControlBoardBbMachineReportTable({
       let tonDauOk = false;
       let tonDauError = '';
       let tonDauSavedCount = 0;
-      try {
-        const tonDauRes = await fetch('/api/bao-cao-du-lieu-ton-dau-ca', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: tonDauCaItems })
-        });
-        const tonDauData = await tonDauRes.json().catch(() => ({}));
-        tonDauOk = tonDauRes.ok;
-        tonDauSavedCount = Number(tonDauData?.total ?? tonDauCaItems.length) || 0;
-        if (!tonDauOk) {
-          tonDauError = String(
-            tonDauData?.error ||
-              'Không ghi được bao_cao_du_lieu_ton_dau_ca. Chạy supabase-bao-cao-du-lieu-ton-dau-ca.sql.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const tonDauRes = await fetch('/api/bao-cao-du-lieu-ton-dau-ca', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: tonDauCaItems })
+          });
+          const tonDauData = await tonDauRes.json().catch(() => ({}));
+          tonDauOk = tonDauRes.ok;
+          tonDauSavedCount = Number(tonDauData?.total ?? tonDauCaItems.length) || 0;
+          if (!tonDauOk) {
+            tonDauError = String(
+              tonDauData?.error ||
+                'Không ghi được bao_cao_du_lieu_ton_dau_ca. Chạy supabase-bao-cao-du-lieu-ton-dau-ca.sql.'
+            );
+          }
+        } catch (tonErr) {
+          tonDauError =
+            tonErr instanceof Error
+              ? tonErr.message
+              : 'Lỗi gọi /api/bao-cao-du-lieu-ton-dau-ca (server có thể chưa restart).';
         }
-      } catch (tonErr) {
-        tonDauError =
-          tonErr instanceof Error
-            ? tonErr.message
-            : 'Lỗi gọi /api/bao-cao-du-lieu-ton-dau-ca (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Báo cáo sản lượng» → bao_cao_san_luong (≠ bao_cao_nghiem_thu).
       const sanLuongGroupsForSave = overlayProductNplOnBbSanLuongGroups(
@@ -1695,27 +1706,29 @@ export default function ControlBoardBbMachineReportTable({
       let slOk = false;
       let slError = '';
       let slSavedCount = 0;
-      try {
-        const slRes = await fetch('/api/bao-cao-san-luong', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: baoCaoSanLuongItems })
-        });
-        const slData = await slRes.json().catch(() => ({}));
-        slOk = slRes.ok;
-        slSavedCount = Number(slData?.total ?? baoCaoSanLuongItems.length) || 0;
-        if (!slOk) {
-          slError = String(
-            slData?.error ||
-              'Không ghi được bao_cao_san_luong. Chạy supabase-bao-cao-san-luong.sql trên Supabase.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const slRes = await fetch('/api/bao-cao-san-luong', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: baoCaoSanLuongItems })
+          });
+          const slData = await slRes.json().catch(() => ({}));
+          slOk = slRes.ok;
+          slSavedCount = Number(slData?.total ?? baoCaoSanLuongItems.length) || 0;
+          if (!slOk) {
+            slError = String(
+              slData?.error ||
+                'Không ghi được bao_cao_san_luong. Chạy supabase-bao-cao-san-luong.sql trên Supabase.'
+            );
+          }
+        } catch (slErr) {
+          slError =
+            slErr instanceof Error
+              ? slErr.message
+              : 'Lỗi gọi /api/bao-cao-san-luong (server có thể chưa restart).';
         }
-      } catch (slErr) {
-        slError =
-          slErr instanceof Error
-            ? slErr.message
-            : 'Lỗi gọi /api/bao-cao-san-luong (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» → du_lieu_trong_bao_cao_hang_loi_hong.
       const loiHongItems = buildDuLieuTrongBaoCaoHangLoiHongRowsFromGroups({
@@ -1728,27 +1741,29 @@ export default function ControlBoardBbMachineReportTable({
       let lhOk = false;
       let lhError = '';
       let lhSavedCount = 0;
-      try {
-        const lhRes = await fetch('/api/du-lieu-trong-bao-cao-hang-loi-hong', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: loiHongItems })
-        });
-        const lhData = await lhRes.json().catch(() => ({}));
-        lhOk = lhRes.ok;
-        lhSavedCount = Number(lhData?.total ?? loiHongItems.length) || 0;
-        if (!lhOk) {
-          lhError = String(
-            lhData?.error ||
-              'Không ghi được du_lieu_trong_bao_cao_hang_loi_hong. Chạy supabase-du-lieu-trong-bao-cao-hang-loi-hong.sql.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const lhRes = await fetch('/api/du-lieu-trong-bao-cao-hang-loi-hong', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: loiHongItems })
+          });
+          const lhData = await lhRes.json().catch(() => ({}));
+          lhOk = lhRes.ok;
+          lhSavedCount = Number(lhData?.total ?? loiHongItems.length) || 0;
+          if (!lhOk) {
+            lhError = String(
+              lhData?.error ||
+                'Không ghi được du_lieu_trong_bao_cao_hang_loi_hong. Chạy supabase-du-lieu-trong-bao-cao-hang-loi-hong.sql.'
+            );
+          }
+        } catch (lhErr) {
+          lhError =
+            lhErr instanceof Error
+              ? lhErr.message
+              : 'Lỗi gọi /api/du-lieu-trong-bao-cao-hang-loi-hong (server có thể chưa restart).';
         }
-      } catch (lhErr) {
-        lhError =
-          lhErr instanceof Error
-            ? lhErr.message
-            : 'Lỗi gọi /api/du-lieu-trong-bao-cao-hang-loi-hong (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Kiểm tồn cuối ca» → du_lieu_trong_bao_cao_kiem_ton_cuoi_ca (≠ bao_cao_may_nvl_ton).
       const kiemTonCuoiItems = buildDuLieuTrongBaoCaoKiemTonCuoiCaRowsFromGroups({
@@ -1758,27 +1773,29 @@ export default function ControlBoardBbMachineReportTable({
       let ktOk = false;
       let ktError = '';
       let ktSavedCount = 0;
-      try {
-        const ktRes = await fetch('/api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: kiemTonCuoiItems })
-        });
-        const ktData = await ktRes.json().catch(() => ({}));
-        ktOk = ktRes.ok;
-        ktSavedCount = Number(ktData?.total ?? kiemTonCuoiItems.length) || 0;
-        if (!ktOk) {
-          ktError = String(
-            ktData?.error ||
-              'Không ghi được du_lieu_trong_bao_cao_kiem_ton_cuoi_ca. Chạy supabase-du-lieu-trong-bao-cao-kiem-ton-cuoi-ca.sql.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const ktRes = await fetch('/api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: kiemTonCuoiItems })
+          });
+          const ktData = await ktRes.json().catch(() => ({}));
+          ktOk = ktRes.ok;
+          ktSavedCount = Number(ktData?.total ?? kiemTonCuoiItems.length) || 0;
+          if (!ktOk) {
+            ktError = String(
+              ktData?.error ||
+                'Không ghi được du_lieu_trong_bao_cao_kiem_ton_cuoi_ca. Chạy supabase-du-lieu-trong-bao-cao-kiem-ton-cuoi-ca.sql.'
+            );
+          }
+        } catch (ktErr) {
+          ktError =
+            ktErr instanceof Error
+              ? ktErr.message
+              : 'Lỗi gọi /api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca (server có thể chưa restart).';
         }
-      } catch (ktErr) {
-        ktError =
-          ktErr instanceof Error
-            ? ktErr.message
-            : 'Lỗi gọi /api/du-lieu-trong-bao-cao-kiem-ton-cuoi-ca (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Thành phẩm đạt nhập kho» → hết SP trên Báo cáo sản lượng (không giới hạn LSX).
       const thanhPhamItems = buildBaoCaoThanhPhamDatNhapKhoRowsFromGroups({
@@ -1788,27 +1805,29 @@ export default function ControlBoardBbMachineReportTable({
       let tpOk = false;
       let tpError = '';
       let tpSavedCount = 0;
-      try {
-        const tpRes = await fetch('/api/bao-cao-thanh-pham-dat-nhap-kho', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: thanhPhamItems })
-        });
-        const tpData = await tpRes.json().catch(() => ({}));
-        tpOk = tpRes.ok;
-        tpSavedCount = Number(tpData?.total ?? thanhPhamItems.length) || 0;
-        if (!tpOk) {
-          tpError = String(
-            tpData?.error ||
-              'Không ghi được bao_cao_thanh_pham_dat_nhap_kho. Chạy supabase-bao-cao-thanh-pham-dat-nhap-kho.sql.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const tpRes = await fetch('/api/bao-cao-thanh-pham-dat-nhap-kho', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: thanhPhamItems })
+          });
+          const tpData = await tpRes.json().catch(() => ({}));
+          tpOk = tpRes.ok;
+          tpSavedCount = Number(tpData?.total ?? thanhPhamItems.length) || 0;
+          if (!tpOk) {
+            tpError = String(
+              tpData?.error ||
+                'Không ghi được bao_cao_thanh_pham_dat_nhap_kho. Chạy supabase-bao-cao-thanh-pham-dat-nhap-kho.sql.'
+            );
+          }
+        } catch (tpErr) {
+          tpError =
+            tpErr instanceof Error
+              ? tpErr.message
+              : 'Lỗi gọi /api/bao-cao-thanh-pham-dat-nhap-kho (server có thể chưa restart).';
         }
-      } catch (tpErr) {
-        tpError =
-          tpErr instanceof Error
-            ? tpErr.message
-            : 'Lỗi gọi /api/bao-cao-thanh-pham-dat-nhap-kho (server có thể chưa restart).';
-      }
+      });
 
       // Tab «Tiêu hao NVL» → bao_cao_tieu_hao_nguyen_vat_lieu.
       const tieuHaoItems = buildBaoCaoTieuHaoNguyenVatLieuRowsFromGroups({
@@ -1818,27 +1837,29 @@ export default function ControlBoardBbMachineReportTable({
       let thOk = false;
       let thError = '';
       let thSavedCount = 0;
-      try {
-        const thRes = await fetch('/api/bao-cao-tieu-hao-nguyen-vat-lieu', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: tieuHaoItems })
-        });
-        const thData = await thRes.json().catch(() => ({}));
-        thOk = thRes.ok;
-        thSavedCount = Number(thData?.total ?? tieuHaoItems.length) || 0;
-        if (!thOk) {
-          thError = String(
-            thData?.error ||
-              'Không ghi được bao_cao_tieu_hao_nguyen_vat_lieu. Chạy supabase-bao-cao-tieu-hao-nguyen-vat-lieu.sql.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const thRes = await fetch('/api/bao-cao-tieu-hao-nguyen-vat-lieu', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ khoa_on_dinh: snapshotKey, items: tieuHaoItems })
+          });
+          const thData = await thRes.json().catch(() => ({}));
+          thOk = thRes.ok;
+          thSavedCount = Number(thData?.total ?? tieuHaoItems.length) || 0;
+          if (!thOk) {
+            thError = String(
+              thData?.error ||
+                'Không ghi được bao_cao_tieu_hao_nguyen_vat_lieu. Chạy supabase-bao-cao-tieu-hao-nguyen-vat-lieu.sql.'
+            );
+          }
+        } catch (thErr) {
+          thError =
+            thErr instanceof Error
+              ? thErr.message
+              : 'Lỗi gọi /api/bao-cao-tieu-hao-nguyen-vat-lieu (server có thể chưa restart).';
         }
-      } catch (thErr) {
-        thError =
-          thErr instanceof Error
-            ? thErr.message
-            : 'Lỗi gọi /api/bao-cao-tieu-hao-nguyen-vat-lieu (server có thể chưa restart).';
-      }
+      });
 
       // Khối KPI «Báo cáo tổng hợp» + «Tổng hợp nhựa» → bao_cao_tong_hop (1 dòng / khóa).
       // Công nhân = trưởng ca lệnh SX theo Ngày · Ca · Máy (không lấy thợ chính).
@@ -1880,28 +1901,35 @@ export default function ControlBoardBbMachineReportTable({
       });
       let thopOk = false;
       let thopError = '';
-      try {
-        const thopRes = await fetch('/api/bao-cao-tong-hop', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            khoa_on_dinh: snapshotKey,
-            items: tongHopRow ? [tongHopRow] : []
-          })
-        });
-        const thopData = await thopRes.json().catch(() => ({}));
-        thopOk = thopRes.ok;
-        if (!thopOk) {
-          thopError = String(
-            thopData?.error ||
-              'Không ghi được bao_cao_tong_hop. Chạy supabase-bao-cao-tong-hop.sql trên Supabase.'
-          );
+      saveTasks.push(async () => {
+        try {
+          const thopRes = await fetch('/api/bao-cao-tong-hop', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              khoa_on_dinh: snapshotKey,
+              items: tongHopRow ? [tongHopRow] : []
+            })
+          });
+          const thopData = await thopRes.json().catch(() => ({}));
+          thopOk = thopRes.ok;
+          if (!thopOk) {
+            thopError = String(
+              thopData?.error ||
+                'Không ghi được bao_cao_tong_hop. Chạy supabase-bao-cao-tong-hop.sql trên Supabase.'
+            );
+          }
+        } catch (thopErr) {
+          thopError =
+            thopErr instanceof Error
+              ? thopErr.message
+              : 'Lỗi gọi /api/bao-cao-tong-hop (server có thể chưa restart).';
         }
-      } catch (thopErr) {
-        thopError =
-          thopErr instanceof Error
-            ? thopErr.message
-            : 'Lỗi gọi /api/bao-cao-tong-hop (server có thể chưa restart).';
+      });
+
+      // Each endpoint writes a separate table; await every result before reporting success.
+      for (let index = 0; index < saveTasks.length; index += 3) {
+        await Promise.all(saveTasks.slice(index, index + 3).map(save => save()));
       }
 
       if (
@@ -2028,7 +2056,7 @@ export default function ControlBoardBbMachineReportTable({
         const fresh = await onReloadSourceData();
         applyFreshToReportSource(fresh);
       }
-      await calculateAndSaveReport(scope);
+      await calculateAndSaveReport(scope, true);
     } catch (error) {
       setSnapshotMessage(error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu.');
     } finally {
@@ -2060,7 +2088,7 @@ export default function ControlBoardBbMachineReportTable({
         scope.machineFilter &&
         scope.machineFilter !== 'all'
       ) {
-        await calculateAndSaveReport(scope);
+        await calculateAndSaveReport(scope, true);
       }
       if (!pendingPrintSyncBumpRef.current) {
         setPrintPreviewDataKey(key => key + 1);
@@ -2088,7 +2116,7 @@ export default function ControlBoardBbMachineReportTable({
   /** Tab xuất kho: luôn đọc phiếu XK mới nhất từ API (không dùng snapshot cũ). */
   const exportRows = useMemo(
     () =>
-      buildBbWarehouseExportLineRows({
+      savedReportView ? activeSnapshot.exportRows : buildBbWarehouseExportLineRows({
         productionOrders,
         warehouseMovements,
         materials,
@@ -2103,6 +2131,7 @@ export default function ControlBoardBbMachineReportTable({
         exportMatchScope: 'shift'
       }),
     [
+      savedReportView, activeSnapshot.exportRows,
       productionOrders,
       warehouseMovements,
       materials,
@@ -2117,8 +2146,8 @@ export default function ControlBoardBbMachineReportTable({
     ]
   );
   const exportGroups = useMemo(
-    () => groupBbWarehouseExportLines(exportRows, productionOrders, products, materials, shiftSettings),
-    [exportRows, productionOrders, products, materials, shiftSettings]
+    () => savedReportView ? activeSnapshot.exportGroups : groupBbWarehouseExportLines(exportRows, productionOrders, products, materials, shiftSettings),
+    [savedReportView, activeSnapshot.exportGroups, exportRows, productionOrders, products, materials, shiftSettings]
   );
 
   useEffect(() => {
@@ -2132,7 +2161,7 @@ export default function ControlBoardBbMachineReportTable({
   /** Tab tồn đầu / cuối ca: luôn đọc phiếu mới nhất (không dùng snapshot cũ). */
   const dauCaRows = useMemo(
     () =>
-      buildBbDauCaLineRows({
+      savedReportView ? activeSnapshot.dauCaRows : buildBbDauCaLineRows({
         productionOrders,
         machineNvlReports,
         machines,
@@ -2146,6 +2175,7 @@ export default function ControlBoardBbMachineReportTable({
         includeAllMachines
       }),
     [
+      savedReportView, activeSnapshot.dauCaRows,
       productionOrders,
       machineNvlReports,
       machines,
@@ -2160,17 +2190,17 @@ export default function ControlBoardBbMachineReportTable({
     ]
   );
   const dauCaGroups = useMemo(
-    () =>
+    () => savedReportView ? activeSnapshot.dauCaGroups :
       groupBbDauCaLines(dauCaRows, productionOrders, products, materials, {
         machines,
         mixingReports,
         shiftSettings
       }),
-    [dauCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
+    [savedReportView, activeSnapshot.dauCaGroups, dauCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
   );
   const cuoiCaRows = useMemo(
     () =>
-      buildBbCuoiCaLineRows({
+      savedReportView ? activeSnapshot.cuoiCaRows : buildBbCuoiCaLineRows({
         productionOrders,
         machineNvlReports,
         machines,
@@ -2184,6 +2214,7 @@ export default function ControlBoardBbMachineReportTable({
         includeAllMachines
       }),
     [
+      savedReportView, activeSnapshot.cuoiCaRows,
       productionOrders,
       machineNvlReports,
       machines,
@@ -2198,21 +2229,26 @@ export default function ControlBoardBbMachineReportTable({
     ]
   );
   const cuoiCaGroups = useMemo(
-    () =>
+    () => savedReportView ? activeSnapshot.cuoiCaGroups :
       groupBbCuoiCaLines(cuoiCaRows, productionOrders, products, materials, {
         machines,
         mixingReports,
         shiftSettings
       }),
-    [cuoiCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
+    [savedReportView, activeSnapshot.cuoiCaGroups, cuoiCaRows, productionOrders, products, materials, machines, mixingReports, shiftSettings]
   );
   /** Snapshot cũ vẫn phủ đủ npl_phan_tram ngay sau khi bấm Áp dụng. */
   const sanLuongGroups = useMemo(
-    () => overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials),
-    [activeSnapshot.sanLuongGroups, products, materials]
+    () => savedReportView ? activeSnapshot.sanLuongGroups : overlayProductNplOnBbSanLuongGroups(activeSnapshot.sanLuongGroups, products, materials),
+    [savedReportView, activeSnapshot.sanLuongGroups, products, materials]
   );
   /** Gộp mã SP trùng + gắn SL/TL thực tế + KL nhựa+phụ gia từ /kho-hang (cả snapshot cũ). */
   const orderGroupsMerged = useMemo(() => {
+    if (savedReportView) {
+      return groupBbProductionOrderLines(
+        enrichBbProductionOrderRowsFromSanLuong(orderGroups.flatMap(group => group.lines), sanLuongGroups)
+      );
+    }
     const lines = orderGroups.flatMap(group => group.lines);
     if (lines.length === 0) return orderGroups;
     const sourceRecords = calcCanTuDongRecords.length > 0 ? calcCanTuDongRecords : canTuDongRecords;
@@ -2242,6 +2278,7 @@ export default function ControlBoardBbMachineReportTable({
       enrichBbProductionOrderRowsPlasticNormFromProducts(enriched, products)
     );
   }, [
+    savedReportView,
     orderGroups,
     products,
     sanLuongGroups,
@@ -2265,6 +2302,7 @@ export default function ControlBoardBbMachineReportTable({
   const inboundRows = activeSnapshot.inboundRows;
   const thucDungRows = activeSnapshot.thucDungRows;
   const thucDungRowsLive = useMemo(() => {
+    if (savedReportView) return thucDungRows;
     const withXuat = syncBbThucDungRowsXuatTrongNgayFromExportTab({
       rows: thucDungRows,
       productionOrders,
@@ -2298,6 +2336,7 @@ export default function ControlBoardBbMachineReportTable({
       materials
     });
   }, [
+    savedReportView,
     thucDungRows,
     productionOrders,
     warehouseMovements,

@@ -5819,8 +5819,9 @@ export function sumBbDauCaWeightKgByKind(rows: BbDauCaLineRow[]) {
 }
 
 /**
- * Tab tồn đầu ca: **1 dòng = 1 dòng phiếu** `bao_cao_may_nvl_ton` (kg/SL giữ nguyên).
- * Cột tỉ lệ ĐM chỉ gắn tham chiếu từ SP/máy — không đổi số tồn, không chia NNS-TRON.
+ * Tab tồn đầu/cuối: giữ tồn rời theo phiếu `bao_cao_may_nvl_ton`.
+ * Nếu có NHUA-TRON, bổ sung đủ mã phối trộn thực tế để phân bổ cả mã có tồn rời = 0.
+ * Tỉ lệ ĐM chỉ để đối chiếu; phần NHUA-TRON dùng tỉ lệ thực tế, không sửa phiếu nguồn.
  */
 function buildBbDauCaMaterialLinesForOrder(input: {
   group: {
@@ -6025,6 +6026,33 @@ function buildBbDauCaMaterialLinesForOrder(input: {
     if (!existing.unit && row.unit) existing.unit = String(row.unit).trim();
   }
 
+  // NHUA-TRON chứa cả NVL không có tồn nguyên liệu rời. Phải seed đủ mã từ
+  // phiếu trộn thực tế trước khi phân bổ, thay vì chỉ duyệt dòng tồn dương.
+  const hasNhuaTronStock = group.lines.some(row =>
+    isNhuaTronMaterial(row.itemCode, row.itemName) && row.weightKg > 0
+  );
+  if (hasNhuaTronStock) {
+    for (const stat of mixingResolved.stats.byMaterial.values()) {
+      if (!(stat.klSum > 0) || !isBbMixingRatioKgUnit(stat.unit)) continue;
+      if (isBbExcludedTronAggregateMaterial(stat.materialCode, stat.materialName)) continue;
+      const materialKey = normalizeNvlMatchKey(stat.materialCode) || normalizeNvlMatchKey(stat.materialName);
+      if (!materialKey || slipAgg.has(materialKey)) continue;
+      const catalogMaterial = input.materials.find(material =>
+        normalizeNvlMatchKey(material.code) === normalizeNvlMatchKey(stat.materialCode)
+      );
+      slipAgg.set(materialKey, {
+        key: `${group.groupKey}|mixing-stock|${materialKey}`,
+        itemCode: stat.materialCode,
+        itemName: stat.materialName || catalogMaterial?.name || stat.materialCode,
+        unit: catalogMaterial?.unit || stat.unit || 'kg',
+        quantity: 0,
+        weightKg: 0,
+        daTronKg: 0,
+        tonNgoaiKg: 0
+      });
+    }
+  }
+
   const materialLines: BbDauCaProductLine[] = [...slipAgg.entries()].map(([materialKey, row]) => {
     const dm = resolveDinhMuc(row.itemCode, row.itemName);
     const unit = row.unit || 'kg';
@@ -6041,7 +6069,9 @@ function buildBbDauCaMaterialLinesForOrder(input: {
         : null;
     // Tỉ lệ thực tế: cột «Tỉ lệ trộn Thực tế» báo cáo phối trộn (ngày·ca·máy) — không fallback ĐM.
     const tiLeThucTeTbPercent =
-      unitIsKg && tiLeFromMixing != null && tiLeFromMixing > 0 ? tiLeFromMixing : null;
+      isBbMixingRatioKgUnit(unit, dm?.amountType) && tiLeFromMixing != null && tiLeFromMixing > 0
+        ? tiLeFromMixing : null;
+    const amountType = dm?.amountType ?? (tiLeThucTeTbPercent != null ? 'percent' : null);
     const tonDauWeightKg = roundQty(row.weightKg > 0 ? row.weightKg : 0, 4);
     const daTronKg = roundQty(row.daTronKg > 0 ? row.daTronKg : 0, 4);
     const tonNgoaiKg = roundQty(row.tonNgoaiKg > 0 ? row.tonNgoaiKg : 0, 4);
@@ -6057,7 +6087,7 @@ function buildBbDauCaMaterialLinesForOrder(input: {
       unit,
       dinhMucRate: dm?.dinhMucRate ?? null,
       dinhMucUnit: dm?.dinhMucUnit ?? '',
-      amountType: dm?.amountType ?? null,
+      amountType,
       tiLeDinhMucPercent,
       tiLeThucTeTbPercent,
       tonDauQuantity,
@@ -6083,7 +6113,7 @@ function buildBbDauCaMaterialLinesForOrder(input: {
         tonDauQuantity,
         dinhMucRate: dm?.dinhMucRate ?? null,
         dinhMucUnit: dm?.dinhMucUnit ?? '',
-        amountType: dm?.amountType ?? null,
+        amountType,
         tiLeDinhMucPercent,
         share: 1,
         productQuantity: 0,

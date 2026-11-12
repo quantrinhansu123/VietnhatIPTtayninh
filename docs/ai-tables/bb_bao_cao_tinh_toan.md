@@ -8,6 +8,8 @@ Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao
 
 **Phân bổ ngược NVL trộn:** kg thành phẩm theo từng NVL = tổng kg nhựa thành phẩm × tỷ lệ trộn thực tế trong `bao_cao_phoi_tron` đúng ngày/ca/máy. Bảng đánh giá và phân bổ hao hụt cũng dùng tỷ lệ thực tế, không thay bằng BOM khi thiếu phiếu trộn. Cột % định mức giữ để đối chiếu. Test: `src/utils/bbActualMixAllocation.test.ts`.
 
+**Phân bổ NHUA-TRON tồn đầu/cuối:** `buildBbDauCaMaterialLinesForOrder` seed đủ mã có kg trộn thực tế nếu phiếu có tồn `NHUA-TRON`, kể cả mã không có tồn rời; kg tồn rời của mã mới = 0, không sửa dòng kiểm kê. Cho phép NVL trộn ĐVT Lít (dầu) nhận tỉ lệ thực tế như kg. Sau đó phân bổ cùng công thức ở cả hai đầu: tồn rời + kg NHUA-TRON × tỉ lệ thực tế. Không nhân lại ở tiêu hao/in. LSX076: đầu VN bổ sung 622 × 9,529% = 59,2704 kg; tổng thực dùng theo nguồn = 1.025,54 kg, còn lệch thực 7,52 kg thay vì sai lệch thiếu phân bổ −52,09 kg. Bản tính cũ cần bấm Tính toán lại.
+
 **Trọng lượng SP ngoài LSX:** `sanLuongGroups.productGroups` lưu `grossWeightKg` (Σ Cân SP) và `normKgPerUnit` từ danh mục lúc Tính toán. Phiếu in đọc hai field này khi không tải cân/catalog live; không dùng `weightKg` (kg nhựa) thay trọng lượng cân SP. Bản tính cũ cần Tính toán lại để bổ sung.
 
 KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũng **chỉ** lấy từ `payload.summary` — không cộng live từ `can_tu_dong` / phiếu.

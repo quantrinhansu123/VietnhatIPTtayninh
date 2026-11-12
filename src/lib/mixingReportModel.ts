@@ -1195,10 +1195,20 @@ export function applyMixingRoundAutofill(
   items: MixingRoundItem[],
   batchWeightFallback?: number | null
 ): MixingReportLine[] {
-  return items.reduce(
+  const merged = items.reduce(
     (lines, item) => upsertMaterialInRound(lines, roundKey, item, undefined, batchWeightFallback),
     [...chi_tiet]
   );
+  // Dòng NVL có sẵn không được tính lại trong upsert → gắn KL mẻ rồi tính KL định mức theo % cho mọi dòng.
+  const batchWeight = getRoundBatchWeightFromLines(merged, roundKey) ?? batchWeightFallback ?? null;
+  if (!batchWeight || batchWeight <= 0) return merged;
+  return merged.map(line => {
+    const lan_su_dung = recalcRoundItems(
+      { ...line.lan_su_dung, khoi_luong_me: { ...line.lan_su_dung.khoi_luong_me, [roundKey]: batchWeight } },
+      roundKey
+    );
+    return { ...line, lan_su_dung, tong_nhua_tron: sumMixingRounds(lan_su_dung) };
+  });
 }
 
 export function listMixingRoundCopySources(

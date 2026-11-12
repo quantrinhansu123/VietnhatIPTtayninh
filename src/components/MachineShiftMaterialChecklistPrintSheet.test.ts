@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ProductionPlanRelatedReports } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import { normalizeMachineNvlReports } from '../utils/machineNvlReports';
-import { buildMachineShiftMaterialChecklist, formatChecklistStock } from './MachineShiftMaterialChecklistPrintSheet';
+import {
+  buildMachineShiftMaterialChecklist, formatChecklistStock, summarizeChecklistMixedPlasticUsage,
+  type MachineShiftMaterialChecklistLine
+} from './MachineShiftMaterialChecklistPrintSheet';
 
 function checklist(catalog = true, overrides: Partial<ProductionPlanRelatedReports> = {}) {
   const materials = [
@@ -130,4 +133,55 @@ test('phiếu cũ không có từng lần chỉ lấy KL thực tế, bỏ tổn
   assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-NORM')!.thucTronByLan, {});
   assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-ZERO')!.thucTronByLan, {});
   assert.deepEqual(rows.find(row => row.maVatTu === 'OLD-ACTUAL')!.thucTronByLan, { 3: 5 });
+});
+
+function usageLine(code: string, opening: number | null, mixed: number | null, closing: number | null) {
+  return { maVatTu: code, tenVatTu: code, donVi: 'kg', tonDauCaKg: opening,
+    thucTronKg: mixed, tonCuoiCaKg: closing, layTrongKhoKg: 9999,
+    thucTeSuDungKg: 7777 } as MachineShiftMaterialChecklistLine;
+}
+
+test('TT SD cân đối riêng nhựa đã trộn: 523 + 838,54 - 348 = 1.013,54 kg', () => {
+  const lines = [
+    usageLine('NHUA-TRON', 523, null, 348),
+    usageLine('NHUA-1L-CN', 700, 200, 500),
+    usageLine('NHUA-TCMN 25kg', 650, 550, 1600),
+    usageLine('NHUA-TC-VN', 200, 80, 128),
+    usageLine('DAU BONG PA350', 5.11, 1.46, 3.65),
+    usageLine('NVLK-BOT TANG TRANG', 0, 0.08, 0),
+    usageLine('NHUA A1', 13.75, 1, 12.75),
+    usageLine('NVLK-PPA', 9.5, 6, 28),
+    usageLine('VT-TUI03', 17.22, null, 44.8)
+  ];
+  const before = JSON.stringify(lines);
+  const totals = summarizeChecklistMixedPlasticUsage(lines);
+  assert.equal(totals.openingKg, 523);
+  assert.ok(Math.abs(totals.mixedInShiftKg - 838.54) < 1e-9);
+  assert.equal(totals.closingKg, 348);
+  assert.ok(Math.abs(totals.usedKg! - 1013.54) < 1e-9);
+  assert.equal(JSON.stringify(lines), before);
+});
+
+test('TT SD giữ kết quả âm/0, tồn cuối bằng 0 và không thay thực trộn bằng lấy kho', () => {
+  for (const [opening, mixed, closing, expected] of [
+    [10, 20, 0, 30], [10, 20, 30, 0], [10, 20, 40, -10], [0, 0, 0, 0]
+  ]) {
+    const totals = summarizeChecklistMixedPlasticUsage([
+      usageLine('NHUA-TRON', opening, null, closing), usageLine('NHUA-1L-CN', 1000, mixed, 900)
+    ]);
+    assert.equal(totals.usedKg, expected);
+  }
+  assert.equal(summarizeChecklistMixedPlasticUsage([usageLine('NHUA-TRON', 523, null, 348)]).usedKg, 175);
+  assert.equal(summarizeChecklistMixedPlasticUsage([]).usedKg, null);
+});
+
+test('TT SD không cộng lặp NHUA-TRON và không cộng trộn túi/lõi/băng keo', () => {
+  const totals = summarizeChecklistMixedPlasticUsage([
+    usageLine('NHUA-TRON', 523, 838.54, 348),
+    usageLine('NHUA-1L-CN', 9999, 838.54, 9999),
+    usageLine('VT-TUI03', 9999, 100, 9999),
+    { ...usageLine('ONG-50CM', 9999, 100, 9999), tenVatTu: 'Ống giấy' },
+    { ...usageLine('BK-BKT2cm', 9999, 100, 9999), tenVatTu: 'Băng keo trong 2cm' }
+  ]);
+  assert.ok(Math.abs(totals.usedKg! - 1013.54) < 1e-9);
 });

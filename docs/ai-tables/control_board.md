@@ -45,6 +45,8 @@ Cột Lần 1…n và Tổng nhựa trộn trên bảng giao ca chỉ cộng `kl
 
 Bảng trộn vật tư (`MachineShiftMaterialChecklistPrintSheet`): tồn đầu/cuối ca ĐVT khác kg ưu tiên **Tổng kg danh mục NVL**, thiếu danh mục mới dùng hệ số đã lưu trên phiếu. Tồn đầu/cuối và **Lấy trong kho** hiển thị **kg(SL gốc)**, ví dụ `0,532(7)` = 0,532 kg / 7 cuộn (tối đa 3 số lẻ kg). Lấy kho: kg và SL cùng nguồn phiếu xuất; thiếu thì cùng lấy từ phiếu nhận NVL. Test hồi quy: `src/components/MachineShiftMaterialChecklistPrintSheet.test.ts`.
 
+**Ô Thực tế sử dụng trên phiếu:** `summarizeChecklistMixedPlasticUsage` cân đối riêng **nhựa đã trộn**: tồn đầu dòng `NHUA-TRON` + Σ thực trộn trong ca − tồn cuối dòng `NHUA-TRON`. Nhận diện bằng `isNhuaTronMaterial` (mã/tên), không dùng tồn đầu/cuối nguyên liệu rời hoặc vật tư phụ, không thay lượng trộn bằng Lấy kho và không cộng `thucTeSuDungKg` từng NVL. Không cộng trùng dòng tổng `NHUA-TRON` vào lượng trộn mới. Giữ kết quả 0/âm; không có nguồn dữ liệu thì để trống. Ví dụ 523 + 838,54 − 348 = 1.013,54 kg. Các cột tồn/xuất và dữ liệu gốc không đổi.
+
 | File | Vai trò |
 |------|---------|
 | `controlBoardShiftSummary.ts` | Tổng hợp theo ca từ phiếu cân, kho, NVL |

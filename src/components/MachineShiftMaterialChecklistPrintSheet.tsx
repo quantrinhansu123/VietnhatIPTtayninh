@@ -21,6 +21,8 @@ import type { ProductionOrderMaterialLine } from '../features/ke-hoach-san-xuat'
 import type { WarehouseSlipPrintData } from './WarehouseSlipPrintModal';
 import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from './layout/constants';
 import { compareMaterialMisaCode } from '../utils/materialMisaSortOrder';
+import { isNhuaTronMaterial } from '../utils/controlBoardBbMachineReport';
+import { isWarehouseBagExportItem, isWarehouseCoreExportItem, isWarehouseTapeExportItem } from '../utils/controlBoardShiftSummary';
 import {
   convertWarehouseQuantityToKg,
   isWarehouseKgUnit,
@@ -499,8 +501,8 @@ export function buildMachineShiftMaterialChecklist(
       }
     }
 
-    // Công thức form: TT SD = Tồn đầu + Thực trộn − Tồn cuối (ưu tiên);
-    // nếu không có thực trộn thì dùng Lấy kho thay thế.
+    // Thực dùng đối chiếu từng dòng; không cộng các giá trị này để tính ô TT SD
+    // của nhựa đã trộn (ô đó dùng summarizeChecklistMixedPlasticUsage).
     const dau = row.tonDauCaKg ?? 0;
     const cuoi = row.tonCuoiCaKg;
     const tron = row.thucTronKg;
@@ -521,6 +523,35 @@ export function buildMachineShiftMaterialChecklist(
 
 function sumCol(lines: MachineShiftMaterialChecklistLine[], pick: (row: MachineShiftMaterialChecklistLine) => number | null) {
   return lines.reduce((sum, row) => sum + (pick(row) ?? 0), 0);
+}
+
+/** Cân đối riêng nhựa đã trộn; không cộng tồn nguyên liệu rời hoặc vật tư phụ. */
+function isChecklistMixingMaterial(row: MachineShiftMaterialChecklistLine) {
+  const code = normalizeProductCodeKey(row.maVatTu);
+  const name = row.tenVatTu.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return !isNhuaTronMaterial(row.maVatTu, row.tenVatTu) &&
+    !code.startsWith('ONG-') && !code.startsWith('BK-') &&
+    !name.includes('ong giay') && !name.includes('bang keo') &&
+    !isWarehouseBagExportItem(row.maVatTu, row.tenVatTu) &&
+    !isWarehouseCoreExportItem(row.maVatTu, row.tenVatTu) &&
+    !isWarehouseTapeExportItem(row.maVatTu, row.tenVatTu);
+}
+
+export function summarizeChecklistMixedPlasticUsage(lines: MachineShiftMaterialChecklistLine[]) {
+  const mixedStock = lines.filter(row => isNhuaTronMaterial(row.maVatTu, row.tenVatTu));
+  const mixingMaterials = lines.filter(isChecklistMixingMaterial);
+  const openingKg = sumCol(mixedStock, row => row.tonDauCaKg);
+  const mixedInShiftKg = sumCol(mixingMaterials, row => row.thucTronKg);
+  const closingKg = sumCol(mixedStock, row => row.tonCuoiCaKg);
+  const hasData = mixedStock.some(row => row.tonDauCaKg != null || row.tonCuoiCaKg != null) ||
+    mixingMaterials.some(row => row.thucTronKg != null);
+  return {
+    openingKg,
+    mixedInShiftKg,
+    closingKg,
+    // Giữ cả 0 và số âm để nhìn thấy sai lệch kiểm kê, không lọc từng NVL rồi cộng.
+    usedKg: hasData ? openingKg + mixedInShiftKg - closingKg : null
+  };
 }
 
 export function resolveChecklistPerformedBy(data: ProductionPlanRelatedReports) {
@@ -597,11 +628,12 @@ export function MachineShiftMaterialChecklistPrintSheet({
   const totalDinhMuc = sumCol(lines, row => row.dinhMucKg);
   const totalTonDau = sumCol(lines, row => row.tonDauCaKg);
   const totalXuat = sumCol(lines, row => row.layTrongKhoKg);
-  const totalTron = sumCol(lines, row => row.thucTronKg);
+  const mixedPlasticUsage = summarizeChecklistMixedPlasticUsage(lines);
+  const totalTron = mixedPlasticUsage.mixedInShiftKg;
   const totalTonCuoi = sumCol(lines, row => row.tonCuoiCaKg);
-  const totalSuDung = sumCol(lines, row => row.thucTeSuDungKg);
+  const totalSuDung = mixedPlasticUsage.usedKg;
   const totalTronByLan = displaySessions.map(session =>
-    lines.reduce((sum, row) => sum + (row.thucTronByLan[session] || 0), 0)
+    lines.filter(isChecklistMixingMaterial).reduce((sum, row) => sum + (row.thucTronByLan[session] || 0), 0)
   );
   const tronColWidth = Math.max(3.5, Math.min(5.5, 30 / (tronColCount + 1)));
 
@@ -763,7 +795,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
             <div className="bb-nvl-checklist-footer-item">
               <span className="bb-nvl-checklist-footer-label">THỰC TẾ SỬ DỤNG:</span>
               <span className="bb-nvl-checklist-footer-value">
-                {totalSuDung > 0 ? formatNumber(totalSuDung, 2) : ''}
+                {totalSuDung != null ? formatNumber(totalSuDung, 2) : ''}
               </span>
             </div>
             <div className="bb-nvl-checklist-footer-item">
@@ -785,7 +817,8 @@ export function MachineShiftMaterialChecklistPrintSheet({
           <div className="bb-nvl-checklist-notes">
             <p>
               <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới lấy vật tư đúng định mức. Pallet: 1L/2L = 25 kg/bao.
-              <b> Ghi chú:</b> TT SD = Tồn đầu + Thực tế trộn − Tồn cuối. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
+              <b> Ghi chú:</b> TT SD = Nhựa đã trộn tồn đầu ca + Thực trộn trong ca − Nhựa đã trộn tồn cuối ca.
+              {' '}Không cộng tồn nguyên liệu chưa trộn hoặc vật tư phụ vào TT SD. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
               {' '}Tồn đầu/cuối và Lấy trong kho: kg(số lượng theo ĐVT) đối với vật tư khác kg.
             </p>
           </div>

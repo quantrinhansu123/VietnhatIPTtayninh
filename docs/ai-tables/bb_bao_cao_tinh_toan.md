@@ -14,6 +14,8 @@ KPI header (sản lượng cân AI, lỗi hỏng, màng cách nhiệt, …) cũn
 
 Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_phan_tram`. NVL Cái: `SL = số cái/thành phẩm × SL SP`. Băng keo (Cuộn, `khoi_luong_kg` < Tổng kg/cuộn): kg trên 1 thành phẩm, tiêu hao làm tròn số cuộn. **TL NVL %** = Σ **Nhựa thực tế** (Thành phẩm) trên `can_tu_dong` (ngày·ca·máy·mã SP) × tỉ lệ %; không có lần cân thì fallback `trong_luong_nhua × SL`. Tính toán **không** tự ghi Thành phần SP. Phiếu xuất mã `ONGGIAY20` cộng vào `ONG-19.5CM`.
 
+**Hiển thị tab sản lượng:** `BbSanLuongReportPanel.tsx` giữ Bảng tổng; chi tiết mỗi phiếu tách riêng **Bảng NVL trộn** và **Bảng vật tư khác** theo `isBbSanLuongNvlKgLine`, có tổng kg riêng và chỉ gộp ô SP trong từng bảng. Cả hai bảng luôn hiện đủ SP của nhóm, kể cả SP không có dòng NVL thuộc phần đó: hiện mã/tên/SL SP, kg để «—» và cảnh báo số SP/cuộn thiếu. Footer tổng SL SP không bỏ sản phẩm thiếu NVL; không giả lập dòng vật tư hoặc cộng kg chưa có vào tổng. Chỉ đổi bố cục, không sửa công thức hoặc snapshot.
+
 **Phiếu in = mirror tab:** mục 3.1/3.2 lấy `thucDungGroups` (builder `buildBbTieuHaoNvlThucDungRows`); mục 4.1 lấy `danhGiaGroups.summaryRows`. Không tính độc lập trên `ControlBoardBbMachineReportPrintSheet`. Snapshot cũ thiếu field → bấm **Tính toán** lại.
 
 ## SQL

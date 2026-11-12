@@ -95,11 +95,15 @@ function lineWeightKg(line: BbSanLuongNvlLine) {
 
 function SanLuongShiftSection({
   group,
-  shiftSettings
+  shiftSettings,
+  materialSection
 }: {
   group: BbSanLuongGroup;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
+  materialSection: 'mixing' | 'other';
 }) {
+  const isMixingSection = materialSection === 'mixing';
+  const sectionTitle = isMixingSection ? 'Bảng NVL trộn' : 'Bảng vật tư khác';
   const shiftName = resolveShiftName(group.shift, group.shiftLabel);
   const timeRange = resolveShiftTimeRange(group.shift, group.shiftLabel, shiftSettings);
   const normStatus = resolveNormStatus(group);
@@ -119,23 +123,9 @@ function SanLuongShiftSection({
 
   const productRows = productGroups.map(product => {
     const unitLabel = formatUnitLabel(product.unit);
-    const lines = (
-      product.lines.length > 0
-        ? orderBbSanLuongNvlLinesByKg([...product.lines])
-        : [
-            {
-              key: `${product.key}|empty`,
-              itemCode: '—',
-              itemName: '—',
-              amountType: 'quantity' as const,
-              tiLeDinhMucPercent: null,
-              quantity: null,
-              unit: '',
-              actualWeightKg: 0,
-              normWeightKg: 0
-            }
-          ]
-    ) as BbSanLuongNvlLine[];
+    const lines = orderBbSanLuongNvlLinesByKg([...product.lines]).filter(
+      line => isBbSanLuongNvlKgLine(line) === isMixingSection
+    );
     const tronLines = lines.filter(line => isBbSanLuongNvlKgLine(line));
     const conLaiLines = lines.filter(line => !isBbSanLuongNvlKgLine(line));
     // «Tổng vật tư trộn» = Σ TL NVL nhựa trộn (không ưu tiên weightKg đã làm tròn).
@@ -151,6 +141,7 @@ function SanLuongShiftSection({
       key: product.key,
       productCode: product.productCode,
       productName: product.productName,
+      quantity: product.quantity,
       productQty: `${formatNumber(product.quantity, 0)} ${unitLabel}`,
       rowSpan: lines.length,
       tronRowSpan: tronLines.length,
@@ -160,29 +151,40 @@ function SanLuongShiftSection({
       lines
     };
   });
+  const missingProducts = productRows.filter(product => product.lines.length === 0);
+  const missingRolls = missingProducts.reduce((sum, product) => sum + product.quantity, 0);
+  const totalProductQty = productRows.reduce((sum, product) => sum + product.quantity, 0);
+  const sectionTotalKg = productRows.reduce((sum, product) =>
+    sum + (product.lines.length > 0 ? isMixingSection ? product.tongVatTuTronKg : product.tongVatTuConLaiKg : 0), 0);
 
   return (
     <section>
-      {productGroups.length === 0 ? (
-        <table className="bb-sheet-table">
-          <caption>{captionParts.join(' · ')}</caption>
+      {missingProducts.length > 0 && (
+        <p role="alert" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+          {missingProducts.length} sản phẩm ({formatNumber(missingRolls, 0)} cuộn) chưa có {isMixingSection ? 'NVL trộn' : 'vật tư khác'} trong bản tính.
+          {' '}Kiểm tra Thành phần SP và tính lại; không tự gán mã vật tư.
+        </p>
+      )}
+      {productRows.length === 0 ? (
+        <table className="bb-sheet-table w-full">
+          <caption>{sectionTitle} · {captionParts.join(' · ')}</caption>
           <tbody>
             <tr>
               <td colSpan={9} className="py-6 text-center text-slate-400">
-                Chưa có NVL snapshot trên phiếu. Vào danh sách phiếu → Xem → Đồng bộ, rồi bấm «Tính toán» lại.
+                Chưa có {isMixingSection ? 'NVL trộn' : 'vật tư khác'} trong dữ liệu phiếu này.
               </td>
             </tr>
           </tbody>
         </table>
       ) : (
-        <table className="bb-sheet-table bb-san-luong-sheet min-w-[960px]">
-          <caption className="font-bold text-zinc-900">{captionParts.join(' · ')}</caption>
+        <table className="bb-sheet-table bb-san-luong-sheet w-full min-w-[960px]">
+          <caption className="font-bold text-zinc-900">{sectionTitle} · {captionParts.join(' · ')}</caption>
           <thead>
             <tr className="text-zinc-900">
               <th className="font-black">Mã SP</th>
               <th className="font-black">Tên SP</th>
               <th className="text-right font-black">SL SP</th>
-              <th className="text-right font-black">TL SP (kg)</th>
+              <th className="text-right font-black">{isMixingSection ? 'Tổng NVL trộn (kg)' : 'Tổng vật tư khác (kg)'}</th>
               <th className="font-black">Mã NVL</th>
               <th className="font-black">Tên NVL</th>
               <th className="font-black">ĐVT</th>
@@ -192,6 +194,21 @@ function SanLuongShiftSection({
           </thead>
           <tbody>
             {productRows.flatMap(product => {
+              if (product.lines.length === 0) {
+                return (
+                  <tr key={`${product.key}|missing-${materialSection}`} className="text-zinc-900">
+                    <td className="align-middle font-mono font-bold">{product.productCode || '—'}</td>
+                    <td className="max-w-[180px] truncate align-middle font-semibold" title={product.productName || undefined}>
+                      {product.productName || '—'}
+                    </td>
+                    <td className="bb-sheet-num align-middle font-bold">{product.productQty}</td>
+                    <td className="bb-sheet-num text-zinc-400">—</td>
+                    <td colSpan={5} className="text-sm text-amber-800">
+                      Chưa có {isMixingSection ? 'NVL trộn' : 'vật tư khác'} trong bản tính của sản phẩm này.
+                    </td>
+                  </tr>
+                );
+              }
               const kgLineCount = product.tronRowSpan;
               return product.lines.map((line, lineIndex) => {
                 const isKgLine = isBbSanLuongNvlKgLine(line);
@@ -264,6 +281,15 @@ function SanLuongShiftSection({
               });
             })}
           </tbody>
+          <tfoot>
+            <tr className="font-semibold text-zinc-900">
+              <td colSpan={2} className="text-right">{isMixingSection ? 'Tổng NVL trộn' : 'Tổng vật tư khác'}</td>
+              <td className="bb-sheet-num">{formatNumber(totalProductQty, 0)}</td>
+              <td className="bb-sheet-num">{formatKg(sectionTotalKg)}</td>
+              <td colSpan={4} />
+              <td className="bb-sheet-num">{formatKg(sectionTotalKg)} kg</td>
+            </tr>
+          </tfoot>
         </table>
       )}
     </section>
@@ -412,7 +438,14 @@ export default function BbSanLuongReportPanel({
             Chi tiết theo phiếu
           </p>
           {groups.map(group => (
-            <SanLuongShiftSection key={group.groupKey} group={group} shiftSettings={shiftSettings} />
+            <div key={group.groupKey} className="space-y-5">
+              <div className="overflow-x-auto">
+                <SanLuongShiftSection group={group} shiftSettings={shiftSettings} materialSection="mixing" />
+              </div>
+              <div className="overflow-x-auto">
+                <SanLuongShiftSection group={group} shiftSettings={shiftSettings} materialSection="other" />
+              </div>
+            </div>
           ))}
         </div>
       </div>

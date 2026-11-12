@@ -37,7 +37,7 @@ UI danh sách sản phẩm có **hai chế độ**:
 
 - Modal **Xem sản phẩm**: tab Thông tin · Thành phần · **Nhập kho** · **Xuất kho** (hai tab sau lấy dòng từ `nhap_kho`/`xuat_kho` theo mã SP). Bảng **Tồn kho** trên tab Thông tin: **Tồn cuối ca** = `tong_so_luong` từ Bảng tổng hợp Kiểm kho (`GET /api/kiem-kho/ton-dau-ky`) — **chỉ hiển thị**, không tham gia tính; **Nhập/Xuất trong kỳ** = tổng `so_luong` toàn bộ phiếu ở tab Nhập kho / Xuất kho; **Tồn cuối kỳ** = nhập − xuất (không cộng tồn cuối ca). Đã bỏ fallback `san_pham.ton_dau_ky`.
 - **Danh mục** (`/san-pham`, QC): lấy trực tiếp từ bảng `san_pham` — cột Tồn đầu / Nhập / Xuất / Tồn / Tồn TT / Kho; thống kê Sản phẩm · Nhóm VTHH · Đơn vị. Nút **Đổi kho theo bộ lọc** mở chọn tên kho rồi cập nhật `ten_kho` cho các SP đang hiện theo bộ lọc.
-- **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): cột **Tổng SL** = `ton_cuoi_ky` tính từ phiếu kho đến ngày đang chọn; thống kê Mã SP / Tổng SL / Đơn vị. Bộ lọc **Kho** (dropdown từ `quan_ly_kho`) — cột **Kho** trên bảng luôn hiện đúng kho đang chọn.
+- **Tồn theo ngày** (Kho hàng → Thành phẩm + chọn ngày): hiển thị cột **Tồn đầu** từ `san_pham.ton_dau_ky` (số gốc trong danh mục, không thay bằng tồn đầu của khoảng ngày) bên cạnh **Tổng SL** = `ton_cuoi_ky` tính đến ngày đang chọn. Thêm cột không đổi công thức Tổng SL hoặc số nhập/xuất. Thống kê Mã SP / Tổng SL / Đơn vị. Bộ lọc **Kho** (dropdown từ `quan_ly_kho`) — cột **Kho** trên bảng luôn hiện đúng kho đang chọn.
 
 ## Menu
 

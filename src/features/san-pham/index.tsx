@@ -3806,9 +3806,8 @@ export function ProductsPanel({
       return [{
         ...product,
         warehouse: warehouseFilter || product.warehouse || balance?.ten_kho || '',
-        openingStock: hasMovement
-          ? String(balance!.ton_dau_ky)
-          : catalogOr(product.openingStock, '0'),
+        // Tồn đầu hiển thị số gốc trong danh mục, không thay bằng tồn theo khoảng ngày.
+        openingStock: catalogOr(product.openingStock, balance ? String(balance.ton_dau_ky) : '0'),
         inbound: hasMovement ? String(balance!.nhap_trong_ky) : catalogOr(product.inbound, '0'),
         outbound: hasMovement ? String(balance!.xuat_trong_ky) : catalogOr(product.outbound, '0'),
         stock: hasMovement ? String(balance!.ton_cuoi_ky) : catalogOr(product.stock, '0')
@@ -4557,8 +4556,8 @@ export function ProductsPanel({
       <TableShell
         minWidthClassName={
           hideQrColumn
-            ? isCatalogMode ? 'min-w-[1300px]' : 'min-w-[1150px]'
-            : isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1250px]'
+            ? isCatalogMode ? 'min-w-[1300px]' : 'min-w-[1250px]'
+            : isCatalogMode ? 'min-w-[1400px]' : 'min-w-[1350px]'
         }
       >
         <TableHead>
@@ -4579,9 +4578,9 @@ export function ProductsPanel({
           <TableHeadCell align="center">Đơn vị</TableHeadCell>
           <TableHeadCell align="center">Kho</TableHeadCell>
           <TableHeadCell align="center">Tổng TL (kg)</TableHeadCell>
+          <TableHeadCell align="center">Tồn đầu</TableHeadCell>
           {isCatalogMode ? (
             <>
-              <TableHeadCell align="center">Tồn đầu</TableHeadCell>
               <TableHeadCell align="center">Nhập</TableHeadCell>
               <TableHeadCell align="center">Xuất</TableHeadCell>
               <TableHeadCell align="center">Tồn</TableHeadCell>
@@ -4634,9 +4633,9 @@ export function ProductsPanel({
                 <td className="px-3 py-3.5 text-center font-mono font-bold text-emerald-800">
                   {formatProductSpecDisplay(product.totalWeight)}
                 </td>
+                <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.openingStock}</td>
                 {isCatalogMode ? (
                   <>
-                    <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.openingStock}</td>
                     <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.inbound}</td>
                     <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.outbound}</td>
                     <td className="px-3 py-3.5 text-center font-mono font-bold text-zinc-700">{product.stock}</td>
@@ -4685,7 +4684,7 @@ export function ProductsPanel({
           ))}
 
           {!isLoadingProducts && filteredProducts.length === 0 && (
-            <TableEmptyRow colSpan={isCatalogMode ? 15 : 11}>
+            <TableEmptyRow colSpan={(isCatalogMode ? 15 : 12) - (hideQrColumn ? 1 : 0)}>
               {isCatalogMode
                 ? 'Không có sản phẩm phù hợp bộ lọc.'
                 : asOfDate

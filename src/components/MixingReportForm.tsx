@@ -1897,8 +1897,12 @@ export default function MixingReportForm({
         resolveRoundBatchWeight(prev.chi_tiet, roundKey)
       )
     }));
-    setMessage(`Đã tự động điền ${enriched.length} NVL từ lệnh sản xuất.`);
-    showAppToast(`Đã tự động điền ${enriched.length} NVL từ lệnh sản xuất.`);
+    const needBatch = resolveRoundBatchWeight(form.chi_tiet, roundKey) === null;
+    const doneText = `Đã tự động điền ${enriched.length} NVL từ lệnh sản xuất.${
+      needBatch ? ' Nhập KL 1 mẻ để tính KL định mức.' : ''
+    }`;
+    setMessage(doneText);
+    showAppToast(doneText);
   };
 
   const displayMaterialName = (maNvl: string, tenVatTu: string) => {

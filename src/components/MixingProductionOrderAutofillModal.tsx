@@ -5,7 +5,6 @@ import {
   buildMixingProductionOrderProductCandidates,
   buildMixingRoundItemsFromProductCandidates,
   filterMixingProductionOrders,
-  formatMixingBomSummary,
   type MixingCatalogProduct,
   type MixingProductionOrder
 } from '../utils/mixingOrderAutofill';
@@ -33,15 +32,11 @@ export default function MixingProductionOrderAutofillModal({
 }) {
   const [orderSearch, setOrderSearch] = useState('');
   const [selectedOrderCodes, setSelectedOrderCodes] = useState<string[]>([]);
-  const [productSearch, setProductSearch] = useState('');
-  const [selectedProductKeys, setSelectedProductKeys] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) {
       setOrderSearch('');
       setSelectedOrderCodes([]);
-      setProductSearch('');
-      setSelectedProductKeys([]);
     }
   }, [open]);
 
@@ -69,42 +64,14 @@ export default function MixingProductionOrderAutofillModal({
     [matchedOrders, selectedOrderCodes, catalogProducts]
   );
 
-  const filteredProducts = useMemo(() => {
-    const normalized = productSearch.trim().toLowerCase();
-    if (!normalized) return productCandidates;
-    return productCandidates.filter(item =>
-      `${item.productCode} ${item.productName} ${item.orderCode} ${formatMixingBomSummary(item.bomItems)}`
-        .toLowerCase()
-        .includes(normalized)
-    );
-  }, [productCandidates, productSearch]);
-
-  const visibleProductKeys = useMemo(() => filteredProducts.map(item => item.key), [filteredProducts]);
-  const visibleProductKeySet = useMemo(() => new Set(visibleProductKeys), [visibleProductKeys]);
-  const allVisibleProductsSelected =
-    visibleProductKeys.length > 0 && visibleProductKeys.every(key => selectedProductKeys.includes(key));
-
-  const toggleAllVisibleProducts = () => {
-    if (allVisibleProductsSelected) {
-      setSelectedProductKeys(prev => prev.filter(key => !visibleProductKeySet.has(key)));
-      return;
-    }
-    setSelectedProductKeys(prev => Array.from(new Set([...prev, ...visibleProductKeys])));
-  };
-
   const toggleOrderCode = (orderCode: string) => {
     setSelectedOrderCodes(prev => {
       const isSelected = prev.includes(orderCode);
       if (isSelected) {
-        setSelectedProductKeys(keys => keys.filter(key => !key.startsWith(`${orderCode}::`)));
         return prev.filter(code => code !== orderCode);
       }
       return [...prev, orderCode];
     });
-  };
-
-  const toggleProductKey = (key: string) => {
-    setSelectedProductKeys(prev => (prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]));
   };
 
   const visibleOrderCodes = orderOptions.map(order => order.orderCode);
@@ -115,27 +82,17 @@ export default function MixingProductionOrderAutofillModal({
     if (allVisibleOrdersSelected) {
       const visibleCodeSet = new Set(visibleOrderCodes);
       setSelectedOrderCodes(prev => prev.filter(code => !visibleCodeSet.has(code)));
-      setSelectedProductKeys(prev =>
-        prev.filter(key => !visibleOrderCodes.some(orderCode => key.startsWith(`${orderCode}::`)))
-      );
       return;
     }
 
-    const nextOrderCodes = Array.from(new Set([...selectedOrderCodes, ...visibleOrderCodes]));
-    const nextProducts = buildMixingProductionOrderProductCandidates(
-      matchedOrders,
-      visibleOrderCodes,
-      catalogProducts
-    );
-    setSelectedOrderCodes(nextOrderCodes);
-    setSelectedProductKeys(prev => Array.from(new Set([...prev, ...nextProducts.map(product => product.key)])));
+    setSelectedOrderCodes(Array.from(new Set([...selectedOrderCodes, ...visibleOrderCodes])));
   };
 
   const handleApply = () => {
-    if (selectedProductKeys.length === 0) return;
+    if (productCandidates.length === 0) return;
     const items = buildMixingRoundItemsFromProductCandidates(
       productCandidates,
-      selectedProductKeys,
+      productCandidates.map(item => item.key),
       materials
     );
     onApply(items);
@@ -243,89 +200,12 @@ export default function MixingProductionOrderAutofillModal({
               )}
             </div>
 
-            {selectedOrderCodes.length > 0 && (
-              <div className="border-t border-zinc-100 bg-zinc-50/80 p-4">
-                <p className="mb-2 text-xs font-black uppercase tracking-wider text-zinc-500">Chọn sản phẩm</p>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Tìm sản phẩm</span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-11 flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 focus-within:border-[#ef1b2d] focus-within:ring-2 focus-within:ring-[#ef1b2d]/10">
-                      <Search className="h-4 w-4 shrink-0 text-zinc-400" />
-                      <input
-                        value={productSearch}
-                        onChange={event => setProductSearch(event.target.value)}
-                        placeholder="Gõ mã SP, tên hàng..."
-                        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={toggleAllVisibleProducts}
-                      disabled={filteredProducts.length === 0}
-                      className="h-8 shrink-0 rounded-lg border border-[#ef1b2d]/25 bg-red-50 px-2.5 text-[11px] font-black text-[#ef1b2d] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {allVisibleProductsSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
-                    </button>
-                  </div>
-                </label>
-
-                <div className="mt-3 max-h-[24vh] overflow-y-auto rounded-xl border border-zinc-200 bg-white">
-                  {filteredProducts.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-xs font-bold text-zinc-400">
-                      Không có sản phẩm phù hợp.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-zinc-100">
-                      {filteredProducts.map(product => {
-                        const checked = selectedProductKeys.includes(product.key);
-                        return (
-                          <label
-                            key={product.key}
-                            className={`flex cursor-pointer items-start gap-3 px-3 py-2.5 transition ${
-                              checked ? 'bg-red-50/70' : 'hover:bg-zinc-50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleProductKey(product.key)}
-                              className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#ef1b2d] focus:ring-[#ef1b2d]/20"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-black text-zinc-950">{product.productCode}</span>
-                                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-black text-zinc-600">
-                                  {product.orderCode}
-                                </span>
-                                <span
-                                  className={`text-[10px] font-bold ${
-                                    product.bomItems.length > 0 ? 'text-emerald-700' : 'text-amber-700'
-                                  }`}
-                                >
-                                  {product.bomItems.length > 0
-                                    ? `${product.bomItems.length} NVL`
-                                    : 'Chưa có định mức'}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 text-xs font-semibold text-zinc-700">{product.productName}</p>
-                              <p className="mt-1 text-[11px] font-medium leading-5 text-zinc-500">
-                                {formatMixingBomSummary(product.bomItems)}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50 px-4 py-3">
           <span className="text-xs font-bold text-zinc-500">
-            Đã chọn {selectedOrderCodes.length} lệnh · {selectedProductKeys.length} SP
+            Đã chọn {selectedOrderCodes.length} lệnh · {productCandidates.length} SP
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -338,7 +218,7 @@ export default function MixingProductionOrderAutofillModal({
             <button
               type="button"
               onClick={handleApply}
-              disabled={selectedProductKeys.length === 0}
+              disabled={productCandidates.length === 0}
               className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-xs font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ClipboardCheck className="h-4 w-4" />

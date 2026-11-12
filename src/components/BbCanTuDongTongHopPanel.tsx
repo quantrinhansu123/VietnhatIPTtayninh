@@ -45,7 +45,7 @@ function signedClass(value: number | null | undefined) {
 function MetricCell({ value, className }: { value: string; className: string }) {
   return (
     <td className={`whitespace-nowrap px-1.5 py-1 text-right align-top text-[11px] ${className}`}>
-      <div className="font-mono text-[11px] font-semibold tabular-nums">{value}</div>
+      <div className="font-mono text-[14px] font-semibold tabular-nums">{value}</div>
     </td>
   );
 }
@@ -210,7 +210,14 @@ export default function BbCanTuDongTongHopPanel({
       ) : null}
 
       <div className="bb-table-scroll bb-report-sheet-scroll bb-can-tong-hop-compact">
-        <table className="bb-sheet-table min-w-[1080px] w-full text-left text-[15px] font-semibold">
+        <table className="bb-sheet-table min-w-[1600px] w-full text-left text-[15px] font-semibold">
+          <colgroup>
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '5%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '5%' }} />
+            {Array.from({ length: 9 }, (_, index) => <col key={index} style={{ width: '8%' }} />)}
+          </colgroup>
           <thead className={BB_TABLE_THEAD_CLASS}>
             <tr>
               <th className="font-semibold">Ngày</th>
@@ -219,7 +226,7 @@ export default function BbCanTuDongTongHopPanel({
               <th className="text-right font-semibold">Số cuộn</th>
               <th className="text-right font-semibold">
                 <div>Tổng TL thực tế</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-500">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-500">
                   Σ Cân SP
                 </div>
               </th>
@@ -228,7 +235,7 @@ export default function BbCanTuDongTongHopPanel({
                 title="Σ (Cân SP − Cân lõi − bì 0,16) từ phiếu Cân AI — cùng tong_trong_luong_nhua_kg khi đồng bộ"
               >
                 <div>Trọng lượng Nhựa ĐM</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-600">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-600">
                   SP − lõi − bì (Cân AI)
                 </div>
               </th>
@@ -237,43 +244,43 @@ export default function BbCanTuDongTongHopPanel({
                 title="Σ (Khối lượng màng BOM Thành phần SP × 1 cuộn) theo Mã SP từ QR"
               >
                 <div>Khối lượng màng</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-600">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-600">
                   BOM màng × cuộn
                 </div>
               </th>
               <th className="text-right font-semibold" title="Nhựa thực tế = Cân SP − Cân lõi − bì 0,16 − màng BOM">
                 <div>Trọng lượng Nhựa TT</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-700">
                   SP − lõi − bì − màng
                 </div>
               </th>
               <th className="text-right font-semibold" title="Nhựa TT − Nhựa ĐM">
                 <div>Chênh lệch nhựa</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-700">
                   TT − ĐM
                 </div>
               </th>
               <th className="text-right font-semibold" title="(Chênh lệch nhựa ÷ Nhựa TT) × 100">
                 <div>Phần trăm chênh</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-700">
                   CL ÷ TT × 100
                 </div>
               </th>
               <th className="text-right font-semibold" title="Lõi lý thuyết từ Kho hàng (trong_luong_loi)">
                 <div>Trọng lượng Lõi ĐM</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-700">
                   Σ TL lõi KH
                 </div>
               </th>
               <th className="text-right font-semibold" title="Σ Cân lõi (tare_weight)">
                 <div>Trọng lượng Lõi TT</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-700">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-700">
                   Σ Cân lõi
                 </div>
               </th>
               <th className="text-right font-semibold" title="Σ 0,16 kg / cuộn">
                 <div>Trọng lượng bì</div>
-                <div className="mt-0.5 text-[8px] font-semibold normal-case tracking-normal text-zinc-500">
+                <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-500">
                   cuộn × 0,16
                 </div>
               </th>

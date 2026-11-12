@@ -77,7 +77,9 @@ export default function MachineShiftMaterialChecklistBelowReport({
   };
 
   useEffect(() => {
-    if (variant !== 'section') return;
+    setData(null);
+    setError('');
+    setLoading(false);
     if (!canLoad) {
       setData(null);
       setError('');

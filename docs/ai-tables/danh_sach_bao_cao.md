@@ -32,3 +32,5 @@ Báo cáo tồn · Phiếu nhận NVL · Trộn NVL · Danh sách cân · Hàng 
 **Keep-alive:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab không mất dữ liệu đã tải (đổi bộ lọc chung vẫn remount panel).
 
 URL riêng từng danh sách (`/danh-sach-bao-cao-san-luong`, …) vẫn mở trang độc lập khi vào từ link/menu khác.
+
+Tab **Lệnh sản xuất** nhúng `ProductionOrdersPanel` từ `src/features/lenh-sx/index.tsx`, dùng bộ lọc chung và quyền `production-orders`; giữ mounted khi đổi tab.

@@ -384,23 +384,43 @@ table.bb-sheet-table.bb-san-luong-sheet tbody tr.bb-san-luong-nvl-other-start > 
   padding: 0.5rem;
 }
 
-/* Tab Dữ liệu cân thực tế: bảng gọn hơn */
+/* Bảng cân thực tế: cột đều, dòng thoáng và số liệu dễ đối chiếu. */
 .bb-can-tong-hop-compact.bb-report-sheet-scroll {
-  padding: 0.25rem;
+  padding: 0;
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
 }
 .bb-can-tong-hop-compact table.bb-sheet-table {
-  font-size: 11px;
+  table-layout: fixed;
+  min-width: 1600px;
+  font-size: 14px;
 }
 .bb-can-tong-hop-compact table.bb-sheet-table thead th {
-  padding: 0.28rem 0.4rem;
-  font-size: 10px;
-  line-height: 1.25;
+  padding: 14px 12px !important;
+  font-size: 13px !important;
+  line-height: 1.4;
+  vertical-align: middle;
+  white-space: normal;
+  background: #edf3f5;
+  border-right: 1px solid #dce5e9;
 }
 .bb-can-tong-hop-compact table.bb-sheet-table tbody td,
 .bb-can-tong-hop-compact table.bb-sheet-table tfoot td {
-  padding: 0.22rem 0.4rem !important;
-  font-size: 11px;
-  line-height: 1.3;
+  padding: 14px 12px !important;
+  font-size: 14px !important;
+  line-height: 1.5;
+  vertical-align: middle;
+  border-right: 1px solid #e8edf2;
+  border-bottom: 1px solid #e2e8f0;
+}
+.bb-can-tong-hop-compact table.bb-sheet-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+.bb-can-tong-hop-compact table.bb-sheet-table tfoot td {
+  background: #edf3f5;
+  font-weight: 700;
+  border-top: 2px solid #cbd5e1;
 }
 
 /* Responsive table: desktop giữ table; mobile (<768px) chuyển từng dòng <tr> thành card stack.
@@ -5329,7 +5349,7 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-company {
   margin: 0;
-  font-size: 8pt;
+  font-size: 10pt;
   font-weight: 700;
   line-height: 1.15;
   text-transform: uppercase;
@@ -5337,7 +5357,7 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-subtitle {
   margin: 0.5mm 0 0;
-  font-size: 7.5pt;
+  font-size: 10pt;
   color: #444;
 }
 
@@ -5350,7 +5370,7 @@ input[type="number"] {
 .acceptance-nk-sx-print-title {
   margin: 0;
   text-align: center;
-  font-size: 12.5pt;
+  font-size: 14pt;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.15;
@@ -5359,7 +5379,7 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-date-line {
   margin-top: 1.2mm;
-  font-size: 9pt;
+  font-size: 11pt;
   line-height: 1.35;
   text-align: center;
 }
@@ -5370,7 +5390,7 @@ input[type="number"] {
   align-items: flex-end;
   gap: 1mm;
   text-align: right;
-  font-size: 10pt;
+  font-size: 12pt;
   font-weight: 700;
   line-height: 1.25;
   min-width: 0;
@@ -5404,24 +5424,24 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-machine {
   min-width: 7mm;
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .acceptance-nk-sx-print-shift {
   min-width: 6mm;
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .acceptance-nk-sx-print-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58mm;
+  grid-template-columns: minmax(0, 1fr) 62mm;
   gap: 2.5mm;
   align-items: start;
 }
 
 .acceptance-nk-sx-print-section-label {
   margin: 0 0 1.5mm;
-  font-size: 9.5pt;
+  font-size: 11pt;
   font-weight: 700;
 }
 
@@ -5430,7 +5450,7 @@ input[type="number"] {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 7.5pt;
+  font-size: 10pt;
 }
 
 .acceptance-nk-sx-print-table th,
@@ -5458,12 +5478,12 @@ input[type="number"] {
 .acceptance-nk-sx-print-table .col-blank {
   width: 8mm;
   padding: 0.8mm 0.4mm;
-  font-size: 7.5pt;
+  font-size: 10pt;
 }
 .acceptance-nk-sx-print-table .col-tra-kho {
   width: 16mm;
   max-width: 16mm;
-  font-size: 6.8pt;
+  font-size: 8.5pt;
   line-height: 1.12;
   padding: 0.8mm 0.5mm;
 }
@@ -5491,7 +5511,7 @@ input[type="number"] {
 }
 
 .acceptance-nk-sx-print-table tbody tr {
-  height: 6.2mm;
+  height: 7.5mm;
 }
 
 .acceptance-nk-sx-print-side-table .col-side-qty {
@@ -5499,13 +5519,13 @@ input[type="number"] {
 }
 
 .acceptance-nk-sx-print-side-table tbody tr {
-  height: 6.2mm;
+  height: 7.5mm;
 }
 
 .acceptance-nk-sx-print-summary {
   margin-top: 2.5mm;
   border: 0.35pt solid #111;
-  font-size: 7.5pt;
+  font-size: 10pt;
 }
 
 .acceptance-nk-sx-print-summary-row {
@@ -5526,7 +5546,7 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-summary-note {
   padding: 1.2mm 1.5mm;
-  font-size: 6.5pt;
+  font-size: 8.5pt;
   line-height: 1.25;
   color: #333;
   border-bottom: 0.35pt solid #111;
@@ -5535,7 +5555,7 @@ input[type="number"] {
 .acceptance-nk-sx-print-summary-result {
   padding: 2mm 1.5mm;
   text-align: right;
-  font-size: 10pt;
+  font-size: 12pt;
 }
 
 .acceptance-nk-sx-print-signatures {
@@ -5544,7 +5564,7 @@ input[type="number"] {
   gap: 3mm;
   margin-top: 5mm;
   text-align: center;
-  font-size: 9pt;
+  font-size: 11pt;
 }
 
 .acceptance-nk-sx-print-signatures p {
@@ -5555,7 +5575,7 @@ input[type="number"] {
 .acceptance-nk-sx-print-signatures span {
   display: block;
   margin-top: 14mm;
-  font-size: 8pt;
+  font-size: 10pt;
   font-style: italic;
   color: #444;
 }
@@ -8609,16 +8629,18 @@ input[type="number"] {
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table th,
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table td {
-    padding: 0.45mm 0.5mm !important;
-    font-size: 7pt !important;
+    padding: 1mm 0.5mm !important;
+    height: 7mm;
+    line-height: 1.2;
+    font-size: 10pt !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table th {
-    font-size: 6pt !important;
+    font-size: 9pt !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-blank {
-    min-height: 3.2mm !important;
+    min-height: 5mm !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-logo {
@@ -8633,12 +8655,12 @@ input[type="number"] {
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-footer-bar {
     margin-top: 1.5mm !important;
-    font-size: 8pt !important;
+    font-size: 10pt !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-notes {
     margin-top: 1mm !important;
-    font-size: 7pt !important;
+    font-size: 9pt !important;
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-signatures {
@@ -8660,12 +8682,12 @@ input[type="number"] {
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table th {
     padding: 1mm 0.5mm !important;
-    font-size: 7pt !important;
+    font-size: 9pt !important;
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table td {
-    height: 6.5mm;
-    font-size: 8.5pt !important;
+    height: 7.5mm;
+    font-size: 10pt !important;
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-num {
@@ -8674,7 +8696,7 @@ input[type="number"] {
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-notes {
-    font-size: 8.5pt !important;
+    font-size: 9pt !important;
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-sign {

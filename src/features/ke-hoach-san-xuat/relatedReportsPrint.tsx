@@ -905,7 +905,7 @@ export async function loadMachineShiftChecklistPrintData(
     machineMatchers.size === 0 || machineMatches(machineMatchers, ...candidates);
   const errors: string[] = [];
   const encodedDate = encodeURIComponent(planDate);
-  const shiftOptions = await loadShiftOptions();
+  const shiftOptionsPromise = loadShiftOptions();
 
   const [
     planRes,
@@ -917,7 +917,8 @@ export async function loadMachineShiftChecklistPrintData(
     warehouseRes,
     materialCatalogRes,
     materialRequestRes,
-    productCatalogRes
+    productCatalogRes,
+    shiftOptions
   ] = await Promise.all([
     fetchJson(`/api/ke-hoach-sx?ngay=${encodedDate}&limit=100`),
     fetchJson('/api/lenh-sx'),
@@ -930,7 +931,8 @@ export async function loadMachineShiftChecklistPrintData(
     fetchJson(`/api/yeu-cau-xuat-kho?tu_ngay=${encodedDate}&den_ngay=${encodedDate}`),
     productCatalog.length > 0
       ? Promise.resolve({ ok: true, data: null as unknown })
-      : fetchJson('/api/san-pham?format=table')
+      : fetchJson('/api/san-pham?format=table'),
+    shiftOptionsPromise
   ]);
 
   const resolvedCatalog =

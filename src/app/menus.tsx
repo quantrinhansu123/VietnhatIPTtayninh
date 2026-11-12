@@ -291,6 +291,12 @@ export const FACILITY_MENU_ITEMS: MenuCardConfig[] = [
 
 export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
   {
+    title: 'Lệnh sản xuất',
+    desc: 'Xem, tra cứu và in lệnh sản xuất theo ngày, ca và máy.',
+    icon: ClipboardList,
+    tab: 'production-orders'
+  },
+  {
     title: 'Danh sách báo cáo tồn',
     desc: 'Xem báo cáo NVL tồn theo từng máy và ca sản xuất.',
     icon: Boxes,

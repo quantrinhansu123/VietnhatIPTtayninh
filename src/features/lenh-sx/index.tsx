@@ -529,12 +529,16 @@ export function ProductionOrderDetailPage() {
 
 export function ProductionOrdersPanel({
   onBack,
+  initialFilters,
+  hideLocalFilters = false,
   currentUser,
   canCreate: canCreateOverride,
   canEdit: canEditOverride,
   canDelete: canDeleteOverride
 }: {
   onBack: () => void;
+  initialFilters?: { search?: string; dateFrom?: string; dateTo?: string; shift?: string; machineCode?: string };
+  hideLocalFilters?: boolean;
   currentUser?: AuthUser | null;
   canCreate?: boolean;
   canEdit?: boolean;
@@ -545,13 +549,13 @@ export function ProductionOrdersPanel({
   const canEdit = canEditOverride ?? tabAccess.canEdit;
   const canDelete = canDeleteOverride ?? tabAccess.canDelete;
   const [rows, setRows] = useState<ProductionOrderRow[]>([]);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(initialFilters?.search || '');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedMachines, setSelectedMachines] = useState<string[]>([]);
-  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
+  const [selectedMachines, setSelectedMachines] = useState<string[]>(initialFilters?.machineCode && initialFilters.machineCode !== 'all' ? [initialFilters.machineCode] : []);
+  const [selectedShifts, setSelectedShifts] = useState<string[]>(initialFilters?.shift && initialFilters.shift !== 'all' ? [initialFilters.shift] : []);
   const [selectedOrderCodes, setSelectedOrderCodes] = useState<string[]>([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(initialFilters?.dateFrom || '');
+  const [dateTo, setDateTo] = useState(initialFilters?.dateTo || '');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [viewingRow, setViewingRow] = useState<ProductionOrderRow | null>(null);
@@ -988,7 +992,10 @@ export function ProductionOrdersPanel({
         </div>
       </section>
 
-      <TableToolbar
+      {hideLocalFilters && (loadError || actionMessage) && (
+        <p role="status" className="px-3 py-2 text-sm text-slate-700">{loadError || actionMessage}</p>
+      )}
+      {!hideLocalFilters && <TableToolbar
         isLoading={isLoading}
         hasActiveFilters={hasActiveFilters}
         onResetFilters={resetFilters}
@@ -1073,7 +1080,7 @@ export function ProductionOrdersPanel({
           </div>
         </div>
 
-      </TableToolbar>
+      </TableToolbar>}
 
       <AddProductionOrderModal
         open={showAddForm}

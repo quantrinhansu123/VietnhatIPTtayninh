@@ -14,6 +14,7 @@ import {
 } from './ReportListsSharedFilters';
 import ReportListsPrintActions from './ReportListsPrintActions';
 
+const ProductionOrdersPanel = lazy(() => import('../lenh-sx').then(m => ({ default: m.ProductionOrdersPanel })));
 const MachineNvlReportListView = lazy(() => import('../../components/MachineNvlReportListView'));
 const MaterialRequestListView = lazy(() =>
   import('../yeu-cau-xuat-vat-tu/MaterialRequestListView').then(m => ({ default: m.MaterialRequestListView }))
@@ -274,6 +275,16 @@ export function ReportListsHub({
         </div>
 
         <div className="relative z-0 min-h-0 rounded-b-xl rounded-tr-xl border border-slate-200 bg-white p-1.5 shadow-card sm:p-2">
+          <KeepAliveSlot tabId="production-orders" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <ProductionOrdersPanel
+              key={filtersKey}
+              hideLocalFilters
+              initialFilters={sharedInitialFilters}
+              onBack={onBack}
+              currentUser={currentUser}
+            />
+          </KeepAliveSlot>
+
           <KeepAliveSlot tabId="machine-nvl-report-list" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <MachineNvlReportListView
               key={filtersKey}

@@ -11,7 +11,7 @@ test('machine determines BB/CN; unknown machine has no automatic template', () =
 });
 
 test('catalog names and units follow the pictured BB order, quantities start blank', () => {
-  const catalog = [{ code: 'ong-20cm', name: 'Ống giấy 20cm', unit: 'Cái' }];
+  const catalog = [{ code: 'ONG-19.5CM', name: 'Ống giấy 19.5cm', unit: 'Cái' }];
   const lines = buildMaterialRequestPresetLines(catalog, () => 'key', 'bb');
   assert.deepEqual(lines.map(line => line.code.toLowerCase()), MATERIAL_REQUEST_PRESET_BB.map(item => item.code.toLowerCase()));
   assert.equal(lines[12].name, catalog[0].name);

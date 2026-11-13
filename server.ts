@@ -13,6 +13,7 @@ import { isCloudinaryUploadUrl } from './src/utils/cloudinaryUrl';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 import { nextProductionOrderCode } from './src/utils/productionOrderCode';
+import { canonicalizeMaterialCodePayload } from './src/utils/materialCodeAliases';
 
 /** Cổng khi chạy thêm một kênh. Đọc trước dotenv để file .env không ghi đè. */
 const ALT_PORT = process.env.ALT_PORT;
@@ -9497,6 +9498,10 @@ async function startServer() {
 export function createApp() {
   const app = express();
   app.use(express.json({ limit: '12mb' }));
+  app.use((req, _res, next) => {
+    if (req.body) req.body = canonicalizeMaterialCodePayload(req.body);
+    next();
+  });
 
   app.use((req, _res, next) => {
     if (!process.env.VERCEL) {

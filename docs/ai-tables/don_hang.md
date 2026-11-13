@@ -32,6 +32,12 @@ Tạo lệnh SX: `POST /api/lenh-sx/from-don-hang/:id`
 ### Danh sách / tìm kiếm
 
 - Ô tìm trên `/don-hang` khớp **mã đơn, khách, mã SP, tên SP** (không dấu). Nếu dòng đơn chỉ lưu mã SP, tên lấy từ danh mục `/api/san-pham` để vẫn tìm được theo tên.
+- Logic khớp dùng chung: **`src/features/_shared/productSearchMatch.ts`** (`tokenizeSearchQuery` + `matchSearchTokens`). Ba điểm quan trọng:
+  - **Bỏ mọi ký tự phân cách** ở cả từ khoá và dữ liệu → `bb453`, `BB-453`, `1.4m 95m` đều khớp `MN-BB453`, `1.4m*95m`.
+  - **Mã hàng (`kind: 'code'`) chỉ khớp khít / đầu chuỗi / trọn một từ** — không khớp chuỗi con, nên `bb453` **không** dính `MN-BB4530`. Tên/khách/ghi chú (`kind: 'name'`) mới cho khớp chuỗi con.
+  - **Nhiều từ khoá phải cùng khớp trong MỘT dòng SP** (mỗi dòng là 1 nhóm) → tránh khớp chéo dòng (`BB453` dòng 1 + `6.28kg` dòng 2 không còn bị coi là khớp).
+- Kết quả được **chấm điểm** và xếp hạng: mã khớp khít lên đầu; điểm bằng nhau giữ nguyên thứ tự gốc. Dòng SP khớp được làm nổi bật, dòng không khớp bị mờ.
+- Cùng logic dùng cho `/lenh-san-xuat` và ô tìm "Tự điền theo lệnh SX" trong modal Kế hoạch SX.
 
 ### Form đơn hàng
 

@@ -104,6 +104,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'settings': 'quan-tri',
   'dashboard': 'quan-tri',
   'dashboard-auto': 'quan-tri',
+  'bao-cao-ngay': 'quan-tri',
   'bieu-do-th': 'quan-tri',
   'orders': 'business',
   'orders-detail': 'orders',

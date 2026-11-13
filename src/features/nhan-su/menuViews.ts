@@ -28,6 +28,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     label: 'Quản trị',
     children: [
       { tab: 'dashboard-auto', label: 'Báo cáo mới' },
+      { tab: 'bao-cao-ngay', label: 'Báo cáo ngày' },
       { tab: 'bieu-do-th', label: 'Biểu đồ TH' },
       { tab: 'settings', label: 'Cài đặt / phân quyền' }
     ]
@@ -56,6 +57,7 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
     menu: 'factory-quan-doc',
     label: 'Quản Đốc',
     children: [
+      { tab: 'bao-cao-ngay', label: 'Báo cáo ngày' },
       { tab: 'dashboard-auto', label: 'Báo cáo mới' },
       { tab: 'production-plan-history', label: 'Kế hoạch sản xuất' },
       { tab: 'production-orders', label: 'Lệnh sản xuất' },

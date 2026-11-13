@@ -8,6 +8,7 @@ import {
   Boxes,
   ChevronDown,
   ClipboardCheck,
+  Eye,
   Factory,
   FileDown,
   FilePlus2,
@@ -391,31 +392,31 @@ const warehouseMobileLineColsClass =
 
 // Cột Số lượng nằm ngay sau Tên NVL (ĐVT đẩy ra sau), thu nhỏ để gần tên.
 const warehouseNhapLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatLineGridClass =
-  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
+  `grid ${warehouseMobileLineColsClass} items-center gap-1.5 border-b border-zinc-200/80 py-1.5 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[50rem] md:grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseXuatHeaderGridClass =
-  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
+  `mb-1 grid ${warehouseMobileLineColsClass} items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 md:min-w-[56rem] md:grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]`;
 
 const warehouseNhapFullMobileLineGridClass =
-  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseXuatFullMobileLineGridClass =
-  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
+  'grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseNhapFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[50rem] grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 const warehouseXuatFullMobileHeaderGridClass =
-  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
+  'mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[56rem] grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_5.5rem_3.25rem_5.5rem_7rem_8rem_2rem]';
 
 // Xuất kho NVL: không có cột Giá / Thành tiền.
-const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,0.5fr)_minmax(7rem,1.1fr)_4rem_5.5rem_3.25rem_5.5rem_2rem]';
+const warehouseNvlXuatCols = 'grid-cols-[2.25rem_minmax(4.5rem,14rem)_minmax(7rem,18rem)_4rem_5.5rem_3.25rem_5.5rem_2rem]';
 const warehouseNvlXuatLineGridClass = `grid items-center gap-1.5 border-b border-zinc-200/80 py-1.5 min-w-[40rem] ${warehouseNvlXuatCols}`;
 const warehouseNvlXuatHeaderGridClass = `mb-1 grid items-center gap-1.5 rounded-lg border border-zinc-200 bg-[#e8f0ed] px-2 py-2 min-w-[40rem] ${warehouseNvlXuatCols}`;
 
@@ -6122,10 +6123,10 @@ export function WarehouseSlipPanel({
 }
 
 const HISTORY_ROW_GRID =
-  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_90px_150px_120px_56px]';
+  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_90px_150px_120px_112px]';
 /** Phiếu xuất thành phẩm không hiện cột Ca, Máy. */
 const HISTORY_ROW_GRID_NO_SHIFT_MACHINE =
-  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_120px_56px]';
+  'grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[28px_minmax(0,1fr)_70px_90px_120px_112px]';
 
 function formatWarehouseHistoryDay(day: string) {
   const [y, m, d] = day.split('-');
@@ -7869,7 +7870,18 @@ export function WarehouseHistoryPanel({
                       {hideShiftMachine ? null : <span className="text-xs font-bold text-zinc-800 max-md:hidden">{slip.header.shift || '—'}</span>}
                       {hideShiftMachine ? null : <span className="text-xs font-semibold text-zinc-800 max-md:hidden">{slip.header.machine || '—'}</span>}
                       <span className="text-xs font-semibold text-zinc-600 max-md:hidden">{slip.header.createdBy || '—'}</span>
-                      <div className="flex items-center justify-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setDetailSlipCode(slip.slipCode)}
+                          aria-label={`Xem phiếu ${slip.slipCode}`}
+                          aria-haspopup="dialog"
+                          title="Xem chi tiết phiếu"
+                          className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-sky-200 bg-white px-2 text-xs font-bold text-sky-700 transition hover:bg-sky-50"
+                        >
+                          <Eye className="h-4 w-4" />
+                          Xem
+                        </button>
                         <RowActionsMenu label={`Thao tác phiếu ${slip.slipCode}`}>
                           <div className="flex items-center justify-center gap-1">
                             {canEdit && canEditWarehouseHistorySlip(slip.header.slipType, slip.header.warehouseKind, slip.header.daIn) ? (

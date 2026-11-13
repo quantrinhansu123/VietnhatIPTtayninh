@@ -4985,6 +4985,7 @@ export default function ControlBoardBbMachineReportTable({
             groups={sanLuongGroups}
             isLoading={isLoading}
             shiftSettings={shiftSettings}
+            products={products}
           />
         ) : activeTab === 'bao_cao_loi_hong' ? (
           <>

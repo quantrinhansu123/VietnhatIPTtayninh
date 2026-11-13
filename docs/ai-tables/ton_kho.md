@@ -15,3 +15,5 @@
 | GET | `/api/chi-tiet-san-pham/ton-kho` | Tổng tồn 1 mã gốc (đơn hàng, kế hoạch SX) |
 
 Frontend: `src/features/ton-kho/index.tsx`. Không còn dùng bảng `chi_tiet_san_pham` / `bien_dong_chi_tiet_san_pham`.
+
+Menu Kho (`/nha-may/kho`) hiển thị card **Tồn kho** dẫn tới `/ton-kho`.

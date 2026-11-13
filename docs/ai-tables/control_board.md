@@ -41,6 +41,8 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 
 ## Utils
 
+Mẫu in BB mục 3.2: cột **Số lượng thành phẩm** = Σ(sản lượng thực tế từng SP, cùng nguồn mục 2 × định lượng số lượng NVL/SP). Định lượng ưu tiên BOM, thiếu thì lấy định mức snapshot Báo cáo sản lượng (snapshot cũ: SL NVL / SL SP). Trọng lượng nhập thành phẩm vẫn mirror tab tiêu hao NVL.
+
 Cột Lần 1…n và Tổng nhựa trộn trên bảng giao ca chỉ cộng `kl_thuc_te`; bằng 0/chưa nhập để trống, không thay bằng `so_luong` hoặc `tong_nhua_tron` định mức. Phiếu cũ không có chi tiết lần chỉ dùng `kl_thuc_te` của dòng.
 
 Bảng trộn vật tư (`MachineShiftMaterialChecklistPrintSheet`): tồn đầu/cuối ca ĐVT khác kg ưu tiên **Tổng kg danh mục NVL**, thiếu danh mục mới dùng hệ số đã lưu trên phiếu. Tồn đầu/cuối và **Lấy trong kho** hiển thị **kg(SL gốc)**, ví dụ `0,532(7)` = 0,532 kg / 7 cuộn (tối đa 3 số lẻ kg). Lấy kho: kg và SL cùng nguồn phiếu xuất; thiếu thì cùng lấy từ phiếu nhận NVL. Test hồi quy: `src/components/MachineShiftMaterialChecklistPrintSheet.test.ts`.

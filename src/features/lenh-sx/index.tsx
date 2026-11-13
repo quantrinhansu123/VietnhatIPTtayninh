@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
@@ -170,6 +170,7 @@ export function ProductionOrderDetailPage() {
   const [bulkQrQuantity, setBulkQrQuantity] = useState('1');
   const [qrQuantityError, setQrQuantityError] = useState('');
   const [qrPrintLabels, setQrPrintLabels] = useState<ProductQrPrintLabel[]>([]);
+  const autoOpenQrRequested = useRef(false);
   const {
     printingOrder,
     printingMaterials,
@@ -285,8 +286,19 @@ export function ProductionOrderDetailPage() {
 
   const totalQrCopies = qrQuantityLines.reduce((sum, line) => sum + Math.max(0, Math.floor(Number(line.quantity) || 0)), 0);
 
+  useEffect(() => {
+    if (!row || autoOpenQrRequested.current || new URLSearchParams(window.location.search).get('in-tem') !== '1') return;
+    autoOpenQrRequested.current = true;
+    void handlePrintFinishedGoodsQr();
+  }, [row]);
+
   const handleConfirmPrintFinishedGoodsQr = async () => {
+    if (isPreparingQr) return;
     setQrQuantityError('');
+    if (qrQuantityLines.some(line => !Number.isInteger(Number(line.quantity)) || Number(line.quantity) < 0 || Number(line.quantity) > 999)) {
+      setQrQuantityError('Số tem phải là số nguyên từ 0 đến 999; nhập 0 để bỏ qua mã SP.');
+      return;
+    }
     if (totalQrCopies > 999) {
       setQrQuantityError('Tổng số tem mỗi lần in không được vượt quá 999.');
       return;
@@ -353,7 +365,7 @@ export function ProductionOrderDetailPage() {
                 className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-extrabold text-sky-700 transition hover:bg-sky-100 disabled:opacity-50"
               >
                 {isPreparingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                In mã QR
+                In tem
               </button>
               <button
                 type="button"
@@ -422,7 +434,7 @@ export function ProductionOrderDetailPage() {
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wider text-[#ef1b2d]">In tem QR</p>
                     <h3 className="mt-1 text-lg font-black text-zinc-950">Số bản theo mã SP</h3>
-                    <p className="mt-1 text-sm font-medium text-zinc-500">Nhập số tem cần in cho từng sản phẩm · không lưu vào CSDL</p>
+                    <p className="mt-1 text-sm font-medium text-zinc-500">{row?.code || row?.name} · Số tem mặc định theo lệnh. Có thể chỉnh từng mã; nhập 0 để bỏ qua.</p>
                   </div>
                   <button
                     type="button"
@@ -749,26 +761,27 @@ export function ProductionOrdersPanel({
         // thông tin cấp lệnh (mã lệnh, khách, máy, nhân sự, ghi chú) là nhóm riêng.
         const productGroups = (row.products ?? []).map(product => ({
           fields: [
-            { value: product.productCode || '', weight: 3 },
-            { value: product.productName || '', weight: 2 }
+            { value: product.productCode || '', weight: 3, kind: 'code' as const },
+            { value: product.productName || '', weight: 2, kind: 'name' as const }
           ].filter(field => field.value.trim())
         }));
         const headerGroup = {
           fields: [
-            { value: row.code || '', weight: 3 },
-            { value: row.orderRef || '', weight: 2 },
-            { value: row.customer || '', weight: 2 },
-            { value: row.productCode || '', weight: 3 },
-            { value: row.productName || '', weight: 2 },
-            { value: row.name || '', weight: 1 },
-            { value: row.machine || '', weight: 1 },
-            { value: row.note || '', weight: 1 },
-            { value: formatProductionOrderProductsSummary(row), weight: 1 },
+            { value: row.code || '', weight: 3, kind: 'code' as const },
+            { value: row.orderRef || '', weight: 2, kind: 'code' as const },
+            { value: row.customer || '', weight: 2, kind: 'name' as const },
+            { value: row.productCode || '', weight: 3, kind: 'code' as const },
+            { value: row.productName || '', weight: 2, kind: 'name' as const },
+            { value: row.name || '', weight: 1, kind: 'name' as const },
+            { value: row.machine || '', weight: 1, kind: 'name' as const },
+            { value: row.note || '', weight: 1, kind: 'name' as const },
+            { value: formatProductionOrderProductsSummary(row), weight: 1, kind: 'name' as const },
             {
               value: [row.staff, row.shiftLead, row.mainStaff, row.assistantStaff, row.traineeStaff]
                 .filter(name => name && name !== '-')
                 .join(' '),
-              weight: 1
+              weight: 1,
+              kind: 'name' as const
             }
           ].filter(field => field.value.trim() && field.value !== '-')
         };
@@ -1270,6 +1283,15 @@ export function ProductionOrdersPanel({
                         </td>
                         <td className="px-2 py-2 align-top text-center">
                           <RowActionsMenu label={`Thao tác cho ${row.code || 'lệnh sản xuất'}`} colorful>
+                            <button
+                              type="button"
+                              title="In tem theo mã SP và số lượng"
+                              aria-label={`In tem ${row.code || row.name}`}
+                              onClick={() => window.open(`/lenh-san-xuat/chi-tiet?id=${encodeURIComponent(row.id)}&in-tem=1`, '_blank', 'noopener')}
+                            >
+                              <QrCode className="h-4 w-4" />
+                              <span>In tem</span>
+                            </button>
                             <button type="button" title="In lệnh SX" onClick={() => printProductionOrder(row, () => setRows(prev => prev.map(r => (r.id === row.id ? { ...r, daIn: true } : r))))} disabled={isLoadingPrint}>
                               <Printer className="h-4 w-4" />
                             </button>

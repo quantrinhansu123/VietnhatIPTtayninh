@@ -368,6 +368,7 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
 ];
 
 export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
+  { title: 'Báo cáo ngày', desc: 'KPI sản xuất theo ngày, ca và máy.', icon: ClipboardList, icon3d: chartIncreasing3d, tab: 'bao-cao-ngay' },
   {
     title: 'Báo cáo mới',
     desc: 'Phân tích tự động — báo cáo tổng hợp máy BB theo ngày/ca.',
@@ -528,6 +529,13 @@ export const FACTORY_MENU_ITEMS: MenuCardConfig[] = [
 ];
 
 export const FACTORY_QUAN_DOC_MENU_ITEMS: MenuCardConfig[] = [
+  {
+    title: 'Báo cáo ngày',
+    desc: 'KPI sản xuất theo ngày, ca và máy.',
+    icon: ClipboardList,
+    icon3d: chartIncreasing3d,
+    tab: 'bao-cao-ngay'
+  },
   {
     title: 'Báo cáo mới',
     desc: 'Phân tích tự động — báo cáo tổng hợp máy BB theo ngày/ca.',
@@ -717,9 +725,7 @@ export const FACTORY_KHO_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Xem tổng hợp tồn kho theo kho, loại và khoảng ngày.',
     icon: BarChart3,
     icon3d: chartIncreasing3d,
-    tab: 'ton-kho',
-    // Tạm ẩn trên /nha-may/kho
-    hidden: true
+    tab: 'ton-kho'
   },
   {
     title: 'Chuẩn bị xuất hàng',
@@ -991,6 +997,7 @@ export const PRIMARY_NAV_GROUPS: {
     tab: 'quan-tri',
     children: [
       { label: 'Báo cáo mới', tab: 'dashboard-auto' },
+      { label: 'Báo cáo ngày', tab: 'bao-cao-ngay' },
       { label: 'Biểu đồ TH', tab: 'bieu-do-th' },
       { label: 'Người dùng và phân quyền', tab: 'settings' },
       { label: 'Cấu hình hệ thống', tab: 'settings' },
@@ -1031,6 +1038,7 @@ export const PRIMARY_NAV_GROUPS: {
     icon: Factory,
     tab: 'factory-quan-doc',
     children: [
+      { label: 'Báo cáo ngày', tab: 'bao-cao-ngay' },
       { label: 'Báo cáo mới', tab: 'dashboard-auto' },
       { label: 'Kế hoạch sản xuất', tab: 'production-plan-history' },
       { label: 'Lệnh sản xuất', tab: 'production-orders' },
@@ -1159,6 +1167,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'factory-kho': { group: 'Trang chủ', sub: 'Kho' },
   'dashboard': { group: 'Quản trị', sub: 'Báo cáo mới' },
   'dashboard-auto': { group: 'Quản trị', sub: 'Báo cáo mới' },
+  'bao-cao-ngay': { group: 'Quản trị', sub: 'Báo cáo ngày' },
   'bieu-do-th': { group: 'Quản trị', sub: 'Biểu đồ TH' }
 };
 

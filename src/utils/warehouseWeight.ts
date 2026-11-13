@@ -27,10 +27,11 @@ function normalizeWarehouseUnit(unit: string) {
 
 /** Chuẩn hóa mã để khớp BOM ↔ kho NVL (bỏ khoảng trắng, không phân biệt hoa thường). */
 export function normalizeWarehouseCodeKey(code: string) {
-  return String(code || '')
+  const key = String(code || '')
     .trim()
     .replace(/\s+/g, '')
     .toUpperCase();
+  return key === 'ONG-20CM' ? 'ONG-19.5CM' : key;
 }
 
 /**
@@ -44,7 +45,7 @@ const WAREHOUSE_MATERIAL_CODE_ALIASES: Record<string, string> = {
 export function canonicalWarehouseMaterialCode(code: string) {
   const key = normalizeWarehouseCodeKey(code);
   if (!key) return '';
-  return WAREHOUSE_MATERIAL_CODE_ALIASES[key] || String(code || '').trim();
+  return WAREHOUSE_MATERIAL_CODE_ALIASES[key] || (key === 'ONG-19.5CM' ? key : String(code || '').trim());
 }
 
 /** ĐVT Cuộn (băng keo, dây nilông). */

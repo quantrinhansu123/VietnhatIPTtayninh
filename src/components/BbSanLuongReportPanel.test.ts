@@ -4,6 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import BbSanLuongReportPanel from './BbSanLuongReportPanel';
 import type { BbSanLuongGroup } from '../utils/controlBoardBbMachineReport';
+import type { ProductRow } from '../features/san-pham/types';
 
 function fixture() {
   return {
@@ -43,6 +44,40 @@ test('chi tiết sản lượng tách NVL trộn và vật tư khác, giữ nguy
   assert.match(other, /<tfoot>[\s\S]*7 kg/);
   assert.match(other, /rowSpan="2"/i);
   assert.equal(JSON.stringify(group), before);
+});
+
+test('cột Định mức lấy từ bảng kho thành phẩm (Thành phần SP)', () => {
+  const group = fixture();
+  const products = [
+    {
+      code: 'MN-BB114',
+      name: 'Bao bì',
+      nplItems: [
+        { code: 'NHUA', name: 'Nhựa trộn', amountType: 'percent', percent: 100, quantity: null, unit: 'kg', weightKg: null },
+        { code: 'VT-TUI03', name: 'Túi đựng hàng', amountType: 'quantity', quantity: 1, unit: 'Cái', percent: null, weightKg: 0.14 },
+        { code: 'ONG-19.5CM', name: 'Ống giấy', amountType: 'quantity', quantity: 7, unit: 'Cái', percent: null, weightKg: 0.053 }
+      ]
+    }
+  ] as unknown as ProductRow[];
+  const html = renderToStaticMarkup(
+    React.createElement(BbSanLuongReportPanel, { groups: [group], shiftSettings: [], products })
+  );
+  const tables = [...html.matchAll(/<table\b[\s\S]*?<\/table>/g)].map(match => match[0]);
+  const mixing = tables.find(table => /<caption[^>]*>Bảng NVL trộn/.test(table))!;
+  const other = tables.find(table => /<caption[^>]*>Bảng vật tư khác/.test(table))!;
+  assert.match(mixing, /Định mức<\/th>/);
+  assert.match(mixing, /text-zinc-800">100%<\/td>/);
+  assert.match(other, /Cái<\/td><td class="bb-sheet-num font-semibold text-zinc-800">1<\/td>/);
+  assert.match(other, /Cái<\/td><td class="bb-sheet-num font-semibold text-zinc-800">7<\/td>/);
+});
+
+test('thiếu bảng kho thành phẩm: Định mức lùi về SL NVL ÷ SL SP, không bịa số', () => {
+  const group = fixture();
+  group.productGroups[0].quantity = 153;
+  const html = renderToStaticMarkup(React.createElement(BbSanLuongReportPanel, { groups: [group], shiftSettings: [] }));
+  const tables = [...html.matchAll(/<table\b[\s\S]*?<\/table>/g)].map(match => match[0]);
+  const other = tables.find(table => /<caption[^>]*>Bảng vật tư khác/.test(table))!;
+  assert.match(other, /Cái<\/td><td class="bb-sheet-num font-semibold text-zinc-800">1<\/td>/);
 });
 
 test('bảng vật tư khác rỗng vẫn có tiêu đề và thông báo riêng', () => {

@@ -1,5 +1,7 @@
 # kho_nvl
 
+`ONG-20cm` đã gộp vào `ONG-19.5CM` (cộng số lượng, giữ hệ số 0,053 kg/cái). API chuẩn hóa mã cũ trong payload; mẫu NVL mới chỉ dùng mã chuẩn. Migration/sao lưu: `scripts/merge-ong20-material.mjs`, `scripts/apply-ong20-merge.mjs`, `backups/ong20-merge-write-backup.jsonl`. Giao dịch nhập/xuất giữ từng dòng để không mất lịch sử; snapshot tiêu hao và dòng trùng trong báo cáo được cộng gộp.
+
 | | |
 |---|---|
 | **Bảng** | `kho_nvl` |

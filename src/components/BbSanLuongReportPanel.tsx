@@ -15,6 +15,7 @@ import {
   type BbSanLuongGroup,
   type BbSanLuongNvlLine
 } from '../utils/controlBoardBbMachineReport';
+import { normalizeProductCodeKey, type ProductRow } from '../features/san-pham/types';
 
 function formatKg(value: number | null | undefined, digits = 4) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
@@ -93,14 +94,95 @@ function lineWeightKg(line: BbSanLuongNvlLine) {
   return 0;
 }
 
+/** Khóa so mã NVL — bỏ khoảng trắng/gạch để khớp «DAU BONG PA350» ↔ «DAU-BONG-PA350». */
+function nvlKey(value: string | null | undefined) {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function findProductRow(products: ProductRow[], code: string, name?: string) {
+  const codeKey = normalizeProductCodeKey(code);
+  if (codeKey) {
+    const byCode = products.find(product => normalizeProductCodeKey(product.code) === codeKey);
+    if (byCode) return byCode;
+  }
+  const nameKey = normalizeProductCodeKey(name || '');
+  if (!nameKey) return null;
+  return products.find(product => normalizeProductCodeKey(product.name) === nameKey) ?? null;
+}
+
+function findBomItem(
+  product: ProductRow | null,
+  line: Pick<BbSanLuongNvlLine, 'itemCode' | 'itemName'>
+) {
+  if (!product) return null;
+  const codeKey = nvlKey(line.itemCode);
+  const nameKey = nvlKey(line.itemName);
+  return (
+    (product.nplItems || []).find(item => {
+      const itemCode = nvlKey(item.code);
+      const itemName = nvlKey(item.name);
+      return (
+        (codeKey && (itemCode === codeKey || itemName === codeKey)) ||
+        (nameKey && (itemCode === nameKey || itemName === nameKey))
+      );
+    }) ?? null
+  );
+}
+
+function formatNormNumber(value: number) {
+  if (Number.isInteger(value)) return formatNumber(value, 0);
+  return formatNumber(value, Math.abs(value) < 1 ? 6 : 4);
+}
+
+/**
+ * Định mức NVL trên 1 SP — đọc từ bảng kho thành phẩm (`san_pham.npl_phan_tram`).
+ * Snapshot cũ không có `dinhMucRate` thì lấy SL NVL ÷ SL SP.
+ */
+function resolveLineNorm(
+  line: BbSanLuongNvlLine,
+  product: ProductRow | null,
+  productQuantity: number
+): string {
+  const bomItem = findBomItem(product, line);
+  if (line.amountType === 'percent') {
+    const rate =
+      bomItem?.percent != null && bomItem.percent > 0
+        ? bomItem.percent
+        : line.tiLeDinhMucPercent != null && line.tiLeDinhMucPercent > 0
+          ? line.tiLeDinhMucPercent
+          : null;
+    return rate != null ? formatPercent(rate, 2) : '—';
+  }
+  const fromCatalog =
+    bomItem?.quantity != null && bomItem.quantity > 0
+      ? bomItem.quantity
+      : bomItem?.weightKg != null && bomItem.weightKg >= 0
+        ? 1
+        : null;
+  const fromSnapshot =
+    line.dinhMucRate != null && Number.isFinite(line.dinhMucRate) && line.dinhMucRate > 0
+      ? line.dinhMucRate
+      : null;
+  const fromQuantity =
+    productQuantity > 0 && line.quantity != null && line.quantity > 0
+      ? line.quantity / productQuantity
+      : null;
+  const rate = fromCatalog ?? fromSnapshot ?? fromQuantity;
+  return rate != null && rate > 0 ? formatNormNumber(rate) : '—';
+}
+
 function SanLuongShiftSection({
   group,
   shiftSettings,
-  materialSection
+  materialSection,
+  products
 }: {
   group: BbSanLuongGroup;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   materialSection: 'mixing' | 'other';
+  products: ProductRow[];
 }) {
   const isMixingSection = materialSection === 'mixing';
   const sectionTitle = isMixingSection ? 'Bảng NVL trộn' : 'Bảng vật tư khác';
@@ -137,11 +219,13 @@ function SanLuongShiftSection({
           ? product.weightKg
           : 0;
     const tongVatTuConLaiKg = conLaiLines.reduce((sum, line) => sum + lineWeightKg(line), 0);
+    const catalogProduct = findProductRow(products, product.productCode, product.productName);
     return {
       key: product.key,
       productCode: product.productCode,
       productName: product.productName,
       quantity: product.quantity,
+      catalogProduct,
       productQty: `${formatNumber(product.quantity, 0)} ${unitLabel}`,
       rowSpan: lines.length,
       tronRowSpan: tronLines.length,
@@ -170,7 +254,7 @@ function SanLuongShiftSection({
           <caption>{sectionTitle} · {captionParts.join(' · ')}</caption>
           <tbody>
             <tr>
-              <td colSpan={9} className="py-6 text-center text-slate-400">
+              <td colSpan={10} className="py-6 text-center text-slate-400">
                 Chưa có {isMixingSection ? 'NVL trộn' : 'vật tư khác'} trong dữ liệu phiếu này.
               </td>
             </tr>
@@ -188,6 +272,12 @@ function SanLuongShiftSection({
               <th className="font-black">Mã NVL</th>
               <th className="font-black">Tên NVL</th>
               <th className="font-black">ĐVT</th>
+              <th
+                className="text-right font-black"
+                title="Định mức NVL trên 1 thành phẩm — lấy từ bảng kho thành phẩm (Thành phần SP)"
+              >
+                Định mức
+              </th>
               <th className="text-right font-black">SL NVL</th>
               <th className="text-right font-black">TL NVL</th>
             </tr>
@@ -203,7 +293,7 @@ function SanLuongShiftSection({
                     </td>
                     <td className="bb-sheet-num align-middle font-bold">{product.productQty}</td>
                     <td className="bb-sheet-num text-zinc-400">—</td>
-                    <td colSpan={5} className="text-sm text-amber-800">
+                    <td colSpan={6} className="text-sm text-amber-800">
                       Chưa có {isMixingSection ? 'NVL trộn' : 'vật tư khác'} trong bản tính của sản phẩm này.
                     </td>
                   </tr>
@@ -274,6 +364,9 @@ function SanLuongShiftSection({
                   <td className="text-center font-bold text-zinc-800">
                     {line.itemName === '—' ? '—' : resolveBbSanLuongNvlDisplayUnit(line)}
                   </td>
+                  <td className="bb-sheet-num font-semibold text-zinc-800">
+                    {resolveLineNorm(line, product.catalogProduct, product.quantity)}
+                  </td>
                   <td className="bb-sheet-num font-bold text-zinc-900">{resolveNvlQuantity(line)}</td>
                   <td className="bb-sheet-num font-semibold text-zinc-900">{resolveNvlWeight(line)}</td>
                 </tr>
@@ -286,7 +379,7 @@ function SanLuongShiftSection({
               <td colSpan={2} className="text-right">{isMixingSection ? 'Tổng NVL trộn' : 'Tổng vật tư khác'}</td>
               <td className="bb-sheet-num">{formatNumber(totalProductQty, 0)}</td>
               <td className="bb-sheet-num">{formatKg(sectionTotalKg)}</td>
-              <td colSpan={4} />
+              <td colSpan={5} />
               <td className="bb-sheet-num">{formatKg(sectionTotalKg)} kg</td>
             </tr>
           </tfoot>
@@ -406,12 +499,16 @@ function SanLuongSummaryTable({
 export default function BbSanLuongReportPanel({
   groups,
   isLoading,
-  shiftSettings
+  shiftSettings,
+  products
 }: {
   groups: BbSanLuongGroup[];
   isLoading?: boolean;
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
+  /** Bảng kho thành phẩm — nguồn cột «Định mức» (Thành phần SP). */
+  products?: ProductRow[];
 }) {
+  const catalogProducts = products || [];
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-zinc-400">
@@ -440,10 +537,20 @@ export default function BbSanLuongReportPanel({
           {groups.map(group => (
             <div key={group.groupKey} className="space-y-5">
               <div className="overflow-x-auto">
-                <SanLuongShiftSection group={group} shiftSettings={shiftSettings} materialSection="mixing" />
+                <SanLuongShiftSection
+                  group={group}
+                  shiftSettings={shiftSettings}
+                  materialSection="mixing"
+                  products={catalogProducts}
+                />
               </div>
               <div className="overflow-x-auto">
-                <SanLuongShiftSection group={group} shiftSettings={shiftSettings} materialSection="other" />
+                <SanLuongShiftSection
+                  group={group}
+                  shiftSettings={shiftSettings}
+                  materialSection="other"
+                  products={catalogProducts}
+                />
               </div>
             </div>
           ))}

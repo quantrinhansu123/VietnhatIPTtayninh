@@ -866,18 +866,17 @@ export function OrdersPanel({
       .filter((type): type is string => type !== '-' && type.length > 0);
     return [...new Set(types)].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
   }, [orders]);
-  const normalizedSearch = normalizeOrderSearchText(searchText.trim());
   const searchTokens = useMemo(() => tokenizeSearchQuery(searchText), [searchText]);
 
   /** Trường của 1 dòng sản phẩm — mã khớp nặng hơn tên để xếp hạng đúng. */
   const buildLineSearchFields = (line: { productCode?: string; productName?: string }) => {
     const catalog = findOrderProductByCode(productCatalog, line.productCode || '');
     return [
-      { value: line.productCode || '', weight: 3 },
-      { value: catalog?.code || '', weight: 3 },
-      { value: catalog?.newCode || '', weight: 3 },
-      { value: line.productName || '', weight: 2 },
-      { value: catalog?.name || '', weight: 2 }
+      { value: line.productCode || '', weight: 3, kind: 'code' as const },
+      { value: catalog?.code || '', weight: 3, kind: 'code' as const },
+      { value: catalog?.newCode || '', weight: 3, kind: 'code' as const },
+      { value: line.productName || '', weight: 2, kind: 'name' as const },
+      { value: catalog?.name || '', weight: 2, kind: 'name' as const }
     ].filter(field => field.value.trim());
   };
 
@@ -908,13 +907,13 @@ export function OrdersPanel({
       // Thông tin cấp đơn (mã đơn, khách, nhân viên, ghi chú, tổng SL) cũng là 1 nhóm.
       const headerGroup = {
         fields: [
-          { value: order.orderCode || '', weight: 3 },
-          { value: order.customer || '', weight: 2 },
-          { value: order.staffName || '', weight: 1 },
-          { value: order.orderType && order.orderType !== '-' ? order.orderType : '', weight: 1 },
-          { value: order.status && order.status !== '-' ? order.status : '', weight: 1 },
-          { value: order.note || '', weight: 1 },
-          { value: formatOrderProductsSummary(productLines), weight: 1 }
+          { value: order.orderCode || '', weight: 3, kind: 'code' as const },
+          { value: order.customer || '', weight: 2, kind: 'name' as const },
+          { value: order.staffName || '', weight: 1, kind: 'name' as const },
+          { value: order.orderType && order.orderType !== '-' ? order.orderType : '', weight: 1, kind: 'name' as const },
+          { value: order.status && order.status !== '-' ? order.status : '', weight: 1, kind: 'name' as const },
+          { value: order.note || '', weight: 1, kind: 'name' as const },
+          { value: formatOrderProductsSummary(productLines), weight: 1, kind: 'name' as const }
         ].filter(field => field.value.trim())
       };
 

@@ -29,3 +29,7 @@ Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**.
 ```bash
 node scripts/run-sql-file.mjs supabase-bao-cao-tong-hop.sql
 ```
+
+## Báo cáo ngày
+
+Quản trị → /bao-cao-ngay: xem [bao_cao_tong_hop_ngay.md](./bao_cao_tong_hop_ngay.md). Dùng chung API, không tạo bảng mới.

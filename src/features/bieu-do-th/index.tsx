@@ -12,6 +12,8 @@ import {
   resolveCongNhanPhuTrach,
   staffNamesInclude
 } from './staffEnrichment';
+import BaoCaoNgaySummary from '../bao-cao-ngay/Summary';
+import { comparisonRows } from './comparisonData';
 import TongHopTreeTable from './TongHopTreeTable';
 
 type BieuDoThViewTab = 'loi-hong' | 'san-luong' | 'bieu-do';
@@ -110,7 +112,7 @@ function buildBieuDoThDetailUrl(row: BaoCaoTongHopListRow): string {
   return qs ? `/bieu-do-th?${qs}` : '/bieu-do-th';
 }
 
-export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
+export function BieuDoThPanel({ onBack, daily = false }: { onBack?: () => void; daily?: boolean }) {
   const [rows, setRows] = useState<BaoCaoTongHopListRow[]>([]);
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -177,13 +179,15 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
     [rows]
   );
 
+  const sourceRows = useMemo(() => daily ? comparisonRows(rows) : rows, [daily, rows]);
+
   const displayRows = useMemo(
     () =>
-      rows.map(row => ({
+      sourceRows.map(row => ({
         ...row,
         may: formatMayLabel(row.may, machines) === 'Tất cả' ? 'all' : formatMayLabel(row.may, machines)
       })),
-    [rows, machines]
+    [sourceRows, machines]
   );
 
   const mayOptions = useMemo(
@@ -232,7 +236,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
           <p className="text-[11px] font-black uppercase tracking-[0.16em] text-red-600">Quản trị</p>
           <h2 className="mt-1 flex items-center gap-2 text-xl font-black text-zinc-950">
             <BarChart3 className="h-5 w-5 text-red-600" />
-            Biểu đồ TH
+            {daily ? 'Báo cáo ngày' : 'Biểu đồ TH'}
           </h2>
           <p className="mt-1 text-sm font-semibold text-zinc-600">
             Bảng tổng theo ngày → bấm dòng để xem ca → bấm ca để xem từng máy.
@@ -341,6 +345,8 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
         </p>
       )}
 
+      {daily && !isLoading && !error ? <BaoCaoNgaySummary rows={sortedRows} /> : null}
+
       <TongHopTreeTable
         rows={sortedRows}
         isLoading={isLoading}
@@ -348,6 +354,7 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
       />
 
       <div
+        style={daily ? { display: 'none' } : undefined}
         role="tablist"
         aria-label="Chế độ xem Biểu đồ TH"
         className="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1"
@@ -374,11 +381,11 @@ export function BieuDoThPanel({ onBack }: { onBack?: () => void }) {
         })}
       </div>
 
-      {viewTab === 'loi-hong' ? <LoiHongPanel rows={sortedRows} isLoading={isLoading} /> : null}
+      {!daily && viewTab === 'loi-hong' ? <LoiHongPanel rows={sortedRows} isLoading={isLoading} /> : null}
 
-      {viewTab === 'san-luong' ? <SanLuongPanel rows={sortedRows} isLoading={isLoading} /> : null}
+      {!daily && viewTab === 'san-luong' ? <SanLuongPanel rows={sortedRows} isLoading={isLoading} /> : null}
 
-      {viewTab === 'bieu-do' ? (
+      {!daily && viewTab === 'bieu-do' ? (
         <>
           <ProductionComparison rows={sortedRows} isLoading={isLoading} />
           <BieuDoThCharts rows={sortedRows} isLoading={isLoading} />

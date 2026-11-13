@@ -97,6 +97,7 @@ import { KiemDinhTemPanel } from './features/kiem-dinh-tem';
 import { MachineNvlReportPanel } from './features/bao-cao-may-nvl-ton';
 import { ReportFormsHub } from './features/report-forms';
 import { ReportListsHub } from './features/report-lists';
+import BaoCaoNgayPanel from './features/bao-cao-ngay';
 import { BieuDoThPanel } from './features/bieu-do-th';
 
 const DEFAULT_REPORT: Omit<ProductionReport, 'id' | 'createdAt'> = {
@@ -800,7 +801,7 @@ export default function App() {
         <main className={`relative flex-1 min-h-0 overflow-y-auto focus:outline-none ${activeTab === 'warehouse-slip' ? 'scrollbar-hidden' : ''} ${
           activeTab === 'menu'
             ? 'p-0'
-            : activeTab === 'control-board' || activeTab === 'dashboard' || activeTab === 'dashboard-auto' || activeTab === 'bieu-do-th'
+            : activeTab === 'control-board' || activeTab === 'dashboard' || activeTab === 'dashboard-auto' || activeTab === 'bao-cao-ngay' || activeTab === 'bieu-do-th'
             ? 'p-1.5 md:p-2'
             : activeTab === 'machine-nvl-report' || activeTab === 'orders'
               ? 'overflow-hidden p-0'
@@ -1831,6 +1832,8 @@ export default function App() {
               >
                 <SettingsPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
+            ) : activeTab === 'bao-cao-ngay' ? (
+              <BaoCaoNgayPanel onBack={() => goBack('quan-tri')} />
             ) : activeTab === 'bieu-do-th' && !new URLSearchParams(window.location.search).get('ngay') ? (
               <motion.div
                 key="bieu-do-th"

@@ -5964,15 +5964,15 @@ export function AddProductionOrderModal({
         const groups = [
           ...productLines.map(line => ({
             fields: [
-              { value: line.productCode || '', weight: 3 },
-              { value: line.productName || '', weight: 2 }
+              { value: line.productCode || '', weight: 3, kind: 'code' as const },
+              { value: line.productName || '', weight: 2, kind: 'name' as const }
             ].filter(field => field.value.trim())
           })),
           {
             fields: [
-              { value: order.orderCode || '', weight: 3 },
-              { value: order.customer || '', weight: 2 },
-              { value: formatOrderProductsSummary(productLines), weight: 1 }
+              { value: order.orderCode || '', weight: 3, kind: 'code' as const },
+              { value: order.customer || '', weight: 2, kind: 'name' as const },
+              { value: formatOrderProductsSummary(productLines), weight: 1, kind: 'name' as const }
             ].filter(field => field.value.trim())
           }
         ];

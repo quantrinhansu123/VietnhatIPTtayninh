@@ -56,29 +56,38 @@ export type ProductSearchField = {
    * Điểm cuối = điểm khớp × weight.
    */
   weight?: number;
+  /**
+   * `code` (mặc định): mã hàng / mã đơn — CHỈ khớp khít, khớp đầu chuỗi hoặc khớp
+   * trọn một từ. Không cho khớp chuỗi con tuỳ tiện, nếu không gõ `bb453` sẽ dính
+   * `MN-BB4530` (mã khác).
+   * `name`: tên hàng / khách / ghi chú — cho phép khớp chuỗi con.
+   */
+  kind?: 'code' | 'name';
 };
 
-/** Điểm khi 1 từ khoá khớp 1 trường: khít > bắt đầu > chứa. */
+/** Điểm khi 1 từ khoá khớp 1 trường: khít > bắt đầu > trọn từ > (tên) chứa. */
 function scoreTokenAgainstField(token: SearchToken, field: ProductSearchField): number {
   const text = normalizeSearchText(field.value);
   if (!text) return 0;
   const compact = compactSearchText(field.value);
   const weight = field.weight ?? 1;
+  const allowSubstring = field.kind === 'name';
 
   if (!compact && !text.includes(token.text)) return 0;
 
-  // Mã khít hoàn toàn, ví dụ gõ đúng "MN-BB453".
+  // Khớp khít toàn trường, ví dụ gõ đúng "MN-BB453".
   if (compact && compact === token.compact) return 100 * weight;
   if (text.trim() === token.text) return 100 * weight;
-  // Bắt đầu bằng (so cả dạng liền để "bb453" khớp "MN-BB453" phần sau dấu gạch? không — chỉ đầu chuỗi).
+  // Khớp phần đầu trường.
   if (compact && compact.startsWith(token.compact)) return 60 * weight;
   if (text.startsWith(token.text)) return 60 * weight;
-  // Khớp trọn một "từ" trong chuỗi: tách theo ký tự không phải chữ/số.
+  // Khớp trọn một "từ" trong chuỗi (tách theo ký tự không phải chữ/số) —
+  // nhờ vậy "bb453" khớp "MN-BB453" nhưng KHÔNG khớp "MN-BB4530".
   const words = text.split(/[^a-z0-9]+/).filter(Boolean);
   if (compact && words.includes(token.compact)) return 55 * weight;
-  // Chứa chuỗi con ở dạng liền (bỏ phân cách): "1.4m*95m" ↔ "1.4m 95m".
-  if (compact && compact.includes(token.compact)) return 30 * weight;
-  if (text.includes(token.text)) return 30 * weight;
+  // Chỉ trường tên mới cho khớp chuỗi con tuỳ tiện.
+  if (allowSubstring && compact && compact.includes(token.compact)) return 30 * weight;
+  if (allowSubstring && text.includes(token.text)) return 30 * weight;
   return 0;
 }
 

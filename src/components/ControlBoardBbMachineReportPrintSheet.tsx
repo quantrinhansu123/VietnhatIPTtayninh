@@ -1471,6 +1471,34 @@ function BbMachineOrderPrintSheet({
     // SP có trên Báo cáo sản lượng / Cân AI (vd. MN-BB309) nhưng không có trên lệnh SX.
     ...collectExtraSanLuongProductLines(order, props).map(mapLineToProductRow)
   ];
+  // SL NVL = số thành phẩm thực tế × định lượng NVL cho một thành phẩm.
+  const finishedProductQuantityForMaterial = (code: string, name: string) => {
+    const materialKey = normalizeWarehouseCodeKey(code || name);
+    return productRows.reduce((sum, productRow) => {
+      const product = findProduct(props.products, productRow.productCode);
+      const productionGroup = findSanLuongProductGroup(
+        order, productRow.productCode, productRow.productName, props.sanLuongGroups || []
+      );
+      const catalogRate = (product?.nplItems || []).reduce((total, item) => {
+        if (item.amountType !== 'quantity' ||
+            normalizeWarehouseCodeKey(item.code || item.name) !== materialKey) return total;
+        const rate = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+          ? item.quantity : 0;
+        return total + rate;
+      }, 0);
+      const snapshotRate = (productionGroup?.lines || []).reduce((total, item) => {
+        if (item.amountType !== 'quantity' ||
+            normalizeWarehouseCodeKey(item.itemCode || item.itemName) !== materialKey) return total;
+        const rate = item.dinhMucRate != null && item.dinhMucRate > 0
+          ? item.dinhMucRate
+          : productionGroup && productionGroup.quantity > 0 && item.quantity != null && item.quantity > 0
+            ? item.quantity / productionGroup.quantity : 0;
+        return total + rate;
+      }, 0);
+      const rate = catalogRate > 0 ? catalogRate : snapshotRate;
+      return sum + Math.max(0, productRow.actualQuantity) * rate;
+    }, 0);
+  };
   const productPlanRatios = productRows
     .map(row => (row.quantity > 0 ? (row.actualQuantity / row.quantity) * 100 : null))
     .filter((value): value is number => value !== null && Number.isFinite(value));
@@ -1944,7 +1972,7 @@ function BbMachineOrderPrintSheet({
                 </tr>
               ) : (
                 otherMaterialRows.map((row, index) => {
-                  const soLuong = row.actualQty > 0 ? row.actualQty : null;
+                  const soLuong = finishedProductQuantityForMaterial(row.code, row.name);
                   return (
                     <tr key={row.key}>
                       <td className="shift-summary-print-center bb-machine-report-print-stt">

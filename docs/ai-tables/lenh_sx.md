@@ -64,8 +64,10 @@ Danh sách chỉ hiển thị thông tin tổng quan của lệnh (mã lệnh, c
 
 Cột **tickbox** đầu dòng + tick chọn cả nhóm theo **cột `ngay`** (không dùng `ngay_bat_dau` / ngày tạo); nút **In lệnh** in các lệnh đã chọn (batch). Menu thao tác vẫn in từng lệnh.
 
+**In tem:** nút trong thao tác từng lệnh mở `/lenh-san-xuat/chi-tiet?id=…&in-tem=1` và tự mở chọn số tem theo mã SP. Chi tiết lệnh cũng có nút **In tem**. Mặc định lấy số lượng từng SP trong lệnh, cho chỉnh số nguyên 0–999 (0 bỏ qua), tổng tối đa 999 tem/lần. QR duy nhất cấp qua `POST /api/ma-qr-hang-hoa/cap-moi`, xem trước/in bằng `ProductQrPrintModal`; không tạo giao dịch nhập/xuất kho.
+
 **Bộ lọc:** Từ ngày · Đến ngày · **Ca** (checkbox nhiều) · **Lệnh SX** (checkbox nhiều) · Trạng thái · Máy · Sắp xếp.
 
-**Ô tìm kiếm:** tìm không phân biệt dấu theo mã lệnh, mã/tên hàng, tên khách, mã đơn và **tên từng sản phẩm** trong lệnh (kể cả lệnh nhiều dòng SP).
+**Ô tìm kiếm:** tìm không phân biệt dấu theo mã lệnh, mã/tên hàng, tên khách, mã đơn và **tên từng sản phẩm** trong lệnh (kể cả lệnh nhiều dòng SP). Dùng chung logic `src/features/_shared/productSearchMatch.ts`: bỏ ký tự phân cách, mã hàng chỉ khớp khít/đầu chuỗi/trọn từ (không khớp chuỗi con), nhiều từ khoá phải cùng khớp trong một dòng SP.
 
 **Ngày:** form field «Ngày» ↔ cột DB `lenh_sx.ngay`. Luôn hiển thị/nhập **dd/mm/yyyy** (10/08/2026 = ngày 10 tháng 8), không theo locale máy (`8/10`). Kế hoạch SX lọc / cột Ngày trong modal cũng chỉ đọc `ngay`.

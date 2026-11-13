@@ -768,6 +768,8 @@ export function ProductViewModal({
   const { canDelete: canDeleteWarehouseSlip } = useTabAccess('warehouse-slip-thanh-pham');
   const [tab, setTab] = useState<ProductViewTab>(initialTab);
   const [items, setItems] = useState<ProductNplItem[]>(product.nplItems);
+  /** Tab con của bảng Thành phần NVL: tách theo cách định lượng (%). */
+  const [componentKindTab, setComponentKindTab] = useState<ProductNplUnitKind | 'all'>('all');
   const [detailItem, setDetailItem] = useState<ProductNplItem | null>(null);
   const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null);
   const [formIndex, setFormIndex] = useState<number | null>(null);
@@ -1387,6 +1389,48 @@ export function ProductViewModal({
     }
   };
 
+  /**
+   * Tách thành phần theo cách định lượng để xem riêng từng loại:
+   * - `percent`: định lượng theo % (nhựa, phụ gia…)
+   * - `qty`: định lượng theo số lượng đếm được (Cái, Cuộn, Bao…)
+   * - `kg`: định lượng theo kg (không phải %)
+   * Mục nào không có dòng thì không hiện tab.
+   */
+  const componentGroups = useMemo(() => {
+    const groups: Record<ProductNplUnitKind, Array<{ item: ProductNplItem; index: number }>> = {
+      percent: [],
+      qty: [],
+      kg: []
+    };
+    items.forEach((item, index) => {
+      const kind = resolveProductNplUnitKind(item);
+      groups[kind].push({ item, index });
+    });
+    return groups;
+  }, [items]);
+
+  const componentKindTabs = useMemo(() => {
+    const defs: Array<{ key: ProductNplUnitKind; label: string }> = [
+      { key: 'percent', label: 'Phần trăm (%)' },
+      { key: 'qty', label: 'Số lượng' },
+      { key: 'kg', label: 'Khối lượng (kg)' }
+    ];
+    return defs.filter(def => componentGroups[def.key].length > 0);
+  }, [componentGroups]);
+
+  // Tab con đang chọn không còn dòng nào → tự về "Tất cả" để không hiện bảng rỗng.
+  useEffect(() => {
+    if (componentKindTab === 'all') return;
+    if (componentGroups[componentKindTab].length === 0) setComponentKindTab('all');
+  }, [componentKindTab, componentGroups]);
+
+  const visibleComponentRows = useMemo(() => {
+    if (componentKindTab === 'all') {
+      return items.map((item, index) => ({ item, index }));
+    }
+    return componentGroups[componentKindTab];
+  }, [componentKindTab, componentGroups, items]);
+
   const formatDinhLuong = (item: ProductNplItem) => {
     const parts: string[] = [];
     if (item.percent !== null && item.percent !== undefined && Number.isFinite(item.percent)) {
@@ -1808,8 +1852,8 @@ export function ProductViewModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-3">
-      <div className="flex h-full max-h-[98vh] min-h-[85vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl xl:max-w-7xl">
-        <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+      <div className="flex max-h-[92dvh] w-full max-w-[96vw] flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:max-w-4xl sm:rounded-2xl lg:max-w-5xl xl:max-w-6xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
           <div>
             <p className="text-xs font-black uppercase tracking-wider text-red-500">Xem sản phẩm</p>
             <h3 className="mt-1 text-lg font-black text-zinc-950">{product.name || product.code}</h3>
@@ -1843,7 +1887,7 @@ export function ProductViewModal({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1 border-b border-zinc-200 px-4">
+        <div className="flex shrink-0 flex-wrap gap-1 overflow-x-auto border-b border-zinc-200 px-3 scrollbar-thin sm:px-4">
           <button
             type="button"
             onClick={() => setTab('info')}
@@ -1896,7 +1940,7 @@ export function ProductViewModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           {tab === 'info' ? (
             <div className="space-y-3">
               <section className="rounded-lg border border-zinc-200 bg-zinc-50/80">
@@ -2067,7 +2111,7 @@ export function ProductViewModal({
                 </p>
               ) : null}
 
-              <TableShell minWidthClassName="min-w-[980px]" maxHeightClassName="max-h-[58vh]">
+              <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[58vh]">
                 <TableHead>
                   <TableHeadCell>STT</TableHeadCell>
                   <TableHeadCell>Mã QR đầy đủ</TableHeadCell>
@@ -2161,7 +2205,7 @@ export function ProductViewModal({
                 </p>
               ) : null}
 
-              <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="max-h-[58vh]">
+              <TableShell minWidthClassName="min-w-[720px]" maxHeightClassName="max-h-[58vh]">
                 <TableHead>
                   <TableHeadCell align="center" className="w-12">
                     <input
@@ -2306,7 +2350,54 @@ export function ProductViewModal({
                 </p>
               )}
 
-              <TableShell minWidthClassName="min-w-[900px]" maxHeightClassName="">
+              {componentKindTabs.length > 1 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setComponentKindTab('all')}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition ${
+                      componentKindTab === 'all'
+                        ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
+                        : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                    }`}
+                  >
+                    Tất cả
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                        componentKindTab === 'all' ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                      }`}
+                    >
+                      {items.length}
+                    </span>
+                  </button>
+                  {componentKindTabs.map(def => {
+                    const active = componentKindTab === def.key;
+                    return (
+                      <button
+                        key={def.key}
+                        type="button"
+                        onClick={() => setComponentKindTab(def.key)}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition ${
+                          active
+                            ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
+                            : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                        }`}
+                      >
+                        {def.label}
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                            active ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                          }`}
+                        >
+                          {componentGroups[def.key].length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              <TableShell minWidthClassName="min-w-[640px]" maxHeightClassName="">
                 <TableHead>
                   <TableHeadCell>STT</TableHeadCell>
                   <TableHeadCell>Mã NPL</TableHeadCell>
@@ -2316,22 +2407,27 @@ export function ProductViewModal({
                   <TableHeadCell align="center">Hành động</TableHeadCell>
                 </TableHead>
                 <TableBody>
-                  {items.length > 0 ? (
+                  {visibleComponentRows.length > 0 ? (
                     <TableRow className="bg-amber-50/80">
                       <td className="px-4 py-3 text-xs font-black uppercase tracking-wide text-zinc-500">Σ</td>
                       <td className="px-4 py-3 font-black text-zinc-950" colSpan={2}>
                         Tổng cộng
+                        {componentKindTab !== 'all' ? (
+                          <span className="ml-1 font-semibold text-zinc-500">
+                            ({componentKindTabs.find(def => def.key === componentKindTab)?.label})
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex max-w-full rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">
                           {formatNplDecimal(
-                            items.reduce((sum, item) => {
+                            visibleComponentRows.reduce((sum, row) => {
                               if (
-                                item.percent !== null &&
-                                item.percent !== undefined &&
-                                Number.isFinite(item.percent)
+                                row.item.percent !== null &&
+                                row.item.percent !== undefined &&
+                                Number.isFinite(row.item.percent)
                               ) {
-                                return sum + item.percent;
+                                return sum + row.item.percent;
                               }
                               return sum;
                             }, 0)
@@ -2341,7 +2437,8 @@ export function ProductViewModal({
                       </td>
                       <td className="px-4 py-3 font-black text-emerald-800">
                         {(() => {
-                          const totalKg = items.reduce((sum, item) => {
+                          const totalKg = visibleComponentRows.reduce((sum, row) => {
+                            const item = row.item;
                             let weight: number | null = null;
                             if (
                               item.weightKg !== null &&
@@ -2367,10 +2464,10 @@ export function ProductViewModal({
                       <td className="px-4 py-3" />
                     </TableRow>
                   ) : null}
-                  {items.map((item, index) => (
+                  {visibleComponentRows.map(({ item, index }, rowIndex) => (
                     <React.Fragment key={`${item.code}-${index}`}>
                       <TableRow>
-                        <td className="px-4 py-3 font-bold text-zinc-600">{index + 1}</td>
+                        <td className="px-4 py-3 font-bold text-zinc-600">{rowIndex + 1}</td>
                         <td className="px-4 py-3 font-black text-zinc-950">{item.code}</td>
                         <td className="px-4 py-3 font-semibold text-zinc-800">{item.name || '-'}</td>
                         <td className="px-4 py-3">
@@ -2417,11 +2514,15 @@ export function ProductViewModal({
                       </TableRow>
                     </React.Fragment>
                   ))}
-                  {items.length === 0 && (
+                  {visibleComponentRows.length === 0 && (
                     <TableEmptyRow colSpan={6}>
                       {isLoadingImportComponents
                         ? 'Đang lấy thành phần từ mục Xem...'
-                        : 'Chưa khai báo thành phần NVL.'}
+                        : componentKindTab === 'all'
+                          ? 'Chưa khai báo thành phần NVL.'
+                          : `Không có thành phần định lượng theo ${
+                              componentKindTabs.find(def => def.key === componentKindTab)?.label ?? 'loại này'
+                            }.`}
                     </TableEmptyRow>
                   )}
                 </TableBody>
@@ -2462,7 +2563,7 @@ export function ProductViewModal({
                 </p>
               ) : null}
 
-              <TableShell minWidthClassName="min-w-[980px]" maxHeightClassName="max-h-[58vh]">
+              <TableShell minWidthClassName="min-w-[820px]" maxHeightClassName="max-h-[58vh]">
                 <TableHead>
                   <TableHeadCell className="whitespace-nowrap">STT</TableHeadCell>
                   <TableHeadCell className="whitespace-nowrap">Đợt KK</TableHeadCell>

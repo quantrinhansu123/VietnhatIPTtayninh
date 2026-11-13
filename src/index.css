@@ -8629,8 +8629,8 @@ input[type="number"] {
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table th,
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-table td {
-    padding: 1mm 0.5mm !important;
-    height: 7mm;
+    padding: 0.55mm 0.5mm !important;
+    height: 5.5mm;
     line-height: 1.2;
     font-size: 10pt !important;
   }
@@ -8681,12 +8681,12 @@ input[type="number"] {
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table th {
-    padding: 1mm 0.5mm !important;
+    padding: 0.55mm 0.5mm !important;
     font-size: 9pt !important;
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table td {
-    height: 7.5mm;
+    height: 6mm;
     font-size: 10pt !important;
   }
 
@@ -8700,6 +8700,6 @@ input[type="number"] {
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-sign {
-    min-height: 28mm !important;
+    min-height: 18mm !important;
   }
 }

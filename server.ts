@@ -9503,8 +9503,10 @@ async function startServer() {
 export function createApp() {
   const app = express();
   app.use(express.json({ limit: '12mb' }));
-  app.use((req, _res, next) => {
+  app.use((req, res, next) => {
     if (req.body) req.body = canonicalizeMaterialCodePayload(req.body);
+    const originalJson = res.json.bind(res);
+    res.json = (body) => originalJson(canonicalizeMaterialCodePayload(body));
     next();
   });
 

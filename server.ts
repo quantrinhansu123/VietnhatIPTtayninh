@@ -6901,6 +6901,7 @@ type WarehouseSlipLineInput = {
   documentQuantity?: number;
   unitPrice: number;
   lineAmount: number;
+  lineNote?: string;
   sourceInboundLineId?: string;
   sourceInboundSlipCode?: string;
   damagedReportRowId?: string;
@@ -7391,6 +7392,7 @@ function parseWarehouseSlipLines(
           : undefined,
       unitPrice: roundWarehouseMoney(unitPrice),
       lineAmount: roundWarehouseMoney(quantity * unitPrice),
+      lineNote: String(record.lineNote ?? record.ghi_chu_dong ?? '').trim(),
       ...(sourceInboundLineId ? { sourceInboundLineId } : {}),
       ...(sourceInboundSlipCode ? { sourceInboundSlipCode } : {}),
       ...(damagedReportRowId ? { damagedReportRowId } : {}),
@@ -7506,6 +7508,7 @@ function buildWarehouseSlipInsertRecords(
       so_luong_chung_tu: parsed.loaiPhieu === 'xuat' ? item.documentQuantity ?? null : null,
       don_gia: item.unitPrice,
       thanh_tien: item.lineAmount,
+      ghi_chu_dong: item.lineNote || null,
       ly_do: parsed.lyDo || '',
       ghi_chu: parsed.ghiChu || '',
       nguoi_lap: parsed.nguoiLap || nhanSu,
@@ -7562,7 +7565,7 @@ function buildWarehouseSlipInsertRecords(
 const WAREHOUSE_HEADER_SELECT =
   'id, ma_phieu, ngay, gio, nhan_su, kho, ca, may, ghi_chu, ly_do, nguoi_lap, status, da_in, treo, created_at, updated_at';
 const WAREHOUSE_LINE_SELECT =
-  'id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, so_luong_chung_tu, don_gia, thanh_tien, ly_do, can_cu_bao_cao, id_dong_nhap_nguon, ma_phieu_nhap_nguon, link_anh_can_thuc_te, link_anh_can_thuc_te_public_id, link_anh_bao_thuc_te, link_anh_bao_thuc_te_public_id, id_bao_cao_nghiem_thu, id_bao_cao_hang_hong, ma_phieu, created_at, updated_at';
+  'id, ma_sp, ma_sp_quet, ten_sp, don_vi, loai, so_luong, so_luong_chung_tu, don_gia, thanh_tien, ghi_chu_dong, ly_do, can_cu_bao_cao, id_dong_nhap_nguon, ma_phieu_nhap_nguon, link_anh_can_thuc_te, link_anh_can_thuc_te_public_id, link_anh_bao_thuc_te, link_anh_bao_thuc_te_public_id, id_bao_cao_nghiem_thu, id_bao_cao_hang_hong, ma_phieu, created_at, updated_at';
 
 type WarehouseMovementFilter = {
   loaiPhieu?: 'nhap' | 'xuat';
@@ -7748,6 +7751,7 @@ function mapKhoLineToMovement(
     thanh_tien: Number(line.thanh_tien) || 0,
     ly_do: line.ly_do || header.ly_do || '',
     ghi_chu: header.ghi_chu || '',
+    ghi_chu_dong: line.ghi_chu_dong || '',
     nguoi_lap: header.nguoi_lap || header.nhan_su || '',
     nhan_su: header.nhan_su || '',
     loai_kho: loaiKho,
@@ -7941,6 +7945,7 @@ async function saveWarehouseSlipToKho(
       so_luong_chung_tu: parsed.loaiPhieu === 'xuat' ? item.documentQuantity ?? null : null,
       don_gia: item.unitPrice,
       thanh_tien: item.lineAmount,
+      ghi_chu_dong: item.lineNote || null,
       ly_do: parsed.lyDo || null,
       can_cu_bao_cao: null,
       id_dong_nhap_nguon: item.sourceInboundLineId || null,
@@ -13518,6 +13523,7 @@ export function createApp() {
               may: header.may || '',
               nhan_su: header.nhan_su || '',
               ghi_chu: header.ghi_chu || '',
+              ghi_chu_dong: line.ghi_chu_dong || '',
               ly_do: line.ly_do || header.ly_do || '',
               nguoi_lap: header.nguoi_lap || header.nhan_su || '',
               created_at_phieu: header.created_at || null,

@@ -172,6 +172,7 @@ export interface WarehouseMovementRow {
   lineAmount: number;
   reason: string;
   note: string;
+  lineNote?: string;
   createdBy: string;
   createdAt: string;
   slipCreatedAt?: string;
@@ -351,6 +352,7 @@ export function buildWarehouseSlipDraftFromHistoryRows(
             ? formatNumber(row.documentQuantity, 2)
             : '',
         unitPrice: row.unitPrice > 0 ? String(row.unitPrice) : '',
+        lineNote: row.lineNote || '',
         sourceInboundLineId: row.sourceInboundLineId || '',
         sourceInboundSlipCode: row.sourceInboundSlipCode || '',
         damagedReportRowId: row.damagedReportRowId || '',
@@ -877,7 +879,7 @@ function mergeWarehouseExportLineDrafts(lines: WarehouseSlipLineDraft[]): Wareho
       order.push(emptyKey);
       continue;
     }
-    const key = warehouseExportLineDraftMergeKey(line);
+    const key = JSON.stringify([warehouseExportLineDraftMergeKey(line), line.lineNote?.trim() || '']);
     const existing = map.get(key);
     if (existing) {
       existing.quantity = sumWarehouseLineQtyText(existing.quantity, line.quantity);
@@ -1122,6 +1124,7 @@ export function normalizeWarehouseMovements(data: unknown): WarehouseMovementRow
         lineAmount: Number.isFinite(lineAmount) ? lineAmount : 0,
         reason: String(record.ly_do ?? record.reason ?? '').trim(),
         note: String(record.ghi_chu ?? record.note ?? '').trim(),
+        lineNote: String(record.ghi_chu_dong ?? record.lineNote ?? '').trim(),
         createdBy: String(record.nguoi_lap ?? record.nhan_su ?? record.createdBy ?? '').trim(),
         createdAt: String(record.created_at ?? record.createdAt ?? '').trim(),
         slipCreatedAt: String(record.created_at_phieu ?? record.slipCreatedAt ?? '').trim() || undefined,
@@ -1568,6 +1571,7 @@ export function WarehouseSlipPanel({
       : showAllWarehouseColumnsOnMobile
         ? warehouseNhapFullMobileHeaderGridClass
         : warehouseNhapHeaderGridClass;
+  const nvlLineStyle = warehouseKind === 'nvl' ? { gridTemplateColumns: slipType === 'xuat' ? '2.25rem minmax(7rem,1fr) minmax(9rem,1fr) 4rem 5.5rem 3.25rem 5.5rem minmax(12rem,1fr) 2rem' : '2.25rem minmax(7rem,1fr) minmax(9rem,1fr) 4rem 3.25rem 5.5rem 7rem 8rem minmax(12rem,1fr) 2rem', minWidth: '62rem' } : undefined;
   const showFullWarehouseSlipFields = slipType === 'nhap' || warehouseKind === 'san_pham';
   useEffect(() => {
     if (editSlipCode) return;
@@ -5603,6 +5607,7 @@ export function WarehouseSlipPanel({
           <div className="scrollbar-hidden -mx-0.5 overflow-x-auto">
             <div
               className={warehouseHeaderGridClass}
+              style={nvlLineStyle}
             >
               <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-center`}>STT</span>
               <span className={warehouseLineHeaderClass}>
@@ -5640,13 +5645,14 @@ export function WarehouseSlipPanel({
                   <span className={`${warehouseLineHeaderClass} ${warehouseLineMobileHiddenClass} text-right`}>Thành tiền</span>
                 </>
               )}
+              {warehouseKind === 'nvl' ? <span className={warehouseLineHeaderClass}>Ghi chú</span> : null}
               <span className={warehouseLineMobileHiddenClass} />
             </div>
 
             <div>
               {lines.map((line, index) => (
                 <React.Fragment key={line.key}>
-                  <div className={warehouseLineGridClass}>
+                  <div className={warehouseLineGridClass} style={nvlLineStyle}>
                   <div className={`${showAllWarehouseColumnsOnMobile ? 'flex' : 'hidden md:flex'} min-w-0 items-center justify-center text-xs font-bold text-zinc-500`}>
                     {index + 1}
                   </div>
@@ -5777,6 +5783,11 @@ export function WarehouseSlipPanel({
                   </div>
                   </>
                   )}
+                  {warehouseKind === 'nvl' ? (
+                    <input aria-label={`Ghi chú NVL dòng ${index + 1}`} value={line.lineNote || ''}
+                      onChange={event => updateLine(line.key, { lineNote: event.target.value })}
+                      className={warehouseLineFieldClass} placeholder="Ghi chú từng NVL" />
+                  ) : null}
                   {lines.length > 1 && canDelete ? (
                     <button
                       type="button"
@@ -8252,6 +8263,7 @@ export function WarehouseHistoryPanel({
                     ) : null}
                     <th className="py-2 pr-3 font-black">Giá</th>
                     <th className="py-2 font-black">Thành tiền</th>
+                    {viewingRows[0].warehouseKind === 'nvl' ? <th className="px-3 py-2 font-black">Ghi chú</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -8288,6 +8300,7 @@ export function WarehouseHistoryPanel({
                       ) : null}
                       <td className="py-2 pr-3 font-mono font-bold text-zinc-800">{formatWarehouseMoney(row.unitPrice)} đ</td>
                       <td className="py-2 font-mono font-bold text-zinc-900">{formatWarehouseMoney(row.lineAmount)} đ</td>
+                      {row.warehouseKind === 'nvl' ? <td className="min-w-48 whitespace-pre-wrap break-words px-3 py-2">{row.lineNote || '—'}</td> : null}
                     </tr>
                   ))}
                 </tbody>
@@ -8397,6 +8410,7 @@ export function WarehouseHistoryPanel({
                         <th className="px-3 py-2 font-black">ĐVT</th>
                         <th className="px-3 py-2 font-black">Ngày giờ {verb}</th>
                         <th className="px-3 py-2 font-black">Người {verb}</th>
+                        {slip.header.warehouseKind === 'nvl' ? <th className="px-3 py-2 font-black">Ghi chú</th> : null}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
@@ -8416,6 +8430,7 @@ export function WarehouseHistoryPanel({
                             {formatWarehouseSlipSavedTime(line.createdAt || slip.createdAt)}
                           </td>
                           <td className="whitespace-nowrap px-3 py-1.5 text-zinc-700">{line.createdBy || slip.header.createdBy || '—'}</td>
+                          {slip.header.warehouseKind === 'nvl' ? <td className="min-w-48 whitespace-pre-wrap break-words px-3 py-1.5">{line.lineNote || '—'}</td> : null}
                         </tr>
                       ))}
                       <tr className="bg-zinc-100 font-black">
@@ -8423,7 +8438,7 @@ export function WarehouseHistoryPanel({
                         <td className="px-3 py-2 text-right font-mono text-zinc-950">
                           {formatNumber(totalQty, Number.isInteger(totalQty) ? 0 : 2)}
                         </td>
-                        <td colSpan={3}></td>
+                        <td colSpan={slip.header.warehouseKind === 'nvl' ? 4 : 3}></td>
                       </tr>
                     </tbody>
                   </table>

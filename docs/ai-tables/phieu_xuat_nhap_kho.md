@@ -80,3 +80,5 @@ Kho vật tư và Kho thành phẩm do 2 người khác nhau phụ trách → t�
 ## Script
 
 `scripts/sync-kho-nvl-from-phieu.mjs` — đồng bộ tồn kho từ phiếu.
+
+Ghi chú từng dòng NVL: `lineNote` -> `nhap_kho.ghi_chu_dong` / `xuat_kho.ghi_chu_dong`; hiển thị trong chi tiết lịch sử và giữ khi sửa. DB hiện tại chạy `supabase-kho-ghi-chu-dong.sql`.

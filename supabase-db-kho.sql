@@ -351,3 +351,8 @@ comment on view public.v_kho_tinh_ton is
 -- where table_schema = 'public'
 --   and table_name in ('phieu_xuat','phieu_nhap','xuat_kho','nhap_kho','kho')
 -- order by table_name;
+
+-- Ghi chu rieng tung dong, tach khoi ghi chu chung cua phieu.
+alter table public.nhap_kho add column if not exists ghi_chu_dong text;
+alter table public.xuat_kho add column if not exists ghi_chu_dong text;
+notify pgrst, 'reload schema';

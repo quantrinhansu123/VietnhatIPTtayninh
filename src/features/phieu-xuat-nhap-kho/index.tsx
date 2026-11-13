@@ -2870,7 +2870,7 @@ export function WarehouseSlipPanel({
     return () => {
       cancelled = true;
     };
-  }, [showShippingOrderPicker, pageRefreshNonce]);
+  }, [showShippingOrderPicker, pageRefreshNonce, exportedRefreshNonce]);
 
   useEffect(() => {
     if (!showShippingOrderPicker) return;
@@ -2890,7 +2890,7 @@ export function WarehouseSlipPanel({
     const day = slipDate.trim().slice(0, 10);
     return shippingOrders
       .filter(order => order.ngay_xuat.slice(0, 10) === day)
-      .filter(order => !/^(bị )?hủy$/i.test(order.trang_thai.trim()))
+      .filter(order => !/^(đã xuất|đang giao|đã giao|(bị )?hủy)$/i.test(order.trang_thai.trim()))
       // Đã xuất đủ (phiếu chốt) → ẩn khỏi sổ, kể cả đang chọn trước đó.
       .filter(
         order =>

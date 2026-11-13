@@ -16386,6 +16386,13 @@ export function createApp() {
     }
   });
 
+  app.post('/api/can-tu-dong/chuyen-da-nang', async (_req, res) => {
+    if (!supabaseWeighing) return res.status(503).json({ error: 'Chưa cấu hình DB cân.' });
+    const { data, error } = await supabaseWeighing.rpc('chuyen_can_mt_da_nang');
+    if (error) return res.status(400).json({ error: `Không chuyển được dữ liệu. Cần cài bảng và hàm chuyển Đà Nẵng trên DB cân. ${error.message}` });
+    return res.json({ success: true, moved: Number(data) || 0 });
+  });
+
   app.post('/api/can-tu-dong/bulk-delete', async (req, res) => {
     if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
       return res.status(503).json({

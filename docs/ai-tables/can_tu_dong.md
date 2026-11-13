@@ -59,6 +59,8 @@
 
 ## Frontend
 
+Nút **Chuyển toàn bộ MT → Đà Nẵng** gọi `POST /api/can-tu-dong/chuyen-da-nang`, chuyển mọi ngày theo tiền tố `qr_code` MT (không phân biệt hoa thường), giữ nguyên mã và dữ liệu. RPC `chuyen_can_mt_da_nang` copy rồi xóa trong một transaction; lỗi/trùng khóa rollback toàn bộ. Cài `supabase-bang-can-da-nang.sql` rồi `supabase-chuyen-can-da-nang.sql` trên DB cân trước khi dùng. Bảng đích bật RLS, RPC chỉ cho service_role.
+
 | File | Nội dung |
 |------|----------|
 | `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: nút **Nhập kho** · **Về chờ nhập kho** (theo bộ lọc) · **Bộ lọc** (ngày, ca, máy, lệnh SX, mã SP, **Đẩy kho**) · Excel · **In** · Tải lại |

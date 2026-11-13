@@ -413,6 +413,22 @@ export function CanTuDongPanel({
 }) {
   const [records, setRecords] = useState<CanTuDongRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [movingDaNang, setMovingDaNang] = useState(false);
+  const moveMtToDaNang = async () => {
+    if (movingDaNang || !window.confirm('Chuyển TOÀN BỘ mã hàng bắt đầu MT (mọi ngày, không theo bộ lọc) sang Bảng cân Đà Nẵng và xóa khỏi bảng cân hiện tại?')) return;
+    setMovingDaNang(true);
+    try {
+      const res = await fetch('/api/can-tu-dong/chuyen-da-nang', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không chuyển được dữ liệu.');
+      showAppToast(`Đã chuyển ${data.moved} bản ghi MT sang Bảng cân Đà Nẵng.`, 'success');
+      await loadRecords();
+    } catch (error) {
+      showAppToast(error instanceof Error ? error.message : 'Không chuyển được dữ liệu.', 'error');
+    } finally {
+      setMovingDaNang(false);
+    }
+  };
   const [error, setError] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -1958,6 +1974,14 @@ export function CanTuDongPanel({
           >
             <FileSpreadsheet className="h-4 w-4" />
             Tải Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => void moveMtToDaNang()}
+            disabled={loading || movingDaNang}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-950 disabled:opacity-60"
+          >
+            {movingDaNang ? 'Đang chuyển...' : 'Chuyển toàn bộ MT → Đà Nẵng'}
           </button>
           <button
             type="button"

@@ -920,7 +920,7 @@ function StaffDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">Chi tiết nhân sự</h3>
@@ -1324,7 +1324,7 @@ export function AddStaffModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
           <div>
             <h3 className="text-sm font-black uppercase tracking-wider text-zinc-950">
@@ -1347,8 +1347,8 @@ export function AddStaffModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 p-4">
-          <label className="col-span-2 space-y-1.5">
+        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+          <label className="space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Họ và tên *</span>
             <input
               value={form.name}
@@ -1438,7 +1438,7 @@ export function AddStaffModal({
               autoComplete="new-password"
             />
           </label>
-          <label className="col-span-2 space-y-1.5">
+          <label className="space-y-1.5">
             <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Trạng thái</span>
             <select
               value={form.status}

@@ -559,7 +559,7 @@ export function ShippingOrdersPanel({
     try {
       const [customerRes, productRes, vehicleRes] = await Promise.all([
         fetch('/api/khach-hang'),
-        fetch('/api/san-pham?format=table'),
+        fetch('/api/san-pham?format=table&include_nvl=1'),
         fetch('/api/danh-sach-xe')
       ]);
       const customerData = await customerRes.json().catch(() => ({}));

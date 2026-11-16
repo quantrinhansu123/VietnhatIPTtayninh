@@ -98,7 +98,7 @@ export function OrderFormModal({
         const [staffRes, customerRes, productRes] = await Promise.all([
           fetch('/api/nhan-su?format=groups&scope=all'),
           fetch('/api/khach-hang'),
-          fetch('/api/san-pham?format=table')
+          fetch('/api/san-pham?format=table&include_nvl=1')
         ]);
 
         const staffData = await staffRes.json().catch(() => ({}));

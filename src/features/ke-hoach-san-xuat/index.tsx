@@ -1527,7 +1527,7 @@ export function ProductionPlanQrPrintModal({
     (async () => {
       setIsLoadingProducts(true);
       try {
-        const productRes = await fetch('/api/san-pham?format=table');
+        const productRes = await fetch('/api/san-pham?format=table&include_nvl=1');
         const productData = await productRes.json().catch(() => ({}));
         if (!productRes.ok) throw new Error(productData.error || 'Không thể tải danh sách sản phẩm.');
         if (!cancelled) {
@@ -3526,7 +3526,7 @@ export function ProductionPlanModal({
     try {
       const [orderRes, productRes] = await Promise.all([
         fetch('/api/don-hang'),
-        fetch('/api/san-pham?format=table')
+        fetch('/api/san-pham?format=table&include_nvl=1')
       ]);
       const [orderData, productData] = await Promise.all([
         orderRes.json().catch(() => ({})),

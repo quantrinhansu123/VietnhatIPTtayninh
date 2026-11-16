@@ -538,7 +538,7 @@ export function OrdersPanel({
     let cancelled = false;
     const loadProductCatalog = async () => {
       try {
-        const res = await fetch('/api/san-pham?format=table');
+        const res = await fetch('/api/san-pham?format=table&include_nvl=1');
         const data = await res.json().catch(() => ({}));
         if (cancelled || !res.ok) return;
         setProductCatalog(normalizeOrderProducts(data, ''));
@@ -566,7 +566,7 @@ export function OrdersPanel({
         const [staffRes, customerRes, productRes] = await Promise.all([
           fetch('/api/nhan-su?format=groups&scope=all'),
           fetch('/api/khach-hang'),
-          fetch('/api/san-pham?format=table')
+          fetch('/api/san-pham?format=table&include_nvl=1')
         ]);
 
         const staffData = await staffRes.json().catch(() => ({}));

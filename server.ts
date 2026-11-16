@@ -9823,6 +9823,36 @@ export function createApp() {
           if (!data || data.length < pageSize) break;
         }
 
+        // include_nvl=1: gộp thêm danh mục kho_nvl (mã chưa có trong san_pham) để chọn ở đơn hàng / lệnh SX / lệnh xuất.
+        if (req.query.include_nvl === '1') {
+          const existing = new Set(products.map((row: any) => String(row.ma_sp ?? '').trim().toLowerCase()));
+          const { data: nvlRows, error: nvlError } = await supabase
+            .from(SUPABASE_MATERIALS_TABLE)
+            .select('id, created_at, ma_npl, ten_npl, don_vi, ten_kho, tong_trong_luong')
+            .limit(5000);
+          if (nvlError) {
+            console.error('Supabase kho_nvl (include_nvl) query error:', nvlError);
+          } else {
+            for (const row of (nvlRows || []) as any[]) {
+              const code = String(row.ma_npl ?? '').trim();
+              if (!code || existing.has(code.toLowerCase())) continue;
+              existing.add(code.toLowerCase());
+              products.push({
+                id: `nvl-${row.id}`,
+                created_at: row.created_at,
+                ma_sp: code,
+                ma_sp_moi: code,
+                ten_sp: row.ten_npl || code,
+                tinh_chat: 'Nguyên vật liệu',
+                nhom_vthh: 'NVL',
+                don_vi: row.don_vi,
+                ten_kho: row.ten_kho || 'Kho NVL',
+                tong_trong_luong: row.tong_trong_luong
+              });
+            }
+          }
+        }
+
         return res.json({
           products,
           total: products.length,

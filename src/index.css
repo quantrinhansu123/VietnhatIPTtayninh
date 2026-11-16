@@ -5369,8 +5369,9 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-title {
   margin: 0;
+  white-space: nowrap;
   text-align: center;
-  font-size: 14pt;
+  font-size: 15pt;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.15;
@@ -5434,7 +5435,7 @@ input[type="number"] {
 
 .acceptance-nk-sx-print-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 62mm;
+  grid-template-columns: minmax(0, 1fr) 72mm;
   gap: 2.5mm;
   align-items: start;
 }
@@ -5471,33 +5472,23 @@ input[type="number"] {
   background: #f7f7f7;
 }
 
-.acceptance-nk-sx-print-table .col-stt { width: 9mm; }
-.acceptance-nk-sx-print-table .col-amis { width: 27mm; white-space: nowrap; }
-.acceptance-nk-sx-print-table .col-sp { width: auto; }
-/* Cột trống «Trả kho» KG + Cuộn — rộng vừa, cân với các cột (3)–(6). */
-.acceptance-nk-sx-print-table .col-blank {
-  width: 11mm;
-  padding: 0.8mm 0.4mm;
-  font-size: 9pt;
-}
-.acceptance-nk-sx-print-table .col-tra-kho {
-  width: 22mm;
-  max-width: 22mm;
-  font-size: 8.5pt;
-  line-height: 1.12;
-  padding: 0.8mm 0.5mm;
-}
-.acceptance-nk-sx-print-table .col-qty { width: 17mm; }
-.acceptance-nk-sx-print-table .col-roll { width: 22mm; }
-.acceptance-nk-sx-print-table .col-norm { width: 17mm; }
-.acceptance-nk-sx-print-table .col-total { width: 22mm; }
-.acceptance-nk-sx-print-table .col-eval { width: 20mm; }
-/* Tiêu đề chỉ xuống dòng theo từ, không bẻ giữa từ. */
+/* Bảng I: cột cố định, «Tên thành phẩm» lấy phần còn lại; ô dữ liệu một dòng. */
+.acceptance-nk-sx-print-table { table-layout: fixed; }
+.acceptance-nk-sx-print-table td { white-space: nowrap; }
+.acceptance-nk-sx-print-table td:nth-child(3) { font-size: 9pt; }
 .acceptance-nk-sx-print-table th {
   word-break: normal;
   overflow-wrap: normal;
-  font-size: 8.5pt;
+  font-size: 8pt;
 }
+.acceptance-nk-sx-print-table .col-stt { width: 8mm; }
+.acceptance-nk-sx-print-table .col-amis { width: 21mm; }
+.acceptance-nk-sx-print-table .col-sp { width: auto; }
+.acceptance-nk-sx-print-table .col-n { width: 15mm; }
+.acceptance-nk-sx-print-side-table .col-side-stt { width: 12mm; white-space: nowrap; }
+.acceptance-nk-sx-print-side-table th:first-child,
+.acceptance-nk-sx-print-side-table td:first-child { white-space: nowrap; word-break: normal; }
+.acceptance-nk-sx-print-side-table td:nth-child(2) { font-size: 8.5pt; white-space: nowrap; }
 
 .acceptance-nk-sx-print-table td.center,
 .acceptance-nk-sx-print-side-table td.center {

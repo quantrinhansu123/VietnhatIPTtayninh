@@ -23,6 +23,7 @@ import {
   loadMachineShiftChecklistPrintData,
   loadProductionPlanRelatedReports,
   loadSanLuongNkSxPrintData,
+  attachShiftLeads,
   type ProductionPlanRelatedReports,
   type SanLuongNkSxPrintData
 } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
@@ -142,6 +143,10 @@ function resolveShiftLeadPerformedBy(data: ProductionPlanRelatedReports | null):
     const name = clean(slip.operators || '');
     if (name) return name;
   }
+  for (const { order } of data.productionOrders || []) {
+    const name = clean(order.mainStaff) || clean(order.staff);
+    if (name) return name;
+  }
   return '';
 }
 
@@ -221,6 +226,7 @@ export default function ReportListsHubModal({
   const [printReportKind, setPrintReportKind] = useState<PrintReportKind>('vat-tu');
   const [tonData, setTonData] = useState<TonThanhPhamReport | null>(null);
   const [printData, setPrintData] = useState<ProductionPlanRelatedReports | null>(null);
+  const [sanLuongShiftLead, setSanLuongShiftLead] = useState('');
   const [sanLuongPrintData, setSanLuongPrintData] = useState<SanLuongNkSxPrintData | null>(null);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
@@ -356,6 +362,10 @@ export default function ReportListsHubModal({
       if (kind === 'san-luong') {
         // Path nhẹ: chỉ bao-cao-nghiem-thu + san-pham + cai-dat (không gọi cân AI / full related).
         const data = await loadSanLuongNkSxPrintData(date, shift, machine);
+        const [withLead] = await attachShiftLeads([
+          { ngay: date, ca: shift, ma_may: machine.code || '', ten_may: machine.name || '' }
+        ]);
+        setSanLuongShiftLead(withLead?.shiftLead || '');
         if (data.acceptance.length === 0) {
           setPrintError('Chưa có báo cáo sản lượng cho ngày · ca · máy đã chọn.');
           setSanLuongPrintData(null);
@@ -553,8 +563,8 @@ export default function ReportListsHubModal({
   ]);
 
   const acceptancePerformedBy = useMemo(
-    () => resolveShiftLeadPerformedBy(printData),
-    [printData]
+    () => resolveShiftLeadPerformedBy(printData) || sanLuongShiftLead,
+    [printData, sanLuongShiftLead]
   );
 
   const sanLuongFilmKg = sanLuongPrintData?.acceptanceFilmKgByProductCode || printData?.acceptanceFilmKgByProductCode;

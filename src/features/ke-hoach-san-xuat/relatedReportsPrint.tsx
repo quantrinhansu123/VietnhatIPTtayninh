@@ -824,6 +824,96 @@ export async function loadProductionPlanRelatedReports(
   };
 }
 
+/** Gắn tên trưởng ca theo ngày · ca · máy: ưu tiên lệnh SX, thiếu thì lấy dòng kế hoạch SX. */
+export async function attachShiftLeads<
+  T extends { ngay: string; ca: string; ma_may: string; ten_may: string }
+>(slips: T[]): Promise<Array<T & { shiftLead?: string }>> {
+  try {
+    const [orderRes, shiftOptions] = await Promise.all([fetchJson('/api/lenh-sx'), loadShiftOptions()]);
+    const orders = orderRes.ok ? normalizeProductionOrders(orderRes.data) : [];
+    const planLinesByDate = new Map<string, ReturnType<typeof normalizeProductionPlanHistoryLines>>();
+    const loadPlanLines = async (ngay: string) => {
+      if (planLinesByDate.has(ngay)) return planLinesByDate.get(ngay)!;
+      const lines: ReturnType<typeof normalizeProductionPlanHistoryLines> = [];
+      const listRes = await fetchJson(`/api/ke-hoach-sx?ngay=${encodeURIComponent(ngay)}&limit=100`);
+      if (listRes.ok) {
+        const plans = normalizeProductionPlanHistory(listRes.data).filter(plan =>
+          matchesIsoPrintDate(plan.planDate, ngay)
+        );
+        for (const plan of plans) {
+          const detail = await fetchJson(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`);
+          if (detail.ok) lines.push(...normalizeProductionPlanHistoryLines(detail.data));
+        }
+      }
+      planLinesByDate.set(ngay, lines);
+      return lines;
+    };
+    const clean = (value?: string) => {
+      const text = String(value || '').trim();
+      return !text || text === '-' ? '' : text;
+    };
+    return await Promise.all(
+      slips.map(async slip => {
+        const matchers = buildMachineMatchers([slip.ma_may, slip.ten_may]);
+        const okMachine = (...c: Array<string | undefined>) => matchers.size === 0 || machineMatches(matchers, ...c);
+        let lead = '';
+        for (const item of orders) {
+          if (
+            clean(item.shiftLead) &&
+            matchesIsoPrintDate(item.startDate, slip.ngay) &&
+            shouldIncludeRelatedReport(item.shift, [slip.ca], shiftOptions) &&
+            okMachine(item.machine)
+          ) {
+            lead = clean(item.shiftLead);
+            break;
+          }
+        }
+        if (!lead && slip.ngay) {
+          for (const line of await loadPlanLines(slip.ngay)) {
+            if (
+              clean(line.shiftLead) &&
+              shouldIncludeRelatedReport(line.shift, [slip.ca], shiftOptions) &&
+              okMachine(line.machine, line.position)
+            ) {
+              lead = clean(line.shiftLead);
+              break;
+            }
+          }
+        }
+        // Dự phòng y hệt phiếu giao ca bảng trộn vật tư: người nhận ca phiếu giao ca → nhân sự chính.
+        if (!lead && slip.ngay) {
+          const handoverRes = await fetchJson(`/api/phieu-giao-ca?ngay=${encodeURIComponent(slip.ngay)}&limit=300`);
+          if (handoverRes.ok) {
+            for (const h of normalizeShiftHandoverSlips(handoverRes.data)) {
+              if (
+                clean(h.operators) &&
+                shouldIncludeRelatedReport(h.shift, [slip.ca], shiftOptions) &&
+                okMachine(h.machineCode, h.machineName)
+              ) {
+                lead = clean(h.operators);
+                break;
+              }
+            }
+          }
+        }
+        if (!lead) {
+          const order = orders.find(
+            item =>
+              (clean(item.mainStaff) || clean(item.staff)) &&
+              matchesIsoPrintDate(item.startDate, slip.ngay) &&
+              shouldIncludeRelatedReport(item.shift, [slip.ca], shiftOptions) &&
+              okMachine(item.machine)
+          );
+          if (order) lead = clean(order.mainStaff) || clean(order.staff);
+        }
+        return { ...slip, shiftLead: lead };
+      })
+    );
+  } catch {
+    return slips;
+  }
+}
+
 /**
  * In nhật ký SX / phiếu giao — chỉ 3 API (sản lượng + SP + ca).
  * Không gọi gói related reports (~18 API, cân AI 10k dòng) nên mở in nhanh hơn nhiều.
@@ -1346,6 +1436,9 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
             .find(name => name && name !== '-') ||
           data.shiftHandovers
             .map(handover => String(handover.operators || '').trim())
+            .find(name => name && name !== '-') ||
+          data.productionOrders
+            .map(item => String(item.order?.mainStaff || item.order?.staff || '').trim())
             .find(name => name && name !== '-') ||
           '';
         return (

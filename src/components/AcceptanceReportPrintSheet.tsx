@@ -58,6 +58,8 @@ export type AcceptancePrintSlip = {
   machineLabel: string;
   thanhPhamLines: AcceptancePrintLine[];
   hangLoiHongLines: AcceptancePrintLine[];
+  /** Trưởng ca của lệnh SX khớp ngày · ca · máy (nếu có). */
+  shiftLead?: string;
 };
 
 /**
@@ -392,43 +394,37 @@ function mergeReportIntoLineBucket(acc: LineBucketAcc, report: AcceptanceReportS
   acc.lineOrder.push(lineKey);
 }
 
-function formatDefectLineName(line: AcceptancePrintLine) {
-  const name = String(line.ten_sp || '').trim();
-  const code = String(line.mat_hang || '').trim();
-  if (name && code && name.toLowerCase() !== code.toLowerCase()) return name;
-  return name || code || '';
-}
-
-function formatDefectLineQty(line: AcceptancePrintLine) {
+function getDefectLineQty(line: AcceptancePrintLine): { value: number; unit: string; isKg: boolean } | null {
   const unit = String(line.don_vi || '').trim();
   const weight = Number(line.trong_luong);
+  const weightUnit = String(line.don_vi_trong_luong || 'Kg');
   // Tab Hàng lỗi hỏng, ĐVT kg: công nhân để SL = 1 rồi gõ kg thật vào cột Trọng lượng.
-  if (isKgUnit(unit) && Number.isFinite(weight) && weight > 0) {
-    return `${formatKgPlain(weight)} ${line.don_vi_trong_luong || 'Kg'}`;
-  }
+  if (isKgUnit(unit) && Number.isFinite(weight) && weight > 0) return { value: weight, unit: weightUnit, isKg: true };
   const qty = line.so_luong;
   if (qty != null && Number.isFinite(qty) && qty !== 0) {
-    const qtyText = formatQtyPlain(qty);
-    if (!qtyText) return '';
-    return unit && unit !== '-' ? `${qtyText} ${unit}` : qtyText;
+    return { value: qty, unit: unit && unit !== '-' ? unit : '', isKg: false };
   }
-  if (Number.isFinite(weight) && weight > 0) {
-    return `${formatKgPlain(weight)} ${line.don_vi_trong_luong || 'Kg'}`;
-  }
-  return '';
+  if (Number.isFinite(weight) && weight > 0) return { value: weight, unit: weightUnit, isKg: true };
+  return null;
 }
 
-/** Nhựa không màng / đầu keo — gom TL từ dòng lỗi hỏng khớp tên/mã. */
-function isNhuaKhongMangOrDauKeoLine(line: AcceptancePrintLine) {
-  const hay = `${line.mat_hang || ''} ${line.ten_sp || ''}`
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/đ/g, 'd');
-  return (
-    /nhua\s*km|nhuakm|khong\s*mang|khongmang|dau\s*keo|daukeo|nhua\s*dau/.test(hay)
-  );
+const DEFECT_GROUPS = [
+  'Nhựa không màng',
+  'Nhựa đầu keo ( Nhựa cục)',
+  'Nhựa dính màng ( nhựa+màng)',
+  'Màng rách ( không nhựa)',
+  'Hàng hỏng khác'
+];
+
+function defectGroupIndex(line: AcceptancePrintLine) {
+  const hay = `${line.mat_hang || ''} ${line.ten_sp || ''}`.toLowerCase();
+  if (/không màng|khong mang|nhuakm/.test(hay)) return 0;
+  if (/đầu keo|dau keo|nhựa cục|nhua cuc/.test(hay)) return 1;
+  if (/dính màng|dinh mang/.test(hay)) return 2;
+  if (/rách|rach/.test(hay)) return 3;
+  return 4;
 }
+
 
 function linesFromBucket(acc: LineBucketAcc) {
   return acc.lineOrder.map(key => acc.lineMap.get(key)!);
@@ -561,7 +557,7 @@ export function AcceptanceReportPrintSheet({
   const machineHeader = formatChecklistMachineHeader(resolvedMachineCode, resolvedMachineName);
   const machineParts = splitChecklistMachineHeader(machineHeader);
   const shiftLabel = formatAcceptanceShiftLabel(resolvedShift);
-  const performer = String(performedBy || '').trim();
+  const performer = String(performedBy || slip.shiftLead || '').trim();
   const dateParts = formatPrintDateParts(slip.ngay);
   const lines = slip.thanhPhamLines;
   const paddedCount = lines.length;
@@ -576,6 +572,13 @@ export function AcceptanceReportPrintSheet({
     plasticNormKg: number | null;
     totalNormKg: number | null;
     actualNhuaKg: number | null;
+    /** Trọng lượng tổng cuộn theo định mức = SL × TL tiêu chuẩn / cuộn. */
+    dmRollKg: number | null;
+    /** Vật tư phụ theo định mức = SL × (TL cuộn − nhựa) / cuộn. */
+    vtPhuKg: number | null;
+    /** Chênh lệch (thực tế − định mức) và tỷ lệ %. */
+    diffKg: number | null;
+    diffPct: number | null;
   };
 
   const computedRows: ComputedRow[] = [];
@@ -591,18 +594,37 @@ export function AcceptanceReportPrintSheet({
         rollWeightKg: null,
         plasticNormKg: null,
         totalNormKg: null,
-        actualNhuaKg: null
+        actualNhuaKg: null,
+        dmRollKg: null,
+        vtPhuKg: null,
+        diffKg: null,
+        diffPct: null
       });
       continue;
     }
     const norm = lookupAcceptanceProductNorm(line.mat_hang, productNormByCode);
     const rollWeightKg = resolveRollWeightKg(line, norm);
-    // (3) số lượng · (5) ĐM nhựa · (6) = (3)×(5) — không dùng TL cuộn (4).
+    // (3) số lượng · (5) ĐM nhựa · (6) = (3)×(5) — không dùng TL CUỘN BAO GỒM CẢ TÚI, LÕI (4).
     const soLuong = line.so_luong;
     const plasticNormKg = resolvePlasticNormKg(norm);
     const totalNormKg = resolveTotalPlasticNormKg(soLuong, plasticNormKg);
     const filmKg = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
     const actualNhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
+    const dmRollKg =
+      soLuong != null && soLuong > 0 && norm?.totalWeightKg != null
+        ? Math.round(soLuong * norm.totalWeightKg * 100) / 100
+        : null;
+    const auxPerRollKg =
+      norm?.totalWeightKg != null && plasticNormKg != null
+        ? Math.max(0, norm.totalWeightKg - plasticNormKg)
+        : null;
+    const vtPhuKg =
+      soLuong != null && soLuong > 0 && auxPerRollKg != null
+        ? Math.round(soLuong * auxPerRollKg * 100) / 100
+        : null;
+    const diffKg =
+      rollWeightKg != null && dmRollKg != null ? Math.round((rollWeightKg - dmRollKg) * 100) / 100 : null;
+    const diffPct = diffKg != null && dmRollKg ? (diffKg / dmRollKg) * 100 : null;
     computedRows.push({
       key: `${line.mat_hang}-${i}`,
       stt: i + 1,
@@ -612,7 +634,11 @@ export function AcceptanceReportPrintSheet({
       rollWeightKg,
       plasticNormKg,
       totalNormKg,
-      actualNhuaKg
+      actualNhuaKg,
+      dmRollKg,
+      vtPhuKg,
+      diffKg,
+      diffPct
     });
   }
 
@@ -621,25 +647,26 @@ export function AcceptanceReportPrintSheet({
     (sum, row) => sum + (row.totalNormKg != null && row.totalNormKg > 0 ? row.totalNormKg : 0),
     0
   );
-  const nhuaThucDungKg = computedRows.reduce(
-    (sum, row) => sum + (row.actualNhuaKg != null && Number.isFinite(row.actualNhuaKg) ? row.actualNhuaKg : 0),
-    0
-  );
-  // Bảng II: chỉ dòng tab Hàng lỗi hỏng (SP lỗi) trên báo cáo sản lượng.
+  const sumRows = (pick: (row: ComputedRow) => number | null) =>
+    computedRows.reduce((sum, row) => {
+      const v = pick(row);
+      return sum + (v != null && Number.isFinite(v) ? v : 0);
+    }, 0);
+  const totalDmRollKg = sumRows(row => row.dmRollKg);
+  const totalRollKg = sumRows(row => row.rollWeightKg);
+  const totalVtPhuKg = sumRows(row => row.vtPhuKg);
+  const totalDiffKg = Math.round((totalRollKg - totalDmRollKg) * 100) / 100;
+  const totalDiffPct = totalDmRollKg > 0 ? (totalDiffKg / totalDmRollKg) * 100 : null;
+  // Bảng II: chỉ dòng tab Hàng lỗi hỏng (SP lỗi) trên báo cáo sản lượng, gom vào 5 nhóm cố định.
   const defectLines = slip.hangLoiHongLines.filter(line =>
     isAcceptanceHangLoiHongTabLoai(line.loai_vat_tu)
   );
-  const defectPadded = Math.max(4, defectLines.length);
-  const nhuaKhongMangKg = defectLines.reduce((sum, line) => {
-    if (!isNhuaKhongMangOrDauKeoLine(line)) return sum;
-    const weight = Number(line.trong_luong);
-    if (Number.isFinite(weight) && weight > 0) return sum + weight;
-    const qty = Number(line.so_luong);
-    const unit = String(line.don_vi || '').trim().toLowerCase();
-    if (Number.isFinite(qty) && qty > 0 && (unit === 'kg' || unit === 'kilogram')) return sum + qty;
-    return sum;
-  }, 0);
-  const haoHutKg = Math.round((totalNormKg + nhuaKhongMangKg - nhuaThucDungKg) * 100) / 100;
+  const defectGroupKg = DEFECT_GROUPS.map(() => 0);
+  for (const line of defectLines) {
+    const q = getDefectLineQty(line);
+    if (q) defectGroupKg[defectGroupIndex(line)] += q.value;
+  }
+  const defectTotalKg = defectGroupKg.reduce((sum, v) => sum + v, 0);
 
   return (
     <div className="production-order-print-sheet acceptance-nk-sx-print-sheet">
@@ -697,41 +724,20 @@ export function AcceptanceReportPrintSheet({
 
         <div className="acceptance-nk-sx-print-body">
           <div className="acceptance-nk-sx-print-main">
-            <p className="acceptance-nk-sx-print-section-label">I. THÀNH PHẨM</p>
+            <p className="acceptance-nk-sx-print-section-label">I. BÁO CÁO THÀNH PHẨM ĐẠT</p>
             <table className="acceptance-nk-sx-print-table">
               <thead>
                 <tr>
-                  <th rowSpan={2} className="col-stt">
-                    STT
-                  </th>
-                  <th rowSpan={2} className="col-amis">
-                    Mã Thành phẩm trên MISA
-                  </th>
-                  <th rowSpan={2} className="col-sp">
-                    THÀNH PHẨM (2)
-                  </th>
-                  <th colSpan={2} className="col-tra-kho">
-                    TRỌNG LƯỢNG THÀNH PHẨM TRẢ KHO - gồm lõi, túi, màng (KG) (Cuộn)
-                  </th>
-                  <th rowSpan={2} className="col-qty">
-                    SỐ LƯỢNG (Cuộn) (3)
-                  </th>
-                  <th rowSpan={2} className="col-roll">
-                    TRỌNG LƯỢNG CUỘN BAO GỒM CẢ TÚI, LÕI (4)
-                  </th>
-                  <th rowSpan={2} className="col-norm">
-                    ĐỊNH MỨC NHỰA (5)
-                  </th>
-                  <th rowSpan={2} className="col-total">
-                    TỔNG TRỌNG LƯỢNG THEO ĐỊNH MỨC NHỰA (6) = (3) × (5)
-                  </th>
-                  <th rowSpan={2} className="col-eval">
-                    ĐÁNH GIÁ ĐẠT / KHÔNG ĐẠT SO VỚI ĐỊNH MỨC
-                  </th>
-                </tr>
-                <tr>
-                  <th className="col-blank">KG</th>
-                  <th className="col-blank">Cuộn</th>
+                  <th className="col-stt">STT</th>
+                  <th className="col-amis">Mã TP</th>
+                  <th className="col-sp">Tên thành phẩm</th>
+                  <th className="col-n">SL thành phẩm đạt (Cuộn)</th>
+                  <th className="col-n">TL tổng cuộn (Kg - ĐM)</th>
+                  <th className="col-n">TL tổng cuộn thực tế (Kg - AI)</th>
+                  <th className="col-n">TL VT trộn thực tế (Kg)</th>
+                  <th className="col-n">TL VT phụ (Kg)</th>
+                  <th className="col-n">Chênh lệch (AI - ĐM) Kg</th>
+                  <th className="col-n">Tỉ lệ chênh lệch</th>
                 </tr>
               </thead>
               <tbody>
@@ -740,103 +746,67 @@ export function AcceptanceReportPrintSheet({
                     <td className="center">{row.stt}</td>
                     <td>{row.amisCode}</td>
                     <td>{row.tenSp}</td>
-                    <td />
-                    <td />
                     <td className="right">{formatQtyPlain(row.soLuong)}</td>
+                    <td className="right">{formatKgPlain(row.dmRollKg)}</td>
                     <td className="right">{formatKgPlain(row.rollWeightKg)}</td>
-                    <td className="right">{formatKgPlain(row.plasticNormKg)}</td>
                     <td className="right">{formatKgPlain(row.totalNormKg)}</td>
-                    <td />
+                    <td className="right">{formatKgPlain(row.vtPhuKg)}</td>
+                    <td className="right">{formatKgPlain(row.diffKg)}</td>
+                    <td className="right">{row.diffPct != null ? `${row.diffPct.toFixed(2)}%` : ''}</td>
                   </tr>
                 ))}
                 <tr className="acceptance-nk-sx-print-total-row">
-                  <td colSpan={5} className="right strong">
-                    TỔNG CỘNG
+                  <td colSpan={3} className="right strong">
+                    Tổng
                   </td>
                   <td className="right strong">{formatQtyPlain(totalQty || null)}</td>
-                  <td />
-                  <td />
+                  <td className="right strong">{formatKgPlain(totalDmRollKg > 0 ? totalDmRollKg : null)}</td>
+                  <td className="right strong">{formatKgPlain(totalRollKg > 0 ? totalRollKg : null)}</td>
                   <td className="right strong">{formatKgPlain(totalNormKg > 0 ? totalNormKg : null)}</td>
-                  <td />
+                  <td className="right strong">{formatKgPlain(totalVtPhuKg > 0 ? totalVtPhuKg : null)}</td>
+                  <td className="right strong">{totalDmRollKg > 0 ? formatKgPlain(totalDiffKg) : ''}</td>
+                  <td className="right strong">{totalDiffPct != null ? `${totalDiffPct.toFixed(2)}%` : ''}</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <aside className="acceptance-nk-sx-print-side">
-            <p className="acceptance-nk-sx-print-section-label">II. BÁO CÁO SX CUỐI CA</p>
+            <p className="acceptance-nk-sx-print-section-label">II. BÁO CÁO HÀNG LỖI HỎNG</p>
             <table className="acceptance-nk-sx-print-side-table">
               <thead>
                 <tr>
-                  <th>TÊN LỖI HỎNG / PHẾ / SỰ CỐ SẢN XUẤT</th>
-                  <th className="col-side-qty">SỐ LƯỢNG</th>
+                  <th className="col-side-stt">STT</th>
+                  <th>Tên hàng lỗi hỏng</th>
+                  <th className="col-side-qty">Số lượng (Kg)</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from({ length: defectPadded }, (_, index) => {
-                  const line = defectLines[index];
-                  return (
-                    <tr key={line ? `${line.mat_hang}-${index}` : `defect-empty-${index}`}>
-                      <td>{line ? formatDefectLineName(line) : ''}</td>
-                      <td className="right">{line ? formatDefectLineQty(line) : ''}</td>
-                    </tr>
-                  );
-                })}
+                {DEFECT_GROUPS.map((name, index) => (
+                  <tr key={name}>
+                    <td className="center">{index + 1}</td>
+                    <td>{name}</td>
+                    <td className="right">{defectGroupKg[index] > 0 ? formatKgPlain(defectGroupKg[index]) : ''}</td>
+                  </tr>
+                ))}
+                <tr className="acceptance-nk-sx-print-total-row">
+                  <td colSpan={2} className="right strong">
+                    Tổng
+                  </td>
+                  <td className="right strong">{defectTotalKg > 0 ? formatKgPlain(defectTotalKg) : ''}</td>
+                </tr>
               </tbody>
             </table>
-
-            <div className="acceptance-nk-sx-print-summary">
-              <div className="acceptance-nk-sx-print-summary-row">
-                <span>1. ĐỊNH MỨC THÀNH PHẨM SX</span>
-                <strong>{totalNormKg > 0 ? `${formatKgPlain(totalNormKg)} KG` : '…… KG'}</strong>
-              </div>
-              <div className="acceptance-nk-sx-print-summary-row">
-                <span>2. Nhựa không màng, Nhựa đầu keo</span>
-                <strong>
-                  {nhuaKhongMangKg > 0 ? `${formatKgPlain(nhuaKhongMangKg)} KG` : '…… KG'}
-                </strong>
-              </div>
-              <div className="acceptance-nk-sx-print-summary-row">
-                <span>3. NHỰA THỰC DÙNG</span>
-                <strong>
-                  {nhuaThucDungKg > 0 ? `${formatKgPlain(nhuaThucDungKg)} KG` : '…… KG'}
-                </strong>
-              </div>
-              <div className="acceptance-nk-sx-print-summary-note">
-                (1) + (2) − (3) · Nhựa thực dùng − Định mức TP SX + nhựa không màng (ÂM là hao hụt)
-              </div>
-              <div className="acceptance-nk-sx-print-summary-result">
-                <strong>
-                  {totalNormKg > 0 || nhuaThucDungKg > 0
-                    ? `${formatKgPlain(haoHutKg)} KG`
-                    : '…… KG'}
-                </strong>
-              </div>
-            </div>
           </aside>
         </div>
 
         <div className="acceptance-nk-sx-print-signatures">
-          <div>
-            <p>Thủ kho</p>
-            <span>(Ký, họ tên)</span>
-          </div>
-          <div>
-            <p>Trưởng ca sản xuất</p>
-            <span>(Ký, họ tên)</span>
-          </div>
-          <div>
-            <p>Thợ máy</p>
-            <span>(Ký, họ tên)</span>
-          </div>
-          <div>
-            <p>Giao ca sau</p>
-            <span>(Ký, họ tên)</span>
-          </div>
-          <div>
-            <p>Quản lý sản xuất</p>
-            <span>(Ký, họ tên)</span>
-          </div>
+          {['Quản đốc', 'Thủ kho thành phẩm', 'Trưởng ca SX', 'CN phụ máy', 'CN chính máy'].map(role => (
+            <div key={role}>
+              <p>{role}</p>
+              <span>(Ký và ghi rõ họ tên)</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

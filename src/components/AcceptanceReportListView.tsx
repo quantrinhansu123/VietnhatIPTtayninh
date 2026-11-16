@@ -31,6 +31,7 @@ import {
   type ProductNplItem
 } from '../features/san-pham/types';
 import { normalizeMaterialsInventory } from '../features/kho-nvl';
+import { attachShiftLeads } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import {
   convertWarehouseQuantityToKg,
   isWarehouseKgUnit,
@@ -807,8 +808,8 @@ export default function AcceptanceReportListView({
     };
   }, [filterFromDate, filterToDate]);
 
-  const handlePrint = () => {
-    const slips = buildAcceptancePrintSlips(reportsWithNames);
+  const handlePrint = async () => {
+    const slips = await attachShiftLeads(buildAcceptancePrintSlips(reportsWithNames));
     if (slips.length === 0) {
       setError('Chưa có báo cáo sản lượng để in.');
       return;

@@ -5471,27 +5471,33 @@ input[type="number"] {
   background: #f7f7f7;
 }
 
-.acceptance-nk-sx-print-table .col-stt { width: 6mm; }
-.acceptance-nk-sx-print-table .col-amis { width: 18mm; }
+.acceptance-nk-sx-print-table .col-stt { width: 9mm; }
+.acceptance-nk-sx-print-table .col-amis { width: 27mm; white-space: nowrap; }
 .acceptance-nk-sx-print-table .col-sp { width: auto; }
 /* Cột trống «Trả kho» KG + Cuộn — rộng vừa, cân với các cột (3)–(6). */
 .acceptance-nk-sx-print-table .col-blank {
-  width: 8mm;
+  width: 11mm;
   padding: 0.8mm 0.4mm;
-  font-size: 10pt;
+  font-size: 9pt;
 }
 .acceptance-nk-sx-print-table .col-tra-kho {
-  width: 16mm;
-  max-width: 16mm;
+  width: 22mm;
+  max-width: 22mm;
   font-size: 8.5pt;
   line-height: 1.12;
   padding: 0.8mm 0.5mm;
 }
-.acceptance-nk-sx-print-table .col-qty { width: 12mm; }
-.acceptance-nk-sx-print-table .col-roll { width: 14mm; }
-.acceptance-nk-sx-print-table .col-norm { width: 12mm; }
-.acceptance-nk-sx-print-table .col-total { width: 16mm; }
-.acceptance-nk-sx-print-table .col-eval { width: 16mm; }
+.acceptance-nk-sx-print-table .col-qty { width: 17mm; }
+.acceptance-nk-sx-print-table .col-roll { width: 22mm; }
+.acceptance-nk-sx-print-table .col-norm { width: 17mm; }
+.acceptance-nk-sx-print-table .col-total { width: 22mm; }
+.acceptance-nk-sx-print-table .col-eval { width: 20mm; }
+/* Tiêu đề chỉ xuống dòng theo từ, không bẻ giữa từ. */
+.acceptance-nk-sx-print-table th {
+  word-break: normal;
+  overflow-wrap: normal;
+  font-size: 8.5pt;
+}
 
 .acceptance-nk-sx-print-table td.center,
 .acceptance-nk-sx-print-side-table td.center {

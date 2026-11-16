@@ -513,7 +513,6 @@ export function buildAcceptancePrintSlips(reports: AcceptanceReportSource[]): Ac
     });
 }
 
-const ACCEPTANCE_PRINT_MIN_ROWS = 12;
 
 function formatKgPlain(value: number | null | undefined, digits = 2) {
   if (value == null || !Number.isFinite(value)) return '';
@@ -565,7 +564,7 @@ export function AcceptanceReportPrintSheet({
   const performer = String(performedBy || '').trim();
   const dateParts = formatPrintDateParts(slip.ngay);
   const lines = slip.thanhPhamLines;
-  const paddedCount = Math.max(ACCEPTANCE_PRINT_MIN_ROWS, lines.length);
+  const paddedCount = lines.length;
 
   type ComputedRow = {
     key: string;

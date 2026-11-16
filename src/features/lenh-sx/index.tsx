@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { parseDateToIso } from '../../utils/dateFormat';
+import { productionOrderMachineMatches } from './machineFilter';
 import { BackButton } from '../../components/layout/NavButtons';
 import { pickText, fileToDataUrl, uploadImage } from '../_shared/recordHelpers';
 import { SearchableSelect } from '../../components/shared/SearchableSelect';
@@ -622,6 +623,17 @@ export function ProductionOrdersPanel({
 
   useEffect(() => {
     loadProductionOrders();
+    let cancelled = false;
+    void fetch('/api/danh-sach-may')
+      .then(async response => {
+        if (!response.ok) throw new Error('Không thể tải danh mục máy để lọc lệnh sản xuất.');
+        const data = await response.json();
+        if (!cancelled) setMachines(normalizeMachines(data));
+      })
+      .catch(error => {
+        if (!cancelled) setLoadError(error.message);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   const openEditModal = async (row: ProductionOrderRow) => {
@@ -748,7 +760,8 @@ export function ProductionOrdersPanel({
           return false;
         }
         const matchesStatus = selectedStatus === 'all' || row.status === selectedStatus;
-        const matchesMachine = selectedMachines.length === 0 || selectedMachines.includes(row.machine);
+        const matchesMachine = selectedMachines.length === 0 ||
+          selectedMachines.some(machine => productionOrderMachineMatches(machine, row.machine, machines));
         const matchesShift =
           selectedShifts.length === 0 ||
           selectedShifts.some(shift => shiftNamesMatch(shift, row.shift) || shift === row.shift);
@@ -820,6 +833,7 @@ export function ProductionOrdersPanel({
     rows,
     selectedStatus,
     selectedMachines,
+    machines,
     selectedShifts,
     selectedOrderCodes,
     dateFrom,
@@ -993,7 +1007,7 @@ export function ProductionOrdersPanel({
 
           <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
             {[
-              ['Lệnh SX', restrictToOwnAssignments ? filteredRows.length : rows.length],
+              ['Lệnh SX', filteredRows.length],
               ['Đang / chờ SX', activeCount]
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">

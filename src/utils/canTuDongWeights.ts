@@ -12,6 +12,9 @@ export type CanTuDongWeightRow = {
   /** Cột UI «Trọng lượng nhựa» ưu tiên tính SP − lõi − bì; các field này chỉ dự phòng. */
   khoi_luong_thuc?: number | string | null;
   net_weight?: number | string | null;
+  /** Trọng lượng bì (kg) đã lưu — API / metadata.SOURCE_BI_KG. */
+  trong_luong_bi?: number | string | null;
+  bi_kg?: number | string | null;
   ca?: string | null;
   lenh_sx?: string | null;
   ma_lenh_sx?: string | null;
@@ -51,8 +54,42 @@ export function resolveCanSpKg(row: CanTuDongWeightRow) {
   return asFiniteNumber(row.can_san_pham ?? row.weight);
 }
 
-/** Trọng lượng bì (kg) — mặc định 0,16; không làm tròn. */
-export function resolveTrongLuongBiKg(_row?: CanTuDongWeightRow) {
+function readCanTuDongMetadata(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata) return null;
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+  return null;
+}
+
+/**
+ * Trọng lượng bì (kg).
+ * Ưu tiên `metadata.SOURCE_BI_KG` (nơi nút Sửa bì / Tính lại luôn ghi),
+ * rồi cột `trong_luong_bi`, không có thì mặc định 0,16.
+ * (Tránh cột DB cũ che giá trị metadata vừa sửa.)
+ */
+export function resolveTrongLuongBiKg(row?: CanTuDongWeightRow) {
+  if (!row) return DEFAULT_CAN_TU_DONG_BI_KG;
+  const meta = readCanTuDongMetadata(row.metadata);
+  if (meta) {
+    const fromMeta = asFiniteNumber(
+      meta.SOURCE_BI_KG ?? meta.source_bi_kg ?? meta.trong_luong_bi ?? meta.bi_kg
+    );
+    if (fromMeta != null && fromMeta >= 0) return fromMeta;
+  }
+  const direct = asFiniteNumber(row.trong_luong_bi ?? row.bi_kg);
+  if (direct != null && direct >= 0) return direct;
   return DEFAULT_CAN_TU_DONG_BI_KG;
 }
 

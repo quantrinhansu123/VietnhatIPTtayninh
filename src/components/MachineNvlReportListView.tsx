@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { useTabAccess } from '../app/useTabAccess';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
+import type { MixingReport } from './MixingReportForm';
+import { normalizeMixingReport } from '../lib/mixingReportModel';
 import {
   buildMachineNvlReportGroups,
   computeMachineNvlDauCaDiscrepancy,
@@ -21,6 +23,11 @@ import {
   type MachineNvlSavedReport
 } from '../utils/machineNvlReports';
 import {
+  buildMachineNvlAllocatedMixingTable,
+  buildMachineNvlMixingRatioRows,
+  type MachineNvlMixingRatioRow
+} from '../utils/machineNvlMixingRatio';
+import {
   MachineNvlPrintBatch,
   savedReportToMachineNvlPrintReport,
   type MachineNvlPrintReport
@@ -31,7 +38,6 @@ import {
   shiftNamesMatch,
   type ShiftSetting
 } from '../utils/shiftSettings';
-import { formatWeighingWeightField } from '../utils/weighingRecords';
 import { mapMaterialToWeightCatalogItem, type WarehouseWeightCatalogItem } from '../utils/warehouseWeight';
 import {
   FilterCombobox,
@@ -39,8 +45,7 @@ import {
   TableSearchInput,
   TableDateFilter,
   RowActionsMenu,
-  TABLE_HEAD_CLASS,
-  TABLE_HEAD_STATIC_CLASS
+  TABLE_HEAD_CLASS
 } from './shared/table';
 
 const MACHINE_NVL_SECTIONS: { id: MachineNvlReportKind; title: string; emptyLabel: string }[] = [
@@ -218,6 +223,268 @@ function MachineNvlDetailLinesTable({
   );
 }
 
+function formatPercentCell(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return `${formatNumber(value, 4)}%`;
+}
+
+function MachineNvlMixingRatioTable({
+  rows,
+  sourceLabel
+}: {
+  rows: MachineNvlMixingRatioRow[];
+  sourceLabel?: string;
+}) {
+  const totalKl = rows.reduce((sum, row) => sum + (row.klThucTe > 0 ? row.klThucTe : 0), 0);
+  const hasActual = rows.some(row => row.tiLeThucTePercent != null);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-orange-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-200 bg-orange-50 px-3 py-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-orange-800">
+            Bảng tỉ lệ trộn
+          </p>
+          {sourceLabel ? (
+            <p className="mt-0.5 text-[10px] font-semibold text-orange-700/80">{sourceLabel}</p>
+          ) : null}
+        </div>
+        <p className="font-mono text-[11px] font-black text-orange-900">
+          {rows.length} NVL
+          {totalKl > 0 ? ` · ${formatNumber(totalKl, 3)} kg` : ''}
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-left text-[11px] sm:text-xs">
+          <thead className={`${TABLE_HEAD_CLASS} text-[9px] uppercase tracking-wider sm:text-[10px]`}>
+            <tr>
+              <th className="px-2.5 py-2.5 font-semibold">STT</th>
+              <th className="px-2.5 py-2.5 font-semibold">Mã NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">Tên NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">ĐVT</th>
+              <th
+                className="px-2.5 py-2.5 text-right font-semibold"
+                title="Tỉ lệ định mức trên phiếu phối trộn"
+              >
+                Tỉ lệ ĐM (%)
+              </th>
+              <th
+                className="px-2.5 py-2.5 text-right font-semibold"
+                title="Tỉ lệ trộn thực tế = KL NVL ÷ tổng KL × 100 (ngày · ca · máy)"
+              >
+                Tỉ lệ thực tế (%)
+              </th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">KL thực tế</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 bg-white">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center font-semibold text-zinc-400">
+                  Chưa có phiếu phối trộn khớp ngày · ca · máy.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${row.maNvl}-${row.tenNvl}-${index}`} className="hover:bg-orange-50/40">
+                  <td className="px-2.5 py-2 font-mono font-bold text-[#ef1b2d]">{index + 1}</td>
+                  <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{row.maNvl || '—'}</td>
+                  <td className="px-2.5 py-2 font-semibold text-zinc-700">{row.tenNvl || '—'}</td>
+                  <td className="px-2.5 py-2 text-zinc-600">{row.donVi || '—'}</td>
+                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
+                    {formatPercentCell(row.tiLeDinhMucPercent)}
+                  </td>
+                  <td className="px-2.5 py-2 text-right font-mono font-black text-orange-800">
+                    {formatPercentCell(row.tiLeThucTePercent)}
+                  </td>
+                  <td className="px-2.5 py-2 text-right font-mono font-bold text-zinc-800">
+                    {row.klThucTe > 0 ? formatNumber(row.klThucTe, 3) : '—'}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {rows.length > 0 ? (
+            <tfoot className="border-t border-orange-100 bg-orange-50/60">
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500"
+                >
+                  Tổng tỉ lệ thực tế
+                </td>
+                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-orange-800">
+                  {hasActual ? '100%' : '—'}
+                </td>
+                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
+                  {totalKl > 0 ? `${formatNumber(totalKl, 3)} kg` : '—'}
+                </td>
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MachineNvlAllocatedMixingTable({
+  report,
+  ratioRows,
+  weightCatalog
+}: {
+  report: MachineNvlSavedReport;
+  ratioRows: MachineNvlMixingRatioRow[];
+  weightCatalog?: WarehouseWeightCatalogItem[] | null;
+}) {
+  const allocated = useMemo(
+    () => buildMachineNvlAllocatedMixingTable(report, ratioRows, weightCatalog),
+    [report, ratioRows, weightCatalog]
+  );
+  const tonKyLabel = report.reportKind === 'dau_ca' ? 'Tồn đầu kỳ' : 'Tồn cuối kỳ';
+  const tongLabel = report.reportKind === 'dau_ca' ? 'Tổng đầu' : 'Tổng cuối';
+
+  if (allocated.rows.length === 0) return null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-800">
+            NVL trộn · {tonKyLabel}
+          </p>
+          <p className="mt-0.5 text-[10px] font-semibold text-zinc-600">
+            {allocated.allocatedFromNhuaTron
+              ? `Đã trộn = NHUA-TRON (${formatNumber(allocated.nhuaTronKg, 3)} kg) × tỉ lệ thực tế · Tồn ngoài = SL TỒN từng mã`
+              : 'Chưa có NHUA-TRON — hiển thị SL TỒN từng mã kèm tỉ lệ trộn (nếu có)'}
+          </p>
+        </div>
+        <p className="font-mono text-[11px] font-black text-emerald-800">
+          {formatNumber(allocated.totalKg, 4)} kg
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-left text-[11px] sm:text-xs">
+          <thead className={`${TABLE_HEAD_CLASS} text-[9px] uppercase tracking-wider sm:text-[10px]`}>
+            <tr>
+              <th className="px-2.5 py-2.5 font-semibold">Mã NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">Tên NVL</th>
+              <th className="px-2.5 py-2.5 font-semibold">ĐVT</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">SL</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Tỉ lệ %</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Đã trộn</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">Tồn ngoài</th>
+              <th className="px-2.5 py-2.5 text-right font-semibold">{tongLabel}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 bg-white">
+            {allocated.rows.map((row, index) => (
+              <tr key={`${row.maNvl}-${index}`} className="hover:bg-zinc-50/80">
+                <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{row.maNvl || '—'}</td>
+                <td className="px-2.5 py-2 font-semibold text-zinc-700">{row.tenNvl || '—'}</td>
+                <td className="px-2.5 py-2 text-zinc-600">{row.donVi || '—'}</td>
+                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
+                  {row.slTon > 0 ? formatNumber(row.slTon, 3) : '—'}
+                </td>
+                <td className="px-2.5 py-2 text-right font-mono font-black text-orange-800">
+                  {formatPercentCell(row.tiLePercent)}
+                </td>
+                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
+                  {row.daTronKg > 0 ? formatNumber(row.daTronKg, 4) : '—'}
+                </td>
+                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
+                  {row.tonNgoaiKg > 0 ? formatNumber(row.tonNgoaiKg, 4) : '—'}
+                </td>
+                <td className="px-2.5 py-2 text-right font-mono font-black text-emerald-800">
+                  {row.tongKg > 0 ? formatNumber(row.tongKg, 4) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t border-zinc-200 bg-[#e8f0ed]/50">
+            <tr>
+              <td
+                colSpan={4}
+                className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500"
+              >
+                Tổng
+              </td>
+              <td />
+              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
+                {allocated.totalDaTronKg > 0 ? formatNumber(allocated.totalDaTronKg, 4) : '—'}
+              </td>
+              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
+                {allocated.totalTonNgoaiKg > 0 ? formatNumber(allocated.totalTonNgoaiKg, 4) : '—'}
+              </td>
+              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
+                {formatNumber(allocated.totalKg, 4)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MachineNvlReportDetailBlocks({
+  report,
+  mixingReports,
+  weightCatalog
+}: {
+  report: MachineNvlSavedReport;
+  mixingReports: MixingReport[];
+  weightCatalog?: WarehouseWeightCatalogItem[] | null;
+}) {
+  const isDauCa = report.reportKind === 'dau_ca';
+  const { nvlTron, vatTuKhac } = useMemo(
+    () => splitMachineNvlLinesByMaterialGroup(report.lines),
+    [report.lines]
+  );
+  const ratioRows = useMemo(
+    () =>
+      buildMachineNvlMixingRatioRows(mixingReports, {
+        ngay: report.ngay,
+        ca: report.ca,
+        maMay: report.maMay,
+        tenMay: report.tenMay
+      }),
+    [mixingReports, report.ngay, report.ca, report.maMay, report.tenMay]
+  );
+
+  return (
+    <div className="space-y-2.5">
+      <MachineNvlDetailLinesTable
+        title="Vật tư trộn"
+        accentClass="border-zinc-200 bg-[#e8f0ed] text-zinc-800"
+        lines={nvlTron}
+        isDauCa={isDauCa}
+        emptyLabel="Không có vật tư trộn (nhựa)."
+        weightCatalog={weightCatalog}
+      />
+      <MachineNvlMixingRatioTable
+        rows={ratioRows}
+        sourceLabel={`Nguồn: báo cáo phối trộn ${report.ngay} · ${report.ca || '—'} · ${
+          report.tenMay || report.maMay || '—'
+        }`}
+      />
+      <MachineNvlAllocatedMixingTable
+        report={report}
+        ratioRows={ratioRows}
+        weightCatalog={weightCatalog}
+      />
+      <MachineNvlDetailLinesTable
+        title="Vật tư không trộn"
+        accentClass="border-zinc-200 bg-zinc-50 text-zinc-800"
+        lines={vatTuKhac}
+        isDauCa={isDauCa}
+        emptyLabel="Không có vật tư không trộn (màng / lõi / bao bì)."
+        weightCatalog={weightCatalog}
+      />
+    </div>
+  );
+}
+
 function MachineNvlReportDetailModal({
   report,
   onClose,
@@ -225,7 +492,8 @@ function MachineNvlReportDetailModal({
   onPrint,
   canEdit = false,
   discrepancy = null,
-  weightCatalog = null
+  weightCatalog = null,
+  mixingReports = []
 }: {
   report: MachineNvlSavedReport;
   onClose: () => void;
@@ -234,13 +502,10 @@ function MachineNvlReportDetailModal({
   canEdit?: boolean;
   discrepancy?: MachineNvlDiscrepancy | null;
   weightCatalog?: WarehouseWeightCatalogItem[] | null;
+  mixingReports?: MixingReport[];
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const totalKg = reportTotal(report, weightCatalog);
-  const { nvlTron, vatTuKhac } = useMemo(
-    () => splitMachineNvlLinesByMaterialGroup(report.lines),
-    [report.lines]
-  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -321,33 +586,16 @@ function MachineNvlReportDetailModal({
             </div>
           ) : null}
 
-          <div className="space-y-3">
-            <MachineNvlDetailLinesTable
-              title="Vật tư trộn"
-              accentClass="border-zinc-200 bg-[#e8f0ed] text-zinc-800"
-              lines={nvlTron}
-              isDauCa={isDauCa}
-              emptyLabel="Không có vật tư trộn (nhựa)."
-              weightCatalog={weightCatalog}
-            />
-            <MachineNvlDetailLinesTable
-              title="Vật tư không trộn"
-              accentClass="border-zinc-200 bg-zinc-50 text-zinc-800"
-              lines={vatTuKhac}
-              isDauCa={isDauCa}
-              emptyLabel="Không có vật tư không trộn (màng / lõi / bao bì)."
-              weightCatalog={weightCatalog}
-            />
-          </div>
+          <MachineNvlReportDetailBlocks
+            report={report}
+            mixingReports={mixingReports}
+            weightCatalog={weightCatalog}
+          />
 
           {report.lines.length > 0 ? (
             <p className="mt-3 text-right text-[11px] font-semibold text-zinc-500">
               Tổng cộng:{' '}
               <span className="font-mono font-black text-emerald-800">{formatNumber(totalKg, 6)} kg</span>
-              <span className="ml-2 text-zinc-400">
-                (trộn {formatNumber(sumLinesKg(nvlTron, isDauCa, weightCatalog), 6)} + không trộn{' '}
-                {formatNumber(sumLinesKg(vatTuKhac, isDauCa, weightCatalog), 6)})
-              </span>
             </p>
           ) : null}
 
@@ -409,7 +657,8 @@ function MachineNvlSection({
   canEdit = false,
   canDelete = false,
   discrepancies,
-  weightCatalog = null
+  weightCatalog = null,
+  mixingReports = []
 }: {
   kind: MachineNvlReportKind;
   title: string;
@@ -431,6 +680,7 @@ function MachineNvlSection({
   canDelete?: boolean;
   discrepancies?: Map<string, MachineNvlDiscrepancy>;
   weightCatalog?: WarehouseWeightCatalogItem[] | null;
+  mixingReports?: MixingReport[];
 }) {
   const reportIds = useMemo(
     () =>
@@ -523,139 +773,169 @@ function MachineNvlSection({
                       <p className="font-mono text-sm font-black text-emerald-800">{formatNumber(dateTotal, 6)} kg</p>
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[880px] border-collapse text-left text-[11px] sm:text-xs">
-                      <thead className={`${TABLE_HEAD_STATIC_CLASS} text-[9px] sm:text-[10px]`}>
-                        <tr className="border-b border-zinc-200">
-                          <th className="w-11 px-3 py-2.5 text-center font-semibold">
-                            {canDelete ? (
-                              <input
-                                type="checkbox"
-                                checked={allSelected}
-                                onChange={() => onToggleSelectAll(reportIds)}
-                                aria-label="Chọn tất cả"
-                                className="h-4 w-4 accent-[#ef1b2d]"
-                              />
-                            ) : null}
-                          </th>
-                          <th className="px-3 py-2.5 font-semibold">Ca</th>
-                          <th className="px-3 py-2.5 font-semibold">Máy</th>
-                          <th className="px-3 py-2.5 font-semibold">Nhân sự</th>
-                          <th className="px-3 py-2.5 font-semibold">Giờ</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Số NVL</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Tổng (kg)</th>
-                          <th className="px-3 py-2.5 font-semibold">Ghi chú</th>
-                          <th className="px-3 py-2.5 text-center font-semibold">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100">
-                        {dateRows.map(({ shiftGroup, machineGroup, report }) => {
-                          const discrepancy = discrepancies?.get(report.id);
-                          return (
-                          <tr
-                            key={report.id || `${report.ngay}-${report.maMay}-${report.ca}`}
-                            className="align-middle transition hover:bg-red-50/20"
-                          >
-                            <td className="px-3 py-2.5 text-center">
+                  <div className="space-y-3 p-2 sm:p-3">
+                    {canDelete && reportIds.length > 0 ? (
+                      <label className="inline-flex items-center gap-2 px-1 text-[11px] font-semibold text-zinc-600">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={() => onToggleSelectAll(reportIds)}
+                          aria-label="Chọn tất cả"
+                          className="h-4 w-4 accent-[#ef1b2d]"
+                        />
+                        Chọn tất cả phiếu ngày này
+                      </label>
+                    ) : null}
+                    {dateRows.map(({ shiftGroup, machineGroup, report }) => {
+                      const discrepancy = discrepancies?.get(report.id);
+                      return (
+                        <article
+                          key={report.id || `${report.ngay}-${report.maMay}-${report.ca}`}
+                          className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-200 bg-zinc-50/90 px-3 py-2.5 sm:px-4">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-3 gap-y-2">
                               {canDelete ? (
                                 <input
                                   type="checkbox"
                                   checked={selectedIds.has(report.id)}
                                   onChange={() => onToggleSelected(report.id)}
-                                  aria-label="Chọn dòng"
-                                  className="h-4 w-4 accent-[#ef1b2d]"
+                                  aria-label="Chọn phiếu"
+                                  className="mt-1 h-4 w-4 accent-[#ef1b2d]"
                                 />
                               ) : null}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className="inline-flex rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-black text-zinc-800">
-                                {shiftGroup.ca || '—'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <p className="font-bold text-zinc-800">{machineGroup.tenMay || machineGroup.maMay || '—'}</p>
-                              {machineGroup.maMay && machineGroup.tenMay ? (
-                                <p className="mt-0.5 font-mono text-[10px] text-zinc-400">{machineGroup.maMay}</p>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2.5 font-semibold text-zinc-600">{report.nhanSu || '—'}</td>
-                            <td className="px-3 py-2.5 font-mono text-zinc-500">{report.gio || '—'}</td>
-                            <td className="px-3 py-2.5 text-right font-mono font-bold text-zinc-700">{report.lines.length}</td>
-                            <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <span>{formatNumber(reportTotal(report, weightCatalog), 6)}</span>
-                                {discrepancy ? (
-                                  <span
-                                    title={formatMachineNvlDiscrepancyTooltip(discrepancy)}
-                                    className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 ring-1 ring-amber-200"
-                                  >
-                                    <AlertTriangle className="h-3 w-3" />
-                                    Chênh lệch
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="inline-flex rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-black text-zinc-800">
+                                    {shiftGroup.ca || '—'}
                                   </span>
-                                ) : null}
+                                  <span className="font-bold text-zinc-900">
+                                    {machineGroup.tenMay || machineGroup.maMay || '—'}
+                                  </span>
+                                  {machineGroup.maMay && machineGroup.tenMay ? (
+                                    <span className="font-mono text-[10px] text-zinc-400">{machineGroup.maMay}</span>
+                                  ) : null}
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
+                                    {report.lines.length} NVL
+                                  </span>
+                                  {discrepancy ? (
+                                    <span
+                                      title={formatMachineNvlDiscrepancyTooltip(discrepancy)}
+                                      className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700 ring-1 ring-amber-200"
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                      Chênh lệch
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 text-[11px] font-semibold text-zinc-500">
+                                  {report.nhanSu || '—'}
+                                  {report.gio ? ` · ${report.gio}` : ''}
+                                  {report.note ? ` · ${report.note}` : ''}
+                                </p>
                               </div>
-                            </td>
-                            <td className="max-w-[180px] px-3 py-2.5">
-                              <span className="block truncate text-zinc-500" title={report.note || undefined}>
-                                {report.note || '—'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5">
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-right">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                                  Tổng (kg)
+                                </p>
+                                <p className="font-mono text-sm font-black text-emerald-800">
+                                  {formatNumber(reportTotal(report, weightCatalog), 6)}
+                                </p>
+                              </div>
                               <RowActionsMenu label={`Thao tác báo cáo ${report.maMay || report.tenMay}`}>
-                              <div className="flex flex-wrap items-center justify-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => onView(report)}
-                                  className={`${actionBtnClass} border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100`}
-                                  title="Xem chi tiết"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                  Xem
-                                </button>
-                                {canEdit && !report.daIn ? (
+                                <div className="flex flex-wrap items-center justify-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => onEdit(report)}
-                                    className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
-                                    title="Sửa báo cáo"
+                                    onClick={() => onView(report)}
+                                    className={`${actionBtnClass} border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100`}
+                                    title="Xem chi tiết"
                                   >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                    Sửa
+                                    <Eye className="h-3.5 w-3.5" />
+                                    Xem
                                   </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => onPrint(report)}
-                                  className={`${actionBtnClass} border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50`}
-                                  title="In phiếu"
-                                >
-                                  <Printer className="h-3.5 w-3.5" />
-                                  In
-                                </button>
-                                {canDelete ? (
+                                  {canEdit && !report.daIn ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => onEdit(report)}
+                                      className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`}
+                                      title="Sửa báo cáo"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Sửa
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
-                                    onClick={() => onDelete(report.id)}
-                                    disabled={deletingId === report.id}
-                                    className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
-                                    title="Xóa báo cáo"
+                                    onClick={() => onPrint(report)}
+                                    className={`${actionBtnClass} border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50`}
+                                    title="In phiếu"
                                   >
-                                    {deletingId === report.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    )}
-                                    Xoá
+                                    <Printer className="h-3.5 w-3.5" />
+                                    In
                                   </button>
-                                ) : null}
-                              </div>
+                                  {canDelete ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => onDelete(report.id)}
+                                      disabled={deletingId === report.id}
+                                      className={`${actionBtnClass} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`}
+                                      title="Xóa báo cáo"
+                                    >
+                                      {deletingId === report.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                      Xoá
+                                    </button>
+                                  ) : null}
+                                </div>
                               </RowActionsMenu>
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2.5 p-2.5 sm:p-3">
+                            {discrepancy && discrepancy.diffs.length > 0 ? (
+                              <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                                  <p className="text-[11px] font-black text-amber-800">
+                                    Chênh lệch với tồn cuối ca trước ({discrepancy.previous.ngay} ·{' '}
+                                    {discrepancy.previous.ca || '—'})
+                                  </p>
+                                </div>
+                                <ul className="mt-1.5 space-y-0.5">
+                                  {discrepancy.diffs.map(diff => (
+                                    <li
+                                      key={diff.code || diff.name}
+                                      className="text-[10px] font-semibold text-amber-800 sm:text-[11px]"
+                                    >
+                                      <span className="font-mono font-black">{diff.code || diff.name}</span>
+                                      {diff.name && diff.code ? (
+                                        <span className="text-amber-700"> — {diff.name}</span>
+                                      ) : null}
+                                      : cuối ca trước{' '}
+                                      <span className="font-mono font-black">{formatQty(diff.expected)}</span> →
+                                      đầu ca này{' '}
+                                      <span className="font-mono font-black">{formatQty(diff.actual)}</span>{' '}
+                                      {diff.unit}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+
+                            <MachineNvlReportDetailBlocks
+                              report={report}
+                              mixingReports={mixingReports}
+                              weightCatalog={weightCatalog}
+                            />
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -718,6 +998,7 @@ export default function MachineNvlReportListView({
   const [viewingReport, setViewingReport] = useState<MachineNvlSavedReport | null>(null);
   const [listTab, setListTab] = useState<MachineNvlReportKind>('dau_ca');
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
+  const [mixingReports, setMixingReports] = useState<MixingReport[]>([]);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
@@ -791,13 +1072,19 @@ export default function MachineNvlReportListView({
     if (tuNgay) params.set('tu_ngay', tuNgay);
     if (denNgay) params.set('den_ngay', denNgay);
 
-    const [dauCaRes, cuoiCaRes] = await Promise.all([
+    const mixingParams = new URLSearchParams();
+    if (tuNgay) mixingParams.set('tu_ngay', tuNgay);
+    if (denNgay) mixingParams.set('den_ngay', denNgay);
+
+    const [dauCaRes, cuoiCaRes, mixingRes] = await Promise.all([
       fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=dau_ca`),
-      fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=cuoi_ca`)
+      fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=cuoi_ca`),
+      fetch(`/api/bao-cao-phoi-tron?${mixingParams.toString()}`)
     ]);
-    const [dauCaData, cuoiCaData] = await Promise.all([
+    const [dauCaData, cuoiCaData, mixingData] = await Promise.all([
       dauCaRes.json().catch(() => ({})),
-      cuoiCaRes.json().catch(() => ({}))
+      cuoiCaRes.json().catch(() => ({})),
+      mixingRes.json().catch(() => ({}))
     ]);
 
     if (!dauCaRes.ok || !cuoiCaRes.ok) {
@@ -810,6 +1097,14 @@ export default function MachineNvlReportListView({
 
     setDauCaReports(normalizeMachineNvlReports(dauCaData));
     setCuoiCaReports(normalizeMachineNvlReports(cuoiCaData));
+    if (mixingRes.ok) {
+      const list = Array.isArray((mixingData as { reports?: unknown }).reports)
+        ? ((mixingData as { reports: Record<string, unknown>[] }).reports)
+        : [];
+      setMixingReports(list.map(item => normalizeMixingReport(item)));
+    } else {
+      setMixingReports([]);
+    }
   };
 
   useEffect(() => {
@@ -1155,6 +1450,7 @@ export default function MachineNvlReportListView({
           canDelete={canDelete}
           discrepancies={dauCaDiscrepancies}
           weightCatalog={weightCatalog}
+          mixingReports={mixingReports}
         />
       ) : (
         <MachineNvlSection
@@ -1177,6 +1473,7 @@ export default function MachineNvlReportListView({
           canEdit={canEdit}
           canDelete={canDelete}
           weightCatalog={weightCatalog}
+          mixingReports={mixingReports}
         />
       )}
 
@@ -1188,6 +1485,7 @@ export default function MachineNvlReportListView({
           onPrint={handlePrint}
           canEdit={canEdit}
           weightCatalog={weightCatalog}
+          mixingReports={mixingReports}
           discrepancy={
             viewingReport.reportKind === 'dau_ca' ? dauCaDiscrepancies.get(viewingReport.id) ?? null : null
           }

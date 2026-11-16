@@ -28,6 +28,8 @@ Khi tách feature mới: cập nhật manifest (`appLines` → `src/features/...
 
 ## Danh sách bảng
 
+Quy đổi vật liệu trong hub `/danh-sach-bao-cao`: [quy_doi_vat_lieu.md](./quy_doi_vat_lieu.md).
+
 | Bảng | Tab / Route | Manifest |
 |------|-------------|----------|
 | `reports` | `/nhap-bao-cao` | [reports.md](./reports.md) |

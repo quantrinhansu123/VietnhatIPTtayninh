@@ -3,6 +3,7 @@
  * AI: đọc manifest `docs/ai-tables/<table>.md` trước — frontend đã tách vào `src/features/<slug>/`.
  */
 export type TableId =
+  | 'quy_doi_vat_lieu'
   | 'reports'
   | 'phieu_can_dinh_ki'
   | 'can_tu_dong'
@@ -71,6 +72,17 @@ export interface TableRegistryEntry {
 }
 
 export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
+  quy_doi_vat_lieu: {
+    table: 'quy_doi_vat_lieu',
+    label: 'Quy đổi vật liệu',
+    sql: ['supabase-quy-doi-vat-lieu.sql'],
+    apiPrefix: '/api/quy-doi-vat-lieu',
+    serverLines: 'Router: src/features/quy-doi-vat-lieu/server.ts',
+    appTab: 'report-lists → material-conversion',
+    appLines: 'src/features/report-lists/ReportListsHub.tsx',
+    components: ['src/features/quy-doi-vat-lieu/index.tsx'],
+    utils: ['src/features/quy-doi-vat-lieu/validation.ts']
+  },
   reports: {
     table: 'reports',
     label: 'Báo cáo sản lượng ca (legacy)',
@@ -601,13 +613,13 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   bao_cao_nghiem_thu: {
     table: 'bao_cao_nghiem_thu',
     label: 'Báo cáo sản lượng / nghiệm thu',
-    sql: ['supabase-bao-cao-nghiem-thu.sql'],
+    sql: ['supabase-bao-cao-nghiem-thu.sql', 'supabase-bao-cao-nghiem-thu-trong-luong.sql'],
     apiPrefix: '/api/bao-cao-nghiem-thu',
     serverLines: '5708–5833',
     appTab: 'acceptance-report | acceptance-report-list',
     appLines: 'src/components/AcceptanceReportForm.tsx, src/components/AcceptanceReportListView.tsx',
     components: ['src/components/AcceptanceReportForm.tsx', 'src/components/AcceptanceReportListView.tsx', 'src/components/AcceptanceReportFlatTable.tsx', 'src/components/AcceptanceReportPrintSheet.tsx'],
-    utils: []
+    utils: ['src/utils/acceptanceWeightSnapshot.ts']
   },
   bao_cao_san_luong_nvl_dinh_muc: {
     table: 'bao_cao_san_luong_nvl_dinh_muc',

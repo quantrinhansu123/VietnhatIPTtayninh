@@ -41,7 +41,7 @@ Tab `dashboard` / `dashboard-auto` → `/phan-tich-tu-dong` — thẻ **Báo cá
 
 ## Utils
 
-Mẫu in BB mục 3.2: cột **Số lượng thành phẩm** = Σ(sản lượng thực tế từng SP, cùng nguồn mục 2 × định lượng số lượng NVL/SP). Định lượng ưu tiên BOM, thiếu thì lấy định mức snapshot Báo cáo sản lượng (snapshot cũ: SL NVL / SL SP). Trọng lượng nhập thành phẩm vẫn mirror tab tiêu hao NVL.
+Mẫu in BB mục 3.2: cột **Số lượng thành phẩm** = Σ(sản lượng thực tế từng SP, cùng nguồn mục 2 × định lượng số lượng NVL/SP). Định lượng ưu tiên BOM, thiếu thì lấy định mức snapshot Báo cáo sản lượng (snapshot cũ: SL NVL / SL SP). **Trọng lượng vật tư nhập thành phẩm:** 3.1 = cùng **Trọng lượng thực tế** tab Thành phẩm đạt nhập kho (`Σ productGroup.weightKg`) × tỉ lệ TB thực tế; 3.2 = chỉ `nvlTotals.actualWeightKg`. Không fallback ĐM/catalog.
 
 Cột Lần 1…n và Tổng nhựa trộn trên bảng giao ca chỉ cộng `kl_thuc_te`; bằng 0/chưa nhập để trống, không thay bằng `so_luong` hoặc `tong_nhua_tron` định mức. Phiếu cũ không có chi tiết lần chỉ dùng `kl_thuc_te` của dòng.
 

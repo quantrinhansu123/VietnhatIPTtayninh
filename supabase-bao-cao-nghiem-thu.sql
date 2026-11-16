@@ -21,6 +21,12 @@ alter table public.bao_cao_nghiem_thu
   add column if not exists so_luong_ai numeric,
   add column if not exists trong_luong numeric,
   add column if not exists don_vi_trong_luong text default 'Kg',
+  add column if not exists trong_luong_loi numeric,
+  add column if not exists trong_luong_bi numeric,
+  add column if not exists trong_luong_mang numeric,
+  add column if not exists trong_luong_nhua numeric,
+  add column if not exists so_lan_can integer,
+  add column if not exists trong_luong_dong_bo_luc timestamptz,
   add column if not exists ghi_chu text,
   add column if not exists hinh_anh text,
   add column if not exists hinh_anh_public_id text;

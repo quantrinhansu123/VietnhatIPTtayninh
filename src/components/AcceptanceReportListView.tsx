@@ -11,7 +11,9 @@ import {
   buildAcceptanceProductNormByCode,
   isAcceptanceThanhPhamLoai
 } from './AcceptanceReportPrintSheet';
-import AcceptanceReportFlatTable from './AcceptanceReportFlatTable';
+import AcceptanceReportFlatTable, {
+  type NvlWeightGroupTotals
+} from './AcceptanceReportFlatTable';
 import { normalizeShiftSettings, type ShiftSetting } from '../utils/shiftSettings';
 import type { AcceptanceReport } from './AcceptanceReportForm';
 import { normalizeReportFromApi } from './AcceptanceReportForm';
@@ -26,6 +28,7 @@ import {
   formatNplDecimal,
   formatNplWeightKg,
   formatProductNplAmount,
+  normalizeNvlMatchKey,
   normalizeProductCodeKey,
   parseProductNplItems,
   type ProductNplItem
@@ -34,15 +37,21 @@ import { normalizeMaterialsInventory } from '../features/kho-nvl';
 import { attachShiftLeads } from '../features/ke-hoach-san-xuat/relatedReportsPrint';
 import {
   convertWarehouseQuantityToKg,
+  findMaterialTongKgPerUnit,
   isWarehouseKgUnit,
+  isWarehouseRollUnit,
   mapMaterialToWeightCatalogItem,
   type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
+import { isWarehouseBagExportItem } from '../utils/controlBoardShiftSummary';
 import {
   filterCanTuDongRecordsForBoard,
   sumCanTuDongCanSanPhamKg,
   type CanTuDongWeightRow
 } from '../utils/canTuDongWeights';
+import { calculateAcceptanceWeightSnapshot } from '../utils/acceptanceWeightSnapshot';
+import { normalizeMixingReport } from '../lib/mixingReportModel';
+import { buildMachineNvlMixingRatioRows } from '../utils/machineNvlMixingRatio';
 
 type ProductNameOption = {
   code: string;
@@ -74,6 +83,8 @@ type NvlViewState = {
   savedAt?: string;
   /** Tổng Cân sản phẩm từ phiếu cân AI khớp ngày·ca·máy·mã SP. */
   actualWeightKg: number | null;
+  /** Nhựa thực tế (Cân SP − lõi − bì − màng) — ô đầu modal + cơ sở NVL %. */
+  actualNhuaKg: number | null;
   actualWeightCount: number;
 };
 
@@ -140,57 +151,107 @@ function mergeNplItemsWithCatalog(
 }
 
 /**
- * Trọng lượng cuộn dùng cho NVL %:
- * 1) Tổng Cân sản phẩm (cân AI, cả lõi)
- * 2) SL × kg/cuộn định mức (Tổng TL SP / kg trong tên)
- * 3) Trọng lượng đã lưu trên phiếu
+ * Trọng lượng tổng (Cân SP) — chỉ nguồn chính:
+ * 1) Tổng Cân sản phẩm từ cân AI
+ * 2) `trong_luong` đã lưu trên phiếu (sau Đồng bộ)
+ * Không ước từ định mức danh mục.
  */
 function resolveSlipKhoiLuongKg(
   report: Pick<AcceptanceReport, 'trong_luong'>,
-  catalog: ProductCatalogEntry | null | undefined,
-  quantity: number,
   actualCanSpKg?: number | null
 ): number | null {
   if (actualCanSpKg != null && Number.isFinite(actualCanSpKg) && actualCanSpKg > 0) {
-    return actualCanSpKg;
-  }
-  if (catalog?.totalWeightKg != null && catalog.totalWeightKg > 0 && quantity > 0) {
-    return Math.round(catalog.totalWeightKg * quantity * 1000) / 1000;
+    return Math.round(actualCanSpKg * 1000) / 1000;
   }
   const fromReport = Number(report.trong_luong);
-  if (Number.isFinite(fromReport) && fromReport > 0) return fromReport;
+  if (Number.isFinite(fromReport) && fromReport > 0) return Math.round(fromReport * 1000) / 1000;
+  return null;
+}
+
+/**
+ * Nhựa thực tế — chỉ nguồn chính:
+ * 1) Snapshot cân AI (Cân SP − lõi − bì − màng)
+ * 2) `trong_luong_nhua` đã lưu trên phiếu
+ * Không ước từ ĐM / danh mục.
+ */
+function resolveNhuaThucTeKg(
+  report: Pick<AcceptanceReport, 'trong_luong_nhua'>,
+  actualNhuaKg?: number | null
+): number | null {
+  if (actualNhuaKg != null && Number.isFinite(actualNhuaKg) && actualNhuaKg > 0) {
+    return Math.round(actualNhuaKg * 1000) / 1000;
+  }
+  const stored = Number(report.trong_luong_nhua);
+  if (Number.isFinite(stored) && stored > 0) {
+    return Math.round(stored * 1000) / 1000;
+  }
   return null;
 }
 
 /**
  * Trọng lượng NVL:
- * - %: trọng lượng cuộn (Cân sản phẩm) × %
+ * - % (vật tư trộn): chỉ **nhựa thực tế** × % (không fallback Cân SP)
  * - Cái/ĐVT khác: định lượng Thành phần × SL sản lượng, quy kg
  */
 function resolveNvlTrongLuongKg(
   item: ProductNplItem,
   productQty: number,
-  slipKhoiLuongKg: number | null,
-  materials: WarehouseWeightCatalogItem[]
+  _slipKhoiLuongKg: number | null,
+  materials: WarehouseWeightCatalogItem[],
+  nhuaThucTeKg?: number | null
 ): number | null {
   if (item.amountType === 'percent') {
-    if (item.percent == null || !Number.isFinite(item.percent) || slipKhoiLuongKg == null || !(slipKhoiLuongKg > 0)) {
+    if (
+      item.percent == null ||
+      !Number.isFinite(item.percent) ||
+      nhuaThucTeKg == null ||
+      !Number.isFinite(nhuaThucTeKg) ||
+      !(nhuaThucTeKg > 0)
+    ) {
       return null;
     }
-    return Math.round(slipKhoiLuongKg * (item.percent / 100) * 10000) / 10000;
+    return Math.round(nhuaThucTeKg * (item.percent / 100) * 10000) / 10000;
   }
 
-  if (item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg >= 0 && productQty > 0) {
-    return Math.round(item.weightKg * productQty * 10000) / 10000;
-  }
-
-  const qtyPerSp =
-    item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : null;
-  if (qtyPerSp == null || !(productQty > 0)) return null;
-  const totalQty = qtyPerSp * productQty;
+  if (!(productQty > 0)) return null;
   const unit = String(item.unit || '').trim();
+  const piecesPerSp =
+    item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+      ? item.quantity
+      : null;
+  const bomKg =
+    item.weightKg != null && Number.isFinite(item.weightKg) && item.weightKg >= 0
+      ? item.weightKg
+      : null;
+
+  // ĐVT kg: so_luong đã là kg trên 1 SP (hoặc tổng kg).
   if (isKgUnit(unit) || isWarehouseKgUnit(unit)) {
-    return Math.round(totalQty * 10000) / 10000;
+    if (piecesPerSp == null) return null;
+    return Math.round(piecesPerSp * productQty * 10000) / 10000;
+  }
+
+  const catalogKg = findMaterialTongKgPerUnit(item.code, materials);
+
+  // Cuộn (băng keo): nếu khoi_luong_kg << Tổng kg/cuộn → kg trên 1 SP thành phẩm.
+  if (isWarehouseRollUnit(unit)) {
+    const kgIsPerFinishedProduct =
+      bomKg != null && catalogKg != null && catalogKg > 0 && bomKg < catalogKg * 0.5;
+    if (kgIsPerFinishedProduct) {
+      return Math.round(productQty * bomKg * 10000) / 10000;
+    }
+    const pieces = piecesPerSp ?? 1;
+    const totalQty = productQty * pieces;
+    const kgEach = catalogKg ?? bomKg;
+    if (kgEach == null || !(kgEach > 0)) return null;
+    return Math.round(totalQty * kgEach * 10000) / 10000;
+  }
+
+  // Cái / ống / túi: TL = SL NVL × kg/cái (khoi_luong_kg hoặc Tổng kg kho NVL).
+  const pieces = piecesPerSp ?? 1;
+  const totalQty = productQty * pieces;
+  const kgEach = bomKg ?? catalogKg;
+  if (kgEach != null && kgEach >= 0) {
+    return Math.round(totalQty * kgEach * 10000) / 10000;
   }
 
   const converted = convertWarehouseQuantityToKg({
@@ -199,7 +260,7 @@ function resolveNvlTrongLuongKg(
     itemCode: item.code,
     warehouseKind: 'nvl',
     materials,
-    preferTongKgOnly: false
+    preferTongKgOnly: true
   });
   if (converted != null && Number.isFinite(converted) && converted > 0) {
     return Math.round(converted * 10000) / 10000;
@@ -213,6 +274,238 @@ function resolveNvlTrongLuongKg(
 function formatNvlTrongLuongKg(value: number | null): string {
   if (value == null || !Number.isFinite(value) || value < 0) return '—';
   return `${formatNplWeightKg(value)} kg`;
+}
+
+/** % / nhựa → vật tư trộn; Cái·Cuộn·… → vật tư không trộn. */
+function isNvlVatTuTron(item: ProductNplItem) {
+  return item.amountType === 'percent';
+}
+
+function isNvlTuiItem(item: ProductNplItem) {
+  const code = String(item.code || '').trim();
+  if (/^VT-?TUI/i.test(code) || /^TUI/i.test(code)) return true;
+  return isWarehouseBagExportItem(code, item.name || '');
+}
+
+function isNvlOngItem(item: ProductNplItem) {
+  const codeKey = String(item.code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_]+/g, '');
+  if (codeKey.startsWith('ONG') || codeKey.startsWith('ONGGIAY')) return true;
+  const hay = `${item.code || ''} ${item.name || ''}`
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return hay.includes('ong giay') || (/\bong\b/.test(hay) && hay.includes('giay'));
+}
+
+function sumNvlWeightsKg(weights: Array<number | null | undefined>) {
+  return weights.reduce((sum, value) => sum + (value != null && value > 0 ? value : 0), 0);
+}
+
+function buildActualMixPercentMap(
+  rows: Array<{ maNvl: string; tenNvl: string; tiLeThucTePercent: number | null }>
+) {
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const pct = row.tiLeThucTePercent;
+    if (pct == null || !Number.isFinite(pct) || !(pct > 0)) continue;
+    for (const raw of [row.maNvl, row.tenNvl]) {
+      const key = normalizeNvlMatchKey(raw);
+      if (key && !map.has(key)) map.set(key, pct);
+      const codeKey = normalizeProductCodeKey(raw);
+      if (codeKey && !map.has(codeKey)) map.set(codeKey, pct);
+    }
+  }
+  return map;
+}
+
+function resolveActualMixPercent(
+  item: ProductNplItem,
+  actualPercentByKey: Map<string, number> | null | undefined
+): number | null {
+  if (!actualPercentByKey || actualPercentByKey.size === 0) return null;
+  for (const raw of [item.code, item.name]) {
+    const key = normalizeNvlMatchKey(String(raw || ''));
+    if (key && actualPercentByKey.has(key)) return actualPercentByKey.get(key) ?? null;
+    const codeKey = normalizeProductCodeKey(String(raw || ''));
+    if (codeKey && actualPercentByKey.has(codeKey)) return actualPercentByKey.get(codeKey) ?? null;
+  }
+  return null;
+}
+
+function formatMixPercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `${formatNplDecimal(value)}%`;
+}
+
+function computeNvlWeightGroupTotals(
+  items: ProductNplItem[],
+  productQty: number,
+  slipKhoiLuongKg: number | null,
+  materials: WarehouseWeightCatalogItem[],
+  nhuaThucTeKg?: number | null
+): NvlWeightGroupTotals {
+  if (items.length === 0) {
+    return { tronKg: null, khongTronKg: null, tuiKg: null, ongKg: null };
+  }
+  let tronKg = 0;
+  let khongTronKg = 0;
+  let tuiKg = 0;
+  let ongKg = 0;
+  let hasTron = false;
+  let hasKhongTron = false;
+  let hasTui = false;
+  let hasOng = false;
+  for (const item of items) {
+    const kg = resolveNvlTrongLuongKg(
+      item,
+      productQty,
+      slipKhoiLuongKg,
+      materials,
+      nhuaThucTeKg
+    );
+    if (isNvlVatTuTron(item)) {
+      hasTron = true;
+      if (kg != null && kg > 0) tronKg += kg;
+      continue;
+    }
+    hasKhongTron = true;
+    if (kg != null && kg > 0) khongTronKg += kg;
+    if (isNvlTuiItem(item)) {
+      hasTui = true;
+      if (kg != null && kg > 0) tuiKg += kg;
+    } else if (isNvlOngItem(item)) {
+      hasOng = true;
+      if (kg != null && kg > 0) ongKg += kg;
+    }
+  }
+  return {
+    tronKg: hasTron ? Math.round(tronKg * 10000) / 10000 : null,
+    khongTronKg: hasKhongTron ? Math.round(khongTronKg * 10000) / 10000 : null,
+    tuiKg: hasTui ? Math.round(tuiKg * 10000) / 10000 : null,
+    ongKg: hasOng ? Math.round(ongKg * 10000) / 10000 : null
+  };
+}
+
+type NvlDinhMucTabId = 'tong' | 'tron' | 'khong-tron';
+
+function NvlDinhMucGroupTable({
+  title,
+  emptyLabel,
+  rows,
+  productQty,
+  weightsByIndex,
+  showHeader = false,
+  accentClass = 'border-zinc-100 bg-zinc-50 text-zinc-800',
+  useActualMixPercent = false,
+  actualPercentByKey
+}: {
+  title: string;
+  emptyLabel: string;
+  rows: Array<{ item: ProductNplItem; index: number }>;
+  productQty: number;
+  weightsByIndex: Array<number | null>;
+  showHeader?: boolean;
+  accentClass?: string;
+  /** Tab vật tư trộn: cột % lấy từ phiếu phối trộn thực tế. */
+  useActualMixPercent?: boolean;
+  actualPercentByKey?: Map<string, number> | null;
+}) {
+  const totalKg = sumNvlWeightsKg(rows.map(row => weightsByIndex[row.index]));
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      {showHeader ? (
+        <div className={`border-b px-4 py-2.5 text-sm font-black ${accentClass}`}>{title}</div>
+      ) : null}
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm font-semibold text-zinc-400">{emptyLabel}</p>
+      ) : (
+        <table className="min-w-full text-left text-base">
+          <thead className={`${TABLE_HEAD_CLASS} text-xs`}>
+            <tr>
+              <th className="px-4 py-3">Mã NVL</th>
+              <th className="px-4 py-3">Tên NVL</th>
+              <th className="px-4 py-3 text-right">ĐVT</th>
+              <th
+                className="px-4 py-3 text-right"
+                title={
+                  useActualMixPercent
+                    ? 'Phần trăm trộn thực tế từ phiếu phối trộn (ngày · ca · máy)'
+                    : 'Định mức trên 1 SP'
+                }
+              >
+                {useActualMixPercent ? '% trộn thực tế' : 'ĐM / 1 SP'}
+              </th>
+              <th
+                className="px-4 py-3 text-right"
+                title={
+                  useActualMixPercent
+                    ? 'Định mức Thành phần SP (BOM) để đối chiếu'
+                    : 'Số lượng: ĐM × SL sản lượng. %: giữ tỉ lệ định mức'
+                }
+              >
+                {useActualMixPercent ? 'ĐM BOM' : 'Theo SL'}
+              </th>
+              <th
+                className="px-4 py-3 text-right"
+                title={
+                  useActualMixPercent
+                    ? 'Nhựa thực tế × % trộn thực tế'
+                    : '% = nhựa thực tế × %. Cái = định lượng Thành phần × SL (quy kg)'
+                }
+              >
+                Trọng lượng
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {rows.map(({ item, index }) => {
+              const actualPct = useActualMixPercent
+                ? resolveActualMixPercent(item, actualPercentByKey)
+                : null;
+              return (
+                <tr key={`${title}|${item.code}|${index}`} className="hover:bg-violet-50/40">
+                  <td className="px-4 py-3 font-mono text-sm font-bold text-zinc-800">
+                    {item.code || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-semibold text-zinc-700">{item.name || '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm text-zinc-600">
+                    {item.amountType === 'percent' ? '%' : item.unit || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-sm font-bold text-violet-800">
+                    {useActualMixPercent
+                      ? formatMixPercent(actualPct)
+                      : formatDinhMucPerUnit(item)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-sm font-black text-emerald-700">
+                    {useActualMixPercent
+                      ? formatDinhMucPerUnit(item)
+                      : formatNvlTheoSanLuong(item, productQty)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-sm font-black text-amber-800">
+                    {formatNvlTrongLuongKg(weightsByIndex[index] ?? null)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-zinc-50/80">
+              <td colSpan={5} className="px-4 py-2.5 text-right text-xs font-black text-zinc-600">
+                Tổng {title.toLowerCase()}
+              </td>
+              <td className="px-4 py-2.5 text-right font-mono text-sm font-black text-amber-900">
+                {totalKg > 0 ? formatNvlTrongLuongKg(totalKg) : '—'}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  );
 }
 
 function resolveProductTotalWeightKg(unit: string, totalWeightRaw: unknown, name: string): number | null {
@@ -386,6 +679,8 @@ async function fetchCanTuDongByNgay(ngay: string): Promise<CanTuDongWeightRow[]>
   const day = String(ngay || '').trim();
   if (!day) return [];
   const params = new URLSearchParams({
+    all: '1',
+    images: '0',
     from: day,
     to: day,
     limit: '5000',
@@ -400,7 +695,7 @@ async function fetchCanTuDongByNgay(ngay: string): Promise<CanTuDongWeightRow[]>
 }
 
 /** Tổng Cân sản phẩm (trọng lượng thực tế) khớp ngày · ca · máy · mã SP. */
-function sumTrongLuongCanThucTeForReport(
+function filterCanTuDongForReport(
   records: CanTuDongWeightRow[],
   report: AcceptanceReport,
   productCode: string,
@@ -421,7 +716,16 @@ function sumTrongLuongCanThucTeForReport(
     },
     productCodeKeys: productKeys
   });
-  return sumCanTuDongCanSanPhamKg(filtered);
+  return filtered;
+}
+
+function sumTrongLuongCanThucTeForReport(
+  records: CanTuDongWeightRow[],
+  report: AcceptanceReport,
+  productCode: string,
+  productName: string
+) {
+  return sumCanTuDongCanSanPhamKg(filterCanTuDongForReport(records, report, productCode, productName));
 }
 
 function resolveNvlRate(item: ProductNplItem): number | null {
@@ -522,8 +826,13 @@ export default function AcceptanceReportListView({
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [materialWeightCatalog, setMaterialWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
   const [nvlView, setNvlView] = useState<NvlViewState | null>(null);
+  const [nvlTab, setNvlTab] = useState<NvlDinhMucTabId>('tong');
   const [isSyncingNvl, setIsSyncingNvl] = useState(false);
   const [nvlSyncMessage, setNvlSyncMessage] = useState('');
+  /** % trộn thực tế từ phiếu phối trộn (ngày · ca · máy) — dùng tab Vật tư trộn. */
+  const [nvlMixActualPercentByKey, setNvlMixActualPercentByKey] = useState<Map<string, number>>(
+    () => new Map()
+  );
   const [isProductNamesLoading, setIsProductNamesLoading] = useState(true);
 
   const shiftOptions = useMemo<string[]>(() => {
@@ -672,6 +981,37 @@ export default function AcceptanceReportListView({
     );
   };
 
+  /**
+   * Bảng phẳng:
+   * - TL vật tư trộn = nhựa thực tế (`trong_luong_nhua`) — nguồn chính
+   * - TL không trộn / túi / ống = Thành phần × SL (kg/cái hoặc kg/SP băng keo)
+   */
+  const nvlWeightByReportId = useMemo(() => {
+    const map = new Map<string, NvlWeightGroupTotals>();
+    for (const report of reportsWithNames) {
+      const id = String(report.id || '').trim();
+      if (!id) continue;
+      const entry = resolveCatalogEntry(productCatalogByKey, report.mat_hang, productNameByCode);
+      const items = mergeNplItemsWithCatalog(entry?.nplItems ?? [], entry?.nplItems ?? []);
+      const qtyRaw = Number(report.so_luong);
+      const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
+      const nhuaKg = resolveNhuaThucTeKg(report);
+      const groups = computeNvlWeightGroupTotals(
+        items,
+        quantity,
+        null,
+        materialWeightCatalog,
+        nhuaKg
+      );
+      map.set(id, {
+        ...groups,
+        // Tổng NVL % = nhựa thực tế (không nhân ĐM BOM trên bảng phẳng).
+        tronKg: nhuaKg
+      });
+    }
+    return map;
+  }, [materialWeightCatalog, productCatalogByKey, productNameByCode, reportsWithNames]);
+
   const buildNvlViewState = (
     report: AcceptanceReport,
     catalog: Map<string, ProductCatalogEntry>,
@@ -681,6 +1021,7 @@ export default function AcceptanceReportListView({
       fromDb?: boolean;
       savedAt?: string;
       actualWeightKg?: number | null;
+      actualNhuaKg?: number | null;
       actualWeightCount?: number;
     }
   ): NvlViewState => {
@@ -688,6 +1029,10 @@ export default function AcceptanceReportListView({
     const entry = resolveCatalogEntry(catalog, report.mat_hang, names);
     const qtyRaw = Number(report.so_luong);
     const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 0;
+    const actualNhuaKg =
+      options?.actualNhuaKg !== undefined
+        ? options.actualNhuaKg
+        : resolveNhuaThucTeKg(report);
     return {
       report,
       productCode: entry?.code || productCode || report.mat_hang,
@@ -707,6 +1052,7 @@ export default function AcceptanceReportListView({
       savedAt: options?.savedAt,
       actualWeightKg:
         options?.actualWeightKg !== undefined ? options.actualWeightKg : null,
+      actualNhuaKg,
       actualWeightCount:
         options?.actualWeightCount !== undefined ? options.actualWeightCount : 0
     };
@@ -714,25 +1060,52 @@ export default function AcceptanceReportListView({
 
   const nvlLineWeightsKg = useMemo(() => {
     if (!nvlView) return [] as Array<number | null>;
-    const entry = resolveCatalogEntry(
-      productCatalogByKey,
-      nvlView.report.mat_hang,
-      productNameByCode
-    );
-    const slipKg = resolveSlipKhoiLuongKg(
-      nvlView.report,
-      entry,
-      nvlView.quantity,
-      nvlView.actualWeightKg
-    );
-    return nvlView.items.map(item =>
-      resolveNvlTrongLuongKg(item, nvlView.quantity, slipKg, materialWeightCatalog)
-    );
-  }, [materialWeightCatalog, nvlView, productCatalogByKey, productNameByCode]);
+    const slipKg = resolveSlipKhoiLuongKg(nvlView.report, nvlView.actualWeightKg);
+    const nhuaKg = resolveNhuaThucTeKg(nvlView.report, nvlView.actualNhuaKg);
+    return nvlView.items.map(item => {
+      // Vật tư trộn: chỉ % trộn thực tế × nhựa thực tế — không fallback ĐM BOM.
+      if (item.amountType === 'percent') {
+        const actualPct = resolveActualMixPercent(item, nvlMixActualPercentByKey);
+        if (actualPct == null) return null;
+        return resolveNvlTrongLuongKg(
+          { ...item, percent: actualPct },
+          nvlView.quantity,
+          slipKg,
+          materialWeightCatalog,
+          nhuaKg
+        );
+      }
+      return resolveNvlTrongLuongKg(
+        item,
+        nvlView.quantity,
+        slipKg,
+        materialWeightCatalog,
+        nhuaKg
+      );
+    });
+  }, [materialWeightCatalog, nvlMixActualPercentByKey, nvlView]);
 
-  const nvlTrongLuongTotalKg = useMemo(
-    () => nvlLineWeightsKg.reduce((sum, value) => sum + (value != null && value > 0 ? value : 0), 0),
-    [nvlLineWeightsKg]
+  const nvlTrongLuongTotalKg = useMemo(() => sumNvlWeightsKg(nvlLineWeightsKg), [nvlLineWeightsKg]);
+
+  const nvlGroupedRows = useMemo(() => {
+    const vatTuTron: Array<{ item: ProductNplItem; index: number }> = [];
+    const vatTuKhongTron: Array<{ item: ProductNplItem; index: number }> = [];
+    if (!nvlView) return { vatTuTron, vatTuKhongTron };
+    nvlView.items.forEach((item, index) => {
+      if (isNvlVatTuTron(item)) vatTuTron.push({ item, index });
+      else vatTuKhongTron.push({ item, index });
+    });
+    return { vatTuTron, vatTuKhongTron };
+  }, [nvlView]);
+
+  const nvlTrongLuongTronKg = useMemo(
+    () => sumNvlWeightsKg(nvlGroupedRows.vatTuTron.map(row => nvlLineWeightsKg[row.index])),
+    [nvlGroupedRows.vatTuTron, nvlLineWeightsKg]
+  );
+
+  const nvlTrongLuongKhongTronKg = useMemo(
+    () => sumNvlWeightsKg(nvlGroupedRows.vatTuKhongTron.map(row => nvlLineWeightsKg[row.index])),
+    [nvlGroupedRows.vatTuKhongTron, nvlLineWeightsKg]
   );
 
   const loadProductCatalog = async (materialData?: unknown) => {
@@ -857,7 +1230,7 @@ export default function AcceptanceReportListView({
     );
   };
 
-  /** Đồng bộ trọng lượng từ phiếu cân AI (Cân sản phẩm), ghi vào DB. */
+  /** Lưu snapshot lõi/bì/màng/nhựa từ cân AI; không đổi trọng lượng tổng. */
   const handleSyncTrongLuong = async () => {
     if (filteredReports.length === 0) {
       setError('Không có dòng nào trong bộ lọc để đồng bộ.');
@@ -865,7 +1238,7 @@ export default function AcceptanceReportListView({
     }
     if (
       !window.confirm(
-        `Đồng bộ trọng lượng cho ${filteredReports.length} dòng đang lọc từ phiếu cân thực tế (tổng Cân sản phẩm theo ngày·ca·máy·mã SP)?`
+        `Lưu TL lõi/bì/màng/nhựa từ cân AI cho ${filteredReports.length} dòng đang lọc? Giữ nguyên trọng lượng tổng và số lượng.`
       )
     ) {
       return;
@@ -893,51 +1266,31 @@ export default function AcceptanceReportListView({
 
       for (const report of filteredReports) {
         const catalog = findCatalogForReport(report);
+        const sameProductReports = reports.filter(other => other.ngay === report.ngay && other.ca === report.ca &&
+          (other.ma_may || other.ten_may) === (report.ma_may || report.ten_may) &&
+          normalizeProductCodeKey(other.mat_hang) === normalizeProductCodeKey(report.mat_hang) &&
+          isAcceptanceThanhPhamLoai(other.loai_vat_tu));
+        if (sameProductReports.length > 1) {
+          failures.push(`${report.mat_hang}: có nhiều phiếu cùng ngày/ca/máy/SP, cần đối chiếu để tránh cộng trùng.`);
+          continue;
+        }
         const productCode =
           catalog?.code || resolveReportProductCode(report.mat_hang) || report.mat_hang;
         const productName = catalog?.name || report.ten_sp || productCode;
         const canRows = recordsByNgay.get(String(report.ngay || '').trim()) || [];
-        const { weightKg, counted } = sumTrongLuongCanThucTeForReport(
-          canRows,
-          report,
-          productCode,
-          productName
-        );
-        const nextWeight =
-          counted > 0 && weightKg > 0 ? Math.round(weightKg * 1000) / 1000 : null;
-        if (nextWeight == null || !(nextWeight > 0)) {
+        if (!catalog) {
+          failures.push(`${report.mat_hang}: không có danh mục SP để xác định màng.`);
+          continue;
+        }
+        const snapshot = calculateAcceptanceWeightSnapshot(canRows, report, filmKgByProductCode, [productCode, productName, report.mat_hang]);
+        if (!snapshot.so_lan_can) {
           skipped += 1;
           continue;
         }
-        const current =
-          report.trong_luong !== null &&
-          report.trong_luong !== undefined &&
-          Number.isFinite(Number(report.trong_luong))
-            ? Number(report.trong_luong)
-            : null;
-        if (current !== null && Math.abs(current - nextWeight) < 0.0005) {
-          skipped += 1;
-          continue;
-        }
-        const res = await fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(report.id)}`, {
+        const res = await fetch(`/api/bao-cao-nghiem-thu/${encodeURIComponent(report.id)}/trong-luong`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ngay: report.ngay,
-            ca: report.ca,
-            lan: report.lan,
-            gio: report.gio,
-            ma_may: report.ma_may,
-            ten_may: report.ten_may,
-            loai_vat_tu: report.loai_vat_tu || 'Thành phẩm',
-            mat_hang: report.mat_hang,
-            don_vi: report.don_vi,
-            so_luong: report.so_luong,
-            trong_luong: nextWeight,
-            don_vi_trong_luong: report.don_vi_trong_luong || 'Kg',
-            hinh_anh: report.hinh_anh,
-            hinh_anh_public_id: report.hinh_anh_public_id || ''
-          })
+          body: JSON.stringify(snapshot)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -956,7 +1309,7 @@ export default function AcceptanceReportListView({
         );
       } else {
         setMessage(
-          `Đã đồng bộ trọng lượng từ cân AI: ${updated} dòng cập nhật, ${skipped} dòng bỏ qua.`
+          `Đã lưu trọng lượng lõi/bì/màng/nhựa: ${updated} dòng; ${skipped} dòng thiếu dữ liệu cân. Trọng lượng tổng giữ nguyên.`
         );
       }
     } catch (err: any) {
@@ -968,6 +1321,8 @@ export default function AcceptanceReportListView({
 
   const openNvlView = async (report: AcceptanceReport) => {
     setNvlSyncMessage('');
+    setNvlTab('tong');
+    setNvlMixActualPercentByKey(new Map());
     const fallback = buildNvlViewState(report, productCatalogByKey, productNameByCode, {
       fromDb: false
     });
@@ -975,6 +1330,7 @@ export default function AcceptanceReportListView({
 
     const loadActualWeight = async (): Promise<{
       actualWeightKg: number | null;
+      actualNhuaKg: number | null;
       actualWeightCount: number;
     }> => {
       try {
@@ -985,25 +1341,68 @@ export default function AcceptanceReportListView({
           fallback.productCode,
           fallback.productName
         );
+        const snapshot = calculateAcceptanceWeightSnapshot(
+          canRows,
+          report,
+          filmKgByProductCode,
+          [fallback.productCode, fallback.productName, report.mat_hang]
+        );
+        const nhuaFromCan =
+          snapshot.so_lan_can > 0 &&
+          snapshot.trong_luong_nhua != null &&
+          Number.isFinite(snapshot.trong_luong_nhua)
+            ? Math.round(snapshot.trong_luong_nhua * 1000) / 1000
+            : null;
         return {
           actualWeightKg: counted > 0 && weightKg > 0 ? Math.round(weightKg * 1000) / 1000 : null,
+          actualNhuaKg: nhuaFromCan,
           actualWeightCount: counted
         };
       } catch {
-        return { actualWeightKg: null, actualWeightCount: 0 };
+        return { actualWeightKg: null, actualNhuaKg: null, actualWeightCount: 0 };
+      }
+    };
+
+    const loadMixActualPercents = async () => {
+      try {
+        const params = new URLSearchParams({
+          tu_ngay: report.ngay,
+          den_ngay: report.ngay
+        });
+        const mixingRes = await fetch(`/api/bao-cao-phoi-tron?${params.toString()}`);
+        const mixingData = await mixingRes.json().catch(() => ({}));
+        if (!mixingRes.ok) return new Map<string, number>();
+        const list = Array.isArray((mixingData as { reports?: unknown }).reports)
+          ? ((mixingData as { reports: Record<string, unknown>[] }).reports)
+          : [];
+        const mixingReports = list.map(row => normalizeMixingReport(row));
+        const ratioRows = buildMachineNvlMixingRatioRows(mixingReports, {
+          ngay: report.ngay,
+          ca: report.ca,
+          maMay: report.ma_may || '',
+          tenMay: report.ten_may || ''
+        });
+        return buildActualMixPercentMap(ratioRows);
+      } catch {
+        return new Map<string, number>();
       }
     };
 
     try {
-      const [weightResult, res] = await Promise.all([
+      const [weightResult, mixPercents, res] = await Promise.all([
         loadActualWeight(),
+        loadMixActualPercents(),
         fetch(`/api/bao-cao-san-luong-nvl-dinh-muc?id_bao_cao=${encodeURIComponent(report.id)}`)
       ]);
+      setNvlMixActualPercentByKey(mixPercents);
       const data = await res.json().catch(() => ({}));
 
       const applyWeight = <T extends NvlViewState>(state: T): T => ({
         ...state,
-        actualWeightKg: weightResult.actualWeightKg,
+        actualWeightKg:
+          weightResult.actualWeightKg ?? resolveSlipKhoiLuongKg(state.report),
+        actualNhuaKg:
+          weightResult.actualNhuaKg ?? resolveNhuaThucTeKg(state.report),
         actualWeightCount: weightResult.actualWeightCount
       });
 
@@ -1063,6 +1462,7 @@ export default function AcceptanceReportListView({
       const withNames = buildNvlViewState(nvlView.report, catalog, names, {
         fromDb: false,
         actualWeightKg: nvlView.actualWeightKg,
+        actualNhuaKg: nvlView.actualNhuaKg,
         actualWeightCount: nvlView.actualWeightCount
       });
       setNvlView(withNames);
@@ -1102,34 +1502,7 @@ export default function AcceptanceReportListView({
     }
   };
 
-  const renderSlipActions = (report: AcceptanceReport) => {
-    if (!onEditGroup || !canEdit) return null;
-    const slipKey = [report.ngay, report.ca, report.ma_may || report.ten_may, report.lan].join('|');
-    const groupReports = reports.filter(
-      r => [r.ngay, r.ca, r.ma_may || r.ten_may, r.lan].join('|') === slipKey
-    );
-    if (groupReports.length === 0) return null;
-
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          if (
-            groupReports.some(report => report.da_in) &&
-            !window.confirm('Phiếu đã in. Sửa sẽ bỏ trạng thái đã in và cần in lại sau khi lưu. Tiếp tục?')
-          ) {
-            return;
-          }
-          onEditGroup(groupReports);
-        }}
-        className="inline-flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[10px] font-black text-zinc-700 transition hover:bg-zinc-50"
-        title="Sửa toàn bộ báo cáo"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-        Sửa báo cáo
-      </button>
-    );
-  };
+  
 
   return (
     <div className="space-y-4 pb-24">
@@ -1187,9 +1560,9 @@ export default function AcceptanceReportListView({
               <button
                 type="button"
                 onClick={() => void handleSyncTrongLuong()}
-                disabled={filteredReports.length === 0 || isSyncingWeight || isLoading}
+                disabled={filteredReports.length === 0 || isSyncingWeight || isLoading || isProductNamesLoading || productCatalogByKey.size === 0}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Đồng bộ trọng lượng từ phiếu cân AI (tổng Cân sản phẩm theo ngày·ca·máy·mã SP)"
+                title="Lưu TL lõi/bì/màng/nhựa từ cân AI vào DB; giữ nguyên trọng lượng tổng và số lượng"
               >
                 {isSyncingWeight ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1243,9 +1616,8 @@ export default function AcceptanceReportListView({
           ) : (
             <AcceptanceReportFlatTable
               reports={reportsWithNames}
-              filmKgByProductCode={filmKgByProductCode}
+              nvlWeightByReportId={nvlWeightByReportId}
               onViewNvl={report => void openNvlView(report)}
-              renderSlipActions={renderSlipActions}
               onEditLine={onEdit}
               onDeleteLine={id => void handleDelete(id)}
               deletingId={deletingId}
@@ -1269,11 +1641,11 @@ export default function AcceptanceReportListView({
       {nvlView
         ? createPortal(
             <div
-              className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-3 sm:items-center"
+              className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4"
               onClick={() => setNvlView(null)}
             >
               <div
-                className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+                className="flex h-[92vh] max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
                 onClick={event => event.stopPropagation()}
               >
                 <div className="flex items-start justify-between gap-3 border-b border-violet-100 bg-violet-50 px-4 py-3">
@@ -1285,21 +1657,43 @@ export default function AcceptanceReportListView({
                       {nvlView.productCode}
                     </p>
                     <p className="text-xs font-semibold text-zinc-600">{nvlView.productName}</p>
-                    <div className="mt-2 grid max-w-sm grid-cols-2 gap-2">
+                    <div className="mt-2 grid max-w-xl grid-cols-3 gap-2">
                       <div
                         className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5"
-                        title="Tổng Cân sản phẩm từ phiếu cân AI (ngày · ca · máy · mã SP)"
+                        title="Nhựa thực tế = Cân SP − Cân lõi − Bì − Màng (phiếu cân AI hoặc snapshot phiếu)"
                       >
                         <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
-                          Trọng lượng
+                          Trọng lượng thực tế
                         </p>
                         <p className="mt-0.5 font-mono text-sm font-black text-emerald-700">
-                          {formatActualCanWeightKg(nvlView.actualWeightKg)}
+                          {formatActualCanWeightKg(nvlView.actualNhuaKg)}
                         </p>
                         <p className="mt-0.5 text-[9px] font-semibold text-zinc-400">
                           {nvlView.actualWeightCount > 0
-                            ? `${nvlView.actualWeightCount} lần cân AI`
-                            : 'Chưa khớp phiếu cân AI'}
+                            ? `Nhựa · ${nvlView.actualWeightCount} lần cân AI`
+                            : nvlView.actualNhuaKg != null
+                              ? 'Nhựa thực tế (DB phiếu)'
+                              : 'Chưa có nhựa thực tế — bấm Đồng bộ trọng lượng'}
+                        </p>
+                      </div>
+                      <div
+                        className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5"
+                        title="Cân sản phẩm từ cân AI hoặc trọng lượng đã lưu trên phiếu"
+                      >
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                          Trọng lượng tổng
+                        </p>
+                        <p className="mt-0.5 font-mono text-sm font-black text-amber-800">
+                          {formatActualCanWeightKg(
+                            resolveSlipKhoiLuongKg(nvlView.report, nvlView.actualWeightKg)
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-[9px] font-semibold text-zinc-400">
+                          {nvlView.actualWeightCount > 0
+                            ? `Cân SP · ${nvlView.actualWeightCount} lần cân AI`
+                            : resolveSlipKhoiLuongKg(nvlView.report) != null
+                              ? 'Trọng lượng trên phiếu'
+                              : 'Chưa có cân SP'}
                         </p>
                       </div>
                       <div className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5">
@@ -1344,6 +1738,8 @@ export default function AcceptanceReportListView({
                       onClick={() => {
                         setNvlView(null);
                         setNvlSyncMessage('');
+                        setNvlTab('tong');
+                        setNvlMixActualPercentByKey(new Map());
                       }}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-50"
                       title="Đóng"
@@ -1363,6 +1759,46 @@ export default function AcceptanceReportListView({
                     {nvlSyncMessage}
                   </div>
                 ) : null}
+                <div className="flex shrink-0 gap-1 border-b border-zinc-200 bg-white px-3 pt-2">
+                  {(
+                    [
+                      { id: 'tong' as const, label: 'Tổng', count: nvlView.items.length },
+                      {
+                        id: 'tron' as const,
+                        label: 'Vật tư trộn',
+                        count: nvlGroupedRows.vatTuTron.length
+                      },
+                      {
+                        id: 'khong-tron' as const,
+                        label: 'Vật tư không trộn',
+                        count: nvlGroupedRows.vatTuKhongTron.length
+                      }
+                    ] as const
+                  ).map(tab => {
+                    const active = nvlTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setNvlTab(tab.id)}
+                        className={`inline-flex items-center gap-2 rounded-t-xl border px-3 py-2 text-xs font-black transition ${
+                          active
+                            ? 'border-violet-300 border-b-white bg-white text-violet-900'
+                            : 'border-transparent bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] ${
+                            active ? 'bg-violet-100 text-violet-800' : 'bg-zinc-200/80 text-zinc-600'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="min-h-0 flex-1 overflow-auto">
                   {isSyncingNvl ? (
                     <p className="px-4 py-10 text-center text-sm font-semibold text-zinc-400">
@@ -1378,60 +1814,57 @@ export default function AcceptanceReportListView({
                       </span>
                     </p>
                   ) : (
-                    <table className="min-w-full text-left text-sm">
-                      <thead className={`${TABLE_HEAD_CLASS} text-[10px]`}>
-                        <tr>
-                          <th className="px-3 py-2.5">Mã NVL</th>
-                          <th className="px-3 py-2.5">Tên NVL</th>
-                          <th className="px-3 py-2.5 text-right">ĐVT</th>
-                          <th className="px-3 py-2.5 text-right" title="Định mức trên 1 SP">
-                            ĐM / 1 SP
-                          </th>
-                          <th
-                            className="px-3 py-2.5 text-right"
-                            title="Số lượng: ĐM × SL sản lượng. %: giữ tỉ lệ định mức"
-                          >
-                            Theo SL
-                          </th>
-                          <th
-                            className="px-3 py-2.5 text-right"
-                            title="% = Khối lượng phiếu × %. Cái = định lượng Thành phần × SL (quy kg)"
-                          >
-                            Trọng lượng
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100">
-                        {nvlView.items.map((item, index) => (
-                          <tr key={`${item.code}|${index}`} className="hover:bg-violet-50/40">
-                            <td className="px-3 py-2 font-mono text-xs font-bold text-zinc-800">
-                              {item.code || '—'}
-                            </td>
-                            <td className="px-3 py-2 text-xs font-semibold text-zinc-700">
-                              {item.name || '—'}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono text-xs text-zinc-600">
-                              {item.amountType === 'percent' ? '%' : item.unit || '—'}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono text-xs font-bold text-violet-800">
-                              {formatDinhMucPerUnit(item)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono text-xs font-black text-emerald-700">
-                              {formatNvlTheoSanLuong(item, nvlView.quantity)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono text-xs font-black text-amber-800">
-                              {formatNvlTrongLuongKg(nvlLineWeightsKg[index] ?? null)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="p-4">
+                      {nvlTab === 'tong' ? (
+                        <NvlDinhMucGroupTable
+                          title="Tổng"
+                          emptyLabel="Không có NVL định mức."
+                          rows={[...nvlGroupedRows.vatTuTron, ...nvlGroupedRows.vatTuKhongTron]}
+                          productQty={nvlView.quantity}
+                          weightsByIndex={nvlLineWeightsKg}
+                        />
+                      ) : null}
+                      {nvlTab === 'tron' ? (
+                        <NvlDinhMucGroupTable
+                          title="Vật tư trộn"
+                          emptyLabel="Không có vật tư trộn (NVL % / nhựa)."
+                          rows={nvlGroupedRows.vatTuTron}
+                          productQty={nvlView.quantity}
+                          weightsByIndex={nvlLineWeightsKg}
+                          useActualMixPercent
+                          actualPercentByKey={nvlMixActualPercentByKey}
+                        />
+                      ) : null}
+                      {nvlTab === 'khong-tron' ? (
+                        <NvlDinhMucGroupTable
+                          title="Vật tư không trộn"
+                          emptyLabel="Không có vật tư không trộn (túi / ống / băng keo / …)."
+                          rows={nvlGroupedRows.vatTuKhongTron}
+                          productQty={nvlView.quantity}
+                          weightsByIndex={nvlLineWeightsKg}
+                        />
+                      ) : null}
+                    </div>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
-                  <span>{nvlView.items.length} NVL định mức</span>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-[11px] font-semibold text-zinc-500">
+                  <span>
+                    {nvlTab === 'tong'
+                      ? `${nvlView.items.length} NVL`
+                      : nvlTab === 'tron'
+                        ? `${nvlGroupedRows.vatTuTron.length} vật tư trộn`
+                        : `${nvlGroupedRows.vatTuKhongTron.length} vật tư không trộn`}
+                  </span>
                   <span className="font-mono font-black text-amber-800">
-                    Tổng trọng lượng: {nvlTrongLuongTotalKg > 0 ? formatNvlTrongLuongKg(nvlTrongLuongTotalKg) : '—'}
+                    {nvlTab === 'tong'
+                      ? `Tổng: ${nvlTrongLuongTotalKg > 0 ? formatNvlTrongLuongKg(nvlTrongLuongTotalKg) : '—'}`
+                      : nvlTab === 'tron'
+                        ? `Trộn: ${nvlTrongLuongTronKg > 0 ? formatNvlTrongLuongKg(nvlTrongLuongTronKg) : '—'}`
+                        : `Không trộn: ${
+                            nvlTrongLuongKhongTronKg > 0
+                              ? formatNvlTrongLuongKg(nvlTrongLuongKhongTronKg)
+                              : '—'
+                          }`}
                   </span>
                 </div>
               </div>

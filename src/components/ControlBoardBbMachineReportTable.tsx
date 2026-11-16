@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Check,
@@ -5597,19 +5597,9 @@ export default function ControlBoardBbMachineReportTable({
                                 );
                                 const mixingTotals = group.mixingRatioTotals;
                                 const otherTotals = group.otherTotals;
-                                /** Tổng nhựa · Nhập TP = banner «Tổng nhựa thành phẩm», không cộng phân bổ từng NVL. */
-                                const tongNhuaThanhPhamKg =
-                                  mixingLines
-                                    .map(row => row.nhuaThanhPhamHeaderKg)
-                                    .find(kg => kg != null && Number.isFinite(kg) && kg > 0) ??
-                                  mixingTotals?.finishedTotal ??
-                                  0;
-                                const tongNhuaLoiKg =
-                                  mixingLines
-                                    .map(row => row.nhuaLoiHeaderKg)
-                                    .find(kg => kg != null && Number.isFinite(kg) && kg > 0) ??
-                                  mixingTotals?.damagedTotal ??
-                                  0;
+                                /** Tổng Nhập TP / lỗi = Σ từng dòng (cùng nguồn Báo cáo sản lượng). */
+                                const tongNhuaThanhPhamKg = mixingTotals?.finishedTotal ?? 0;
+                                const tongNhuaLoiKg = mixingTotals?.damagedTotal ?? 0;
                                 const tongNhuaTpPlusLoiKg = tongNhuaThanhPhamKg + tongNhuaLoiKg;
                                 return (
                                   <div className="flex flex-col gap-4">
@@ -5864,7 +5854,10 @@ export default function ControlBoardBbMachineReportTable({
                                             <th className="px-3 py-2.5">Mã NVL</th>
                                             <th className="px-3 py-2.5">Tên NVL</th>
                                             <th className="px-3 py-2.5 text-center">ĐVT</th>
-                                            <th className="px-3 py-2.5 text-right">SL TP</th>
+                                            <th className="px-3 py-2.5 text-right" title="SL vật tư trong TP = Σ (SL sản lượng SP × Định mức NVL/SP)">
+                                              SL vật tư trong TP
+                                              <span className="block text-[10px] font-normal text-zinc-500">(SL SP × ĐM)</span>
+                                            </th>
                                             <th className="px-3 py-2.5 text-right">Xuất kho</th>
                                             <th className="px-3 py-2.5 text-right">Tồn đầu</th>
                                             <th className="px-3 py-2.5 text-right">Nhập TP</th>
@@ -5899,9 +5892,12 @@ export default function ControlBoardBbMachineReportTable({
                                                 <td className="px-3 py-2 text-center font-mono text-slate-600">
                                                   {row.unit || '—'}
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700">
-                                                  {formatKg(row.finishedQty ?? 0, 2)}
-                                                </td>
+                                                <td
+                                                   className="px-3 py-2 text-right font-mono tabular-nums text-slate-700"
+                                                   title={`SL vật tư trong TP = ${formatKg(row.finishedQty ?? 0, 2)} (SL SP × Định mức NVL)`}
+                                                 >
+                                                   {formatKg(row.finishedQty ?? 0, 2)}
+                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-700">
                                                   {formatKg(row.xuatTrongCaKg, 2)}
                                                 </td>

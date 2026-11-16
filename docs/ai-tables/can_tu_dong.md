@@ -5,7 +5,7 @@
 | **Bảng** | `can_tu_dong` |
 | **Tab** | `can-tu-dong` → `/can-tu-dong` |
 | **DB** | Riêng — label `can-tu-dong` (`SUPABASE_WEIGHING_*`) |
-| **SQL** | (bảng đã có trên project cân; không migration local) |
+| **SQL** | Bảng gốc trên project cân; bổ sung cột bì: `supabase-can-tu-dong-trong-luong-bi.sql` (**chạy trên DB weighing**) |
 
 ## Env
 
@@ -20,7 +20,7 @@
 |---------|--------|---------|-------|
 | Cân lõi | `tare_weight` | Số đọc ở bước cân lõi | 1,06 kg |
 | Cân sản phẩm | `weight` | Tổng KL sản phẩm còn lõi | 7,84 kg |
-| Trọng lượng bì | (UI, mặc định) | Mặc định **0,16 kg** — chưa lưu DB | 0,16 kg |
+| Trọng lượng bì | `metadata.SOURCE_BI_KG` (+ cột `trong_luong_bi`) | Đọc **metadata trước**, rồi cột DB (tránh cột cũ che giá trị vừa sửa). **Null → 0,16 kg**. Nút **Đổi / Sửa bì** / **Tính lại** ghi metadata + cột | 0,16 kg |
 | Trọng lượng tiêu chuẩn | (UI, từ `san_pham`) | `tong_trong_luong` khớp **tiền tố** Mã SP từ QR (trước `_` / trước `+`) | 7,5 kg |
 | Nhựa thực tế | (UI tính) | `weight − tare_weight − bì` | 6,62 kg |
 | Nhựa định mức | (UI, từ `san_pham`) | `trong_luong_nhua`; không có thì TL tiêu chuẩn − lõi LT − bì | 6,28 kg |
@@ -51,7 +51,9 @@
 | `POST /api/can-tu-dong/bulk-autofill` | Body `{ ids, ngay?, lenh_sx?, ca?, may? }` hoặc `{ all: true, ngay?, ca?, may? }` — ghi `metadata.shift` + `SOURCE_SHIFT` + `SOURCE_MACHINE`. Không gửi `lenh_sx` thì giữ lệnh cũ. |
 | `POST /api/can-tu-dong/bulk-set-ca` | Body `{ ids, ca? }` — **chỉ** điền Ca. Trang `/can-tu-dong` không còn nút **Sửa Ca theo bộ lọc** |
 | `POST /api/can-tu-dong/bulk-set-ngay` | Body `{ ids, ngay? }` — **chỉ** đổi cột **Ngày** (`SOURCE_DATE` / `work_date`). Không gửi `ngay` thì dùng hôm nay (Asia/Ho_Chi_Minh). UI `/can-tu-dong`: tick dòng → nút **Sửa ngày** mở modal rồi gửi id các dòng **đã chọn** |
-| `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính |
+| `POST /api/can-tu-dong/bulk-set-tare` | Body `{ ids, tare_weight }` — đổi cột **Cân lõi** (`tare_weight`); `net_weight` do DB generated tự tính. UI `/can-tu-dong`: nút **Đổi khối lượng lõi** theo bộ lọc |
+| `POST /api/can-tu-dong/bulk-set-bi` | Body `{ ids, trong_luong_bi }` — ghi cột **`trong_luong_bi`** + `metadata.SOURCE_BI_KG` (fallback chỉ metadata nếu chưa chạy SQL cột). UI: **Đổi / Sửa Trọng lượng bì** |
+| `POST /api/can-tu-dong/bulk-recalc` | Body `{ ids }` — **Tính lại**: ghi cột `trong_luong_bi` + metadata (`SOURCE_BI_KG`, `SOURCE_NHUA_KG`), `nhựa = Cân SP − lõi − bì`; trả tổng SP/lõi/bì/nhựa |
 | `POST /api/can-tu-dong/bulk-set-ma-sp` | Body `{ ids, ma_sp }` — đổi phần **Mã SP** trong `qr_code` (giữ `_hậuTố` / serial / `+LSX…`); cột TL tiêu chuẩn / lõi LT / chênh lệch trên UI tự theo mã mới. UI `/can-tu-dong` nút **Đồng bộ theo Mã SP**: mặc định lấy **tiền tố QR**, hoặc chọn một mã danh mục rồi điền hàng loạt |
 | `POST /api/kho/quet-dot` | Nút **Nhập kho** trên `/can-tu-dong` gọi API này: chọn ca · máy · Mã SP · số cuộn → tạo phiếu nhập chưa chốt, ghi QR vào `nhap_kho` (`cho_phep_trung`). Mỗi dòng ghi `ca`, `may`, `ngay`, `nguoi_thao_tac`, `trang_thai=Đang chờ` (cần chạy `supabase-nhap-kho-ca-may.sql`). |
 | `POST /api/can-tu-dong/nhap-kho` | Body `{ ids, nguoi, ma_phieu?, trang_thai? }` — `trang_thai` là `Đã nhập kho` hoặc `Chờ nhập kho`. Nút **Đổi** từng dòng; nút **Về chờ nhập kho** đưa các dòng «Đã nhập kho» trong bộ lọc về `Chờ nhập kho` (xóa `nhap_kho_luc` / `nhap_kho_boi` / `nhap_kho_ma_phieu`). Không xóa dòng trong bảng `nhap_kho` |
@@ -63,7 +65,7 @@ Nút **Chuyển toàn bộ MT → Đà Nẵng** gọi `POST /api/can-tu-dong/chu
 
 | File | Nội dung |
 |------|----------|
-| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: nút **Nhập kho** · **Về chờ nhập kho** (theo bộ lọc) · **Bộ lọc** (ngày, ca, máy, lệnh SX, mã SP, **Đẩy kho**) · Excel · **In** · Tải lại |
+| `src/features/can-tu-dong/index.tsx` | UI `/can-tu-dong`: nút **Nhập kho** · **Về chờ nhập kho** · **Đổi trọng lượng bì** · **Đổi khối lượng lõi** (theo bộ lọc) · tick → **Sửa ngày** / **Sửa Trọng lượng bì** / **Tính lại** · **Bộ lọc** (ngày, ca, máy, lệnh SX, mã SP, **Đẩy kho**) · Excel · **In** · Tải lại |
 | `src/features/can-tu-dong/entry-form.tsx` | Form **Trạm cân AI** (`/phieu-bao-cao`) và **Trạm cân QR** (`/tram-can-qr`) — ghi thêm dòng vào `can_tu_dong`, không mở trạm ngoài |
 | `src/components/CanTuDongPrintSheet.tsx` | Mẫu in: danh sách SP · khối **Tổng hợp nhựa** |
 | `src/utils/canTuDongExcel.ts` | Xuất Excel theo bộ lọc đang chọn |

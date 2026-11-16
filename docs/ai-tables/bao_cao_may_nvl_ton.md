@@ -31,6 +31,8 @@ SUPABASE_MACHINE_NVL_REPORTS_TABLE=bao_cao_may_nvl_ton
 - Báo cáo tồn đầu ca
 - Báo cáo tồn cuối ca
 
+**Chi tiết đầy đủ trên list:** mỗi phiếu hiện luôn bảng NVL (trộn / không trộn) + **Bảng tỉ lệ trộn** (từ `bao_cao_phoi_tron` ngày·ca·máy) + bảng phân bổ **Đã trộn = NHUA-TRON × tỉ lệ thực tế**. Logic: `src/utils/machineNvlMixingRatio.ts`.
+
 **Tự điền đầu ca:** Nút **Tự điền tồn đầu ca** → chọn phiếu **tồn cuối ca** trước → chỉ điền số liệu vào danh sách NVL mặc định, giữ mã/tên/ĐVT/thứ tự mẫu. NVL không có ở ca trước vẫn hiển thị với số liệu trống; NVL phát sinh được thêm cuối danh sách. Không sao chép ghi chú/ảnh dòng cũ. Logic/test: `src/features/bao-cao-may-nvl-ton/autofill.ts`, `autofill.test.ts`.
 
 **Tự điền cuối ca:** Nút **Tự điền tồn cuối ca** → lấy danh sách NVL từ **phiếu tồn đầu ca** cùng **Ngày · Ca** (**không** lọc máy; gộp mọi máy) — SL đầu ca làm tham chiếu, SL vị trí để trống để kiểm kê. Ảnh từng dòng tùy chọn ở cả hai loại; không có ảnh vẫn lưu được.

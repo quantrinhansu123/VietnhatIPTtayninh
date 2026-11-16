@@ -4,7 +4,7 @@
 | **Tab** | `acceptance-report`, `acceptance-report-list` |
 | **SQL** | `supabase-bao-cao-nghiem-thu.sql` |
 
-**API:** `server.ts` 5708–5833  
+**API:** `server.ts` — tìm route `/api/bao-cao-nghiem-thu` (GET/POST/PATCH và PATCH `/:id/trong-luong`).  
 **Components (đã tách):**
 - `AcceptanceReportForm.tsx`
 - `AcceptanceReportListView.tsx`
@@ -18,7 +18,7 @@ Nút **Tự động điền** (từ phiếu cân AI): **ĐVT** lấy `san_pham.d
 
 Modal **Tự động báo cáo sản lượng** bắt buộc chọn **Ngày + Ca + Máy**, mặc định theo phiếu đang nhập. Chỉ cộng số lượng/trọng lượng của máy đã chọn (khớp chính xác mã hoặc tên máy), đồng bộ máy về đầu phiếu sau khi điền. Tải đủ phiếu cân trong ngày với `all=1&images=0` để tránh thiếu dữ liệu do giới hạn 2.000 bản ghi.
 
-`/bao-cao-san-luong` và `/danh-sach-bao-cao-san-luong`: xem dạng **bảng phẳng**, mỗi dòng là một mặt hàng, có cột **Ngày · Ca · Máy · Lần/giờ**; mặc định sắp ngày mới nhất và phân trang. Chỉ hiện loại **Thành phẩm / Gia công** — không hiện SP lỗi, SP rác, và không hiện **RAC, RAC MANG, MT-HANG RAC, NHUAKM** (mã này chỉ dùng ở SP lỗi / SP rác). **Thêm mới** / Sửa mới mở form nhập. Nút **Xem** mở modal **NVL theo định mức**; **Đồng bộ** lấy Thành phần Kho sản phẩm và **lưu snapshot** bảng `bao_cao_san_luong_nvl_dinh_muc` ([manifest](./bao_cao_san_luong_nvl_dinh_muc.md)). Ô **Trọng lượng** trên modal + nút **Đồng bộ trọng lượng** = tổng **Cân sản phẩm** từ `can_tu_dong` khớp ngày·ca·máy·mã SP (không dùng định mức `tong_trong_luong` × SL).
+`/bao-cao-san-luong` và `/danh-sach-bao-cao-san-luong`: xem dạng **bảng phẳng**, mỗi dòng là một mặt hàng, có cột **Ngày · Ca · Máy · Lần/giờ**; mặc định sắp ngày mới nhất và phân trang. Chỉ hiện loại **Thành phẩm / Gia công** — không hiện SP lỗi, SP rác, và không hiện **RAC, RAC MANG, MT-HANG RAC, NHUAKM** (mã này chỉ dùng ở SP lỗi / SP rác). Cột **TL vật tư trộn** / **TL VT không trộn** / **TL Túi** / **TL Ống** từ Thành phần SP (NVL % = nhựa thực tế × %; túi·ống = ĐM × SL quy kg). Không còn cột **TL nhựa** trên bảng phẳng. **Thêm mới** / Sửa mới mở form nhập. Nút **Xem** mở modal **NVL theo định mức**; **Đồng bộ** lấy Thành phần Kho sản phẩm và **lưu snapshot** bảng `bao_cao_san_luong_nvl_dinh_muc` ([manifest](./bao_cao_san_luong_nvl_dinh_muc.md)). Ô **Trọng lượng** trên modal + nút **Đồng bộ trọng lượng** = tổng **Cân sản phẩm** từ `can_tu_dong` khớp ngày·ca·máy·mã SP (không dùng định mức `tong_trong_luong` × SL).
 
 Mục **Hàng lỗi hỏng nhập kho** (SP lỗi + SP rác) trên phiếu sản lượng được **tổng hợp** sang `/danh-sach-bao-cao-hang-hong` ([bao_cao_hang_hong](./bao_cao_hang_hong.md)).
 
@@ -45,6 +45,9 @@ Trên `/phan-tich-tu-dong`:
 - Tab **Dữ liệu trong báo cáo hàng lỗi hỏng** lấy từ cùng bảng `bao_cao_nghiem_thu` — mục **Hàng hỏng (SP lỗi)** + **Hàng rác**; mở dòng con hiện NVL **chỉ từ BOM lệnh SX** (`lenh_sx` → `san_pham.nplItems`), phân bổ trọng lượng lỗi theo % trên BOM. **Máy cách nhiệt:** Vật tư khác = rác màng xi (SP rác); Nhựa = tổng lỗi hỏng − rác màng xi
 
 ## Menu
+ **Quy tắc mới thay thế mô tả Đồng bộ trọng lượng ở trên:** cột **TL màng / TL nhựa** của bảng phẳng đọc trực tiếp snapshot DB `trong_luong_mang`, `trong_luong_nhua` (không tải cân AI khi mở bảng). SQL bổ sung: `supabase-bao-cao-nghiem-thu-trong-luong.sql`; cùng bảng có `trong_luong_loi`, `trong_luong_bi`, `so_lan_can`, `trong_luong_dong_bo_luc`.
+ **Đồng bộ trọng lượng** tính snapshot qua `src/utils/acceptanceWeightSnapshot.ts`, PATCH `/api/bao-cao-nghiem-thu/:id/trong-luong`; chỉ lưu lõi/bì/màng/nhựa, giữ nguyên SL, trọng lượng tổng, ghi chú, trạng thái in. Nhựa = tổng (Cân SP − lõi − bì thực tế hoặc mặc định 0,16 − màng BOM). Thiếu cân/SP/lõi hoặc không có danh mục SP: không tự ghi 0; phiếu trùng nhóm ngày/ca/máy/SP phải đối chiếu, không tự cộng trùng.
+ Snapshot thiếu hiện `—`, số 0 hợp lệ hiển thị 0; tổng cột chỉ hiện khi đủ mọi dòng. Sửa các khóa ghép / SL / trọng lượng tổng thì xóa snapshot để tránh số cũ. Backfill dữ liệu cũ: `npx tsx scripts/backfill-acceptance-weights.ts --apply` (không có `--apply` là dry run; sao lưu trước mỗi cập nhật trong `backups/`).
 
 - QC `/nha-may/qc` → card **Kiểm tra kho thành phẩm** → `acceptance-report-list`
 - Công nhân → Nhập báo cáo ca → `acceptance-report` / danh sách → `acceptance-report-list`

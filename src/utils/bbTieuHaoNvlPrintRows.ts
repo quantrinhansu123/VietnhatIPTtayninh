@@ -557,39 +557,35 @@ function buildMaterialRowsForOrder(input: {
     }
   }
 
-  // Nhập thành phẩm = y đúc cột TL «Tổng vật tư trộn» / NVL trên tab Báo cáo sản lượng.
-  // Không nhân lại × tỉ lệ trộn (đã có sẵn trên từng mã ở sản lượng).
+  // Nhập thành phẩm:
+  // - 3.1 nhựa: cùng nguồn cột «Trọng lượng thực tế» tab Thành phẩm đạt nhập kho
+  //   (= Σ productGroup.weightKg Báo cáo sản lượng) × Tỉ lệ TB thực tế ÷ 100. Không fallback.
+  // - 3.2 NVL khác: chỉ nvlTotals.actualWeightKg. Không fallback ĐM/catalog/BOM.
   for (const row of rows.values()) row.finishedKg = 0;
-  const finishedFromNvlTotals = new Set<string>();
+  const tongTrongLuongThucTeKg = round4(
+    sanLuongProductGroups.reduce(
+      (sum, pg) => sum + (pg.weightKg > 0 ? pg.weightKg : 0),
+      0
+    )
+  );
+  for (const row of rows.values()) {
+    if (!isPlasticNvl(row)) continue;
+    const tiLe = resolveBangTronTiLePercent(row);
+    if (tiLe == null || !(tongTrongLuongThucTeKg > 0)) {
+      row.finishedKg = 0;
+      continue;
+    }
+    row.finishedKg = round4(tongTrongLuongThucTeKg * (tiLe / 100));
+  }
   for (const group of sanLuongGroupsForOrder) {
     for (const total of group.nvlTotals || []) {
-      const weight =
-        total.actualWeightKg > 0
-          ? total.actualWeightKg
-          : total.normWeightKg > 0
-            ? total.normWeightKg
-            : 0;
-      if (!(weight > 0)) continue;
       const unit = total.amountType === 'percent' ? 'kg' : String(total.unit || '').trim() || 'Cái';
-      const row = ensure(total.itemCode, total.itemName, unit);
-      if (!row) continue;
-      row.finishedKg = round4(row.finishedKg + weight);
-      finishedFromNvlTotals.add(row.key);
-    }
-  }
-  // Fallback: dòng NVL theo từng SP nếu chưa có trong nvlTotals.
-  for (const productGroup of sanLuongProductGroups) {
-    for (const line of productGroup.lines || []) {
-      const weight =
-        line.actualWeightKg > 0
-          ? line.actualWeightKg
-          : line.normWeightKg > 0
-            ? line.normWeightKg
-            : 0;
+      const probe = { code: total.itemCode, name: total.itemName, unit };
+      if (isPlasticNvl(probe)) continue;
+      const weight = total.actualWeightKg > 0 ? total.actualWeightKg : 0;
       if (!(weight > 0)) continue;
-      const unit = line.amountType === 'percent' ? 'kg' : String(line.unit || '').trim() || 'Cái';
-      const row = ensure(line.itemCode, line.itemName, unit);
-      if (!row || finishedFromNvlTotals.has(row.key)) continue;
+      const row = ensure(total.itemCode, total.itemName, unit);
+      if (!row || isPlasticNvl(row)) continue;
       row.finishedKg = round4(row.finishedKg + weight);
     }
   }
@@ -619,7 +615,7 @@ function buildMaterialRowsForOrder(input: {
 
   const materialsCatalog = materials.map(mapMaterialToWeightCatalogItem);
 
-  // Băng keo: khoi_luong_kg là kg trên 1 thành phẩm. Số cuộn = làm tròn (tổng kg / Tổng kg 1 cuộn).
+  // Băng keo: chỉ tính SL TP (số cuộn), không ghi đè Nhập TP.
   for (const row of rows.values()) {
     if (isPlasticNvl(row)) continue;
     const catalogKg = findMaterialTongKgPerUnit(row.code, materialsCatalog);
@@ -642,22 +638,7 @@ function buildMaterialRowsForOrder(input: {
       }
     }
     if (!matched || !(rawKg > 0)) continue;
-    const rolls = Math.round(rawKg / catalogKg);
-    row.actualQty = rolls;
-    row.finishedKg = round4(rolls * catalogKg);
-  }
-
-  // NVL Cái: Nhập TP = số cái thành phẩm × Tổng kg danh mục (không lấy số cái làm kg).
-  for (const row of rows.values()) {
-    if (isPlasticNvl(row)) continue;
-    if (isWarehouseRollUnit(row.unit)) continue;
-    if (!(row.actualQty > 0)) continue;
-    const catalogKg = findMaterialTongKgPerUnit(row.code, materialsCatalog);
-    if (catalogKg != null && catalogKg > 0) {
-      row.finishedKg = round4(row.actualQty * catalogKg);
-      continue;
-    }
-    if (!(row.finishedKg > 0)) row.finishedKg = round4(row.actualQty);
+    row.actualQty = Math.round(rawKg / catalogKg);
   }
 
   // Lỗi hỏng nhựa: vẫn chia theo «Tỉ lệ trộn Thực tế» (không đổi cột Nhập TP).

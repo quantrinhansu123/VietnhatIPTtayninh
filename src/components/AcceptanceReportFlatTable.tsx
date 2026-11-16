@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
 import {
-  resolveAcceptanceLineFilmKg,
-  resolveAcceptanceLineNhuaKg,
   sumByUnit,
   sumTrongLuongKg
 } from './AcceptanceReportPrintSheet';
@@ -18,16 +16,27 @@ import {
   TableBody,
   TableRow,
   TableEmptyRow,
-  TablePagination
+  TablePagination,
+  RowActionsMenu
 } from './shared/table';
 
 type NamedReport = AcceptanceReport & { ten_sp?: string };
 
+export type NvlWeightGroupTotals = {
+  tronKg: number | null;
+  khongTronKg: number | null;
+  /** Σ NVL túi (VT-TUI…). */
+  tuiKg: number | null;
+  /** Σ NVL ống giấy (ONG-…). */
+  ongKg: number | null;
+};
+
 type Props = {
   reports: NamedReport[];
-  filmKgByProductCode: Map<string, number>;
+  /** TL vật tư trộn / không trộn theo Thành phần SP (khớp modal NVL). */
+  nvlWeightByReportId?: Map<string, NvlWeightGroupTotals>;
   onViewNvl: (report: AcceptanceReport) => void;
-  renderSlipActions: (report: AcceptanceReport) => ReactNode;
+  renderSlipActions?: (report: AcceptanceReport) => ReactNode;
   onEditLine: (report: AcceptanceReport) => void;
   onDeleteLine: (id: string) => void;
   deletingId: string | null;
@@ -41,10 +50,15 @@ function machineLabel(report: NamedReport) {
     : report.ten_may || report.ma_may || '-';
 }
 
+function formatNvlGroupKg(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `${formatNumber(value, 2)} Kg`;
+}
+
 /** Bảng tổng hợp phẳng: một dòng mỗi mặt hàng, ngày và ca là các cột riêng. */
 export default function AcceptanceReportFlatTable({
   reports,
-  filmKgByProductCode,
+  nvlWeightByReportId,
   onViewNvl,
   renderSlipActions,
   onEditLine,
@@ -78,19 +92,48 @@ export default function AcceptanceReportFlatTable({
 
   const totals = useMemo(() => {
     let filmKg = 0;
-    let plasticKg = 0;
+    let tronKg = 0;
+    let khongTronKg = 0;
+    let tuiKg = 0;
+    let ongKg = 0;
+    let hasTron = false;
+    let hasKhongTron = false;
+    let hasTui = false;
+    let hasOng = false;
     for (const row of rows) {
-      const film = resolveAcceptanceLineFilmKg(row.mat_hang, row.so_luong, filmKgByProductCode);
-      const plastic = resolveAcceptanceLineNhuaKg(row.trong_luong, film);
+      const film = row.trong_luong_mang;
       if (film != null && film > 0) filmKg += film;
-      if (plastic != null && plastic > 0) plasticKg += plastic;
+      const nvl = nvlWeightByReportId?.get(String(row.id || ''));
+      if (nvl?.tronKg != null) {
+        hasTron = true;
+        tronKg += nvl.tronKg;
+      }
+      if (nvl?.khongTronKg != null) {
+        hasKhongTron = true;
+        khongTronKg += nvl.khongTronKg;
+      }
+      if (nvl?.tuiKg != null) {
+        hasTui = true;
+        tuiKg += nvl.tuiKg;
+      }
+      if (nvl?.ongKg != null) {
+        hasOng = true;
+        ongKg += nvl.ongKg;
+      }
     }
-    return { filmKg, plasticKg, weightKg: sumTrongLuongKg(rows) };
-  }, [rows, filmKgByProductCode]);
+    return {
+      filmKg,
+      weightKg: sumTrongLuongKg(rows),
+      tronKg: hasTron ? tronKg : null,
+      khongTronKg: hasKhongTron ? khongTronKg : null,
+      tuiKg: hasTui ? tuiKg : null,
+      ongKg: hasOng ? ongKg : null
+    };
+  }, [nvlWeightByReportId, rows]);
 
   return (
     <TableShell
-      minWidthClassName="min-w-[1360px]"
+      minWidthClassName="min-w-[1560px]"
       maxHeightClassName="max-h-[70vh]"
       className="!rounded-md !shadow-none"
       footer={
@@ -120,21 +163,32 @@ export default function AcceptanceReportFlatTable({
         <TableHeadCell align="center">ĐVT</TableHeadCell>
         <TableHeadCell align="right">Số lượng</TableHeadCell>
         <TableHeadCell align="right">Trọng lượng</TableHeadCell>
+        <TableHeadCell align="right">
+          <span title="Σ NVL % (nhựa trộn) = Nhựa thực tế × % định mức Thành phần">
+            TL vật tư trộn
+          </span>
+        </TableHeadCell>
+        <TableHeadCell align="right">
+          <span title="Σ NVL Cái/Cuộn (túi · ống · băng keo…) theo định mức Thành phần × SL">
+            TL VT không trộn
+          </span>
+        </TableHeadCell>
         <TableHeadCell align="right">TL màng</TableHeadCell>
-        <TableHeadCell align="right">TL nhựa</TableHeadCell>
+        <TableHeadCell align="right">
+          <span title="Σ NVL túi (VT-TUI…) theo định mức Thành phần × SL">TL Túi</span>
+        </TableHeadCell>
+        <TableHeadCell align="right">
+          <span title="Σ NVL ống giấy (ONG-…) theo định mức Thành phần × SL">TL Ống</span>
+        </TableHeadCell>
         <TableHeadCell align="center">Thao tác</TableHeadCell>
       </TableHead>
       <TableBody>
         {pageRows.length === 0 ? (
-          <TableEmptyRow colSpan={13}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
+          <TableEmptyRow colSpan={16}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
         ) : (
           pageRows.map((report, index) => {
-            const filmKg = resolveAcceptanceLineFilmKg(
-              report.mat_hang,
-              report.so_luong,
-              filmKgByProductCode
-            );
-            const plasticKg = resolveAcceptanceLineNhuaKg(report.trong_luong, filmKg);
+            const filmKg = report.trong_luong_mang;
+            const nvl = nvlWeightByReportId?.get(String(report.id || ''));
             const timeLabel = report.gio && report.gio !== '-' ? ` · ${report.gio}` : '';
 
             return (
@@ -171,31 +225,34 @@ export default function AcceptanceReportFlatTable({
                     ? '—'
                     : `${formatNumber(Number(report.trong_luong), 2)} ${report.don_vi_trong_luong || 'Kg'}`}
                 </td>
-                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-cyan-800 last:border-r-0">
-                  {filmKg != null && filmKg > 0 ? `${formatNumber(filmKg, 2)} Kg` : '—'}
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-emerald-800 last:border-r-0">
+                  {formatNvlGroupKg(nvl?.tronKg)}
                 </td>
-                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-violet-800 last:border-r-0">
-                  {plasticKg != null && plasticKg > 0 ? `${formatNumber(plasticKg, 2)} Kg` : '—'}
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-sky-800 last:border-r-0">
+                  {formatNvlGroupKg(nvl?.khongTronKg)}
+                </td>
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-cyan-800 last:border-r-0">
+                  {filmKg != null ? `${formatNumber(filmKg, 2)} Kg` : '—'}
+                </td>
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-rose-800 last:border-r-0">
+                  {formatNvlGroupKg(nvl?.tuiKg)}
+                </td>
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-orange-800 last:border-r-0">
+                  {formatNvlGroupKg(nvl?.ongKg)}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-center">
-                  <div className="inline-flex items-center justify-center gap-1">
+                  <RowActionsMenu label={`Thao tác báo cáo ${report.mat_hang || ''}`} colorful>
                     <button
                       type="button"
                       onClick={() => onViewNvl(report)}
-                      className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
                       title="Xem NVL định mức"
                     >
-                      <Eye className="h-3 w-3" />
-                      Xem
+                      <Eye className="h-4 w-4 text-violet-600" />
+                      <span>Xem NVL định mức</span>
                     </button>
                     {canEdit && !report.da_in ? (
-                      <button
-                        type="button"
-                        onClick={() => onEditLine(report)}
-                        className="inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50"
-                        title="Sửa"
-                      >
-                        <Pencil className="h-3 w-3" />
+                      <button type="button" onClick={() => onEditLine(report)} title="Sửa">
+                        <Pencil className="h-4 w-4 text-amber-600" />
                         <span>Sửa</span>
                       </button>
                     ) : null}
@@ -204,18 +261,17 @@ export default function AcceptanceReportFlatTable({
                         type="button"
                         onClick={() => onDeleteLine(report.id)}
                         disabled={deletingId === report.id}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-rose-300 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                         title="Xóa"
                       >
                         {deletingId === report.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin text-rose-600" />
                         ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4 text-rose-600" />
                         )}
+                        <span>Xóa</span>
                       </button>
                     ) : null}
-                    {renderSlipActions(report)}
-                  </div>
+                  </RowActionsMenu>
                 </td>
               </TableRow>
             );
@@ -236,11 +292,22 @@ export default function AcceptanceReportFlatTable({
             <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-amber-800">
               {totals.weightKg > 0 ? `${formatNumber(totals.weightKg, 2)} Kg` : '—'}
             </td>
-            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-cyan-800">
-              {totals.filmKg > 0 ? `${formatNumber(totals.filmKg, 2)} Kg` : '—'}
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-emerald-800">
+              {formatNvlGroupKg(totals.tronKg)}
             </td>
-            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-violet-800">
-              {totals.plasticKg > 0 ? `${formatNumber(totals.plasticKg, 2)} Kg` : '—'}
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-sky-800">
+              {formatNvlGroupKg(totals.khongTronKg)}
+            </td>
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-cyan-800">
+              {rows.every(row => row.trong_luong_mang != null)
+                ? `${formatNumber(totals.filmKg, 2)} Kg`
+                : '—'}
+            </td>
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-rose-800">
+              {formatNvlGroupKg(totals.tuiKg)}
+            </td>
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-orange-800">
+              {formatNvlGroupKg(totals.ongKg)}
             </td>
             <td />
           </tr>

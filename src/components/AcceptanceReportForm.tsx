@@ -61,6 +61,12 @@ export type AcceptanceReport = {
   /** Số AI điền từ trạm cân; null = không thừa kế AI. */
   so_luong_ai: number | null;
   trong_luong: number | null;
+  trong_luong_loi?: number | null;
+  trong_luong_bi?: number | null;
+  trong_luong_mang?: number | null;
+  trong_luong_nhua?: number | null;
+  so_lan_can?: number | null;
+  trong_luong_dong_bo_luc?: string | null;
   don_vi_trong_luong: string;
   ghi_chu: string;
   hinh_anh: string;
@@ -445,6 +451,12 @@ export function normalizeReportFromApi(record: Record<string, unknown>): Accepta
     trong_luong:
       record.trong_luong === null || record.trong_luong === undefined ? null : Number(record.trong_luong),
     don_vi_trong_luong: String(record.don_vi_trong_luong ?? 'Kg'),
+    trong_luong_loi: record.trong_luong_loi == null ? null : Number(record.trong_luong_loi),
+    trong_luong_bi: record.trong_luong_bi == null ? null : Number(record.trong_luong_bi),
+    trong_luong_mang: record.trong_luong_mang == null ? null : Number(record.trong_luong_mang),
+    trong_luong_nhua: record.trong_luong_nhua == null ? null : Number(record.trong_luong_nhua),
+    so_lan_can: record.so_lan_can == null ? null : Number(record.so_lan_can),
+    trong_luong_dong_bo_luc: record.trong_luong_dong_bo_luc == null ? null : String(record.trong_luong_dong_bo_luc),
     ghi_chu: String(record.ghi_chu ?? record.note ?? ''),
     hinh_anh: String(record.hinh_anh ?? ''),
     hinh_anh_public_id: String(record.hinh_anh_public_id ?? ''),

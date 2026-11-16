@@ -27,6 +27,8 @@
 
 ## Tab (theo quyền menu)
 
+Tab **Quy đổi vật liệu** (`material-conversion`) nhúng `src/features/quy-doi-vat-lieu/index.tsx`, lưu bảng `quy_doi_vat_lieu` trên DB chính. Chỉ áp dụng tìm kiếm (danh mục chung, không theo ngày/ca/máy), giữ mounted khi đổi bộ lọc. Quyền thêm/sửa/xóa theo `report-lists`. Xem [quy_doi_vat_lieu.md](./quy_doi_vat_lieu.md).
+
 Báo cáo tồn · Phiếu nhận NVL · Trộn NVL · Danh sách cân · Hàng hỏng · Sản lượng · Nhập kho TP · Nhật ký chạy máy · Phiếu giao ca · Dừng máy
 
 **Keep-alive:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab không mất dữ liệu đã tải (đổi bộ lọc chung vẫn remount panel).

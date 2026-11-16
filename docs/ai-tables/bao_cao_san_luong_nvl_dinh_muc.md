@@ -6,9 +6,18 @@
 
 Snapshot NVL định mức gắn **từng dòng** `bao_cao_nghiem_thu`. Khi bấm **Đồng bộ** trên modal: lấy Thành phần từ Kho sản phẩm (`san_pham.npl_phan_tram`) × SL phiếu, rồi **ghi DB**.
 
-Modal **NVL theo định mức**: cột **Trọng lượng**
-- ĐVT `%` = trọng lượng cuộn (**Cân sản phẩm**) × %; không cân thì SL × kg/cuộn định mức
-- ĐVT `Cái` = định lượng Thành phần × SL sản lượng, quy kg (Tổng kg kho NVL / `khoi_luong_kg` / kg trong tên)
+Modal **NVL theo định mức** — công thức nguồn chính (không ước ĐM):
+
+| Ô / cột | Công thức | Nguồn |
+|---------|-----------|--------|
+| **Trọng lượng tổng** | Σ Cân SP | `can_tu_dong` hoặc `trong_luong` phiếu |
+| **Trọng lượng thực tế** | Nhựa = Cân SP − lõi − bì − màng | cân AI snapshot / `trong_luong_nhua` |
+| **Vật tư trộn · TL dòng** | Nhựa × **% trộn thực tế** | `bao_cao_phoi_tron` (ngày·ca·máy) — **không** fallback ĐM BOM |
+| **Túi / ống · TL** | `(ĐM cái/SP × SL) × kg/cái` | Thành phần `khoi_luong_kg` hoặc Tổng kg kho NVL |
+| **Băng keo · TL** | `SL × khoi_luong_kg` nếu kg BOM ≪ kg/cuộn kho | Thành phần |
+| **Bảng phẳng · TL vật tư trộn** | = **nhựa thực tế** | `trong_luong_nhua` |
+
+**Không** cộng túi/ống vào Cân SP: `Trọng lượng tổng ≈ Nhựa + lõi + bì (+ màng trong cuộn)`.
 
 Tab **Báo cáo sản lượng** (`/phan-tich-tu-dong`) khi **Tính toán** / **Áp dụng**:
 
@@ -35,7 +44,8 @@ node scripts/run-sql-file.mjs supabase-bao-cao-san-luong-nvl-dinh-muc.sql
 
 | File | Vai trò |
 |------|---------|
-| `AcceptanceReportListView.tsx` | Modal Xem / Đồng bộ → load DB, lưu snapshot |
+| `AcceptanceReportListView.tsx` | Modal Xem / Đồng bộ → load DB, lưu snapshot; tính TL trộn / không trộn cho bảng phẳng |
+| `AcceptanceReportFlatTable.tsx` | Cột **TL vật tư trộn** · **TL VT không trộn** |
 | `ControlBoardBbMachineReportTable.tsx` | Tab Báo cáo sản lượng — Tính toán đọc snapshot |
 
 ## Liên quan

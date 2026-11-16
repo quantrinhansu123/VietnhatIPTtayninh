@@ -2781,29 +2781,49 @@ export function WarehouseSlipPanel({
     };
   }, [showMaterialRequests, pageRefreshNonce, exportedRefreshNonce, slipDate]);
 
-  /** Duyệt theo Ngày / Ca / Máy đang chọn phía trên phiếu. */
-  const filteredMaterialRequests = useMemo(() => {
+  /** Yêu cầu trong ngày phiếu (API đã lọc ngày). */
+  const dayMaterialRequests = useMemo(() => {
     const day = slipDate.trim().slice(0, 10);
-    const formShift = String(selectedShifts[0] || '').trim();
-    const formMachine = machine.trim().toLowerCase();
+    if (!day) return materialRequests;
     return materialRequests.filter(request => {
       const reqDay = String(request.ngay || '').trim().slice(0, 10);
-      if (day && reqDay && reqDay !== day) return false;
-      if (formShift) {
+      return !reqDay || reqDay === day;
+    });
+  }, [materialRequests, slipDate]);
+
+  /** Khớp thêm Ca / Máy form (máy: mã ↔ tên qua danh mục). */
+  const matchedMaterialRequests = useMemo(() => {
+    const formShifts = selectedShifts.map(shift => String(shift || '').trim()).filter(Boolean);
+    const formMachine = machine.trim();
+    return dayMaterialRequests.filter(request => {
+      if (formShifts.length > 0) {
         const reqCa = String(request.ca || '').trim();
         if (!reqCa) return false;
-        if (!shiftNamesMatch(formShift, reqCa) && formShift !== reqCa) return false;
+        const caOk = formShifts.some(
+          formShift => shiftNamesMatch(formShift, reqCa) || formShift === reqCa
+        );
+        if (!caOk) return false;
       }
       if (formMachine) {
-        const reqMay = String(request.may || '').trim().toLowerCase();
+        const reqMay = String(request.may || '').trim();
         if (!reqMay) return false;
-        if (reqMay !== formMachine && !reqMay.includes(formMachine) && !formMachine.includes(reqMay)) {
-          return false;
-        }
+        if (!warehouseMachineMatchesFilter(formMachine, reqMay, machineOptions)) return false;
       }
       return true;
     });
-  }, [materialRequests, slipDate, selectedShifts, machine]);
+  }, [dayMaterialRequests, selectedShifts, machine, machineOptions]);
+
+  /**
+   * Hiện đủ yêu cầu trong ngày: ưu tiên khớp Ca/Máy;
+   * nếu form Ca/Máy khác (vd form 12C1 mà phiếu 12C2) vẫn hiện list ngày để chọn.
+   */
+  const filteredMaterialRequests = useMemo(() => {
+    if (matchedMaterialRequests.length > 0) return matchedMaterialRequests;
+    return dayMaterialRequests;
+  }, [matchedMaterialRequests, dayMaterialRequests]);
+
+  const materialRequestsShowDayFallback =
+    matchedMaterialRequests.length === 0 && dayMaterialRequests.length > 0;
 
   useEffect(() => {
     if (!activeRequestCode) return;
@@ -5172,47 +5192,55 @@ export function WarehouseSlipPanel({
             <div className="col-span-2 min-w-0 space-y-1 sm:col-span-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 Yêu cầu xuất vật tư chờ xử lý ({filteredMaterialRequests.length}
-                {filteredMaterialRequests.length !== materialRequests.length
-                  ? ` / ${materialRequests.length}`
+                {matchedMaterialRequests.length !== dayMaterialRequests.length
+                  ? ` · khớp Ca/Máy ${matchedMaterialRequests.length}/${dayMaterialRequests.length}`
                   : ''}
                 )
               </span>
               {filteredMaterialRequests.length === 0 ? (
                 <p className="text-xs font-semibold text-zinc-400">
-                  {materialRequests.length === 0
-                    ? 'Chưa có yêu cầu nào trong ngày phiếu.'
-                    : 'Không có yêu cầu khớp Ngày / Ca / Máy đang chọn.'}
+                  Chưa có yêu cầu chờ xử lý trong ngày phiếu.
                 </p>
               ) : (
-                <div className="flex w-full items-center gap-2">
-                  <select
-                    value={activeRequestCode}
-                    onChange={event => {
-                      const request = filteredMaterialRequests.find(
-                        item => item.ma_yeu_cau === event.target.value
-                      );
-                      if (request) applyMaterialRequest(request);
-                      else setActiveRequestCode('');
-                    }}
-                    className={`${warehouseFieldClass} min-w-0 flex-1`}
-                  >
-                    <option value="">Chọn yêu cầu xuất vật tư...</option>
-                    {filteredMaterialRequests.map(request => (
-                      <option key={request.ma_yeu_cau} value={request.ma_yeu_cau}>
-                        {request.ma_yeu_cau} · {request.ngay} · {[request.ca, request.may, request.nguoi_yc].filter(Boolean).join(' · ')} · {request.lines.length} NVL
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={!activeRequestCode}
-                    onClick={() => void handleDeleteMaterialRequest(activeRequestCode)}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Xóa yêu cầu đang chọn"
-                    aria-label="Xóa yêu cầu đang chọn"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div className="space-y-1">
+                  {materialRequestsShowDayFallback ? (
+                    <p className="text-[11px] font-semibold text-amber-800">
+                      Không có phiếu khớp đúng Ca/Máy form — đang hiện tất cả yêu cầu chờ xử lý trong ngày.
+                      Chọn phiếu sẽ tự điền Ca/Máy.
+                    </p>
+                  ) : null}
+                  <div className="flex w-full items-center gap-2">
+                    <select
+                      value={activeRequestCode}
+                      onChange={event => {
+                        const request = filteredMaterialRequests.find(
+                          item => item.ma_yeu_cau === event.target.value
+                        );
+                        if (request) applyMaterialRequest(request);
+                        else setActiveRequestCode('');
+                      }}
+                      className={`${warehouseFieldClass} min-w-0 flex-1`}
+                    >
+                      <option value="">Chọn yêu cầu xuất vật tư...</option>
+                      {filteredMaterialRequests.map(request => (
+                        <option key={request.ma_yeu_cau} value={request.ma_yeu_cau}>
+                          {request.ma_yeu_cau} · {request.ngay} ·{' '}
+                          {[request.ca, request.may, request.nguoi_yc].filter(Boolean).join(' · ')} ·{' '}
+                          {request.lines.length} NVL
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!activeRequestCode}
+                      onClick={() => void handleDeleteMaterialRequest(activeRequestCode)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Xóa yêu cầu đang chọn"
+                      aria-label="Xóa yêu cầu đang chọn"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -14,6 +14,8 @@ import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews'
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
 import { nextProductionOrderCode } from './src/utils/productionOrderCode';
 import { canonicalizeMaterialCodePayload } from './src/utils/materialCodeAliases';
+import { materialConversionRouter } from './src/features/quy-doi-vat-lieu/server';
+import { emptyAcceptanceWeights, parseAcceptanceWeightSnapshot } from './src/utils/acceptanceWeightSnapshot';
 
 /** Cổng khi chạy thêm một kênh. Đọc trước dotenv để file .env không ghi đè. */
 const ALT_PORT = process.env.ALT_PORT;
@@ -650,6 +652,22 @@ function asCanTuDongMetadata(metadata: unknown): Record<string, unknown> | null 
     return metadata as Record<string, unknown>;
   }
   return null;
+}
+
+/**
+ * Trọng lượng bì đã lưu — null nếu chưa ghi.
+ * Ưu tiên metadata.SOURCE_BI_KG (nút Sửa bì luôn ghi), rồi cột trong_luong_bi.
+ */
+function resolveCanTuDongTrongLuongBi(row: Record<string, unknown>): number | null {
+  const meta = asCanTuDongMetadata(row.metadata);
+  if (meta) {
+    const fromMeta = asFiniteNumber(
+      meta.SOURCE_BI_KG ?? meta.source_bi_kg ?? meta.trong_luong_bi ?? meta.bi_kg
+    );
+    if (fromMeta != null && fromMeta >= 0) return fromMeta;
+  }
+  const direct = asFiniteNumber(row.trong_luong_bi ?? row.bi_kg);
+  return direct != null && direct >= 0 ? direct : null;
 }
 
 /** Cột Ngày (SOURCE_DATE / work_date) — không phải ngày cân captured_at. */
@@ -11223,6 +11241,8 @@ export function createApp() {
     }
   });
 
+  app.use('/api/quy-doi-vat-lieu', materialConversionRouter(supabase));
+
   app.get('/api/danh-sach-may', async (_req, res) => {
     if (!supabase && !supabaseWeighing) {
       return res.json({ machines: [], total: 0, source: 'local' });
@@ -16294,6 +16314,7 @@ export function createApp() {
           can_loi: asFiniteNumber(record.tare_weight),
           can_san_pham: asFiniteNumber(record.weight),
           khoi_luong_thuc: netWeight,
+          trong_luong_bi: resolveCanTuDongTrongLuongBi(record),
           product_preview_url: productUrl || null,
           core_preview_url: coreUrl || null,
           qr_preview_url: qrUrl || null,
@@ -16320,7 +16341,8 @@ export function createApp() {
               machine: may,
               can_loi: asFiniteNumber(record.tare_weight),
               can_san_pham: asFiniteNumber(record.weight),
-              khoi_luong_thuc: netWeight
+              khoi_luong_thuc: netWeight,
+              trong_luong_bi: resolveCanTuDongTrongLuongBi(record)
             };
           });
 
@@ -17289,6 +17311,281 @@ export function createApp() {
     } catch (err: any) {
       return res.status(500).json({
         error: err?.message || 'Lỗi khi nhập kho cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  /** Đổi trọng lượng bì (metadata.SOURCE_BI_KG) cho nhiều dòng theo bộ lọc / đã chọn. */
+  app.post('/api/can-tu-dong/bulk-set-bi', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const biRaw = body.trong_luong_bi ?? body.bi_kg ?? body.bi ?? body.SOURCE_BI_KG;
+      if (biRaw === '' || biRaw == null) {
+        return res.status(400).json({ error: 'Thiếu trọng lượng bì (trong_luong_bi).' });
+      }
+      const biWeight = Number(String(biRaw).replace(',', '.'));
+      if (!Number.isFinite(biWeight) || biWeight < 0) {
+        return res.status(400).json({ error: 'Trọng lượng bì phải là số ≥ 0.' });
+      }
+      const biRounded = Math.round(biWeight * 1000) / 1000;
+
+      const { data: existingRows, error: readError } = await supabaseWeighing
+        .from(SUPABASE_CAN_TU_DONG_TABLE)
+        .select('id, metadata')
+        .in('id', ids);
+
+      if (readError) {
+        return res.status(500).json({
+          error: readError.message || 'Không đọc được dòng cân tự động.',
+          db: SUPABASE_WEIGHING_DB_LABEL
+        });
+      }
+
+      const rows = Array.isArray(existingRows) ? existingRows : [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        let weightRaw =
+          typeof currentMetadata.weight_raw === 'string' ? currentMetadata.weight_raw : '';
+        weightRaw = upsertCanTuDongWeightRawToken(
+          weightRaw,
+          'SOURCE_BI_KG',
+          String(biRounded)
+        );
+        const metadata = {
+          ...currentMetadata,
+          SOURCE_BI_KG: biRounded,
+          source_bi_kg: biRounded,
+          trong_luong_bi: biRounded,
+          bi_kg: biRounded,
+          ...(weightRaw ? { weight_raw: weightRaw } : {})
+        };
+        const payloads: Array<Record<string, unknown>> = [
+          { metadata, trong_luong_bi: biRounded },
+          { metadata }
+        ];
+        let updateError: { message?: string; code?: string } | null = null;
+        for (const payload of payloads) {
+          const result = await supabaseWeighing
+            .from(SUPABASE_CAN_TU_DONG_TABLE)
+            .update(payload)
+            .eq('id', record.id);
+          updateError = result.error;
+          if (!updateError) break;
+          if (
+            updateError.code !== 'PGRST204' &&
+            !/column|schema cache|trong_luong_bi/i.test(String(updateError.message || ''))
+          ) {
+            break;
+          }
+        }
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể đổi trọng lượng bì cho dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+        updated += 1;
+      }
+
+      return res.json({
+        success: true,
+        updated,
+        requested: ids.length,
+        trong_luong_bi: biRounded,
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi đổi trọng lượng bì cân tự động.',
+        db: SUPABASE_WEIGHING_DB_LABEL
+      });
+    }
+  });
+
+  /**
+   * Tính lại thông số cho dòng đã chọn:
+   * ghi bì hiệu lực (đã lưu hoặc mặc định 0,16), nhựa = Cân SP − lõi − bì.
+   */
+  app.post('/api/can-tu-dong/bulk-recalc', async (req, res) => {
+    if (!supabaseWeighing || !SUPABASE_WEIGHING_URL) {
+      return res.status(503).json({
+        error:
+          `Chưa cấu hình DB cân tự động. Cần SUPABASE_WEIGHING_URL / SUPABASE_WEIGHING_SERVICE_KEY (label ${SUPABASE_WEIGHING_DB_LABEL}).`
+      });
+    }
+
+    try {
+      const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
+      const idsRaw = Array.isArray(body.ids) ? body.ids : [];
+      const ids = [
+        ...new Set(
+          idsRaw
+            .map(id => {
+              if (typeof id === 'number' && Number.isFinite(id)) return id;
+              const text = String(id ?? '').trim();
+              if (!text) return null;
+              const asNum = Number(text);
+              return Number.isFinite(asNum) && String(asNum) === text ? asNum : text;
+            })
+            .filter((id): id is string | number => id != null && id !== '')
+        )
+      ];
+      if (ids.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách ID cân tự động.' });
+      }
+
+      const DEFAULT_BI_KG = 0.16;
+      // Ưu tiên cột `trong_luong_bi` (sau supabase-can-tu-dong-trong-luong-bi.sql); fallback chỉ metadata.
+      let existingRows: unknown[] | null = null;
+      {
+        const withCol = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .select('id, metadata, trong_luong_bi, tare_weight, weight')
+          .in('id', ids);
+        if (
+          withCol.error &&
+          (withCol.error.code === 'PGRST204' ||
+            /column|schema cache|trong_luong_bi/i.test(String(withCol.error.message || '')))
+        ) {
+          const fallback = await supabaseWeighing
+            .from(SUPABASE_CAN_TU_DONG_TABLE)
+            .select('id, metadata, tare_weight, weight')
+            .in('id', ids);
+          if (fallback.error) {
+            return res.status(500).json({
+              error: fallback.error.message || 'Không đọc được dòng cân tự động.',
+              db: SUPABASE_WEIGHING_DB_LABEL
+            });
+          }
+          existingRows = Array.isArray(fallback.data) ? fallback.data : [];
+        } else if (withCol.error) {
+          return res.status(500).json({
+            error: withCol.error.message || 'Không đọc được dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL
+          });
+        } else {
+          existingRows = Array.isArray(withCol.data) ? withCol.data : [];
+        }
+      }
+
+      const rows = existingRows || [];
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy dòng cân tự động đã chọn.' });
+      }
+
+      let updated = 0;
+      let skipped = 0;
+      let tongCanSp = 0;
+      let tongLoi = 0;
+      let tongBi = 0;
+      let tongNhua = 0;
+
+      for (const row of rows) {
+        const record = row as Record<string, unknown>;
+        const sp = asFiniteNumber(record.weight);
+        const loi = asFiniteNumber(record.tare_weight);
+        if (sp == null || loi == null || sp <= 0 || loi < 0) {
+          skipped += 1;
+          continue;
+        }
+
+        const biStored = resolveCanTuDongTrongLuongBi(record);
+        const biRounded =
+          Math.round((biStored != null ? biStored : DEFAULT_BI_KG) * 1000) / 1000;
+        const nhua = Math.round((sp - loi - biRounded) * 1000) / 1000;
+
+        const currentMetadata = asCanTuDongMetadata(record.metadata) || {};
+        const metadata = {
+          ...currentMetadata,
+          SOURCE_BI_KG: biRounded,
+          trong_luong_bi: biRounded,
+          SOURCE_NHUA_KG: nhua,
+          trong_luong_nhua: nhua
+        };
+        const payloads: Array<Record<string, unknown>> = [
+          { metadata, trong_luong_bi: biRounded },
+          { metadata }
+        ];
+        let updateError: { message?: string; code?: string } | null = null;
+        for (const payload of payloads) {
+          const result = await supabaseWeighing
+            .from(SUPABASE_CAN_TU_DONG_TABLE)
+            .update(payload)
+            .eq('id', record.id);
+          updateError = result.error;
+          if (!updateError) break;
+          if (
+            updateError.code !== 'PGRST204' &&
+            !/column|schema cache|trong_luong_bi/i.test(String(updateError.message || ''))
+          ) {
+            break;
+          }
+        }
+        if (updateError) {
+          return res.status(500).json({
+            error: updateError.message || 'Không thể tính lại thông số dòng cân tự động.',
+            db: SUPABASE_WEIGHING_DB_LABEL,
+            updated
+          });
+        }
+
+        updated += 1;
+        tongCanSp += sp;
+        tongLoi += loi;
+        tongBi += biRounded;
+        tongNhua += nhua;
+      }
+
+      const round3 = (n: number) => Math.round(n * 1000) / 1000;
+      return res.json({
+        success: true,
+        updated,
+        skipped,
+        requested: ids.length,
+        tong_can_sp: round3(tongCanSp),
+        tong_loi: round3(tongLoi),
+        tong_bi: round3(tongBi),
+        tong_nhua: round3(tongNhua),
+        db: SUPABASE_WEIGHING_DB_LABEL,
+        table: SUPABASE_CAN_TU_DONG_TABLE
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || 'Lỗi khi tính lại thông số cân tự động.',
         db: SUPABASE_WEIGHING_DB_LABEL
       });
     }
@@ -23514,6 +23811,26 @@ export function createApp() {
     }
   });
 
+  app.patch('/api/bao-cao-nghiem-thu/:id/trong-luong', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(400).json({ error: 'ID báo cáo không hợp lệ.' });
+    }
+    const snapshot = parseAcceptanceWeightSnapshot(req.body);
+    if (!snapshot) return res.status(400).json({ error: 'Snapshot trọng lượng không hợp lệ hoặc thiếu dữ liệu cân.' });
+    try {
+      const { data, error } = await supabase.from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+        .update({ ...snapshot, trong_luong_dong_bo_luc: new Date().toISOString() })
+        .eq('id', req.params.id).select('*').maybeSingle();
+      if (error) return res.status(500).json({ error: acceptanceReportWriteError(error) });
+      if (!data) return res.status(404).json({ error: 'Không tìm thấy báo cáo.' });
+      // Chỉ bổ sung snapshot: không đổi SL, trọng lượng tổng, ghi chú hoặc trạng thái in.
+      return res.json({ success: true, report: data });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Không thể lưu trọng lượng sản lượng.' });
+    }
+  });
+
   app.patch('/api/bao-cao-nghiem-thu/:id', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
@@ -23523,11 +23840,13 @@ export function createApp() {
       const id = String(req.params.id || '').trim();
       if (!id) return res.status(400).json({ error: 'Thiếu ID báo cáo.' });
 
-      const { data: existingReport } = await supabase
+      const { data: existingReport, error: existingError } = await supabase
         .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
-        .select('da_in')
+        .select('*')
         .eq('id', id)
         .maybeSingle();
+      if (existingError) return res.status(500).json({ error: acceptanceReportWriteError(existingError) });
+      if (!existingReport) return res.status(404).json({ error: 'Không tìm thấy báo cáo.' });
       if (existingReport?.da_in && req.body?.allowPrinted !== true) {
         return res.status(409).json({ error: 'Báo cáo đã in, không thể sửa nữa.' });
       }
@@ -23537,9 +23856,11 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
+      const snapshotChanged = ['ngay', 'ca', 'ma_may', 'ten_may', 'mat_hang', 'so_luong', 'trong_luong']
+        .some(key => String(existingReport?.[key] ?? '') !== String(parsed.record[key] ?? ''));
       const { data, error } = await supabase
         .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
-        .update({ ...parsed.record, da_in: false })
+        .update({ ...parsed.record, da_in: false, ...(snapshotChanged ? { ...emptyAcceptanceWeights, trong_luong_dong_bo_luc: null } : {}) })
         .eq('id', id)
         .select('*')
         .single();

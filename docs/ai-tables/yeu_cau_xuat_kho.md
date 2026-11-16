@@ -20,4 +20,4 @@
 - `src/features/yeu-cau-xuat-vat-tu/index.tsx` — form thêm/sửa (`/yeu-cau-xuat-vat-tu`)
 - `src/features/yeu-cau-xuat-vat-tu/materialRequestPreset.ts` — mẫu mã đề xuất theo tab **Order máy BB** / **Order máy CN**; phiếu mới **tự sổ** danh sách, chỉ điền SL; lưu chỉ gửi dòng có SL > 0. CN map mã giấy → mã kho (vd `NHUA-1L`→`NHUA-1L-CN`, `TUI-5dem`→`VT-TUI05`, `DUNGMOI`→`NVLK-DUNGMOI`).
 - `src/features/yeu-cau-xuat-vat-tu/MaterialRequestListView.tsx` — danh sách + lọc ngày/ca/máy + Thêm/Sửa/Xóa
-- `src/features/phieu-xuat-nhap-kho/index.tsx` — Xuất kho NVL: danh sách yêu cầu chờ xử lý **lọc theo Ngày / Ca / Máy** trên phiếu (API `tu_ngay`/`den_ngay` = ngày phiếu; Ca·Máy lọc client); bấm để đổ dòng NVL vào phiếu. Đã bỏ **Tự điền theo lệnh SX** (`showOrderFields = false`)
+- `src/features/phieu-xuat-nhap-kho/index.tsx` — Xuất kho NVL: yêu cầu chờ xử lý theo **ngày phiếu**; ưu tiên khớp Ca/Máy (`warehouseMachineMatchesFilter` mã↔tên). Nếu form Ca/Máy khác phiếu vẫn **hiện đủ yêu cầu trong ngày** (chọn phiếu tự điền Ca/Máy). Phiếu đã `da_xuat` không còn trong list. Đã bỏ **Tự điền theo lệnh SX**.

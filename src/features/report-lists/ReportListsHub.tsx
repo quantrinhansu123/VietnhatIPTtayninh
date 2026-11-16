@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { Activity, ChevronLeft, Loader2 } from 'lucide-react';
+import { Activity, ArrowLeftRight, ChevronLeft, Loader2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../components/AcceptanceReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../../lib/weighingSlipConfig';
@@ -30,10 +30,12 @@ const MachineDowntimeReportListView = lazy(() => import('../../components/Machin
 const MachineRunLogPanel = lazy(() => import('../../components/MachineRunLogPanel'));
 const ShiftHandoverListView = lazy(() => import('../../components/ShiftHandoverListView'));
 const ControlBoardPanel = lazy(() => import('../control-board').then(m => ({ default: m.ControlBoardPanel })));
+const MaterialConversionPanel = lazy(() => import('../quy-doi-vat-lieu'));
 
-export type ReportListsHubTabId = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'] | 'dashboard-auto';
+export type ReportListsHubTabId = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'] | 'dashboard-auto' | 'material-conversion';
+type HubMenuItem = Omit<MenuCardConfig, 'tab'> & { tab: ReportListsHubTabId };
 
-function shortTabLabel(item: MenuCardConfig) {
+function shortTabLabel(item: HubMenuItem) {
   return item.title
     .replace(/^Danh sách\s+/i, '')
     .replace(/^Phiếu\s+/i, '')
@@ -95,9 +97,11 @@ export function ReportListsHub({
   onCreateAcceptanceReport,
   initialHubTab
 }: Props) {
-  const hubItems = useMemo(
+  const hubItems = useMemo<HubMenuItem[]>(
     () => {
-      const base = menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS;
+      const base: HubMenuItem[] = [...(menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS), {
+        title: 'Quy đổi vật liệu', desc: 'Quy đổi theo Ngày · Ca · Máy, vật tư gốc và vật tư quy đổi.', icon: ArrowLeftRight, tab: 'material-conversion'
+      }];
       if (base.some(item => item.tab === 'dashboard-auto')) return base;
       return [
         ...base,
@@ -397,6 +401,14 @@ export function ReportListsHub({
               initialFilters={sharedInitialFilters}
               onBack={onBack}
               onCreate={() => onNavigate('shift-handover-report')}
+            />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="material-conversion" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <MaterialConversionPanel
+              key={filtersKey}
+              search={appliedFilters.search}
+              initialFilters={sharedInitialFilters}
             />
           </KeepAliveSlot>
 

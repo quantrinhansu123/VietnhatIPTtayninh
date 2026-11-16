@@ -34,6 +34,7 @@ import {
   DEFAULT_CAN_TU_DONG_BI_KG,
   parseCanTuDongQrProductCode,
   replaceCanTuDongQrProductCode,
+  resolveCanLoiKg,
   resolveCanSpKg,
   resolveCanTuDongBusinessDate,
   resolveCanTuDongMachine,
@@ -83,7 +84,7 @@ function disableCanTuDongPortraitPrintPage() {
  * Ý nghĩa cột DB / hiển thị:
  * - tare_weight      = Cân lõi
  * - weight           = Cân sản phẩm (còn lõi)
- * - Trọng lượng bì   = mặc định 0,16 kg
+ * - Trọng lượng bì   = metadata.SOURCE_BI_KG / trong_luong_bi; mặc định 0,16 kg
  * - Nhựa thực tế = SP − lõi − bì − màng (BOM / cuộn)
  * - Nhựa định mức = san_pham.trong_luong_nhua (hoặc TL − lõi − bì)
  * - core_image_*     = Ảnh cân lõi
@@ -109,6 +110,9 @@ export type CanTuDongRecord = {
   tare_weight?: number | string | null;
   /** Khối lượng thực */
   net_weight?: number | string | null;
+  /** Trọng lượng bì đã lưu (kg). */
+  trong_luong_bi?: number | string | null;
+  bi_kg?: number | string | null;
   unit?: string | null;
   captured_at?: string | null;
   product_image_path?: string | null;
@@ -207,6 +211,87 @@ async function postCanTuDongBulkSetMaSp(ids: Array<string | number>, maSp: strin
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || 'Không thể đồng bộ Mã SP các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
+async function postCanTuDongBulkSetBi(ids: Array<string | number>, trongLuongBi: number) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-bi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, trong_luong_bi: trongLuongBi })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi trọng lượng bì các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || chunk.length;
+  }
+  return updated;
+}
+
+type CanTuDongBulkRecalcResult = {
+  updated: number;
+  skipped: number;
+  tong_can_sp: number;
+  tong_loi: number;
+  tong_bi: number;
+  tong_nhua: number;
+};
+
+async function postCanTuDongBulkRecalc(ids: Array<string | number>): Promise<CanTuDongBulkRecalcResult> {
+  let updated = 0;
+  let skipped = 0;
+  let tongCanSp = 0;
+  let tongLoi = 0;
+  let tongBi = 0;
+  let tongNhua = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-recalc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể tính lại thông số các dòng cân tự động.');
+    }
+    updated += Number(data.updated) || 0;
+    skipped += Number(data.skipped) || 0;
+    tongCanSp += Number(data.tong_can_sp) || 0;
+    tongLoi += Number(data.tong_loi) || 0;
+    tongBi += Number(data.tong_bi) || 0;
+    tongNhua += Number(data.tong_nhua) || 0;
+  }
+  const round3 = (n: number) => Math.round(n * 1000) / 1000;
+  return {
+    updated,
+    skipped,
+    tong_can_sp: round3(tongCanSp),
+    tong_loi: round3(tongLoi),
+    tong_bi: round3(tongBi),
+    tong_nhua: round3(tongNhua)
+  };
+}
+
+async function postCanTuDongBulkSetTare(ids: Array<string | number>, tareWeight: number) {
+  let updated = 0;
+  for (let i = 0; i < ids.length; i += AUTO_FILL_CHUNK) {
+    const chunk = ids.slice(i, i + AUTO_FILL_CHUNK);
+    const res = await fetch('/api/can-tu-dong/bulk-set-tare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: chunk, tare_weight: tareWeight })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Không thể đổi khối lượng lõi các dòng cân tự động.');
     }
     updated += Number(data.updated) || chunk.length;
   }
@@ -435,6 +520,9 @@ export function CanTuDongPanel({
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isSettingNgay, setIsSettingNgay] = useState(false);
   const [isSettingMaSp, setIsSettingMaSp] = useState(false);
+  const [isSettingBi, setIsSettingBi] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isSettingLoi, setIsSettingLoi] = useState(false);
   const [showBulkNgayModal, setShowBulkNgayModal] = useState(false);
   const [bulkNgayValue, setBulkNgayValue] = useState(() => localIsoDateToday());
   const [bulkNgayScope, setBulkNgayScope] = useState<'visible' | 'selected'>('selected');
@@ -442,6 +530,11 @@ export function CanTuDongPanel({
   /** `prefix` = đồng bộ từng dòng theo tiền tố QR; `pick` = điền một Mã SP đã chọn. */
   const [bulkMaSpMode, setBulkMaSpMode] = useState<'prefix' | 'pick'>('prefix');
   const [bulkMaSpValue, setBulkMaSpValue] = useState('');
+  const [showBulkBiModal, setShowBulkBiModal] = useState(false);
+  const [bulkBiValue, setBulkBiValue] = useState(String(DEFAULT_CAN_TU_DONG_BI_KG));
+  const [bulkBiScope, setBulkBiScope] = useState<'visible' | 'selected'>('visible');
+  const [showBulkLoiModal, setShowBulkLoiModal] = useState(false);
+  const [bulkLoiValue, setBulkLoiValue] = useState('');
   const [showAutoFillModal, setShowAutoFillModal] = useState(false);
   /** Dropdown chọn đúng 1 mã (`all` = không chọn). */
   const [maSpFilter, setMaSpFilter] = useState('all');
@@ -1351,6 +1444,166 @@ export function CanTuDongPanel({
     }
   };
 
+  const openBulkBiModal = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    const firstBi = resolveTrongLuongBiKg(visibleRecords[0]);
+    setBulkBiScope('visible');
+    setBulkBiValue(String(firstBi));
+    setShowBulkBiModal(true);
+  };
+
+  const openBulkBiModalForSelected = () => {
+    if (selectedIds.size === 0) {
+      showAppToast('Hãy tick chọn các dòng cần sửa trọng lượng bì.', 'error');
+      return;
+    }
+    const firstSelected = visibleRecords.find(row => selectedIds.has(String(row.id)));
+    const firstBi = firstSelected
+      ? resolveTrongLuongBiKg(firstSelected)
+      : DEFAULT_CAN_TU_DONG_BI_KG;
+    setBulkBiScope('selected');
+    setBulkBiValue(String(firstBi));
+    setShowBulkBiModal(true);
+  };
+
+  const handleRecalcSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      showAppToast('Hãy tick chọn các dòng cần tính lại.', 'error');
+      return;
+    }
+    setIsRecalculating(true);
+    try {
+      const result = await postCanTuDongBulkRecalc(ids);
+      clearSelection();
+      const skipNote =
+        result.skipped > 0 ? ` · bỏ qua ${formatNumber(result.skipped, 0)} dòng thiếu cân` : '';
+      showAppToast(
+        `Đã tính lại ${formatNumber(result.updated, 0)} dòng: SP ${formatNumber(result.tong_can_sp, 2)} · lõi ${formatNumber(result.tong_loi, 2)} · bì ${formatNumber(result.tong_bi, 2)} · nhựa ${formatNumber(result.tong_nhua, 2)} kg${skipNote}.`
+      );
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(
+        err instanceof Error ? err.message : 'Không thể tính lại thông số các dòng đã chọn.',
+        'error'
+      );
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
+  const handleBulkSetBi = async () => {
+    const ids =
+      bulkBiScope === 'selected'
+        ? [...selectedIds]
+        : visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
+    if (ids.length === 0) {
+      showAppToast(
+        bulkBiScope === 'selected'
+          ? 'Hãy tick chọn các dòng cần sửa trọng lượng bì.'
+          : 'Không có dòng nào trong bộ lọc hiện tại.',
+        'error'
+      );
+      return;
+    }
+    const bi = Number(String(bulkBiValue).trim().replace(',', '.'));
+    if (!Number.isFinite(bi) || bi < 0) {
+      showAppToast('Nhập trọng lượng bì ≥ 0.', 'error');
+      return;
+    }
+    setIsSettingBi(true);
+    try {
+      const updated = await postCanTuDongBulkSetBi(ids, bi);
+      const idSet = new Set(ids.map(id => String(id)));
+      // Cập nhật ngay trên UI — không chờ reload (tránh cột DB cũ che metadata mới).
+      setRecords(prev =>
+        prev.map(row => {
+          if (!idSet.has(String(row.id))) return row;
+          const prevMeta =
+            row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+              ? (row.metadata as Record<string, unknown>)
+              : {};
+          return {
+            ...row,
+            trong_luong_bi: bi,
+            metadata: {
+              ...prevMeta,
+              SOURCE_BI_KG: bi,
+              source_bi_kg: bi,
+              trong_luong_bi: bi,
+              bi_kg: bi
+            }
+          };
+        })
+      );
+      if (bulkBiScope === 'selected') {
+        clearSelection();
+        showAppToast(
+          `Đã sửa trọng lượng bì ${formatNumber(bi, 3)} kg cho ${formatNumber(updated, 0)} dòng đã chọn.`
+        );
+      } else {
+        showAppToast(
+          `Đã đổi trọng lượng bì ${formatNumber(bi, 3)} kg cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`
+        );
+      }
+      setShowBulkBiModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(
+        err instanceof Error
+          ? err.message
+          : bulkBiScope === 'selected'
+            ? 'Không thể sửa trọng lượng bì các dòng đã chọn.'
+            : 'Không thể đổi trọng lượng bì theo bộ lọc.',
+        'error'
+      );
+    } finally {
+      setIsSettingBi(false);
+    }
+  };
+
+  const openBulkLoiModal = () => {
+    if (visibleRecords.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    const firstLoi = resolveCanLoiKg(visibleRecords[0]);
+    setBulkLoiValue(firstLoi != null ? String(firstLoi) : '');
+    setShowBulkLoiModal(true);
+  };
+
+  const handleBulkSetLoiForVisible = async () => {
+    const ids = visibleRecords.map(row => row.id).filter(id => id != null && String(id).trim() !== '');
+    if (ids.length === 0) {
+      showAppToast('Không có dòng nào trong bộ lọc hiện tại.', 'error');
+      return;
+    }
+    const loi = Number(String(bulkLoiValue).trim().replace(',', '.'));
+    if (!Number.isFinite(loi) || loi < 0) {
+      showAppToast('Nhập khối lượng lõi ≥ 0.', 'error');
+      return;
+    }
+    setIsSettingLoi(true);
+    try {
+      const updated = await postCanTuDongBulkSetTare(ids, loi);
+      showAppToast(
+        `Đã đổi khối lượng lõi ${formatNumber(loi, 3)} kg cho ${formatNumber(updated, 0)} dòng (theo bộ lọc).`
+      );
+      setShowBulkLoiModal(false);
+      await loadRecords();
+    } catch (err: unknown) {
+      showAppToast(
+        err instanceof Error ? err.message : 'Không thể đổi khối lượng lõi theo bộ lọc.',
+        'error'
+      );
+    } finally {
+      setIsSettingLoi(false);
+    }
+  };
+
   const openEdit = (row: CanTuDongRecord) => {
     setEditingRecord(row);
     setEditForm({
@@ -2096,6 +2349,26 @@ export function CanTuDongPanel({
             </span>
           ) : null}
         </button>
+        <button
+          type="button"
+          onClick={openBulkBiModal}
+          disabled={loading || isSettingBi || isSettingLoi || visibleRecords.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-950 transition hover:bg-violet-100 disabled:opacity-60"
+          title="Đổi trọng lượng bì cho mọi dòng đang hiện theo bộ lọc"
+        >
+          {isSettingBi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scale className="h-3.5 w-3.5" />}
+          Đổi trọng lượng bì
+        </button>
+        <button
+          type="button"
+          onClick={openBulkLoiModal}
+          disabled={loading || isSettingBi || isSettingLoi || visibleRecords.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-950 transition hover:bg-sky-100 disabled:opacity-60"
+          title="Đổi khối lượng lõi (Cân lõi / tare_weight) cho mọi dòng đang hiện theo bộ lọc"
+        >
+          {isSettingLoi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scale className="h-3.5 w-3.5" />}
+          Đổi khối lượng lõi
+        </button>
         <span className="text-[11px] font-semibold text-zinc-500">
           {loading
             ? '…'
@@ -2341,7 +2614,14 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={clearSelection}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
+            disabled={
+              isBulkDeleting ||
+              isAutoFilling ||
+              isSettingNgay ||
+              isSettingMaSp ||
+              isSettingBi ||
+              isRecalculating
+            }
             className="inline-flex h-9 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60"
           >
             Bỏ chọn
@@ -2349,7 +2629,14 @@ export function CanTuDongPanel({
           <button
             type="button"
             onClick={openBulkNgayModalForSelected}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
+            disabled={
+              isBulkDeleting ||
+              isAutoFilling ||
+              isSettingNgay ||
+              isSettingMaSp ||
+              isSettingBi ||
+              isRecalculating
+            }
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-900 transition hover:bg-sky-100 disabled:opacity-60"
             title="Sửa cột Ngày (SOURCE_DATE) cho các dòng đã tick"
           >
@@ -2358,8 +2645,53 @@ export function CanTuDongPanel({
           </button>
           <button
             type="button"
+            onClick={openBulkBiModalForSelected}
+            disabled={
+              isBulkDeleting ||
+              isAutoFilling ||
+              isSettingNgay ||
+              isSettingMaSp ||
+              isSettingBi ||
+              isRecalculating
+            }
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-950 transition hover:bg-violet-100 disabled:opacity-60"
+            title="Sửa Trọng lượng bì (SOURCE_BI_KG) cho các dòng đã tick"
+          >
+            {isSettingBi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scale className="h-3.5 w-3.5" />}
+            {isSettingBi ? 'Đang sửa bì...' : `Sửa Trọng lượng bì (${selectedCount})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRecalcSelected()}
+            disabled={
+              isBulkDeleting ||
+              isAutoFilling ||
+              isSettingNgay ||
+              isSettingMaSp ||
+              isSettingBi ||
+              isRecalculating
+            }
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-950 transition hover:bg-emerald-100 disabled:opacity-60"
+            title="Ghi bì hiệu lực và tính lại nhựa = Cân SP − lõi − bì"
+          >
+            {isRecalculating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {isRecalculating ? 'Đang tính lại...' : `Tính lại (${selectedCount})`}
+          </button>
+          <button
+            type="button"
             onClick={() => void handleBulkDelete()}
-            disabled={isBulkDeleting || isAutoFilling || isSettingNgay || isSettingMaSp}
+            disabled={
+              isBulkDeleting ||
+              isAutoFilling ||
+              isSettingNgay ||
+              isSettingMaSp ||
+              isSettingBi ||
+              isRecalculating
+            }
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
           >
             {isBulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -2455,7 +2787,9 @@ export function CanTuDongPanel({
           >
             Chênh lệch lõi
           </TableHeadCell>
-          <TableHeadCell title={`Mặc định ${DEFAULT_CAN_TU_DONG_BI_KG} kg`}>
+          <TableHeadCell
+            title={`Đã lưu trên dòng (SOURCE_BI_KG); chưa có thì mặc định ${DEFAULT_CAN_TU_DONG_BI_KG} kg`}
+          >
             Trọng lượng bì
           </TableHeadCell>
           <TableHeadCell
@@ -3013,6 +3347,155 @@ export function CanTuDongPanel({
               >
                 {isNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <Warehouse className="h-4 w-4" />}
                 Nhập kho ({formatNumber(nhapKhoPreview.length, 0)})
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showBulkBiModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-bulk-bi-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-bulk-bi-title" className="text-base font-black text-zinc-950">
+                  {bulkBiScope === 'selected' ? 'Sửa Trọng lượng bì đã chọn' : 'Đổi trọng lượng bì'}
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  {bulkBiScope === 'selected'
+                    ? `Áp dụng cho ${formatNumber(selectedCount, 0)} dòng đã tick`
+                    : `Áp dụng cho ${formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkBiModal(false)}
+                disabled={isSettingBi}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block space-y-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wide text-zinc-500">
+                  Trọng lượng bì (kg)
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={bulkBiValue}
+                  onChange={e => setBulkBiValue(e.target.value)}
+                  disabled={isSettingBi}
+                  className="h-11 w-full rounded-xl border border-zinc-200 px-3 font-mono text-sm font-bold text-zinc-900 outline-none focus:border-violet-400"
+                  placeholder={String(DEFAULT_CAN_TU_DONG_BI_KG)}
+                />
+              </label>
+              <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-950">
+                <p>
+                  Ghi vào từng dòng (`SOURCE_BI_KG`). Nhựa thực tế = Cân SP − Cân lõi − bì − màng.
+                </p>
+                <p className="mt-1 text-violet-800">Mặc định hệ thống: {DEFAULT_CAN_TU_DONG_BI_KG} kg.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkBiModal(false)}
+                disabled={isSettingBi}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkSetBi()}
+                disabled={isSettingBi}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-extrabold text-white hover:bg-violet-700 disabled:opacity-60"
+              >
+                {isSettingBi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+                {isSettingBi
+                  ? 'Đang đổi...'
+                  : bulkBiScope === 'selected'
+                    ? `Sửa ${formatNumber(selectedCount, 0)} dòng`
+                    : `Đổi ${formatNumber(visibleRecords.length, 0)} dòng`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showBulkLoiModal ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="can-tu-dong-bulk-loi-title"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div>
+                <h3 id="can-tu-dong-bulk-loi-title" className="text-base font-black text-zinc-950">
+                  Đổi khối lượng lõi
+                </h3>
+                <p className="text-xs font-semibold text-zinc-500">
+                  Áp dụng cho {formatNumber(visibleRecords.length, 0)} dòng đang hiện (theo bộ lọc)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkLoiModal(false)}
+                disabled={isSettingLoi}
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-zinc-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block space-y-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wide text-zinc-500">
+                  Khối lượng lõi / Cân lõi (kg)
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={bulkLoiValue}
+                  onChange={e => setBulkLoiValue(e.target.value)}
+                  disabled={isSettingLoi}
+                  className="h-11 w-full rounded-xl border border-zinc-200 px-3 font-mono text-sm font-bold text-zinc-900 outline-none focus:border-sky-400"
+                  placeholder="vd. 1,06"
+                />
+              </label>
+              <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-950">
+                <p>
+                  Ghi cột <strong>Cân lõi</strong> (`tare_weight`). `net_weight` do DB tự tính lại.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-zinc-100 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkLoiModal(false)}
+                disabled={isSettingLoi}
+                className="h-10 rounded-lg border border-zinc-200 px-4 text-xs font-bold text-zinc-700 disabled:opacity-60"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkSetLoiForVisible()}
+                disabled={isSettingLoi}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-600 px-4 text-xs font-extrabold text-white hover:bg-sky-700 disabled:opacity-60"
+              >
+                {isSettingLoi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+                {isSettingLoi
+                  ? 'Đang đổi...'
+                  : `Đổi ${formatNumber(visibleRecords.length, 0)} dòng`}
               </button>
             </div>
           </div>

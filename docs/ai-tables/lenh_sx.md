@@ -68,6 +68,8 @@ Cột **tickbox** đầu dòng + tick chọn cả nhóm theo **cột `ngay`** (k
 
 **Bộ lọc:** Từ ngày · Đến ngày · **Ca** (checkbox nhiều) · **Lệnh SX** (checkbox nhiều) · Trạng thái · Máy · Sắp xếp.
 
+Bộ lọc máy đối chiếu mã/tên/ID qua danh mục máy (`machineFilter.ts`), khớp đúng cùng máy, không khớp chuỗi con. Áp dụng cả bộ lọc chung trong hub báo cáo. Thẻ **Lệnh SX** đếm số lệnh sau lọc.
+
 **Ô tìm kiếm:** tìm không phân biệt dấu theo mã lệnh, mã/tên hàng, tên khách, mã đơn và **tên từng sản phẩm** trong lệnh (kể cả lệnh nhiều dòng SP). Dùng chung logic `src/features/_shared/productSearchMatch.ts`: bỏ ký tự phân cách, mã hàng chỉ khớp khít/đầu chuỗi/trọn từ (không khớp chuỗi con), nhiều từ khoá phải cùng khớp trong một dòng SP.
 
 **Ngày:** form field «Ngày» ↔ cột DB `lenh_sx.ngay`. Luôn hiển thị/nhập **dd/mm/yyyy** (10/08/2026 = ngày 10 tháng 8), không theo locale máy (`8/10`). Kế hoạch SX lọc / cột Ngày trong modal cũng chỉ đọc `ngay`.

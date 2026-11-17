@@ -8536,10 +8536,6 @@ input[type="number"] {
 }
 
 .bb-nvl-checklist-sign-hint {
-  position: absolute;
-  bottom: 3px;
-  left: 0;
-  right: 0;
   text-align: center;
   font-size: 8px;
   font-style: italic;

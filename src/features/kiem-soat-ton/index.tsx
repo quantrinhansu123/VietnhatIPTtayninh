@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Loader2, Pencil, RefreshCw, X } from 'lucide-react';
+import { createPortal, flushSync } from 'react-dom';
+import { AlertTriangle, Check, Loader2, Pencil, Printer, RefreshCw, X } from 'lucide-react';
+import { PRINT_COMPANY_NAME, vietNhatLogoUrl } from '../../components/layout/constants';
 import { useTabAccess } from '../../app/useTabAccess';
 import { readApiErrorMessage, showAppToast } from '../../lib/appToast';
 import {
@@ -217,6 +219,19 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
       .sort((a, b) => rank(a.status) - rank(b.status));
   }, [data.items, statusFilter, normalizedSearch]);
 
+  const [printedAt, setPrintedAt] = useState(() => new Date());
+  const printStockMinutes = () => {
+    flushSync(() => setPrintedAt(new Date()));
+    const cls = 'kiem-soat-ton-print-active';
+    const cleanup = () => {
+      document.body.classList.remove(cls);
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    document.body.classList.add(cls);
+    window.print();
+  };
+
   useEffect(() => {
     setPage(1);
   }, [statusFilter, normalizedSearch, loaiKho, tenKho, pageSize]);
@@ -350,6 +365,15 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
               searchPlaceholder="Tìm kho..."
             />
           </div>
+          <button
+            type="button"
+            onClick={printStockMinutes}
+            disabled={isLoading || sortedItems.length === 0}
+            title="In biên bản chốt tồn kho"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4" />
+          </button>
           <TableSearchInput value={searchText} onChange={setSearchText} placeholder="Tìm mã, tên hàng..." />
           <button
             type="button"
@@ -549,6 +573,54 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
           onPageSizeChange={setPageSize}
         />
       ) : null}
+
+
+      {createPortal(
+        <div className="kst-print-sheet">
+          <div className="kst-print-head">
+            <img src={vietNhatLogoUrl} alt={PRINT_COMPANY_NAME} className="kst-print-logo" />
+            <div>
+              <p className="kst-print-company">{PRINT_COMPANY_NAME}</p>
+              <p className="kst-print-time">
+                Ngày lập: {printedAt.toLocaleDateString('vi-VN')} · Giờ lập:{' '}
+                {printedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+          <h1 className="kst-print-title">BIÊN BẢN CHỐT TỒN KHO</h1>
+          <p className="kst-print-sub">
+            Kho: {tenKho || 'Tất cả'} · {loaiKho === 'nvl' ? 'Nguyên vật liệu' : 'Thành phẩm'}
+          </p>
+          <table className="kst-print-table">
+            <thead>
+              <tr>
+                <th>STT</th>
+                <th>Mã</th>
+                <th>Tên</th>
+                <th>Tồn cuối</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedItems
+                .slice()
+                .sort((a, b) => a.ma.localeCompare(b.ma, 'vi', { numeric: true }))
+                .map((item, index) => (
+                  <tr key={`${item.ma}-${item.ten_kho ?? ''}`}>
+                    <td className="c">{index + 1}</td>
+                    <td>{item.ma}</td>
+                    <td>{item.ten}</td>
+                    <td className="r b">{formatQty(item.ton)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          <div className="kst-print-sign">
+            <p>Thủ kho</p>
+            <span>(Ký, ghi rõ họ tên)</span>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {detailTarget ? (
         <div

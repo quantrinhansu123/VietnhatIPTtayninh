@@ -20,6 +20,10 @@ Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_
 
 **Phiếu in = mirror tab:** mục 3.1/3.2 lấy `thucDungGroups` (builder `buildBbTieuHaoNvlThucDungRows`); mục 4.1 lấy `danhGiaGroups.summaryRows`. Không tính độc lập trên `ControlBoardBbMachineReportPrintSheet`. Snapshot cũ thiếu field → bấm **Tính toán** lại.
 
+**3.2 Xuất kho từ phiếu cắt:** khi Tính toán, tải `/api/quy-doi-vat-lieu?all=1&dateFrom&dateTo` → `materialConversions`. Khớp ngày·ca·máy thì `khoi_luong_quy_doi` ghi đè Xuất kho mã đích (vd. ONG-30CM / ONG-19.5CM từ ONG-1.38M). `src/utils/bbMaterialConversion.ts` · `bbTieuHaoNvlPrintRows.ts`. Xem [quy_doi_vat_lieu.md](./quy_doi_vat_lieu.md).
+
+**3.2 Nhập TP túi/ống:** lấy thẳng `trong_luong_bi` / `trong_luong_loi` trên phiếu Báo cáo sản lượng (theo BOM từng phiếu) — `bbKhongTronFromAcceptance.ts`. UI luôn overlay số mới từ danh sách phiếu, không chỉ snapshot cũ.
+
 ## SQL
 
 `supabase-bb-bao-cao-tinh-toan.sql` — chạy trên Supabase (DB hệ thống).
@@ -49,9 +53,10 @@ Tab **Dữ liệu trong lệnh sản xuất** còn ghi bảng riêng **`bc_lsx`*
 
 | File | Vai trò |
 |------|---------|
-| `ControlBoardBbMachineReportTable.tsx` | Nút **Tính toán** + load snapshot; tab tiêu hao / đánh giá / thành phẩm |
-| `src/utils/bbBaoCaoTinhToan.ts` | Key + `buildBbMachineReportSnapshot` |
+| `ControlBoardBbMachineReportTable.tsx` | Nút **Tính toán** + load snapshot; tab tiêu hao / đánh giá / thành phẩm; tải quy đổi → 3.2 |
+| `src/utils/bbBaoCaoTinhToan.ts` | Key + `buildBbMachineReportSnapshot` (`materialConversions`) |
 | `src/utils/bbTieuHaoNvlPrintRows.ts` | Builder tiêu hao khớp phiếu in (nguồn tab + in) |
+| `src/utils/bbMaterialConversion.ts` | Gom `khoi_luong_quy_doi` theo ngày·ca·máy·mã đích → Xuất kho 3.2 |
 
 ## Liên quan
 

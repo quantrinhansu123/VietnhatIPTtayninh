@@ -99,8 +99,10 @@ import {
   resolveCanTuDongMachine,
   resolveInsulationFilmBomWeightPerUnit,
   resolveInsulationFilmKgPerRoll,
+  sumCanTuDongCanLoiKg,
   sumCanTuDongSanLuongTotals,
   sumCanTuDongThucTeTotals,
+  sumCanTuDongTrongLuongBiKg,
   type CanTuDongWeightRow
 } from './canTuDongWeights';
 import { computeCanTuDongTongHopBannerTotals } from './canTuDongTongHop';
@@ -3360,7 +3362,7 @@ export type BbDamagedGoodsGroup = {
 };
 
 /** Số máy BB từ «MBB_16» / «MÁY BAO BÌ 16» / «BB16» — dùng khớp phiếu tồn ↔ lệnh SX. */
-function extractBbMachineNumber(...candidates: Array<string | undefined | null>): string | null {
+export function extractBbMachineNumber(...candidates: Array<string | undefined | null>): string | null {
   for (const value of candidates) {
     const raw = String(value || '').trim();
     if (!raw) continue;
@@ -6613,6 +6615,27 @@ function resolveBbSanLuongNvlPhuWeightKg(
   return roundQty(slNvlPhu * kg, 4);
 }
 
+/** Túi / bì trên Thành phần SP (VT-TUI…). */
+function isBbSanLuongTuiNvl(code: string, name: string) {
+  return isWarehouseBagExportItem(code, name) || /^VT-?TUI/i.test(String(code || '').trim());
+}
+
+/** Ống giấy / lõi quấn (ONG-…). */
+function isBbSanLuongOngNvl(code: string, name: string) {
+  if (isWarehouseCoreExportItem(code, name)) return true;
+  const codeKey = String(code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_]+/g, '');
+  if (codeKey.startsWith('ONG') || codeKey.startsWith('ONGGIAY')) return true;
+  const hay = `${code || ''} ${name || ''}`
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return hay.includes('ong giay') || (/\bong\b/.test(hay) && hay.includes('giay'));
+}
+
 /**
  * Σ Nhựa thực tế (Thành phẩm) từ bảng Cân AI — khớp ngày · ca · máy · mã SP.
  * = Cân SP − lõi − bì − màng; dùng làm gốc TL NVL % trên Báo cáo sản lượng.
@@ -8237,7 +8260,19 @@ export function buildBbSanLuongGroups(input: {
     if (productMap.size === 0) continue;
 
     // TL NVL % + Tổng vật tư trộn: ưu tiên Σ Nhựa TT Cân AI (Thành phẩm) theo ngày·ca·máy·mã SP.
+    // Túi / ống không trộn: Σ bì / Σ lõi từ cân AI, fallback cột đã Đồng bộ trên phiếu sản lượng.
     for (const product of productMap.values()) {
+      const productKey = normalizeProductCodeKey(product.productCode);
+      const scopedCan =
+        productKey && productKey !== '-'
+          ? filterCanTuDongRecordsForBoard(canTuDongRecords, {
+              shiftFilter: bucket.shift,
+              dateFrom: bucket.ngay,
+              dateTo: bucket.ngay,
+              machineFilter: bucket.machine,
+              productCodeKeys: [productKey]
+            })
+          : [];
       const canTuDongNhuaKg = sumCanTuDongThanhPhamNhuaKgForProduct({
         records: canTuDongRecords,
         ngay: bucket.ngay,
@@ -8246,9 +8281,57 @@ export function buildBbSanLuongGroups(input: {
         productCode: product.productCode,
         filmKgByProductCode
       });
-      if (!(canTuDongNhuaKg > 0)) continue;
+      if (canTuDongNhuaKg > 0) {
+        product.weightKg = canTuDongNhuaKg;
+      }
 
-      product.weightKg = canTuDongNhuaKg;
+      let biKg = sumCanTuDongTrongLuongBiKg(scopedCan).weightKg;
+      let loiKg = sumCanTuDongCanLoiKg(scopedCan).weightKg;
+      if (!(biKg > 0) || !(loiKg > 0)) {
+        let reportBi = 0;
+        let reportLoi = 0;
+        for (const report of bucket.reports) {
+          const reportCode = normalizeProductCodeKey(
+            resolveAcceptanceReportProductCode(report.mat_hang)
+          );
+          if (!reportCode || reportCode !== productKey) continue;
+          reportBi += Number(report.trong_luong_bi) > 0 ? Number(report.trong_luong_bi) : 0;
+          reportLoi += Number(report.trong_luong_loi) > 0 ? Number(report.trong_luong_loi) : 0;
+        }
+        if (!(biKg > 0) && reportBi > 0) biKg = roundQty(reportBi, 4);
+        if (!(loiKg > 0) && reportLoi > 0) loiKg = roundQty(reportLoi, 4);
+      }
+      const tuiNvls = [...product.nvlAgg.values()].filter(
+        nvl => nvl.amountType !== 'percent' && isBbSanLuongTuiNvl(nvl.itemCode, nvl.itemName)
+      );
+      const ongNvls = [...product.nvlAgg.values()].filter(
+        nvl => nvl.amountType !== 'percent' && isBbSanLuongOngNvl(nvl.itemCode, nvl.itemName)
+      );
+
+      if (biKg > 0 && tuiNvls.length > 0) {
+        const each = roundQty(biKg / tuiNvls.length, 4);
+        tuiNvls.forEach((nvl, index) => {
+          const lineKg =
+            index === tuiNvls.length - 1
+              ? roundQty(biKg - each * (tuiNvls.length - 1), 4)
+              : each;
+          nvl.normWeightKg = lineKg;
+          nvl.actualWeightKg = lineKg;
+        });
+      }
+      if (loiKg > 0 && ongNvls.length > 0) {
+        const each = roundQty(loiKg / ongNvls.length, 4);
+        ongNvls.forEach((nvl, index) => {
+          const lineKg =
+            index === ongNvls.length - 1
+              ? roundQty(loiKg - each * (ongNvls.length - 1), 4)
+              : each;
+          nvl.normWeightKg = lineKg;
+          nvl.actualWeightKg = lineKg;
+        });
+      }
+
+      if (!(canTuDongNhuaKg > 0)) continue;
       for (const nvl of product.nvlAgg.values()) {
         if (nvl.amountType !== 'percent') continue;
         if (!(nvl.rate > 0)) continue;
@@ -10436,6 +10519,11 @@ export function syncBbThucDungRowsTonCuoiFromCuoiCaTab(input: {
  * Đồng bộ Nhập TP / SL thành phẩm từ Báo cáo sản lượng đã phủ Thành phần SP (live UI).
  * Tránh snapshot cũ thiếu túi/lõi trên MN-BB308/346 hoặc kg lõi còn 1 cái/SP.
  */
+/**
+ * Đồng bộ cột «Trọng lượng vật tư nhập thành phẩm» (3.2) từ Báo cáo sản lượng.
+ * Chỉ lấy `actualWeightKg` theo mã NVL — **không** nhân lại ĐM / catalog / số cuộn × kg/cuộn.
+ * Cột «SL vật tư trong TP» vẫn lấy `quantity` (SL SP × ĐM) để đối chiếu.
+ */
 export function syncBbThucDungRowsFinishedFromSanLuong(input: {
   rows: BbThucDungLineRow[];
   sanLuongGroups: BbSanLuongGroup[];
@@ -10443,7 +10531,6 @@ export function syncBbThucDungRowsFinishedFromSanLuong(input: {
   materials: MaterialRow[];
 }): BbThucDungLineRow[] {
   if (input.rows.length === 0) return input.rows;
-  const materialsCatalog = input.materials.map(mapMaterialToWeightCatalogItem);
 
   type Agg = { finishedKg: number; finishedQty: number };
   const byHeaderMaterial = new Map<string, Agg>();
@@ -10454,48 +10541,37 @@ export function syncBbThucDungRowsFinishedFromSanLuong(input: {
     normalizeProductCodeKey(name) ||
     String(name || '').trim().toUpperCase();
 
+  const addAgg = (key: string, weight: number, qty: number) => {
+    const existing = byHeaderMaterial.get(key) || { finishedKg: 0, finishedQty: 0 };
+    if (weight > 0) existing.finishedKg = roundQty(existing.finishedKg + weight, 4);
+    if (qty > 0) existing.finishedQty = roundQty(existing.finishedQty + qty, 4);
+    byHeaderMaterial.set(key, existing);
+  };
+
   for (const group of input.sanLuongGroups) {
     const headerKey = headerKeyOf(group.ngay, group.shift, group.orderCode, group.machine);
-    const tapeRawKg = new Map<string, number>();
+    const totals = Array.isArray(group.nvlTotals) ? group.nvlTotals : [];
+    if (totals.length > 0) {
+      for (const total of totals) {
+        if (total.amountType === 'percent') continue;
+        const matKey = materialKeyOf(total.itemCode, total.itemName);
+        if (!matKey) continue;
+        const weight = total.actualWeightKg > 0 ? total.actualWeightKg : 0;
+        const qty = total.quantity != null && total.quantity > 0 ? total.quantity : 0;
+        addAgg(`${headerKey}|${matKey}`, weight, qty);
+      }
+      continue;
+    }
 
     for (const productGroup of group.productGroups || []) {
       for (const line of productGroup.lines || []) {
         if (line.amountType === 'percent') continue;
         const matKey = materialKeyOf(line.itemCode, line.itemName);
         if (!matKey) continue;
-        const key = `${headerKey}|${matKey}`;
-        const existing = byHeaderMaterial.get(key) || { finishedKg: 0, finishedQty: 0 };
-        const weight =
-          line.actualWeightKg > 0 ? line.actualWeightKg : line.normWeightKg > 0 ? line.normWeightKg : 0;
-        if (weight > 0) existing.finishedKg = roundQty(existing.finishedKg + weight, 4);
-        if (line.quantity > 0) existing.finishedQty = roundQty(existing.finishedQty + line.quantity, 4);
-        byHeaderMaterial.set(key, existing);
+        const weight = line.actualWeightKg > 0 ? line.actualWeightKg : 0;
+        const qty = line.quantity > 0 ? line.quantity : 0;
+        addAgg(`${headerKey}|${matKey}`, weight, qty);
       }
-
-      const sl = productGroup.quantity > 0 ? productGroup.quantity : 0;
-      if (!(sl > 0)) continue;
-      const product = findProductByCode(input.products, productGroup.productCode);
-      for (const item of product?.nplItems || []) {
-        if (item.amountType !== 'quantity' || !isWarehouseRollUnit(item.unit || '')) continue;
-        const catalogKg = findMaterialTongKgPerUnit(item.code, materialsCatalog);
-        const bomKg = item.weightKg;
-        if (!(catalogKg != null && catalogKg > 0 && bomKg != null && bomKg > 0 && bomKg < catalogKg * 0.5)) {
-          continue;
-        }
-        const matKey = materialKeyOf(item.code, item.name);
-        if (!matKey) continue;
-        tapeRawKg.set(matKey, (tapeRawKg.get(matKey) || 0) + bomKg * sl);
-      }
-    }
-
-    for (const [matKey, rawKg] of tapeRawKg.entries()) {
-      const catalogKg = findMaterialTongKgPerUnit(matKey, materialsCatalog);
-      if (!(catalogKg != null && catalogKg > 0 && rawKg > 0)) continue;
-      const rolls = Math.round(rawKg / catalogKg);
-      byHeaderMaterial.set(`${headerKey}|${matKey}`, {
-        finishedQty: rolls,
-        finishedKg: roundQty(rolls * catalogKg, 4)
-      });
     }
   }
 
@@ -10515,27 +10591,15 @@ export function syncBbThucDungRowsFinishedFromSanLuong(input: {
     const matKey = materialKeyOf(row.materialCode, row.materialName);
     const agg = byHeaderMaterial.get(`${headerKey}|${matKey}`);
     if (!agg) return row;
+    if (!(agg.finishedKg > 0) && !(agg.finishedQty > 0)) return row;
 
-    let finishedKg = agg.finishedKg;
-    let finishedQty = agg.finishedQty;
-    const catalogKg = findMaterialTongKgPerUnit(row.materialCode, materialsCatalog);
-    if (
-      catalogKg != null &&
-      catalogKg > 0 &&
-      finishedQty > 0 &&
-      !isWarehouseRollUnit(row.unit) &&
-      (!(finishedKg > 0) || finishedKg + 1e-6 < finishedQty * catalogKg)
-    ) {
-      finishedKg = roundQty(finishedQty * catalogKg, 4);
-    }
-    if (!(finishedKg > 0) && !(finishedQty > 0)) return row;
-
-    const useFinishedKg = finishedKg > 0 ? finishedKg : Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0;
+    const useFinishedKg =
+      agg.finishedKg > 0 ? agg.finishedKg : Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0;
     const damagedKg = Number.isFinite(row.loiHongKg) ? row.loiHongKg : 0;
     const weightKg = Number.isFinite(row.weightKg) ? row.weightKg : 0;
     return {
       ...row,
-      finishedQty: finishedQty > 0 ? finishedQty : row.finishedQty,
+      finishedQty: agg.finishedQty > 0 ? agg.finishedQty : row.finishedQty,
       klThucTeKg: useFinishedKg,
       klThucTePlusLoiKg: roundQty(useFinishedKg + damagedKg, 4),
       chenhLechKg: roundQty(weightKg - useFinishedKg - damagedKg, 4)

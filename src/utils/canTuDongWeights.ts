@@ -937,6 +937,17 @@ export function sumCanTuDongCanLoiKg(records: CanTuDongWeightRow[]) {
   return { weightKg, counted };
 }
 
+/** Tổng cột «Trọng lượng bì» trên bảng — cộng `resolveTrongLuongBiKg` từng dòng. */
+export function sumCanTuDongTrongLuongBiKg(records: CanTuDongWeightRow[]) {
+  let weightKg = 0;
+  let counted = 0;
+  for (const row of records) {
+    weightKg += resolveTrongLuongBiKg(row);
+    counted += 1;
+  }
+  return { weightKg, counted };
+}
+
 /**
  * Tổng chênh lệch lõi = Σ (Cân lõi − Lõi lý thuyết) khi đủ cả hai.
  * Cùng công thức kiểu Chênh lệch TT−LT: thực tế − lý thuyết.

@@ -9,6 +9,8 @@ create table if not exists public.quy_doi_vat_lieu (
   so_luong_goc numeric not null check (so_luong_goc > 0 and so_luong_goc <> 'NaN'::numeric and so_luong_goc < 'Infinity'::numeric),
   vat_tu_quy_doi text not null check (length(trim(vat_tu_quy_doi)) between 1 and 500),
   so_luong_quy_doi numeric not null check (so_luong_quy_doi > 0 and so_luong_quy_doi <> 'NaN'::numeric and so_luong_quy_doi < 'Infinity'::numeric),
+  khoi_luong_goc numeric,
+  khoi_luong_quy_doi numeric,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

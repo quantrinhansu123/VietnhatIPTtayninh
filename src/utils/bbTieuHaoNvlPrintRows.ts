@@ -45,6 +45,9 @@ import {
 } from './controlBoardBbMachineReport';
 import type { MixingReport } from '../components/MixingReportForm';
 import { shiftNamesMatch, type ShiftSetting } from './shiftSettings';
+import {
+  type BbMaterialConversionRecord
+} from './bbMaterialConversion';
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000;
@@ -291,6 +294,8 @@ function buildMaterialRowsForOrder(input: {
   mixingGroups: BbMixingRatioGroup[];
   mixingReports?: MixingReport[];
   sanLuongGroups: BbSanLuongGroup[];
+  /** Phiếu quy đổi / cắt ống — đổ khối lượng đích vào Nhập TP mã mới. */
+  materialConversions?: BbMaterialConversionRecord[];
   selectedMachineName?: string | null;
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
 }): MaterialBuildRow[] {
@@ -560,7 +565,8 @@ function buildMaterialRowsForOrder(input: {
   // Nhập thành phẩm:
   // - 3.1 nhựa: cùng nguồn cột «Trọng lượng thực tế» tab Thành phẩm đạt nhập kho
   //   (= Σ productGroup.weightKg Báo cáo sản lượng) × Tỉ lệ TB thực tế ÷ 100. Không fallback.
-  // - 3.2 NVL khác: chỉ nvlTotals.actualWeightKg. Không fallback ĐM/catalog/BOM.
+  // - 3.2 NVL khác: nvlTotals.actualWeightKg (không lấy từ phiếu cắt).
+  // Phiếu quy đổi KHÔNG đổ vào Tồn đầu / Xuất kho (chỉ cột «Trọng lượng cắt lõi» 3.2).
   for (const row of rows.values()) row.finishedKg = 0;
   const tongTrongLuongThucTeKg = round4(
     sanLuongProductGroups.reduce(
@@ -762,6 +768,7 @@ export function buildBbTieuHaoNvlThucDungRows(input: {
   /** Phiếu `bao_cao_phoi_tron` — nguồn cột «Tỉ lệ trộn Thực tế». */
   mixingReports?: MixingReport[];
   sanLuongGroups: BbSanLuongGroup[];
+  materialConversions?: BbMaterialConversionRecord[];
   shiftSettings?: (ShiftSetting | ProductionOrderLookupSetting)[];
   selectedMachine?: { code?: string; name?: string } | null;
 }): BbThucDungLineRow[] {
@@ -781,6 +788,7 @@ export function buildBbTieuHaoNvlThucDungRows(input: {
       mixingGroups: input.mixingGroups,
       mixingReports: input.mixingReports,
       sanLuongGroups: input.sanLuongGroups,
+      materialConversions: input.materialConversions,
       selectedMachineName: input.selectedMachine?.name,
       shiftSettings: input.shiftSettings
     });

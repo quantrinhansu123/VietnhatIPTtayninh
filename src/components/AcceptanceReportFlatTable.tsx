@@ -29,6 +29,10 @@ export type NvlWeightGroupTotals = {
   tuiKg: number | null;
   /** Σ NVL ống giấy (ONG-…). */
   ongKg: number | null;
+  /** Σ NVL băng keo / băng dính (BDT…). */
+  bangKeoKg: number | null;
+  /** Σ NVL tem nhãn (TEM…). */
+  temKg: number | null;
 };
 
 type Props = {
@@ -96,10 +100,14 @@ export default function AcceptanceReportFlatTable({
     let khongTronKg = 0;
     let tuiKg = 0;
     let ongKg = 0;
+    let bangKeoKg = 0;
+    let temKg = 0;
     let hasTron = false;
     let hasKhongTron = false;
     let hasTui = false;
     let hasOng = false;
+    let hasBangKeo = false;
+    let hasTem = false;
     for (const row of rows) {
       const film = row.trong_luong_mang;
       if (film != null && film > 0) filmKg += film;
@@ -120,6 +128,14 @@ export default function AcceptanceReportFlatTable({
         hasOng = true;
         ongKg += nvl.ongKg;
       }
+      if (nvl?.bangKeoKg != null) {
+        hasBangKeo = true;
+        bangKeoKg += nvl.bangKeoKg;
+      }
+      if (nvl?.temKg != null) {
+        hasTem = true;
+        temKg += nvl.temKg;
+      }
     }
     return {
       filmKg,
@@ -127,13 +143,15 @@ export default function AcceptanceReportFlatTable({
       tronKg: hasTron ? tronKg : null,
       khongTronKg: hasKhongTron ? khongTronKg : null,
       tuiKg: hasTui ? tuiKg : null,
-      ongKg: hasOng ? ongKg : null
+      ongKg: hasOng ? ongKg : null,
+      bangKeoKg: hasBangKeo ? bangKeoKg : null,
+      temKg: hasTem ? temKg : null
     };
   }, [nvlWeightByReportId, rows]);
 
   return (
     <TableShell
-      minWidthClassName="min-w-[1560px]"
+      minWidthClassName="min-w-[1620px]"
       maxHeightClassName="max-h-[70vh]"
       className="!rounded-md !shadow-none"
       footer={
@@ -178,13 +196,18 @@ export default function AcceptanceReportFlatTable({
           <span title="Σ NVL túi (VT-TUI…) theo định mức Thành phần × SL">TL Túi</span>
         </TableHeadCell>
         <TableHeadCell align="right">
-          <span title="Σ NVL ống giấy (ONG-…) theo định mức Thành phần × SL">TL Ống</span>
+          <span title="Σ NVL băng keo / băng dính (BDT…) theo định mức Thành phần × SL">
+            TL Băng keo
+          </span>
+        </TableHeadCell>
+        <TableHeadCell align="right">
+          <span title="Σ NVL lõi (ống giấy ONG-…) — ưu tiên Cân lõi trạm cân AI, không có thì theo định mức Thành phần × SL">TL Lõi</span>
         </TableHeadCell>
         <TableHeadCell align="center">Thao tác</TableHeadCell>
       </TableHead>
       <TableBody>
         {pageRows.length === 0 ? (
-          <TableEmptyRow colSpan={16}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
+          <TableEmptyRow colSpan={17}>Chưa có báo cáo phù hợp với bộ lọc.</TableEmptyRow>
         ) : (
           pageRows.map((report, index) => {
             const filmKg = report.trong_luong_mang;
@@ -237,7 +260,10 @@ export default function AcceptanceReportFlatTable({
                 <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-rose-800 last:border-r-0">
                   {formatNvlGroupKg(nvl?.tuiKg)}
                 </td>
-                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-orange-800 last:border-r-0">
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-violet-800 last:border-r-0">
+                  {formatNvlGroupKg(nvl?.bangKeoKg)}
+                </td>
+                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-fuchsia-800 last:border-r-0">
                   {formatNvlGroupKg(nvl?.ongKg)}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-center">
@@ -306,7 +332,10 @@ export default function AcceptanceReportFlatTable({
             <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-rose-800">
               {formatNvlGroupKg(totals.tuiKg)}
             </td>
-            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-orange-800">
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-violet-800">
+              {formatNvlGroupKg(totals.bangKeoKg)}
+            </td>
+            <td className="whitespace-nowrap border-r border-zinc-300 px-2 py-2 text-right font-mono tabular-nums text-fuchsia-800">
               {formatNvlGroupKg(totals.ongKg)}
             </td>
             <td />

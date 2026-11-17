@@ -49,6 +49,7 @@ import {
   sumCanTuDongCanSanPhamKg,
   sumCanTuDongLoiTieuChuanKg,
   sumCanTuDongCanLoiKg,
+  sumCanTuDongTrongLuongBiKg,
   sumCanTuDongFilmKg,
   sumCanTuDongSanLuongTotals
 } from '../../utils/canTuDongWeights';
@@ -1001,9 +1002,10 @@ export function CanTuDongPanel({
     () => sumCanTuDongCanLoiKg(visibleRecords),
     [visibleRecords]
   );
-  const trongLuongMangTotals = useMemo(
-    () => sumCanTuDongFilmKg(visibleRecords, productFilmWeightByCode),
-    [visibleRecords, productFilmWeightByCode]
+  /** Tổng cột «Trọng lượng bì» trên bảng (cộng từng dòng). */
+  const trongLuongBiTotals = useMemo(
+    () => sumCanTuDongTrongLuongBiKg(visibleRecords),
+    [visibleRecords]
   );
   /** Cộng SL lệnh theo từng cặp Lệnh SX + Mã SP (không nhân theo số lần cân). */
   const lsxQtyTotals = useMemo(() => {
@@ -1021,6 +1023,10 @@ export function CanTuDongPanel({
     for (const qty of seen.values()) total += qty;
     return { quantity: total, pairCount: seen.size };
   }, [visibleRecords, lsxQtyByLenhAndSp]);
+  const trongLuongMangTotals = useMemo(
+    () => sumCanTuDongFilmKg(visibleRecords, productFilmWeightByCode),
+    [visibleRecords, productFilmWeightByCode]
+  );
 
   /** Theo Mã SP trong bộ lọc: SL · SL LSX · KL TT · KL ĐM. */
   const summaryByMaSp = useMemo(() => {
@@ -1160,6 +1166,16 @@ export function CanTuDongPanel({
         unit: 'kg'
       }),
       buildPair({
+        key: 'bi',
+        title: 'Trọng lượng bì',
+        topLabel: 'Trọng lượng bì',
+        midLabel: '—',
+        top: trongLuongBiTotals.counted > 0 ? trongLuongBiTotals.weightKg : null,
+        mid: null,
+        digits: 2,
+        unit: 'kg'
+      }),
+      buildPair({
         key: 'mang',
         title: 'Màng',
         topLabel: 'Trọng lượng màng',
@@ -1178,6 +1194,7 @@ export function CanTuDongPanel({
     nhuaTieuChuanTotals,
     tongTrongLuongLoiTotals,
     loiTieuChuanTotals,
+    trongLuongBiTotals,
     trongLuongMangTotals
   ]);
 

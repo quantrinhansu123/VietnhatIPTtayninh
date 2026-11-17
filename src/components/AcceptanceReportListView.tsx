@@ -43,7 +43,10 @@ import {
   mapMaterialToWeightCatalogItem,
   type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
-import { isWarehouseBagExportItem } from '../utils/controlBoardShiftSummary';
+import {
+  isWarehouseBagExportItem,
+  isWarehouseTapeExportItem
+} from '../utils/controlBoardShiftSummary';
 import {
   filterCanTuDongRecordsForBoard,
   sumCanTuDongCanSanPhamKg,
@@ -85,6 +88,10 @@ type NvlViewState = {
   actualWeightKg: number | null;
   /** Nhựa thực tế (Cân SP − lõi − bì − màng) — ô đầu modal + cơ sở NVL %. */
   actualNhuaKg: number | null;
+  /** Σ Cân lõi từ cân AI — TL dòng ống. */
+  actualLoiKg: number | null;
+  /** Σ Trọng lượng bì từ cân AI — TL dòng túi. */
+  actualBiKg: number | null;
   actualWeightCount: number;
 };
 
@@ -100,7 +107,7 @@ function normalizeProductKey(value: string) {
 }
 
 /** Mã SP từ mặt hàng phiếu (bỏ phần sau dấu + nếu có). */
-function resolveReportProductCode(matHang: string) {
+export function resolveReportProductCode(matHang: string) {
   const trimmed = String(matHang || '').trim();
   if (!trimmed) return '';
   const plusIdx = trimmed.indexOf('+');
@@ -188,12 +195,36 @@ function resolveNhuaThucTeKg(
   return null;
 }
 
+function positiveCanKg(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || !(n > 0)) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
+/** Chia đều kg cân cho các dòng cùng nhóm (túi / ống). */
+function shareCanKgAcrossIndices(indices: number[], totalKg: number | null): Map<number, number> {
+  const map = new Map<number, number>();
+  if (!(indices.length > 0) || totalKg == null || !(totalKg > 0)) return map;
+  const each = Math.round((totalKg / indices.length) * 10000) / 10000;
+  indices.forEach((index, i) => {
+    // Dòng cuối nhận phần dư để tổng khớp kg cân.
+    if (i === indices.length - 1) {
+      const used = each * (indices.length - 1);
+      map.set(index, Math.round((totalKg - used) * 10000) / 10000);
+    } else {
+      map.set(index, each);
+    }
+  });
+  return map;
+}
+
 /**
  * Trọng lượng NVL:
  * - % (vật tư trộn): chỉ **nhựa thực tế** × % (không fallback Cân SP)
- * - Cái/ĐVT khác: định lượng Thành phần × SL sản lượng, quy kg
+ * - Túi / ống: lấy thẳng Σ bì / Σ lõi từ cân (xem `nvlLineWeightsKg`)
+ * - Cái/ĐVT khác (băng keo, tem…): định lượng Thành phần × SL sản lượng, quy kg
  */
-function resolveNvlTrongLuongKg(
+export function resolveNvlTrongLuongKg(
   item: ProductNplItem,
   productQty: number,
   _slipKhoiLuongKg: number | null,
@@ -281,13 +312,13 @@ function isNvlVatTuTron(item: ProductNplItem) {
   return item.amountType === 'percent';
 }
 
-function isNvlTuiItem(item: ProductNplItem) {
+export function isNvlTuiItem(item: ProductNplItem) {
   const code = String(item.code || '').trim();
   if (/^VT-?TUI/i.test(code) || /^TUI/i.test(code)) return true;
   return isWarehouseBagExportItem(code, item.name || '');
 }
 
-function isNvlOngItem(item: ProductNplItem) {
+export function isNvlOngItem(item: ProductNplItem) {
   const codeKey = String(item.code || '')
     .trim()
     .toUpperCase()
@@ -299,6 +330,37 @@ function isNvlOngItem(item: ProductNplItem) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
   return hay.includes('ong giay') || (/\bong\b/.test(hay) && hay.includes('giay'));
+}
+
+function normalizeNvlItemHay(item: ProductNplItem) {
+  return `${item.code || ''} ${item.name || ''}`
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Băng keo / băng dính (BDT…). */
+function isNvlBangKeoItem(item: ProductNplItem) {
+  if (isWarehouseTapeExportItem(item.code || '', item.name || '')) return true;
+  const hay = normalizeNvlItemHay(item);
+  return hay.includes('bang keo') || hay.includes('bang dinh');
+}
+
+/** Tem nhãn (TEM…). */
+function isNvlTemItem(item: ProductNplItem) {
+  const codeKey = String(item.code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_]+/g, '');
+  if (codeKey === 'TEM' || codeKey.startsWith('TEM')) return true;
+  const hay = normalizeNvlItemHay(item);
+  return (
+    hay.includes('tem ') ||
+    hay.startsWith('tem') ||
+    hay.includes(' tem') ||
+    hay.includes('nhan tem')
+  );
 }
 
 function sumNvlWeightsKg(weights: Array<number | null | undefined>) {
@@ -346,47 +408,89 @@ function computeNvlWeightGroupTotals(
   productQty: number,
   slipKhoiLuongKg: number | null,
   materials: WarehouseWeightCatalogItem[],
-  nhuaThucTeKg?: number | null
+  nhuaThucTeKg?: number | null,
+  canWeights?: { biKg?: number | null; loiKg?: number | null }
 ): NvlWeightGroupTotals {
   if (items.length === 0) {
-    return { tronKg: null, khongTronKg: null, tuiKg: null, ongKg: null };
+    return {
+      tronKg: null,
+      khongTronKg: null,
+      tuiKg: null,
+      ongKg: null,
+      bangKeoKg: null,
+      temKg: null
+    };
   }
+  const tuiIndices: number[] = [];
+  const ongIndices: number[] = [];
+  items.forEach((item, index) => {
+    if (isNvlVatTuTron(item)) return;
+    if (isNvlTuiItem(item)) tuiIndices.push(index);
+    else if (isNvlOngItem(item)) ongIndices.push(index);
+  });
+  const biFromCan = positiveCanKg(canWeights?.biKg);
+  const loiFromCan = positiveCanKg(canWeights?.loiKg);
+  const tuiShare = shareCanKgAcrossIndices(tuiIndices, biFromCan);
+  const ongShare = shareCanKgAcrossIndices(ongIndices, loiFromCan);
+
   let tronKg = 0;
   let khongTronKg = 0;
   let tuiKg = 0;
   let ongKg = 0;
+  let bangKeoKg = 0;
+  let temKg = 0;
   let hasTron = false;
   let hasKhongTron = false;
   let hasTui = false;
   let hasOng = false;
-  for (const item of items) {
-    const kg = resolveNvlTrongLuongKg(
-      item,
-      productQty,
-      slipKhoiLuongKg,
-      materials,
-      nhuaThucTeKg
-    );
+  let hasBangKeo = false;
+  let hasTem = false;
+  items.forEach((item, index) => {
+    let kg: number | null = null;
     if (isNvlVatTuTron(item)) {
+      kg = resolveNvlTrongLuongKg(item, productQty, slipKhoiLuongKg, materials, nhuaThucTeKg);
       hasTron = true;
       if (kg != null && kg > 0) tronKg += kg;
-      continue;
+      return;
     }
     hasKhongTron = true;
-    if (kg != null && kg > 0) khongTronKg += kg;
     if (isNvlTuiItem(item)) {
       hasTui = true;
-      if (kg != null && kg > 0) tuiKg += kg;
-    } else if (isNvlOngItem(item)) {
-      hasOng = true;
-      if (kg != null && kg > 0) ongKg += kg;
+      // Túi: chỉ Σ bì cân — không nhân ĐM.
+      kg = tuiShare.get(index) ?? null;
+      if (kg != null && kg > 0) {
+        tuiKg += kg;
+        khongTronKg += kg;
+      }
+      return;
     }
-  }
+    if (isNvlOngItem(item)) {
+      hasOng = true;
+      // Ống: chỉ Σ cân lõi — không nhân ĐM.
+      kg = ongShare.get(index) ?? null;
+      if (kg != null && kg > 0) {
+        ongKg += kg;
+        khongTronKg += kg;
+      }
+      return;
+    }
+    kg = resolveNvlTrongLuongKg(item, productQty, slipKhoiLuongKg, materials, nhuaThucTeKg);
+    if (kg != null && kg > 0) khongTronKg += kg;
+    if (isNvlBangKeoItem(item)) {
+      hasBangKeo = true;
+      if (kg != null && kg > 0) bangKeoKg += kg;
+    } else if (isNvlTemItem(item)) {
+      hasTem = true;
+      if (kg != null && kg > 0) temKg += kg;
+    }
+  });
   return {
     tronKg: hasTron ? Math.round(tronKg * 10000) / 10000 : null,
     khongTronKg: hasKhongTron ? Math.round(khongTronKg * 10000) / 10000 : null,
     tuiKg: hasTui ? Math.round(tuiKg * 10000) / 10000 : null,
-    ongKg: hasOng ? Math.round(ongKg * 10000) / 10000 : null
+    ongKg: hasOng ? Math.round(ongKg * 10000) / 10000 : null,
+    bangKeoKg: hasBangKeo ? Math.round(bangKeoKg * 10000) / 10000 : null,
+    temKg: hasTem ? Math.round(temKg * 10000) / 10000 : null
   };
 }
 
@@ -454,7 +558,7 @@ function NvlDinhMucGroupTable({
                 title={
                   useActualMixPercent
                     ? 'Nhựa thực tế × % trộn thực tế'
-                    : '% = nhựa thực tế × %. Cái = định lượng Thành phần × SL (quy kg)'
+                    : 'Túi = Σ bì cân · Ống = Σ cân lõi · Băng keo/tem = ĐM × SL × kg/đơn vị'
                 }
               >
                 Trọng lượng
@@ -984,7 +1088,8 @@ export default function AcceptanceReportListView({
   /**
    * Bảng phẳng:
    * - TL vật tư trộn = nhựa thực tế (`trong_luong_nhua`) — nguồn chính
-   * - TL không trộn / túi / ống = Thành phần × SL (kg/cái hoặc kg/SP băng keo)
+   * - Túi / ống = Σ bì / Σ lõi cân trên phiếu
+   * - Băng keo / tem = Thành phần × SL (kg/cái hoặc kg/SP)
    */
   const nvlWeightByReportId = useMemo(() => {
     const map = new Map<string, NvlWeightGroupTotals>();
@@ -1001,7 +1106,11 @@ export default function AcceptanceReportListView({
         quantity,
         null,
         materialWeightCatalog,
-        nhuaKg
+        nhuaKg,
+        {
+          biKg: report.trong_luong_bi,
+          loiKg: report.trong_luong_loi
+        }
       );
       map.set(id, {
         ...groups,
@@ -1022,6 +1131,8 @@ export default function AcceptanceReportListView({
       savedAt?: string;
       actualWeightKg?: number | null;
       actualNhuaKg?: number | null;
+      actualLoiKg?: number | null;
+      actualBiKg?: number | null;
       actualWeightCount?: number;
     }
   ): NvlViewState => {
@@ -1033,6 +1144,14 @@ export default function AcceptanceReportListView({
       options?.actualNhuaKg !== undefined
         ? options.actualNhuaKg
         : resolveNhuaThucTeKg(report);
+    const actualLoiKg =
+      options?.actualLoiKg !== undefined
+        ? options.actualLoiKg
+        : positiveCanKg(report.trong_luong_loi);
+    const actualBiKg =
+      options?.actualBiKg !== undefined
+        ? options.actualBiKg
+        : positiveCanKg(report.trong_luong_bi);
     return {
       report,
       productCode: entry?.code || productCode || report.mat_hang,
@@ -1053,6 +1172,8 @@ export default function AcceptanceReportListView({
       actualWeightKg:
         options?.actualWeightKg !== undefined ? options.actualWeightKg : null,
       actualNhuaKg,
+      actualLoiKg,
+      actualBiKg,
       actualWeightCount:
         options?.actualWeightCount !== undefined ? options.actualWeightCount : 0
     };
@@ -1062,7 +1183,22 @@ export default function AcceptanceReportListView({
     if (!nvlView) return [] as Array<number | null>;
     const slipKg = resolveSlipKhoiLuongKg(nvlView.report, nvlView.actualWeightKg);
     const nhuaKg = resolveNhuaThucTeKg(nvlView.report, nvlView.actualNhuaKg);
-    return nvlView.items.map(item => {
+    const tuiIndices: number[] = [];
+    const ongIndices: number[] = [];
+    nvlView.items.forEach((item, index) => {
+      if (item.amountType === 'percent') return;
+      if (isNvlTuiItem(item)) tuiIndices.push(index);
+      else if (isNvlOngItem(item)) ongIndices.push(index);
+    });
+    const tuiShare = shareCanKgAcrossIndices(
+      tuiIndices,
+      positiveCanKg(nvlView.actualBiKg ?? nvlView.report.trong_luong_bi)
+    );
+    const ongShare = shareCanKgAcrossIndices(
+      ongIndices,
+      positiveCanKg(nvlView.actualLoiKg ?? nvlView.report.trong_luong_loi)
+    );
+    return nvlView.items.map((item, index) => {
       // Vật tư trộn: chỉ % trộn thực tế × nhựa thực tế — không fallback ĐM BOM.
       if (item.amountType === 'percent') {
         const actualPct = resolveActualMixPercent(item, nvlMixActualPercentByKey);
@@ -1075,6 +1211,9 @@ export default function AcceptanceReportListView({
           nhuaKg
         );
       }
+      // Túi / ống: lấy thẳng Σ bì / Σ lõi cân — không nhân ĐM × SL.
+      if (isNvlTuiItem(item)) return tuiShare.get(index) ?? null;
+      if (isNvlOngItem(item)) return ongShare.get(index) ?? null;
       return resolveNvlTrongLuongKg(
         item,
         nvlView.quantity,
@@ -1331,6 +1470,8 @@ export default function AcceptanceReportListView({
     const loadActualWeight = async (): Promise<{
       actualWeightKg: number | null;
       actualNhuaKg: number | null;
+      actualLoiKg: number | null;
+      actualBiKg: number | null;
       actualWeightCount: number;
     }> => {
       try {
@@ -1353,13 +1494,25 @@ export default function AcceptanceReportListView({
           Number.isFinite(snapshot.trong_luong_nhua)
             ? Math.round(snapshot.trong_luong_nhua * 1000) / 1000
             : null;
+        const loiFromCan =
+          snapshot.so_lan_can > 0 ? positiveCanKg(snapshot.trong_luong_loi) : null;
+        const biFromCan =
+          snapshot.so_lan_can > 0 ? positiveCanKg(snapshot.trong_luong_bi) : null;
         return {
           actualWeightKg: counted > 0 && weightKg > 0 ? Math.round(weightKg * 1000) / 1000 : null,
           actualNhuaKg: nhuaFromCan,
+          actualLoiKg: loiFromCan,
+          actualBiKg: biFromCan,
           actualWeightCount: counted
         };
       } catch {
-        return { actualWeightKg: null, actualNhuaKg: null, actualWeightCount: 0 };
+        return {
+          actualWeightKg: null,
+          actualNhuaKg: null,
+          actualLoiKg: null,
+          actualBiKg: null,
+          actualWeightCount: 0
+        };
       }
     };
 
@@ -1403,6 +1556,10 @@ export default function AcceptanceReportListView({
           weightResult.actualWeightKg ?? resolveSlipKhoiLuongKg(state.report),
         actualNhuaKg:
           weightResult.actualNhuaKg ?? resolveNhuaThucTeKg(state.report),
+        actualLoiKg:
+          weightResult.actualLoiKg ?? positiveCanKg(state.report.trong_luong_loi),
+        actualBiKg:
+          weightResult.actualBiKg ?? positiveCanKg(state.report.trong_luong_bi),
         actualWeightCount: weightResult.actualWeightCount
       });
 
@@ -1463,6 +1620,8 @@ export default function AcceptanceReportListView({
         fromDb: false,
         actualWeightKg: nvlView.actualWeightKg,
         actualNhuaKg: nvlView.actualNhuaKg,
+        actualLoiKg: nvlView.actualLoiKg,
+        actualBiKg: nvlView.actualBiKg,
         actualWeightCount: nvlView.actualWeightCount
       });
       setNvlView(withNames);

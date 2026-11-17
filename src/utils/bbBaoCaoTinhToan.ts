@@ -7,6 +7,10 @@ import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../featur
 import type { ProductRow } from '../features/san-pham/types';
 import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
 import {
+  syncBbThucDungRowsOngFromAcceptanceReports,
+  syncBbThucDungRowsTuiFromAcceptanceReports
+} from './bbKhongTronFromAcceptance';
+import {
   filterCanTuDongRecordsForBoard,
   sumCanTuDongSanLuongTotals,
   computeInsulationFilmWeightKg,
@@ -185,6 +189,8 @@ export function buildBbMachineReportSnapshot(input: {
   acceptanceReports: AcceptanceReport[];
   /** Snapshot NVL định mức theo id phiếu báo cáo sản lượng. */
   acceptanceNvlDinhMucByReportId?: Map<string, BbAcceptanceNvlDinhMucItem[]>;
+  /** Phiếu quy đổi / cắt ống — đổ khối lượng đích vào Nhập TP 3.2. */
+  materialConversions?: import('./bbMaterialConversion').BbMaterialConversionRecord[];
   canTuDongRecords: CanTuDongRecord[];
   shiftSettings: Array<ShiftSetting | ProductionOrderLookupSetting>;
   dateFrom: string;
@@ -384,7 +390,7 @@ export function buildBbMachineReportSnapshot(input: {
   });
 
   /** Tiêu hao NVL = công thức phiếu in (nhập TP + lỗi + chênh lệch) — tab + in cùng số. */
-  const thucDungRows = buildBbTieuHaoNvlThucDungRows({
+  const thucDungRowsBuilt = buildBbTieuHaoNvlThucDungRows({
     orderGroups,
     products: input.products,
     materials: input.materials,
@@ -396,8 +402,20 @@ export function buildBbMachineReportSnapshot(input: {
     mixingGroups,
     mixingReports: input.mixingReports,
     sanLuongGroups,
+    materialConversions: input.materialConversions,
     shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine
+  });
+  // 3.2 túi/ống: Nhập TP lấy thẳng bì/lõi trên phiếu sản lượng (số mới sau Đồng bộ trọng lượng).
+  const thucDungRowsTui = syncBbThucDungRowsTuiFromAcceptanceReports({
+    rows: thucDungRowsBuilt,
+    acceptanceReports: input.acceptanceReports,
+    products: input.products
+  });
+  const thucDungRows = syncBbThucDungRowsOngFromAcceptanceReports({
+    rows: thucDungRowsTui,
+    acceptanceReports: input.acceptanceReports,
+    products: input.products
   });
   const thucDungGroups = groupBbThucDungLines(thucDungRows);
 

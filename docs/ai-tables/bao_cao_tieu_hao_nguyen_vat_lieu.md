@@ -13,7 +13,7 @@ Snapshot riêng. 1 dòng = 1 NVL (`nhom` = `nhua` \| `khac`). Ghi khi **Tính to
 | Nhóm | Nguồn |
 |------|--------|
 | **3.1 nhựa** | Cùng cột **Trọng lượng thực tế** tab Thành phẩm đạt nhập kho (`Σ productGroup.weightKg` Báo cáo sản lượng) × **Tỉ lệ TB thực tế** ÷ 100 |
-| **3.2 NVL khác** | Chỉ `nvlTotals.actualWeightKg` Báo cáo sản lượng |
+| **3.2 NVL khác** | Chỉ `nvlTotals.actualWeightKg` Báo cáo sản lượng theo **mã NVL** — **không** nhân lại ĐM / catalog (`finishedQty × kg`) |
 
 Builder: `bbTieuHaoNvlPrintRows.ts`.
 

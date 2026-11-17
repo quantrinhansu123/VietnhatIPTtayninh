@@ -94,6 +94,17 @@ import { buildDuLieuTrongBaoCaoKiemTonCuoiCaRowsFromGroups } from '../utils/duLi
 import { buildBaoCaoThanhPhamDatNhapKhoRowsFromGroups } from '../utils/baoCaoThanhPhamDatNhapKho';
 import { buildBaoCaoTieuHaoNguyenVatLieuRowsFromGroups } from '../utils/baoCaoTieuHaoNguyenVatLieu';
 import { buildBaoCaoTongHopRowFromSummary } from '../utils/baoCaoTongHop';
+import {
+  mapApiRowsToBbMaterialConversions,
+
+  type BbMaterialConversionRecord
+} from '../utils/bbMaterialConversion';
+import {
+  syncBbThucDungRowsOngFromAcceptanceReports,
+  syncBbThucDungRowsTuiFromAcceptanceReports
+} from '../utils/bbKhongTronFromAcceptance';
+import { syncBbThucDungRowsCutLoiFromMaterialConversions } from '../utils/bbConversionCutLoi';
+import { syncBbThucDungRowsOtherFinishedFromSanLuongTab } from '../utils/bbNvlFromSanLuongTab';
 import { resolveCongNhanPhuTrach } from '../features/bieu-do-th/staffEnrichment';
 import {
   BB_MACHINE_REPORT_TABS,
@@ -1177,6 +1188,8 @@ export default function ControlBoardBbMachineReportTable({
     };
   };
   const [calcCanTuDongRecords, setCalcCanTuDongRecords] = useState<CanTuDongRecord[]>([]);
+  /** Phiếu cắt / quy đổi — đổ khoi_luong_quy_doi vào Xuất kho 3.2 theo ngày·ca·máy. */
+  const [materialConversions, setMaterialConversions] = useState<BbMaterialConversionRecord[]>([]);
   const [calcDialogOpen, setCalcDialogOpen] = useState(false);
   const [calcNgay, setCalcNgay] = useState('');
   const [calcCa, setCalcCa] = useState('');
@@ -1364,6 +1377,37 @@ export default function ControlBoardBbMachineReportTable({
     };
   }, [savedReportView, sanLuongSource, dateFrom, dateTo, reportSnapshotKey]);
 
+  /** Phiếu quy đổi/cắt ống trong khoảng ngày — nguồn Xuất kho mã đích (3.2). */
+  useEffect(() => {
+    if (!dateFrom && !dateTo) {
+      setMaterialConversions([]);
+      return;
+    }
+    let cancelled = false;
+    const loadConversions = async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set('all', '1');
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+        const res = await fetch(`/api/quy-doi-vat-lieu?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setMaterialConversions([]);
+          return;
+        }
+        setMaterialConversions(mapApiRowsToBbMaterialConversions(data?.records));
+      } catch {
+        if (!cancelled) setMaterialConversions([]);
+      }
+    };
+    void loadConversions();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateFrom, dateTo, reportSnapshotKey]);
+
   const openCalcDialog = () => {
     if (calculatingReport || isLoading || snapshotStatus === 'loading') return;
     const today = new Date();
@@ -1525,6 +1569,23 @@ export default function ControlBoardBbMachineReportTable({
         orderCodes: orderCodeFilter
       });
 
+      // Tải lại phiếu cắt/quy đổi theo phạm vi Tính toán (đủ trang, không giới hạn 50).
+      let liveMaterialConversions = materialConversions;
+      try {
+        const qdParams = new URLSearchParams();
+        qdParams.set('all', '1');
+        if (scope.dateFrom) qdParams.set('dateFrom', scope.dateFrom);
+        if (scope.dateTo) qdParams.set('dateTo', scope.dateTo);
+        const qdRes = await fetch(`/api/quy-doi-vat-lieu?${qdParams.toString()}`);
+        const qdData = await qdRes.json().catch(() => ({}));
+        if (qdRes.ok && Array.isArray(qdData?.records)) {
+          liveMaterialConversions = mapApiRowsToBbMaterialConversions(qdData.records);
+          setMaterialConversions(liveMaterialConversions);
+        }
+      } catch {
+        // Giữ bản đã tải trước đó.
+      }
+
       const payloadRaw = buildBbMachineReportSnapshot({
         productionOrders: liveProductionOrders,
         products: liveProducts,
@@ -1537,6 +1598,7 @@ export default function ControlBoardBbMachineReportTable({
         mixingReports: refreshed.mixingReports,
         acceptanceReports: liveAcceptanceReports,
         acceptanceNvlDinhMucByReportId,
+        materialConversions: liveMaterialConversions,
         canTuDongRecords: scopedCanTuDongRecords,
         shiftSettings,
         dateFrom: scope.dateFrom,
@@ -2303,40 +2365,65 @@ export default function ControlBoardBbMachineReportTable({
   const inboundRows = activeSnapshot.inboundRows;
   const thucDungRows = activeSnapshot.thucDungRows;
   const thucDungRowsLive = useMemo(() => {
-    if (savedReportView) return thucDungRows;
-    const withXuat = syncBbThucDungRowsXuatTrongNgayFromExportTab({
-      rows: thucDungRows,
-      productionOrders,
-      warehouseMovements,
-      materials,
-      machines,
-      shiftSettings,
-      dateFrom,
-      dateTo,
-      shiftFilter,
-      machineFilter,
-      selectedMachine,
-      includeAllMachines
+    const baseRows = (() => {
+      if (savedReportView) return thucDungRows;
+      const withXuat = syncBbThucDungRowsXuatTrongNgayFromExportTab({
+        rows: thucDungRows,
+        productionOrders,
+        warehouseMovements,
+        materials,
+        machines,
+        shiftSettings,
+        dateFrom,
+        dateTo,
+        shiftFilter,
+        machineFilter,
+        selectedMachine,
+        includeAllMachines
+      });
+      const withTonDau = syncBbThucDungRowsTonDauFromDauCaTab({
+        rows: withXuat,
+        machineNvlReports,
+        dauCaGroups,
+        shiftSettings
+      });
+      const withTonCuoi = syncBbThucDungRowsTonCuoiFromCuoiCaTab({
+        rows: withTonDau,
+        machineNvlReports,
+        cuoiCaGroups,
+        shiftSettings
+      });
+      return syncBbThucDungRowsFinishedFromSanLuong({
+        rows: withTonCuoi,
+        sanLuongGroups,
+        products,
+        materials
+      });
+    })();
+    // Nhập TP NVL khác: luôn lấy số mới từ Báo cáo sản lượng (kể cả khi đang xem snapshot).
+    const withSanLuongTab = syncBbThucDungRowsOtherFinishedFromSanLuongTab({
+      rows: baseRows,
+      sanLuongGroups
     });
-    const withTonDau = syncBbThucDungRowsTonDauFromDauCaTab({
-      rows: withXuat,
-      machineNvlReports,
-      dauCaGroups,
-      shiftSettings
+    const withXuatConversion = withSanLuongTab;
+    // Túi / ống: Nhập TP = Σ bì / Σ lõi trên phiếu sản lượng (theo BOM từng phiếu).
+    const withTui = syncBbThucDungRowsTuiFromAcceptanceReports({
+      rows: withXuatConversion,
+      acceptanceReports,
+      products
     });
-    const withTonCuoi = syncBbThucDungRowsTonCuoiFromCuoiCaTab({
-      rows: withTonDau,
-      machineNvlReports,
-      cuoiCaGroups,
-      shiftSettings
+    const withOng = syncBbThucDungRowsOngFromAcceptanceReports({
+      rows: withTui,
+      acceptanceReports,
+      products
     });
-    return syncBbThucDungRowsFinishedFromSanLuong({
-      rows: withTonCuoi,
-      sanLuongGroups,
-      products,
-      materials
+    // 3.2 «Trọng lượng cắt lõi»: mã nguồn −khoi_luong_goc, mã đích +khoi_luong_quy_doi (phiếu quy đổi).
+    return syncBbThucDungRowsCutLoiFromMaterialConversions({
+      rows: withOng,
+      conversions: materialConversions
     });
   }, [
+    acceptanceReports,
     savedReportView,
     thucDungRows,
     productionOrders,
@@ -2348,6 +2435,7 @@ export default function ControlBoardBbMachineReportTable({
     dauCaGroups,
     cuoiCaGroups,
     sanLuongGroups,
+    materialConversions,
     shiftSettings,
     dateFrom,
     dateTo,
@@ -5861,15 +5949,20 @@ export default function ControlBoardBbMachineReportTable({
                                             <th className="px-3 py-2.5 text-right">Xuất kho</th>
                                             <th className="px-3 py-2.5 text-right">Tồn đầu</th>
                                             <th className="px-3 py-2.5 text-right">Nhập TP</th>
-                                            <th className="px-3 py-2.5 text-right">Lỗi hỏng</th>
+                                            <th
+                                              className="px-3 py-2.5 text-right"
+                                              title="Phiếu quy đổi: mã nguồn = −khối lượng gốc; mã đích = +khối lượng quy đổi"
+                                            >
+                                              Cắt lõi
+                                            </th>
                                             <th className="px-3 py-2.5 text-right">Tồn cuối</th>
                                             <th className="px-3 py-2.5 text-right">Thực tế sử dụng</th>
-                                            <th className="px-3 py-2.5 text-right" title="Nhập TP + Lỗi hỏng">
-                                              TP + Lỗi
+                                            <th className="px-3 py-2.5 text-right" title="Nhập TP − Cắt lõi">
+                                              TP − Cắt lõi
                                             </th>
                                             <th
                                               className="px-3 py-2.5 text-right"
-                                              title="Thực tế sử dụng − Nhập TP − Lỗi hỏng"
+                                              title="Thực tế sử dụng − Nhập TP + Cắt lõi"
                                             >
                                               Chênh lệch
                                             </th>
@@ -5917,7 +6010,7 @@ export default function ControlBoardBbMachineReportTable({
                                                   />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-700">
-                                                  {formatKg(row.loiHongKg, 2)}
+                                                  {formatSignedKg(0 - (row.loiHongKg || 0), 2)}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700">
                                                   {formatKg(row.tonCuoiKg, 2)}
@@ -5959,7 +6052,7 @@ export default function ControlBoardBbMachineReportTable({
                                                 {formatKg(otherTotals.finishedTotal ?? 0, 2)}
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
-                                                {formatKg(otherTotals.damagedTotal ?? 0, 2)}
+                                                {formatSignedKg(0 - (otherTotals.damagedTotal ?? 0), 2)}
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.tonCuoiCaTotal, 2)}

@@ -13,7 +13,8 @@ Modal **NVL theo định mức** — công thức nguồn chính (không ước 
 | **Trọng lượng tổng** | Σ Cân SP | `can_tu_dong` hoặc `trong_luong` phiếu |
 | **Trọng lượng thực tế** | Nhựa = Cân SP − lõi − bì − màng | cân AI snapshot / `trong_luong_nhua` |
 | **Vật tư trộn · TL dòng** | Nhựa × **% trộn thực tế** | `bao_cao_phoi_tron` (ngày·ca·máy) — **không** fallback ĐM BOM |
-| **Túi / ống · TL** | `(ĐM cái/SP × SL) × kg/cái` | Thành phần `khoi_luong_kg` hoặc Tổng kg kho NVL |
+| **Túi · TL** | Σ **Trọng lượng bì** cân AI | `can_tu_dong` / `trong_luong_bi` phiếu — không nhân ĐM |
+| **Ống · TL** | Σ **Cân lõi** cân AI | `can_tu_dong.tare_weight` / `trong_luong_loi` phiếu — không nhân ĐM |
 | **Băng keo · TL** | `SL × khoi_luong_kg` nếu kg BOM ≪ kg/cuộn kho | Thành phần |
 | **Bảng phẳng · TL vật tư trộn** | = **nhựa thực tế** | `trong_luong_nhua` |
 

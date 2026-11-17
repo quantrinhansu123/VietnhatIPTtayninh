@@ -23,13 +23,12 @@ import { parseProductionOrderFilterDate } from '../features/cai-dat-thoi-gian';
 import { shiftNamesMatch, type ShiftSetting } from '../utils/shiftSettings';
 import type { ShiftSummaryWarehouseMovement } from '../utils/controlBoardShiftSummary';
 import {
-  convertWarehouseQuantityToKg,
   isWarehouseKgUnit,
   mapMaterialToWeightCatalogItem,
   normalizeWarehouseCodeKey,
   type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
-import { resolveProductMaterialBaseKg, resolveProductNplItemWeightKg } from '../features/san-pham';
+import { resolveProductMaterialBaseKg } from '../features/san-pham';
 import {
   allocateBbKgByWeightShare,
   buildBbMaterialKgMapsFromTabLines,
@@ -1122,44 +1121,56 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
   }
 
   // Cột «Trọng lượng vật tư nhập thành phẩm»:
-  // Tổng thẳng TL NVL theo từng mã SP trên lệnh (= cột TL NVL Báo cáo sản lượng từng SP).
+  // Chỉ lấy actualWeightKg từ Báo cáo sản lượng theo mã NVL — không nhân ĐM / catalog.
   for (const row of rows.values()) {
     row.finishedKg = 0;
   }
 
-  const seenSanLuongProductKeys = new Set<string>();
-  for (const productLine of order.lines) {
-    const productGroup = findSanLuongProductGroup(
-      order,
-      productLine.productCode,
-      productLine.productName,
-      props.sanLuongGroups || []
-    );
-    if (!productGroup) continue;
-    const spKey =
-      normalizeProductCodeKey(productGroup.productCode) ||
-      normalizeProductCodeKey(productGroup.productName) ||
-      productGroup.key;
-    if (spKey && seenSanLuongProductKeys.has(spKey)) continue;
-    if (spKey) seenSanLuongProductKeys.add(spKey);
-    for (const line of productGroup.lines || []) {
-      if (!isInOrderBom(line.itemCode, line.itemName)) continue;
-      const weight =
-        line.actualWeightKg > 0
-          ? line.actualWeightKg
-          : line.normWeightKg > 0
-            ? line.normWeightKg
-            : 0;
-      if (!(weight > 0)) continue;
-      const unit =
-        line.amountType === 'percent' ? 'kg' : String(line.unit || '').trim() || 'Cái';
-      const row = ensure(line.itemCode, line.itemName, unit);
-      row.finishedKg = round4(row.finishedKg + weight);
+  const sanLuongGroupForOrder =
+    (props.sanLuongGroups || []).find(
+      g =>
+        g.orderCode === order.orderCode &&
+        g.ngay === order.ngay &&
+        (g.shift === order.shift || g.shiftLabel === order.shiftLabel)
+    ) || (props.sanLuongGroups || []).find(g => g.orderCode === order.orderCode);
+
+  if (sanLuongGroupForOrder) {
+    const totals = Array.isArray(sanLuongGroupForOrder.nvlTotals)
+      ? sanLuongGroupForOrder.nvlTotals
+      : [];
+    if (totals.length > 0) {
+      for (const total of totals) {
+        if (total.amountType === 'percent') continue;
+        const weight = total.actualWeightKg > 0 ? total.actualWeightKg : 0;
+        if (!(weight > 0)) continue;
+        const unit = String(total.unit || '').trim() || 'Cái';
+        const row = ensure(total.itemCode, total.itemName, unit);
+        if (isPlasticMaterialPrintRow(row)) continue;
+        row.finishedKg = round4(row.finishedKg + weight);
+      }
+    } else {
+      const seenSanLuongProductKeys = new Set<string>();
+      for (const productGroup of sanLuongGroupForOrder.productGroups || []) {
+        const spKey =
+          normalizeProductCodeKey(productGroup.productCode) ||
+          normalizeProductCodeKey(productGroup.productName) ||
+          productGroup.key;
+        if (spKey && seenSanLuongProductKeys.has(spKey)) continue;
+        if (spKey) seenSanLuongProductKeys.add(spKey);
+        for (const line of productGroup.lines || []) {
+          if (line.amountType === 'percent') continue;
+          const weight = line.actualWeightKg > 0 ? line.actualWeightKg : 0;
+          if (!(weight > 0)) continue;
+          const unit = String(line.unit || '').trim() || 'Cái';
+          const row = ensure(line.itemCode, line.itemName, unit);
+          if (isPlasticMaterialPrintRow(row)) continue;
+          row.finishedKg = round4(row.finishedKg + weight);
+        }
+      }
     }
   }
 
-  // Số lượng thành phẩm 3.2 + bổ sung finishedKg khi báo cáo sản lượng thiếu dòng NVL.
-  const materialsCatalog = props.materials.map(mapMaterialToWeightCatalogItem);
+  // Số lượng thành phẩm 3.2 (SL SP × ĐM) — không đụng finishedKg.
   for (const row of rows.values()) {
     if (!isPlasticMaterialPrintRow(row)) row.actualQty = 0;
   }
@@ -1178,36 +1189,12 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
         item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
           ? item.quantity
           : null;
-      if (qtyPerSp == null && !(item.weightKg != null && item.weightKg >= 0)) continue;
+      if (qtyPerSp == null) continue;
       const unit = String(item.unit || '').trim();
       const row = ensure(item.code, item.name, unit || 'Cái');
       if (isPlasticMaterialPrintRow(row)) continue;
-      if (qtyPerSp != null && unit && unit !== '-' && !isWarehouseKgUnit(unit)) {
+      if (unit && unit !== '-' && !isWarehouseKgUnit(unit)) {
         row.actualQty = round4(row.actualQty + qtyPerSp * sl);
-      }
-      // Đã có TL NVL từ Báo cáo sản lượng → không ghi đè.
-      if (row.finishedKg > 0) continue;
-      const perSpKg = resolveProductNplItemWeightKg(product, item, props.materials);
-      if (perSpKg != null && Number.isFinite(perSpKg) && perSpKg > 0) {
-        row.finishedKg = round4(row.finishedKg + perSpKg * sl);
-        continue;
-      }
-      if (qtyPerSp == null) continue;
-      const totalQty = qtyPerSp * sl;
-      if (isWarehouseKgUnit(unit)) {
-        row.finishedKg = round4(row.finishedKg + totalQty);
-        continue;
-      }
-      const converted = convertWarehouseQuantityToKg({
-        quantity: totalQty,
-        unit: unit || 'Cái',
-        itemCode: item.code,
-        warehouseKind: 'nvl',
-        materials: materialsCatalog,
-        preferTongKgOnly: false
-      });
-      if (converted != null && Number.isFinite(converted) && converted > 0) {
-        row.finishedKg = round4(row.finishedKg + converted);
       }
     }
   }
@@ -1246,7 +1233,7 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
       }
       if (isInOrderBom(row.code, row.name)) return true;
       // Giữ tồn đầu/cuối ca thực tế (quét máy) và NVL đã xuất kho thực tế, bỏ mã đã gỡ khỏi BOM.
-      return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0;
+      return row.openingKg > 0 || row.closingKg > 0 || row.exportKg > 0 || row.finishedKg > 0;
     })
     .map(row => ({
       ...row,
@@ -1913,10 +1900,10 @@ function BbMachineOrderPrintSheet({
                   <br />
                   thành phẩm
                 </th>
-                <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
+                <th title="Phiếu quy đổi: mã nguồn = −khối lượng gốc (số âm); mã đích = +khối lượng quy đổi (số dương)">
                   Trọng lượng
                   <br />
-                  vật tư lỗi hỏng
+                  cắt lõi
                 </th>
                 <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca» — lấy thẳng">
                   Trọng lượng
@@ -1935,13 +1922,13 @@ function BbMachineOrderPrintSheet({
                 <th>
                   Trọng lượng
                   <br />
-                  thành phẩm +
+                  thành phẩm −
                   <br />
-                  Lỗi Hỏng
+                  Cắt lõi
                   <br />
                   thực tế
                 </th>
-                <th title="Chênh lệch = Tồn đầu + Xuất kho − Tồn cuối − Nhập thành phẩm − Lỗi hỏng">
+                <th title="Chênh lệch = Thực tế sử dụng − Nhập thành phẩm + Cắt lõi">
                   Chênh lệch
                   <br />
                   (Xuất − Nhập)
@@ -1978,7 +1965,7 @@ function BbMachineOrderPrintSheet({
                       <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
+                      <td className="shift-summary-print-num">{printNumber(row.damagedKg ? 0 - row.damagedKg : 0, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
                       <td className="shift-summary-print-num">
@@ -1989,10 +1976,17 @@ function BbMachineOrderPrintSheet({
                   );
                 })
               )}
-              {renderMaterialPrintTotalRow('Tổng vật tư khác', otherMaterialTotals, {
-                includeMixingRatioCols: false,
-                includeQtyCol: true
-              })}
+              {renderMaterialPrintTotalRow(
+                'Tổng vật tư khác',
+                {
+                  ...otherMaterialTotals,
+                  damagedKg: otherMaterialTotals.damagedKg ? 0 - otherMaterialTotals.damagedKg : 0
+                },
+                {
+                  includeMixingRatioCols: false,
+                  includeQtyCol: true
+                }
+              )}
             </tbody>
           </table>
         </section>

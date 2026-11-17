@@ -516,7 +516,12 @@ export function buildMachineShiftMaterialChecklist(
   }
 
   return {
-    lines: lines.sort((a, b) => compareMaterialMisaCode(a.maVatTu, b.maVatTu)),
+    // Nhóm 0: có tỉ lệ % → đầu; nhóm 1: NHUA-TRON (ngay sau NVL theo %); nhóm 2: còn lại.
+    lines: lines.sort((a, b) => {
+      const rank = (row: MachineShiftMaterialChecklistLine) =>
+        row.tiLePercent != null ? 0 : isNhuaTronMaterial(row.maVatTu, row.tenVatTu) ? 1 : 2;
+      return rank(a) - rank(b) || compareMaterialMisaCode(a.maVatTu, b.maVatTu);
+    }),
     mixingSessions: mixingAgg.sessions.length > 0 ? mixingAgg.sessions : [1]
   };
 }

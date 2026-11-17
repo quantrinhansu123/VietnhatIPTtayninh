@@ -5437,8 +5437,16 @@ input[type="number"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72mm;
   gap: 2.5mm;
-  align-items: start;
+  align-items: stretch;
 }
+
+/* Bảng II cao bằng bảng I: dòng tự co giãn theo chiều cao bên trái. */
+.acceptance-nk-sx-print-side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.acceptance-nk-sx-print-side-table { height: 100%; }
 
 .acceptance-nk-sx-print-section-label {
   margin: 0 0 1.5mm;
@@ -5516,8 +5524,9 @@ input[type="number"] {
 }
 
 .acceptance-nk-sx-print-side-table tbody tr {
-  height: 7.5mm;
+  height: auto;
 }
+.acceptance-nk-sx-print-side-table td { padding-top: 0.4mm; padding-bottom: 0.4mm; }
 
 .acceptance-nk-sx-print-summary {
   margin-top: 2.5mm;

@@ -410,19 +410,24 @@ function getDefectLineQty(line: AcceptancePrintLine): { value: number; unit: str
 
 const DEFECT_GROUPS = [
   'Nhựa không màng',
-  'Nhựa đầu keo ( Nhựa cục)',
-  'Nhựa dính màng ( nhựa+màng)',
-  'Màng rách ( không nhựa)',
-  'Hàng hỏng khác'
+  'Nhựa chết',
+  'Rác - Màng xi',
+  'Hàng rác Túi Cao Cấp',
+  'Hàng rác',
+  'Nhựa không màng mua ngoài',
+  'Nhựa không màng có màu'
 ];
 
 function defectGroupIndex(line: AcceptancePrintLine) {
   const hay = `${line.mat_hang || ''} ${line.ten_sp || ''}`.toLowerCase();
+  if (/mua ngoài|mua ngoai/.test(hay)) return 5;
+  if (/có màu|co mau/.test(hay)) return 6;
   if (/không màng|khong mang|nhuakm/.test(hay)) return 0;
-  if (/đầu keo|dau keo|nhựa cục|nhua cuc/.test(hay)) return 1;
-  if (/dính màng|dinh mang/.test(hay)) return 2;
-  if (/rách|rach/.test(hay)) return 3;
-  return 4;
+  if (/nhựa chết|nhua chet/.test(hay)) return 1;
+  if (/túi cao cấp|tui cao cap/.test(hay)) return 3;
+  if (/màng x[iỉ]|mang x[iỉ]/.test(hay)) return 2;
+  if (/rác|rac/.test(hay)) return 4;
+  return -1; // ponytail: không khớp nhóm nào → chỉ cộng vào Tổng
 }
 
 
@@ -662,11 +667,14 @@ export function AcceptanceReportPrintSheet({
     isAcceptanceHangLoiHongTabLoai(line.loai_vat_tu)
   );
   const defectGroupKg = DEFECT_GROUPS.map(() => 0);
+  let defectTotalKg = 0;
   for (const line of defectLines) {
     const q = getDefectLineQty(line);
-    if (q) defectGroupKg[defectGroupIndex(line)] += q.value;
+    if (!q) continue;
+    const gi = defectGroupIndex(line);
+    if (gi >= 0) defectGroupKg[gi] += q.value;
+    defectTotalKg += q.value;
   }
-  const defectTotalKg = defectGroupKg.reduce((sum, v) => sum + v, 0);
 
   return (
     <div className="production-order-print-sheet acceptance-nk-sx-print-sheet">

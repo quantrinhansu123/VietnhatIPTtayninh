@@ -8526,14 +8526,11 @@ input[type="number"] {
 .bb-nvl-checklist-sign {
   position: relative;
   min-height: 52px;
-  border: 1px solid #222;
 }
 
 .bb-nvl-checklist-sign-head {
   text-align: center;
   padding: 2px 4px;
-  border-bottom: 1px solid #222;
-  background: #f3f4f6;
   font-size: 9px;
   font-weight: 700;
 }
@@ -8675,7 +8672,12 @@ input[type="number"] {
   }
 
   body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sign {
-    min-height: 16mm !important;
+    min-height: 12mm !important;
+    break-inside: avoid;
+  }
+
+  body.machine-shift-nvl-checklist-print-active .bb-nvl-checklist-signatures {
+    break-inside: avoid;
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-title {
@@ -8692,7 +8694,7 @@ input[type="number"] {
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-table td {
-    height: 6mm;
+    height: 5.5mm;
     font-size: 10pt !important;
   }
 
@@ -8706,6 +8708,6 @@ input[type="number"] {
   }
 
   .machine-shift-nvl-checklist-print-active .bb-nvl-checklist-sheet-spacious .bb-nvl-checklist-sign {
-    min-height: 18mm !important;
+    min-height: 12mm !important;
   }
 }

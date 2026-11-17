@@ -7458,7 +7458,7 @@ function parseWarehouseSlipBody(body: unknown): {
   if (!loaiPhieu) {
     return { error: 'Loại phiếu phải là nhập hoặc xuất.' };
   }
-  if (slipCode && !new RegExp(`^${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-(?:[A-Z0-9]+-)?\\d{8}-\\d{6}$`).test(slipCode)) {
+  if (slipCode && !new RegExp(`^${loaiPhieu === 'nhap' ? 'PN' : 'PX'}-[A-Z0-9]+(?:-[A-Z0-9]+)*$`).test(slipCode)) {
     return { error: 'Mã phiếu không hợp lệ.' };
   }
   if (!ngayPhieu) {

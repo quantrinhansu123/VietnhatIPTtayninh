@@ -20584,11 +20584,17 @@ export function createApp() {
     if (!supabase) return res.status(503).json({ error: 'Chưa kết nối cơ sở dữ liệu sản phẩm.' });
 
     try {
-      const { data, error } = await loadTonKhoGop('san_pham', null, null, null);
+      // Cùng cách tính với /api/kiem-soat-ton: gộp theo mã gốc, tồn = đầu + nhập − xuất (tính cả lô âm).
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const { data, error } = await loadTonKhoGop('san_pham', null, null, today);
       if (error) throw error;
-      const count = ((data as TonKhoGopRow[]) || [])
-        .filter(row => extractTonKhoPrefix(row.ma) === maSpGoc && Number(row.ton_cuoi_ky) > 0)
-        .reduce((sum, row) => sum + Number(row.ton_cuoi_ky), 0);
+      const target = normalizeTonKhoCatalogCode(maSpGoc);
+      const group = groupTonKhoRowsByPrefix((data as TonKhoGopRow[]) || [])
+        .find(row => normalizeTonKhoCatalogCode(row.ma) === target);
+      const count = group
+        ? Math.round((group.ton_dau_ky + group.nhap_trong_ky - group.xuat_trong_ky) * 1000) / 1000
+        : 0;
       return res.json({ ma_sp_goc: maSpGoc, so_luong: count });
     } catch (err: any) {
       console.error('Product stock count query error:', err);

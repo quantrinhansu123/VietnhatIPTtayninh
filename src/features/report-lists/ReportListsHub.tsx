@@ -100,7 +100,7 @@ export function ReportListsHub({
   const hubItems = useMemo<HubMenuItem[]>(
     () => {
       const base: HubMenuItem[] = [...(menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS), {
-        title: 'Quy đổi vật liệu', desc: 'Quy đổi theo Ngày · Ca · Máy, vật tư gốc và vật tư quy đổi.', icon: ArrowLeftRight, tab: 'material-conversion'
+        title: 'Cắt Lõi', desc: 'Cắt lõi / quy đổi theo Ngày · Ca · Máy, vật tư gốc và vật tư đích.', icon: ArrowLeftRight, tab: 'material-conversion'
       }];
       if (base.some(item => item.tab === 'dashboard-auto')) return base;
       return [

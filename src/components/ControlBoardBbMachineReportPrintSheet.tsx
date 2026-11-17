@@ -1282,6 +1282,10 @@ function BbMachineOrderPrintSheet({
     actualQty: line.finishedQty ?? 0,
     finishedKg: line.klThucTeKg,
     damagedKg: line.loiHongKg,
+    openingQty: line.tonDauQty ?? 0,
+    closingQty: line.tonCuoiQty ?? 0,
+    cutLoiKg: line.cutLoiKg ?? 0,
+    cutLoiQty: line.cutLoiQty ?? 0,
     closingKg: line.tonCuoiKg,
     actualUsedKg: line.weightKg,
     finishedAndDamagedKg: line.klThucTePlusLoiKg,
@@ -1912,7 +1916,7 @@ function BbMachineOrderPrintSheet({
                   <br />
                   cuối ca
                 </th>
-                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
+                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca + Trọng lượng cắt lõi">
                   Trọng lượng
                   <br />
                   Thực tế
@@ -1922,13 +1926,11 @@ function BbMachineOrderPrintSheet({
                 <th>
                   Trọng lượng
                   <br />
-                  thành phẩm −
-                  <br />
-                  Cắt lõi
+                  thành phẩm
                   <br />
                   thực tế
                 </th>
-                <th title="Chênh lệch = Thực tế sử dụng − Nhập thành phẩm + Cắt lõi">
+                <th title="Chênh lệch = Thực tế sử dụng − Nhập thành phẩm">
                   Chênh lệch
                   <br />
                   (Xuất − Nhập)
@@ -1962,11 +1964,20 @@ function BbMachineOrderPrintSheet({
                       >
                         {printNumber(soLuong, 2)}
                       </td>
-                      <td className="shift-summary-print-num">{printNumber(row.openingKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.openingKg, 2)}
+                        {row.openingQty ? `( ${printNumber(row.openingQty, 2)} )` : ''}
+                      </td>
                       <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.damagedKg ? 0 - row.damagedKg : 0, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.closingKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.cutLoiKg, 2)}
+                        {row.cutLoiQty ? `( ${printNumber(row.cutLoiQty, 2)} )` : ''}
+                      </td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.closingKg, 2)}
+                        {row.closingQty ? `( ${printNumber(row.closingQty, 2)} )` : ''}
+                      </td>
                       <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.finishedAndDamagedKg, 2)}
@@ -1980,7 +1991,7 @@ function BbMachineOrderPrintSheet({
                 'Tổng vật tư khác',
                 {
                   ...otherMaterialTotals,
-                  damagedKg: otherMaterialTotals.damagedKg ? 0 - otherMaterialTotals.damagedKg : 0
+                  damagedKg: otherMaterialRows.reduce((sum, row) => sum + (row.cutLoiKg || 0), 0)
                 },
                 {
                   includeMixingRatioCols: false,

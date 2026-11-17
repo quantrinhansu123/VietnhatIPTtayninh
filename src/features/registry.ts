@@ -74,7 +74,7 @@ export interface TableRegistryEntry {
 export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   quy_doi_vat_lieu: {
     table: 'quy_doi_vat_lieu',
-    label: 'Quy đổi vật liệu',
+    label: 'Cắt Lõi',
     sql: ['supabase-quy-doi-vat-lieu.sql'],
     apiPrefix: '/api/quy-doi-vat-lieu',
     serverLines: 'Router: src/features/quy-doi-vat-lieu/server.ts',

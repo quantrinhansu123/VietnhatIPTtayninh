@@ -40,12 +40,10 @@ type HubFilters = {
 type MachineOption = { code: string; name: string };
 
 /** Nguồn lấy (vật tư gốc). */
-const NGUON_LAY_OPTIONS = ['Hiện', 'Tồn ngoài', 'Đề xuất kho'] as const;
-/**
- * Nguồn tới (vật tư quy đổi) — quyết định cột BB 3.2:
- * Tồn ngoài → Tồn đầu ca; Lấy từ kho → Xuất kho.
- */
-const NGUON_TOI_OPTIONS = ['Tồn ngoài', 'Lấy từ kho'] as const;
+const NGUON_LAY_OPTIONS = ['Tồn đầu ca', 'Lấy trong kho'] as const;
+/** Nguồn tới (vật tư quy đổi) — mặc định Dùng trong ca. */
+const NGUON_TOI_OPTIONS = ['Dùng trong ca', 'Tồn ngoài', 'Lấy từ kho'] as const;
+const DEFAULT_NGUON_TOI = 'Dùng trong ca';
 
 type DestinationDraft = {
   key: string;
@@ -81,7 +79,7 @@ function newDestinationDraft(partial?: Partial<DestinationDraft>): DestinationDr
     dinh_muc: partial?.dinh_muc || '',
     so_luong_quy_doi: partial?.so_luong_quy_doi || '',
     ghi_chu_quy_doi: partial?.ghi_chu_quy_doi || '',
-    nguon_toi: partial?.nguon_toi || ''
+    nguon_toi: partial?.nguon_toi || DEFAULT_NGUON_TOI
   };
 }
 
@@ -189,7 +187,7 @@ function draftFromGroup(rows: ConversionRow[]): FormDraft {
         dinh_muc: formatDraftNumber(row.dinh_muc),
         so_luong_quy_doi: String(row.so_luong_quy_doi),
         ghi_chu_quy_doi: row.ghi_chu_quy_doi || '',
-        nguon_toi: row.nguon_toi || ''
+        nguon_toi: row.nguon_toi || DEFAULT_NGUON_TOI
       })
     )
   };
@@ -558,9 +556,8 @@ function DestinationMaterialTable({
                       className={`block h-9 w-full rounded-md border bg-white px-2 text-sm disabled:opacity-50 ${
                         destination.nguon_toi ? 'border-slate-200' : 'border-amber-400'
                       }`}
-                      title="Tồn ngoài → cột Tồn đầu ca; Lấy từ kho → cột Xuất kho (BB 3.2)"
+                      title="Mặc định: Dùng trong ca"
                     >
-                      <option value="">Chọn nguồn tới…</option>
                       {NGUON_TOI_OPTIONS.map(option => (
                         <option key={option} value={option}>{option}</option>
                       ))}
@@ -831,7 +828,7 @@ export default function MaterialConversionPanel({
       return;
     }
     if (draft.destinations.some(item => !item.nguon_toi)) {
-      setError('Chọn Nguồn tới cho từng mã đích: Tồn ngoài (→ cột Tồn đầu ca) hoặc Lấy từ kho (→ cột Xuất kho).');
+      setError('Chọn Nguồn tới cho từng mã đích (mặc định: Dùng trong ca).');
       return;
     }
     const sourceSpecs = materialSpecs(materialByCode.get(draft.vat_tu_goc));
@@ -985,7 +982,7 @@ export default function MaterialConversionPanel({
           : missingDest
             ? 'Chọn đủ Vật tư quy đổi từ danh mục Kho NVL.'
             : missingNguonToi
-              ? 'Chọn Nguồn tới từng dòng đích: Tồn ngoài hoặc Lấy từ kho.'
+              ? 'Chọn Nguồn tới từng dòng đích (mặc định: Dùng trong ca).'
               : '';
 
   const groupedList = useMemo(() => {
@@ -1002,12 +999,12 @@ export default function MaterialConversionPanel({
   return <section className="space-y-3 p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 className="flex items-center gap-2 font-bold text-slate-900"><ArrowLeftRight className="h-5 w-5" />Quy đổi vật liệu</h3>
-        <p className="mt-1 text-xs text-slate-500">Phiếu cắt/quy đổi 1 nguồn → nhiều đích: chiều dài · ĐM · TL/cái · ghi chú; gắn Ngày · Ca · Máy; không tự đổi tồn kho.</p>
+        <h3 className="flex items-center gap-2 font-bold text-slate-900"><ArrowLeftRight className="h-5 w-5" />Cắt Lõi</h3>
+        <p className="mt-1 text-xs text-slate-500">Phiếu cắt lõi 1 nguồn → nhiều đích: chiều dài · ĐM · TL/cái · ghi chú; gắn Ngày · Ca · Máy; không tự đổi tồn kho.</p>
       </div>
       <div className="flex gap-2">
         <button type="button" disabled={loading || busy} className={buttonClass} onClick={() => setRevision(value => value + 1)}><RefreshCw className="h-4 w-4" />Tải lại</button>
-        {canCreate && <button type="button" disabled={busy} className={`${buttonClass} bg-emerald-600 text-white`} onClick={() => { setDraft(draftFromFilters(filters)); setEditingNhomId(null); setEditingIds([]); setShowForm(true); setError(''); }}><Plus className="h-4 w-4" />Thêm quy đổi</button>}
+        {canCreate && <button type="button" disabled={busy} className={`${buttonClass} bg-emerald-600 text-white`} onClick={() => { setDraft(draftFromFilters(filters)); setEditingNhomId(null); setEditingIds([]); setShowForm(true); setError(''); }}><Plus className="h-4 w-4" />Thêm cắt lõi</button>}
       </div>
     </div>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}

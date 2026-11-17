@@ -8507,6 +8507,14 @@ export type BbThucDungLineRow = {
   /** Nhựa TT — Tổng nhựa thành phẩm (banner) × Tỉ lệ TB thực tế (%) ÷ 100. */
   klThucTeKg: number;
   /** Nhựa lỗi — Tổng nhựa lỗi (banner) × Tỉ lệ TB thực tế (%) ÷ 100. */
+  /** 3.2: Trọng lượng cắt lõi theo phiếu quy đổi (nguồn âm, đích dương). */
+  cutLoiKg?: number;
+  /** 3.2: số lượng quy đổi tương ứng (hiện trong ngoặc cạnh cắt lõi). */
+  cutLoiQty?: number;
+  /** 3.2: SL tồn đầu ca trên phiếu (hiện trong ngoặc cạnh kg). */
+  tonDauQty?: number;
+  /** 3.2: SL tồn cuối ca trên phiếu (hiện trong ngoặc cạnh kg). */
+  tonCuoiQty?: number;
   loiHongKg: number;
   /** KL nhựa TT + Nhựa Lỗi = klThucTeKg + loiHongKg (cùng cột in BB). */
   klThucTePlusLoiKg: number;
@@ -9868,7 +9876,7 @@ function buildTonKgMapsFromMaterialLines(lines: BbDauCaProductLine[] | undefined
   );
 }
 
-function findBbDauCaMaterialLine(
+export function findBbDauCaMaterialLine(
   lines: BbDauCaProductLine[] | undefined,
   materialCode: string,
   materialName: string
@@ -10339,7 +10347,7 @@ export function buildBbThucDungLineRows(input: {
   });
 }
 
-function findBbThucDungHeaderGroup<T extends { ngay: string; shift: string; orderCode: string; machine: string }>(
+export function findBbThucDungHeaderGroup<T extends { ngay: string; shift: string; orderCode: string; machine: string }>(
   groups: T[],
   header: { ngay: string; shift: string; orderCode: string; machine: string }
 ): T | undefined {

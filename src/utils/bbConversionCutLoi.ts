@@ -1,16 +1,16 @@
 /**
  * Cột 3.2 «Trọng lượng cắt lõi» (thay «Trọng lượng vật tư lỗi hỏng») theo phiếu quy đổi khớp ngày·ca·máy:
- * - Mã nguồn (vat_tu_goc): −khoi_luong_goc (số âm)
- * - Mã đích (vat_tu_quy_doi): +khoi_luong_quy_doi (số dương)
- * Phiếu quy đổi không còn đổ vào Tồn đầu / Xuất kho.
+ * - Mã nguồn (vat_tu_goc): −khoi_luong_goc (số âm), kèm −so_luong_goc
+ * - Mã đích (vat_tu_quy_doi): +khoi_luong_quy_doi (số dương), kèm +so_luong_quy_doi
+ * Phiếu quy đổi không đổ vào Tồn đầu / Xuất kho.
  *
- * Lưu qua `loiHongKg = −cắt lõi` để công thức chênh lệch dùng chung:
- *   Chênh lệch = Thực tế sử dụng − Nhập TP + cắt lõi.
- * Dòng 3.2 không có phiếu → 0 (cột này không còn mang «lỗi hỏng»). Không đụng NVL nhựa 3.1.
+ * «Thực tế sử dụng» (3.2) = Tồn đầu + Xuất kho − Tồn cuối + cắt lõi.
+ * Chênh lệch = Thực tế sử dụng − Nhập TP. Lỗi hỏng 3.2 = 0 (cột đã đổi thành cắt lõi). Không đụng NVL nhựa 3.1.
  */
 import { normalizeProductCodeKey } from '../features/san-pham/types';
 import { matchesNgayCaMay, type BbMaterialConversionRecord } from './bbMaterialConversion';
 import type { BbThucDungLineRow } from './controlBoardBbMachineReport';
+import { computeMaterialUsageKg } from './controlBoardShiftSummary';
 import { normalizeWarehouseCodeKey } from './warehouseWeight';
 
 function round4(value: number) {
@@ -27,36 +27,43 @@ function materialKey(code: string, name = '') {
   );
 }
 
-/** Tổng có dấu theo mã NVL: nguồn âm, đích dương. */
+export type BbCutLoiAgg = { kg: number; qty: number };
+
+/** Tổng có dấu theo mã NVL: nguồn âm, đích dương (kg và số lượng). */
 export function aggregateMaterialConversionCutByNgayCaMay(input: {
   conversions: BbMaterialConversionRecord[];
   ngay: string;
   shift: string;
   machine: string;
-}): Map<string, number> {
-  const map = new Map<string, number>();
-  const add = (code: string, kg: number) => {
+}): Map<string, BbCutLoiAgg> {
+  const map = new Map<string, BbCutLoiAgg>();
+  const add = (code: string, kg: number, qty: number) => {
     const key = materialKey(code);
-    if (!key || kg === 0) return;
-    map.set(key, round4((map.get(key) || 0) + kg));
+    if (!key || (kg === 0 && qty === 0)) return;
+    const existing = map.get(key) || { kg: 0, qty: 0 };
+    existing.kg = round4(existing.kg + kg);
+    existing.qty = round4(existing.qty + qty);
+    map.set(key, existing);
   };
+  const positive = (value: number | null | undefined) =>
+    value != null && Number.isFinite(value) && value > 0 ? value : 0;
   // 1 nguồn → nhiều đích: khối lượng gốc lặp trên mỗi dòng → chỉ trừ nguồn 1 lần / nhóm.
   // Cùng nhom_id; bản ghi cũ (nhom_id null) → cùng ngày·ca·máy·nguồn·SL gốc·KL gốc coi là 1 nguồn.
   const seenSource = new Set<string>();
   for (const row of input.conversions || []) {
     if (!matchesNgayCaMay(row, input.ngay, input.shift, input.machine)) continue;
-    const goc = row.khoi_luong_goc;
-    if (goc != null && Number.isFinite(goc) && goc > 0) {
+    const goc = positive(row.khoi_luong_goc);
+    if (goc > 0) {
       const sourceKey = row.nhom_id
         ? `nhom:${row.nhom_id}|${materialKey(row.vat_tu_goc)}`
         : `legacy:${row.ngay}|${row.ca}|${row.ma_may}|${materialKey(row.vat_tu_goc)}|${row.so_luong_goc ?? ''}|${goc}`;
       if (!seenSource.has(sourceKey)) {
         seenSource.add(sourceKey);
-        add(row.vat_tu_goc, -goc);
+        add(row.vat_tu_goc, -goc, -positive(row.so_luong_goc));
       }
     }
-    const dich = row.khoi_luong_quy_doi;
-    if (dich != null && Number.isFinite(dich) && dich > 0) add(row.vat_tu_quy_doi, dich);
+    const dich = positive(row.khoi_luong_quy_doi);
+    if (dich > 0) add(row.vat_tu_quy_doi, dich, positive(row.so_luong_quy_doi));
   }
   return map;
 }
@@ -66,7 +73,7 @@ export function syncBbThucDungRowsCutLoiFromMaterialConversions(input: {
   conversions: BbMaterialConversionRecord[];
 }): BbThucDungLineRow[] {
   if (input.rows.length === 0) return input.rows;
-  const cache = new Map<string, Map<string, number>>();
+  const cache = new Map<string, Map<string, BbCutLoiAgg>>();
   return input.rows.map(row => {
     if (row.inMixingRatioTable || row.isPlasticNvl) return row;
     const hk = `${row.ngay}|${row.shift}|${row.machine}`;
@@ -80,15 +87,25 @@ export function syncBbThucDungRowsCutLoiFromMaterialConversions(input: {
       });
       cache.set(hk, byCode);
     }
-    const cutKg = byCode.get(materialKey(row.materialCode, row.materialName)) || 0;
-    const loiHongKg = cutKg === 0 ? 0 : round4(0 - cutKg);
+    const agg = byCode.get(materialKey(row.materialCode, row.materialName));
+    const cutLoiKg = agg ? agg.kg : 0;
+    const cutLoiQty = agg ? agg.qty : 0;
     const finishedKg = Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0;
-    const weightKg = Number.isFinite(row.weightKg) ? row.weightKg : 0;
+    // Thực tế sử dụng = Tồn đầu + Xuất − Tồn cuối + cắt lõi (tính lại từ 3 cột gốc → idempotent).
+    const baseUsageKg = computeMaterialUsageKg(
+      Number.isFinite(row.xuatTrongCaKg) ? row.xuatTrongCaKg : 0,
+      Number.isFinite(row.tonDauKg) ? row.tonDauKg : 0,
+      Number.isFinite(row.tonCuoiKg) ? row.tonCuoiKg : 0
+    );
+    const weightKg = round4(baseUsageKg + cutLoiKg);
     return {
       ...row,
-      loiHongKg,
-      klThucTePlusLoiKg: round4(finishedKg + loiHongKg),
-      chenhLechKg: round4(weightKg - finishedKg - loiHongKg)
+      cutLoiKg,
+      cutLoiQty,
+      loiHongKg: 0,
+      weightKg,
+      klThucTePlusLoiKg: round4(finishedKg),
+      chenhLechKg: round4(weightKg - finishedKg)
     };
   });
 }

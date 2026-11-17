@@ -20578,6 +20578,8 @@ export function createApp() {
     return { data: await loadTonKhoGopFallback(loaiKho, tenKho, tuNgay, denNgay), error: null };
   }
 
+  let productStockCache: { day: string; at: number; rows: Promise<TonKhoGopRow[]> } | null = null;
+
   app.get('/api/chi-tiet-san-pham/ton-kho', async (req, res) => {
     const maSpGoc = String(req.query.ma_sp_goc ?? '').trim();
     if (!maSpGoc) return res.status(400).json({ error: 'Thiếu mã sản phẩm.' });
@@ -20587,10 +20589,17 @@ export function createApp() {
       // Cùng cách tính với /api/kiem-soat-ton: gộp theo mã gốc, tồn = đầu + nhập − xuất (tính cả lô âm).
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const { data, error } = await loadTonKhoGop('san_pham', null, null, today);
-      if (error) throw error;
+      // Cache 30s dùng chung mọi mã: mỗi lần tính phải quét toàn bộ phiếu nhập/xuất, form lại poll 5s/lần.
+      if (!productStockCache || productStockCache.day !== today || Date.now() - productStockCache.at > 30_000) {
+        const rows = loadTonKhoGop('san_pham', null, null, today).then(({ data, error }) => {
+          if (error) throw error;
+          return groupTonKhoRowsByPrefix((data as TonKhoGopRow[]) || []);
+        });
+        productStockCache = { day: today, at: Date.now(), rows };
+        rows.catch(() => { if (productStockCache?.rows === rows) productStockCache = null; });
+      }
       const target = normalizeTonKhoCatalogCode(maSpGoc);
-      const group = groupTonKhoRowsByPrefix((data as TonKhoGopRow[]) || [])
+      const group = (await productStockCache.rows)
         .find(row => normalizeTonKhoCatalogCode(row.ma) === target);
       const count = group
         ? Math.round((group.ton_dau_ky + group.nhap_trong_ky - group.xuat_trong_ky) * 1000) / 1000

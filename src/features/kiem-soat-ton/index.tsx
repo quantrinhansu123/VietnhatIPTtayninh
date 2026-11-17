@@ -592,7 +592,14 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
             Kho: {tenKho || 'Tất cả'} · {loaiKho === 'nvl' ? 'Nguyên vật liệu' : 'Thành phẩm'}
           </p>
           <table className="kst-print-table">
+            <colgroup>
+              <col className="kst-col-stt" />
+              <col className="kst-col-ma" />
+              <col />
+              <col className="kst-col-ton" />
+            </colgroup>
             <thead>
+              <tr className="kst-print-spacer"><td colSpan={4} /></tr>
               <tr>
                 <th>STT</th>
                 <th>Mã</th>
@@ -602,7 +609,7 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
             </thead>
             <tbody>
               {sortedItems
-                .slice()
+                .filter(item => item.ton !== 0)
                 .sort((a, b) => a.ma.localeCompare(b.ma, 'vi', { numeric: true }))
                 .map((item, index) => (
                   <tr key={`${item.ma}-${item.ten_kho ?? ''}`}>
@@ -613,6 +620,9 @@ export function KiemSoatTonPanel({ onBack }: { onBack: () => void }) {
                   </tr>
                 ))}
             </tbody>
+            <tfoot>
+              <tr className="kst-print-spacer"><td colSpan={4} /></tr>
+            </tfoot>
           </table>
           <div className="kst-print-sign">
             <p>Thủ kho</p>

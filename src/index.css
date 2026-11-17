@@ -8721,7 +8721,7 @@ input[type="number"] {
   body.kiem-soat-ton-print-active .kst-print-sheet {
     display: block !important;
     page: kst-page;
-    padding: 12mm;
+    padding: 12mm 12mm 0;
     background: #fff;
     color: #000;
     font-family: 'Times New Roman', serif;
@@ -8733,15 +8733,21 @@ input[type="number"] {
   .kst-print-time { margin: 1mm 0 0; font-size: 10pt; }
   .kst-print-title { margin: 4mm 0 1mm; text-align: center; font-size: 15pt; font-weight: 700; }
   .kst-print-sub { margin: 0 0 3mm; text-align: center; font-style: italic; }
-  .kst-print-table { width: 100%; border-collapse: collapse; }
+  .kst-print-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .kst-col-stt { width: 11mm; }
+  .kst-col-ma { width: 30mm; }
+  .kst-col-ton { width: 20mm; }
+  .kst-print-table td:nth-child(3) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kst-print-table tr.kst-print-spacer td { height: 12mm; border: 0; padding: 0; }
+  .kst-print-table tfoot { display: table-footer-group; }
   .kst-print-table th, .kst-print-table td { border: 1px solid #000; padding: 1mm 1.5mm; }
-  .kst-print-table th { background: #000; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .kst-print-table th { background: #fff; color: #000; font-weight: 700; }
   .kst-print-table thead { display: table-header-group; }
   .kst-print-table tr { break-inside: avoid; }
   .kst-print-table .c { text-align: center; }
   .kst-print-table .r { text-align: right; }
   .kst-print-table .b { font-weight: 700; }
-  .kst-print-sign { width: 60mm; margin: 8mm 0 0 auto; text-align: center; break-inside: avoid; }
+  .kst-print-sign { width: 60mm; margin: 8mm 0 12mm auto; text-align: center; break-inside: avoid; }
   .kst-print-sign p { margin: 0; font-weight: 700; }
   .kst-print-sign span { display: block; margin-top: 1mm; font-style: italic; font-size: 9pt; }
 }

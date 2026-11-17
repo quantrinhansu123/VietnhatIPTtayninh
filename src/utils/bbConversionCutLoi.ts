@@ -1,11 +1,11 @@
 /**
- * Cột 3.2 «Trọng lượng cắt lõi» (thay «Trọng lượng vật tư lỗi hỏng») theo phiếu quy đổi khớp ngày·ca·máy:
+ * Cột 3.2 «Trọng lượng cắt lõi dùng trong ca» theo phiếu cắt lõi khớp ngày·ca·máy:
  * - Mã nguồn (vat_tu_goc): −khoi_luong_goc (số âm), kèm −so_luong_goc
  * - Mã đích (vat_tu_quy_doi): +khoi_luong_quy_doi (số dương), kèm +so_luong_quy_doi
  * Phiếu quy đổi không đổ vào Tồn đầu / Xuất kho.
  *
- * «Thực tế sử dụng» (3.2) = Tồn đầu + Xuất kho − Tồn cuối + cắt lõi.
- * Chênh lệch = Thực tế sử dụng − Nhập TP. Lỗi hỏng 3.2 = 0 (cột đã đổi thành cắt lõi). Không đụng NVL nhựa 3.1.
+ * «Thực tế sử dụng» (3.2) = Tồn đầu + Xuất kho − Tồn cuối + cắt lõi dùng trong ca.
+ * Chênh lệch = Thực tế sử dụng − Nhập TP − Lỗi hỏng. Giữ cột lỗi hỏng riêng. Không đụng NVL nhựa 3.1.
  */
 import { normalizeProductCodeKey } from '../features/san-pham/types';
 import { matchesNgayCaMay, type BbMaterialConversionRecord } from './bbMaterialConversion';
@@ -91,6 +91,7 @@ export function syncBbThucDungRowsCutLoiFromMaterialConversions(input: {
     const cutLoiKg = agg ? agg.kg : 0;
     const cutLoiQty = agg ? agg.qty : 0;
     const finishedKg = Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0;
+    const damagedKg = Number.isFinite(row.loiHongKg) ? row.loiHongKg : 0;
     // Thực tế sử dụng = Tồn đầu + Xuất − Tồn cuối + cắt lõi (tính lại từ 3 cột gốc → idempotent).
     const baseUsageKg = computeMaterialUsageKg(
       Number.isFinite(row.xuatTrongCaKg) ? row.xuatTrongCaKg : 0,
@@ -102,10 +103,9 @@ export function syncBbThucDungRowsCutLoiFromMaterialConversions(input: {
       ...row,
       cutLoiKg,
       cutLoiQty,
-      loiHongKg: 0,
       weightKg,
-      klThucTePlusLoiKg: round4(finishedKg),
-      chenhLechKg: round4(weightKg - finishedKg)
+      klThucTePlusLoiKg: round4(finishedKg + damagedKg),
+      chenhLechKg: round4(weightKg - finishedKg - damagedKg)
     };
   });
 }

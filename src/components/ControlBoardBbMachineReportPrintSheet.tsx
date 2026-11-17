@@ -1904,10 +1904,12 @@ function BbMachineOrderPrintSheet({
                   <br />
                   thành phẩm
                 </th>
-                <th title="Phiếu quy đổi: mã nguồn = −khối lượng gốc (số âm); mã đích = +khối lượng quy đổi (số dương)">
+                <th title="Phiếu cắt lõi · Nguồn tới «Dùng trong ca»: mã nguồn = −khối lượng gốc; mã đích = +khối lượng quy đổi">
                   Trọng lượng
                   <br />
                   cắt lõi
+                  <br />
+                  dùng trong ca
                 </th>
                 <th title="Tab «Dữ liệu trong báo cáo kiểm tồn cuối ca» — lấy thẳng">
                   Trọng lượng
@@ -1916,21 +1918,19 @@ function BbMachineOrderPrintSheet({
                   <br />
                   cuối ca
                 </th>
-                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca + Trọng lượng cắt lõi">
+                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca + Trọng lượng cắt lõi dùng trong ca">
                   Trọng lượng
                   <br />
                   Thực tế
                   <br />
                   sử dụng
                 </th>
-                <th>
+                <th title="Tab «Dữ liệu trong báo cáo hàng lỗi hỏng» · Trọng lượng lỗi — lấy thẳng">
                   Trọng lượng
                   <br />
-                  thành phẩm
-                  <br />
-                  thực tế
+                  vật tư lỗi hỏng
                 </th>
-                <th title="Chênh lệch = Thực tế sử dụng − Nhập thành phẩm">
+                <th title="Chênh lệch = Thực tế sử dụng − Nhập thành phẩm − Lỗi hỏng">
                   Chênh lệch
                   <br />
                   (Xuất − Nhập)
@@ -1979,9 +1979,7 @@ function BbMachineOrderPrintSheet({
                         {row.closingQty ? `( ${printNumber(row.closingQty, 2)} )` : ''}
                       </td>
                       <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
-                      <td className="shift-summary-print-num">
-                        {printNumber(row.finishedAndDamagedKg, 2)}
-                      </td>
+                      <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.varianceKg, 2)}</td>
                     </tr>
                   );
@@ -1991,7 +1989,13 @@ function BbMachineOrderPrintSheet({
                 'Tổng vật tư khác',
                 {
                   ...otherMaterialTotals,
-                  damagedKg: otherMaterialRows.reduce((sum, row) => sum + (row.cutLoiKg || 0), 0)
+                  // Cột «cắt lõi dùng trong ca» nằm chỗ damagedKg trên footer tổng (cùng thứ tự cột).
+                  damagedKg: otherMaterialRows.reduce((sum, row) => sum + (row.cutLoiKg || 0), 0),
+                  // Cột «lỗi hỏng» nằm chỗ finishedAndDamagedKg trên footer tổng.
+                  finishedAndDamagedKg: otherMaterialRows.reduce(
+                    (sum, row) => sum + (row.damagedKg || 0),
+                    0
+                  )
                 },
                 {
                   includeMixingRatioCols: false,

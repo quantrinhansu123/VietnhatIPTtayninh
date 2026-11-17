@@ -2424,7 +2424,7 @@ export default function ControlBoardBbMachineReportTable({
       dauCaGroups,
       cuoiCaGroups
     });
-    // 3.2 «Trọng lượng cắt lõi»: mã nguồn −khoi_luong_goc, mã đích +khoi_luong_quy_doi (phiếu quy đổi).
+    // 3.2 «Trọng lượng cắt lõi dùng trong ca»: mã nguồn −khoi_luong_goc, mã đích +khoi_luong_quy_doi.
     return syncBbThucDungRowsCutLoiFromMaterialConversions({
       rows: withOng,
       conversions: materialConversions
@@ -5958,23 +5958,26 @@ export default function ControlBoardBbMachineReportTable({
                                             <th className="px-3 py-2.5 text-right">Nhập TP</th>
                                             <th
                                               className="px-3 py-2.5 text-right"
-                                              title="Phiếu quy đổi: mã nguồn = −khối lượng gốc; mã đích = +khối lượng quy đổi"
+                                              title="Trọng lượng cắt lõi dùng trong ca — phiếu cắt lõi: mã nguồn = −khối lượng gốc; mã đích = +khối lượng quy đổi"
                                             >
-                                              Cắt lõi
+                                              Cắt lõi dùng trong ca
                                             </th>
                                             <th className="px-3 py-2.5 text-right">Tồn cuối</th>
                                             <th
                                               className="px-3 py-2.5 text-right"
-                                              title="Thực tế sử dụng = Tồn đầu + Xuất kho − Tồn cuối + Cắt lõi"
+                                              title="Thực tế sử dụng = Tồn đầu + Xuất kho − Tồn cuối + Cắt lõi dùng trong ca"
                                             >
                                               Thực tế sử dụng
                                             </th>
-                                            <th className="px-3 py-2.5 text-right" title="Nhập TP">
-                                              TP
+                                            <th
+                                              className="px-3 py-2.5 text-right"
+                                              title="Trọng lượng vật tư lỗi hỏng"
+                                            >
+                                              Lỗi hỏng
                                             </th>
                                             <th
                                               className="px-3 py-2.5 text-right"
-                                              title="Thực tế sử dụng − Nhập TP"
+                                              title="Chênh lệch = Thực tế sử dụng − Nhập TP − Lỗi hỏng"
                                             >
                                               Chênh lệch
                                             </th>
@@ -6033,8 +6036,8 @@ export default function ControlBoardBbMachineReportTable({
                                                 <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-600">
                                                   {formatKg(row.weightKg, 2)}
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-800">
-                                                  {formatKg(resolveKlNhuaTtLoiKg(row), 2)}
+                                                <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-700">
+                                                  {formatKg(row.loiHongKg, 2)}
                                                 </td>
                                                 <td
                                                   className={`px-3 py-2 text-right font-mono font-bold tabular-nums ${
@@ -6076,7 +6079,15 @@ export default function ControlBoardBbMachineReportTable({
                                                 {formatKg(otherTotals.totalWeightKg, 2)}
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
-                                                {formatKg(otherTotals.klThucTePlusLoiTotal, 2)}
+                                                {formatKg(
+                                                  otherLines.reduce(
+                                                    (sum, line) =>
+                                                      sum +
+                                                      (Number.isFinite(line.loiHongKg) ? line.loiHongKg : 0),
+                                                    0
+                                                  ),
+                                                  2
+                                                )}
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatSignedKg(otherTotals.chenhLechTotal, 2)}

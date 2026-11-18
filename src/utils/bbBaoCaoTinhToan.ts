@@ -7,7 +7,6 @@ import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../featur
 import type { ProductRow } from '../features/san-pham/types';
 import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
 import {
-  syncBbThucDungRowsOngFromAcceptanceReports,
   syncBbThucDungRowsTuiFromAcceptanceReports
 } from './bbKhongTronFromAcceptance';
 import {
@@ -233,7 +232,8 @@ export function buildBbMachineReportSnapshot(input: {
     input.productionOrders,
     input.products,
     input.materials,
-    input.shiftSettings
+    input.shiftSettings,
+    { machines: input.machines, mixingReports: input.mixingReports }
   );
 
   const dauCaRows = buildBbDauCaLineRows({
@@ -406,14 +406,9 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine
   });
-  // 3.2 túi/ống: Nhập TP lấy thẳng bì/lõi trên phiếu sản lượng (số mới sau Đồng bộ trọng lượng).
-  const thucDungRowsTui = syncBbThucDungRowsTuiFromAcceptanceReports({
+  // 3.2 túi: Nhập TP lấy thẳng bì trên phiếu sản lượng. Ống giữ «TL thực tế» tab sản lượng.
+  const thucDungRows = syncBbThucDungRowsTuiFromAcceptanceReports({
     rows: thucDungRowsBuilt,
-    acceptanceReports: input.acceptanceReports,
-    products: input.products
-  });
-  const thucDungRows = syncBbThucDungRowsOngFromAcceptanceReports({
-    rows: thucDungRowsTui,
     acceptanceReports: input.acceptanceReports,
     products: input.products
   });

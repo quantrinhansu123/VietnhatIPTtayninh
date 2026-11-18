@@ -1805,7 +1805,7 @@ function BbMachineOrderPrintSheet({
                   <br />
                   cuối ca
                 </th>
-                <th title="Thực tế sử dụng = Tồn đầu ca + Xuất kho − Tồn cuối ca">
+                <th title="Thực tế sử dụng = (Tồn đầu NHUA-TRON + Lấy kho NHUA-TRON + Thực trộn − Tồn cuối NHUA-TRON) × % thực tế">
                   Trọng lượng
                   <br />
                   Thực tế
@@ -1966,17 +1966,32 @@ function BbMachineOrderPrintSheet({
                       </td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.openingKg, 2)}
-                        {row.openingQty ? `( ${printNumber(row.openingQty, 2)} )` : ''}
+                        {row.openingQty ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.openingQty, 2)} )
+                          </>
+                        ) : null}
                       </td>
                       <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.cutLoiKg, 2)}
-                        {row.cutLoiQty ? `( ${printNumber(row.cutLoiQty, 2)} )` : ''}
+                        {row.cutLoiQty ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.cutLoiQty, 2)} )
+                          </>
+                        ) : null}
                       </td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.closingKg, 2)}
-                        {row.closingQty ? `( ${printNumber(row.closingQty, 2)} )` : ''}
+                        {row.closingQty ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.closingQty, 2)} )
+                          </>
+                        ) : null}
                       </td>
                       <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
                       <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>

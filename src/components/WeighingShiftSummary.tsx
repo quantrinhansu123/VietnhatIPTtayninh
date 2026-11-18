@@ -45,6 +45,7 @@ import {
   isAcceptanceHangLoiHongWeighingId,
   isDamagedOtherMaterial,
   mapAcceptanceHangLoiHongToWeighingRecords,
+  resolveAcceptanceHangLoiHongSourceId,
   resolveDamagedGoodsEnteredQuantity,
   normalizeWeighingRecords,
   parseWeighRoundNumber,
@@ -53,6 +54,7 @@ import {
   type WeighingRecord
 } from '../utils/weighingRecords';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../lib/weighingSlipConfig';
+import { machineValueMatchesFilter } from '../utils/controlBoardShiftSummary';
 
 function isRealMachineName(name?: string) {
   const value = String(name ?? '').trim();
@@ -661,9 +663,10 @@ export default function WeighingShiftSummary({
         }
       }
       if (filterMachine) {
-        const key = filterMachine.trim().toLowerCase();
-        const may = resolveMachineName(record.machineName).toLowerCase();
-        if (may === '—' || (may !== key && !may.includes(key))) return false;
+        const may = resolveMachineName(record.machineName);
+        if (may === '—' || !machineValueMatchesFilter(filterMachine, null, may, record.machineName)) {
+          return false;
+        }
       }
       return true;
     });
@@ -734,7 +737,7 @@ export default function WeighingShiftSummary({
       const acceptanceParams =
         dateFrom === dateTo
           ? new URLSearchParams({ ngay: dateFrom })
-          : new URLSearchParams({ from: dateFrom, to: dateTo });
+          : new URLSearchParams({ tu_ngay: dateFrom, den_ngay: dateTo });
 
       if (isDamagedGoodsList) {
         // Danh sách / tab lỗi hỏng: SP lỗi + SP rác + mã RAC / RAC MANG / MT-HANG RAC.
@@ -862,32 +865,41 @@ export default function WeighingShiftSummary({
 
   const handleDeleteRow = async (row: WeighingRecord) => {
     if (!canDelete) return;
-    if (isAcceptanceHangLoiHongWeighingId(row.id)) {
-      setActionMessage('Dòng tổng hợp từ Báo cáo sản lượng (SP lỗi/SP rác). Sửa/xóa tại danh sách báo cáo sản lượng.');
-      return;
-    }
     if (!row.id) {
       setActionMessage('Không tìm thấy ID dòng để xóa.');
       return;
     }
 
-    if (!window.confirm('Bạn có chắc muốn xóa dòng cân này?')) return;
+    const acceptanceSourceId = resolveAcceptanceHangLoiHongSourceId(row.id);
+    const isFromSanLuong = Boolean(acceptanceSourceId);
+    if (
+      !window.confirm(
+        isFromSanLuong
+          ? 'Xóa dòng SP lỗi/SP rác này khỏi Báo cáo sản lượng?'
+          : 'Bạn có chắc muốn xóa dòng cân này?'
+      )
+    ) {
+      return;
+    }
 
     setDeletingRowId(row.id);
     setActionMessage('');
 
     try {
-      const res = await fetch(`${config.apiBasePath}/${row.id}`, { method: 'DELETE' });
+      const deleteUrl = isFromSanLuong
+        ? `/api/bao-cao-nghiem-thu/${encodeURIComponent(acceptanceSourceId)}`
+        : `${config.apiBasePath}/${row.id}`;
+      const res = await fetch(deleteUrl, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'Không thể xóa dòng cân.');
+        throw new Error(data.error || 'Không thể xóa dòng.');
       }
 
-      setActionMessage('Đã xóa dòng cân.');
+      setActionMessage(isFromSanLuong ? 'Đã xóa dòng trên Báo cáo sản lượng.' : 'Đã xóa dòng cân.');
       if (viewingRow?.id === row.id) setViewingRow(null);
       await loadReports();
     } catch (err: any) {
-      setActionMessage(err.message || 'Không thể xóa dòng cân.');
+      setActionMessage(err.message || 'Không thể xóa dòng.');
     } finally {
       setDeletingRowId(null);
     }
@@ -945,21 +957,17 @@ export default function WeighingShiftSummary({
 
   const handleDeleteSlip = async (slip: WeighingSlip) => {
     if (!canDelete) return;
-    if (slip.rows.length > 0 && slip.rows.every(row => isAcceptanceHangLoiHongWeighingId(row.id))) {
-      setActionMessage('Phiếu tổng hợp từ Báo cáo sản lượng (SP lỗi/SP rác). Xóa tại danh sách báo cáo sản lượng.');
-      return;
-    }
-    if (slip.rows.some(row => isAcceptanceHangLoiHongWeighingId(row.id))) {
-      setActionMessage('Phiếu có dòng từ Báo cáo sản lượng — chỉ xóa được dòng nhập tay trên báo cáo hàng hỏng.');
-      return;
-    }
     const deletableRows = slip.rows.filter(row => row.id);
     if (deletableRows.length === 0) {
       setActionMessage('Không tìm thấy ID dòng trong phiếu để xóa.');
       return;
     }
-
-    if (!window.confirm(`Bạn có chắc muốn xóa phiếu ${slip.documentNo || '—'} và toàn bộ ${deletableRows.length} dòng liên quan?`)) {
+    const fromSanLuongCount = deletableRows.filter(row => isAcceptanceHangLoiHongWeighingId(row.id)).length;
+    const confirmText =
+      fromSanLuongCount > 0
+        ? `Xóa phiếu ${slip.documentNo || '—'} (${deletableRows.length} dòng, trong đó ${fromSanLuongCount} dòng từ Báo cáo sản lượng)?`
+        : `Bạn có chắc muốn xóa phiếu ${slip.documentNo || '—'} và toàn bộ ${deletableRows.length} dòng liên quan?`;
+    if (!window.confirm(confirmText)) {
       return;
     }
 
@@ -968,7 +976,11 @@ export default function WeighingShiftSummary({
 
     try {
       for (const row of deletableRows) {
-        const res = await fetch(`${config.apiBasePath}/${row.id}`, { method: 'DELETE' });
+        const acceptanceSourceId = resolveAcceptanceHangLoiHongSourceId(row.id);
+        const deleteUrl = acceptanceSourceId
+          ? `/api/bao-cao-nghiem-thu/${encodeURIComponent(acceptanceSourceId)}`
+          : `${config.apiBasePath}/${row.id}`;
+        const res = await fetch(deleteUrl, { method: 'DELETE' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data.error || 'Không thể xóa phiếu.');

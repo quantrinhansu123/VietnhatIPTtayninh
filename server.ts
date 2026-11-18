@@ -23729,8 +23729,12 @@ export function createApp() {
 
     try {
       const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
-      const tuNgay = parseWarehouseSlipDate(req.query.tu_ngay ?? req.query.fromDate);
-      const denNgay = parseWarehouseSlipDate(req.query.den_ngay ?? req.query.toDate);
+      const tuNgay = parseWarehouseSlipDate(
+        req.query.tu_ngay ?? req.query.fromDate ?? req.query.from
+      );
+      const denNgay = parseWarehouseSlipDate(
+        req.query.den_ngay ?? req.query.toDate ?? req.query.to
+      );
       const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 0;
       const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 500) : 0;
 

@@ -3,10 +3,12 @@
  * Ghi khi bấm Tính toán; khóa cùng bb_bao_cao_tinh_toan / bc_lsx.
  */
 import type {
+  BbDauCaProductLine,
   BbWarehouseExportGroup,
   BbWarehouseExportLineRow,
   BbWarehouseExportProductGroup
 } from './controlBoardBbMachineReport';
+import { isBbExcludedTronAggregateMaterial } from './controlBoardBbMachineReport';
 
 export type DuLieuXuatKhoRow = {
   khoa_on_dinh: string;
@@ -189,6 +191,74 @@ function pushProductLines(input: {
   return stt;
 }
 
+/**
+ * Ưu tiên materialLines (Bảng 2 thật: đã cộng TRON × %, ẩn NHUA-TRON)
+ * — đây là dữ liệu lưu DB để tính toán.
+ */
+function pushAllocatedMaterialLines(input: {
+  khoa: string;
+  group: BbWarehouseExportGroup;
+  materialLines: BbDauCaProductLine[];
+  tongTlXuatLenhKg: number;
+  sttStart: number;
+  rows: DuLieuXuatKhoRow[];
+}): number {
+  const { khoa, group, materialLines } = input;
+  let stt = input.sttStart;
+  const usable = materialLines.filter(
+    line =>
+      !isBbExcludedTronAggregateMaterial(line.itemCode, line.itemName) &&
+      ((line.tonDauWeightKg || 0) > 0 || (line.tonDauQuantity || 0) > 0)
+  );
+  const tongTl =
+    usable.reduce((sum, line) => sum + (line.tonDauWeightKg > 0 ? line.tonDauWeightKg : 0), 0) ||
+    input.tongTlXuatLenhKg;
+
+  for (const line of usable) {
+    const kg = line.tonDauWeightKg > 0 ? round4(line.tonDauWeightKg) : null;
+    const qty =
+      line.tonDauQuantity > 0
+        ? round4(line.tonDauQuantity)
+        : kg != null
+          ? kg
+          : null;
+    input.rows.push({
+      khoa_on_dinh: khoa,
+      ngay: group.ngay || '',
+      ca: group.shift || '',
+      ca_label: group.shiftLabel || null,
+      may: group.machine || '',
+      ma_lenh: group.orderCode || '',
+      group_key: group.groupKey || group.orderCode || '',
+      ma_sp: null,
+      ten_sp: null,
+      don_vi_sp: null,
+      sl_sp: null,
+      dinh_muc_sp_kg: null,
+      tong_dinh_muc_sp_kg: null,
+      stt: stt++,
+      ma_phieu: null,
+      slip_line_key: line.key || null,
+      ma_nvl: line.itemCode || null,
+      ten_nvl: line.itemName || null,
+      don_vi: line.unit || null,
+      sl_dinh_muc: null,
+      trong_luong_dinh_muc_kg: null,
+      sl_xuat: qty,
+      trong_luong_xuat_kg: kg,
+      ti_le_percent:
+        line.tiLeThucTeTbPercent != null && line.tiLeThucTeTbPercent > 0
+          ? round4(line.tiLeThucTeTbPercent)
+          : null,
+      khop_lenh: Boolean(group.orderCode),
+      so_dong_nvl_lenh: usable.length,
+      tong_tl_dinh_muc_lenh_kg: null,
+      tong_tl_xuat_lenh_kg: tongTl > 0 ? round4(tongTl) : null
+    });
+  }
+  return stt;
+}
+
 /** Map exportGroups (tab Dữ liệu xuất kho) → dòng du_lieu_xuat_kho. */
 export function buildDuLieuXuatKhoRowsFromExportGroups(input: {
   khoaOnDinh: string;
@@ -199,12 +269,26 @@ export function buildDuLieuXuatKhoRowsFromExportGroups(input: {
 
   const rows: DuLieuXuatKhoRow[] = [];
   for (const group of input.exportGroups || []) {
+    const tongTlXuatLenhKg = group.totalWeightKg > 0 ? group.totalWeightKg : 0;
+    let stt = 1;
+
+    // Bảng 2 thật (materialLines đã cộng TRON) → ưu tiên lưu snapshot.
+    if ((group.materialLines || []).length > 0) {
+      pushAllocatedMaterialLines({
+        khoa,
+        group,
+        materialLines: group.materialLines || [],
+        tongTlXuatLenhKg,
+        sttStart: stt,
+        rows
+      });
+      continue;
+    }
+
     const groupLines = (group.productGroups || []).flatMap(pg => pg.lines || []);
     const groupTotalsByMaterial = sumTrongLuongDinhMucKgByMaterial(groupLines);
     const tongTlDinhMucLenhKg = sumTrongLuongDinhMucKg(groupLines);
-    const tongTlXuatLenhKg = group.totalWeightKg > 0 ? group.totalWeightKg : 0;
     const soDongNvlLenh = group.lineCount || groupLines.length;
-    let stt = 1;
 
     const productGroups = group.productGroups || [];
     if (productGroups.length === 0) {

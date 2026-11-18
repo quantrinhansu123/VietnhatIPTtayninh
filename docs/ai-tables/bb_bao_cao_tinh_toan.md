@@ -8,7 +8,7 @@ Vào trang **không** tự tính lại; chỉ đọc bản đã lưu `bb_bao_cao
 
 **Phân bổ ngược NVL trộn:** kg thành phẩm theo từng NVL = tổng kg nhựa thành phẩm × tỷ lệ trộn thực tế trong `bao_cao_phoi_tron` đúng ngày/ca/máy. Bảng đánh giá và phân bổ hao hụt cũng dùng tỷ lệ thực tế, không thay bằng BOM khi thiếu phiếu trộn. Cột % định mức giữ để đối chiếu. Test: `src/utils/bbActualMixAllocation.test.ts`.
 
-**Phân bổ NHUA-TRON tồn đầu/cuối:** `buildBbDauCaMaterialLinesForOrder` seed đủ mã có kg trộn thực tế nếu phiếu có tồn `NHUA-TRON`, kể cả mã không có tồn rời; kg tồn rời của mã mới = 0, không sửa dòng kiểm kê. Cho phép NVL trộn ĐVT Lít (dầu) nhận tỉ lệ thực tế như kg. Sau đó phân bổ cùng công thức ở cả hai đầu: tồn rời + kg NHUA-TRON × tỉ lệ thực tế. Không nhân lại ở tiêu hao/in. LSX076: đầu VN bổ sung 622 × 9,529% = 59,2704 kg; tổng thực dùng theo nguồn = 1.025,54 kg, còn lệch thực 7,52 kg thay vì sai lệch thiếu phân bổ −52,09 kg. Bản tính cũ cần bấm Tính toán lại.
+**Phân bổ NHUA-TRON tồn đầu/cuối/xuất kho:** `buildBbDauCaMaterialLinesForOrder` seed đủ mã có kg trộn thực tế nếu phiếu có tồn `NHUA-TRON`, kể cả mã không có tồn rời; kg tồn rời của mã mới = 0, không sửa dòng kiểm kê. Cho phép NVL trộn ĐVT Lít (dầu) nhận tỉ lệ thực tế như kg. Sau đó phân bổ cùng công thức ở cả hai đầu: tồn rời + kg NHUA-TRON × tỉ lệ thực tế. **Phiếu xuất** cùng kiểu (`aggregateBbWarehouseExportByMaterial`): ẩn dòng TRON; Đã trộn = NHUA-TRON xuất × % thực tế; Xuất ngoài = KL theo mã; cột Xuất 3.1 = Xuất ngoài + Đã xuất trộn. Không nhân lại ở tiêu hao/in. LSX076: đầu VN bổ sung 622 × 9,529% = 59,2704 kg; tổng thực dùng theo nguồn = 1.025,54 kg, còn lệch thực 7,52 kg thay vì sai lệch thiếu phân bổ −52,09 kg. Bản tính cũ cần bấm Tính toán lại.
 
 **Trọng lượng SP ngoài LSX:** `sanLuongGroups.productGroups` lưu `grossWeightKg` (Σ Cân SP) và `normKgPerUnit` từ danh mục lúc Tính toán. Phiếu in đọc hai field này khi không tải cân/catalog live; không dùng `weightKg` (kg nhựa) thay trọng lượng cân SP. Bản tính cũ cần Tính toán lại để bổ sung.
 
@@ -43,7 +43,7 @@ node scripts/run-sql-file.mjs supabase-bb-bao-cao-tinh-toan.sql
 
 Khóa ổn định: `ngay_tu|ngay_den|ca|may|nguon_san_luong|include_all|ma_lenh(*)`.
 
-`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` và `danhGiaGroups[].summaryRows` (mẫu Excel Báo cáo tổng hợp: STT=mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · đánh giá; tách **Vật tư trộn** / **Các vật tư còn lại** + dòng **Tổng**).
+`payload` (jsonb): toàn bộ groups/rows + summary KPI đã tính — gồm `thucDungRows`/`thucDungGroups` và `danhGiaGroups[].summaryRows` (mẫu Excel Báo cáo tổng hợp: STT=mã NVL · tỉ lệ hao hụt · ĐM vật tư · thực xuất · chênh lệch · đơn giá · thành tiền · đánh giá; tách **Vật tư trộn** / **Các vật tư còn lại** + dòng **Tổng**). **Thực xuất dùng (Vật tư trộn)** = thẳng cột **Thực tế sử dụng** (`weightKg`) bảng 3.1 theo mã — không nhân tổng nhựa × %.
 
 **Đơn giá trên báo cáo:** ưu tiên **Bảng giá NVL** (`kho_nvl.don_gia` / `/bang-gia-nvl`); không có giá danh mục thì mới lấy bình quân giá xuất kho theo ngày. Thành tiền = chênh lệch × đơn giá.
 

@@ -45,7 +45,8 @@ import {
 } from '../utils/warehouseWeight';
 import {
   isWarehouseBagExportItem,
-  isWarehouseTapeExportItem
+  isWarehouseTapeExportItem,
+  machineValueMatchesFilter
 } from '../utils/controlBoardShiftSummary';
 import {
   filterCanTuDongRecordsForBoard,
@@ -914,6 +915,10 @@ export default function AcceptanceReportListView({
     const shift = initialFilters?.shift?.trim() || '';
     return !shift || shift === 'all' ? '' : shift;
   });
+  const [filterMachine, setFilterMachine] = useState(() => {
+    const machine = initialFilters?.machineCode?.trim() || '';
+    return !machine || machine === 'all' ? '' : machine;
+  });
   const [searchText, setSearchText] = useState(() => initialFilters?.search?.trim() || '');
   const [reports, setReports] = useState<AcceptanceReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -958,18 +963,25 @@ export default function AcceptanceReportListView({
       if (!isAcceptanceThanhPhamLoai(report.loai_vat_tu)) return false;
       if (isSanLuongExcludedCode(report.mat_hang)) return false;
       const matchesShift = !filterShift || report.ca?.trim() === filterShift;
+      const matchesMachine = machineValueMatchesFilter(
+        filterMachine || 'all',
+        null,
+        report.ma_may,
+        report.ten_may
+      );
       const matchesSearch =
         !normalizedSearch ||
         `${report.mat_hang} ${report.ten_may} ${report.ma_may} ${report.ca} ${report.don_vi}`
           .toLowerCase()
           .includes(normalizedSearch);
-      return matchesShift && matchesSearch;
+      return matchesShift && matchesMachine && matchesSearch;
     });
-  }, [filterShift, normalizedSearch, reports]);
+  }, [filterMachine, filterShift, normalizedSearch, reports]);
 
-  const hasActiveFilters = Boolean(filterShift) || Boolean(searchText);
+  const hasActiveFilters = Boolean(filterShift) || Boolean(filterMachine) || Boolean(searchText);
   const resetFilters = () => {
     setFilterShift('');
+    setFilterMachine('');
     setSearchText('');
   };
 

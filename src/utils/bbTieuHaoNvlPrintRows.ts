@@ -432,7 +432,9 @@ function buildMaterialRowsForOrder(input: {
       shift: order.shift,
       machine: order.machine
     },
-    exportRows || []
+    exportRows || [],
+    undefined,
+    { mixingReports, shiftSettings }
   );
   for (const entry of exportMaterialTotals) {
     const row = ensure(entry.itemCode, entry.itemName, entry.unit);

@@ -12,6 +12,12 @@ import {
   type ShiftSetting
 } from '../../utils/shiftSettings';
 import { FilterCombobox, TableToolbar, TableDateFilter } from '../../components/shared/table';
+import type { MixingReport } from '../../components/MixingReportForm';
+import { normalizeMixingReport } from '../../lib/mixingReportModel';
+import {
+  buildMaterialRequestTable2SaveLines,
+  splitMaterialRequestLinesByTron
+} from './materialRequestTronSplit';
 
 export type MaterialRequestLine = {
   ma_nvl?: string;
@@ -68,16 +74,54 @@ function MaterialRequestDetailModal({
   row,
   onClose,
   onEdit,
-  canEdit = false
+  onSaved,
+  canEdit = false,
+  shiftSettings = [],
+  machines = []
 }: {
   row: MaterialRequestRow;
   onClose: () => void;
   onEdit?: (row: MaterialRequestRow) => void;
+  onSaved?: (row: MaterialRequestRow) => void;
   canEdit?: boolean;
+  shiftSettings?: ShiftSetting[];
+  machines?: MachineRow[];
 }) {
   const lines = Array.isArray(row.lines) ? row.lines : [];
   const locked = String(row.trang_thai || '').toLowerCase() === 'da_xuat';
   const showEdit = Boolean(onEdit && canEdit && !locked);
+  const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
+  const [mixNgay, setMixNgay] = useState(() => String(row.ngay || '').trim().slice(0, 10));
+  const [mixCa, setMixCa] = useState(() => String(row.ca || '').trim());
+  const [mixMay, setMixMay] = useState(() => String(row.may || '').trim());
+  const [mixingReports, setMixingReports] = useState<MixingReport[]>([]);
+  const [mixingLoading, setMixingLoading] = useState(false);
+  const [savingTable2, setSavingTable2] = useState(false);
+
+  const machineSelectOptions = useMemo(() => {
+    const set = new Set<string>();
+    const rowMay = String(row.may || '').trim();
+    if (rowMay) set.add(rowMay);
+    if (mixMay) set.add(mixMay);
+    for (const machine of machines) {
+      const code = String(machine.code || '').trim();
+      const name = String(machine.name || '').trim();
+      if (code) set.add(code);
+      else if (name) set.add(name);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [machines, mixMay, row.may]);
+
+  const caSelectOptions = useMemo(() => {
+    const set = new Set<string>();
+    if (mixCa) set.add(mixCa);
+    const rowCa = String(row.ca || '').trim();
+    if (rowCa) set.add(rowCa);
+    for (const option of shiftOptions) {
+      if (option.value) set.add(option.value);
+    }
+    return [...set];
+  }, [mixCa, row.ca, shiftOptions]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -86,6 +130,115 @@ function MaterialRequestDetailModal({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    const ngay = String(mixNgay || '').trim().slice(0, 10);
+    if (!ngay) {
+      setMixingReports([]);
+      return;
+    }
+    let cancelled = false;
+    setMixingLoading(true);
+    const params = new URLSearchParams({ dateFrom: ngay, dateTo: ngay });
+    if (mixCa) params.set('ca', mixCa);
+    void fetch(`/api/bao-cao-phoi-tron?${params.toString()}`)
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error('Không tải được báo cáo phối trộn.');
+        const reports = Array.isArray(data?.reports)
+          ? data.reports.map((item: Record<string, unknown>) => normalizeMixingReport(item))
+          : [];
+        if (!cancelled) setMixingReports(reports);
+      })
+      .catch(() => {
+        if (!cancelled) setMixingReports([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMixingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mixNgay, mixCa]);
+
+  const split = useMemo(
+    () =>
+      splitMaterialRequestLinesByTron({
+        lines,
+        mixingReports,
+        ngay: mixNgay,
+        ca: mixCa,
+        may: mixMay,
+        shiftSettings
+      }),
+    [lines, mixingReports, mixNgay, mixCa, mixMay, shiftSettings]
+  );
+
+  const canSaveTable2 =
+    canEdit &&
+    !locked &&
+    split.tronKg > 0 &&
+    split.allocatedFromTron &&
+    split.otherRows.length > 0;
+
+  const handleSaveTable2 = async () => {
+    if (!canSaveTable2 || savingTable2) return;
+    const saveLines = buildMaterialRequestTable2SaveLines(split.otherRows);
+    if (!saveLines.length) {
+      showSaveFailure(new Error('Bảng 2 trống — chưa có NVL để lưu.'));
+      return;
+    }
+    const ngay = String(mixNgay || row.ngay || '').trim().slice(0, 10);
+    const ca = String(mixCa || row.ca || '').trim();
+    const may = String(mixMay || row.may || '').trim();
+    const nguoiYc = String(row.nguoi_yc || '').trim();
+    if (!ngay || !ca || !may) {
+      showSaveFailure(new Error('Chọn đủ ngày · ca · máy trước khi lưu Bảng 2.'));
+      return;
+    }
+    if (!nguoiYc) {
+      showSaveFailure(new Error('Thiếu người yêu cầu trên phiếu.'));
+      return;
+    }
+    const ok = window.confirm(
+      `Lưu Bảng 2 vào phiếu ${row.ma_yeu_cau}?\n` +
+        `· Bỏ mã NHUA-TRON (${formatNumber(split.tronKg, 3)} kg)\n` +
+        `· Cộng kg phân bổ vào từng NVL tương ứng\n` +
+        `Dữ liệu này dùng cho xuất kho / tính toán.`
+    );
+    if (!ok) return;
+
+    setSavingTable2(true);
+    try {
+      const res = await fetch(`/api/yeu-cau-xuat-kho/${encodeURIComponent(row.ma_yeu_cau)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ngay,
+          ca,
+          may,
+          nguoi_yc: nguoiYc,
+          lines: saveLines
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không lưu được Bảng 2.'));
+      const nextRow: MaterialRequestRow = {
+        ...row,
+        ngay,
+        ca,
+        may,
+        lines: saveLines
+      };
+      showAppToast(`Đã lưu Bảng 2 vào ${row.ma_yeu_cau}.`);
+      onSaved?.(nextRow);
+      onClose();
+    } catch (err: unknown) {
+      showSaveFailure(err, 'Không lưu được Bảng 2.');
+    } finally {
+      setSavingTable2(false);
+    }
+  };
 
   const modal = (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/45 p-4">
@@ -98,7 +251,7 @@ function MaterialRequestDetailModal({
               {row.ma_yeu_cau || '—'}
             </h3>
             <p className="mt-1 text-[11px] font-semibold text-zinc-500">
-              {formatDisplayDate(String(row.ngay || ''))} · {row.ca || '—'} · {row.may || '—'}
+              Phiếu: {formatDisplayDate(String(row.ngay || ''))} · {row.ca || '—'} · {row.may || '—'}
             </p>
           </div>
           <button
@@ -149,8 +302,166 @@ function MaterialRequestDetailModal({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 sm:p-5">
+          {split.tronKg > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-2.5">
+              <p className="text-xs font-bold text-amber-950">
+                NHUA-TRON:{' '}
+                <span className="font-mono font-black">{formatNumber(split.tronKg, 3)} kg</span>
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-amber-900/80">
+                Chọn ngày · ca · máy để lấy tỉ lệ phối trộn, rồi chia {formatNumber(split.tronKg, 3)} kg xuống từng NVL.
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900/70">
+                  Ngày
+                  <input
+                    type="date"
+                    value={mixNgay}
+                    onChange={e => setMixNgay(e.target.value)}
+                    className="h-8 rounded-lg border border-amber-200 bg-white px-2 text-xs font-semibold text-zinc-800"
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900/70">
+                  Ca
+                  <select
+                    value={mixCa}
+                    onChange={e => setMixCa(e.target.value)}
+                    className="h-8 min-w-[7rem] rounded-lg border border-amber-200 bg-white px-2 text-xs font-semibold text-zinc-800"
+                  >
+                    <option value="">— Ca —</option>
+                    {caSelectOptions.map(ca => (
+                      <option key={ca} value={ca}>
+                        {ca}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900/70">
+                  Máy
+                  <select
+                    value={mixMay}
+                    onChange={e => setMixMay(e.target.value)}
+                    className="h-8 min-w-[7rem] rounded-lg border border-amber-200 bg-white px-2 text-xs font-semibold text-zinc-800"
+                  >
+                    <option value="">— Máy —</option>
+                    {machineSelectOptions.map(may => (
+                      <option key={may} value={may}>
+                        {may}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {mixingLoading ? (
+                  <span className="pb-1.5 text-[11px] font-semibold text-zinc-500">
+                    <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />
+                    Đang tải tỉ lệ…
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {split.tronKg > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-zinc-200">
+              <div className="border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2.5">
+                <p className="text-xs font-bold text-zinc-900">
+                  Bảng 1 · Ảo — phân bổ TRON theo tỉ lệ
+                  {split.mixingRows.length > 0 ? (
+                    <span className="ml-1.5 text-[11px] font-semibold text-zinc-500">
+                      ({split.mixingRows.length})
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-0.5 text-[11px] font-medium text-zinc-600">
+                  {split.allocatedFromTron
+                    ? `Chỉ xem · Kg = ${formatNumber(split.tronKg, 3)} × % · sẽ cộng vào Bảng 2`
+                    : 'Chưa có tỉ lệ khớp ngày · ca · máy đã chọn.'}
+                </p>
+              </div>
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-zinc-50 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2.5">STT</th>
+                    <th className="px-3 py-2.5">Mã NVL</th>
+                    <th className="px-3 py-2.5">Tên NVL</th>
+                    <th className="px-3 py-2.5 text-right">Tỉ lệ %</th>
+                    <th className="px-3 py-2.5 text-right">Kg</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {split.mixingRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center font-semibold text-zinc-400">
+                        Chưa phân bổ được — chọn lại ngày · ca · máy.
+                      </td>
+                    </tr>
+                  ) : (
+                    split.mixingRows.map((line, index) => (
+                      <tr key={line.key}>
+                        <td className="px-3 py-2 font-mono font-bold text-[#ef1b2d]">{index + 1}</td>
+                        <td className="px-3 py-2 font-mono font-semibold text-zinc-800">
+                          {line.ma_nvl || '—'}
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-zinc-700">{line.ten_nvl || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-700">
+                          {line.tiLePercent != null ? formatNumber(line.tiLePercent, 2) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
+                          {formatNumber(line.daTronKg, 3)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {split.mixingRows.length > 0 ? (
+                  <tfoot className="border-t border-zinc-200 bg-zinc-50">
+                    <tr>
+                      <td colSpan={4} className="px-3 py-2 text-right text-[11px] font-bold text-zinc-600">
+                        Tổng phân bổ
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-black text-zinc-900">
+                        {formatNumber(
+                          split.mixingRows.reduce((sum, r) => sum + r.daTronKg, 0),
+                          3
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
+            </div>
+          ) : null}
+
           <div className="overflow-hidden rounded-xl border border-zinc-200">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-zinc-900">
+                  Bảng 2 · Thật — phiếu + cộng phân bổ TRON
+                  {split.otherRows.length > 0 ? (
+                    <span className="ml-1.5 text-[11px] font-semibold text-zinc-500">
+                      ({split.otherRows.length})
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-0.5 text-[11px] font-medium text-zinc-600">
+                  SL = SL phiếu + kg Bảng 1 · Ẩn NHUA-TRON · Lưu DB để tính toán
+                </p>
+              </div>
+              {canSaveTable2 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSaveTable2()}
+                  disabled={savingTable2}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  {savingTable2 ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Lưu Bảng 2 vào phiếu
+                </button>
+              ) : null}
+            </div>
             <table className="min-w-full text-left text-xs">
               <thead className="bg-zinc-50 text-[10px] font-black uppercase tracking-wider text-zinc-500">
                 <tr>
@@ -158,34 +469,61 @@ function MaterialRequestDetailModal({
                   <th className="px-3 py-2.5">Mã NVL</th>
                   <th className="px-3 py-2.5">Tên NVL</th>
                   <th className="px-3 py-2.5">ĐVT</th>
-                  <th className="px-3 py-2.5 text-right">SL</th>
+                  <th className="px-3 py-2.5 text-right">SL phiếu</th>
+                  <th className="px-3 py-2.5 text-right">+ TRON</th>
+                  <th className="px-3 py-2.5 text-right">SL lưu</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {lines.length === 0 ? (
+                {split.otherRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center font-semibold text-zinc-400">
-                      Không có dòng NVL.
+                    <td colSpan={7} className="px-3 py-8 text-center font-semibold text-zinc-400">
+                      Không có NVL.
                     </td>
                   </tr>
                 ) : (
-                  lines.map((line, index) => (
-                    <tr key={`${row.ma_yeu_cau}-${line.ma_nvl}-${index}`}>
+                  split.otherRows.map((line, index) => (
+                    <tr key={line.key}>
                       <td className="px-3 py-2 font-mono font-bold text-[#ef1b2d]">{index + 1}</td>
-                      <td className="px-3 py-2 font-mono font-semibold text-zinc-800">{line.ma_nvl || '—'}</td>
+                      <td className="px-3 py-2 font-mono font-semibold text-zinc-800">
+                        {line.ma_nvl || '—'}
+                      </td>
                       <td className="px-3 py-2 font-semibold text-zinc-700">{line.ten_nvl || '—'}</td>
                       <td className="px-3 py-2 text-zinc-600">{line.don_vi || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-zinc-800">
-                        {line.so_luong != null && Number.isFinite(Number(line.so_luong))
-                          ? formatNumber(Number(line.so_luong), 3)
-                          : '—'}
+                      <td className="px-3 py-2 text-right font-mono text-zinc-600">
+                        {line.so_luongPhieu > 0 ? formatNumber(line.so_luongPhieu, 3) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-amber-800">
+                        {line.daTronKg > 0 ? `+${formatNumber(line.daTronKg, 3)}` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-zinc-900">
+                        {formatNumber(line.so_luong, 3)}
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
+              {split.otherRows.length > 0 ? (
+                <tfoot className="border-t border-zinc-200 bg-zinc-50">
+                  <tr>
+                    <td colSpan={6} className="px-3 py-2 text-right text-[11px] font-bold text-zinc-600">
+                      Tổng SL lưu
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-black text-zinc-900">
+                      {formatNumber(
+                        split.otherRows.reduce((sum, r) => sum + r.so_luong, 0),
+                        3
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </div>
+
+          {lines.length === 0 ? (
+            <p className="text-center text-sm font-semibold text-zinc-400">Không có dòng NVL.</p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -365,7 +703,15 @@ export function MaterialRequestListView({
           row={viewingRow}
           onClose={() => setViewingRow(null)}
           onEdit={onEdit}
+          onSaved={next => {
+            setRows(prev =>
+              prev.map(item => (item.ma_yeu_cau === next.ma_yeu_cau ? { ...item, ...next } : item))
+            );
+            setViewingRow(null);
+          }}
           canEdit={canEdit}
+          shiftSettings={shiftSettings}
+          machines={machines}
         />
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">

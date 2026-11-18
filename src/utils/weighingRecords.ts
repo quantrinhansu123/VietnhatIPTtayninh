@@ -672,6 +672,13 @@ export function isAcceptanceHangLoiHongWeighingId(id: string | number | undefine
   return String(id ?? '').startsWith(ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX);
 }
 
+/** ID thật trên `bao_cao_nghiem_thu` từ id tổng hợp `sl-hh-…`. */
+export function resolveAcceptanceHangLoiHongSourceId(id: string | number | undefined | null) {
+  const text = String(id ?? '').trim();
+  if (!text.startsWith(ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX)) return '';
+  return text.slice(ACCEPTANCE_HANG_LOI_HONG_ID_PREFIX.length).trim();
+}
+
 function isAcceptanceHangLoiHongLoai(value: unknown) {
   const key = String(value ?? '')
     .trim()
@@ -755,7 +762,11 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
       const ngay = String(row.ngay ?? row.report_date ?? '').trim().slice(0, 10);
       const ca = String(row.ca ?? '').trim();
       const lan = String(row.lan ?? '').trim();
-      const may = String(row.ten_may ?? row.ma_may ?? '').trim();
+      const maMay = String(row.ma_may ?? '').trim();
+      const tenMay = String(row.ten_may ?? '').trim();
+      // Giữ cả mã + tên để bộ lọc hub (MBB_5) khớp được với tên «MÁY BAO BÌ 5».
+      const mayParts = [maMay, tenMay].filter((value, index, arr) => value && arr.indexOf(value) === index);
+      const may = mayParts.join(' · ');
       const soLuong = row.so_luong === null || row.so_luong === undefined ? '' : String(row.so_luong).trim();
       const trongLuong =
         row.trong_luong === null || row.trong_luong === undefined ? '' : String(row.trong_luong).trim();
@@ -765,7 +776,7 @@ export function mapAcceptanceHangLoiHongToWeighingRecords(data: unknown): Weighi
         ngay.replace(/-/g, ''),
         ca || 'CA',
         lan ? `L${lan}` : '',
-        may || ''
+        maMay || tenMay || ''
       ]
         .filter(Boolean)
         .join('-');

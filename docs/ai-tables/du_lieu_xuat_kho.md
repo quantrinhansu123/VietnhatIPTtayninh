@@ -14,6 +14,8 @@ Ghi khi bấm **Tính toán** (cùng khóa `khoa_on_dinh` với `bb_bao_cao_tinh
 
 1 dòng = 1 NVL trong 1 SP của 1 lệnh (khớp UI sổ xuống SP → NVL).
 
+**NHUA-TRON:** `groupBbWarehouseExportLines` → `materialLines` (Bảng 2 thật: ẩn TRON, cộng TRON × % vào từng NVL). UI «Tổng NVL đã xuất»: Bảng 1 ảo (chỉ %·kg phân bổ), Bảng 2 thật (phiếu + cộng Bảng 1). Snapshot `du_lieu_xuat_kho` khi **Tính toán** ưu tiên ghi từ `materialLines` (Bảng 2) — không còn lưu dòng TRON thô.
+
 ## Cột chính
 
 | Cột | UI |

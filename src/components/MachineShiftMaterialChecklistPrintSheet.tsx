@@ -546,16 +546,21 @@ export function summarizeChecklistMixedPlasticUsage(lines: MachineShiftMaterialC
   const mixedStock = lines.filter(row => isNhuaTronMaterial(row.maVatTu, row.tenVatTu));
   const mixingMaterials = lines.filter(isChecklistMixingMaterial);
   const openingKg = sumCol(mixedStock, row => row.tonDauCaKg);
+  /** Lấy kho dòng nhựa đã trộn (NHUA-TRON / Trộn NS+TC) — cộng vào TT SD. */
+  const layTrongKhoKg = sumCol(mixedStock, row => row.layTrongKhoKg);
   const mixedInShiftKg = sumCol(mixingMaterials, row => row.thucTronKg);
   const closingKg = sumCol(mixedStock, row => row.tonCuoiCaKg);
-  const hasData = mixedStock.some(row => row.tonDauCaKg != null || row.tonCuoiCaKg != null) ||
-    mixingMaterials.some(row => row.thucTronKg != null);
+  const hasData =
+    mixedStock.some(
+      row => row.tonDauCaKg != null || row.tonCuoiCaKg != null || row.layTrongKhoKg != null
+    ) || mixingMaterials.some(row => row.thucTronKg != null);
   return {
     openingKg,
+    layTrongKhoKg,
     mixedInShiftKg,
     closingKg,
-    // Giữ cả 0 và số âm để nhìn thấy sai lệch kiểm kê, không lọc từng NVL rồi cộng.
-    usedKg: hasData ? openingKg + mixedInShiftKg - closingKg : null
+    // TT SD = tồn đầu TRON + lấy kho TRON + thực trộn − tồn cuối TRON.
+    usedKg: hasData ? openingKg + layTrongKhoKg + mixedInShiftKg - closingKg : null
   };
 }
 
@@ -822,7 +827,7 @@ export function MachineShiftMaterialChecklistPrintSheet({
           <div className="bb-nvl-checklist-notes">
             <p>
               <b>LƯU Ý:</b> Chỉ nhân sự được phân công mới lấy vật tư đúng định mức. Pallet: 1L/2L = 25 kg/bao.
-              <b> Ghi chú:</b> TT SD = Nhựa đã trộn tồn đầu ca + Thực trộn trong ca − Nhựa đã trộn tồn cuối ca.
+              <b> Ghi chú:</b> TT SD = Nhựa đã trộn tồn đầu ca + Lấy trong kho (dòng nhựa đã trộn) + Thực trộn trong ca − Nhựa đã trộn tồn cuối ca.
               {' '}Không cộng tồn nguyên liệu chưa trộn hoặc vật tư phụ vào TT SD. Giờ máy từ Nhật ký chạy máy cùng ngày·ca·máy.
               {' '}Tồn đầu/cuối và Lấy trong kho: kg(số lượng theo ĐVT) đối với vật tư khác kg.
             </p>

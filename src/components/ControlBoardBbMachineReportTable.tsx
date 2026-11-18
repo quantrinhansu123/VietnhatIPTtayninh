@@ -99,10 +99,7 @@ import {
 
   type BbMaterialConversionRecord
 } from '../utils/bbMaterialConversion';
-import {
-  syncBbThucDungRowsOngFromAcceptanceReports,
-  syncBbThucDungRowsTuiFromAcceptanceReports
-} from '../utils/bbKhongTronFromAcceptance';
+import { syncBbThucDungRowsKhongTronFromAcceptanceReports } from '../utils/bbKhongTronFromAcceptance';
 import { syncBbThucDungRowsTonQtyFromTonTabs } from '../utils/bbTonQtyFromTonTabs';
 import { syncBbThucDungRowsCutLoiFromMaterialConversions } from '../utils/bbConversionCutLoi';
 import { syncBbThucDungRowsOtherFinishedFromSanLuongTab } from '../utils/bbNvlFromSanLuongTab';
@@ -2438,21 +2435,16 @@ export default function ControlBoardBbMachineReportTable({
       sanLuongGroups
     });
     const withXuatConversion = withSanLuongTab;
-    // Túi (bì): Nhập TP = Σ trọng lượng bì theo Mã SP (chia ĐM khi nhiều túi).
-    // Ống: Nhập TP = Σ cân lõi từng cuộn theo Mã SP; nhiều lõi → chia theo ĐM Thành phần.
-    const withTui = syncBbThucDungRowsTuiFromAcceptanceReports({
+    // 3.2 Nhập TP NVL khác = y hệt TL VT không trộn trên Báo cáo sản lượng.
+    const withKhongTron = syncBbThucDungRowsKhongTronFromAcceptanceReports({
       rows: withXuatConversion,
       acceptanceReports,
-      products
-    });
-    const withOngBase = syncBbThucDungRowsOngFromAcceptanceReports({
-      rows: withTui,
-      acceptanceReports,
-      products
+      products,
+      materials
     });
     // 3.2: SL tồn đầu / tồn cuối (hiện trong ngoặc cạnh kg).
     const withOng = syncBbThucDungRowsTonQtyFromTonTabs({
-      rows: withOngBase,
+      rows: withKhongTron,
       dauCaGroups,
       cuoiCaGroups
     });

@@ -3,5 +3,6 @@
  */
 export {
   syncBbThucDungRowsTuiFromAcceptanceReports,
-  syncBbThucDungRowsOngFromAcceptanceReports
+  syncBbThucDungRowsOngFromAcceptanceReports,
+  syncBbThucDungRowsKhongTronFromAcceptanceReports
 } from './bbKhongTronFromAcceptance';

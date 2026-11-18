@@ -28,6 +28,7 @@ import {
   normalizeWarehouseCodeKey,
   type WarehouseWeightCatalogItem
 } from '../utils/warehouseWeight';
+import { machinesMatchForConversion } from '../utils/bbMaterialConversion';
 import { resolveProductMaterialBaseKg } from '../features/san-pham';
 import {
   allocateBbKgByWeightShare,
@@ -404,9 +405,9 @@ function groupMatchesOrder(groupOrderCode: string, orderCode: string) {
     .some(code => code === target);
 }
 
-function findOrderGroup<T extends { orderCode: string; groupKey?: string }>(
+function findOrderGroup<T extends { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string }>(
   groups: T[],
-  order: { orderCode: string; groupKey?: string } | string
+  order: { orderCode: string; groupKey?: string; ngay?: string; shift?: string; machine?: string } | string
 ) {
   if (typeof order === 'string') {
     return groups.find(group => groupMatchesOrder(group.orderCode, order));
@@ -415,6 +416,15 @@ function findOrderGroup<T extends { orderCode: string; groupKey?: string }>(
     const byKey = groups.find(group => group.groupKey === order.groupKey);
     if (byKey) return byKey;
   }
+  const orderMatches = (g: T) => {
+    if (!groupMatchesOrder(g.orderCode, order.orderCode)) return false;
+    if (order.ngay && g.ngay && order.ngay !== g.ngay) return false;
+    if (order.shift && g.shift && !shiftNamesMatch(order.shift, g.shift)) return false;
+    if (order.machine && g.machine && !machinesMatchForConversion(order.machine, g.machine)) return false;
+    return true;
+  };
+  const byExact = groups.find(orderMatches);
+  if (byExact) return byExact;
   return groups.find(group => groupMatchesOrder(group.orderCode, order.orderCode));
 }
 
@@ -1131,8 +1141,14 @@ function buildMaterialRows(order: BbProductionOrderGroup, props: PrintProps) {
       g =>
         g.orderCode === order.orderCode &&
         g.ngay === order.ngay &&
-        (g.shift === order.shift || g.shiftLabel === order.shiftLabel)
-    ) || (props.sanLuongGroups || []).find(g => g.orderCode === order.orderCode);
+        (g.shift === order.shift || g.shiftLabel === order.shiftLabel) &&
+        (!order.machine || !g.machine || machinesMatchForConversion(order.machine, g.machine))
+    ) ||
+    (props.sanLuongGroups || []).find(
+      g =>
+        g.orderCode === order.orderCode &&
+        (!order.machine || !g.machine || machinesMatchForConversion(order.machine, g.machine))
+    );
 
   if (sanLuongGroupForOrder) {
     const totals = Array.isArray(sanLuongGroupForOrder.nvlTotals)

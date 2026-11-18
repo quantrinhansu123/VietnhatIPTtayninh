@@ -60,18 +60,18 @@ function normalizeNgayKey(value: string) {
 }
 
 /** Khớp máy phiếu quy đổi ↔ máy trên dòng BB (mã MBB_16 ↔ tên MÁY BAO BÌ 16). */
-function machinesMatchForConversion(conversionMachine: string, rowMachine: string) {
+export function machinesMatchForConversion(conversionMachine: string, rowMachine: string) {
   const left = String(conversionMachine || '').trim();
   const right = String(rowMachine || '').trim();
   if (!left) return true;
   if (!right) return false;
-  if (machineValueMatchesFilter(right, null, left, right)) return true;
-  if (machineValueMatchesFilter(left, null, right, left)) return true;
   if (isBbMachineText(left) && isBbMachineText(right)) {
     const a = extractBbMachineNumber(left);
     const b = extractBbMachineNumber(right);
-    if (a && b && a === b) return true;
+    if (a && b) return a === b;
   }
+  if (machineValueMatchesFilter(right, null, left)) return true;
+  if (machineValueMatchesFilter(left, null, right)) return true;
   return false;
 }
 

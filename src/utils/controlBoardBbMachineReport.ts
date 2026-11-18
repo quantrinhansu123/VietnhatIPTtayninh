@@ -23,6 +23,7 @@ import {
   type ProductionOrderLookupSetting
 } from '../features/ke-hoach-san-xuat';
 import { parseProductionOrderFilterDate, splitProductionOrderStaffNames } from '../features/cai-dat-thoi-gian';
+import { machinesMatchForConversion } from './bbMaterialConversion';
 import type { ShiftSummaryWarehouseMovement } from './controlBoardShiftSummary';
 import {
   computeKhoiLuongNhuaTp,
@@ -115,6 +116,9 @@ import {
   type MachineNvlSavedLine,
   type MachineNvlSavedReport
 } from './machineNvlReports';
+import { computeAcceptanceReportKhongTronByMaterial } from './acceptanceKhongTronWeights';
+import { shareKgByBomDinhMuc } from './bbKhongTronFromAcceptance';
+import { isNvlOngItem, isNvlTuiItem } from '../components/AcceptanceReportListView';
 
 /**
  * Vật tư tham gia chia tỉ lệ trộn / phân bổ NNS-TRON: ĐVT kg hoặc Lít.
@@ -7367,6 +7371,13 @@ export function buildBbThanhPhamHachToanNvlSplit(
       ) {
         return false;
       }
+      if (
+        thanhPhamGroup.machine &&
+        group.machine &&
+        !machinesMatchForConversion(thanhPhamGroup.machine, group.machine)
+      ) {
+        return false;
+      }
       return true;
     }) ||
     sanLuongGroups.find(
@@ -7377,7 +7388,7 @@ export function buildBbThanhPhamHachToanNvlSplit(
         shiftNamesMatch(thanhPhamGroup.shift, group.shift) &&
         (!thanhPhamGroup.machine ||
           !group.machine ||
-          machineValueMatchesFilter(thanhPhamGroup.machine, null, group.machine))
+          machinesMatchForConversion(thanhPhamGroup.machine, group.machine))
     );
 
   const totals =
@@ -8350,6 +8361,14 @@ export function buildBbSanLuongGroups(input: {
       );
 
       const materialsCatalog = input.materials.map(mapMaterialToWeightCatalogItem);
+      // Kg không trộn = đúng rule danh sách SL (túi/lõi cân + băng·tem ĐM×SL).
+      const nhuaSnap = Number(report.trong_luong_nhua);
+      const khongTronByMaterial = computeAcceptanceReportKhongTronByMaterial({
+        report,
+        nplItems: catalog.nplItems || [],
+        materials: materialsCatalog,
+        nhuaThucTeKg: Number.isFinite(nhuaSnap) && nhuaSnap > 0 ? nhuaSnap : null
+      });
 
       for (const item of nvlItems) {
         const materialKey = nvlDinhMucItemMatchKey(item);
@@ -8388,21 +8407,43 @@ export function buildBbSanLuongGroups(input: {
                 ? item.quantityBySl
                 : roundQuantityByUnit(rate * inboundQty, item.unit || '');
 
-        const lineKg = phuMeasure
-          ? phuMeasure.weightKg
-          : isPercent || hasSnapshot
-            ? resolveBbSanLuongNvlLineWeightKg({
-                item,
-                bomItem,
-                catalog,
-                inboundQty,
-                reportWeightKg,
-                lineQty,
-                rate,
-                materialsCatalog,
-                materials: input.materials
-              })
-            : 0;
+        const probe: ProductNplItem = bomItem || {
+          code: item.code,
+          name: item.name,
+          unit: item.unit,
+          amountType: item.amountType,
+          quantity: item.rate,
+          percent: item.amountType === 'percent' ? item.rate : null,
+          weightKg: null
+        };
+        const fromAcceptanceKhongTron =
+          !isPercent && khongTronByMaterial.size > 0
+            ? khongTronByMaterial.get(
+                normalizeWarehouseCodeKey(item.code) ||
+                  normalizeProductCodeKey(item.name) ||
+                  materialKey
+              )
+            : undefined;
+        const lineKg =
+          !isPercent && fromAcceptanceKhongTron != null && fromAcceptanceKhongTron > 0
+            ? fromAcceptanceKhongTron
+            : !isPercent && (isNvlTuiItem(probe) || isNvlOngItem(probe))
+              ? 0
+              : phuMeasure
+                ? phuMeasure.weightKg
+                : isPercent || hasSnapshot
+                  ? resolveBbSanLuongNvlLineWeightKg({
+                      item,
+                      bomItem,
+                      catalog,
+                      inboundQty,
+                      reportWeightKg,
+                      lineQty,
+                      rate,
+                      materialsCatalog,
+                      materials: input.materials
+                    })
+                  : 0;
 
         const existing = product.nvlAgg.get(materialKey);
         if (!existing) {
@@ -8571,8 +8612,8 @@ export function buildBbSanLuongGroups(input: {
 
     if (productMap.size === 0) continue;
 
-    // TL NVL % + Tổng vật tư trộn: ưu tiên Σ Nhựa TT Cân AI (Thành phẩm) theo ngày·ca·máy·mã SP.
-    // Túi / ống không trộn: Σ bì / Σ lõi từ cân AI, fallback cột đã Đồng bộ trên phiếu sản lượng.
+    // TL NVL %: ưu tiên Σ Nhựa TT Cân AI. Túi/ống: đã lấy từ phiếu SL ở vòng trên;
+    // chỉ bổ sung từ cân AI / phiếu khi dòng còn 0 (thiếu Đồng bộ).
     for (const product of productMap.values()) {
       const productKey = normalizeProductCodeKey(product.productCode);
       const scopedCan =
@@ -8597,50 +8638,89 @@ export function buildBbSanLuongGroups(input: {
         product.weightKg = canTuDongNhuaKg;
       }
 
-      let biKg = sumCanTuDongTrongLuongBiKg(scopedCan).weightKg;
-      let loiKg = sumCanTuDongCanLoiKg(scopedCan).weightKg;
-      if (!(biKg > 0) || !(loiKg > 0)) {
-        let reportBi = 0;
-        let reportLoi = 0;
-        for (const report of bucket.reports) {
-          const reportCode = normalizeProductCodeKey(
-            resolveAcceptanceReportProductCode(report.mat_hang)
-          );
-          if (!reportCode || reportCode !== productKey) continue;
-          reportBi += Number(report.trong_luong_bi) > 0 ? Number(report.trong_luong_bi) : 0;
-          reportLoi += Number(report.trong_luong_loi) > 0 ? Number(report.trong_luong_loi) : 0;
-        }
-        if (!(biKg > 0) && reportBi > 0) biKg = roundQty(reportBi, 4);
-        if (!(loiKg > 0) && reportLoi > 0) loiKg = roundQty(reportLoi, 4);
+      let reportBi = 0;
+      let reportLoi = 0;
+      for (const report of bucket.reports) {
+        const reportCode = normalizeProductCodeKey(
+          resolveAcceptanceReportProductCode(report.mat_hang)
+        );
+        if (!reportCode || reportCode !== productKey) continue;
+        reportBi += Number(report.trong_luong_bi) > 0 ? Number(report.trong_luong_bi) : 0;
+        reportLoi += Number(report.trong_luong_loi) > 0 ? Number(report.trong_luong_loi) : 0;
       }
+      const canBi = sumCanTuDongTrongLuongBiKg(scopedCan).weightKg;
+      const canLoi = sumCanTuDongCanLoiKg(scopedCan).weightKg;
+      // Ưu tiên phiếu sản lượng đã Đồng bộ — cùng nguồn danh sách SL.
+      const biKg = reportBi > 0 ? roundQty(reportBi, 4) : canBi > 0 ? roundQty(canBi, 4) : 0;
+      const loiKg = reportLoi > 0 ? roundQty(reportLoi, 4) : canLoi > 0 ? roundQty(canLoi, 4) : 0;
       const tuiNvls = [...product.nvlAgg.values()].filter(
         nvl => nvl.amountType !== 'percent' && isBbSanLuongTuiNvl(nvl.itemCode, nvl.itemName)
       );
       const ongNvls = [...product.nvlAgg.values()].filter(
         nvl => nvl.amountType !== 'percent' && isBbSanLuongOngNvl(nvl.itemCode, nvl.itemName)
       );
+      const tuiMissing = tuiNvls.filter(nvl => !(nvl.actualWeightKg > 0));
+      const ongMissing = ongNvls.filter(nvl => !(nvl.actualWeightKg > 0));
 
-      if (biKg > 0 && tuiNvls.length > 0) {
-        const each = roundQty(biKg / tuiNvls.length, 4);
-        tuiNvls.forEach((nvl, index) => {
-          const lineKg =
-            index === tuiNvls.length - 1
-              ? roundQty(biKg - each * (tuiNvls.length - 1), 4)
-              : each;
-          nvl.normWeightKg = lineKg;
-          nvl.actualWeightKg = lineKg;
-        });
+      if (biKg > 0 && tuiMissing.length > 0) {
+        const catalog = findProductByCode(input.products, product.productCode);
+        const bomTui = (catalog?.nplItems || []).filter(
+          item => item.amountType !== 'percent' && isNvlTuiItem(item)
+        );
+        if (bomTui.length > 0) {
+          const shares = shareKgByBomDinhMuc(bomTui, biKg);
+          for (const nvl of tuiMissing) {
+            const key =
+              normalizeWarehouseCodeKey(nvl.itemCode) ||
+              normalizeProductCodeKey(nvl.itemName) ||
+              '';
+            const lineKg = key ? shares.get(key) : undefined;
+            if (lineKg != null && lineKg > 0) {
+              nvl.normWeightKg = lineKg;
+              nvl.actualWeightKg = lineKg;
+            }
+          }
+        } else {
+          const each = roundQty(biKg / tuiMissing.length, 4);
+          tuiMissing.forEach((nvl, index) => {
+            const lineKg =
+              index === tuiMissing.length - 1
+                ? roundQty(biKg - each * (tuiMissing.length - 1), 4)
+                : each;
+            nvl.normWeightKg = lineKg;
+            nvl.actualWeightKg = lineKg;
+          });
+        }
       }
-      if (loiKg > 0 && ongNvls.length > 0) {
-        const each = roundQty(loiKg / ongNvls.length, 4);
-        ongNvls.forEach((nvl, index) => {
-          const lineKg =
-            index === ongNvls.length - 1
-              ? roundQty(loiKg - each * (ongNvls.length - 1), 4)
-              : each;
-          nvl.normWeightKg = lineKg;
-          nvl.actualWeightKg = lineKg;
-        });
+      if (loiKg > 0 && ongMissing.length > 0) {
+        const catalog = findProductByCode(input.products, product.productCode);
+        const bomOng = (catalog?.nplItems || []).filter(
+          item => item.amountType !== 'percent' && isNvlOngItem(item)
+        );
+        if (bomOng.length > 0) {
+          const shares = shareKgByBomDinhMuc(bomOng, loiKg);
+          for (const nvl of ongMissing) {
+            const key =
+              normalizeWarehouseCodeKey(nvl.itemCode) ||
+              normalizeProductCodeKey(nvl.itemName) ||
+              '';
+            const lineKg = key ? shares.get(key) : undefined;
+            if (lineKg != null && lineKg > 0) {
+              nvl.normWeightKg = lineKg;
+              nvl.actualWeightKg = lineKg;
+            }
+          }
+        } else {
+          const each = roundQty(loiKg / ongMissing.length, 4);
+          ongMissing.forEach((nvl, index) => {
+            const lineKg =
+              index === ongMissing.length - 1
+                ? roundQty(loiKg - each * (ongMissing.length - 1), 4)
+                : each;
+            nvl.normWeightKg = lineKg;
+            nvl.actualWeightKg = lineKg;
+          });
+        }
       }
 
       if (!(canTuDongNhuaKg > 0)) continue;
@@ -11154,7 +11234,26 @@ export function syncBbThucDungRowsFinishedFromSanLuong(input: {
     }
     const headerKey = headerKeyOf(row.ngay, row.shift, row.orderCode, row.machine);
     const matKey = materialKeyOf(row.materialCode, row.materialName);
-    const agg = byHeaderMaterial.get(`${headerKey}|${matKey}`);
+    let agg = byHeaderMaterial.get(`${headerKey}|${matKey}`);
+    if (!agg) {
+      for (const [k, v] of byHeaderMaterial.entries()) {
+        const parts = k.split('|');
+        if (parts.length >= 5) {
+          const [kNgay, kShift, kOrderCode, kMachine, ...kMatParts] = parts;
+          const kMat = kMatParts.join('|');
+          if (
+            kNgay === row.ngay &&
+            shiftNamesMatch(kShift, row.shift) &&
+            bbOrderCodesMatch(kOrderCode, row.orderCode) &&
+            kMat === matKey &&
+            (!row.machine || !kMachine || machinesMatchForConversion(kMachine, row.machine))
+          ) {
+            agg = v;
+            break;
+          }
+        }
+      }
+    }
     if (!agg) return row;
     if (!(agg.finishedKg > 0) && !(agg.finishedQty > 0)) return row;
 

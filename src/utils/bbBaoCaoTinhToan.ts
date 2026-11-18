@@ -6,10 +6,7 @@ import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../features/ke-hoach-san-xuat';
 import type { ProductRow } from '../features/san-pham/types';
 import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
-import {
-  syncBbThucDungRowsOngFromAcceptanceReports,
-  syncBbThucDungRowsTuiFromAcceptanceReports
-} from './bbKhongTronFromAcceptance';
+import { syncBbThucDungRowsKhongTronFromAcceptanceReports } from './bbKhongTronFromAcceptance';
 import {
   filterCanTuDongRecordsForBoard,
   sumCanTuDongSanLuongTotals,
@@ -407,16 +404,12 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine
   });
-  // 3.2: túi = Σ bì; ống = Σ cân lõi theo Mã SP; nhiều lõi/túi → chia theo ĐM Thành phần.
-  const thucDungRowsTui = syncBbThucDungRowsTuiFromAcceptanceReports({
+  // 3.2 Nhập TP NVL khác = y hệt TL VT không trộn trên Báo cáo sản lượng.
+  const thucDungRows = syncBbThucDungRowsKhongTronFromAcceptanceReports({
     rows: thucDungRowsBuilt,
     acceptanceReports: input.acceptanceReports,
-    products: input.products
-  });
-  const thucDungRows = syncBbThucDungRowsOngFromAcceptanceReports({
-    rows: thucDungRowsTui,
-    acceptanceReports: input.acceptanceReports,
-    products: input.products
+    products: input.products,
+    materials: input.materials
   });
   const thucDungGroups = groupBbThucDungLines(thucDungRows);
 

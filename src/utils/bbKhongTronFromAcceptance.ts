@@ -9,9 +9,11 @@ import type { AcceptanceReport } from '../components/AcceptanceReportForm';
 import { isNvlOngItem, isNvlTuiItem, resolveReportProductCode } from '../components/AcceptanceReportListView';
 import { findProductByCode } from '../features/san-pham';
 import { normalizeProductCodeKey, type ProductNplItem, type ProductRow } from '../features/san-pham/types';
+import { aggregateKhongTronKgByMaterialFromAcceptanceReports } from './acceptanceKhongTronWeights';
 import { matchesNgayCaMay } from './bbMaterialConversion';
 import type { BbThucDungLineRow } from './controlBoardBbMachineReport';
-import { normalizeWarehouseCodeKey } from './warehouseWeight';
+import { mapMaterialToWeightCatalogItem, normalizeWarehouseCodeKey } from './warehouseWeight';
+import type { MaterialRow } from '../features/kho-nvl';
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000;
@@ -33,17 +35,27 @@ function positiveKg(value: unknown) {
 }
 
 function reportMatchesHeader(report: AcceptanceReport, ngay: string, shift: string, machine: string) {
-  return matchesNgayCaMay(
-    {
-      ngay: report.ngay,
-      ca: report.ca,
-      ma_may: report.ma_may || report.ten_may || '',
-      vat_tu_goc: '',
-      vat_tu_quy_doi: ''
-    },
-    ngay,
-    shift,
-    machine
+  const candidates = [report.ma_may, report.ten_may]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+  const targetMachine = String(machine || '').trim();
+  if (targetMachine && targetMachine !== 'all' && candidates.length === 0) {
+    return false;
+  }
+  const machineCodes = candidates.length > 0 ? candidates : [''];
+  return machineCodes.some(maMay =>
+    matchesNgayCaMay(
+      {
+        ngay: report.ngay,
+        ca: report.ca,
+        ma_may: maMay,
+        vat_tu_goc: '',
+        vat_tu_quy_doi: ''
+      },
+      ngay,
+      shift,
+      targetMachine
+    )
   );
 }
 
@@ -251,6 +263,47 @@ export function syncBbThucDungRowsOngFromAcceptanceReports(input: {
     if (byMaterial.size === 0) continue;
     next = applyFinishedKgByMaterial(next, byMaterial, row =>
       Boolean(isOngRow(row) && row.ngay === ngay && row.shift === shift && row.machine === machine)
+    );
+  }
+  return next;
+}
+
+/**
+ * 3.2 Nhập TP NVL khác = y hệt TL VT không trộn trên Báo cáo sản lượng
+ * (túi/lõi cân + băng·tem ĐM×SL theo từng phiếu).
+ */
+export function syncBbThucDungRowsKhongTronFromAcceptanceReports(input: {
+  rows: BbThucDungLineRow[];
+  acceptanceReports: AcceptanceReport[];
+  products?: ProductRow[];
+  materials?: MaterialRow[];
+}): BbThucDungLineRow[] {
+  if (input.rows.length === 0 || !input.acceptanceReports?.length) return input.rows;
+  const products = input.products || [];
+  const materialsCatalog = (input.materials || []).map(mapMaterialToWeightCatalogItem);
+
+  const isOtherRow = (row: BbThucDungLineRow) =>
+    !row.inMixingRatioTable && !row.isPlasticNvl;
+
+  const headers = new Set<string>();
+  for (const row of input.rows) {
+    if (!isOtherRow(row)) continue;
+    headers.add(`${row.ngay}|${row.shift}|${row.machine}`);
+  }
+  if (headers.size === 0) return input.rows;
+
+  let next = input.rows;
+  for (const header of headers) {
+    const [ngay, shift, machine] = header.split('|');
+    const byMaterial = aggregateKhongTronKgByMaterialFromAcceptanceReports({
+      reports: input.acceptanceReports,
+      products,
+      materials: materialsCatalog,
+      matchReport: report => reportMatchesHeader(report, ngay, shift, machine)
+    });
+    if (byMaterial.size === 0) continue;
+    next = applyFinishedKgByMaterial(next, byMaterial, row =>
+      Boolean(isOtherRow(row) && row.ngay === ngay && row.shift === shift && row.machine === machine)
     );
   }
   return next;

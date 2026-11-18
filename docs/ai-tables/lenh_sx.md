@@ -58,7 +58,7 @@ Nút **Thêm đơn mới** trong form thêm lệnh SX cũng mở `OrderFormModal
 
 ### Danh sách lệnh SX
 
-Danh sách chỉ hiển thị thông tin tổng quan của lệnh (mã lệnh, ca, máy, trạng thái, khách hàng, đơn hàng, nhân sự phụ trách). Cột **Máy** đứng ngay sau cột **Ca**. **Mã hàng / Tên hàng / Số lượng** được xem trong modal **Xem chi tiết** của từng lệnh.
+Danh sách hiển thị thông tin tổng quan của lệnh (mã lệnh, ca, máy, trạng thái, **tổng số lượng**, **khối lượng ĐM**, khách hàng, đơn hàng, nhân sự phụ trách) cùng 4 thẻ tổng hợp phía trên (`Lệnh SX`, `Đang / chờ SX`, `Tổng số lượng`, `Khối lượng ĐM`) và tổng theo nhóm ngày. Cột **Máy** đứng ngay sau cột **Ca**. Chi tiết từng **Mã hàng / Tên hàng / Số lượng** được xem trong modal/trang **Xem chi tiết** của từng lệnh.
 
 **Mã lệnh:** để trống hoặc mở form Thêm thì tự nhảy `LSX001`, `LSX002`… (không dấu `,` / `-`, không lấy từ mã đơn hàng). Mã cũ dạng `LSX-DH…` giữ nguyên, không tính vào chuỗi nhảy số. Nhiều ca: ca đầu dùng mã trên form, các ca sau nhảy số tiếp.
 

@@ -316,21 +316,23 @@ function formatIsoDateVi(iso?: string | null) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+const capturedAtViFormatter = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+});
+
 /** Ngày giờ cân (`captured_at`) — theo dõi thời điểm ghi nhận. */
 function formatCapturedAtVi(value?: string | null) {
   const raw = String(value ?? '').trim();
   if (!raw) return '—';
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
+  return capturedAtViFormatter.format(date);
 }
 
 function formatWeight(
@@ -435,11 +437,16 @@ function readNhapKho(row: CanTuDongRecord) {
   };
 }
 
+const nhapKhoTimeViFormatter = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  hour12: false
+});
+
 function formatNhapKhoTime(value: string) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+  return nhapKhoTimeViFormatter.format(date);
 }
 
 function rowIdKey(id: number | string) {
@@ -480,6 +487,207 @@ function normalizeQrKey(qr?: string | null): string {
   return String(qr ?? '').trim();
 }
 
+const CAN_TU_DONG_CACHE_TTL_MS = 60_000;
+
+type CanTuDongCatalogCacheValue = {
+  nameMap: Map<string, string>;
+  unitMap: Map<string, string>;
+  weightMap: Map<string, number>;
+  coreMap: Map<string, number>;
+  plasticMap: Map<string, number>;
+  filmMap: Map<string, number>;
+  catalogCodes: string[];
+  ts: number;
+};
+
+type CanTuDongMachinesCacheValue = {
+  byCode: Map<string, string>;
+  byName: Map<string, string>;
+  ts: number;
+};
+
+const canTuDongRecordsCache = new Map<string, { records: CanTuDongRecord[]; ts: number }>();
+const canTuDongRecordsInflight = new Map<string, Promise<CanTuDongRecord[]>>();
+let canTuDongCatalogCache: CanTuDongCatalogCacheValue | null = null;
+let canTuDongCatalogInflight: Promise<CanTuDongCatalogCacheValue> | null = null;
+let canTuDongMachinesCache: CanTuDongMachinesCacheValue | null = null;
+let canTuDongMachinesInflight: Promise<CanTuDongMachinesCacheValue> | null = null;
+let canTuDongLsxCache: { map: Map<string, number>; ts: number } | null = null;
+let canTuDongLsxInflight: Promise<Map<string, number>> | null = null;
+
+function canTuDongRangeKey(from: string, to: string) {
+  const f = String(from || '').trim() || localIsoDateToday();
+  const t = String(to || '').trim() || f;
+  return `${f}|${t}`;
+}
+
+function buildProductCatalogMaps(
+  products: ReturnType<typeof normalizeProducts>
+): CanTuDongCatalogCacheValue {
+  const nameMap = new Map<string, string>();
+  const unitMap = new Map<string, string>();
+  const weightMap = new Map<string, number>();
+  const coreMap = new Map<string, number>();
+  const plasticMap = new Map<string, number>();
+  const catalogCodes = new Set<string>();
+  for (const product of products) {
+    const standard = Number(String(product.totalWeight ?? '').replace(',', '.'));
+    const core = Number(String(product.coreWeight ?? '').replace(',', '.'));
+    const plastic = Number(String(product.plasticWeight ?? '').replace(',', '.'));
+    for (const c of [product.code, product.newCode, product.amisCode]) {
+      const raw = String(c ?? '').trim();
+      if (raw) catalogCodes.add(raw);
+      const key = normalizeProductCodeKey(c);
+      if (!key) continue;
+      if (product.name) nameMap.set(key, product.name);
+      const unit = String(product.unit ?? '').trim();
+      if (unit && unit !== '-') unitMap.set(key, unit);
+      if (Number.isFinite(standard) && standard > 0) weightMap.set(key, standard);
+      if (Number.isFinite(core) && core > 0) coreMap.set(key, core);
+      if (Number.isFinite(plastic) && plastic > 0) plasticMap.set(key, plastic);
+    }
+  }
+  const filmMap = buildCanTuDongFilmKgByProductCode(products);
+  return {
+    nameMap,
+    unitMap,
+    weightMap,
+    coreMap,
+    plasticMap,
+    filmMap,
+    catalogCodes: [...catalogCodes].sort((a, b) => a.localeCompare(b, 'vi', { sensitivity: 'base' })),
+    ts: Date.now()
+  };
+}
+
+async function fetchCanTuDongRecordsCached(from: string, to: string, force = false): Promise<CanTuDongRecord[]> {
+  let f = String(from || '').trim();
+  let t = String(to || '').trim();
+  if (!f && !t) {
+    f = localIsoDateToday();
+    t = f;
+  }
+  const key = canTuDongRangeKey(f, t);
+  if (!force) {
+    const cached = canTuDongRecordsCache.get(key);
+    if (cached && Date.now() - cached.ts < CAN_TU_DONG_CACHE_TTL_MS) {
+      return cached.records;
+    }
+    const inflight = canTuDongRecordsInflight.get(key);
+    if (inflight) return inflight;
+  }
+  const promise = (async () => {
+    try {
+      const params = new URLSearchParams({ all: '1', images: '0', dateBy: 'ngay' });
+      if (f) params.set('from', f);
+      if (t) params.set('to', t);
+      const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(readApiErrorMessage(res, errorData, 'Không tải được cân tự động.'));
+      }
+      const payload = await res.json();
+      const list: CanTuDongRecord[] = Array.isArray(payload?.records) ? payload.records : [];
+      canTuDongRecordsCache.set(key, { records: list, ts: Date.now() });
+      return list;
+    } finally {
+      canTuDongRecordsInflight.delete(key);
+    }
+  })();
+  canTuDongRecordsInflight.set(key, promise);
+  return promise;
+}
+
+async function fetchCanTuDongCatalogCached(force = false): Promise<CanTuDongCatalogCacheValue> {
+  if (!force && canTuDongCatalogCache && Date.now() - canTuDongCatalogCache.ts < CAN_TU_DONG_CACHE_TTL_MS) {
+    return canTuDongCatalogCache;
+  }
+  if (!force && canTuDongCatalogInflight) return canTuDongCatalogInflight;
+  canTuDongCatalogInflight = (async () => {
+    try {
+      const res = await fetch('/api/san-pham?format=table');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(readApiErrorMessage(res, data, 'Không thể tải danh mục sản phẩm.'));
+      }
+      const built = buildProductCatalogMaps(normalizeProducts(data));
+      canTuDongCatalogCache = built;
+      return built;
+    } finally {
+      canTuDongCatalogInflight = null;
+    }
+  })();
+  return canTuDongCatalogInflight;
+}
+
+async function fetchCanTuDongMachinesCached(force = false): Promise<CanTuDongMachinesCacheValue> {
+  if (!force && canTuDongMachinesCache && Date.now() - canTuDongMachinesCache.ts < CAN_TU_DONG_CACHE_TTL_MS) {
+    return canTuDongMachinesCache;
+  }
+  if (!force && canTuDongMachinesInflight) return canTuDongMachinesInflight;
+  canTuDongMachinesInflight = (async () => {
+    try {
+      const res = await fetch('/api/danh-sach-may');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error('Không thể tải danh mục máy.');
+      const rows = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.machines)
+          ? data.machines
+          : Array.isArray(data?.records)
+            ? data.records
+            : [];
+      const byCode = new Map<string, string>();
+      const byName = new Map<string, string>();
+      for (const row of rows) {
+        const code = String(row?.ma_may ?? row?.code ?? row?.ma ?? '').trim();
+        const name = String(row?.ten_may ?? row?.name ?? row?.ten ?? '').trim();
+        if (!code) continue;
+        if (name) byCode.set(code, name);
+        const nameKey = normalizeMachineToken(name);
+        if (nameKey && !byName.has(nameKey)) byName.set(nameKey, code);
+      }
+      const built: CanTuDongMachinesCacheValue = { byCode, byName, ts: Date.now() };
+      canTuDongMachinesCache = built;
+      return built;
+    } finally {
+      canTuDongMachinesInflight = null;
+    }
+  })();
+  return canTuDongMachinesInflight;
+}
+
+async function fetchCanTuDongLsxCached(force = false): Promise<Map<string, number>> {
+  if (!force && canTuDongLsxCache && Date.now() - canTuDongLsxCache.ts < CAN_TU_DONG_CACHE_TTL_MS) {
+    return canTuDongLsxCache.map;
+  }
+  if (!force && canTuDongLsxInflight) return canTuDongLsxInflight;
+  canTuDongLsxInflight = (async () => {
+    try {
+      const res = await fetch('/api/lenh-sx');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error('Không thể tải lệnh sản xuất.');
+      const orders = Array.isArray(data?.productionOrders) ? data.productionOrders : [];
+      const map = buildLsxQtyByLenhAndSp(orders);
+      canTuDongLsxCache = { map, ts: Date.now() };
+      return map;
+    } finally {
+      canTuDongLsxInflight = null;
+    }
+  })();
+  return canTuDongLsxInflight;
+}
+
+/** Tải trước dữ liệu Cân tự động theo khoảng ngày để mở tab Cân không phải chờ. */
+export function prefetchCanTuDongData(range?: { from?: string; to?: string }) {
+  const from = String(range?.from || '').trim() || localIsoDateToday();
+  const to = String(range?.to || '').trim() || from;
+  void fetchCanTuDongRecordsCached(from, to, false).catch(() => {});
+  void fetchCanTuDongCatalogCached(false).catch(() => {});
+  void fetchCanTuDongMachinesCached(false).catch(() => {});
+  void fetchCanTuDongLsxCached(false).catch(() => {});
+}
+
 export function CanTuDongPanel({
   onBack,
   currentUser,
@@ -497,8 +705,13 @@ export function CanTuDongPanel({
   };
   hideLocalFilters?: boolean;
 }) {
-  const [records, setRecords] = useState<CanTuDongRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialFrom = initialFilters?.dateFrom?.trim() || localIsoDateToday();
+  const initialTo = initialFilters?.dateTo?.trim() || localIsoDateToday();
+  const initialRangeKey = canTuDongRangeKey(initialFrom, initialTo);
+  const [records, setRecords] = useState<CanTuDongRecord[]>(
+    () => canTuDongRecordsCache.get(initialRangeKey)?.records ?? []
+  );
+  const [loading, setLoading] = useState(() => !canTuDongRecordsCache.has(initialRangeKey));
   const [movingDaNang, setMovingDaNang] = useState(false);
   const moveMtToDaNang = async () => {
     if (movingDaNang || !window.confirm('Chuyển TOÀN BỘ mã hàng bắt đầu MT (mọi ngày, không theo bộ lọc) sang Bảng cân Đà Nẵng và xóa khỏi bảng cân hiện tại?')) return;
@@ -542,10 +755,8 @@ export function CanTuDongPanel({
   /** Ô tìm — lọc chứa chuỗi trong Mã SP / QR / tên SP. */
   const [maSpQuery, setMaSpQuery] = useState(() => initialFilters?.search?.trim() || '');
   /** Lọc cột Ngày (SOURCE_DATE / work_date) — mặc định hôm nay để không tải cả bảng. */
-  const [fromDate, setFromDate] = useState(
-    () => initialFilters?.dateFrom?.trim() || localIsoDateToday()
-  );
-  const [toDate, setToDate] = useState(() => initialFilters?.dateTo?.trim() || localIsoDateToday());
+  const [fromDate, setFromDate] = useState(() => initialFrom);
+  const [toDate, setToDate] = useState(() => initialTo);
   /** Lọc cột Ca (`all` = tất cả). */
   const [caFilter, setCaFilter] = useState(() => {
     const shift = initialFilters?.shift?.trim() || '';
@@ -564,28 +775,40 @@ export function CanTuDongPanel({
   const [editingRecord, setEditingRecord] = useState<CanTuDongRecord | null>(null);
   const [editForm, setEditForm] = useState({ qr_code: '', ca: '', tare_weight: '', weight: '', unit: 'kg', device_id: '', status: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
-  const [productUnitByCode, setProductUnitByCode] = useState<Map<string, string>>(() => new Map());
+  const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(
+    () => canTuDongCatalogCache?.nameMap ?? new Map()
+  );
+  const [productUnitByCode, setProductUnitByCode] = useState<Map<string, string>>(
+    () => canTuDongCatalogCache?.unitMap ?? new Map()
+  );
   const [productStandardWeightByCode, setProductStandardWeightByCode] = useState<Map<string, number>>(
-    () => new Map()
+    () => canTuDongCatalogCache?.weightMap ?? new Map()
   );
   const [productCoreWeightByCode, setProductCoreWeightByCode] = useState<Map<string, number>>(
-    () => new Map()
+    () => canTuDongCatalogCache?.coreMap ?? new Map()
   );
   const [productPlasticWeightByCode, setProductPlasticWeightByCode] = useState<Map<string, number>>(
-    () => new Map()
+    () => canTuDongCatalogCache?.plasticMap ?? new Map()
   );
   const [productFilmWeightByCode, setProductFilmWeightByCode] = useState<Map<string, number>>(
-    () => new Map()
+    () => canTuDongCatalogCache?.filmMap ?? new Map()
   );
   /** `MA_LENH|MA_SP` → so_luong dòng trên lệnh SX. */
-  const [lsxQtyByLenhAndSp, setLsxQtyByLenhAndSp] = useState<Map<string, number>>(() => new Map());
+  const [lsxQtyByLenhAndSp, setLsxQtyByLenhAndSp] = useState<Map<string, number>>(
+    () => canTuDongLsxCache?.map ?? new Map()
+  );
   /** Mã SP gốc trong danh mục (hiển thị combobox đồng bộ). */
-  const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>([]);
+  const [productCatalogCodes, setProductCatalogCodes] = useState<string[]>(
+    () => canTuDongCatalogCache?.catalogCodes ?? []
+  );
   /** Mã máy (danh mục) → tên máy — dùng khớp bộ lọc Máy từ hub (chọn theo mã máy). */
-  const [machineNameByCode, setMachineNameByCode] = useState<Map<string, string>>(() => new Map());
+  const [machineNameByCode, setMachineNameByCode] = useState<Map<string, string>>(
+    () => canTuDongMachinesCache?.byCode ?? new Map()
+  );
   /** Tên máy chuẩn hoá → mã máy — khớp tên máy trong dữ liệu cân với mã máy. */
-  const [machineCodeByName, setMachineCodeByName] = useState<Map<string, string>>(() => new Map());
+  const [machineCodeByName, setMachineCodeByName] = useState<Map<string, string>>(
+    () => canTuDongMachinesCache?.byName ?? new Map()
+  );
   const [printData, setPrintData] = useState<CanTuDongPrintData | null>(null);
   const [pendingPrint, setPendingPrint] = useState(false);
   const [showNhapKhoModal, setShowNhapKhoModal] = useState(false);
@@ -605,8 +828,29 @@ export function CanTuDongPanel({
   const [nhapKhoMaSp, setNhapKhoMaSp] = useState('');
   const [loadingNhapKhoKho, setLoadingNhapKhoKho] = useState(false);
 
+  // Đồng bộ bộ lọc chung từ Hub mà không cần unmount/remount toàn bộ panel
+  useEffect(() => {
+    if (!initialFilters) return;
+    const nextFrom = initialFilters.dateFrom?.trim() || localIsoDateToday();
+    const nextTo = initialFilters.dateTo?.trim() || localIsoDateToday();
+    const nextShift = initialFilters.shift?.trim() || '';
+    const nextMachine = initialFilters.machineCode?.trim() || '';
+    const nextSearch = initialFilters.search?.trim() || '';
+    setFromDate(prev => (prev === nextFrom ? prev : nextFrom));
+    setToDate(prev => (prev === nextTo ? prev : nextTo));
+    setCaFilter(!nextShift || nextShift === 'all' ? 'all' : nextShift);
+    setMayFilter(!nextMachine || nextMachine === 'all' ? 'all' : nextMachine);
+    setMaSpQuery(nextSearch);
+  }, [
+    initialFilters?.dateFrom,
+    initialFilters?.dateTo,
+    initialFilters?.shift,
+    initialFilters?.machineCode,
+    initialFilters?.search
+  ]);
+
   const loadSeqRef = useRef(0);
-  const loadRecords = async (range?: { from?: string; to?: string }) => {
+  const loadRecords = async (range?: { from?: string; to?: string; preferCache?: boolean }) => {
     const seq = ++loadSeqRef.current;
     let from = String(range?.from ?? fromDate).trim();
     let to = String(range?.to ?? toDate).trim();
@@ -614,28 +858,33 @@ export function CanTuDongPanel({
       from = localIsoDateToday();
       to = from;
     }
-    setLoading(true);
-    setError('');
-    try {
-      // dateBy=ngay: chỉ lấy cột Ngày trong khoảng, không kéo cả bảng. images=0: không ký từng ảnh.
-      const params = new URLSearchParams({ all: '1', images: '0', dateBy: 'ngay' });
-      if (from) params.set('from', from);
-      if (to) params.set('to', to);
-      const res = await fetch(`/api/can-tu-dong?${params.toString()}`);
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(readApiErrorMessage(res, errorData, 'Không tải được cân tự động.'));
+    const key = canTuDongRangeKey(from, to);
+    const cached = range?.preferCache ? canTuDongRecordsCache.get(key) : undefined;
+    if (cached) {
+      setRecords(cached.records);
+      setSelectedIds(new Set());
+      setLoading(false);
+      setError('');
+      if (Date.now() - cached.ts < CAN_TU_DONG_CACHE_TTL_MS) {
+        return;
       }
-      const payload = await res.json();
+    } else {
+      setLoading(true);
+      setError('');
+    }
+    try {
+      const list = await fetchCanTuDongRecordsCached(from, to, !range?.preferCache);
       if (seq !== loadSeqRef.current) return;
-      setRecords(Array.isArray(payload?.records) ? payload.records : []);
+      setRecords(list);
       setSelectedIds(new Set());
     } catch (err: any) {
       if (seq !== loadSeqRef.current) return;
       const message = err?.message || 'Không tải được cân tự động.';
-      setError(message);
-      setRecords([]);
-      setSelectedIds(new Set());
+      if (!cached) {
+        setError(message);
+        setRecords([]);
+        setSelectedIds(new Set());
+      }
       showAppToast(message, 'error');
     } finally {
       if (seq === loadSeqRef.current) setLoading(false);
@@ -643,66 +892,34 @@ export function CanTuDongPanel({
   };
 
   useEffect(() => {
-    void loadRecords({ from: fromDate, to: toDate });
+    void loadRecords({ from: fromDate, to: toDate, preferCache: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tải lại khi đổi khoảng Ngày
   }, [fromDate, toDate]);
 
-  const applyProductCatalog = (products: ReturnType<typeof normalizeProducts>) => {
-    const nameMap = new Map<string, string>();
-    const unitMap = new Map<string, string>();
-    const weightMap = new Map<string, number>();
-    const coreMap = new Map<string, number>();
-    const plasticMap = new Map<string, number>();
-    const catalogCodes = new Set<string>();
-    for (const product of products) {
-      const standard = Number(String(product.totalWeight ?? '').replace(',', '.'));
-      const core = Number(String(product.coreWeight ?? '').replace(',', '.'));
-      const plastic = Number(String(product.plasticWeight ?? '').replace(',', '.'));
-      for (const c of [product.code, product.newCode, product.amisCode]) {
-        const raw = String(c ?? '').trim();
-        if (raw) catalogCodes.add(raw);
-        const key = normalizeProductCodeKey(c);
-        if (!key) continue;
-        if (product.name) nameMap.set(key, product.name);
-        const unit = String(product.unit ?? '').trim();
-        if (unit && unit !== '-') unitMap.set(key, unit);
-        if (Number.isFinite(standard) && standard > 0) weightMap.set(key, standard);
-        if (Number.isFinite(core) && core > 0) coreMap.set(key, core);
-        if (Number.isFinite(plastic) && plastic > 0) plasticMap.set(key, plastic);
-      }
-    }
-    const filmMap = buildCanTuDongFilmKgByProductCode(products);
-    setProductNameByCode(nameMap);
-    setProductUnitByCode(unitMap);
-    setProductStandardWeightByCode(weightMap);
-    setProductCoreWeightByCode(coreMap);
-    setProductPlasticWeightByCode(plasticMap);
-    setProductFilmWeightByCode(filmMap);
-    setProductCatalogCodes(
-      [...catalogCodes].sort((a, b) => a.localeCompare(b, 'vi', { sensitivity: 'base' }))
-    );
-    return { nameMap, weightMap, coreMap, plasticMap, filmMap };
+  const applyCatalogState = (built: CanTuDongCatalogCacheValue) => {
+    setProductNameByCode(built.nameMap);
+    setProductUnitByCode(built.unitMap);
+    setProductStandardWeightByCode(built.weightMap);
+    setProductCoreWeightByCode(built.coreMap);
+    setProductPlasticWeightByCode(built.plasticMap);
+    setProductFilmWeightByCode(built.filmMap);
+    setProductCatalogCodes(built.catalogCodes);
+    return built;
   };
 
   const loadProductCatalog = async () => {
-    const res = await fetch('/api/san-pham?format=table');
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(readApiErrorMessage(res, data, 'Không thể tải danh mục sản phẩm.'));
-    }
-    return applyProductCatalog(normalizeProducts(data));
+    const built = await fetchCanTuDongCatalogCached(true);
+    return applyCatalogState(built);
   };
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/san-pham?format=table');
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        if (!cancelled) applyProductCatalog(normalizeProducts(data));
-      } catch {
-        if (!cancelled) {
+    void fetchCanTuDongCatalogCached(false)
+      .then(built => {
+        if (!cancelled) applyCatalogState(built);
+      })
+      .catch(() => {
+        if (!cancelled && !canTuDongCatalogCache) {
           setProductNameByCode(new Map());
           setProductUnitByCode(new Map());
           setProductStandardWeightByCode(new Map());
@@ -711,8 +928,7 @@ export function CanTuDongPanel({
           setProductFilmWeightByCode(new Map());
           setProductCatalogCodes([]);
         }
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -720,36 +936,16 @@ export function CanTuDongPanel({
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/danh-sach-may');
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        const rows = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.machines)
-            ? data.machines
-            : Array.isArray(data?.records)
-              ? data.records
-              : [];
-        const byCode = new Map<string, string>();
-        const byName = new Map<string, string>();
-        for (const row of rows) {
-          const code = String(row?.ma_may ?? row?.code ?? row?.ma ?? '').trim();
-          const name = String(row?.ten_may ?? row?.name ?? row?.ten ?? '').trim();
-          if (!code) continue;
-          if (name) byCode.set(code, name);
-          const nameKey = normalizeMachineToken(name);
-          if (nameKey && !byName.has(nameKey)) byName.set(nameKey, code);
-        }
+    void fetchCanTuDongMachinesCached(false)
+      .then(built => {
         if (!cancelled) {
-          setMachineNameByCode(byCode);
-          setMachineCodeByName(byName);
+          setMachineNameByCode(built.byCode);
+          setMachineCodeByName(built.byName);
         }
-      } catch {
+      })
+      .catch(() => {
         // Không chặn màn hình nếu danh mục máy lỗi.
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -757,17 +953,13 @@ export function CanTuDongPanel({
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/lenh-sx');
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        const orders = Array.isArray(data?.productionOrders) ? data.productionOrders : [];
-        if (!cancelled) setLsxQtyByLenhAndSp(buildLsxQtyByLenhAndSp(orders));
-      } catch {
-        if (!cancelled) setLsxQtyByLenhAndSp(new Map());
-      }
-    })();
+    void fetchCanTuDongLsxCached(false)
+      .then(map => {
+        if (!cancelled) setLsxQtyByLenhAndSp(map);
+      })
+      .catch(() => {
+        if (!cancelled && !canTuDongLsxCache) setLsxQtyByLenhAndSp(new Map());
+      });
     return () => {
       cancelled = true;
     };

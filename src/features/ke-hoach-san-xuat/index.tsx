@@ -146,6 +146,8 @@ export interface ProductionOrderRow {
   position: string;
   priority: number;
   daIn?: boolean;
+  /** Tổng khối lượng định mức (kg) tính sẵn từ lenh_sx_dong. */
+  normWeightKg?: number | null;
 }
 
 export function resolveProductionOrderMachine(row: ProductionOrderRow, machines: MachineRow[] = []): string {
@@ -4200,6 +4202,27 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
 
       const products = parseOrderProductsFromRecord(record);
       const summary = summarizeOrderProducts(products);
+      let dongNormWeightKg = 0;
+      let hasDongNormWeight = false;
+      if (Array.isArray(record.lenh_sx_dong)) {
+        for (const dongItem of record.lenh_sx_dong) {
+          if (!dongItem || typeof dongItem !== 'object') continue;
+          const dong = dongItem as Record<string, unknown>;
+          const tongKg = Number(dong.tong_kg);
+          const dinhMucKg = Number(dong.dinh_muc_kg);
+          const soLuong = Number(dong.so_luong);
+          const lineKg =
+            Number.isFinite(tongKg) && tongKg > 0
+              ? tongKg
+              : Number.isFinite(dinhMucKg) && dinhMucKg > 0 && Number.isFinite(soLuong) && soLuong > 0
+                ? dinhMucKg * soLuong
+                : 0;
+          if (lineKg > 0) {
+            dongNormWeightKg += lineKg;
+            hasDongNormWeight = true;
+          }
+        }
+      }
 
       return {
         id: String(record.id ?? '').trim() || code || name || summary.productCode,
@@ -4229,7 +4252,8 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
         note: pickText(record, ['ghi_chu', 'note', 'mo_ta'], ''),
         position: pickText(record, ['vi_tri', 'position'], '-'),
         priority: Number(record.thu_tu_uu_tien ?? record.priority ?? 0) || 0,
-        daIn: record.da_in === true
+        daIn: record.da_in === true,
+        normWeightKg: hasDongNormWeight ? Math.round(dongNormWeightKg * 10000) / 10000 : null
       };
     })
     .filter((row): row is ProductionOrderRow => Boolean(row));

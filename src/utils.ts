@@ -78,11 +78,19 @@ export function computeReportMetrics(report: Omit<ProductionReport, 'id' | 'crea
   };
 }
 
+const viNumberFormatters = new Map<number, Intl.NumberFormat>();
+
 export function formatNumber(val: number, fractionDigits: number = 1): string {
-  return new Intl.NumberFormat('vi-VN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: fractionDigits
-  }).format(val);
+  const digits = Math.max(0, Math.min(20, Math.trunc(Number(fractionDigits) || 0)));
+  let formatter = viNumberFormatters.get(digits);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('vi-VN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: digits
+    });
+    viNumberFormatters.set(digits, formatter);
+  }
+  return formatter.format(val);
 }
 
 /** Tiền VND: luôn dùng dấu chấm phân cách hàng nghìn (VD: 1.250.000) */

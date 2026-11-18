@@ -902,34 +902,48 @@ function resolveCanTuDongCaFromCapturedAt(
   return null;
 }
 
+let canTuDongShiftWindowsCache: { windows: CanTuDongShiftWindow[]; expiresAt: number } | null = null;
+let canTuDongShiftWindowsPromise: Promise<CanTuDongShiftWindow[]> | null = null;
+
 async function loadCanTuDongShiftWindows(): Promise<CanTuDongShiftWindow[]> {
   if (!supabase) return [];
-  try {
-    const { data, error } = await supabase.from(SUPABASE_SETTINGS_TABLE).select('*');
-    if (error || !Array.isArray(data)) return [];
-    const windows: CanTuDongShiftWindow[] = [];
-    for (const item of data) {
-      if (!item || typeof item !== 'object') continue;
-      const record = item as Record<string, unknown>;
-      const loai = String(record.loai_cai_dat ?? record.loai ?? '').trim();
-      if (loai && loai !== 'Thời gian') continue;
-      const name = String(record.ten_cai_dat ?? record.hang_muc ?? record.ma_cai_dat ?? record.ma ?? '')
-        .trim();
-      const startRaw = record.gio_bat_dau ?? record.thoi_gian_bat_dau ?? record.start_time ?? record.gio_bd;
-      const endRaw = record.gio_ket_thuc ?? record.thoi_gian_ket_thuc ?? record.end_time ?? record.gio_kt;
-      const startMatch = String(startRaw ?? '').match(/(\d{1,2}):(\d{2})/);
-      const endMatch = String(endRaw ?? '').match(/(\d{1,2}):(\d{2})/);
-      if (!name || !startMatch || !endMatch) continue;
-      windows.push({
-        name,
-        startTime: `${String(startMatch[1]).padStart(2, '0')}:${startMatch[2]}`,
-        endTime: `${String(endMatch[1]).padStart(2, '0')}:${endMatch[2]}`
-      });
-    }
-    return windows;
-  } catch {
-    return [];
+  const now = Date.now();
+  if (canTuDongShiftWindowsCache && canTuDongShiftWindowsCache.expiresAt > now) {
+    return canTuDongShiftWindowsCache.windows;
   }
+  if (canTuDongShiftWindowsPromise) return canTuDongShiftWindowsPromise;
+  canTuDongShiftWindowsPromise = (async () => {
+    try {
+      const { data, error } = await supabase.from(SUPABASE_SETTINGS_TABLE).select('*');
+      if (error || !Array.isArray(data)) return [];
+      const windows: CanTuDongShiftWindow[] = [];
+      for (const item of data) {
+        if (!item || typeof item !== 'object') continue;
+        const record = item as Record<string, unknown>;
+        const loai = String(record.loai_cai_dat ?? record.loai ?? '').trim();
+        if (loai && loai !== 'Thời gian') continue;
+        const name = String(record.ten_cai_dat ?? record.hang_muc ?? record.ma_cai_dat ?? record.ma ?? '')
+          .trim();
+        const startRaw = record.gio_bat_dau ?? record.thoi_gian_bat_dau ?? record.start_time ?? record.gio_bd;
+        const endRaw = record.gio_ket_thuc ?? record.thoi_gian_ket_thuc ?? record.end_time ?? record.gio_kt;
+        const startMatch = String(startRaw ?? '').match(/(\d{1,2}):(\d{2})/);
+        const endMatch = String(endRaw ?? '').match(/(\d{1,2}):(\d{2})/);
+        if (!name || !startMatch || !endMatch) continue;
+        windows.push({
+          name,
+          startTime: `${String(startMatch[1]).padStart(2, '0')}:${startMatch[2]}`,
+          endTime: `${String(endMatch[1]).padStart(2, '0')}:${endMatch[2]}`
+        });
+      }
+      canTuDongShiftWindowsCache = { windows, expiresAt: Date.now() + 60_000 };
+      return windows;
+    } catch {
+      return [];
+    } finally {
+      canTuDongShiftWindowsPromise = null;
+    }
+  })();
+  return canTuDongShiftWindowsPromise;
 }
 
 function resolveCanTuDongCa(
@@ -3536,9 +3550,11 @@ async function runOnSupabaseTableWithFallback<T>(
     return { data: null, error: { message: 'Supabase chưa được cấu hình.' }, dbLabel: null };
   }
 
+  const cached = supabaseTableClientCache.get(table);
+  const orderedRefs = cached ? [cached, ...refs.filter(r => r.label !== cached.label)] : refs;
   let lastMissing: { code?: string; message?: string } | null = null;
 
-  for (const ref of refs) {
+  for (const ref of orderedRefs) {
     const { data, error } = await run(ref.client);
     if (!error) {
       supabaseTableClientCache.set(table, ref);
@@ -16238,22 +16254,18 @@ export function createApp() {
     );
 
     try {
-      // PostgREST mặc định max_rows ≈ 1000 — phải .range() theo trang để lấy đủ bảng.
+      // PostgREST mặc định max_rows ≈ 1000 — lấy trang 0 kèm count rồi tải song song các trang còn lại.
       const PAGE_SIZE = 1000;
       const rows: Record<string, unknown>[] = [];
-      const capturedFrom = from ? (filterByNgay ? shiftCanTuDongIsoDateByDays(from, -3) : from) : '';
-      const capturedTo = to ? (filterByNgay ? shiftCanTuDongIsoDateByDays(to, 3) : to) : '';
+      const capturedFrom = from ? (filterByNgay ? shiftCanTuDongIsoDateByDays(from, -2) : from) : '';
+      const capturedTo = to ? (filterByNgay ? shiftCanTuDongIsoDateByDays(to, 2) : to) : '';
+      const isIsoFrom = /^\d{4}-\d{2}-\d{2}$/.test(from);
+      const isIsoTo = /^\d{4}-\d{2}-\d{2}$/.test(to);
 
-      for (let pageFrom = 0; ; pageFrom += PAGE_SIZE) {
-        if (!fetchAll && rows.length >= limit) break;
-        const pageTo = fetchAll
-          ? pageFrom + PAGE_SIZE - 1
-          : Math.min(pageFrom + PAGE_SIZE, limit) - 1;
-        if (pageTo < pageFrom) break;
-
+      const buildPageQuery = (pageFrom: number, pageTo: number, withCount = false) => {
         let query = db
           .from(SUPABASE_CAN_TU_DONG_TABLE)
-          .select('*')
+          .select('*', withCount ? { count: 'exact' } : undefined)
           .order('captured_at', { ascending: false, nullsFirst: false })
           .order('id', { ascending: false })
           .range(pageFrom, pageTo);
@@ -16263,17 +16275,86 @@ export function createApp() {
         if (qrCode) query = query.eq('qr_code', qrCode);
         if (capturedFrom) query = query.gte('captured_at', `${capturedFrom}T00:00:00+07:00`);
         if (capturedTo) query = query.lte('captured_at', `${capturedTo}T23:59:59.999+07:00`);
-
-        const { data, error } = await query;
-        if (error) {
-          return res.status(500).json({
-            error: error.message || 'Không đọc được bảng can_tu_dong.',
-            db: dbLabel
-          });
+        if (filterByNgay && (isIsoFrom || isIsoTo)) {
+          if (isIsoFrom && isIsoTo && from === to) {
+            query = query.or(
+              `metadata->>work_date.eq.${from},metadata->>SOURCE_DATE.eq.${from},metadata->>work_date.is.null`
+            );
+          } else if (isIsoFrom && isIsoTo) {
+            query = query.or(
+              `and(metadata->>work_date.gte.${from},metadata->>work_date.lte.${to}),metadata->>work_date.is.null`
+            );
+          } else if (isIsoFrom) {
+            query = query.or(`metadata->>work_date.gte.${from},metadata->>work_date.is.null`);
+          } else if (isIsoTo) {
+            query = query.or(`metadata->>work_date.lte.${to},metadata->>work_date.is.null`);
+          }
         }
-        const page = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
-        rows.push(...page);
-        if (page.length < PAGE_SIZE) break;
+        return query;
+      };
+
+      const shiftWindowsPromise = loadCanTuDongShiftWindows();
+      const firstPageTo = fetchAll ? PAGE_SIZE - 1 : Math.min(PAGE_SIZE, limit) - 1;
+      const firstResult = await buildPageQuery(0, firstPageTo, true);
+      if (firstResult.error) {
+        return res.status(500).json({
+          error: firstResult.error.message || 'Không đọc được bảng can_tu_dong.',
+          db: dbLabel
+        });
+      }
+      const firstPage = Array.isArray(firstResult.data) ? (firstResult.data as Record<string, unknown>[]) : [];
+      rows.push(...firstPage);
+
+      const totalCount =
+        typeof firstResult.count === 'number' && Number.isFinite(firstResult.count)
+          ? firstResult.count
+          : null;
+      const targetMax = fetchAll
+        ? totalCount ?? Number.POSITIVE_INFINITY
+        : totalCount != null
+          ? Math.min(limit, totalCount)
+          : limit;
+
+      if (firstPage.length === PAGE_SIZE && rows.length < targetMax) {
+        if (Number.isFinite(targetMax) && targetMax <= PAGE_SIZE * 12) {
+          const pageRanges: Array<[number, number]> = [];
+          for (let pageFrom = PAGE_SIZE; pageFrom < targetMax; pageFrom += PAGE_SIZE) {
+            const pageTo = Math.min(pageFrom + PAGE_SIZE, targetMax) - 1;
+            if (pageTo >= pageFrom) pageRanges.push([pageFrom, pageTo]);
+          }
+          const moreResults = await Promise.all(
+            pageRanges.map(([pFrom, pTo]) => buildPageQuery(pFrom, pTo, false))
+          );
+          for (const resPage of moreResults) {
+            if (resPage.error) {
+              return res.status(500).json({
+                error: resPage.error.message || 'Không đọc được bảng can_tu_dong.',
+                db: dbLabel
+              });
+            }
+            if (Array.isArray(resPage.data)) {
+              rows.push(...(resPage.data as Record<string, unknown>[]));
+            }
+          }
+        } else {
+          for (let pageFrom = PAGE_SIZE; ; pageFrom += PAGE_SIZE) {
+            if (!fetchAll && rows.length >= limit) break;
+            const pageTo = fetchAll
+              ? pageFrom + PAGE_SIZE - 1
+              : Math.min(pageFrom + PAGE_SIZE, limit) - 1;
+            if (pageTo < pageFrom) break;
+            const { data, error } = await buildPageQuery(pageFrom, pageTo, false);
+            if (error) {
+              return res.status(500).json({
+                error: error.message || 'Không đọc được bảng can_tu_dong.',
+                db: dbLabel
+              });
+            }
+            const page = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+            rows.push(...page);
+            if (page.length < PAGE_SIZE) break;
+          }
+        }
       }
 
       const matchedRows =
@@ -16286,7 +16367,7 @@ export function createApp() {
               return true;
             })
           : rows;
-      const shiftWindows = await loadCanTuDongShiftWindows();
+      const shiftWindows = await shiftWindowsPromise;
       const mapRecord = async (row: unknown) => {
         const record = row as Record<string, unknown>;
         let productUrl = String(record.product_image_url ?? '').trim();

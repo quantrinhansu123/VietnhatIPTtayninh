@@ -32,7 +32,10 @@ const ShiftHandoverListView = lazy(() => import('../../components/ShiftHandoverL
 const ControlBoardPanel = lazy(() => import('../control-board').then(m => ({ default: m.ControlBoardPanel })));
 const MaterialConversionPanel = lazy(() => import('../quy-doi-vat-lieu'));
 
-export type ReportListsHubTabId = (typeof REPORT_LIST_MENU_ITEMS)[number]['tab'] | 'dashboard-auto' | 'material-conversion';
+export type ReportListsHubTabId =
+  | (typeof REPORT_LIST_MENU_ITEMS)[number]['tab']
+  | 'dashboard-auto'
+  | 'material-conversion';
 type HubMenuItem = Omit<MenuCardConfig, 'tab'> & { tab: ReportListsHubTabId };
 
 function shortTabLabel(item: HubMenuItem) {
@@ -97,24 +100,27 @@ export function ReportListsHub({
   onCreateAcceptanceReport,
   initialHubTab
 }: Props) {
-  const hubItems = useMemo<HubMenuItem[]>(
-    () => {
-      const base: HubMenuItem[] = [...(menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS), {
-        title: 'Cắt Lõi', desc: 'Cắt lõi / quy đổi theo Ngày · Ca · Máy, vật tư gốc và vật tư đích.', icon: ArrowLeftRight, tab: 'material-conversion'
-      }];
-      if (base.some(item => item.tab === 'dashboard-auto')) return base;
-      return [
-        ...base,
-        {
-          title: 'Báo cáo theo LSX',
-          desc: 'Báo cáo tổng hợp máy BB, tính toán và in báo cáo theo từng lệnh sản xuất.',
-          icon: Activity,
-          tab: 'dashboard-auto'
-        } as MenuCardConfig
-      ];
-    },
-    [menuItems]
-  );
+  const hubItems = useMemo<HubMenuItem[]>(() => {
+    const base: HubMenuItem[] = [
+      ...(menuItems.length > 0 ? menuItems : REPORT_LIST_MENU_ITEMS),
+      {
+        title: 'Cắt Lõi',
+        desc: 'Cắt lõi / quy đổi theo Ngày · Ca · Máy, vật tư gốc và vật tư đích.',
+        icon: ArrowLeftRight,
+        tab: 'material-conversion'
+      }
+    ];
+    if (base.some(item => item.tab === 'dashboard-auto')) return base;
+    return [
+      ...base,
+      {
+        title: 'Báo cáo theo LSX',
+        desc: 'Báo cáo tổng hợp máy BB, tính toán và in báo cáo theo từng lệnh sản xuất.',
+        icon: Activity,
+        tab: 'dashboard-auto'
+      } as MenuCardConfig
+    ];
+  }, [menuItems]);
 
   const [activeHubTab, setActiveHubTab] = useState<ReportListsHubTabId>(() => {
     if (initialHubTab && hubItems.some(item => item.tab === initialHubTab)) {
@@ -205,6 +211,33 @@ export function ReportListsHub({
     appliedFilters.machineCode,
     appliedFilters.search.trim().toLowerCase()
   ].join('|');
+
+  // Khi đổi bộ lọc chung, chỉ giữ tab đang xem (và tab cân đã mở) để các tab ẩn không đồng loạt remount gây nghẽn mạng.
+  useEffect(() => {
+    setMountedTabs(prev => {
+      const next = new Set<ReportListsHubTabId>([activeHubTab]);
+      if (prev.has('can-tu-dong')) next.add('can-tu-dong');
+      if (prev.has('material-conversion')) next.add('material-conversion');
+      if (next.size === prev.size && [...next].every(item => prev.has(item))) return prev;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ thu gọn tab ẩn khi filtersKey đổi
+  }, [filtersKey]);
+
+  // Tải trước dữ liệu Cân tự động theo khoảng ngày đang lọc để bấm sang tab 5 Cân hiển thị tức thì.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void import('../can-tu-dong')
+        .then(m =>
+          m.prefetchCanTuDongData({
+            from: appliedFilters.dateFrom || undefined,
+            to: appliedFilters.dateTo || undefined
+          })
+        )
+        .catch(() => {});
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [appliedFilters.dateFrom, appliedFilters.dateTo]);
 
   return (
     <div className="space-y-3">
@@ -329,7 +362,6 @@ export function ReportListsHub({
 
           <KeepAliveSlot tabId="can-tu-dong" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <CanTuDongPanel
-              key={filtersKey}
               hideLocalFilters
               initialFilters={sharedInitialFilters}
               onBack={onBack}

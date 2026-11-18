@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
-import { formatMoney, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
+import { formatMoney, formatNumber, formatPercent, parseMoneyInput, parsePercentInput, sanitizeMoneyInput } from '../../utils';
 import { parseDateToIso } from '../../utils/dateFormat';
 import { productionOrderMachineMatches } from './machineFilter';
 import { BackButton } from '../../components/layout/NavButtons';
@@ -38,6 +38,7 @@ import {
   ProductionOrderViewModal,
   getProductionOrderProductLines,
   parseProductionOrderQuantity,
+  resolveProductUnitNormKg,
   resolveProductionOrderMachineLabel,
   useProductionOrderPrint,
   type PrintableProductionOrder,
@@ -116,6 +117,80 @@ function productionOrderStaffNames(row: ProductionOrderRow) {
       .map(name => name.trim())
       .filter(Boolean)
   )];
+}
+
+interface ProductionOrderMetrics {
+  totalQuantity: number;
+  unitLabel: string;
+  totalNormKg: number;
+}
+
+function buildProductCatalogCodeMap(products: ProductRow[]) {
+  const map = new Map<string, ProductRow>();
+  for (const product of products) {
+    for (const rawCode of [product.code, product.amisCode, product.newCode]) {
+      const key = normalizeProductCodeKey(rawCode || '');
+      if (key && !map.has(key)) map.set(key, product);
+    }
+  }
+  return map;
+}
+
+function computeProductionOrderMetrics(
+  row: ProductionOrderRow,
+  productByCode: Map<string, ProductRow>
+): ProductionOrderMetrics {
+  const lines = getProductionOrderProductLines(row);
+  if (lines.length === 0) {
+    const qty = Math.max(0, parseProductionOrderQuantity(row.quantity));
+    const unit = row.unit && row.unit !== '-' ? row.unit.trim() : '';
+    const product = productByCode.get(normalizeProductCodeKey(row.productCode));
+    const unitNormKg = resolveProductUnitNormKg(product);
+    const catalogNormKg = unitNormKg !== null && qty > 0 ? unitNormKg * qty : 0;
+    const normKg =
+      catalogNormKg > 0
+        ? catalogNormKg
+        : row.normWeightKg != null && row.normWeightKg > 0
+          ? row.normWeightKg
+          : 0;
+    return {
+      totalQuantity: Math.round(qty * 10000) / 10000,
+      unitLabel: unit,
+      totalNormKg: Math.round(normKg * 10000) / 10000
+    };
+  }
+
+  let totalQuantity = 0;
+  let catalogNormKg = 0;
+  let matchedAllLines = true;
+  const unitMap = new Map<string, string>();
+
+  for (const line of lines) {
+    const qty = Math.max(0, parseProductionOrderQuantity(line.quantity));
+    totalQuantity += qty;
+    const unit = line.unit && line.unit !== '-' ? line.unit.trim() : '';
+    if (unit) {
+      const lower = unit.toLowerCase();
+      if (!unitMap.has(lower)) unitMap.set(lower, unit);
+    }
+    const product = productByCode.get(normalizeProductCodeKey(line.productCode));
+    const unitNormKg = resolveProductUnitNormKg(product);
+    if (unitNormKg !== null && qty > 0) {
+      catalogNormKg += unitNormKg * qty;
+    } else if (qty > 0) {
+      matchedAllLines = false;
+    }
+  }
+
+  const dongNormKg = row.normWeightKg != null && row.normWeightKg > 0 ? row.normWeightKg : 0;
+  const totalNormKg =
+    matchedAllLines && catalogNormKg > 0 ? catalogNormKg : Math.max(catalogNormKg, dongNormKg);
+
+  return {
+    totalQuantity: Math.round(totalQuantity * 10000) / 10000,
+    unitLabel: unitMap.size === 1 ? [...unitMap.values()][0] : '',
+    totalNormKg: Math.round(totalNormKg * 10000) / 10000
+  };
 }
 
 /** Tải danh sách lệnh SX + bù cột Khách hàng từ đơn hàng (dùng chung cho panel & trang chi tiết). */
@@ -633,6 +708,13 @@ export function ProductionOrdersPanel({
       .catch(error => {
         if (!cancelled) setLoadError(error.message);
       });
+    void fetch('/api/san-pham?format=table')
+      .then(async response => {
+        if (!response.ok) return;
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled) setCatalogProducts(normalizeProducts(data));
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -841,6 +923,39 @@ export function ProductionOrdersPanel({
   ]);
 
   const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
+  const productByCode = useMemo(() => buildProductCatalogCodeMap(catalogProducts), [catalogProducts]);
+  const metricsById = useMemo(() => {
+    const map = new Map<string, ProductionOrderMetrics>();
+    for (const row of filteredRows) {
+      map.set(row.id, computeProductionOrderMetrics(row, productByCode));
+    }
+    return map;
+  }, [filteredRows, productByCode]);
+  const summaryTotals = useMemo(() => {
+    let totalQuantity = 0;
+    let totalNormKg = 0;
+    const unitMap = new Map<string, string>();
+    let hasMixedRowUnits = false;
+    for (const row of filteredRows) {
+      const m = metricsById.get(row.id);
+      if (!m) continue;
+      totalQuantity += m.totalQuantity;
+      totalNormKg += m.totalNormKg;
+      if (m.totalQuantity > 0) {
+        if (m.unitLabel) {
+          const lower = m.unitLabel.toLowerCase();
+          if (!unitMap.has(lower)) unitMap.set(lower, m.unitLabel);
+        } else {
+          hasMixedRowUnits = true;
+        }
+      }
+    }
+    return {
+      totalQuantity: Math.round(totalQuantity * 10000) / 10000,
+      totalNormKg: Math.round(totalNormKg * 10000) / 10000,
+      commonUnit: !hasMixedRowUnits && unitMap.size === 1 ? [...unitMap.values()][0] : ''
+    };
+  }, [filteredRows, metricsById]);
   const dateGroups = useMemo(() => {
     const map = new Map<string, ProductionOrderRow[]>();
     filteredRows.forEach(row => {
@@ -1005,14 +1120,24 @@ export function ProductionOrdersPanel({
             </p>
           ) : null}
 
-          <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
+          <div className="mt-5 grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
             {[
-              ['Lệnh SX', filteredRows.length],
-              ['Đang / chờ SX', activeCount]
+              ['Lệnh SX', formatNumber(filteredRows.length, 0)],
+              ['Đang / chờ SX', formatNumber(activeCount, 0)],
+              [
+                'Tổng số lượng',
+                summaryTotals.totalQuantity > 0
+                  ? `${formatNumber(summaryTotals.totalQuantity, 2)}${summaryTotals.commonUnit ? ` ${summaryTotals.commonUnit}` : ''}`
+                  : '0'
+              ],
+              [
+                'Khối lượng ĐM',
+                summaryTotals.totalNormKg > 0 ? `${formatNumber(summaryTotals.totalNormKg, 2)} kg` : '0 kg'
+              ]
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                 <span className="block font-bold text-zinc-500">{label}</span>
-                <span className="mt-1 block text-xl font-black text-zinc-950">{value}</span>
+                <span className="mt-1 block font-mono text-xl font-black tabular-nums text-zinc-950">{value}</span>
               </div>
             ))}
           </div>
@@ -1149,7 +1274,7 @@ export function ProductionOrdersPanel({
       {!isLoading && dateGroups.length === 0 ? (
         <TableShell minWidthClassName="min-w-0">
           <TableBody>
-            <TableEmptyRow colSpan={9}>
+            <TableEmptyRow colSpan={11}>
               Bảng lenh_sx chưa có dữ liệu hoặc không có lệnh phù hợp bộ lọc.
             </TableEmptyRow>
           </TableBody>
@@ -1160,15 +1285,44 @@ export function ProductionOrdersPanel({
             const groupIds = group.rows.map(row => row.id);
             const selectedInGroup = groupIds.filter(id => selectedIds.includes(id));
             const allGroupSelected = groupIds.length > 0 && selectedInGroup.length === groupIds.length;
+            let groupQuantity = 0;
+            let groupNormKg = 0;
+            const groupUnits = new Map<string, string>();
+            let groupMixedUnits = false;
+            for (const r of group.rows) {
+              const m = metricsById.get(r.id);
+              if (!m) continue;
+              groupQuantity += m.totalQuantity;
+              groupNormKg += m.totalNormKg;
+              if (m.totalQuantity > 0) {
+                if (m.unitLabel) {
+                  const lower = m.unitLabel.toLowerCase();
+                  if (!groupUnits.has(lower)) groupUnits.set(lower, m.unitLabel);
+                } else {
+                  groupMixedUnits = true;
+                }
+              }
+            }
+            const groupUnitLabel = !groupMixedUnits && groupUnits.size === 1 ? [...groupUnits.values()][0] : '';
             return (
               <div key={group.date} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-              <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
-                <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2 sm:px-4">
+                <div className="flex flex-wrap items-baseline gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Ngày</span>
                   <span className="font-mono text-sm font-black text-zinc-900">{group.date}</span>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-500 ring-1 ring-zinc-200">
                     {group.rows.length} lệnh
                   </span>
+                  {groupQuantity > 0 ? (
+                    <span className="rounded-full bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-zinc-700 ring-1 ring-zinc-200">
+                      Tổng SL: {formatNumber(groupQuantity, 2)}{groupUnitLabel ? ` ${groupUnitLabel}` : ''}
+                    </span>
+                  ) : null}
+                  {groupNormKg > 0 ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-800 ring-1 ring-emerald-200">
+                      KL ĐM: {formatNumber(groupNormKg, 2)} kg
+                    </span>
+                  ) : null}
                   {selectedInGroup.length > 0 ? (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 ring-1 ring-emerald-200">
                       Đã chọn {selectedInGroup.length}
@@ -1179,6 +1333,7 @@ export function ProductionOrdersPanel({
               <div className="space-y-2 p-2 md:hidden">
                 {group.rows.map(row => {
                   const staffNames = productionOrderStaffNames(row);
+                  const rowMetrics = metricsById.get(row.id);
                   return (
                     <article key={row.id} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
                       <div className="flex items-start gap-3">
@@ -1207,6 +1362,22 @@ export function ProductionOrdersPanel({
                           </div>
 
                           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                            <div>
+                              <dt className="font-bold text-zinc-400">Tổng số lượng</dt>
+                              <dd className="mt-0.5 font-mono font-bold text-zinc-900">
+                                {rowMetrics && rowMetrics.totalQuantity > 0
+                                  ? `${formatNumber(rowMetrics.totalQuantity, 2)}${rowMetrics.unitLabel ? ` ${rowMetrics.unitLabel}` : ''}`
+                                  : '-'}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="font-bold text-zinc-400">Khối lượng ĐM</dt>
+                              <dd className="mt-0.5 font-mono font-bold text-emerald-700">
+                                {rowMetrics && rowMetrics.totalNormKg > 0
+                                  ? `${formatNumber(rowMetrics.totalNormKg, 2)} kg`
+                                  : '-'}
+                              </dd>
+                            </div>
                             <div><dt className="font-bold text-zinc-400">Khách hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.customer || '-'}</dd></div>
                             <div><dt className="font-bold text-zinc-400">Đơn hàng</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{row.orderRef || '-'}</dd></div>
                             <div className="col-span-2"><dt className="font-bold text-zinc-400">Nhân sự</dt><dd className="mt-0.5 break-words font-semibold text-zinc-700">{staffNames.length > 0 ? staffNames.join(', ') : '-'}</dd></div>
@@ -1225,11 +1396,12 @@ export function ProductionOrdersPanel({
               </div>
 
               <div className="hover-scrollbar hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[1134px] table-fixed border-collapse text-left text-[11px]">
+                <table className="w-full min-w-[1280px] table-fixed border-collapse text-left text-[11px]">
                   <colgroup>
-                    <col style={{ width: 44 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} />
-                    <col style={{ width: 160 }} /><col style={{ width: 120 }} /><col style={{ width: 150 }} />
-                    <col style={{ width: 120 }} /><col style={{ width: 220 }} /><col style={{ width: 100 }} />
+                    <col style={{ width: 44 }} /><col style={{ width: 115 }} /><col style={{ width: 68 }} />
+                    <col style={{ width: 145 }} /><col style={{ width: 105 }} /><col style={{ width: 115 }} />
+                    <col style={{ width: 120 }} /><col style={{ width: 175 }} /><col style={{ width: 125 }} />
+                    <col style={{ width: 185 }} /><col style={{ width: 88 }} />
                   </colgroup>
                   <TableHead>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-center text-[10px]">
@@ -1250,6 +1422,8 @@ export function ProductionOrdersPanel({
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Ca</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Máy</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Trạng thái</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]" align="right">Tổng số lượng</TableHeadCell>
+                    <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]" align="right">Khối lượng ĐM</TableHeadCell>
                     <TableHeadCell className="min-w-[160px] max-w-[240px] px-2 py-2 text-[10px]">Khách hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Đơn hàng</TableHeadCell>
                     <TableHeadCell className="whitespace-nowrap px-2 py-2 text-[10px]">Nhân sự phụ trách</TableHeadCell>
@@ -1258,6 +1432,7 @@ export function ProductionOrdersPanel({
                   <TableBody>
                     {group.rows.map(row => {
                       const staffNames = productionOrderStaffNames(row);
+                      const rowMetrics = metricsById.get(row.id);
                       return (
                       <React.Fragment key={row.id}>
                       <TableRow>
@@ -1283,6 +1458,16 @@ export function ProductionOrdersPanel({
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top">
                           <StatusBadge label={row.status} color="amber" />
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right align-top font-mono font-bold tabular-nums text-zinc-900">
+                          {rowMetrics && rowMetrics.totalQuantity > 0
+                            ? `${formatNumber(rowMetrics.totalQuantity, 2)}${rowMetrics.unitLabel ? ` ${rowMetrics.unitLabel}` : ''}`
+                            : '-'}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right align-top font-mono font-bold tabular-nums text-emerald-700">
+                          {rowMetrics && rowMetrics.totalNormKg > 0
+                            ? `${formatNumber(rowMetrics.totalNormKg, 2)} kg`
+                            : '-'}
                         </td>
                         <td className="min-w-[160px] max-w-[240px] break-words px-2 py-2 align-top leading-4 text-zinc-700">{row.customer}</td>
                         <td className="min-w-0 break-words px-2 py-2 align-top text-zinc-600 [overflow-wrap:anywhere]">{row.orderRef}</td>

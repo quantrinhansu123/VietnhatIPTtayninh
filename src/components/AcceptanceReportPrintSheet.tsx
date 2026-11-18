@@ -565,7 +565,8 @@ export function AcceptanceReportPrintSheet({
   const performer = String(performedBy || slip.shiftLead || '').trim();
   const dateParts = formatPrintDateParts(slip.ngay);
   const lines = slip.thanhPhamLines;
-  const paddedCount = lines.length;
+  // Bảng I tối thiểu 6 dòng (dòng trống tự sinh) để cao ≥ bảng II; nhiều hơn thì CSS kéo bảng II cao theo.
+  const paddedCount = Math.max(lines.length, 6);
 
   type ComputedRow = {
     key: string;

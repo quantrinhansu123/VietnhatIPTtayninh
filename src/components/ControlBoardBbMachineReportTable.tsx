@@ -1396,8 +1396,14 @@ export default function ControlBoardBbMachineReportTable({
       try {
         const params = new URLSearchParams();
         params.set('all', '1');
-        if (dateFrom) params.set('dateFrom', dateFrom);
-        if (dateTo) params.set('dateTo', dateTo);
+        if (dateFrom) {
+          params.set('tu_ngay', dateFrom);
+          params.set('dateFrom', dateFrom);
+        }
+        if (dateTo) {
+          params.set('den_ngay', dateTo);
+          params.set('dateTo', dateTo);
+        }
         const res = await fetch(`/api/quy-doi-vat-lieu?${params.toString()}`);
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -1582,8 +1588,14 @@ export default function ControlBoardBbMachineReportTable({
       try {
         const qdParams = new URLSearchParams();
         qdParams.set('all', '1');
-        if (scope.dateFrom) qdParams.set('dateFrom', scope.dateFrom);
-        if (scope.dateTo) qdParams.set('dateTo', scope.dateTo);
+        if (scope.dateFrom) {
+          qdParams.set('tu_ngay', scope.dateFrom);
+          qdParams.set('dateFrom', scope.dateFrom);
+        }
+        if (scope.dateTo) {
+          qdParams.set('den_ngay', scope.dateTo);
+          qdParams.set('dateTo', scope.dateTo);
+        }
         const qdRes = await fetch(`/api/quy-doi-vat-lieu?${qdParams.toString()}`);
         const qdData = await qdRes.json().catch(() => ({}));
         if (qdRes.ok && Array.isArray(qdData?.records)) {
@@ -2429,11 +2441,14 @@ export default function ControlBoardBbMachineReportTable({
         materials
       });
     })();
-    // Nhập TP NVL khác: luôn lấy số mới từ Báo cáo sản lượng (kể cả khi đang xem snapshot).
-    const withSanLuongTab = syncBbThucDungRowsOtherFinishedFromSanLuongTab({
-      rows: baseRows,
-      sanLuongGroups
-    });
+    // Nhập TP NVL khác: khi đang xem snapshot (savedReportView) và chưa tải acceptanceReports live,
+    // giữ nguyên klThucTeKg trong thucDungRows của snapshot (đã tính từ trong_luong_bi / trong_luong_loi) để không bị đè bởi ĐM BOM cũ.
+    const withSanLuongTab = savedReportView
+      ? baseRows
+      : syncBbThucDungRowsOtherFinishedFromSanLuongTab({
+          rows: baseRows,
+          sanLuongGroups
+        });
     const withXuatConversion = withSanLuongTab;
     // 3.2 Nhập TP NVL khác = y hệt TL VT không trộn trên Báo cáo sản lượng.
     const withKhongTron = syncBbThucDungRowsKhongTronFromAcceptanceReports({
@@ -6741,7 +6756,15 @@ export default function ControlBoardBbMachineReportTable({
                 >
                   (%)
                 </th>
-                <th colSpan={2} className="w-[90px] text-right">% SL đạt/KH</th>
+                <th
+                  colSpan={2}
+                  className="w-[90px] text-right"
+                  title="Tỉ lệ trọng lượng cân thực tế (AI) / trọng lượng ĐM"
+                >
+                  % TL cân
+                  <br />
+                  TT / ĐM
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -6777,6 +6800,8 @@ export default function ControlBoardBbMachineReportTable({
                   }, 0);
                   const groupTtPerDm =
                     groupDinhMucKg > 0 && groupActualKg > 0 ? groupActualKg / groupDinhMucKg : null;
+                  const groupCanAiPerDm =
+                    groupDinhMucKg > 0 && groupCanAiKg > 0 ? groupCanAiKg / groupDinhMucKg : null;
                   const hachToanNvl = buildBbThanhPhamHachToanNvlSplit(group, sanLuongGroups);
                   return (
                     <React.Fragment key={group.groupKey}>
@@ -6834,9 +6859,11 @@ export default function ControlBoardBbMachineReportTable({
                           {groupTtPerDm != null ? `${formatNumber(groupTtPerDm * 100, 1)}%` : '—'}
                         </td>
                         <td colSpan={2} className="bb-sheet-num w-[90px] font-semibold text-zinc-700">
-                          {group.quantity > 0 && groupActualQty > 0
-                            ? `${formatNumber((groupActualQty / group.quantity) * 100, 1)}%`
-                            : '—'}
+                          {groupCanAiPerDm != null
+                            ? `${formatNumber(groupCanAiPerDm * 100, 2)}%`
+                            : groupTtPerDm != null
+                              ? `${formatNumber(groupTtPerDm * 100, 2)}%`
+                              : '—'}
                         </td>
                       </tr>
                       {expanded ? (
@@ -6865,7 +6892,7 @@ export default function ControlBoardBbMachineReportTable({
                               mức
                             </td>
                             <td className="text-right text-zinc-800">(%)</td>
-                            <td className="text-right">% SL đạt/KH</td>
+                            <td className="text-right">% TL cân TT/ĐM</td>
                             <td className="text-right">% KL nhựa</td>
                           </tr>
                           {group.lines.map(line => {
@@ -6881,6 +6908,10 @@ export default function ControlBoardBbMachineReportTable({
                             const lineTtPerDm =
                               lineDinhMucKg > 0 && lineActualKg > 0
                                 ? lineActualKg / lineDinhMucKg
+                                : null;
+                            const lineCanAiPerDm =
+                              lineDinhMucKg > 0 && lineCanAiKg != null && lineCanAiKg > 0
+                                ? lineCanAiKg / lineDinhMucKg
                                 : null;
                             return (
                             <tr key={line.key} className="bb-row-child">
@@ -6930,10 +6961,10 @@ export default function ControlBoardBbMachineReportTable({
                                   : '—'}
                               </td>
                               <td className="bb-sheet-num text-zinc-700">
-                                {line.planQtyRatioPercent != null
-                                  ? `${formatNumber(line.planQtyRatioPercent, 1)}%`
-                                  : line.quantity > 0 && lineActualQty > 0
-                                    ? `${formatNumber((lineActualQty / line.quantity) * 100, 1)}%`
+                                {lineCanAiPerDm != null
+                                  ? `${formatNumber(lineCanAiPerDm * 100, 2)}%`
+                                  : lineTtPerDm != null
+                                    ? `${formatNumber(lineTtPerDm * 100, 2)}%`
                                     : '—'}
                               </td>
                               <td className="bb-sheet-num text-zinc-600">

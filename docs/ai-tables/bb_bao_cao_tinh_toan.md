@@ -24,6 +24,8 @@ Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_
 
 **3.2 Nhập TP NVL khác:** lấy **y hệt** TL VT không trộn trên Báo cáo sản lượng (`acceptanceKhongTronWeights.ts`): túi = Σ `trong_luong_bi`, ống = Σ `trong_luong_loi` (chia ĐM khi nhiều lõi/túi), băng·tem = ĐM × SL. Tổng cột Nhập TP 3.2 = tổng TL VT không trộn danh sách SL cùng ngày·ca·máy. UI + snapshot cùng `syncBbThucDungRowsKhongTronFromAcceptanceReports`.
 
+**3.2 Cắt lõi dùng trong ca:** khi Tính toán, snapshot gọi `syncBbThucDungRowsCutLoiFromMaterialConversions` từ phiếu `quy_doi_vat_lieu` (ngày·ca·máy): nguồn −KL gốc, đích +KL quy đổi.
+
 ## SQL
 
 `supabase-bb-bao-cao-tinh-toan.sql` — chạy trên Supabase (DB hệ thống).

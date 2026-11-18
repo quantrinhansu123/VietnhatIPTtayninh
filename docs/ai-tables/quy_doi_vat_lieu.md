@@ -15,7 +15,7 @@
 - Khi **Lưu**: tổng TL = SL × TL/cái; snapshot chiều dài/ĐM/ghi chú vào DB.
 - Ngày · Ca · Máy bắt buộc khi lưu — dùng để khớp quy đổi theo bộ lọc hub (Từ ngày / Đến ngày / Ca / Máy). Form hiện gợi ý đỏ nếu thiếu Ca/Máy; nút **Lưu** vẫn bấm được để báo lỗi rõ (không khóa im lặng).
 - GET lọc: `tu_ngay`/`den_ngay` (hoặc `dateFrom`/`dateTo`), `ca`, `ma_may`, `nhom_id`, `search` (mã vật tư / ca / máy). Phân trang 50 dòng. `all=1` trả đủ bản ghi trong khoảng (tối đa 10 000) — dùng khi BB đổ Nhập TP 3.2.
-- **BB mục 3.2:** phiếu cắt lõi khớp **Ngày · Ca · Máy** → cột cắt lõi / khối lượng đích (xem `bbConversionCutLoi.ts`). Sau khi sửa phiếu phải **Tính toán** lại BB.
+- **BB mục 3.2 «Trọng lượng cắt lõi dùng trong ca»:** phiếu cắt lõi khớp **Ngày · Ca · Máy** → mã nguồn = −`khoi_luong_goc`, mã đích = +`khoi_luong_quy_doi` (`bbConversionCutLoi.ts`). Ghi vào snapshot khi **Tính toán** (`bbBaoCaoTinhToan.ts`); UI cũng overlay live từ `/api/quy-doi-vat-lieu`. Sau khi sửa phiếu phải **Tính toán** lại BB.
 - Số lượng phải hữu hạn và > 0; mã đích trong một nhóm không trùng. Form: **Gốc** / **Đích**. **Nguồn lấy:** Tồn đầu ca · Lấy trong kho. **Nguồn tới:** mặc định **Dùng trong ca** · Tồn ngoài · Lấy từ kho.
 - Form thêm mới điền sẵn Ngày · Ca · Máy từ bộ lọc hub khi có.
 - UI dùng quyền thêm/sửa/xóa `report-lists`, cùng cơ chế phân quyền hiện có; API theo mô hình API hiện tại của repo.

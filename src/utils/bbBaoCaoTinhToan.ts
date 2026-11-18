@@ -6,6 +6,7 @@ import type { MaterialRow } from '../features/kho-nvl';
 import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../features/ke-hoach-san-xuat';
 import type { ProductRow } from '../features/san-pham/types';
 import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
+import { syncBbThucDungRowsCutLoiFromMaterialConversions } from './bbConversionCutLoi';
 import { syncBbThucDungRowsKhongTronFromAcceptanceReports } from './bbKhongTronFromAcceptance';
 import {
   filterCanTuDongRecordsForBoard,
@@ -405,11 +406,16 @@ export function buildBbMachineReportSnapshot(input: {
     selectedMachine: input.selectedMachine
   });
   // 3.2 Nhập TP NVL khác = y hệt TL VT không trộn trên Báo cáo sản lượng.
-  const thucDungRows = syncBbThucDungRowsKhongTronFromAcceptanceReports({
+  const thucDungRowsKhongTron = syncBbThucDungRowsKhongTronFromAcceptanceReports({
     rows: thucDungRowsBuilt,
     acceptanceReports: input.acceptanceReports,
     products: input.products,
     materials: input.materials
+  });
+  // 3.2 «Trọng lượng cắt lõi dùng trong ca» = phiếu quy đổi khớp ngày·ca·máy.
+  const thucDungRows = syncBbThucDungRowsCutLoiFromMaterialConversions({
+    rows: thucDungRowsKhongTron,
+    conversions: input.materialConversions || []
   });
   const thucDungGroups = groupBbThucDungLines(thucDungRows);
 

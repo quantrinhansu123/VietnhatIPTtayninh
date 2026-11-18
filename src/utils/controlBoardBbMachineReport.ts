@@ -7045,6 +7045,21 @@ function applyBbSanLuongNvlPhuToLine(
   const quantity = measure.quantity;
   const weightKg = measure.weightKg;
   const unit = resolveBbSanLuongNvlPhuUnit(bomItem?.unit || line.unit);
+  const probe: ProductNplItem = bomItem || {
+    code: line.itemCode,
+    name: line.itemName,
+    unit: line.unit,
+    amountType: 'quantity',
+    quantity: line.dinhMucRate,
+    percent: null,
+    weightKg: null
+  };
+  const isTuiOrOng = isNvlTuiItem(probe) || isNvlOngItem(probe);
+  // Túi / ống: giữ nguyên actualWeightKg cân thực tế từ phiếu sản lượng (trong_luong_bi / trong_luong_loi), không đè lại bằng SL × ĐM.
+  const actualWeightKg =
+    isTuiOrOng && Number.isFinite(line.actualWeightKg) && line.actualWeightKg >= 0
+      ? line.actualWeightKg
+      : weightKg;
   return {
     ...line,
     unit,
@@ -7052,8 +7067,8 @@ function applyBbSanLuongNvlPhuToLine(
     amountType: 'quantity',
     quantity,
     normWeightKg: weightKg,
-    actualWeightKg: weightKg,
-    baseActualWeightKg: weightKg
+    actualWeightKg,
+    baseActualWeightKg: actualWeightKg
   };
 }
 

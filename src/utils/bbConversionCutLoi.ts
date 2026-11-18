@@ -73,6 +73,28 @@ export function syncBbThucDungRowsCutLoiFromMaterialConversions(input: {
   conversions: BbMaterialConversionRecord[];
 }): BbThucDungLineRow[] {
   if (input.rows.length === 0) return input.rows;
+  // Chưa tải phiếu quy đổi: giữ cutLoi đã có trên snapshot, không đè về 0.
+  if (!input.conversions?.length) {
+    return input.rows.map(row => {
+      if (row.inMixingRatioTable || row.isPlasticNvl) return row;
+      const cutLoiKg = Number.isFinite(row.cutLoiKg) ? Number(row.cutLoiKg) : 0;
+      if (cutLoiKg === 0) return row;
+      const finishedKg = Number.isFinite(row.klThucTeKg) ? row.klThucTeKg : 0;
+      const damagedKg = Number.isFinite(row.loiHongKg) ? row.loiHongKg : 0;
+      const baseUsageKg = computeMaterialUsageKg(
+        Number.isFinite(row.xuatTrongCaKg) ? row.xuatTrongCaKg : 0,
+        Number.isFinite(row.tonDauKg) ? row.tonDauKg : 0,
+        Number.isFinite(row.tonCuoiKg) ? row.tonCuoiKg : 0
+      );
+      const weightKg = round4(baseUsageKg + cutLoiKg);
+      return {
+        ...row,
+        weightKg,
+        klThucTePlusLoiKg: round4(finishedKg + damagedKg),
+        chenhLechKg: round4(weightKg - finishedKg - damagedKg)
+      };
+    });
+  }
   const cache = new Map<string, Map<string, BbCutLoiAgg>>();
   return input.rows.map(row => {
     if (row.inMixingRatioTable || row.isPlasticNvl) return row;

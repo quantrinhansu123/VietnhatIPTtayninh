@@ -1491,13 +1491,6 @@ function BbMachineOrderPrintSheet({
   const finishedProductQuantityForMaterial = (code: string, name: string) => {
     return finishedProductQuantityDetailForMaterial(code, name).quantity;
   };
-  const productPlanRatios = productRows
-    .map(row => (row.quantity > 0 ? (row.actualQuantity / row.quantity) * 100 : null))
-    .filter((value): value is number => value !== null && Number.isFinite(value));
-  const avgProductPlanRatio =
-    productPlanRatios.length > 0
-      ? productPlanRatios.reduce((sum, value) => sum + value, 0) / productPlanRatios.length
-      : null;
   const requiredQtyTotal = productRows.reduce((sum, row) => sum + row.quantity, 0);
   const dmWeightTotal = productRows.reduce((sum, row) => sum + (row.dmWeight || 0), 0);
   const lineActualQtyTotal = productRows.reduce((sum, row) => sum + row.actualQuantity, 0);
@@ -1543,6 +1536,11 @@ function BbMachineOrderPrintSheet({
       : tongCuonThanhPhamKg > 0
         ? tongCuonThanhPhamKg
         : 0;
+  /** Tỉ lệ TL cân TT / ĐM — tổng mục 2 (không dùng SL đạt/KH). */
+  const weightTtPerDmRatioPercent =
+    dmWeightTotal > 0 && productActualWeightTotal > 0
+      ? (productActualWeightTotal / dmWeightTotal) * 100
+      : null;
   const productPlasticWeightTotal = tongNhuaThanhPhamKg;
   const productFilmWeightTotal = tongMangThanhPhamKg > 0 ? tongMangThanhPhamKg : lineActualFilmTotal;
   /** 4.1 dòng 1–2: Hàng lỗi / Thành phẩm = tổng 2 dòng hao hụt nhựa + màng. */
@@ -1681,9 +1679,17 @@ function BbMachineOrderPrintSheet({
                 ) : null}
                 <th
                   className="bb-fg-ratio"
-                  title="Tỉ lệ số lượng đạt / số lượng kế hoạch"
+                  title="Tỉ lệ trọng lượng cân thực tế (AI) / trọng lượng đạt theo ĐM"
                 >
-                  {showInsulationWeightCols ? 'Tỉ lệ' : <>Tỉ lệ SL đạt<br />/SL kế hoạch</>}
+                  {showInsulationWeightCols ? (
+                    'Tỉ lệ'
+                  ) : (
+                    <>
+                      Tỉ lệ TL cân
+                      <br />
+                      TT / ĐM
+                    </>
+                  )}
                 </th>
                 <th>Lý do sản phát sinh thêm hoặc không đạt kế hoạch</th>
               </tr>
@@ -1691,7 +1697,12 @@ function BbMachineOrderPrintSheet({
             <tbody>
               {productRows.map((row, index) => {
                 const ratio =
-                  row.quantity > 0 ? (row.actualQuantity / row.quantity) * 100 : null;
+                  row.dmWeight != null &&
+                  row.dmWeight > 0 &&
+                  row.actualWeight != null &&
+                  row.actualWeight > 0
+                    ? (row.actualWeight / row.dmWeight) * 100
+                    : null;
                 const lineLyDoKey = printLyDoLineKey(order.groupKey, row.key);
                 const lineLyDo = props.lyDoByLine?.[lineLyDoKey] ?? '';
                 return (
@@ -1717,7 +1728,7 @@ function BbMachineOrderPrintSheet({
                     <td className="shift-summary-print-center bb-fg-ratio">
                       {ratio === null || !Number.isFinite(ratio)
                         ? ''
-                        : `${formatNumber(Math.round(ratio), 0)}%`}
+                        : `${formatNumber(ratio, 2)}%`}
                     </td>
                     <td className="bb-machine-report-print-ly-do">
                       {editableLyDo ? (
@@ -1762,9 +1773,9 @@ function BbMachineOrderPrintSheet({
                   </>
                 ) : null}
                 <td className="shift-summary-print-center bb-fg-ratio">
-                  {avgProductPlanRatio === null || !Number.isFinite(avgProductPlanRatio)
+                  {weightTtPerDmRatioPercent === null || !Number.isFinite(weightTtPerDmRatioPercent)
                     ? ''
-                    : `${formatNumber(Math.round(avgProductPlanRatio), 0)}%`}
+                    : `${formatNumber(weightTtPerDmRatioPercent, 2)}%`}
                 </td>
                 <td className="bb-machine-report-print-ly-do">&nbsp;</td>
               </tr>

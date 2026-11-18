@@ -15,7 +15,7 @@ import { FilterCombobox, TableToolbar, TableDateFilter } from '../../components/
 import type { MixingReport } from '../../components/MixingReportForm';
 import { normalizeMixingReport } from '../../lib/mixingReportModel';
 import {
-  buildMaterialRequestTable2SaveLines,
+  buildMaterialRequestUpdateLinesKeepTron,
   splitMaterialRequestLinesByTron
 } from './materialRequestTronSplit';
 
@@ -174,37 +174,37 @@ function MaterialRequestDetailModal({
     [lines, mixingReports, mixNgay, mixCa, mixMay, shiftSettings]
   );
 
-  const canSaveTable2 =
+  const canUpdateChildQty =
     canEdit &&
-    !locked &&
     split.tronKg > 0 &&
     split.allocatedFromTron &&
-    split.otherRows.length > 0;
+    !split.alreadyApplied &&
+    split.otherRows.some(row => row.daTronKg > 0);
 
-  const handleSaveTable2 = async () => {
-    if (!canSaveTable2 || savingTable2) return;
-    const saveLines = buildMaterialRequestTable2SaveLines(split.otherRows);
+  const handleUpdateChildQty = async () => {
+    if (!canUpdateChildQty || savingTable2) return;
+    const saveLines = buildMaterialRequestUpdateLinesKeepTron({
+      tronSource: split.tronSource,
+      otherRows: split.otherRows
+    });
     if (!saveLines.length) {
-      showSaveFailure(new Error('Bảng 2 trống — chưa có NVL để lưu.'));
+      showSaveFailure(new Error('Không có dòng để cập nhật.'));
       return;
     }
-    const ngay = String(mixNgay || row.ngay || '').trim().slice(0, 10);
+    const ngay = String(mixNgay || row.ngay || '').trim().slice(0, 10) || String(row.ngay || '').trim().slice(0, 10);
     const ca = String(mixCa || row.ca || '').trim();
     const may = String(mixMay || row.may || '').trim();
-    const nguoiYc = String(row.nguoi_yc || '').trim();
+    const nguoiYc = String(row.nguoi_yc || '').trim() || '—';
     if (!ngay || !ca || !may) {
-      showSaveFailure(new Error('Chọn đủ ngày · ca · máy trước khi lưu Bảng 2.'));
+      showSaveFailure(new Error('Chọn đủ ngày · ca · máy trước khi cập nhật.'));
       return;
     }
-    if (!nguoiYc) {
-      showSaveFailure(new Error('Thiếu người yêu cầu trên phiếu.'));
-      return;
-    }
+    const added = split.otherRows.reduce((sum, row) => sum + (row.daTronKg > 0 ? row.daTronKg : 0), 0);
     const ok = window.confirm(
-      `Lưu Bảng 2 vào phiếu ${row.ma_yeu_cau}?\n` +
-        `· Bỏ mã NHUA-TRON (${formatNumber(split.tronKg, 3)} kg)\n` +
-        `· Cộng kg phân bổ vào từng NVL tương ứng\n` +
-        `Dữ liệu này dùng cho xuất kho / tính toán.`
+      `Cập nhật khối lượng NVL con trên ${row.ma_yeu_cau}?\n` +
+        `· Giữ NHUA-TRON ${formatNumber(split.tronKg, 3)} kg\n` +
+        `· Cộng thêm ${formatNumber(added, 3)} kg vào các NVL tương ứng\n` +
+        (locked ? '· Phiếu đã xuất — chỉ cập nhật số lượng dòng NVL\n' : '')
     );
     if (!ok) return;
 
@@ -217,12 +217,13 @@ function MaterialRequestDetailModal({
           ngay,
           ca,
           may,
-          nguoi_yc: nguoiYc,
-          lines: saveLines
+          nguoi_yc: nguoiYc === '—' ? row.nguoi_yc || 'Hệ thống' : nguoiYc,
+          lines: saveLines,
+          cap_nhat_phan_bo_tron: true
         })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không lưu được Bảng 2.'));
+      if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không cập nhật được khối lượng.'));
       const nextRow: MaterialRequestRow = {
         ...row,
         ngay,
@@ -230,11 +231,11 @@ function MaterialRequestDetailModal({
         may,
         lines: saveLines
       };
-      showAppToast(`Đã lưu Bảng 2 vào ${row.ma_yeu_cau}.`);
+      showAppToast(`Đã cập nhật khối lượng NVL con · ${row.ma_yeu_cau}.`);
       onSaved?.(nextRow);
       onClose();
     } catch (err: unknown) {
-      showSaveFailure(err, 'Không lưu được Bảng 2.');
+      showSaveFailure(err, 'Không cập nhật được khối lượng.');
     } finally {
       setSavingTable2(false);
     }
@@ -445,21 +446,25 @@ function MaterialRequestDetailModal({
                   ) : null}
                 </p>
                 <p className="mt-0.5 text-[11px] font-medium text-zinc-600">
-                  SL = SL phiếu + kg Bảng 1 · Ẩn NHUA-TRON · Lưu DB để tính toán
+                  {split.alreadyApplied
+                    ? 'Đã cộng TRON vào NVL con trên DB · giữ nguyên dòng NHUA-TRON'
+                    : 'SL lưu = SL phiếu + kg Bảng 1 · Giữ NHUA-TRON · Bấm Cập nhật để ghi DB'}
                 </p>
               </div>
-              {canSaveTable2 ? (
+              {canUpdateChildQty ? (
                 <button
                   type="button"
-                  onClick={() => void handleSaveTable2()}
+                  onClick={() => void handleUpdateChildQty()}
                   disabled={savingTable2}
                   className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-50"
                 >
-                  {savingTable2 ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : null}
-                  Lưu Bảng 2 vào phiếu
+                  {savingTable2 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Cập nhật khối lượng NVL con
                 </button>
+              ) : split.alreadyApplied ? (
+                <span className="inline-flex h-8 items-center rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] font-bold text-zinc-600">
+                  Đã cập nhật khối lượng
+                </span>
               ) : null}
             </div>
             <table className="min-w-full text-left text-xs">

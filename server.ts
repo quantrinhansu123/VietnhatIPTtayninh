@@ -15035,10 +15035,12 @@ export function createApp() {
       .maybeSingle();
     if (existingError) return res.status(500).json({ error: existingError.message });
     if (!existing) return res.status(404).json({ error: 'Không tìm thấy yêu cầu.' });
-    if (String(existing.trang_thai || '').toLowerCase() === 'da_xuat') {
+    const body = req.body || {};
+    const isTronQtyUpdate = Boolean(body.cap_nhat_phan_bo_tron);
+    const isDaXuat = String(existing.trang_thai || '').toLowerCase() === 'da_xuat';
+    if (isDaXuat && !isTronQtyUpdate) {
       return res.status(400).json({ error: 'Phiếu đã xuất kho — không sửa được.' });
     }
-    const body = req.body || {};
     const lines = (Array.isArray(body.lines) ? body.lines : [])
       .map((l: any) => ({
         ma_nvl: String(l?.ma_nvl ?? '').trim(),
@@ -15055,6 +15057,20 @@ export function createApp() {
     }
     if (!lines.length || lines.some((l: any) => !(l.so_luong > 0))) {
       return res.status(400).json({ error: 'Nhập mã NVL và số lượng lớn hơn 0 cho từng dòng.' });
+    }
+    // Cập nhật phân bổ TRON trên phiếu đã xuất: chỉ ghi lại dòng NVL, giữ nguyên header/trạng thái.
+    if (isTronQtyUpdate && isDaXuat) {
+      const { error: deleteLinesError } = await supabaseKho.from('nvl_yeu_cau').delete().eq('ma_yeu_cau', ma);
+      if (deleteLinesError) return res.status(500).json({ error: deleteLinesError.message });
+      const { error: lineError } = await supabaseKho
+        .from('nvl_yeu_cau')
+        .insert(lines.map((l: any) => ({ ...l, ma_yeu_cau: ma })));
+      if (lineError) return res.status(500).json({ error: lineError.message });
+      await supabaseKho
+        .from('yeu_cau_xuat_kho')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('ma_yeu_cau', ma);
+      return res.json({ ma_yeu_cau: ma, cap_nhat_phan_bo_tron: true });
     }
     const { error: updateError } = await supabaseKho
       .from('yeu_cau_xuat_kho')
@@ -15073,7 +15089,7 @@ export function createApp() {
       .from('nvl_yeu_cau')
       .insert(lines.map((l: any) => ({ ...l, ma_yeu_cau: ma })));
     if (lineError) return res.status(500).json({ error: lineError.message });
-    return res.json({ ma_yeu_cau: ma });
+    return res.json({ ma_yeu_cau: ma, cap_nhat_phan_bo_tron: isTronQtyUpdate || undefined });
   });
 
   /** Xóa yêu cầu (dòng nvl_yeu_cau xóa theo cascade). */

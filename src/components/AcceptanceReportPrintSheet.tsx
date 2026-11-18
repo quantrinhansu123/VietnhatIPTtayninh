@@ -740,11 +740,11 @@ export function AcceptanceReportPrintSheet({
                   <th className="col-stt">STT</th>
                   <th className="col-amis">Mã TP</th>
                   <th className="col-sp">Tên thành phẩm</th>
-                  <th className="col-n">SL thành phẩm đạt (Cuộn)</th>
-                  <th className="col-n">TL tổng cuộn (Kg - ĐM)</th>
-                  <th className="col-n">TL tổng cuộn thực tế (Kg - AI)</th>
-                  <th className="col-n">TL VT trộn thực tế (Kg)</th>
-                  <th className="col-n">TL VT phụ (Kg)</th>
+                  <th className="col-n">Số lượng thành phẩm đạt (Cuộn)</th>
+                  <th className="col-n">Trọng lượng tổng cuộn (Kg - ĐM)</th>
+                  <th className="col-n">Trọng lượng tổng cuộn thực tế (Kg - AI)</th>
+                  <th className="col-n">Trọng lượng vật tư trộn thực tế (Kg)</th>
+                  <th className="col-n">Trọng lượng vật tư phụ (Kg)</th>
                   <th className="col-n">Chênh lệch (AI - ĐM) Kg</th>
                   <th className="col-n">Tỉ lệ chênh lệch</th>
                 </tr>

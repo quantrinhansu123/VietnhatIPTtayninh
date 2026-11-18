@@ -629,7 +629,11 @@ export default function MaterialConversionPanel({
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const materialByCode = useMemo(() => new Map(materials.map(item => [item.code, item])), [materials]);
-  const materialCodes = useMemo(() => materials.map(item => item.code), [materials]);
+  // Chỉ cho chọn mã ống (ONG-…) ở cả vật tư gốc và vật tư quy đổi; materialByCode vẫn giữ đủ để hiển thị phiếu cũ.
+  const materialCodes = useMemo(
+    () => materials.filter(item => /^ong[-_\s.]/i.test(item.code.trim())).map(item => item.code),
+    [materials]
+  );
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
   const machineCodes = useMemo(() => machines.map(item => item.code), [machines]);
   const materialLabel = (code: string) => {

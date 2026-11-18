@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { resolveMaterialPresetKind } from '../features/yeu-cau-xuat-vat-tu/materialRequestPreset';
 import { openCameraImagePicker, compressImageDataUrl } from '../utils/cameraCapture';
 import {
   CalendarDays,
@@ -50,7 +49,6 @@ import {
   mixingSessionColumnLabel,
   mixingSessionLabel,
   normalizeChiTietLines,
-  applyMixingMaterialPreset,
   normalizeMixingReport,
   prepareMixingChiTietForSave,
   parseBatchWeightInput,
@@ -1092,16 +1090,6 @@ export default function MixingReportForm({
   const [normSuggestionsLoading, setNormSuggestionsLoading] = useState(false);
   const [applyingNormId, setApplyingNormId] = useState<string | null>(null);
   const autoCollapsedRoundsRef = useRef<Set<RoundKey>>(new Set());
-
-  const presetKind = resolveMaterialPresetKind(form.ma_may, form.ten_may);
-  useEffect(() => {
-    if (editingId || editReport || !presetKind || materials.length === 0) return;
-    setForm(prev => ({
-      ...prev,
-      chi_tiet: applyMixingMaterialPreset(applyActualWeightDrafts(prev.chi_tiet), materials, presetKind, activeRoundCount)
-    }));
-    setActualWeightDrafts({});
-  }, [presetKind, materials, activeRoundCount, editingId, editReport]);
 
   const allReasonOptions = useMemo(() => {
     const merged = new Set<string>(reasonOptions);

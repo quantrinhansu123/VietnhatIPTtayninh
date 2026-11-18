@@ -173,6 +173,8 @@ import {
   allocateBbKgByWeightShare,
   resolveBbThucDungKlNhuaTtLoiKg,
   resolveBbThucDungChenhLechKg,
+  resolveBbThucDungUsageQty,
+  resolveBbThucDungChenhLechQty,
   resolveBbMaterialExportUnitPrice,
   mapAcceptanceNvlDinhMucRowsToNplItems,
   refreshAcceptanceNvlDinhMucFromProductBom,
@@ -253,6 +255,16 @@ function formatSignedKg(value: number | null | undefined, digits = 2) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
   return `${sign}${formatKg(Math.abs(value), digits)}`;
+}
+
+/** SL trong ngoặc dưới cột kg (mục 3.2). */
+function QtyParen({ qty }: { qty?: number | null }) {
+  if (qty == null || !Number.isFinite(qty) || qty === 0) return null;
+  return (
+    <span className="block text-[11px] font-normal text-zinc-500">
+      ( {formatNumber(qty, Number.isInteger(qty) ? 0 : 2)} )
+    </span>
+  );
 }
 
 function formatPlasticSummaryCell(value: string | number | null | undefined) {
@@ -6189,19 +6201,11 @@ export default function ControlBoardBbMachineReportTable({
                                                  </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-700">
                                                   {formatKg(row.xuatTrongCaKg, 2)}
-                                                  {row.exportQty ? (
-                                                    <span className="block text-[11px] font-normal text-zinc-500">
-                                                      ( {formatNumber(row.exportQty, 2)} )
-                                                    </span>
-                                                  ) : null}
+                                                  <QtyParen qty={row.exportQty} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700">
                                                   {formatKg(row.tonDauKg, 2)}
-                                                  {row.tonDauQty ? (
-                                                    <span className="block text-[11px] font-normal text-zinc-500">
-                                                      ( {formatNumber(row.tonDauQty, 2)} )
-                                                    </span>
-                                                  ) : null}
+                                                  <QtyParen qty={row.tonDauQty} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-800">
                                                   <ThucDungMetricButton
@@ -6214,28 +6218,23 @@ export default function ControlBoardBbMachineReportTable({
                                                       })
                                                     }
                                                   />
+                                                  <QtyParen qty={row.finishedQty} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-700">
                                                   {formatSignedKg(row.cutLoiKg || 0, 2)}
-                                                  {row.cutLoiQty ? (
-                                                    <span className="block text-[11px] font-normal text-zinc-500">
-                                                      ( {formatNumber(row.cutLoiQty, 2)} )
-                                                    </span>
-                                                  ) : null}
+                                                  <QtyParen qty={row.cutLoiQty} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700">
                                                   {formatKg(row.tonCuoiKg, 2)}
-                                                  {row.tonCuoiQty ? (
-                                                    <span className="block text-[11px] font-normal text-zinc-500">
-                                                      ( {formatNumber(row.tonCuoiQty, 2)} )
-                                                    </span>
-                                                  ) : null}
+                                                  <QtyParen qty={row.tonCuoiQty} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono font-bold tabular-nums text-zinc-600">
                                                   {formatKg(row.weightKg, 2)}
+                                                  <QtyParen qty={resolveBbThucDungUsageQty(row)} />
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-700">
                                                   {formatKg(row.loiHongKg, 2)}
+                                                  <QtyParen qty={row.loiHongQty} />
                                                 </td>
                                                 <td
                                                   className={`px-3 py-2 text-right font-mono font-bold tabular-nums ${
@@ -6247,6 +6246,7 @@ export default function ControlBoardBbMachineReportTable({
                                                   }`}
                                                 >
                                                   {formatSignedKg(resolveChenhLechKg(row), 2)}
+                                                  <QtyParen qty={resolveBbThucDungChenhLechQty(row)} />
                                                 </td>
                                               </tr>
                                             ))
@@ -6260,21 +6260,57 @@ export default function ControlBoardBbMachineReportTable({
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.xuatCaTotal, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.exportQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.tonDauCaTotal, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.tonDauQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.finishedTotal ?? 0, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.finishedQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatSignedKg(otherLines.reduce((sum, line) => sum + (line.cutLoiKg || 0), 0), 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.cutLoiQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.tonCuoiCaTotal, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.tonCuoiQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(otherTotals.totalWeightKg, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + resolveBbThucDungUsageQty(line),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatKg(
@@ -6286,9 +6322,21 @@ export default function ControlBoardBbMachineReportTable({
                                                   ),
                                                   2
                                                 )}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + (Number(line.loiHongQty) || 0),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono tabular-nums">
                                                 {formatSignedKg(otherTotals.chenhLechTotal, 2)}
+                                                <QtyParen
+                                                  qty={otherLines.reduce(
+                                                    (sum, line) => sum + resolveBbThucDungChenhLechQty(line),
+                                                    0
+                                                  )}
+                                                />
                                               </td>
                                             </tr>
                                           </tfoot>
@@ -7268,9 +7316,19 @@ export default function ControlBoardBbMachineReportTable({
                                     </td>
                                     <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtQty(row.dinhMucVatTuKg)}
+                                      {row.dinhMucVatTuQty ? (
+                                        <span className="block text-[11px] font-normal text-zinc-500">
+                                          ( {formatNumber(row.dinhMucVatTuQty, 2)} )
+                                        </span>
+                                      ) : null}
                                     </td>
                                     <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtThucXuatKg(row.thucXuatKg)}
+                                      {row.thucXuatQty ? (
+                                        <span className="block text-[11px] font-normal text-zinc-500">
+                                          ( {formatNumber(row.thucXuatQty, 2)} )
+                                        </span>
+                                      ) : null}
                                     </td>
                                     <td className="border-r border-zinc-100 px-2 py-2 text-right font-mono text-[13px]">
                                       {fmtSignedQty(row.chenhLechKg)}

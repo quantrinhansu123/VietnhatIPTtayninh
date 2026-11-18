@@ -57,6 +57,8 @@ import {
   type BbWarehouseExportLineRow,
   splitBbDanhGiaSummaryRowsBySection,
   splitBbDanhGiaSummaryRowsRatioVsDetail,
+  resolveBbThucDungUsageQty,
+  resolveBbThucDungChenhLechQty,
 } from '../utils/controlBoardBbMachineReport';
 import { isBbTieuHaoPlasticRow, resolveBbTieuHaoChenhLechKg } from '../utils/bbTieuHaoNvlPrintRows';
 import type { CanTuDongRecord } from '../features/can-tu-dong';
@@ -1302,6 +1304,9 @@ function BbMachineOrderPrintSheet({
     closingQty: line.tonCuoiQty ?? 0,
     cutLoiKg: line.cutLoiKg ?? 0,
     cutLoiQty: line.cutLoiQty ?? 0,
+    damagedQty: line.loiHongQty ?? 0,
+    usageQty: resolveBbThucDungUsageQty(line),
+    varianceQty: resolveBbThucDungChenhLechQty(line),
     closingKg: line.tonCuoiKg,
     actualUsedKg: line.weightKg,
     finishedAndDamagedKg: line.klThucTePlusLoiKg,
@@ -2009,7 +2014,15 @@ function BbMachineOrderPrintSheet({
                           </>
                         ) : null}
                       </td>
-                      <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.finishedKg, 2)}
+                        {row.actualQty ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.actualQty, 2)} )
+                          </>
+                        ) : null}
+                      </td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.cutLoiKg, 2)}
                         {row.cutLoiQty ? (
@@ -2028,9 +2041,39 @@ function BbMachineOrderPrintSheet({
                           </>
                         ) : null}
                       </td>
-                      <td className="shift-summary-print-num">{printNumber(row.actualUsedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.damagedKg, 2)}</td>
-                      <td className="shift-summary-print-num">{printNumber(row.varianceKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.actualUsedKg, 2)}
+                        {row.usageQty != null &&
+                        Number.isFinite(row.usageQty) &&
+                        row.usageQty !== 0 ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.usageQty, 2)} )
+                          </>
+                        ) : null}
+                      </td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.damagedKg, 2)}
+                        {row.damagedQty != null &&
+                        Number.isFinite(row.damagedQty) &&
+                        row.damagedQty !== 0 ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.damagedQty, 2)} )
+                          </>
+                        ) : null}
+                      </td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.varianceKg, 2)}
+                        {row.varianceQty != null &&
+                        Number.isFinite(row.varianceQty) &&
+                        row.varianceQty !== 0 ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.varianceQty, 2)} )
+                          </>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })
@@ -2200,8 +2243,24 @@ function BbMachineOrderPrintSheet({
                               {row.sttCode || (isTong ? '' : '—')}
                             </td>
                             <td>{row.label}</td>
-                            <td className="shift-summary-print-num">{fmtQty(row.dinhMucVatTuKg)}</td>
-                            <td className="shift-summary-print-num">{fmtThucXuatKg(row.thucXuatKg)}</td>
+                            <td className="shift-summary-print-num">
+                              {fmtQty(row.dinhMucVatTuKg)}
+                              {row.dinhMucVatTuQty ? (
+                                <>
+                                  <br />
+                                  ( {printNumber(row.dinhMucVatTuQty, 2)} )
+                                </>
+                              ) : null}
+                            </td>
+                            <td className="shift-summary-print-num">
+                              {fmtThucXuatKg(row.thucXuatKg)}
+                              {row.thucXuatQty ? (
+                                <>
+                                  <br />
+                                  ( {printNumber(row.thucXuatQty, 2)} )
+                                </>
+                              ) : null}
+                            </td>
                             <td className="shift-summary-print-num">{fmtQty(row.chenhLechKg)}</td>
                             <td className="shift-summary-print-num">{fmtThucXuatKg(row.loiKg)}</td>
                             <td className="shift-summary-print-num">{fmtDonGia(row.donGia)}</td>

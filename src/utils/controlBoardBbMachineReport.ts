@@ -8959,6 +8959,8 @@ export type BbThucDungLineRow = {
   finishedQty?: number;
   /** SL xuất kho (ĐVT gốc). */
   exportQty?: number;
+  /** SL lỗi hỏng (ĐVT gốc) — mục 3.2 nếu có. */
+  loiHongQty?: number;
 };
 
 export type BbThucDungSectionTotals = {
@@ -10435,6 +10437,27 @@ export function resolveBbThucDungChenhLechKg(
   const { klThucTeKg, loiHongKg } = resolveBbThucDungKlNhuaTtLoiKg(line);
   const thucDungKg = Number.isFinite(line.weightKg) ? line.weightKg : 0;
   return roundQty(thucDungKg - klThucTeKg - loiHongKg, 4);
+}
+
+/** SL thực tế sử dụng = Tồn đầu + Xuất − Tồn cuối + Cắt lõi (cùng công thức kg). */
+export function resolveBbThucDungUsageQty(
+  line: Pick<BbThucDungLineRow, 'tonDauQty' | 'exportQty' | 'tonCuoiQty' | 'cutLoiQty'>
+): number {
+  const tonDau = Number.isFinite(line.tonDauQty) ? Number(line.tonDauQty) : 0;
+  const xuat = Number.isFinite(line.exportQty) ? Number(line.exportQty) : 0;
+  const tonCuoi = Number.isFinite(line.tonCuoiQty) ? Number(line.tonCuoiQty) : 0;
+  const cutLoi = Number.isFinite(line.cutLoiQty) ? Number(line.cutLoiQty) : 0;
+  return roundQty(tonDau + xuat - tonCuoi + cutLoi, 4);
+}
+
+/** SL chênh lệch = SL thực dùng − SL nhập TP − SL lỗi (0 nếu chưa có SL lỗi). */
+export function resolveBbThucDungChenhLechQty(
+  line: Pick<BbThucDungLineRow, 'tonDauQty' | 'exportQty' | 'tonCuoiQty' | 'cutLoiQty' | 'finishedQty' | 'loiHongQty'>
+): number {
+  const usageQty = resolveBbThucDungUsageQty(line);
+  const finishedQty = Number.isFinite(line.finishedQty) ? Number(line.finishedQty) : 0;
+  const damagedQty = Number.isFinite(line.loiHongQty) ? Number(line.loiHongQty) : 0;
+  return roundQty(usageQty - finishedQty - damagedQty, 4);
 }
 
 function applyBbThucDungNhuaTtLoiToHeaderRows(input: {
@@ -13225,8 +13248,12 @@ export type BbDanhGiaSummaryRow = {
   trongLuongThanhPhamKg?: number | null;
   /** Định mức Vật tư của Số lượng nhập TP (kg). Vật tư trộn = Tổng nhựa định mức × %. */
   dinhMucVatTuKg: number | null;
+  /** SL định mức (ĐVT gốc) — Các vật tư còn lại: SL SP × ĐM NVL/SP (cùng nguồn cột SL vật tư trong TP 3.2). */
+  dinhMucVatTuQty?: number | null;
   /** Số lượng thực xuất dùng (kg). Vật tư trộn = cột Thực tế sử dụng (weightKg) bảng 3.1. */
   thucXuatKg: number | null;
+  /** SL thực xuất (ĐVT gốc) — Các vật tư còn lại: SL xuất kho phiếu. */
+  thucXuatQty?: number | null;
   /** KL lỗi hỏng phân bổ (kg) — cột «Lỗi hỏng». */
   loiKg?: number | null;
   /** Chênh lệch = Thực xuất dùng − Định mức nhập TP. */
@@ -13738,6 +13765,14 @@ function buildBbDanhGiaSummaryNvlRow(input: {
 
   const sttCode = String(line.materialCode || '').trim();
   const label = String(line.materialName || line.materialCode || '—').trim() || '—';
+  const dinhMucVatTuQty =
+    section === 'con_lai' && Number.isFinite(line.finishedQty) && (line.finishedQty as number) > 0
+      ? roundQty(line.finishedQty as number, 4)
+      : null;
+  const thucXuatQty =
+    section === 'con_lai' && Number.isFinite(line.exportQty) && (line.exportQty as number) > 0
+      ? roundQty(line.exportQty as number, 4)
+      : null;
   return {
     id: 'nvl',
     section,
@@ -13748,7 +13783,9 @@ function buildBbDanhGiaSummaryNvlRow(input: {
     tiLeHaoHutDinhMucPercent: null,
     tiLeHaoHutThucTe: null,
     dinhMucVatTuKg,
+    dinhMucVatTuQty,
     thucXuatKg,
+    thucXuatQty,
     loiKg: loiKg > 0 ? loiKg : null,
     chenhLechKg,
     donGia: unitPrice > 0 ? unitPrice : null,
@@ -13776,7 +13813,9 @@ function buildBbDanhGiaSummaryTongRow(
     label: 'Tổng',
     ...emptyBbDanhGiaSummaryMetricFields(),
     dinhMucVatTuKg: sum(r => r.dinhMucVatTuKg),
+    dinhMucVatTuQty: sum(r => r.dinhMucVatTuQty),
     thucXuatKg: sum(r => r.thucXuatKg),
+    thucXuatQty: sum(r => r.thucXuatQty),
     loiKg: sum(r => r.loiKg),
     chenhLechKg: sum(r => r.chenhLechKg),
     thanhTien: Math.round(

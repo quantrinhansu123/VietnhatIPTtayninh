@@ -22,7 +22,7 @@ Tab **Báo cáo sản lượng**: danh sách NVL lấy đủ từ `san_pham.npl_
 
 **3.2 Xuất kho từ phiếu cắt:** khi Tính toán, tải `/api/quy-doi-vat-lieu?all=1&dateFrom&dateTo` → `materialConversions`. Khớp ngày·ca·máy thì `khoi_luong_quy_doi` ghi đè Xuất kho mã đích (vd. ONG-30CM / ONG-19.5CM từ ONG-1.38M). `src/utils/bbMaterialConversion.ts` · `bbTieuHaoNvlPrintRows.ts`. Xem [quy_doi_vat_lieu.md](./quy_doi_vat_lieu.md).
 
-**3.2 Nhập TP túi/ống:** lấy thẳng `trong_luong_bi` / `trong_luong_loi` trên phiếu Báo cáo sản lượng (theo BOM từng phiếu) — `bbKhongTronFromAcceptance.ts`. UI luôn overlay số mới từ danh sách phiếu, không chỉ snapshot cũ.
+**3.2 Nhập TP túi/ống:** bắt theo **Mã SP** trên phiếu sản lượng → Σ cân từng cuộn (`trong_luong_bi` túi / `trong_luong_loi` lõi, nguồn `can_tu_dong`). **Một cuộn nhiều lõi/túi** → chia kg theo định mức Thành phần (`quantity`, rồi `weightKg`) — `bbKhongTronFromAcceptance.ts` (`shareKgByBomDinhMuc`). UI overlay số mới từ danh sách phiếu.
 
 ## SQL
 

@@ -7,6 +7,7 @@ import type { ProductionOrderLookupSetting, ProductionOrderRow } from '../featur
 import type { ProductRow } from '../features/san-pham/types';
 import type { BbAcceptanceNvlDinhMucItem } from './controlBoardBbMachineReport';
 import {
+  syncBbThucDungRowsOngFromAcceptanceReports,
   syncBbThucDungRowsTuiFromAcceptanceReports
 } from './bbKhongTronFromAcceptance';
 import {
@@ -406,9 +407,14 @@ export function buildBbMachineReportSnapshot(input: {
     shiftSettings: input.shiftSettings,
     selectedMachine: input.selectedMachine
   });
-  // 3.2 túi: Nhập TP lấy thẳng bì trên phiếu sản lượng. Ống giữ «TL thực tế» tab sản lượng.
-  const thucDungRows = syncBbThucDungRowsTuiFromAcceptanceReports({
+  // 3.2: túi = Σ bì; ống = Σ cân lõi theo Mã SP; nhiều lõi/túi → chia theo ĐM Thành phần.
+  const thucDungRowsTui = syncBbThucDungRowsTuiFromAcceptanceReports({
     rows: thucDungRowsBuilt,
+    acceptanceReports: input.acceptanceReports,
+    products: input.products
+  });
+  const thucDungRows = syncBbThucDungRowsOngFromAcceptanceReports({
+    rows: thucDungRowsTui,
     acceptanceReports: input.acceptanceReports,
     products: input.products
   });

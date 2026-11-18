@@ -100,6 +100,7 @@ import {
   type BbMaterialConversionRecord
 } from '../utils/bbMaterialConversion';
 import {
+  syncBbThucDungRowsOngFromAcceptanceReports,
   syncBbThucDungRowsTuiFromAcceptanceReports
 } from '../utils/bbKhongTronFromAcceptance';
 import { syncBbThucDungRowsTonQtyFromTonTabs } from '../utils/bbTonQtyFromTonTabs';
@@ -2437,14 +2438,18 @@ export default function ControlBoardBbMachineReportTable({
       sanLuongGroups
     });
     const withXuatConversion = withSanLuongTab;
-    // Túi (bì): Nhập TP = Σ trọng lượng bì trên phiếu sản lượng (theo BOM từng phiếu).
-    // Ống giấy: giữ «TL thực tế» bảng NVL tab Báo cáo sản lượng (không ghi đè bằng cân lõi).
+    // Túi (bì): Nhập TP = Σ trọng lượng bì theo Mã SP (chia ĐM khi nhiều túi).
+    // Ống: Nhập TP = Σ cân lõi từng cuộn theo Mã SP; nhiều lõi → chia theo ĐM Thành phần.
     const withTui = syncBbThucDungRowsTuiFromAcceptanceReports({
       rows: withXuatConversion,
       acceptanceReports,
       products
     });
-    const withOngBase = withTui;
+    const withOngBase = syncBbThucDungRowsOngFromAcceptanceReports({
+      rows: withTui,
+      acceptanceReports,
+      products
+    });
     // 3.2: SL tồn đầu / tồn cuối (hiện trong ngoặc cạnh kg).
     const withOng = syncBbThucDungRowsTonQtyFromTonTabs({
       rows: withOngBase,

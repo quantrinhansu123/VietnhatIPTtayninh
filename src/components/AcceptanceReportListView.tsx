@@ -202,19 +202,40 @@ function positiveCanKg(value: unknown): number | null {
   return Math.round(n * 10000) / 10000;
 }
 
-/** Chia đều kg cân cho các dòng cùng nhóm (túi / ống). */
-function shareCanKgAcrossIndices(indices: number[], totalKg: number | null): Map<number, number> {
+/** Hệ số ĐM khi 1 cuộn có nhiều lõi/túi trong Thành phần. */
+function resolveNvlBomShareWeight(item: ProductNplItem): number {
+  const qty = Number(item.quantity);
+  if (Number.isFinite(qty) && qty > 0) return qty;
+  const weight = Number(item.weightKg);
+  if (Number.isFinite(weight) && weight > 0) return weight;
+  return 1;
+}
+
+/**
+ * Chia kg cân (bì / lõi) cho các dòng cùng nhóm theo định mức Thành phần.
+ * 1 cuộn nhiều lõi → tỷ lệ quantity (hoặc weightKg); thiếu ĐM thì chia đều.
+ */
+function shareCanKgAcrossIndices(
+  indices: number[],
+  totalKg: number | null,
+  items: ProductNplItem[] = []
+): Map<number, number> {
   const map = new Map<number, number>();
   if (!(indices.length > 0) || totalKg == null || !(totalKg > 0)) return map;
-  const each = Math.round((totalKg / indices.length) * 10000) / 10000;
+  const weights = indices.map(index => {
+    const item = items[index];
+    return item ? resolveNvlBomShareWeight(item) : 1;
+  });
+  const sumWeight = weights.reduce((sum, w) => sum + w, 0);
+  if (!(sumWeight > 0)) return map;
+  let allocated = 0;
   indices.forEach((index, i) => {
-    // Dòng cuối nhận phần dư để tổng khớp kg cân.
-    if (i === indices.length - 1) {
-      const used = each * (indices.length - 1);
-      map.set(index, Math.round((totalKg - used) * 10000) / 10000);
-    } else {
-      map.set(index, each);
-    }
+    const share =
+      i === indices.length - 1
+        ? Math.round((totalKg - allocated) * 10000) / 10000
+        : Math.round(((totalKg * weights[i]) / sumWeight) * 10000) / 10000;
+    allocated = Math.round((allocated + share) * 10000) / 10000;
+    map.set(index, share);
   });
   return map;
 }
@@ -431,8 +452,8 @@ function computeNvlWeightGroupTotals(
   });
   const biFromCan = positiveCanKg(canWeights?.biKg);
   const loiFromCan = positiveCanKg(canWeights?.loiKg);
-  const tuiShare = shareCanKgAcrossIndices(tuiIndices, biFromCan);
-  const ongShare = shareCanKgAcrossIndices(ongIndices, loiFromCan);
+  const tuiShare = shareCanKgAcrossIndices(tuiIndices, biFromCan, items);
+  const ongShare = shareCanKgAcrossIndices(ongIndices, loiFromCan, items);
 
   let tronKg = 0;
   let khongTronKg = 0;
@@ -1204,11 +1225,13 @@ export default function AcceptanceReportListView({
     });
     const tuiShare = shareCanKgAcrossIndices(
       tuiIndices,
-      positiveCanKg(nvlView.actualBiKg ?? nvlView.report.trong_luong_bi)
+      positiveCanKg(nvlView.actualBiKg ?? nvlView.report.trong_luong_bi),
+      nvlView.items
     );
     const ongShare = shareCanKgAcrossIndices(
       ongIndices,
-      positiveCanKg(nvlView.actualLoiKg ?? nvlView.report.trong_luong_loi)
+      positiveCanKg(nvlView.actualLoiKg ?? nvlView.report.trong_luong_loi),
+      nvlView.items
     );
     return nvlView.items.map((item, index) => {
       // Vật tư trộn: chỉ % trộn thực tế × nhựa thực tế — không fallback ĐM BOM.

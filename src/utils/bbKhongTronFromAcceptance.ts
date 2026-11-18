@@ -1,8 +1,9 @@
 /**
- * Mục 3.2 — Nhập TP túi / ống lấy thẳng từ phiếu Báo cáo sản lượng:
- * - Túi (VT-TUI…) = Σ `trong_luong_bi`
- * - Ống (ONG-…) = Σ `trong_luong_loi`
- * Gán theo Thành phần SP của từng phiếu (không chia đều mọi mã ống trên máy).
+ * Mục 3.2 — Nhập TP túi / ống lấy thẳng từ phiếu Báo cáo sản lượng (cân theo Mã SP):
+ * - Túi (VT-TUI…) = Σ `trong_luong_bi` (bì từng cuộn)
+ * - Ống (ONG-…) = Σ `trong_luong_loi` (cân lõi từng cuộn)
+ * Một cuộn / phiếu có nhiều lõi (hoặc nhiều túi) → chia kg theo **định mức** Thành phần SP
+ * (ưu tiên `quantity`, rồi `weightKg`; thiếu thì chia đều).
  */
 import type { AcceptanceReport } from '../components/AcceptanceReportForm';
 import { isNvlOngItem, isNvlTuiItem, resolveReportProductCode } from '../components/AcceptanceReportListView';
@@ -46,7 +47,47 @@ function reportMatchesHeader(report: AcceptanceReport, ngay: string, shift: stri
   );
 }
 
-/** Cộng kg cân vào từng mã NVL theo BOM phiếu sản lượng. */
+/** Hệ số định mức để chia kg cân khi 1 cuộn có nhiều lõi/túi trong Thành phần. */
+export function resolveBomShareWeight(item: ProductNplItem): number {
+  const qty = Number(item.quantity);
+  if (Number.isFinite(qty) && qty > 0) return qty;
+  const weight = Number(item.weightKg);
+  if (Number.isFinite(weight) && weight > 0) return weight;
+  return 1;
+}
+
+/**
+ * Chia `totalKg` theo định mức các dòng BOM (tỷ lệ quantity/weightKg).
+ * Dòng cuối nhận phần dư để tổng khớp kg cân.
+ */
+export function shareKgByBomDinhMuc(
+  items: ProductNplItem[],
+  totalKg: number
+): Map<string, number> {
+  const map = new Map<string, number>();
+  if (!(totalKg > 0) || items.length === 0) return map;
+  const weights = items.map(item => ({
+    key: materialKey(item.code, item.name),
+    weight: resolveBomShareWeight(item)
+  }));
+  const usable = weights.filter(row => row.key);
+  if (usable.length === 0) return map;
+  const sumWeight = usable.reduce((sum, row) => sum + row.weight, 0);
+  if (!(sumWeight > 0)) return map;
+
+  let allocated = 0;
+  usable.forEach((row, index) => {
+    const share =
+      index === usable.length - 1
+        ? round4(totalKg - allocated)
+        : round4((totalKg * row.weight) / sumWeight);
+    allocated = round4(allocated + share);
+    map.set(row.key, round4((map.get(row.key) || 0) + share));
+  });
+  return map;
+}
+
+/** Cộng kg cân vào từng mã NVL theo BOM phiếu sản lượng (chia theo ĐM khi nhiều lõi/túi). */
 function accumulateKgByMaterialCode(input: {
   reports: AcceptanceReport[];
   products: ProductRow[];
@@ -70,11 +111,10 @@ function accumulateKgByMaterialCode(input: {
       item => item.amountType !== 'percent' && input.matchItem(item)
     );
     if (items.length === 0) continue;
-    const each = kg / items.length;
-    for (const item of items) {
-      const key = materialKey(item.code, item.name);
-      if (!key) continue;
-      map.set(key, round4((map.get(key) || 0) + each));
+    const shares = shareKgByBomDinhMuc(items, kg);
+    for (const [key, shareKg] of shares.entries()) {
+      if (!(shareKg > 0)) continue;
+      map.set(key, round4((map.get(key) || 0) + shareKg));
     }
   }
   return map;

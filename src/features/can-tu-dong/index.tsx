@@ -2208,35 +2208,6 @@ export function CanTuDongPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              setNhapKhoSlipDate(toDate || fromDate || localIsoDateToday());
-              setNhapKhoCa(caFilter !== 'all' ? caFilter : '');
-              setNhapKhoMay(mayFilter !== 'all' ? mayFilter : '');
-              setNhapKhoMaSp(maSpFilter !== 'all' ? maSpFilter : '');
-              setNhapKhoSoCuon('');
-              setNhapKhoHits(new Map());
-              setNhapKhoChecked(false);
-              setShowNhapKhoModal(true);
-            }}
-            disabled={loading || records.length === 0 || isResettingNhapKho}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 text-xs font-bold text-sky-800 transition hover:bg-sky-100 disabled:opacity-60"
-            title="Chọn ca · máy · Mã SP · số cuộn → ghi QR vào nhap_kho (phiếu chưa chốt)"
-          >
-            <Warehouse className="h-4 w-4" />
-            Nhập kho
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleResetNhapKhoByFilter()}
-            disabled={loading || isResettingNhapKho || isNhapKho || visibleRecords.length === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-950 transition hover:bg-amber-100 disabled:opacity-60"
-            title={`Đưa các dòng «Đã nhập kho» trong bộ lọc đang xem về «${NHAP_KHO_CHO}»`}
-          >
-            {isResettingNhapKho ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            {isResettingNhapKho ? 'Đang đưa về chờ...' : 'Về chờ nhập kho'}
-          </button>
-          <button
-            type="button"
             onClick={handleDownloadExcel}
             disabled={loading || visibleRecords.length === 0}
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
